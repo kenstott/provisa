@@ -128,8 +128,13 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
 
     def mv_store_schema(self, org_id: str) -> str:
         """MVs materialize into an org-scoped cache dataset in the project — a dedicated dataset
-        (distinct from the per-source landing datasets), created on demand at refresh."""
-        return f"org_{org_id}_mv_cache"
+        (distinct from the per-source landing datasets), created on demand at refresh.
+
+        REQ-1623: scoped to the environment being served, so one environment's refresh does not
+        overwrite the rows another environment reads."""
+        from provisa.core.environments import active_org_schema
+
+        return active_org_schema(org_id, "_mv_cache")
 
     @property
     def connection(self):

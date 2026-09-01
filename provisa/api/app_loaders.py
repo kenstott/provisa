@@ -38,6 +38,7 @@ from provisa.core.schema_org import (
     table_columns as _table_columns_t,
     tracked_functions as _tracked_functions_t,
 )
+from provisa.core.environments import active_org_schema
 from provisa.core.secrets import resolve_secrets
 from provisa.api._meta_views import _OPS_LOG_TABLE_ALIAS  # REQ-884
 from provisa.api.admin.db_queries import parse_mask_value as _parse_mask_value
@@ -68,8 +69,14 @@ _META_TABLE_ALIAS: dict[str, str] = {
 }
 
 
-def _apply_server_and_engine_config(raw_config: dict) -> None:
-    """Populate state.server_cfg, state.hostname, state.server_limits, state.engine_conn, and FTE hints."""
+def _apply_server_and_engine_config(raw_config: dict, connect_engine: bool = True) -> None:
+    """Populate state.server_cfg, state.hostname, state.server_limits, state.engine_conn, and FTE hints.
+
+    ``connect_engine=False`` (REQ-1619) applies the server settings and stops short of the terminal:
+    boot passes it when the shard could not be allocated, so there is no coordinator address to dial
+    and no ops catalog to seed on it. The terminal is opened by ``restore_shared_terminal`` on the
+    first query, after the wake that gives it an address.
+    """
     from provisa.api.app import state
 
     state.server_cfg = raw_config.get("server", {}) if isinstance(raw_config, dict) else {}
@@ -108,11 +115,12 @@ def _apply_server_and_engine_config(raw_config: dict) -> None:
     # telemetry lands in the dedicated ops store (ops_schema/otlp2sql), so provision() is a no-op.
     from provisa.api.startup_seed import _OPS_VIEWS
 
-    state.federation_engine.provision(_OPS_VIEWS)
+    if connect_engine:
+        state.federation_engine.provision(_OPS_VIEWS)
 
-    # Engine session tuning (e.g. Fault-Tolerant Execution) — engine-specific, applied through the
-    # lifecycle seam. Native engines have no per-session cluster tuning (no-op).
-    state.federation_engine.configure_session(state.server_cfg)
+        # Engine session tuning (e.g. Fault-Tolerant Execution) — engine-specific, applied through
+        # the lifecycle seam. Native engines have no per-session cluster tuning (no-op).
+        state.federation_engine.configure_session(state.server_cfg)
 
 
 def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
@@ -475,7 +483,8 @@ def _load_mv_and_views_config(
 
             view_source_id = view_cfg.get("source_id", "postgresql")
             view_table_name = f"view_{view_id.replace('-', '_')}"
-            view_schema = f"org_{state.org_id}_mv_cache" if materialize else f"org_{state.org_id}"
+            # REQ-1623: a materialized view lands in the environment's own cache schema.
+            view_schema = active_org_schema(state.org_id, "_mv_cache" if materialize else "")
 
             view_table = {
                 "source_id": view_source_id,

@@ -101,6 +101,22 @@ def env_schemas(org_id: str, env: str | None = None) -> list[str]:
     return [org_schema(org_id, env, suffix) for suffix in SCHEMA_SUFFIXES]
 
 
+def active_org_schema(org_id: str, suffix: str = "") -> str:  # REQ-1623
+    """:func:`org_schema` for the environment bound to THIS context.
+
+    The derived stores -- an MV's target, an API source's result cache, the GraphQL cache -- are
+    named where they are written, from an org id the writer has and an environment it does not pass
+    down. Naming them ``org_<id>_<suffix>`` regardless of environment made every environment refresh
+    into prod's cache, while the environment's own ``org_<id>_env_<env>_<suffix>`` -- created at
+    provisioning and dropped by ``deprovision_org`` -- was never written to: a write into prod plus
+    a leak. Reading the environment from the ContextVar here puts every derived store inside
+    ``env_schemas``, which is what already makes retiring an environment remove it.
+    """
+    from provisa.api.org_runtime import active_env  # noqa: PLC0415
+
+    return org_schema(org_id, active_env(), suffix)
+
+
 #: The longest name ``ENV_NAME_PATTERN`` itself admits, before any org-specific budget applies.
 MAX_ENV_NAME = 32
 

@@ -62,9 +62,54 @@ class EnvSecretsProvider(SecretsProvider):  # REQ-125
         return value
 
 
+#: The names :class:`ScopeProvider` answers, and how. Each is read from the context the resolution
+#: is happening in, never from configuration -- that is the whole point of the provider.
+_SCOPE_NAMES = ("ENV", "ORG")
+
+
+class ScopeProvider(SecretsProvider):  # REQ-1622
+    """``${scope:ENV}`` / ``${scope:ORG}`` -- WHERE this resolution is happening.
+
+    Not a secret, but the same grammar, because an author writing a source's path or a store's DSN
+    is writing one string and should not have to know which half of it is templated by which syntax.
+    ``${env:...}`` is the DEPLOYMENT's process environment and ``${scope:ENV}`` is the PROVISA
+    environment the request is bound to; the two words collide in English, so the provider names
+    keep them apart.
+
+    What this buys is REQ-1622's rule: a source or a store whose address carries ``${scope:ENV}``
+    resolves somewhere the environment owns alone, and what an environment owns alone is what
+    ``retire_environment`` may remove without asking anything else.
+
+    Fail-closed like every other provider: an unknown name raises rather than resolving empty.
+    ``ORG`` with no org bound raises for the same reason. ``ENV`` never does -- REQ-1487 settles
+    that a context naming no environment IS prod, so ``active_env()`` is an answer, not a hole.
+    """
+
+    def resolve(self, reference: str) -> str:
+        from provisa.api.org_runtime import active_env, current_org
+
+        if reference == "ENV":
+            return active_env()
+        if reference == "ORG":
+            org_id = current_org.get()
+            if org_id is None:
+                raise KeyError(
+                    "${scope:ORG} was resolved with no organization bound to this context"
+                )
+            return org_id
+        raise ValueError(f"Unknown scope variable: {reference}. Known: {', '.join(_SCOPE_NAMES)}.")
+
+
 _PROVIDERS: dict[str, SecretsProvider] = {
     "env": EnvSecretsProvider(),
+    "scope": ScopeProvider(),
 }
+
+#: Matches ONLY the scope provider. :func:`expand_scope` uses it so a caller can template a value
+#: with where-it-is without also forcing every ``${env:...}`` and ``${secret:...}`` in the same
+#: string to resolve -- those resolve at their own use points, and pulling them forward here would
+#: raise on a name that was never going to be read.
+_SCOPE_PATTERN = re.compile(r"\$\{scope:(\w+)\}")
 
 
 def register_provider(name: str, provider: SecretsProvider) -> None:  # REQ-557
@@ -115,6 +160,17 @@ def resolve_secrets(  # REQ-125, REQ-251, REQ-320, REQ-1557
         return provider.resolve(reference)
 
     return _SECRET_PATTERN.sub(_replace, value)
+
+
+def expand_scope(value: str) -> str:  # REQ-1622
+    """Replace ``${scope:NAME}`` with where this resolution is happening, and nothing else.
+
+    The narrow counterpart to :func:`resolve_secrets`, for the places that hold a value which is
+    part address and part credential -- a source's path, a store's DSN. Those two halves are read at
+    different moments by different code, and expanding the address half here leaves the credential
+    half written exactly as the author wrote it, for its own use point to resolve.
+    """
+    return _SCOPE_PATTERN.sub(lambda m: _PROVIDERS["scope"].resolve(m.group(1)), value)
 
 
 def resolve_secrets_in_dict(data: dict) -> dict:  # REQ-251, REQ-320

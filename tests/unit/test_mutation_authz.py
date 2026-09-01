@@ -27,6 +27,7 @@ from provisa.security.mutation_authz import (
     classify_kind,
     classify_openapi,
     reclassify_kind,
+    require_mutation_write,
 )
 from provisa.security.rights import Capability, InsufficientRightsError
 
@@ -133,6 +134,42 @@ def test_admin_without_write_still_allowed():
     # ADMIN implies all capabilities including WRITE (check_capability convention).
     ok, _ = authorize_mutation(_role("root", Capability.ADMIN.value), ["someone-else"])
     assert ok is True
+
+
+# --- the bypass an expiring environment withholds (REQ-1621) --------------------
+
+
+def test_admin_bypass_withheld_denies_unlisted_admin():
+    ok, reason = authorize_mutation(
+        _role("root", Capability.ADMIN.value), ["someone-else"], admin_bypass=False
+    )
+    assert ok is False and "writable_by" in reason
+
+
+def test_superadmin_bypass_withheld_denies_unlisted():
+    ok, _ = authorize_mutation(_role("root", Capability.SUPERADMIN.value), [], admin_bypass=False)
+    assert ok is False
+
+
+def test_admin_bypass_withheld_still_allows_a_listed_role():
+    # Withholding the bypass leaves the ACL as the whole answer -- it does not deny outright.
+    ok, _ = authorize_mutation(_role("root", Capability.ADMIN.value), ["root"], admin_bypass=False)
+    assert ok is True
+
+
+def test_require_mutation_write_honours_withheld_bypass():
+    from provisa.api.errors import ApiError
+
+    action = {"kind": "mutation", "writable_by": ["someone-else"]}
+    role = _role("root", Capability.ADMIN.value)
+    require_mutation_write(action, role, "editThing")  # bypass granted: allowed
+    with pytest.raises(ApiError) as excinfo:
+        require_mutation_write(action, role, "editThing", admin_bypass=False)
+    assert excinfo.value.status_code == 403
+
+
+def test_require_mutation_write_leaves_reads_alone_without_the_bypass():
+    require_mutation_write({"kind": "query"}, None, "thing", admin_bypass=False)
 
 
 # --- admin-only reclassification (REQ-870) -------------------------------------

@@ -67,6 +67,9 @@ def _state(*, role_caps=(), writable_by=("ops",), connected=True, pools=None):
         roles={"ops": role, "reader": {"id": "reader", "capabilities": []}},
         tracked_functions={"createOrder": _fn(writable_by=list(writable_by))},
         source_pools=pools,
+        # REQ-1621: a runtime states whether its environment expires; a durable one keeps the
+        # administrator's mutation bypass.
+        ephemeral=False,
     )
 
 

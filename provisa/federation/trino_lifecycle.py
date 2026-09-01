@@ -29,6 +29,8 @@ from typing import Any
 
 import trino
 
+from provisa.core.environments import active_org_schema
+
 log = logging.getLogger(__name__)
 
 # Re-exports so callers that only need the connection type / exception classes (never
@@ -139,7 +141,9 @@ def terminal_conn_kwargs(state: Any) -> dict:
         port=trino_port,
         user="provisa",
         catalog="system",
-        schema=f"org_{state.active_org_id}",
+        # REQ-1623: the terminal's default schema follows the environment being served, so an
+        # unqualified name resolves in the model the caller is actually in.
+        schema=active_org_schema(state.active_org_id),
         http_scheme="http",
         request_timeout=10,
     )

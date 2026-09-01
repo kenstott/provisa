@@ -302,10 +302,13 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
 
         from provisa.api.admin.db_queries import fetch_tables
         from provisa.compiler.naming import apply_sql_name
-        from urllib.parse import urlparse
 
-        _store_scheme = urlparse(store_dsn).scheme.split("+", 1)[0]
-        store_schema = "main" if _store_scheme == "sqlite" else "mat"
+        # REQ-1622: the landing schema belongs to the environment being wired, not to the store --
+        # a landed table's name is derived from the source id, which every environment shares.
+        from provisa.api.org_runtime import active_env
+        from provisa.federation.store_scope import store_schema as _store_schema_for
+
+        store_schema = _store_schema_for(store_dsn, active_env())
         _cfg_by = {(t.source_id, apply_sql_name(t.table_name)): t for t in config.tables}
         async with db.acquire() as _conn:
             _registered = await fetch_tables(_conn)

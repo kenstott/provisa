@@ -57,6 +57,9 @@ def _state() -> SimpleNamespace:
             "admin": {"id": "admin", "domain_access": ["*"], "capabilities": ["admin"]},
             "guest": {"id": "guest", "domain_access": ["*"], "capabilities": []},
         },
+        # REQ-1621: a runtime states whether its environment expires; a durable one keeps the
+        # administrator's mutation bypass.
+        ephemeral=False,
     )
 
 

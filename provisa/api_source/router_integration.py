@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 import logging
 
 from provisa.api_source.cache import resolve_ttl
+from provisa.core.environments import active_org_schema
 from provisa.api_source.caller import call_api
 from provisa.api_source.flattener import flatten_response
 from provisa.api_source.models import ApiEndpoint, ApiSource, ApiSourceType
@@ -94,7 +95,7 @@ async def handle_api_query(  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, REQ-
 
         if loc is None:
             _cc = getattr(source, "cache_catalog", None) if source else None
-            _default_cs = f"org_{org_id}_api_cache"
+            _default_cs = active_org_schema(org_id, "_api_cache")  # REQ-1623
             _cs = getattr(source, "cache_schema", _default_cs) if source else _default_cs
             # Resolved through the module, not a from-import binding: a from-import taken while a
             # test patches engine_cache.cache_location captures the patch permanently, since this

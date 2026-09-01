@@ -34,6 +34,19 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
+def _env_store_schema(dsn: str) -> str:
+    """The landing schema for the environment bound to this context (REQ-1622).
+
+    Read here rather than passed down, because reconcile is reached from a startup path and from a
+    request path and both already know their environment through the ContextVar; threading it
+    through every signature between would give two callers two chances to disagree.
+    """
+    from provisa.api.org_runtime import active_env
+    from provisa.federation.store_scope import store_schema
+
+    return store_schema(dsn, active_env())
+
+
 async def landing_worklist(
     engine: Any, state: Any
 ) -> list[tuple[Any, str, str, list[tuple[str, str]], list[str]]]:
@@ -376,7 +389,11 @@ class EngineBackend:
         writes — otherwise the refresh targets a catalog the engine has never heard of (the observed
         "Catalog with name postgresql does not exist" on a DuckDB deployment).
         """
-        return "postgresql", f"org_{org_id}_mv_cache"
+        # REQ-1623: the environment's own cache schema, not the org's -- an MV refreshed in one
+        # environment must not land in the schema another environment reads.
+        from provisa.core.environments import active_org_schema
+
+        return "postgresql", active_org_schema(org_id, "_mv_cache")
 
     def _materialize_store_ref(self, state: Any) -> str | None:
         """The catalog under which this engine references its materialization store (attaching it on
@@ -574,9 +591,10 @@ class TrinoBackend(EngineBackend):
         default made every MV sweep and refresh on Trino ask for
         ``"postgresql"."org_<org>_mv_cache"`` and answer CATALOG_NOT_FOUND.
         """
+        from provisa.core.environments import active_org_schema  # REQ-1623
         from provisa.core.trino_system_catalogs import PROVISA_ADMIN_CATALOG
 
-        return PROVISA_ADMIN_CATALOG, f"org_{org_id}_mv_cache"
+        return PROVISA_ADMIN_CATALOG, active_org_schema(org_id, "_mv_cache")
 
     # -- landing ---------------------------------------------------------------
 
@@ -629,7 +647,9 @@ class TrinoBackend(EngineBackend):
             self.engine, state
         ):
             schema, table = self.landing_target(
-                store_schema="mat",
+                # REQ-1622: the environment's own namespace, not the shared literal -- the table
+                # name below is derived from the source id, which every environment shares.
+                store_schema=_env_store_schema(self.engine.materialize_store()),
                 source_id=src.id,
                 source_type=src.type,
                 schema_name=schema_name,

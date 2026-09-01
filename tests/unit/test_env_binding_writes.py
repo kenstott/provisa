@@ -16,7 +16,6 @@ import sqlglot
 import pytest
 
 from provisa.api.org_runtime import reset_current_env, set_current_env
-from provisa.core.env_bindings import BindingError
 from provisa.core.environments import PROD
 from provisa.pgwire._pipeline import _reject_unbound_writes
 
@@ -110,43 +109,6 @@ class TestBranchWrites:
                 )
         finally:
             reset_current_env(token)
-
-
-class TestOverlay:
-    @pytest.mark.asyncio
-    async def test_resolved_source_is_pointed_at_the_supplier_and_marked_bound(self, monkeypatch):
-        from provisa.api import app as app_module
-
-        async def _resolve(admin_db, tenant_db, org_id, env, table, key):
-            assert (table, env) == ("sources", "feature")
-            return "base", {"host": "db.base", "port": 5432}
-
-        monkeypatch.setattr("provisa.core.env_bindings.resolve", _resolve)
-        monkeypatch.setattr(app_module.state, "admin_db", object(), raising=False)
-        monkeypatch.setattr(app_module.state, "tenant_db", object(), raising=False)
-        rows = {"s1": {"id": "s1", "host": "", "port": None, "bound": False, "type": "postgresql"}}
-        resolved, binding_env = await app_module._overlay_env_bindings(rows, "acme", "feature")
-        assert resolved["s1"]["host"] == "db.base"
-        assert resolved["s1"]["bound"] is True
-        assert resolved["s1"]["type"] == "postgresql"  # identity columns are the branch's own
-        assert binding_env == {"s1": "base"}
-
-    @pytest.mark.asyncio
-    async def test_unresolvable_source_is_left_exactly_as_the_row_has_it(self, monkeypatch):
-        from provisa.api import app as app_module
-
-        async def _resolve(admin_db, tenant_db, org_id, env, table, key):
-            raise BindingError("unbound in every environment it branched from")
-
-        monkeypatch.setattr("provisa.core.env_bindings.resolve", _resolve)
-        monkeypatch.setattr(app_module.state, "admin_db", object(), raising=False)
-        monkeypatch.setattr(app_module.state, "tenant_db", object(), raising=False)
-        row = {"id": "s1", "host": "", "bound": False}
-        resolved, binding_env = await app_module._overlay_env_bindings({"s1": row}, "acme", "feat")
-        # An empty host is not an absent one — the connection builder reads it as localhost — so
-        # the unbound row must survive untouched for the query path to refuse it.
-        assert resolved["s1"] == row
-        assert binding_env == {}
 
 
 def test_prod_constant_is_what_the_guard_compares_against():

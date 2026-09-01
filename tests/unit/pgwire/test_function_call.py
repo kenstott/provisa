@@ -56,6 +56,9 @@ def _state(**over):
         roles={"ops": {"id": "ops", "capabilities": [Capability.ADMIN.value]}},
         tracked_functions={"createOrder": fn},
         source_pools=over.get("pools") or _FakePools(),
+        # REQ-1621: every runtime states whether its environment expires; an environment that
+        # does withholds the admin mutation bypass. This stand-in is a durable one.
+        ephemeral=over.get("ephemeral", False),
     )
 
 

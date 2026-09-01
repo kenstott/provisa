@@ -31,6 +31,9 @@ const auth = {
   // REQ-1602: rights the caller is SHOWN without holding them.
   demonstrated: [] as string[],
   loading: false,
+  // REQ-1596/REQ-1617: the membership carries the environment it is confined to, and that pin is
+  // what the org serves this caller — not the name this browser happens to have stored.
+  orgMemberships: [] as { org_id: string; env_name?: string | null }[],
 };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 // The store reset is the switch's other half, so what is asserted is that it happens. A real
@@ -92,6 +95,7 @@ beforeEach(() => {
   auth.capabilities = ["environment_switch"];
   auth.demonstrated = [];
   auth.loading = false;
+  auth.orgMemberships = [{ org_id: "acme", env_name: null }];
   mockSync.mockResolvedValue({ remote_configured: true, branches: { prod: syncOf() } });
   Object.defineProperty(window, "location", {
     configurable: true,
@@ -303,6 +307,51 @@ describe("EnvSwitcher", () => {
     render(<EnvSwitcher />);
     await waitFor(() => expect(localStorage.getItem(ENV_STORAGE_KEY)).toBeNull());
     expect(reload).toHaveBeenCalled();
+  });
+
+  // REQ-1617: a membership pinned to one environment (the per-visitor ephemeral an invitation
+  // seats) is served from that environment whatever this browser names, so the pin is what this
+  // control reports and the only row it offers — a sandbox visitor was reading their ephemeral
+  // branch under a header that said prod.
+  it("names the pinned environment, not prod, for a confined membership", async () => {
+    auth.orgMemberships = [{ org_id: "acme", env_name: "ephemeral_a3446a2c" }];
+    mockFetch.mockResolvedValue([env("prod"), env("ephemeral_a3446a2c"), env("ephemeral_0c57a70a")]);
+    render(<EnvSwitcher />);
+    expect(await screen.findByTestId("env-switcher-trigger")).toHaveTextContent(
+      "Env: ephemeral_a3446a2c",
+    );
+  });
+
+  it("offers a confined membership nothing but its own environment", async () => {
+    // The rest of the org's list is other visitors' branches: naming them tells one visitor about
+    // another's, and choosing one is refused server-side with `env.switch_forbidden`.
+    auth.orgMemberships = [{ org_id: "acme", env_name: "ephemeral_a3446a2c" }];
+    mockFetch.mockResolvedValue([env("prod"), env("ephemeral_a3446a2c"), env("ephemeral_0c57a70a")]);
+    render(<EnvSwitcher />);
+    fireEvent.click(await screen.findByTestId("env-switcher-trigger"));
+    expect(await screen.findByText("ephemeral_a3446a2c")).toBeInTheDocument();
+    expect(screen.queryByText("ephemeral_0c57a70a")).not.toBeInTheDocument();
+    expect(screen.queryByText("prod")).not.toBeInTheDocument();
+  });
+
+  it("drops a stored name the pin has taken over from", async () => {
+    // Every request naming an environment other than the pin — prod included — is answered 403,
+    // so a name stored before the membership was confined has to go.
+    localStorage.setItem(ENV_STORAGE_KEY, "dev");
+    auth.orgMemberships = [{ org_id: "acme", env_name: "ephemeral_a3446a2c" }];
+    mockFetch.mockResolvedValue([env("prod"), env("ephemeral_a3446a2c")]);
+    render(<EnvSwitcher />);
+    await waitFor(() => expect(localStorage.getItem(ENV_STORAGE_KEY)).toBeNull());
+    expect(reload).toHaveBeenCalled();
+  });
+
+  it("leaves an unconfined membership choosing for itself", async () => {
+    localStorage.setItem(ENV_STORAGE_KEY, "dev");
+    mockFetch.mockResolvedValue([env("prod"), env("dev")]);
+    render(<EnvSwitcher />);
+    expect(await screen.findByTestId("env-switcher-trigger")).toHaveTextContent("Env: dev");
+    expect(localStorage.getItem(ENV_STORAGE_KEY)).toBe("dev");
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it("keeps the selection while the bootstrap is still in flight", async () => {

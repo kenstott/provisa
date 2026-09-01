@@ -367,11 +367,15 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def _store_schema(self) -> str:
         """The schema the landed replicas live in WITHIN the store. Schema-capable stores (postgres)
         isolate them under ``mat``; a schema-less store (sqlite) has no namespaces, so they land in
-        its default ``main`` schema. Landing, reconcile, and the engine's READ view all use this."""
-        from urllib.parse import urlparse
+        its default ``main`` schema. Landing, reconcile, and the engine's READ view all use this.
 
-        scheme = urlparse(self._store_dsn()).scheme.split("+", 1)[0]
-        return "main" if scheme == "sqlite" else "mat"
+        REQ-1622: and WHICH environment's, because a landed table is named from the source id, which
+        every environment shares. Prod keeps ``mat``/``main``; another environment gets its own
+        namespace, or is refused when the store has none to give."""
+        from provisa.api.org_runtime import active_env
+        from provisa.federation.store_scope import store_schema
+
+        return store_schema(self._store_dsn(), active_env())
 
     def _store_dsn(self) -> str:
         """The materialization-store DSN: the explicit constructor override, else the engine's

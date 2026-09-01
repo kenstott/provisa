@@ -91,20 +91,30 @@ def classify_kind(kind: str | None) -> MutationKind:
 
 
 def authorize_mutation(
-    role: dict[str, object] | None, writable_by: list[str] | None
-) -> tuple[bool, str]:  # REQ-867, REQ-868
+    role: dict[str, object] | None,
+    writable_by: list[str] | None,
+    *,
+    admin_bypass: bool = True,
+) -> tuple[bool, str]:  # REQ-867, REQ-868, REQ-1621
     """Decide whether ``role`` may invoke a write whose ACL is ``writable_by``.
 
     Returns ``(allowed, reason)``. Allowed only when the role holds the global WRITE
     capability AND its id is in ``writable_by`` (empty = default-deny). ADMIN/SUPERADMIN
     bypass, consistent with ``check_capability``. A missing role is denied.
+
+    ``admin_bypass=False`` withdraws that bypass and leaves the ACL as the whole answer (REQ-1621).
+    An ephemeral environment is the case: everything it holds is a copy that is thrown away, so its
+    visitor is deliberately given ``org_admin`` -- but the mutations reached through it are calls to
+    a REMOTE system the environment does not own and cannot copy, and an admin who is admin of a
+    throwaway is not an admin of that. The ACL is the author's own statement of who may write to it,
+    and here it stands with nobody above it.
     """
     if role is None:
         return False, "no role in context"
     caps = role.get("capabilities", [])
     if not isinstance(caps, (list, tuple, set, frozenset)):
         caps = []
-    if Capability.ADMIN.value in caps or Capability.SUPERADMIN.value in caps:
+    if admin_bypass and (Capability.ADMIN.value in caps or Capability.SUPERADMIN.value in caps):
         return True, ""
     if not has_capability(role, Capability.WRITE):
         return False, "role lacks the WRITE capability"
@@ -138,16 +148,23 @@ def reclassify_kind(
     return "query"
 
 
-def require_mutation_write(action: dict, role: dict | None, field_name: str) -> None:  # REQ-869
+def require_mutation_write(
+    action: dict, role: dict | None, field_name: str, *, admin_bypass: bool = True
+) -> None:  # REQ-869, REQ-1621
     """Execute-time gate for a tracked function/webhook action.
 
     A ``kind=mutation`` action (or any unknown kind) is a write and is authorized via
     ``authorize_mutation``; a read (``kind=query``) passes untouched — read visibility is
     enforced elsewhere. Raises HTTP 403 when a write is not permitted (default-deny).
+
+    ``admin_bypass`` is the caller's answer to REQ-1621: every call site passes
+    ``not state.ephemeral``, so an environment carrying an expiry withholds the bypass.
     """
     if classify_kind(action.get("kind")) is MutationKind.READ:
         return
-    allowed, reason = authorize_mutation(role, action.get("writable_by") or [])
+    allowed, reason = authorize_mutation(
+        role, action.get("writable_by") or [], admin_bypass=admin_bypass
+    )
     if not allowed:
         from provisa.api.errors import ApiError  # noqa: PLC0415
 

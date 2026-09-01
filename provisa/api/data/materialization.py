@@ -146,6 +146,7 @@ async def _mat_gql_remote_table(
         table_known_live,
     )
     from provisa.cache.hot_tables import HotTableEntry
+    from provisa.core.environments import active_org_schema  # REQ-1623
     from provisa.executor.redirect import RedirectConfig
     from dataclasses import dataclass as _dc
 
@@ -226,7 +227,11 @@ async def _mat_gql_remote_table(
 
     _org_id = getattr(state, "org_id", "default")
     _cache_cat = resolved_cache_catalog(state.federation_engine)
-    gql_cache_loc = cache_location(gql_reg["source_id"], _cache_cat, f"org_{_org_id}_gql_cache")
+    # REQ-1623: the cache belongs to the environment that filled it, so retiring the environment
+    # removes it and no environment serves another's cached rows.
+    gql_cache_loc = cache_location(
+        gql_reg["source_id"], _cache_cat, active_org_schema(_org_id, "_gql_cache")
+    )
     _cache_hash: dict = {"cols": sorted(col_selections)}
     if variables:
         _cache_hash.update(variables)
@@ -459,6 +464,7 @@ async def _mat_api_ep_table(
         table_exists,
         table_known_live,
     )
+    from provisa.core.environments import active_org_schema  # REQ-1623
     from provisa.executor.redirect import RedirectConfig
 
     source_id = ep.source_id
@@ -466,11 +472,8 @@ async def _mat_api_ep_table(
 
     _cc = getattr(api_source, "cache_catalog", None) if api_source else None
     _org_id = getattr(state, "org_id", "default")
-    _cs = (
-        getattr(api_source, "cache_schema", f"org_{_org_id}_api_cache")
-        if api_source
-        else f"org_{_org_id}_api_cache"
-    )
+    _default_cs = active_org_schema(_org_id, "_api_cache")  # REQ-1623
+    _cs = getattr(api_source, "cache_schema", _default_cs) if api_source else _default_cs
     _cache_loc = cache_location(source_id, _cc, _cs, engine=state.federation_engine)
     cache_tbl = cache_table_name(source_id, tn, {})
     ttl = (

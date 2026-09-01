@@ -103,6 +103,15 @@ class OrgRuntime:
     # holds the runtime rather than the request.
     env: str = PROD
 
+    # REQ-1621: this environment has an expiry, so everything it holds is a copy that is thrown
+    # away. Read once when the runtime is built, from ``env_registry.expires_at``. What it changes
+    # is the mutation gate: a remote-schema mutation reaches a system the environment does NOT own
+    # and cannot copy, so the ADMIN bypass that would otherwise let a sandbox visitor's ``org_admin``
+    # write to it is withheld and the operation's own ``writable_by`` is the whole answer. It says
+    # nothing about which sources the environment may point at — that is the environment's own
+    # business (REQ-1620 covers the file-backed ones by forking them, not by refusing them).
+    ephemeral: bool = False
+
     # REQ-1043/REQ-1067/REQ-1244: per-org federation engine. ``None`` means this org runs on the
     # SHARED engine (the pooled lane, REQ-1243 lane a — every org starts here); an isolated-engine
     # org (orgs.isolated_engine) carries its OWN EngineRuntime plus its own terminal-connection

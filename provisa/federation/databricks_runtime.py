@@ -161,8 +161,13 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
 
     def mv_store_schema(self, org_id: str) -> str:
         """MVs materialize into an org-scoped cache schema inside the warehouse catalog — a dedicated
-        namespace (distinct from the per-source landing schemas), created on demand at refresh."""
-        return f"org_{org_id}_mv_cache"
+        namespace (distinct from the per-source landing schemas), created on demand at refresh.
+
+        REQ-1623: scoped to the environment being served, so one environment's refresh does not
+        overwrite the rows another environment reads."""
+        from provisa.core.environments import active_org_schema
+
+        return active_org_schema(org_id, "_mv_cache")
 
     async def materialize_source(
         self,

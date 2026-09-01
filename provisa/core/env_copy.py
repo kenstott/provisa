@@ -65,6 +65,7 @@ from provisa.core.env_conflicts import detect as detect_conflicts
 from provisa.core.environments import org_schema
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import org_settings
+from provisa.core.schema_org import roles as org_roles
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -112,11 +113,13 @@ def _rebase(row: dict, src_schema: str, dst_schema: str) -> dict:
     return {**row, _SCHEMA_COLUMN: dst_schema}
 
 
-def _carried_columns(table: Table) -> list[str]:
-    """The columns of ``table`` a copy supplies. For an IDENTITY_ONLY table that is everything
-    except where it points (REQ-1491) and its boundness marker."""
+def _carried_columns(table: Table, strip_identities: bool) -> list[str]:
+    """The columns of ``table`` a copy supplies. For an IDENTITY_ONLY table, ``strip_identities``
+    decides whether where it points (REQ-1491) and its boundness marker travel too: stripped for an
+    ordinary branch, carried verbatim for a caller that asked for the real connection along with it
+    (REQ-1602's sandbox visitor environments)."""
     names = [c.name for c in table.columns]
-    if table.name in IDENTITY_ONLY:
+    if table.name in IDENTITY_ONLY and strip_identities:
         excluded = binding_columns(table.name)
         return [n for n in names if n not in excluded]
     return names
@@ -207,10 +210,21 @@ async def plan_copy(
     mode: str = MERGE,
     removals: bool = False,
     seed: bool = False,
+    strip_identities: bool = True,
 ) -> CopyReport:
     """What :func:`copy_model` would do, without doing any of it (REQ-1490)."""
     async with db.acquire() as conn:
-        return await _copy(conn, org_id, source_env, target_env, mode, removals, seed, apply=False)
+        return await _copy(
+            conn,
+            org_id,
+            source_env,
+            target_env,
+            mode,
+            removals,
+            seed,
+            strip_identities,
+            apply=False,
+        )
 
 
 async def copy_model(
@@ -222,16 +236,70 @@ async def copy_model(
     mode: str = MERGE,
     removals: bool = False,
     seed: bool = False,
+    strip_identities: bool = True,
 ) -> CopyReport:
     """Carry ``source_env``'s governed model into ``target_env``. One transaction (REQ-1490).
 
     ``seed`` is the creation path's alone: it additionally carries
     :data:`~provisa.core.env_classes.SEEDED_AT_CREATION` so a new environment opens with the roles
     and assignments of the one it came from. Every other copy leaves them where they are.
+
+    ``strip_identities`` is REQ-1491's convenience, on by default: an IDENTITY_ONLY row a copy
+    creates carries none of the source's binding columns and lands unbound. A caller that instead
+    wants the real connection details copied along with the row -- REQ-1602's sandbox visitor
+    environments -- passes ``strip_identities=False``.
     """
     async with db.acquire() as conn, conn.transaction():
-        report = await _copy(conn, org_id, source_env, target_env, mode, removals, seed, apply=True)
+        report = await _copy(
+            conn, org_id, source_env, target_env, mode, removals, seed, strip_identities, apply=True
+        )
     return report
+
+
+async def adopt_role_definition(
+    db: "Database",
+    org_id: str,
+    env: str | None,
+    *,
+    target: str,
+    source: str,
+) -> None:
+    """In ``env`` alone, ``target``'s capabilities and demonstrated list become ``source``'s.
+
+    REQ-1597 defines the sandbox visitor by subtraction from ``org_admin``, and the subtraction has
+    to happen against the NAME the model's grants carry, not against a name of its own. A column is
+    visible to a role when ``table_columns.visible_to`` NAMES that role
+    (``schema_gen._build_visible_tables``), and every grant in a copied model names the roles the
+    model was authored against. A role id no grant mentions therefore sees no column on any table,
+    and ``schema_gen`` then drops each table that has none -- leaving a visitor exactly the tables
+    whose API path/query parameters are exempt from the gate, and nothing else. The schema was not
+    incomplete; it was correctly empty for a name nobody had granted anything to.
+
+    So the visitor holds ``sandbox`` AND ``org_admin`` (``seat_redeemed_roles``), and the withholding
+    happens HERE, against ``org_admin``, in the visitor's own environment -- capabilities resolve as
+    the union over the holder's roles, so the union is the sandbox definition and no wider. The
+    definition is not restated: it is read from this environment's own ``sandbox`` row, so
+    REQ-1597's denylist and REQ-1602's demonstrated list keep exactly one author. Prod's
+    ``org_admin`` is untouched -- REQ-1539 makes ``roles`` the environment's own answer once it has
+    one, and this writes only the schema ``env`` names.
+    """
+    schema = org_schema(org_id, env)
+    scoped = _scoped(org_roles, schema)
+    async with db.acquire() as conn, conn.transaction():
+        row = (
+            await conn.execute_core(
+                select(scoped.c.capabilities, scoped.c.demonstrated).where(scoped.c.id == source)
+            )
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"{schema} has no role {source!r} to define {target!r} from")
+        await conn.execute_core(
+            scoped.update()
+            .where(scoped.c.id == target)
+            .values(
+                capabilities=row._mapping["capabilities"], demonstrated=row._mapping["demonstrated"]
+            )
+        )
 
 
 async def _copy(
@@ -242,6 +310,7 @@ async def _copy(
     mode: str,
     removals: bool,
     seed: bool,
+    strip_identities: bool,
     *,
     apply: bool,
 ) -> CopyReport:
@@ -276,7 +345,9 @@ async def _copy(
         # is evidence that it should go.
         table_removals = (removals or mode == REPLACE) and table.name in carried
         report.tables.append(
-            await _copy_table(conn, table, src_schema, dst_schema, table_removals, apply)
+            await _copy_table(
+                conn, table, src_schema, dst_schema, table_removals, strip_identities, apply
+            )
         )
     settings_removals = removals or mode == REPLACE
     report.tables.append(
@@ -298,11 +369,12 @@ async def _copy_table(
     src_schema: str,
     dst_schema: str,
     removals: bool,
+    strip_identities: bool,
     apply: bool,
 ) -> TableDelta:
     src = _scoped(table, src_schema)
     dst = _scoped(table, dst_schema)
-    columns = _carried_columns(table)
+    columns = _carried_columns(table, strip_identities)
     delta = TableDelta(table.name)
 
     source_rows = {
@@ -317,7 +389,7 @@ async def _copy_table(
         current = target_rows.get(key)
         if current is None:
             delta.added.append(_render(key))
-            if table.name in IDENTITY_ONLY:
+            if table.name in IDENTITY_ONLY and strip_identities:
                 # REQ-1491: a row this copy creates points nowhere until the environment binds it.
                 carried[BOUND_COLUMN] = False
             inserts.append(carried)

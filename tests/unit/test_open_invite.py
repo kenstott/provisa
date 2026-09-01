@@ -17,11 +17,12 @@ and mint a sandbox -- and a test that only exercised the "Try it Out" link would
 addressed invitation break unnoticed.
 """
 
-# Requirements: REQ-1594, REQ-1595, REQ-1596
+# Requirements: REQ-1594, REQ-1595, REQ-1596, REQ-1615
 
 from __future__ import annotations
 
 import types
+from datetime import datetime, timezone
 
 import pytest
 
@@ -30,11 +31,14 @@ from provisa.core.org_invite import (
     ENV_POLICY_PER_VISITOR,
     ENV_POLICY_SHARED,
     SANDBOX_ENV_PREFIX,
+    SANDBOX_ROLE,
     is_spent,
     sandbox_env_name,
     spend,
     unspent,
 )
+from provisa.api.invite_env import RedeemedEnv
+from provisa.api.sandbox_org import SANDBOX_ORG_ID
 from provisa.core.org_membership import JOINED_VIA_INVITE, membership_values
 
 
@@ -50,6 +54,11 @@ def _invite(**overrides) -> dict:
     }
     row.update(overrides)
     return row
+
+
+async def _no_such_env(db, org_id, name):
+    """REQ-1615: the name is free, so the redemption is the one that mints it."""
+    return None
 
 
 class TestTheCeiling:
@@ -143,20 +152,20 @@ class TestWhatTheRedeemerIsGiven:
     async def test_an_ordinary_invitation_seats_nobody(self):
         from provisa.api.invite_env import redeem_env
 
-        assert await redeem_env(_invite(), "bob") is None
+        assert await redeem_env(_invite(), "bob") == RedeemedEnv(None, minted=False)
 
     @pytest.mark.asyncio
     async def test_a_shared_portal_seats_everyone_in_the_environment_it_names(self):
         from provisa.api.invite_env import redeem_env
 
         invite = _invite(env_policy=ENV_POLICY_SHARED, env_name="portal")
-        assert await redeem_env(invite, "bob") == "portal"
-        assert await redeem_env(invite, "carol") == "portal"
+        assert await redeem_env(invite, "bob") == RedeemedEnv("portal", minted=False)
+        assert await redeem_env(invite, "carol") == RedeemedEnv("portal", minted=False)
 
     @pytest.mark.asyncio
-    async def test_a_visitor_gets_a_fresh_environment_deployed_from_prod(self, monkeypatch):
-        from provisa.core.environments import PROD
-
+    async def test_a_visitor_gets_a_fresh_environment_deployed_from_the_env_the_invite_names(
+        self, monkeypatch
+    ):
         created: list[dict] = []
 
         async def _create(state, admin_db, tenant_pool, tenant_db, org_id, name, **kw):
@@ -167,6 +176,7 @@ class TestWhatTheRedeemerIsGiven:
 
         monkeypatch.setattr("provisa.core.env_create.create_environment", _create)
         monkeypatch.setattr("provisa.api.admin.orgs_router._org_tenant_db", _org_tenant_db)
+        monkeypatch.setattr("provisa.core.env_store.get_env", _no_such_env)
         monkeypatch.setattr(
             "provisa.api.app.state",
             types.SimpleNamespace(admin_db=object(), tenant_db=object()),
@@ -174,13 +184,16 @@ class TestWhatTheRedeemerIsGiven:
         )
         from provisa.api.invite_env import redeem_env
 
-        invite = _invite(env_policy=ENV_POLICY_PER_VISITOR, env_ttl_seconds=3600)
-        name = await redeem_env(invite, "bob")
+        # REQ-1602: create_invite captures env_name from the inviter's own active_env at creation
+        # time, so a per_visitor invite always names its source -- here, the inviter was on "qa".
+        invite = _invite(env_policy=ENV_POLICY_PER_VISITOR, env_ttl_seconds=3600, env_name="qa")
+        redeemed = await redeem_env(invite, "bob")
 
+        name = redeemed.name
         assert name is not None and name.startswith(SANDBOX_ENV_PREFIX)
+        assert redeemed.minted
         assert created[0]["name"] == name
-        # A sandbox with nothing in it demonstrates nothing.
-        assert created[0]["from_env"] == PROD
+        assert created[0]["from_env"] == "qa"
         assert created[0]["created_by"] == "bob"
 
     @pytest.mark.asyncio
@@ -197,6 +210,7 @@ class TestWhatTheRedeemerIsGiven:
 
         monkeypatch.setattr("provisa.core.env_create.create_environment", _create)
         monkeypatch.setattr("provisa.api.admin.orgs_router._org_tenant_db", _org_tenant_db)
+        monkeypatch.setattr("provisa.core.env_store.get_env", _no_such_env)
         monkeypatch.setattr(
             "provisa.api.app.state",
             types.SimpleNamespace(admin_db=object(), tenant_db=object()),
@@ -204,7 +218,10 @@ class TestWhatTheRedeemerIsGiven:
         )
         from provisa.api.invite_env import redeem_env
 
-        await redeem_env(_invite(env_policy=ENV_POLICY_PER_VISITOR, env_ttl_seconds=3600), "bob")
+        await redeem_env(
+            _invite(env_policy=ENV_POLICY_PER_VISITOR, env_ttl_seconds=3600, env_name="prod"),
+            "bob",
+        )
 
         left = created[0]["expires_at"] - datetime.now(tz=timezone.utc)
         assert 3500 < left.total_seconds() <= 3600
@@ -218,6 +235,90 @@ class TestWhatTheRedeemerIsGiven:
 
         with pytest.raises(ValueError):
             await redeem_env(_invite(env_policy="whatever"), "bob")
+
+
+class TestAVisitorWhoComesBack:
+    """REQ-1615: a sandbox environment is named after its visitor, so a second visit finds it."""
+
+    @staticmethod
+    def _sandbox_invite():
+        return _invite(
+            org_id=SANDBOX_ORG_ID,
+            role_id=SANDBOX_ROLE,
+            env_policy=ENV_POLICY_PER_VISITOR,
+            env_ttl_seconds=3600,
+            env_name="prod",
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_second_redemption_seats_them_in_the_one_they_already_have(self, monkeypatch):
+        async def _create(*a, **kw):
+            raise AssertionError("the visitor's environment exists; minting it again is the 500")
+
+        async def _get_env(db, org_id, name):
+            return {"org_id": org_id, "name": name}
+
+        renewed: list[tuple] = []
+
+        async def _set_expiry(db, org_id, name, expires_at):
+            renewed.append((org_id, name, expires_at))
+
+        monkeypatch.setattr("provisa.core.env_create.create_environment", _create)
+        monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
+        monkeypatch.setattr("provisa.core.env_store.set_expiry", _set_expiry)
+        monkeypatch.setattr(
+            "provisa.api.app.state",
+            types.SimpleNamespace(admin_db=object(), tenant_db=object()),
+            raising=False,
+        )
+        from provisa.api.invite_env import redeem_env
+
+        redeemed = await redeem_env(self._sandbox_invite(), "bob")
+
+        # Nothing was minted -- so nothing here is this redemption's to take back.
+        assert redeemed.minted is False
+        assert redeemed.name is not None and redeemed.name.startswith("ephemeral_")
+        # REQ-1600: arriving is use, so the idle deadline moves out by the invite's hour.
+        left = renewed[0][2] - datetime.now(tz=timezone.utc)
+        assert 3500 < left.total_seconds() <= 3600
+
+    @pytest.mark.asyncio
+    async def test_two_visits_resolve_to_the_same_name(self, monkeypatch):
+        """REQ-1602: the name is a function of the visitor, which is why it collided at all."""
+        seen: list[str] = []
+
+        async def _create(state, admin_db, tenant_pool, tenant_db, org_id, name, **kw):
+            seen.append(name)
+
+        async def _org_tenant_db(org_id):
+            return object()
+
+        monkeypatch.setattr("provisa.core.env_create.create_environment", _create)
+        monkeypatch.setattr("provisa.api.admin.orgs_router._org_tenant_db", _org_tenant_db)
+        monkeypatch.setattr("provisa.core.env_store.get_env", _no_such_env)
+        monkeypatch.setattr(
+            "provisa.api.app.state",
+            types.SimpleNamespace(admin_db=object(), tenant_db=object()),
+            raising=False,
+        )
+        from provisa.api.invite_env import redeem_env
+
+        first = await redeem_env(self._sandbox_invite(), "bob")
+        second = await redeem_env(self._sandbox_invite(), "bob")
+
+        assert first.name == second.name and seen == [first.name, first.name]
+
+    @pytest.mark.asyncio
+    async def test_a_reused_environment_survives_a_failed_redemption(self, monkeypatch):
+        """What the visitor did last session is not this redemption's to delete."""
+
+        async def _retire(*a, **kw):
+            raise AssertionError("this environment predates the redemption that failed")
+
+        monkeypatch.setattr("provisa.core.env_retire.retire_environment", _retire)
+        from provisa.api.invite_env import release_env
+
+        await release_env(self._sandbox_invite(), RedeemedEnv("ephemeral_0c57a70a", minted=False))
 
 
 class TestReleasingWhatWasMinted:
@@ -239,7 +340,10 @@ class TestReleasingWhatWasMinted:
         )
         from provisa.api.invite_env import release_env
 
-        await release_env(_invite(env_policy=ENV_POLICY_PER_VISITOR, env_ttl_seconds=60), "sbx")
+        await release_env(
+            _invite(env_policy=ENV_POLICY_PER_VISITOR, env_ttl_seconds=60),
+            RedeemedEnv("sbx", minted=True),
+        )
 
         assert retired == [{"org_id": "acme", "name": "sbx", "drop_branch": True}]
 
@@ -251,7 +355,10 @@ class TestReleasingWhatWasMinted:
         monkeypatch.setattr("provisa.core.env_retire.retire_environment", _retire)
         from provisa.api.invite_env import release_env
 
-        await release_env(_invite(env_policy=ENV_POLICY_SHARED, env_name="portal"), "portal")
+        await release_env(
+            _invite(env_policy=ENV_POLICY_SHARED, env_name="portal"),
+            RedeemedEnv("portal", minted=False),
+        )
 
     @pytest.mark.asyncio
     async def test_nothing_minted_is_nothing_to_release(self, monkeypatch):
@@ -261,7 +368,7 @@ class TestReleasingWhatWasMinted:
         monkeypatch.setattr("provisa.core.env_retire.retire_environment", _retire)
         from provisa.api.invite_env import release_env
 
-        await release_env(_invite(), None)
+        await release_env(_invite(), RedeemedEnv(None, minted=False))
 
 
 class TestTheInviterIsToldWhy:
@@ -309,3 +416,69 @@ class TestTheInviterIsToldWhy:
         from provisa.api.admin.invites_router import _check_env_policy
 
         _check_env_policy(self._body(**kwargs))
+
+
+class TestTheSandboxRoleGoesNowhereElse:
+    """REQ-1597: the role is defined by a subtraction performed inside the environment redemption
+    mints, so an invitation that mints no environment confers a name nothing narrowed."""
+
+    def _body(self, **kw):
+        from provisa.api.admin.invites_router import CreateInviteBody
+
+        return CreateInviteBody(org_id="acme", role_id=SANDBOX_ROLE, **kw)
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [{}, {"env_policy": ENV_POLICY_SHARED, "env_name": "portal"}],
+        ids=["ordinary-invitation", "published-portal"],
+    )
+    def test_a_sandbox_role_without_an_environment_to_define_it_is_refused(self, kwargs):
+        from provisa.api.admin.invites_router import _check_env_policy
+        from provisa.api.errors import ApiError
+
+        with pytest.raises(ApiError) as exc:
+            _check_env_policy(self._body(**kwargs))
+        assert exc.value.code == "invites.sandbox_role_needs_per_visitor"
+
+    def test_the_per_visitor_invitation_is_the_one_that_may_confer_it(self):
+        from provisa.api.admin.invites_router import _check_env_policy
+
+        _check_env_policy(self._body(env_policy=ENV_POLICY_PER_VISITOR, env_ttl_seconds=3600))
+
+
+class TestTheVisitorAlsoHoldsTheNameTheGrantsCarry:
+    """REQ-1597: `sandbox` is named by no authored model's `table_columns.visible_to`, so on its own
+    it is shown no column and `schema_gen` drops every table left with none. The second assignment
+    is what makes the copied model visible; `define_role_from` is what keeps it from widening."""
+
+    class _Recorder:
+        def __init__(self):
+            self.granted = []
+
+    async def _seat(self, role_id):
+        import provisa.core.org_membership as om
+        from provisa.api.invite_env import seat_redeemed_roles
+
+        rec = self._Recorder()
+        original = om.grant_org_role
+
+        async def fake(tenant_db, user_id, rid):
+            rec.granted.append((user_id, rid))
+
+        om.grant_org_role = fake
+        try:
+            await seat_redeemed_roles(object(), "visitor", role_id)
+        finally:
+            om.grant_org_role = original
+        return rec.granted
+
+    @pytest.mark.asyncio
+    async def test_a_sandbox_redemption_is_seated_under_both_names(self):
+        assert await self._seat(SANDBOX_ROLE) == [
+            ("visitor", SANDBOX_ROLE),
+            ("visitor", "org_admin"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_every_other_invitation_confers_exactly_what_it_named(self):
+        assert await self._seat("analyst") == [("visitor", "analyst")]

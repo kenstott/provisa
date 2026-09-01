@@ -104,14 +104,25 @@ def engine_visible_s3_endpoint(endpoint: str) -> str:
 
 
 def control_plane_spec(url: URL, org_id: str) -> CatalogSpec:
-    """The ``provisa_admin`` catalog: the tenant control plane, scoped to this org's schema."""
+    """The ``provisa_admin`` catalog: the tenant control plane, scoped to this org's schema.
+
+    REQ-1623: the schema is the one the environment being served occupies, not prod's. This
+    catalog is where the Trino backend lands a materialized view (``materialize_store_target``),
+    and an unqualified reference through it resolves in ``currentSchema`` — fixed at ``org_<id>``
+    that was prod's copy of the model whichever environment asked.
+    """
+    from provisa.core.environments import active_org_schema
+
     host, port, database, user, password = _pg_parts(url)
     host, port = engine_visible_address(host, port)
     return CatalogSpec(
         name=PROVISA_ADMIN_CATALOG,
         connector="postgresql",
         properties={
-            "connection-url": f"jdbc:postgresql://{host}:{port}/{database}?currentSchema=org_{org_id}",
+            "connection-url": (
+                f"jdbc:postgresql://{host}:{port}/{database}"
+                f"?currentSchema={active_org_schema(org_id)}"
+            ),
             "connection-user": user,
             "connection-password": password,
             "statistics.enabled": "false",

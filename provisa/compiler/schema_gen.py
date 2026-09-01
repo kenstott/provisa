@@ -14,7 +14,7 @@ No third-party GraphQL framework (REQ-007). Uses graphql-core directly.
 Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 """
 
-# Requirements: REQ-007, REQ-008, REQ-010, REQ-021, REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-039, REQ-133, REQ-134, REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-196, REQ-197, REQ-200, REQ-201, REQ-202, REQ-205, REQ-206, REQ-207, REQ-209, REQ-210, REQ-212, REQ-213, REQ-218, REQ-219, REQ-221, REQ-253, REQ-259, REQ-260, REQ-363
+# Requirements: REQ-007, REQ-008, REQ-010, REQ-021, REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-039, REQ-133, REQ-134, REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-196, REQ-197, REQ-200, REQ-201, REQ-202, REQ-205, REQ-206, REQ-207, REQ-209, REQ-210, REQ-212, REQ-213, REQ-218, REQ-219, REQ-221, REQ-253, REQ-259, REQ-260, REQ-363, REQ-1614
 
 import re
 from typing import cast
@@ -157,9 +157,9 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
             and not c.get("native_filter_type")
             and not (_hide_meta_gov and c["column_name"] in GOVERNANCE_META_COLUMNS)
         ]
-        # Native filter cols are API parameters (path/query params), not data columns.
-        # They are always exposed as query args regardless of visible_to — the role
-        # only needs access to the table itself.
+        # Native filter cols are API parameters (path/query params), not data columns, so they
+        # carry no visible_to gate of their own: a role that can read the endpoint's rows may
+        # always pass its path/query arguments.
         _raw_nfc = [c for c in table["columns"] if c.get("native_filter_type")]
         _base_names = {
             c["column_name"] for c in _raw_nfc if not c["column_name"].startswith("_nf_")
@@ -169,6 +169,15 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
             for c in _raw_nfc
             if not c["column_name"].startswith("_nf_") or c["column_name"][4:] not in _base_names
         ]
+        # REQ-1614: but the exemption is not itself an entitlement. There is no table-level grant
+        # in this model — a role's reach over a table IS its column grants — so the reach the
+        # parameters ride on is read off those: at least one data column visible here. Without
+        # this, a role no column was granted to still saw every API-backed table, because its
+        # parameters alone satisfied the survival test below and kept it in the schema. That is
+        # what a sandbox visitor met: the whole model reduced to the five REST endpoints, offered
+        # as fields whose only arguments were the ones the gate never covered.
+        if not visible_cols:
+            native_filter_cols = []
 
         if not visible_cols and not native_filter_cols:
             if table.get("columns") or not col_meta:

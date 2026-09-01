@@ -86,7 +86,7 @@ async def invoke_tracked_function(name: str, args: dict, state, role_id: str | N
     role = state.roles.get(role_id) if role_id is not None else None
     fn = state.tracked_functions.get(name)
     if fn:
-        require_mutation_write(fn, role, name)
+        require_mutation_write(fn, role, name, admin_bypass=not state.ephemeral)
         return await dispatch_function(fn, args, state, role_id)
     # A webhook is a governed command too (REQ-872): every surface routes here, so a webhook is
     # invocable beyond GraphQL. Kept a distinct path because a webhook is a scalar-argument HTTP
@@ -120,7 +120,7 @@ async def invoke_tracked_webhook(name: str, args: dict, state, role_id: str | No
     wh = (getattr(state, "tracked_webhooks", None) or {}).get(name)
     if not wh:
         raise HTTPException(status_code=400, detail=f"Unknown webhook: {name!r}")
-    require_mutation_write(wh, role, name)
+    require_mutation_write(wh, role, name, admin_bypass=not state.ephemeral)
     timeout = wh["timeout_ms"] / 1000
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.request(wh["method"].upper(), wh["url"], json=_webhook_body(wh, args))

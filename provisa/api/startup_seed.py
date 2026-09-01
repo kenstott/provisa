@@ -732,6 +732,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     pg_user: str,
     org_id: str | None = None,
     env: str | None = None,
+    engine_addressable: bool = True,
 ) -> None:
     """Seed provisa-admin, provisa-otel, and __derived__ source rows; seed meta domain and ops; compute clusters.
 
@@ -740,13 +741,19 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
 
     ``org_id`` scopes the seeded meta/ops domain rows to the org being built (REQ-1266). It defaults
     to ``state.org_id`` (the default/bootstrap org) for the single-org startup path; the per-org
-    builder passes the new org's id so meta/ops belong to that org, not the default."""
+    builder passes the new org's id so meta/ops belong to that org, not the default.
+
+    ``engine_addressable=False`` (REQ-1619) says the coordinator has no address this boot, because
+    the shard could not be allocated. The only thing that reads it is provisa-otel's recorded
+    host/port, so those two columns are left as the last boot wrote them rather than the seed
+    inventing an address: everything the seed exists for — the source rows, the meta domain, ops —
+    is control-plane state and is written either way."""
     eff_org = org_id or state.org_id
     assert state.tenant_db is not None
     cp_dialect = state.tenant_db.dialect
     from provisa.federation.engine import configured_engine_endpoint
 
-    engine_host_early, engine_port_early = configured_engine_endpoint()
+    engine_endpoint = configured_engine_endpoint() if engine_addressable else None
     # Every column below except `description` is derived from the deployment itself — the control
     # plane's backend and address, the configured engine's name and endpoint — so it is the boot's
     # answer that is authoritative, not whatever a previous boot wrote. Leaving them out of
@@ -787,20 +794,24 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
             "Observability telemetry store — OpenTelemetry spans and traces collected from "
             "Provisa query execution, used for performance monitoring and query analytics"
         )
+        _otel_row: dict[str, Any] = {
+            "id": "provisa-otel",
+            "type": "iceberg",
+            "database": "otel",
+            "username": "provisa",
+            "dialect": _engine_name,
+            "description": _otel_desc,
+        }
+        if engine_endpoint is not None:
+            _otel_row["host"], _otel_row["port"] = engine_endpoint
+        # REQ-1619: an address the boot does not have is not a column it can update — naming it in
+        # update_columns without supplying it is an update of a value this statement never wrote.
+        _otel_update = [c for c in _DERIVED_FROM_DEPLOYMENT if c in _otel_row]
         await _conn.upsert(
             _sources_t,
-            {
-                "id": "provisa-otel",
-                "type": "iceberg",
-                "host": engine_host_early,
-                "port": engine_port_early,
-                "database": "otel",
-                "username": "provisa",
-                "dialect": _engine_name,
-                "description": _otel_desc,
-            },
+            _otel_row,
             index_elements=["id"],
-            update_columns=_DERIVED_FROM_DEPLOYMENT,
+            update_columns=_otel_update,
             set_extra={
                 "description": _sa_func.coalesce(
                     _sa_func.nullif(_sources_t.c.description, ""), _otel_desc

@@ -418,6 +418,11 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 ]
                 su_identity.roles = _assignments_to_claims(su_assignments)
                 request.state.identity = su_identity
+                # REQ-1618: break-glass holds platform_admin, so it IS the control plane, and this
+                # branch returns before the platform read below that publishes the same fact for
+                # everyone else. Without it the environment resolution reads no flag at all and
+                # auto-selects the operator into a sandbox visitor's ephemeral branch.
+                request.state.can_cross_org = True
                 # X-Provisa-Role is not consulted: the break-glass account holds exactly one
                 # role per plane, and the acting role is the data-plane one either way.
                 request.state.role = ORG_ADMIN_ROLE
@@ -571,6 +576,12 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             can_cross_org = _can_act_cross_org(
                 _capabilities_for_claims({a.role_id for a in platform_assignments}, _loaded_roles())
             )
+            # REQ-1618: publish it. The environment resolution (both this middleware's role read and
+            # _OrgRoutingMiddleware's binding) needs to know whether the caller is the control plane,
+            # and by the time either asks, the acting role set no longer says: inside a tenant org
+            # the control-plane roles are stripped from it (REQ-1327). The platform read above is the
+            # only place that fact exists, so it is carried on the request rather than re-derived.
+            request.state.can_cross_org = can_cross_org
             member_org_ids: list[str] = []
             if self._admin_pool is not None:
                 from provisa.core.org_membership import bindable_memberships
@@ -689,6 +700,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                         identity,
                         None,
                         env_gate_capabilities(identity, _app_state),
+                        is_control_plane=can_cross_org,
                     )
                 except (EnvironmentSelectionError, EnvironmentRightError):
                     # Not this middleware's job to answer for -- _OrgRoutingMiddleware resolves

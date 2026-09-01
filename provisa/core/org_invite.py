@@ -51,6 +51,16 @@ ENV_POLICY_SHARED = "shared"
 
 ENV_POLICIES = (ENV_POLICY_NONE, ENV_POLICY_PER_VISITOR, ENV_POLICY_SHARED)
 
+#: The visitor's role (REQ-1597): org_admin's capabilities less the six a stranger is not given.
+#:
+#: It is conferrable ONLY by a ``per_visitor`` invitation, and the reason is that the withholding it
+#: describes is a subtraction performed inside the ephemeral environment. A ``sandbox`` assignment
+#: anywhere else names a role whose reduced definition nothing applied -- and, worse, one that no
+#: authored model's column grants mention, so the holder is shown no column on any table and
+#: ``schema_gen`` drops every table left with none. The role only means what it says where the
+#: environment was minted to make it mean that; elsewhere it is refused rather than approximated.
+SANDBOX_ROLE = "sandbox"
+
 #: What a ``per_visitor`` environment is named after. Kept short because the name has 32 characters
 #: to live in (``provisa.core.environments.MAX_ENV_NAME``) and the random half needs most of them.
 SANDBOX_ENV_PREFIX = "sandbox_"

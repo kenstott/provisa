@@ -454,10 +454,16 @@ async def _start_servers(_log: logging.Logger) -> None:
     if pgwire_port:
         try:
             import ssl as _ssl
-            from provisa.pgwire import catalog as _pgwire_catalog
             from provisa.pgwire.server import start_pgwire_server
 
-            _pgwire_catalog._KNOWN_SETTINGS["search_path"] = f"org_{state.org_id}"  # REQ-695
+            # REQ-1623: the pgwire surface's search_path is NOT the control plane's. REQ-695 scopes
+            # the internal asyncpg pool to org_<id>; a pgwire client never sees that schema — the
+            # catalog presents tables under ``public`` (or a domain id) and ``current_schema()``
+            # answers ``public``. Writing org_<id> into the reported setting here pointed every
+            # client at a namespace holding none of its tables, named the BOOT org for every
+            # session whatever org it was serving, and was a process-global one environment could
+            # not have differed from anyway. The default ``public, "$user"`` is what this surface
+            # actually presents.
 
             _ssl_ctx: _ssl.SSLContext | None = None
             _pgwire_tls = _resolve_tls("PROVISA_PGWIRE_CERT", "PROVISA_PGWIRE_KEY")

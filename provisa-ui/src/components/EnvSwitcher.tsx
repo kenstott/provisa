@@ -46,7 +46,7 @@ const DEFAULT_ENV = "prod";
  */
 export function EnvSwitcher() {
   const { t } = useTranslation();
-  const { activeOrgId, loading } = useAuth();
+  const { activeOrgId, loading, orgMemberships } = useAuth();
   // REQ-1573: being served by an environment other than prod is its own right. An analyst holds
   // neither it nor `environment_management`, and the server answers 403 `env.switch_forbidden` to a
   // request naming one — so the menu that names them is not shown to a caller who cannot be served.
@@ -67,7 +67,13 @@ export function EnvSwitcher() {
   // what it would keep saying, and undo stayed grey after a change that made it available. Opening
   // the menu is the moment the answer is wanted, so opening it is what re-reads the rows.
   const [reread, setReread] = useState(0);
-  const active = selectedEnv() ?? DEFAULT_ENV;
+  // REQ-1617: a membership confined to one environment (REQ-1596, the per-visitor ephemeral an
+  // invitation seats) is served from that environment whatever this browser names, and naming any
+  // other -- prod included -- is refused with `env.switch_forbidden`. So the pin is what this
+  // control reports: reading `selectedEnv() ?? prod` here was the header saying prod over a
+  // visitor who was being served their ephemeral branch all along.
+  const pinnedEnv = orgMemberships.find((m) => m.org_id === activeOrgId)?.env_name ?? null;
+  const active = pinnedEnv ?? selectedEnv() ?? DEFAULT_ENV;
 
   useEffect(() => {
     // A bootstrap in flight carries no capabilities yet, which is not a withdrawal of the right
@@ -86,6 +92,14 @@ export function EnvSwitcher() {
       return;
     }
     if (!activeOrgId) return;
+    // REQ-1617: a name stored before the pin existed — or picked out of the list this menu used to
+    // offer — is refused on every request a confined membership makes, so dropping it is the repair
+    // for a selection the server cannot serve, the same as the two repairs around it.
+    if (pinnedEnv !== null && selectedEnv() !== null && selectedEnv() !== pinnedEnv) {
+      localStorage.removeItem(ENV_STORAGE_KEY);
+      window.location.reload();
+      return;
+    }
     let live = true;
     const load = () =>
       fetchEnvironments(activeOrgId)
@@ -129,7 +143,7 @@ export function EnvSwitcher() {
       live = false;
       window.removeEventListener(ENVIRONMENTS_CHANGED_EVENT, both);
     };
-  }, [activeOrgId, loading, maySwitch, demonstrated, reread]);
+  }, [activeOrgId, loading, maySwitch, demonstrated, pinnedEnv, reread]);
 
   if (loading || !activeOrgId) return null;
   // A sandbox visitor has no environment to switch to -- ephemeral is the only one they're ever
@@ -206,6 +220,10 @@ export function EnvSwitcher() {
   }
 
   const state = standing();
+  // REQ-1617: the environments a confined membership can be served is exactly one, and the rest of
+  // the org's list is other visitors' branches — offering them is offering a 403, and naming them
+  // tells one visitor about another's.
+  const offered = pinnedEnv === null ? envs : envs.filter((e) => e.name === pinnedEnv);
 
   return (
     <Menu
@@ -240,7 +258,7 @@ export function EnvSwitcher() {
         </Button>
       </Menu.Target>
       <Menu.Dropdown>
-        {envs.map((e) => {
+        {offered.map((e) => {
           const selected = e.name === active;
           return (
             <Menu.Item

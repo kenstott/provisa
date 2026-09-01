@@ -540,6 +540,12 @@ class AppState:
         self._active_runtime().source_federation_hints = value
 
     @property
+    def ephemeral(self) -> bool:
+        """REQ-1621: whether the environment being served has an expiry. Read-only — it is decided
+        when the runtime is built (``env_registry.expires_at``) and no request may change it."""
+        return self._active_runtime().ephemeral
+
+    @property
     def roles(self) -> dict[str, dict]:
         return self._active_runtime().roles
 
@@ -722,23 +728,51 @@ async def _load_and_build(
     # asking for it before the wake asks for an address nothing holds. On any deployment that does
     # not provision engines — desktop, self-hosted, tests — this is a no-op.
     from provisa.federation.engine_wake import converge_boot_shard
-    from provisa.federation.k8s_provisioner import provisioning_available
+    from provisa.federation.k8s_provisioner import K8sProvisioningError, provisioning_available
+
+    # REQ-1619: set when the shard could not be allocated, and read by every boot step below that
+    # needs the coordinator's address. It is NOT an error being swallowed — the failure is logged at
+    # ERROR with its traceback, the engine phase of the boot is skipped rather than half-run, and the
+    # query path does the work instead (see the except branch).
+    engine_deferred = False
 
     if provisioning_available():
-        shard = await converge_boot_shard()
-        # Stamp the default runtime with the coordinator this boot is about to load the shared
-        # terminal onto. The query path compares the two to decide whether the coordinator holding
-        # the terminal's catalogs is still the one it connected to (REQ-1448); an unstamped default
-        # runtime reads as "restarted" on the first query of every process.
-        from provisa.federation.engine_wake import generation as _boot_generation
+        try:
+            shard = await converge_boot_shard()
+        except K8sProvisioningError:
+            # REQ-1619: THE CONTROL PLANE DOES NOT DEPEND ON THE ENGINE BEING ALLOCATABLE. A shard is
+            # a pod the cluster must find a node for, and scale-to-zero means every cold start asks
+            # for a brand-new one; a cluster that cannot supply it right now (quota, capacity) used
+            # to take the whole site down with it — `Application startup failed. Exiting.` — even
+            # though sign-in, org administration, settings, invites and every metadata surface owe
+            # the engine nothing. The recovery is already written and already exercised on every
+            # shard restart: ensure_engine_awake wakes the shard on the query path and
+            # restore_shared_terminal rebuilds the terminal on whatever coordinator it lands on
+            # (REQ-1448). So boot skips its engine phase and leaves default_rt.engine_generation
+            # unstamped, which is exactly what that comparison reads as "restarted" — the first
+            # query pays for the wake and the restore. Narrow on purpose: only the provisioner's own
+            # failure, and only on a deployment that provisions engines.
+            log.exception(
+                "boot could not wake the shared engine shard; starting the control plane without "
+                "an engine — the first query wakes it and rebuilds the shared terminal (REQ-1619)"
+            )
+            engine_deferred = True
+        else:
+            # Stamp the default runtime with the coordinator this boot is about to load the shared
+            # terminal onto. The query path compares the two to decide whether the coordinator
+            # holding the terminal's catalogs is still the one it connected to (REQ-1448); an
+            # unstamped default runtime reads as "restarted" on the first query of every process.
+            from provisa.federation.engine_wake import generation as _boot_generation
 
-        default_rt = state._default_runtime()
-        default_rt.shard = shard
-        default_rt.engine_generation = _boot_generation(shard)
+            default_rt = state._default_runtime()
+            default_rt.shard = shard
+            default_rt.engine_generation = _boot_generation(shard)
 
     _mark("engine-wake")
 
-    await _seed_built_in_sources(pg_host, pg_port, pg_database, pg_user)
+    await _seed_built_in_sources(
+        pg_host, pg_port, pg_database, pg_user, engine_addressable=not engine_deferred
+    )
 
     _mark("pg+schema+seed")
 
@@ -752,15 +786,19 @@ async def _load_and_build(
     # The shard was woken above, before the seed that first asked for its address;
     # _apply_server_and_engine_config CONNECTS the terminal (trino_lifecycle.provision opens a
     # dbapi connection and seeds the ops catalogs), so it depends on that same wake (REQ-1448).
-    _apply_server_and_engine_config(raw_config)
+    # REQ-1619: with no shard there is no address to dial, so the server settings are applied and
+    # the terminal is left unconnected — restore_shared_terminal opens it on the first query.
+    _apply_server_and_engine_config(raw_config, connect_engine=not engine_deferred)
 
     _mark("engine-connect")
 
     # Flight (Zaychik), the MinIO buckets, and the results schema are mutually independent
     # engine-terminal network setup, run concurrently to cut startup latency. the engine-terminal
     # infra: a native engine has no Zaychik/MinIO/results-schema, so provision_infra() is a
-    # no-op there (it would otherwise block on absent services).
-    await state.federation_engine.provision_infra()
+    # no-op there (it would otherwise block on absent services). REQ-1619: it is also the second
+    # thing restore_shared_terminal does, so a deferred boot leaves it to that.
+    if not engine_deferred:
+        await state.federation_engine.provision_infra()
 
     _mark("infra: flight/minio/results")
 
@@ -879,7 +917,16 @@ async def _load_and_build(
         # (state.catalog_for). build_org_runtime does the same before its load_config; the default
         # path must too, else introspect_columns → catalog_for raises KeyError (REQ-1266). Idempotent.
         _populate_source_catalog_names(config)
-        await load_config(config, conn, state.federation_engine, replace=_replace_mode)
+        # REQ-1619: `engine=None` is load_config's own "register the metadata, issue no catalogs"
+        # mode. With no coordinator every register_source would resolve an address that does not
+        # exist and fail one source at a time; the catalogs are reissued from state.config by
+        # restore_shared_terminal on the first query, which is the same call with the engine bound.
+        await load_config(
+            config,
+            conn,
+            None if engine_deferred else state.federation_engine,
+            replace=_replace_mode,
+        )
 
     _mark("load_config")
 
@@ -1117,9 +1164,22 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
 
     async def _builder(_key: str) -> OrgRuntime:
         lane = await _read_org_flags(org_id)
+        # REQ-1621: an environment with an expiry is ephemeral, and the mutation gate reads that off
+        # the runtime rather than re-querying the registry per call. PROD never has one, so it is
+        # not asked -- the row is the org's oldest and the answer is structural.
+        from provisa.core.env_store import get_env
+
+        _ephemeral = False
+        if env is not None and env != PROD:
+            assert state.admin_db is not None, "the admin plane holds the environment registry"
+            _row = await get_env(state.admin_db, org_id, env)
+            if _row is None:
+                raise KeyError(f"organization {org_id!r} has no environment {env!r}")
+            _ephemeral = _row["expires_at"] is not None
         return await build_org_runtime(
             org_id,
             env=env or PROD,
+            ephemeral=_ephemeral,
             include_demo=lane.seeded_demo,
             isolated_engine=lane.isolated_engine,
             external_engine=lane.external_engine,
@@ -1136,6 +1196,7 @@ async def build_org_runtime(
     org_id: str,
     *,
     env: str = PROD,
+    ephemeral: bool = False,
     include_demo: bool = False,
     isolated_engine: bool = False,
     external_engine: tuple[str, int] | None = None,
@@ -1165,7 +1226,7 @@ async def build_org_runtime(
     from provisa.core.db import apply_tenancy_role_grants, init_schema
     from provisa.audit.query_log import init_audit_schema
 
-    rt = OrgRuntime(org_id=org_id, env=env)
+    rt = OrgRuntime(org_id=org_id, env=env, ephemeral=ephemeral)
     key = runtime_key(org_id, env)
     # REQ-1448: sampled BEFORE the CREATE CATALOG statements below are issued, not after. A shard
     # that restarts part-way through this build must leave the runtime stamped with the OLD
@@ -1306,7 +1367,10 @@ async def build_org_runtime(
             )
         await init_schema(state.tenant_db, schema_sql_path.read_text(), org_id=org_id, env=env)
         # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
-        await apply_tenancy_role_grants(state.tenant_db, org_id, multitenancy=state.multitenancy)
+        # REQ-1623: asserted in the environment being built, whose roles table is its own.
+        await apply_tenancy_role_grants(
+            state.tenant_db, org_id, multitenancy=state.multitenancy, env=env
+        )
         await init_audit_schema(state.tenant_db, org_id=org_id, env=env)
 
         # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
@@ -1389,39 +1453,6 @@ async def build_org_runtime(
         reset_current_env(env_token)
         reset_current_org(token)
     return rt
-
-
-async def _overlay_env_bindings(
-    sources: dict[str, dict], org_id: str, env: str
-) -> tuple[dict[str, dict], dict[str, str]]:
-    """Point a non-prod environment's sources where its bindings say, and say who said so.
-
-    REQ-1529: returns the source map with each resolved source's connection columns replaced by
-    the values the supplying environment holds, and ``source_id -> supplying environment`` beside
-    it. A source no environment in the chain bound is left EXACTLY as the row has it — unbound —
-    because REQ-1491 makes that a marked state the query path refuses, and inventing a connection
-    for it is the one thing that must not happen: an empty host dials localhost.
-    """
-    from provisa.core.env_bindings import BindingError, resolve
-
-    assert state.admin_db is not None, (
-        "an environment other than prod cannot be served without the admin plane its registry "
-        "lives on; select_environment refuses the request before this is reached"
-    )
-    assert state.tenant_db is not None  # the caller returns early without one
-    resolved: dict[str, dict] = {}
-    binding_env: dict[str, str] = {}
-    for source_id, row in sources.items():
-        try:
-            supplier, values = await resolve(
-                state.admin_db, state.tenant_db, org_id, env, "sources", source_id
-            )
-        except BindingError:
-            resolved[source_id] = row
-            continue
-        resolved[source_id] = {**row, **values, "bound": True}
-        binding_env[source_id] = supplier
-    return resolved, binding_env
 
 
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
@@ -1590,17 +1621,29 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 state.source_types[_sid] = _src_dict["type"]
             if _src_dict.get("type") == "postgresql":
                 sources[_sid] = {**_src_dict, "database": source_to_catalog(_sid)}
-        # REQ-1529: a branch's ``sources`` rows carry the source's identity and not its connection
-        # (REQ-1491), so WHERE this environment points is resolved from its lineage here — the one
-        # seam between the DB rows and the runtime that reads them. Nothing was copied at branch
-        # time, so a credential rotated on the base is picked up by every branch of it with no act
-        # of their own.
+        # REQ-1491: a branch's ``sources`` row carries its own bound flag and, once somebody has
+        # bound it, its own connection columns — there is nothing to resolve from another
+        # environment. An unbound row is left exactly as it is; the write guard refuses it
+        # (_reject_unbound_writes) and the query path reads its empty host as no source, not as
+        # localhost.
         _env = active_env()
+        # REQ-1622: ``${scope:ENV}`` in a source's address resolves HERE, where the environment is
+        # known, rather than at config load where it is not yet. Only the scope provider is expanded
+        # -- a ``${env:...}`` or ``${secret:...}`` in the same string is a credential that resolves
+        # at its own use point, and pulling one forward would read a name nothing was going to ask
+        # for. What this buys is REQ-1622's rule: an address carrying the environment's name is
+        # somewhere the environment owns alone, so retiring it may remove what is there.
+        from provisa.core.secrets import expand_scope
+
+        for _sid, _src_dict in sources.items():
+            sources[_sid] = {
+                k: expand_scope(v) if isinstance(v, str) and "${scope:" in v else v
+                for k, v in _src_dict.items()
+            }
         if _env != PROD:
-            sources, _binding_env = await _overlay_env_bindings(
-                sources, current_org.get() or state.org_id, _env
-            )
-            state.source_binding_env = _binding_env
+            state.source_binding_env = {
+                sid: _env for sid, row in sources.items() if row.get("bound")
+            }
         # Publish the full DB source map so NativeEngineBackend._attach_registered can attach
         # dynamically registered sources that are not in state.config (YAML-loaded only).
         state.runtime_sources = sources
@@ -2077,7 +2120,16 @@ def create_app() -> FastAPI:
 
             try:
                 selected_env = await resolve_selected_env(
-                    state.admin_db, env_org, identity, requested_env, env_caps
+                    state.admin_db,
+                    env_org,
+                    identity,
+                    requested_env,
+                    env_caps,
+                    # REQ-1618: AuthMiddleware settles this on the platform plane and publishes it
+                    # here; it is not derivable from ``env_caps``, which inside a tenant org has
+                    # already had the control-plane roles stripped out of it (REQ-1327). Absent for
+                    # a request that resolved no identity at all, which is not the control plane.
+                    is_control_plane=bool(request_state.get("can_cross_org")),
                 )
                 _log.info(f"resolve_selected_env returned: {selected_env}")
             except EnvironmentSelectionError as exc:

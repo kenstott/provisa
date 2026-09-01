@@ -15468,7 +15468,7 @@ An organization runs its governed model in more than one environment -- a dev en
 
 **Code:** `provisa/core/environments.py`, `provisa/auth/middleware.py`, `provisa/core/db.py`, `provisa-ui/src/lib/env.ts`, `provisa-ui/src/components/EnvironmentSelector.tsx`
 
-**Tests:** —
+**Tests:** `tests/integration/test_invite_env_capture.py`, `tests/unit/test_scope_provider.py`, `tests/unit/test_active_org_schema.py`
 
 ### REQ-1488 · Environments {#REQ-1488}
 
@@ -16822,11 +16822,11 @@ A MEMBERSHIP MAY BE CONFINED TO ONE ENVIRONMENT, AND THE CONFINEMENT IS WHAT MAK
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-THE SANDBOX ROLE IS org_admin MINUS A DENYLIST, AND THE SUBTRACTION IS THE DESIGN. ``sandbox`` is the sixth system template role and what a "Try it Out" invitation confers. A stranger holding that link is meant to be able to do everything the product does -- register a source, model it, govern it, query it, write to it -- inside an environment that expires. Defining the role by ENUMERATING what it may do would make every capability added later invisible to visitors until somebody remembered to edit this one row, so the demo would silently narrow with every release; subtracting is the direction that stays correct, and a new right reaches the sandbox with no second edit. WHAT IS WITHHELD -- six rights, each because it reaches something the environment does not contain. ``environment_switch``: the visitor would leave the sandbox, and [REQ-1596](#REQ-1596)'s membership pin is pointless against a role that can name another environment -- the two halves contain a stranger only together. ``environment_management``: spends the org''s plan ceiling and drops other environments'' schemas. ``user_management``: would let a visitor confer roles or admit more people, and withholding it is also what closes the role-editing surface to them, so the denylist cannot be edited away from inside the sandbox. ``org_settings`` and ``observability``: org-WIDE surfaces -- provider overrides, scheduled tasks, and the query telemetry of everyone working in production. ``org_glossary_rw``: the override over terms the org''s own people authored. TWO PLANES, ONE DEFINITION -- schema.sql is PostgreSQL-only DDL and provisa/core/db.py is its portable mirror; a role seeded into one and not the other exists on SaaS and not on a laptop, so the two are asserted equal. The re-assertion seams that hand ``environment_management``/``environment_switch`` to pre-existing role rows name org_admin and developer only: naming sandbox there would give back on the next init_schema exactly what the denylist took away.
+THE SANDBOX ROLE IS org_admin MINUS A DENYLIST, AND THE SUBTRACTION IS THE DESIGN. ``sandbox`` is the sixth system template role and what a "Try it Out" invitation confers. A stranger holding that link is meant to be able to do everything the product does -- register a source, model it, govern it, query it, write to it -- inside an environment that expires. Defining the role by ENUMERATING what it may do would make every capability added later invisible to visitors until somebody remembered to edit this one row, so the demo would silently narrow with every release; subtracting is the direction that stays correct, and a new right reaches the sandbox with no second edit. WHAT IS WITHHELD -- six rights, each because it reaches something the environment does not contain. ``environment_switch``: the visitor would leave the sandbox, and [REQ-1596](#REQ-1596)'s membership pin is pointless against a role that can name another environment -- the two halves contain a stranger only together. ``environment_management``: spends the org''s plan ceiling and drops other environments'' schemas. ``user_management``: would let a visitor confer roles or admit more people, and withholding it is also what closes the role-editing surface to them, so the denylist cannot be edited away from inside the sandbox. ``org_settings`` and ``observability``: org-WIDE surfaces -- provider overrides, scheduled tasks, and the query telemetry of everyone working in production. ``org_glossary_rw``: the override over terms the org''s own people authored. TWO PLANES, ONE DEFINITION -- schema.sql is PostgreSQL-only DDL and provisa/core/db.py is its portable mirror; a role seeded into one and not the other exists on SaaS and not on a laptop, so the two are asserted equal. The re-assertion seams that hand ``environment_management``/``environment_switch`` to pre-existing role rows name org_admin and developer only: naming sandbox there would give back on the next init_schema exactly what the denylist took away. WHERE THE SUBTRACTION HAPPENS, AND WHY THE VISITOR ALSO HOLDS org_admin -- a column is visible to a role when ``table_columns.visible_to`` NAMES that role, and every grant in an authored model names the roles the model was authored against. ``sandbox`` is named by none of them, so a visitor holding only that id is shown no column on any table, and schema_gen then drops every table left with none -- leaving the tables whose API path/query parameters are exempt from the gate and nothing else. That is not a narrower demo; it is an empty one, and it is not fixable by re-granting columns, because the model belongs to the org and the visitor is a stranger to it. So redeeming a sandbox invitation seats the redeemer under BOTH names: the role the invitation confers, and ``org_admin``, whose row in the visitor's own ephemeral environment is reduced at creation to the ``sandbox`` row's own capabilities and demonstrated list. Capabilities resolve as the UNION over the holder's roles, so the union is the sandbox definition exactly, the denylist keeps one author, and production's org_admin is untouched ([REQ-1539](#REQ-1539) makes roles the environment's own answer). AND THE ROLE IS CONFERRABLE NOWHERE ELSE: minting an invitation that names ``sandbox`` under any policy but ``per_visitor`` is refused, because the reduction is performed by the environment creation that only that policy triggers -- conferred anywhere else the name would carry org_admin's full definition, unnarrowed. STILL TO SUBTRACT (open): the settled target is most of org_admin, less the ability to WRITE BACK to the original sample data sources -- a visitor's hour is disposable but the demo sources it points at are shared and outlive it -- and less further destructive acts still to be enumerated. The six above are the rights withheld today; the denylist is where those additions land, so the subtraction stays the one definition.
 
-**Code:** `provisa/core/db.py`, `provisa/core/schema.sql`
+**Code:** `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/core/org_invite.py`, `provisa/core/env_copy.py`, `provisa/core/env_create.py`, `provisa/api/invite_env.py`, `provisa/api/admin/invites_router.py`
 
-**Tests:** `tests/unit/test_sandbox_role_seed.py`
+**Tests:** `tests/unit/test_sandbox_role_seed.py`, `tests/unit/test_open_invite.py`
 
 ### REQ-1598 · Multi-Tenancy & Organizations {#REQ-1598}
 
@@ -16878,7 +16878,7 @@ A ROLE MAY BE SHOWN A RIGHT IT DOES NOT HOLD. Alongside its capabilities, a role
 
 **Code:** `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/db.py`, `provisa/api/admin/roles_router.py`, `provisa-ui/src/components/DemonstratedFeature.tsx`, `provisa-ui/src/components/CapabilityGate.tsx`, `provisa-ui/src/lib/capabilities.ts`, `provisa-ui/src/context/AuthContext.tsx`, `provisa-ui/src/components/EnvSwitcher.tsx`
 
-**Tests:** `provisa-ui/src/__tests__/CapabilityGate.test.tsx`, `provisa-ui/src/__tests__/DemonstratedUnion.test.ts`, `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`, `tests/unit/test_sandbox_role_seed.py`
+**Tests:** `provisa-ui/src/__tests__/CapabilityGate.test.tsx`, `provisa-ui/src/__tests__/DemonstratedUnion.test.ts`, `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`, `tests/unit/test_sandbox_role_seed.py`, `tests/integration/test_invite_env_capture.py`
 
 ### REQ-1603 · Access Governance & Security {#REQ-1603}
 
@@ -17013,3 +17013,129 @@ NavBar.tsx wraps the Billing menu item in CapabilityGate with navigable=true, re
 **Code:** `provisa-ui/src/components/NavBar.tsx`
 
 **Tests:** `provisa-ui/src/__tests__/TitleTooltips.test.tsx`
+
+## 1. Access Governance & Security
+
+### REQ-1614 · Column Visibility {#REQ-1614}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A table's native filter columns (REST/API path and query parameters, native_filter_type set) stay exempt from the per-column visible_to gate, but the exemption no longer keeps a table in a role's schema on its own. schema_gen._build_visible_tables discards the native filter columns when the role has no visible data column on that table, so the survival test that follows drops the table. There is no table-level grant to introduce - a role's reach over a table IS its column grants, and the reach the parameters ride on is implied from them.
+
+**Use case:** The sandbox visitor ([REQ-1597](#REQ-1597)) held a role no authored column grant names, so every table yielded zero visible columns. Tables backed by a REST source survived anyway on their path/query parameters, and the visitor's pet-store domain rendered as five endpoint fields whose only arguments were the ones the gate never covered - the sqlite and graphql tables, which have no native filter columns, were gone. An empty model presented as a small one. Any role with domain access but no column grant met the same thing, because domain_access was the only check an API-backed table had to pass.
+
+**Code:** `provisa/compiler/schema_gen.py`
+
+**Tests:** `tests/unit/test_native_filter_needs_column_grant.py`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1615 · Invitations {#REQ-1615}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+redeem_env resolves a per_visitor environment before it mints one. A sandbox environment is named after its visitor ([REQ-1602](#REQ-1602)), so a visitor who redeems a second link, or reopens the first, resolves to the environment they already hold; the redemption reuses it and pushes its idle deadline out by the invite's TTL ([REQ-1600](#REQ-1600)), because the visit that just arrived is use. redeem_env returns a RedeemedEnv carrying both the name and whether this call minted it, and release_env retires only what was minted - a shared environment the org published, and a returning visitor's own environment, are never taken down by a redemption that failed after resolving them.
+
+**Use case:** A visitor whose first sandbox link had already provisioned ephemeral_<hash> was handed a second invite. redeem_env called create_environment unconditionally, reserve_env refused the name that already existed, and EnvironmentNameError reached the visitor as "Internal Server Error" on Google sign-in - their second visit failed on the existence of their first. /redeem-invite's contract was already idempotent per (user, org) for the membership upsert; the environment is now idempotent on the same terms.
+
+**Code:** `provisa/api/invite_env.py`, `provisa/api/auth_router.py`
+
+**Tests:** `tests/unit/test_open_invite.py`
+
+### REQ-1616 · Invitations {#REQ-1616}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An invitation token is written to localStorage the moment the login page first sees it in the address bar, and redeemed from that memory rather than from the tab's query string. OnboardOrgPage - where the membership gate routes an account belonging to no org - spends a still-unredeemed invitation on arrival, once, opening in join mode with the token in the field so a server-side refusal leaves it in front of the person holding it. The redemption is dropped only when it succeeds, or when /register redeemed it server-side.
+
+**Use case:** Redemption needs a bearer, so it cannot happen until the identity provider returns, and between the click on the link and that return the token lives in nothing but the address bar. An org subdomain bounces the visitor to the control plane ([REQ-1348](#REQ-1348)), the control plane navigates away from /login, and a sign-in finished in a second tab never sees the first tab's query. Each loses the token after the account it was meant to seat already exists, leaving a member of nothing - every request answers 401 "Org selection required", and the link cannot be followed again to fix it. A sandbox visitor hit exactly this after a redemption that had failed once.
+
+**Code:** `provisa-ui/src/lib/pendingInvite.ts`, `provisa-ui/src/pages/LoginPage.tsx`, `provisa-ui/src/pages/OnboardOrgPage.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/PendingInviteRedemption.test.tsx`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1617 · Environments {#REQ-1617}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** ui
+
+The environment switcher reports the membership's pinned environment ([REQ-1596](#REQ-1596)) rather than the name this browser stored, and offers a confined membership no other row. A pinned membership is served from its own environment whatever the request names, and naming any other - prod included - is refused with env.switch_forbidden. Reading "the stored selection, or prod" made the header name prod over a sandbox visitor who was being served their ephemeral branch all along, while the menu beside it listed other visitors' ephemeral branches - names one visitor should not be told and rows that answer 403 if chosen. A name stored before the pin existed is dropped, the same repair as a deleted branch or a withdrawn right.
+
+**Code:** `provisa-ui/src/components/EnvSwitcher.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`
+
+## 1. Access Governance & Security
+
+### REQ-1618 · Environments {#REQ-1618}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The control plane is never auto-selected into a sandbox visitor's ephemeral environment. The sandbox auto-select ([REQ-1602](#REQ-1602)) derives an environment from the caller's user id, and a platform administrator is not a visitor - they hold an assignment in the org's prod schema and nothing at all in a visitor's branch, so being served one leaves them with an empty capability set and every admin surface in their own deployment refuses them. The fact cannot be recovered where the selection happens - identity.roles is a list of claim STRINGS, so probing each for a capabilities attribute answered "not the control plane" for every caller alive, and the acting capability set cannot answer either because inside a tenant org the control-plane roles have already been stripped out of it ([REQ-1327](#REQ-1327)). AuthMiddleware, the one place that reads the platform plane, settles it and publishes it on the request; both the role read and the request binding pass it in explicitly, so the two can never disagree about who is being served what.
+
+**Code:** `provisa/api/env_routing.py`, `provisa/auth/middleware.py`, `provisa/api/app.py`
+
+**Tests:** `tests/unit/test_env_control_plane_selection.py`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1619 · Federation Engine {#REQ-1619}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The control plane starts whether or not an engine shard can be allocated. The shared engine scales to zero when idle, so every cold start asks the cluster for a brand-new node, and a cluster that cannot supply one - quota, capacity - used to take the whole deployment down with it: the boot wake raised out of lifespan, uvicorn logged "Application startup failed. Exiting.", and every page answered 503, including sign-in, org administration, settings, invitations and the metadata surfaces, none of which touch the engine. The recovery is already written and already exercised on every shard restart ([REQ-1448](#REQ-1448)) - ensure_engine_awake wakes the shard on the query path and restore_shared_terminal rebuilds the terminal on whatever coordinator it lands on - so a failed boot wake skips the boot's engine phase instead of aborting it: the built-in source seed does not ask for an address it has no way to have, the terminal is not dialled, the Flight and object-store infra is not set up over it, and load_config registers the metadata without issuing catalogs. The default runtime's engine generation is deliberately left unstamped, which is exactly what the query path's comparison reads as "restarted", so the first query pays for the wake and the restore. The catch is narrow on purpose - the provisioner's own K8sProvisioningError, only on a deployment that provisions engines, logged at ERROR with its traceback - because a control plane that reports itself healthy while queries fail is the outcome this must not produce.
+
+**Code:** `provisa/api/app.py`, `provisa/api/app_loaders.py`, `provisa/api/startup_seed.py`
+
+**Tests:** `tests/unit/test_boot_engine_deferral.py`
+
+### REQ-1620 · Environments {#REQ-1620}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An environment that expires owns its own copies of every file-backed source it was given. A source's identity is the same in every environment - copy_model carries the row across with its id intact, and registered tables, lineage, policies and the materialized table name all key off that id - so an environment created with its bindings carried points at the very file prod points at, and a write through it is a write to prod's data. Creating an environment that carries an expiry therefore forks each file-backed source into a directory the environment owns and rebinds the copy, so a visitor may write freely and nothing outside the environment moves. Retiring the environment discards the directory through the one retire door, before the registry row that names the environment is forgotten. Environments without an expiry are untouched by this - an environment is a first-class place and is free to point at any source, prod's included; it is expiry, not the environment, that says the data is disposable.
+
+**Code:** `provisa/core/env_source_files.py`, `provisa/core/env_create.py`, `provisa/core/env_retire.py`
+
+**Tests:** `tests/unit/test_env_source_files.py`
+
+### REQ-1621 · Environments {#REQ-1621}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An environment that expires withholds the administrator's mutation bypass. Within its own semantic layer a visitor holding org_admin may do anything - drop sources, drop tables, change roles, issue further invitations - because all of it is contained by the environment and goes away with it. What must not travel is a write that reaches through to the source: a GraphQL mutation or an UPDATE/DELETE that lands in a system the environment merely points at. The administrator's bypass exists so an org_admin is not stopped by a table's write policy; in an environment carrying an expiry, that bypass is not granted, so a mutation is authorized by the table's declared write rights alone and an unwritable table stays unwritable no matter who is asking. The runtime decides this once, when it is built, from the environment's expiry, and exposes it read-only so no request can change it; AppState routes the flag to the active runtime so every mutation door reads the same answer.
+
+**Code:** `provisa/api/org_runtime.py`, `provisa/api/app.py`, `provisa/security/mutation_authz.py`
+
+**Tests:** `tests/unit/test_mutation_authz.py`
+
+### REQ-1622 · Environments {#REQ-1622}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Where an environment's data lands is part of its address, and what it owns alone is removed when it retires. A landed replica is named from the source id, which every environment shares, so an unqualified materialization store has every environment writing the same table - and the store is a different DSN from the tenant pool, so dropping an environment's tenant schemas never reached it. Two things close that. First, ${scope:ENV} and ${scope:ORG} join the existing ${provider:reference} grammar as a scope provider, answering where a resolution is happening rather than what a secret is; the provider is named scope and not env because ${env:...} already means the deployment's process environment. It is expanded over a source's row when the runtime is built, where the environment is known, and only the scope half is expanded so a credential in the same string still resolves at its own use point. Second, every non-prod environment lands its replicas in a namespace of its own - mat_env_<name> - unless the store's own address already names the environment, in which case the store is the author's and its default schema is right. A schema-less store (sqlite) whose address does not name the environment is refused rather than silently shared, and the error names the template as the fix. Retiring an environment drops the schema its existence created; a schema this rule did not name - prod's mat, an author's templated store - is out of reach from that path by construction.
+
+**Code:** `provisa/core/secrets.py`, `provisa/federation/store_scope.py`, `provisa/federation/backend.py`, `provisa/federation/duckdb_runtime.py`, `provisa/events/app_wiring.py`, `provisa/core/env_retire.py`, `provisa/api/app.py`
+
+**Tests:** `tests/unit/test_store_scope.py`, `tests/unit/test_scope_provider.py`
+
+### REQ-1623 · Environments {#REQ-1623}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A derived store belongs to the environment that filled it. An organization's materialized-view target, an API source's result cache and the GraphQL cache are named where they are written, from an org id the writer holds and an environment it is never handed, and each site built org_<id>_<suffix> by hand. That name is prod's, so an environment refreshing a view or filling a cache wrote into prod's schema and read another environment's rows back - while the environment's own org_<id>_env_<env>_<suffix>, created at provisioning and dropped at deprovisioning, was never written to at all. Every such site now derives its schema from the environment bound to the serving context, which puts all four names inside env_schemas() - the list retiring an environment already drops. Prod is unchanged byte-for-byte, because a context naming no environment is prod.
+
+**Code:** `provisa/core/environments.py`, `provisa/federation/backend.py`, `provisa/federation/databricks_runtime.py`, `provisa/federation/bigquery_runtime.py`, `provisa/api_source/router_integration.py`, `provisa/api/data/materialization.py`, `provisa/api/app_loaders.py`
+
+**Tests:** `tests/unit/test_active_org_schema.py`
+
+### REQ-1624 · Environments {#REQ-1624}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The schema a connection defaults to follows the environment being served. Three seams set a default schema outside the query path - the roles table a runtime build re-asserts tenancy rights into, the currentSchema the provisa_admin Trino catalog resolves an unqualified name in, and the Trino terminal's own default schema - and each named org_<id> outright. Served for a non-prod environment, all three reached prod's copy of the model, so building an environment's runtime wrote prod's roles while the environment's forked copy kept whatever it was created with, and a materialized view landed through prod's catalog. Each now derives its schema from the environment bound to the serving context. A fourth site wrote org_<id> into the search_path the pgwire surface reports; that schema holds none of a pgwire client's tables - the catalog presents them under public and current_schema() answers public - and the value was a process global naming the boot org for every session, so it is removed rather than routed.
+
+**Code:** `provisa/core/db.py`, `provisa/api/app.py`, `provisa/core/trino_system_catalogs.py`, `provisa/federation/trino_lifecycle.py`, `provisa/api/app_startup.py`
+
+**Tests:** `tests/unit/test_env_search_path.py`

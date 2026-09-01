@@ -30,7 +30,7 @@ from provisa.core.schema_admin import (
     user_org_memberships,
     user_profiles,
 )
-from provisa.api.invite_env import redeem_env, release_env
+from provisa.api.invite_env import redeem_env, release_env, seat_redeemed_roles
 from provisa.core.org_invite import (
     INVITE_REDEMPTION_COLUMNS,
     is_spent,
@@ -637,14 +637,18 @@ async def register(body: RegisterRequest):
     if invite is not None:
         # Bind tenant_db to the invited org so we can redeem the environment
         from provisa.api.app import ensure_org_runtime, set_current_org, reset_current_org
-        from provisa.core.org_membership import grant_org_role
+        from provisa.api.admin.invites_router import resolve_invite_role
 
         rt = await ensure_org_runtime(invite["org_id"])
         assert rt.tenant_db is not None
+        # REQ-1313: the same validation /redeem-invite performs. Reading `role_id` straight off the
+        # invite here was the two paths disagreeing about what an invitation may confer -- a column
+        # with no foreign key, fed to a grant, is exactly the string an inviter chose to write.
+        role_id = await resolve_invite_role(invite["org_id"], invite["role_id"])
         # Mint the environment (REQ-1595) - must bind current_org so state.tenant_db resolves correctly
         token = set_current_org(invite["org_id"])
         try:
-            pinned_env = await redeem_env(invite, user_id)
+            pinned_env = (await redeem_env(invite, user_id)).name
         finally:
             reset_current_org(token)
         # Update the membership with the environment name
@@ -665,7 +669,7 @@ async def register(body: RegisterRequest):
             rt if pinned_env is None else await ensure_org_runtime(invite["org_id"], pinned_env)
         )
         assert role_rt.tenant_db is not None
-        await grant_org_role(role_rt.tenant_db, user_id, invite["role_id"])
+        await seat_redeemed_roles(role_rt.tenant_db, user_id, role_id)
         # REQ-1599: if platform_admin, seat in sandbox org
         from provisa.api.sandbox_org import reseat_after_conferral
 
@@ -723,7 +727,6 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
 
     # Bind the invited org's tenant_db so redeem_env can create its environment
     from provisa.api.app import ensure_org_runtime, set_current_org, reset_current_org
-    from provisa.core.org_membership import grant_org_role
 
     rt = await ensure_org_runtime(invite["org_id"])
     assert rt.tenant_db is not None
@@ -737,7 +740,8 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
             role_id = await resolve_invite_role(invite["org_id"], invite["role_id"])
             # REQ-1595: minted before the membership names it — see /register for why the other order
             # would serve a sandbox visitor production for the length of a provisioning run.
-            pinned_env = await redeem_env(invite, user_id)
+            redeemed = await redeem_env(invite, user_id)
+            pinned_env = redeemed.name
             try:
                 await conn.upsert(
                     user_org_memberships,
@@ -749,11 +753,11 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
                 )
                 claimed = (await conn.execute_core(spend(body.token, user_id))).fetchone()
             except BaseException:
-                await release_env(invite, pinned_env)
+                await release_env(invite, redeemed)
                 raise
             if claimed is None:
                 # REQ-1594: the last redemption went to someone else between the read and here.
-                await release_env(invite, pinned_env)
+                await release_env(invite, redeemed)
                 raise ApiError(400, "auth.invalid_invite_token", "Invalid or expired invite token")
 
         # Role assignment is tenant-plane (see /register for the same split) and must land in the
@@ -764,7 +768,7 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
             rt if pinned_env is None else await ensure_org_runtime(invite["org_id"], pinned_env)
         )
         assert role_rt.tenant_db is not None
-        await grant_org_role(role_rt.tenant_db, user_id, role_id)
+        await seat_redeemed_roles(role_rt.tenant_db, user_id, role_id)
         # REQ-1599: an invitation is the other way platform_admin is conferred, and a new administrator
         # is owed the sandbox org the same as the claimant is.
         from provisa.api.sandbox_org import reseat_after_conferral

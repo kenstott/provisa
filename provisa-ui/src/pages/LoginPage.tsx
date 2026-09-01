@@ -25,6 +25,7 @@ import type { InviteInfo } from "../api/admin";
 import { CLAIMED_ADMIN_FLAG } from "../components/PlatformAdminWelcomeModal";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
 import { startSession, startSuperuserSession } from "../lib/session";
+import { forgetInvite, pendingInvite, rememberInvite } from "../lib/pendingInvite";
 import { storedToken } from "../lib/sessionToken";
 import { isOrgSubdomainHost } from "../lib/authHost";
 import { nextParam, redirectToControlPlaneLogin } from "../lib/crossSubdomainAuth";
@@ -111,6 +112,9 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("invite");
     if (token) {
+      // REQ-1616: write it down before anything can navigate. From here the token has to survive a
+      // provider round trip to be redeemable at all, and the address bar is not where it survives.
+      rememberInvite(token);
       console.log("[LoginPage] fetching invite info for:", token);
       fetchInviteInfo(token)
         .then((info) => {
@@ -233,6 +237,8 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
         display_name: regDisplayName || undefined,
         invite_token: inviteInfo?.token,
       });
+      // REQ-1616: /register redeemed it server-side, so nothing is owed a redemption any more.
+      if (inviteInfo) forgetInvite();
       setMode("login");
       setPassword("");
       setConfirmPassword("");
@@ -266,11 +272,16 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       // A bearer identity has no /register step, so an ?invite= link is redeemed here — after the
       // token is stored (authFetch attaches it) and before navigating — to add org membership + the
       // invite's role. This is how a GitHub-authed user becomes the first admin of an invited org.
-      const inviteToken = new URLSearchParams(window.location.search).get("invite");
+      //
+      // REQ-1616: read from the remembered token rather than from this tab's query string. The two
+      // are the same on the ordinary path; they differ exactly where the query was lost, and there
+      // the query says "no invitation" about a visitor who is holding one.
+      const inviteToken = pendingInvite();
       if (inviteToken) {
         setProvisioning(true);
         try {
           await redeemInvite(inviteToken);
+          forgetInvite();
         } finally {
           setProvisioning(false);
         }
@@ -304,11 +315,13 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       if (firstLogin) {
         await claimAndRecord();
       }
-      const inviteToken = new URLSearchParams(window.location.search).get("invite");
+      // REQ-1616: the remembered token, for the same reason as the provider path above.
+      const inviteToken = pendingInvite();
       if (inviteToken) {
         setProvisioning(true);
         try {
           await redeemInvite(inviteToken);
+          forgetInvite();
         } finally {
           setProvisioning(false);
         }

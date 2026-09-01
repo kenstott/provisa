@@ -26,7 +26,7 @@ callers answer it differently: the endpoint requires a right in the org, while t
 the authorization, granted when the org minted the link.
 """
 
-# Requirements: REQ-1488, REQ-1523, REQ-1526, REQ-1539, REQ-1543, REQ-1595, REQ-1600
+# Requirements: REQ-1488, REQ-1523, REQ-1526, REQ-1539, REQ-1543, REQ-1595, REQ-1600, REQ-1620
 
 from __future__ import annotations
 
@@ -35,7 +35,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from provisa.core.env_copy import REPLACE, CopyReport, copy_model
+from provisa.core.env_copy import REPLACE, CopyReport, adopt_role_definition, copy_model
+from provisa.core.env_source_files import fork_file_sources
 from provisa.core.env_store import forget_env, reserve_env
 
 if TYPE_CHECKING:
@@ -62,12 +63,31 @@ async def create_environment(
     idle_ttl_seconds: int | None = None,
     branched_from: str | None,
     note: str,
+    strip_identities: bool = True,
+    define_role_from: tuple[str, str] | None = None,
 ) -> CopyReport:
     """Reserve ``name``, provision it, and deploy ``from_env``'s model into it.
 
     Raises through: ``EnvironmentNameError`` and ``EnvironmentLimitError`` from the reservation,
     anything the provisioning or the copy raises. Every caller renders those; none of them is
     swallowed here, and a raised error leaves nothing behind.
+
+    ``strip_identities`` is REQ-1491's convenience by default (an IDENTITY_ONLY row lands unbound,
+    stripped of the source's connection details). REQ-1602's sandbox visitor environments pass
+    ``strip_identities=False`` so the copy carries the real, already-bound connections verbatim --
+    a visitor gets a working demo, not an environment it would first have to bind itself.
+
+    ``expires_at`` is what makes the environment ephemeral, and REQ-1620 hangs off it rather than
+    off ``strip_identities``: pointing at any data source, prod's included, is an environment's own
+    business, and only an environment that is going to be deleted needs its file-backed sources
+    forked into copies that go with it.
+
+    ``define_role_from`` is ``(target, source)``: after the model lands, ``target``'s row in the NEW
+    environment takes ``source``'s capabilities and demonstrated list. REQ-1602's sandbox visitor is
+    the only caller -- it holds ``org_admin`` alongside its own role because the copied model's
+    column grants name that role and not ``sandbox``, and the withholding REQ-1597 describes is
+    applied to that name here. Inside the try, so a failure takes the half-made environment with it
+    rather than leaving a visitor holding an unrestricted ``org_admin``.
     """
     from provisa.core.org_provisioning import deprovision_org, provision_org
 
@@ -99,7 +119,25 @@ async def create_environment(
             # REQ-1539: the only call that seeds roles and assignments. A new environment needs
             # them to be usable at all; every later copy leaves the target's own answer alone.
             seed=True,
+            strip_identities=strip_identities,
         )
+        if expires_at is not None:
+            # REQ-1620: an EPHEMERAL environment, and only that one. Every other environment is a
+            # first-class place with its own features, free to point at any data source it likes --
+            # including, deliberately, the same file prod reads. What distinguishes this one is that
+            # it is thrown away: the copy above carried the bindings verbatim, a file-backed
+            # source's binding is a path to a file on this deployment's disk that the connector
+            # attaches read-write, and an UPDATE issued here would outlive the environment that
+            # issued it. So it gets its own copies, and they go when it does.
+            #
+            # Inside the try, so the environment is bound to its own files before any session can be
+            # handed against it, and a failure takes the half-made environment rather than leaving
+            # it pointed at the original. A stripped copy lands unbound (REQ-1491) with no path to
+            # fork, so this is a no-op there without needing to ask.
+            await fork_file_sources(tenant_db, org_id, name)
+        if define_role_from is not None:
+            _target, _source = define_role_from
+            await adopt_role_definition(tenant_db, org_id, name, target=_target, source=_source)
         # REQ-1602: the sandbox role reaching every ephemeral environment of the sandbox org is
         # already the copy above's job -- seed=True carries SEEDED_AT_CREATION tables (roles among
         # them) from from_env (always PROD for this caller), and PROD's own row is guaranteed

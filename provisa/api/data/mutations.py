@@ -234,7 +234,7 @@ async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360, REQ-869
 
     wh = state.tracked_webhooks.get(field_name)
     if wh:
-        require_mutation_write(wh, _role, field_name)
+        require_mutation_write(wh, _role, field_name, admin_bypass=not state.ephemeral)
         url = wh["url"]
         method = wh["method"].upper()
         timeout = wh["timeout_ms"] / 1000

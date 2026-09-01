@@ -151,6 +151,8 @@ async def resolve_selected_env(
     identity,
     requested: str | None,
     capabilities: set[str] | None,
+    *,
+    is_control_plane: bool,
 ) -> str:
     """The environment ``org_id`` serves this request from (REQ-1602, REQ-1596).
 
@@ -160,16 +162,21 @@ async def resolve_selected_env(
     sandbox ephemeral auto-select (REQ-1602: a sandbox visitor names no environment, so one is
     derived from their user id) and the membership pin (REQ-1596) before deferring to
     :func:`select_environment` for the existence/expiry/right checks.
+
+    ``is_control_plane`` is the PLATFORM-plane fact, decided by the caller and never re-derived
+    here (REQ-1618). It cannot be read off ``identity.roles``: those are claim STRINGS, so probing
+    them for a ``capabilities`` attribute answered "not control plane" for everyone, and it cannot
+    be read off ``capabilities`` either -- inside a tenant org the control-plane roles are stripped
+    from the acting set (REQ-1327), so the right is absent there by design. The result was that a
+    platform admin acting in sandbox was auto-selected into a visitor's ephemeral environment,
+    where they hold no assignment, and every capability gate then refused them in their own
+    deployment.
     """
-    if org_id == "sandbox" and identity is not None:
-        is_control_plane = any(
-            "cross_org" in getattr(r, "capabilities", []) for r in getattr(identity, "roles", [])
-        )
-        if not is_control_plane:
-            user_id = getattr(identity, "user_id", None)
-            if user_id and user_id != "anonymous":
-                user_hash = hashlib.md5(user_id.encode(), usedforsecurity=False).hexdigest()[:8]
-                requested = f"ephemeral_{user_hash}"
+    if org_id == "sandbox" and identity is not None and not is_control_plane:
+        user_id = getattr(identity, "user_id", None)
+        if user_id and user_id != "anonymous":
+            user_hash = hashlib.md5(user_id.encode(), usedforsecurity=False).hexdigest()[:8]
+            requested = f"ephemeral_{user_hash}"
 
     pinned_env = None
     if identity is not None and admin_db is not None:

@@ -27,6 +27,7 @@ from provisa.core.org_invite import (
     ENV_POLICY_NONE,
     ENV_POLICY_PER_VISITOR,
     ENV_POLICY_SHARED,
+    SANDBOX_ROLE,
     unspent,
 )
 from provisa.core.schema_admin import org_invites, orgs, user_org_memberships
@@ -139,6 +140,17 @@ def _check_env_policy(body: CreateInviteBody) -> None:
         raise ApiError(
             400, "invites.env_name_required", "A shared invite must name the environment it seats"
         )
+    # REQ-1597: the sandbox role is defined by a subtraction that happens when the ephemeral
+    # environment is created (``create_environment``'s ``define_role_from``). Conferred by any other
+    # policy there is no such environment and therefore no subtraction -- the invitation would seat
+    # someone under a name whose meaning was never applied.
+    if body.role_id == SANDBOX_ROLE and body.env_policy != ENV_POLICY_PER_VISITOR:
+        raise ApiError(
+            400,
+            "invites.sandbox_role_needs_per_visitor",
+            f"The '{SANDBOX_ROLE}' role is only conferrable by a {ENV_POLICY_PER_VISITOR} "
+            "invitation: it is defined inside the environment that redemption mints.",
+        )
     if body.max_uses is not None and body.max_uses < 1:
         raise ApiError(400, "invites.invalid_max_uses", "max_uses must be at least 1, or null")
 
@@ -204,6 +216,14 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     )
     env_policy = body.env_policy
     env_ttl_seconds = body.env_ttl_seconds
+    env_name = body.env_name
+    # REQ-1602: a per_visitor invite is addressed to whatever the inviter was looking at, not to
+    # whatever string a client happens to pass — active_env() is the request's own resolved
+    # environment (REQ-1487), so this is the same answer the inviter's own screen was showing.
+    if env_policy == ENV_POLICY_PER_VISITOR:
+        from provisa.api.org_runtime import active_env
+
+        env_name = active_env()
     # REQ-1602: sandbox org invites use 1-day idle TTL if not specified (redeem_env forces PER_VISITOR policy)
     if body.org_id == "sandbox" and env_ttl_seconds is None:
         env_ttl_seconds = 86400  # 1 day of inactivity before deletion
@@ -232,7 +252,7 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
                 max_uses=body.max_uses,
                 env_policy=env_policy,
                 env_ttl_seconds=env_ttl_seconds,
-                env_name=body.env_name,
+                env_name=env_name,
             )
             .returning(
                 org_invites.c.token,

@@ -348,7 +348,7 @@ async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy:
 
 
 async def apply_tenancy_role_grants(  # REQ-1337
-    pool: "Database", org_id: str, *, multitenancy: bool
+    pool: "Database", org_id: str, *, multitenancy: bool, env: str | None = None
 ) -> None:
     """Assert the tenancy-dependent role grants: ``platform_settings`` and ``cross_org``.
 
@@ -367,13 +367,18 @@ async def apply_tenancy_role_grants(  # REQ-1337
 
     Runs on every ``init_schema``, so the seed re-asserts the mode's grant rather than depending on
     when the schema was first created. platform_admin always holds it (seeded in schema.sql).
+
+    REQ-1623: ``env`` names the environment whose roles are being asserted, because an environment
+    is a schema holding its OWN copy of the roles table (REQ-1488). Fixed at ``org_<id>`` this
+    re-asserted prod's rights every time a non-prod environment's runtime was built — a write into
+    prod from an environment, leaving the environment's own roles carrying whatever the copy held.
     """
     _validate_org_id(org_id)
     if getattr(pool, "dialect", "postgresql") != "postgresql":
         await _apply_tenancy_role_grants_portable(pool, multitenancy=multitenancy)
         return
     async with pool.acquire() as conn:
-        await conn.execute(f"SET search_path TO org_{org_id}")
+        await conn.execute(f"SET search_path TO {org_schema(org_id, env)}")  # REQ-1623
         # REQ-1337: cross_org is withdrawn in BOTH modes — org authority is confined to the org
         # being acted in, so org_admin never holds it however the deployment is configured. Only
         # platform_admin carries it (schema.sql), and holding it is what marks a role control-plane.

@@ -238,6 +238,7 @@ log_cli = false
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 markers = [
+    "unit: fast, no external services required",
     "bdd: pytest-bdd scenario tests (generated from tests/features/)",
     "integration: requires Docker Compose stack (PG + Trino)",
     "e2e: full HTTP pipeline tests against running app",

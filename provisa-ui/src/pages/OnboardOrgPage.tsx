@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -53,6 +53,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { orgOrigin } from "../lib/authHost";
 import { OrgWelcomePage } from "./OrgWelcomePage";
+import { forgetInvite, pendingInvite } from "../lib/pendingInvite";
 import { signOut } from "../lib/session";
 import { formatMoney, planName } from "../lib/planDisplay";
 
@@ -78,7 +79,9 @@ export function OnboardOrgPage() {
     if (address) window.location.assign(`${address}${path}`);
     else navigate(path);
   };
-  const [mode, setMode] = useState<"create" | "join">("create");
+  // REQ-1616: someone arriving with an invitation still in hand came here to join, not to create an
+  // org, and if the redemption is refused it is the join form they need to be looking at.
+  const [mode, setMode] = useState<"create" | "join">(() => (pendingInvite() ? "join" : "create"));
   const [id, setId] = useState("");
   const [name, setName] = useState("");
   const [includeDemo, setIncludeDemo] = useState(false);
@@ -102,7 +105,10 @@ export function OnboardOrgPage() {
   // ticked out of habit, which is not consent to a risk nobody has been shown.
   const [breadthWarning, setBreadthWarning] = useState<string | null>(null);
   const [riskAcknowledged, setRiskAcknowledged] = useState(false);
-  const [invite, setInvite] = useState("");
+  // REQ-1616: an invitation still owed a redemption seeds the field, so a server-side refusal leaves
+  // the token in front of the person holding it rather than nowhere.
+  const [invite, setInvite] = useState(() => pendingInvite() ?? "");
+  const spentHeldInvite = useRef(false);
   const [error, setError] = useState<string | null>(null);
   // "creating" is the org create itself; "provisioning" is only reached after a checkout closed,
   // which is what lets the two say different things about payment on a commerce deploy.
@@ -209,6 +215,28 @@ export function OnboardOrgPage() {
       setPhase("form");
     }
   };
+
+  // REQ-1616: this page is where a visitor whose invitation went unredeemed ends up -- the
+  // membership gate sends an account that belongs to no org here, which is precisely the state a
+  // lost token produces. The invitation is still in hand, so it is spent here rather than being
+  // asked for again: the person followed a link, and "paste your token" is not something someone
+  // who followed a link can do.
+  //
+  // One attempt per remembered invitation, spent whatever the answer is. A refusal (a spent or
+  // expired link) is settled and would be refused identically on every reload; the token goes into
+  // the field so retrying a server-side failure is one click rather than a lost link.
+  useEffect(() => {
+    if (spentHeldInvite.current) return;
+    const held = pendingInvite();
+    if (!held) return;
+    // Marked spent before the attempt, not after: the ref is what keeps a re-render from redeeming
+    // the same invitation twice, and a render can happen while the request is still in flight.
+    spentHeldInvite.current = true;
+    forgetInvite();
+    // Deferred past the commit rather than called in the effect body, which is the shape every other
+    // load on this page takes: acceptInvite moves state on its first line.
+    void Promise.resolve().then(() => acceptInvite(held));
+  });
 
   const joinOfferedOrg = async (orgId: string) => {
     setError(null);
