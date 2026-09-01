@@ -824,6 +824,12 @@ services:
       # when it is found at zero replicas, and the port its coordinator listens on.
       PROVISA_ENGINE_SHARD: "\${PROVISA_ENGINE_SHARD:-}"
       PROVISA_ENGINE_PORT: "\${PROVISA_ENGINE_PORT:-8080}"
+      # How long a shard may sit unqueried before the reaper scales it to zero. Terraform
+      # derives it from the front door's idle window, because the reaper runs in THIS
+      # process: a VM stopped before it fires leaves a pod billing with nothing left that
+      # can stop it (REQ-1629). The 900 here is engine_wake's own default, so a deployment
+      # that does not set the variable behaves exactly as the app would unaided.
+      PROVISA_ENGINE_IDLE_SECONDS: "\${PROVISA_ENGINE_IDLE_SECONDS:-900}"
       # No ZAYCHIK_HOST/ZAYCHIK_PORT on this role: the Flight SQL proxy runs as a
       # sidecar in the shard's own pod, so the control plane reads its address off
       # the same ready pod it dials for HTTP (shard_flight_endpoint, REQ-1448).
@@ -1031,6 +1037,7 @@ install_systemd() {
              PROVISA_ENGINE_NAMESPACE PROVISA_ENGINE_IMAGE PROVISA_ZAYCHIK_IMAGE \
              PROVISA_ENGINE_SHARD \
              PROVISA_ENGINE_PORT \
+             PROVISA_ENGINE_IDLE_SECONDS \
              PROVISA_MINIO_BIND_IP PROVISA_ENGINE_OTEL_S3_ENDPOINT PROVISA_OBJECT_STORE_DIR \
              TRINO_HOST TRINO_PORT \
              PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE PROVISA_ISOLATED_ENGINE_PORT; do

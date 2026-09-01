@@ -83,7 +83,7 @@ resource "google_compute_firewall" "protocols" {
     ports    = local.protocol_ports
   }
 
-  source_ranges = ["0.0.0.0/0"]
+  source_ranges = var.client_cidrs
   target_tags   = ["provisa-saas-node"]
 }
 
@@ -356,6 +356,13 @@ locals {
     # with it (REQ-1448).
     export PROVISA_ENGINE_SHARD="shared_1"
     export PROVISA_ENGINE_PORT=8080
+    # How long a shard may sit unqueried before the reaper scales it to zero. DERIVED from the front
+    # door's idle window rather than set on its own, because the reaper runs inside the control
+    # plane: if the front door stops this VM first, the reaper dies with a shard still up and a
+    # 6 vCPU / 24 GiB pod bills with nothing left that can stop it. Half the window leaves a whole
+    # check interval of margin. The app also scales its shards down on shutdown (REQ-1629), so this
+    # ordering is the first line of defence and not the only one.
+    export PROVISA_ENGINE_IDLE_SECONDS="${floor(var.idle_stop_minutes * 60 / 2)}"
     # The OTel Iceberg tables live in this node's MinIO, and the engine reads them itself.
     # "http://minio:9000" is a compose service name that exists only on this VM, so the shard
     # resolved nothing and every ops query failed with UnknownHostException: minio. The engine
@@ -424,7 +431,10 @@ resource "google_compute_disk" "coordinator_data" {
   name = "provisa-saas-coordinator-data"
   zone = var.zone
   size = var.object_store_disk_gb
-  type = "pd-balanced"
+  # pd-standard: telemetry parquet written and scanned in bulk, which is what a spinning-rate
+  # disk is good at, and the coordinator is stopped most of the day while the disk bills
+  # around the clock — capacity is the cost here, not IOPS.
+  type = "pd-standard"
   # Telemetry accumulates here; losing it to a terraform-initiated instance replacement is
   # the failure this disk exists to prevent.
   lifecycle {
@@ -443,9 +453,10 @@ resource "google_compute_instance" "coordinator" {
     initialize_params {
       image = "ubuntu-os-cloud/ubuntu-2204-lts"
       size  = var.disk_gb
-      # pd-balanced: no query runs here at all, so this disk is boot/images/logs
-      # only (no scan spill) and pd-ssd IOPS buys nothing.
-      type = "pd-balanced"
+      # pd-standard: no query runs here at all, so this disk is boot/images/logs
+      # only (no scan spill). It bills whether or not the instance is running, which
+      # after idle-stop is most of the month; the cost is a slower cold boot.
+      type = "pd-standard"
     }
   }
 
@@ -529,7 +540,7 @@ resource "google_compute_firewall" "front_door_status" {
     ports    = [tostring(var.front_door_status_port)]
   }
 
-  source_ranges = ["0.0.0.0/0"]
+  source_ranges = var.client_cidrs
   target_tags   = ["provisa-saas-node"]
 }
 
@@ -565,7 +576,12 @@ locals {
         wake_style = k == "ui" ? "html" : (k == "api" ? "json" : "raw")
       }
     }
-    idle_stop_minutes  = var.idle_stop_minutes
+    idle_stop_minutes = var.idle_stop_minutes
+    # Whose traffic counts as use. An unsolicited connection from the internet reaches the
+    # splice like any other and reset the idle clock there, so the reaper almost never fired
+    # and the coordinator billed as a 24/7 VM. Scoping activity to the same CIDRs the firewall
+    # admits means a port scan can neither wake the box nor keep it up.
+    activity_cidrs     = var.client_cidrs
     boot_grace_seconds = var.front_door_boot_grace_minutes * 60
     status_port        = var.front_door_status_port
     status_token       = random_password.front_door_token.result

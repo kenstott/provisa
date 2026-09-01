@@ -64,6 +64,7 @@ class _FakeK8s:
         self.status_calls = 0
         self.wakes: list[str] = []
         self.stops: list[str] = []
+        self.drain_waits: list[bool] = []
         self.pods = 0
 
     def land_pod(self, shard: str) -> None:
@@ -93,8 +94,9 @@ class _FakeK8s:
         self.state = "ready"
         self.land_pod(shard)
 
-    async def scale_shard_to_zero(self, shard: str) -> None:
+    async def scale_shard_to_zero(self, shard: str, *, await_drain: bool = True) -> None:
         self.stops.append(shard)
+        self.drain_waits.append(await_drain)
         self.state = "stopped"
         k8s._pod_uids.pop(shard, None)
         k8s._pod_ips.pop(shard, None)
@@ -470,6 +472,77 @@ async def test_the_reaper_start_seeds_the_boot_shard(fake_k8s, monkeypatch):
         st._engine_reaper_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await st._engine_reaper_task
+
+
+# ── shutdown (REQ-1629) ─────────────────────────────────────────────────────────
+
+
+async def test_shutdown_scales_down_a_shard_the_reaper_never_reached(fake_k8s):
+    """The reaper lives in this process. A control plane that goes away with a shard up leaves a pod
+    billing with nothing left that can stop it -- which is what a VM idle-stop shorter than the
+    engine idle window produces every single time."""
+    await engine_wake.ensure_shard_awake("shared_1")
+    st = SimpleNamespace()
+    engine_wake.start_idle_reaper(st)
+
+    await engine_wake.stop_provisioned_shards(st)
+
+    assert fake_k8s.stops == ["shared_1"]
+    assert st._engine_reaper_task.cancelled() or st._engine_reaper_task.done()
+
+
+async def test_shutdown_does_not_wait_for_the_drain(fake_k8s):
+    """A stopping process has seconds; the drain wait runs to PROVISA_ENGINE_DRAIN_SECONDS. The
+    PATCH is the instruction the cluster acts on either way."""
+    await engine_wake.ensure_shard_awake("shared_1")
+    st = SimpleNamespace()
+
+    await engine_wake.stop_provisioned_shards(st)
+
+    assert fake_k8s.drain_waits == [False]
+
+
+async def test_shutdown_forgets_the_shard_it_took_down(fake_k8s):
+    await engine_wake.ensure_shard_awake("shared_1")
+    st = SimpleNamespace()
+
+    await engine_wake.stop_provisioned_shards(st)
+
+    assert "shared_1" not in engine_wake._ready_seen
+    assert "shared_1" not in engine_wake._last_activity
+
+
+async def test_one_unreachable_shard_does_not_strand_the_others(fake_k8s, monkeypatch):
+    """Shutdown is not allowed to be blocked -- or truncated -- by a single failing API call."""
+    await engine_wake.ensure_shard_awake("shared_1")
+    await engine_wake.ensure_shard_awake("shared_2")
+    stopped: list[str] = []
+
+    async def flaky(shard: str, *, await_drain: bool = True) -> None:
+        if shard == "shared_1":
+            raise k8s.K8sProvisioningError("cluster unreachable")
+        stopped.append(shard)
+
+    monkeypatch.setattr(engine_wake.k8s, "scale_shard_to_zero", flaky)
+
+    await engine_wake.stop_provisioned_shards(SimpleNamespace())
+
+    assert stopped == ["shared_2"]
+
+
+async def test_shutdown_is_a_no_op_where_nothing_provisions_engines(monkeypatch):
+    stopped: list[str] = []
+
+    async def record(shard: str, *, await_drain: bool = True) -> None:
+        stopped.append(shard)
+
+    monkeypatch.setattr(engine_wake.k8s, "provisioning_available", lambda: False)
+    monkeypatch.setattr(engine_wake.k8s, "scale_shard_to_zero", record)
+    engine_wake._last_activity["shared_1"] = 0.0
+
+    await engine_wake.stop_provisioned_shards(SimpleNamespace())
+
+    assert stopped == []
 
 
 # ── boot order ──────────────────────────────────────────────────────────────────

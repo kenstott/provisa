@@ -1895,6 +1895,13 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     yield
 
+    # REQ-1629: the engine idle reaper lives in this process, so a shard still up when the control
+    # plane goes away has nothing left that can scale it down and bills until somebody notices.
+    # Taking them down here is what makes the coordinator's own stop the shard's stop too.
+    from provisa.federation.engine_wake import stop_provisioned_shards
+
+    await stop_provisioned_shards(state)
+
     # Stop Arrow Flight server
     if state._flight_server:
         state._flight_server.shutdown()

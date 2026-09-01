@@ -608,6 +608,28 @@ async def test_scale_to_zero_fails_rather_than_calling_a_live_shard_stopped(
     assert "still had 1 replica" in str(excinfo.value)
 
 
+@pytest.mark.asyncio
+async def test_scale_to_zero_can_skip_the_drain_wait(monkeypatch, configured):
+    """The control plane's own shutdown cannot spend PROVISA_ENGINE_DRAIN_SECONDS watching a pod go
+    -- it has seconds. The PATCH is the whole instruction; the cluster terminates the pod whether or
+    not this process survives to see it, so the state returned is "stopping", not "stopped"
+    (REQ-1629)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/scale"):
+            assert json.loads(request.content) == {"spec": {"replicas": 0}}
+            return httpx.Response(200, json={})
+        if "/deployments/" in path and request.method == "GET":
+            raise AssertionError("the drain wait ran despite await_drain=False")
+        return _cluster_get()
+
+    _mock_api(monkeypatch, handler)
+
+    result = await prov.scale_shard_to_zero("shared_1", await_drain=False)
+    assert result["state"] == "stopping"
+
+
 # ---- failures say what the API said ------------------------------------------
 
 

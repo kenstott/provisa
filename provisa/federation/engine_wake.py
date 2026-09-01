@@ -681,6 +681,37 @@ async def idle_reaper() -> None:
             _stop_tasks[shard] = asyncio.create_task(_stop_shard(shard))
 
 
+async def stop_provisioned_shards(state: Any) -> None:
+    """Take every shard this process woke back to zero, as the control plane shuts down (REQ-1629).
+
+    The reaper is the only thing that scales a shard down and it lives in this process, so a control
+    plane that goes away with a shard up leaves a 6 vCPU / 24 GiB pod billing with nothing left that
+    can stop it. That is not hypothetical on the SaaS node: the front door stops the coordinator VM
+    once its own idle window elapses, and a window shorter than PROVISA_ENGINE_IDLE_SECONDS kills
+    the reaper before it ever fires. Ordering the two windows is the first line of defence and this
+    is the guarantee behind it — the shard goes down because the process is going down, not because
+    a timer happened to win.
+
+    Not waited on: a stopping process has seconds, and the PATCH is the instruction the cluster acts
+    on regardless. A shard that fails to go is logged and the rest still go — shutdown does not get
+    to be blocked by one unreachable API call.
+    """
+    if not k8s.provisioning_available():
+        return
+    task = getattr(state, "_engine_reaper_task", None)
+    if task is not None:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    for shard in list(_last_activity):
+        try:
+            await k8s.scale_shard_to_zero(shard, await_drain=False)
+        except Exception:
+            log.exception("could not scale engine shard %s to zero during shutdown", shard)
+        _ready_seen.pop(shard, None)
+        _last_activity.pop(shard, None)
+
+
 def start_idle_reaper(state: Any) -> None:
     """Start the reaper, on deployments that can actually scale a shard down."""
     if not k8s.provisioning_available():

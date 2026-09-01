@@ -881,7 +881,7 @@ async def ensure_isolated_shard(shard: str, size: Any) -> dict:
     return await ensure_shard_running(shard, lane="isolated", size=size)
 
 
-async def scale_shard_to_zero(shard: str) -> dict:
+async def scale_shard_to_zero(shard: str, *, await_drain: bool = True) -> dict:
     """Drain the shard's engine, which is what releases its node.
 
     On Autopilot the replica count IS the bill: pods are charged on their requests and a cluster
@@ -892,6 +892,12 @@ async def scale_shard_to_zero(shard: str) -> dict:
     what is running, for up to ``terminationGracePeriodSeconds``. This waits for the Deployment to
     observe zero replicas so the returned state is the cluster's word rather than ours, and so a
     wake arriving behind a stop is not racing a pod that is still terminating.
+
+    ``await_drain=False`` returns as soon as the PATCH lands, for the one caller that cannot wait:
+    the control plane's own shutdown (REQ-1629). The drain wait can run to
+    PROVISA_ENGINE_DRAIN_SECONDS, far longer than the seconds a stopping process has, and the PATCH
+    is already the whole instruction — the cluster terminates the pod whether or not this process
+    survives to watch it. The returned state then says ``stopping``, because nothing observed zero.
     """
     settings = provisioner_settings()
     name = shard_workload_name(shard)
@@ -904,6 +910,11 @@ async def scale_shard_to_zero(shard: str) -> dict:
     )
     if resp.status_code >= 400:
         raise K8sProvisioningError(f"scaling {name} to zero failed: {gcp_error_detail(resp)}")
+
+    if not await_drain:
+        _forget_pod(shard)
+        log.info("engine shard %s scaled to zero; not waiting for the drain", shard)
+        return {"shard": shard, "state": "stopping"}
 
     # The drain window bounds how long a pod may take to go; a wait shorter than it would report a
     # shard stopped while it is still billing.
