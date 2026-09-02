@@ -16,6 +16,7 @@ $ProvisaHome = Join-Path $env:USERPROFILE '.provisa'
 $ConfigPath  = Join-Path $ProvisaHome 'config.yaml'
 $StatusFile  = Join-Path $ProvisaHome '.startup-status'
 $LogDir      = Join-Path $ProvisaHome '.logs'
+$PidFile     = Join-Path $ProvisaHome '.native.pid'
 $Worker      = Join-Path $ScriptDir 'first-launch-native.ps1'
 
 # -- Config reader (mirrors provisa-native.ps1 Read-Config) --------------------
@@ -109,6 +110,27 @@ function Invoke-Warmup {
     try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 8 "http://localhost:$UiPort$p" | Out-Null }
     catch { }  # priming only; a cold/errored endpoint is warmed enough by the attempt itself
   }
+}
+
+# Is a detached server the worker launched positively DEAD? .native.pid (written by
+# provisa-native.ps1 Start-Native) holds the API pid on line 0 and the UI pid on line 1.
+#
+# This, not the port, separates a crashed engine from a booting one. Uvicorn binds its listening
+# socket only AFTER the lifespan startup coroutine returns, and a demo first launch spends 30-60s in
+# lifespan (config load, source introspection, schema rebuild) - so a closed API port is the NORMAL
+# state for most of the boot. Gating the failure panel on the port alone declared "the engine exited
+# during startup" at 21s against an engine that was still loading and came up fine seconds later.
+#
+# Only positive evidence counts as death: no pid file yet, an unreadable one (the worker is writing
+# it this instant), a short file or a blank line all mean "not known dead", and the next tick re-reads.
+function Test-ServerDead {
+  param([string]$PidPath, [int]$Index)
+  if (-not (Test-Path $PidPath)) { return $false }
+  try { $lines = @(Get-Content -Path $PidPath -ErrorAction Stop) } catch { return $false }
+  if ($lines.Count -le $Index) { return $false }
+  $procId = "$($lines[$Index])".Trim()
+  if (-not $procId) { return $false }
+  return -not (Get-Process -Id ([int]$procId) -ErrorAction SilentlyContinue)
 }
 
 # The tail of the API error log, for the failure panel when the worker died without a clean ERROR
@@ -310,7 +332,7 @@ $timer.Add_Tick({
   # API log tail so an unexpected crash is visible rather than silent. (The worker exiting is normal
   # BEFORE health when it only launches the detached servers, so we also require it to be past the
   # WAIT stage before treating exit as a failure.)
-  if ($worker.HasExited -and $parsed -and $parsed.State -eq 'WAIT' -and $script:Elapsed -gt 20 -and -not (Test-PortOpen $ApiPort)) {
+  if ($worker.HasExited -and $parsed -and $parsed.State -eq 'WAIT' -and $script:Elapsed -gt 20 -and -not (Test-PortOpen $ApiPort) -and (Test-ServerDead $PidFile 0)) {
     $script:Done = $true
     $timer.Stop()
     $bar.Style = 'Continuous'; $bar.Value = 0
@@ -326,7 +348,7 @@ $timer.Add_Tick({
   # this the dead UI is invisible and the app never opens - the readiness gate needs BOTH ports, but
   # the exit check above only watches the API. A UI uvicorn binds in a second or two, so a port still
   # closed at 30s means it crashed (typically the UI port already in use). Surface its log tail.
-  if ($worker.HasExited -and (Test-PortOpen $ApiPort) -and $script:Elapsed -gt 30 -and -not (Test-PortOpen $UiPort)) {
+  if ($worker.HasExited -and (Test-PortOpen $ApiPort) -and $script:Elapsed -gt 30 -and -not (Test-PortOpen $UiPort) -and (Test-ServerDead $PidFile 1)) {
     $script:Done = $true
     $timer.Stop()
     $bar.Style = 'Continuous'; $bar.Value = 0

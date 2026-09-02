@@ -64,3 +64,35 @@ Describe 'Resolve-OpenUrl' {
     Resolve-OpenUrl -UiPort 8080 -Demo $false | Should -Be 'http://localhost:8080'
   }
 }
+
+Describe 'Test-ServerDead' {
+  BeforeEach {
+    $script:pidf = Join-Path ([System.IO.Path]::GetTempPath()) ("prov-pid-" + [guid]::NewGuid())
+  }
+  AfterEach { Remove-Item $script:pidf -Force -ErrorAction SilentlyContinue }
+
+  It 'is not dead while the pid is still running (a booting engine has not bound its port yet)' {
+    Set-Content -Path $script:pidf -Value @("$PID", "$PID")
+    Test-ServerDead $script:pidf 0 | Should -BeFalse
+    Test-ServerDead $script:pidf 1 | Should -BeFalse
+  }
+  It 'is dead once the pid is gone' {
+    # No -WindowStyle: it is a Windows-only Start-Process parameter and these helper tests also run
+    # on the CI's non-Windows pwsh, where passing it throws NotSupportedException.
+    $p = Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList @('-NoProfile','-Command','exit') -PassThru
+    $p.WaitForExit()
+    Set-Content -Path $script:pidf -Value @("$($p.Id)")
+    Test-ServerDead $script:pidf 0 | Should -BeTrue
+  }
+  It 'is not dead when the pid file does not exist yet (the worker has not launched the servers)' {
+    Test-ServerDead (Join-Path ([System.IO.Path]::GetTempPath()) 'no-such-pid-file-xyz') 0 | Should -BeFalse
+  }
+  It 'is not dead when the file has no line for that server yet' {
+    Set-Content -Path $script:pidf -Value @("$PID")
+    Test-ServerDead $script:pidf 1 | Should -BeFalse
+  }
+  It 'is not dead when the line is blank' {
+    Set-Content -Path $script:pidf -Value @('', '')
+    Test-ServerDead $script:pidf 0 | Should -BeFalse
+  }
+}
