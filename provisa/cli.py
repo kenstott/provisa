@@ -505,7 +505,32 @@ def _cmd_maintenance_status(args: argparse.Namespace) -> int:
     return 0
 
 
+_SUPPORTED_PY = (3, 12)
+
+
+def _require_supported_interpreter() -> None:
+    """Abort ``provisa run`` on an interpreter the embedded runtime cannot boot on.
+
+    The native control plane and telemetry store are an embedded PostgreSQL (REQ-1535) supplied by
+    pgserver, which publishes cp39-cp312 wheels and no sdist. pyproject pins requires-python to
+    <3.13 so pip refuses a newer interpreter, but a source checkout or a hand-built venv bypasses the
+    resolver — those must die HERE with the fix, not 60 frames deep in ModuleNotFoundError: pgserver.
+    """
+    if sys.version_info[:2] == _SUPPORTED_PY:
+        return
+    have = "%d.%d" % sys.version_info[:2]
+    want = "%d.%d" % _SUPPORTED_PY
+    raise SystemExit(
+        f"Provisa requires Python {want}; this interpreter is {have} ({sys.executable}).\n"
+        f"The embedded PostgreSQL control plane is supplied by pgserver, which ships no wheel for "
+        f"{have} (and no source distribution), so the runtime cannot start.\n"
+        f"Create the environment on {want} and reinstall:\n"
+        f"    python{want} -m venv .venv && .venv/bin/pip install 'provisa[embedded]'"
+    )
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
+    _require_supported_interpreter()
     data_dir = Path(args.data_dir).expanduser()
     data_dir.mkdir(parents=True, exist_ok=True)
 
