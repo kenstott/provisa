@@ -17139,3 +17139,57 @@ The schema a connection defaults to follows the environment being served. Three 
 **Code:** `provisa/core/db.py`, `provisa/api/app.py`, `provisa/core/trino_system_catalogs.py`, `provisa/federation/trino_lifecycle.py`, `provisa/api/app_startup.py`
 
 **Tests:** `tests/unit/test_env_search_path.py`
+
+## 1. Access Governance & Security
+
+### REQ-1625 · Federation-Wide Provenance Graph {#REQ-1625}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The federation lineage graph ([REQ-1161](#REQ-1161)) is read through a role. The role is an analytic lens, not a redaction - an analyst holding several roles switches between them to see where each role's data comes from. The columns the selected roles can query seed the graph; the walk from those seeds runs upstream and unrestricted, so every ancestor of a seed is shown in full whether or not the role could query it. What is reachable only downstream of the seeds belongs to another role's perspective and is cut. The domain filter restricts which relations may seed, never which may be an ancestor, so a chain crossing an unchecked domain is not severed.
+
+**Code:** `provisa/lineage/merge.py`, `provisa/api/admin/lineage_router.py`, `provisa-ui/src/pages/LineagePage.tsx`, `provisa-ui/src/api/lineage.ts`
+
+**Tests:** `tests/unit/test_lineage_role_perspective.py`, `provisa-ui/src/__tests__/LineagePage.test.tsx`
+
+### REQ-1626 · Federation-Wide Provenance Graph {#REQ-1626}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Complete lineage covers every relation the platform can reach, not only those with a derivation in front of them. A registered table that nothing selects from and that selects from nothing still appears, as an isolated source node per column - its absence reads as "not reachable" rather than "not derived". Registered relations are also supplied to the parser as known relations so a bare table reference a view parse yields is stitched to the registered relation rather than standing as a second node for the same data; a bare name matching more than one registered relation is left unstitched rather than guessed.
+
+**Code:** `provisa/lineage/merge.py`, `provisa/api/admin/lineage_router.py`
+
+**Tests:** `tests/unit/test_lineage_role_perspective.py`
+
+### REQ-1627 · Federation-Wide Provenance Graph {#REQ-1627}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A federation-wide graph carries more nodes than a column-per-node render can show, so it arrives collapsed - one node per relation, labelled with its column count - and expands per relation on click, with expand-all and collapse-all for the whole graph. Edges between two collapsed relations roll up into one edge carrying the count of columns it stands for. The same graph opens in a near-fullscreen modal, sharing the collapse state with the inline panel so opening it continues the trace rather than restarting it.
+
+**Code:** `provisa-ui/src/components/lineage/LineageDag.tsx`, `provisa-ui/src/pages/LineagePage.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/LineagePage.test.tsx`
+
+### REQ-1628 · Federation-Wide Provenance Graph {#REQ-1628}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The role the lineage is read through is picked on the lineage form itself, not taken from the NavBar role picker. The two answer different questions - the NavBar picks which of the user's own roles they act as, the lineage picker picks whose data is being analysed - and the analytic use requires naming ANY role in the org, including roles the analyst does not hold. Because reading the federation through an arbitrary role discloses which columns that role can query, the perspective is gated by view_governance, the same right the visible_to / masking / grant columns carry. The gate is enforced on GET /admin/lineage/federation and the picker and Complete Lineage control are absent without it. No selection means every role.
+
+**Code:** `provisa/api/admin/lineage_router.py`, `provisa-ui/src/pages/LineagePage.tsx`
+
+**Tests:** `tests/unit/test_lineage_role_perspective.py`, `provisa-ui/src/__tests__/LineagePage.test.tsx`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1629 · Federation Engine {#REQ-1629}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A shard is never left running by the departure of the process that would have scaled it down. The engine idle reaper ([REQ-1448](#REQ-1448)) runs inside the control plane, so a control plane that stops with a shard awake leaves a 6 vCPU / 24 GiB Autopilot pod billing with nothing left that can stop it - which is what the front door's VM idle-stop produced whenever its window was shorter than PROVISA_ENGINE_IDLE_SECONDS. Two things hold. PROVISA_ENGINE_IDLE_SECONDS is DERIVED from the front door's idle_stop_minutes (half of it) rather than set independently, so the reaper always fires before the VM stops; and the app's shutdown scales every shard it woke to zero, which is the guarantee behind that ordering rather than a second timer. The shutdown path does not wait for the drain - the PATCH is the instruction the cluster acts on whether or not this process survives to watch it, so scale_shard_to_zero takes await_drain and reports "stopping" when it skips the wait. One unreachable shard is logged and the rest still go down.
+
+**Code:** `provisa/federation/engine_wake.py`, `provisa/federation/k8s_provisioner.py`, `provisa/api/app.py`, `terraform/gcp-saas/main.tf`
+
+**Tests:** `tests/unit/test_engine_wake.py`, `tests/unit/test_k8s_engine_provisioner.py`
