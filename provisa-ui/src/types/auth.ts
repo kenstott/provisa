@@ -25,6 +25,9 @@ export type Capability =
   | "column_grant"
   | "user_management"
   | "masking_config"
+  // REQ-1134: see the meta domain's GOVERNANCE columns (visible_to, unmasked_to, writable_by, the
+  // mask definitions, view SQL) — the security posture rather than the structure.
+  | "view_governance"
   | "superadmin"
   // REQ-1337: RIGHTS ONLY — no role id appears in this union. Every gate, server and UI alike,
   // names a right; the seed decides which role carries it (platform_settings and cross_org go to

@@ -14,10 +14,10 @@
 # on Cloud SQL, not in a container on this node. That is why this script no longer installs the
 # Docker-socket isolated-engine overlay and no longer expects a postgres container.
 #
-# Both compose-provisa-1 (API) and compose-provisa-ui-1 (UI proxy) run the full
-# application image and each serve their own copy of /app/static, /app/provisa and
-# /app/config, so every target is patched in both or the two disagree about what is
-# deployed.
+# Both compose-provisa-1 (API) and compose-provisa-ui-1 (UI proxy) run the full application image,
+# so both need the same /app/static, /app/provisa and /app/config. They get it from ONE host
+# directory bind-mounted into each (push_overlay): a container recreate — which this node does on
+# every idle-stop — no longer reverts a push, and there are no longer two copies to disagree.
 #
 #   scripts/deploy-cloud.sh ui     # vite build -> /app/static (no restart needed)
 #   scripts/deploy-cloud.sh api    # python package -> /app/provisa (restarts both)
@@ -157,13 +157,13 @@ build_ui() {
 push_ui() {
   echo "== pushing UI ($(du -h "$STAGE/ui.tgz" | cut -f1))"
   scp_node "$STAGE/ui.tgz" /tmp/provisa-ui-deploy.tgz
-  for c in $CONTAINERS; do
-    # The old assets are removed first: filenames are content-hashed, so extracting
-    # over them accumulates every bundle ever deployed and hides which one is live.
-    ssh_node "sudo docker exec $c sh -c 'rm -rf /app/static/assets' \
-      && sudo docker cp /tmp/provisa-ui-deploy.tgz $c:/app/static/ui.tgz \
-      && sudo docker exec $c sh -c 'cd /app/static && tar xzf ui.tgz && rm ui.tgz && echo \"$c assets=\$(ls assets | wc -l)\"'"
-  done
+  # One host directory, bind-mounted into both containers by push_overlay — there is no longer a
+  # per-container copy for the two to disagree about.
+  # The old assets are removed first: filenames are content-hashed, so extracting
+  # over them accumulates every bundle ever deployed and hides which one is live.
+  ssh_node "sudo rm -rf $OVERLAY_DIR/static/assets \
+    && sudo tar xzf /tmp/provisa-ui-deploy.tgz -C $OVERLAY_DIR/static \
+    && echo \"static assets=\$(sudo ls $OVERLAY_DIR/static/assets | wc -l)\""
 }
 
 build_api() {
@@ -174,12 +174,11 @@ build_api() {
 push_api() {
   echo "== pushing python package ($(du -h "$STAGE/api.tgz" | cut -f1))"
   scp_node "$STAGE/api.tgz" /tmp/provisa-api-deploy.tgz
-  for c in $CONTAINERS; do
-    # Extracted over /app/provisa rather than replacing it: the tree is the import root
-    # of the running interpreter, and a deleted-then-recreated directory races the restart.
-    ssh_node "sudo docker cp /tmp/provisa-api-deploy.tgz $c:/app/api.tgz \
-      && sudo docker exec $c sh -c 'cd /app && tar xzf api.tgz && rm api.tgz && echo \"$c provisa=\$(ls provisa | wc -l)\"'"
-  done
+  # Extracted over $OVERLAY_DIR/provisa rather than replacing it: the tree is the import root
+  # of the running interpreter, and a deleted-then-recreated directory races the restart.
+  # The tarball's top-level entry IS `provisa/`, so it unpacks into $OVERLAY_DIR itself.
+  ssh_node "sudo tar xzf /tmp/provisa-api-deploy.tgz -C $OVERLAY_DIR \
+    && echo \"host provisa=\$(sudo ls $OVERLAY_DIR/provisa | wc -l)\""
 }
 
 # The shipped runtime configs, which were previously reachable only through an image rebuild. The
@@ -235,12 +234,9 @@ push_cfg() {
   # disagreed with the running engine on every page load. preflight_engine has already asserted the
   # node agrees with this value, so it is written, not discovered.
   local pin="$ENGINE_PIN"
-  for c in $CONTAINERS; do
-    ssh_node "sudo docker cp /tmp/provisa-cfg-deploy.tgz $c:/app/config/cfg.tgz \
-      && sudo docker exec $c sh -c 'cd /app/config && tar xzf cfg.tgz && rm cfg.tgz \
-        && sed -i \"s|^federation_engine:.*|federation_engine: $pin|\" provisa-install.yaml \
-        && echo \"$c config=\$(ls *.yaml | wc -l) \$(grep ^federation_engine: provisa-install.yaml)\"'"
-  done
+  ssh_node "sudo tar xzf /tmp/provisa-cfg-deploy.tgz -C $OVERLAY_DIR/config \
+    && sudo sed -i \"s|^federation_engine:.*|federation_engine: $pin|\" $OVERLAY_DIR/config/provisa-install.yaml \
+    && echo \"host config=\$(sudo sh -c 'ls $OVERLAY_DIR/config/*.yaml' | wc -l) \$(sudo grep ^federation_engine: $OVERLAY_DIR/config/provisa-install.yaml)\""
 }
 
 # Runs SQL against the control plane, which is Cloud SQL — there is no database container on the
@@ -323,6 +319,72 @@ restart() {
 #
 # Adding a compose file needs a stack recreate, which reverts hot-pushed code, so this runs BEFORE
 # the pushes in every arm that pushes. Already-installed is the no-op path: no recreate, no loss.
+# What makes a push durable. The three push targets used to be written into the CONTAINER
+# filesystem, and the container is not durable: provisa.service runs `provisa stop` on shutdown,
+# which is `docker compose down` — it REMOVES the containers (scripts/provisa, cmd_stop) — and the
+# front door idle-stops this node whenever nobody is using it. Every boot therefore recreated both
+# containers from the baked provisa/provisa:local image and silently discarded every patch this
+# script had ever pushed; the node kept answering, just with the image's code. The three targets are
+# bind-mounted from the host disk instead, so what was deployed outlives the container.
+#
+# Installed as an extension for the same reason the observability tier is: scripts/provisa
+# enumerates ${PROVISA_HOME}/extensions/*/docker-compose.*.yml into COMPOSE_FILES
+# (scripts/provisa:141-146), and compose unions `volumes` across files, so the mounts land on the
+# services the generated control-plane base already declares without editing that generated file.
+# Adding a compose file recreates the stack, so this runs BEFORE the pushes like the other overlays.
+OVERLAY_DIR="/root/.provisa/overlay"
+OVERLAY_EXT="/root/.provisa/extensions/overlay/docker-compose.overlay.yml"
+
+push_overlay() {
+  cat > "$STAGE/docker-compose.overlay.yml" <<YAML
+# Installed by scripts/deploy-cloud.sh — the deployed app tree, on the host disk, so that a
+# container recreate (every idle-stop on this node) does not revert it.
+services:
+  provisa:
+    volumes:
+      - ${OVERLAY_DIR}/static:/app/static
+      - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/config:/app/config
+  provisa-ui:
+    volumes:
+      - ${OVERLAY_DIR}/static:/app/static
+      - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/config:/app/config
+YAML
+  local want have
+  want="$(shasum -a 256 "$STAGE/docker-compose.overlay.yml" | cut -d' ' -f1)"
+  # A node that has never had the overlay is the case this function installs, so shasum's failure
+  # on a missing file is a probe result, not an abort — the same rule push_obs follows.
+  have="$(ssh_node "sudo shasum -a 256 $OVERLAY_EXT 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)" || have=""
+  if [ "$want" = "$have" ]; then
+    echo "== host overlay: up to date"
+    return
+  fi
+  # Seeded from the RUNNING container, before the mount exists. A bind mount hides whatever the
+  # image baked at that path, and an empty /app/provisa is an empty import root — the app would not
+  # start at all. The pushes ship explicit subsets (CONFIG_FILES, the ui tarball), never the whole
+  # tree, so the host copy has to begin as a full copy of the baked one.
+  echo "== host overlay: seeding from the image"
+  ssh_node "sudo mkdir -p $OVERLAY_DIR \
+    && for d in static provisa config; do \
+         sudo rm -rf $OVERLAY_DIR/\$d \
+           && sudo docker cp $API_CONTAINER:/app/\$d $OVERLAY_DIR/\$d \
+           && echo \"seeded \$d=\$(sudo ls $OVERLAY_DIR/\$d | wc -l)\"; \
+       done"
+  echo "== host overlay: installing overlay"
+  scp_node "$STAGE/docker-compose.overlay.yml" /tmp/docker-compose.overlay.yml
+  ssh_node "sudo mkdir -p $(dirname $OVERLAY_EXT) \
+    && sudo cp /tmp/docker-compose.overlay.yml $OVERLAY_EXT"
+  echo "== host overlay: recreating stack"
+  ssh_node "sudo systemctl restart provisa"
+  # The mount is the whole point of the function, so prove it took rather than assume it: the file
+  # is written on the host and read inside the container.
+  ssh_node "sudo touch $OVERLAY_DIR/provisa/.overlay-probe \
+    && sudo docker exec $API_CONTAINER test -f /app/provisa/.overlay-probe \
+    && sudo rm -f $OVERLAY_DIR/provisa/.overlay-probe" \
+    || { echo "overlay installed but /app/provisa is not the host directory" >&2; exit 1; }
+}
+
 OBS_EXT="/root/.provisa/extensions/observability/docker-compose.observability.yml"
 
 push_obs() {
@@ -631,22 +693,22 @@ verify_engine() {
 
 case "$TARGET" in
   ui)
-    build_ui; push_ui; verify ;;
+    push_overlay; build_ui; push_ui; verify ;;
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    preflight_engine; preflight_commerce; build_api; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; preflight_commerce; build_api; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    preflight_engine; preflight_commerce; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
+    preflight_engine; preflight_commerce; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
   all)
-    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
     preflight_engine; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
+    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
 esac
 echo "== deployed $TARGET"

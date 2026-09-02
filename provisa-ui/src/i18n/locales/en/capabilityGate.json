@@ -3,7 +3,14 @@
     "checking": "Checking your credentials…",
     "demonstrated": {
       "badge": "Production feature",
-      "explanation": "This is part of the production system. It is shown here so you can see what Provisa does, but it is not available in the sandbox."
+      "explanation": "This is part of the production system. It is shown here so you can see what Provisa does, but it is not available in the sandbox.",
+      "dismiss": "Got it",
+      "purpose": {
+        "environment_management": {
+          "title": "Environments are a production feature",
+          "body": "An environment is a complete, separately governed copy of your model — sources, tables, policies, masking rules and grants. Teams keep a dev environment to change the model in, a staging one to review it in, and prod to serve from, then move the change forward by merging one environment into the next with a diff, an approval and an undoable history.\n\nYour sandbox IS one of these environments, minted for you alone. Managing them — creating, merging, deploying, retiring — belongs to the organization that owns them, so the surface is shown here rather than handed over: you can see what it does, and it acts on nothing."
+        }
+      }
     }
   }
 }

@@ -293,6 +293,12 @@ roles = Table(
     # max_query_nodes, max_query_time_ms, ...}. None/absent = unlimited.
     Column("rate_limit", JSON),
     Column("parent_role_id", Text, ForeignKey("roles.id")),
+    # REQ-1597/REQ-1624: this role's capabilities are DERIVED from the named role's, in this schema
+    # only -- the sandbox visitor's `org_admin` is `sandbox` (env_copy.adopt_role_definition). Held
+    # as a column rather than applied once at creation because the tenancy seam
+    # (db.apply_tenancy_role_grants) re-asserts org_admin's rights into every environment schema on
+    # every runtime build, which silently handed the subtracted rights back.
+    Column("defined_from", Text),
     Column("org_id", Text),  # cross-model ref -> admin.orgs
     Column("tenant_id", Uuid),
 )

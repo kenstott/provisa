@@ -414,7 +414,7 @@ async def isolated_wake_size(state: Any, org_id: str) -> Any:
     return await engine_size_for_org(state, org_id)
 
 
-async def _wake_isolated(state: Any, org_id: str, runtime: Any) -> None:
+async def _wake_isolated(state: Any, org_id: str, env: str, runtime: Any) -> None:
     """REQ-1510: wake the shard that serves ``org_id`` ALONE, at the size its plan sells.
 
     The dedicated lane is woken by the same machinery as the shared one — the org's coordinator is a
@@ -423,7 +423,12 @@ async def _wake_isolated(state: Any, org_id: str, runtime: Any) -> None:
     shared terminal to restore: an isolated org dispatches through its OWN terminal, so a cold start
     is repaired by rebuilding this org's runtime, which reissues its catalogs on the new
     coordinator.
+
+    The runtime rebuilt is the ENVIRONMENT's, because the catalogs are the environment's: see
+    :func:`_rebuild_env_runtime`.
     """
+    from provisa.api.org_runtime import runtime_key
+
     shard = k8s.isolated_shard(org_id)
     await ensure_shard_awake(shard, lane="isolated", size=await isolated_wake_size(state, org_id))
     if runtime.engine_generation == generation(shard):
@@ -431,9 +436,14 @@ async def _wake_isolated(state: Any, org_id: str, runtime: Any) -> None:
 
     from provisa.api.app import ensure_org_runtime
 
-    state.org_registry.invalidate(org_id)
-    log.info("rebuilding org %s runtime: dedicated engine shard %s restarted", org_id, shard)
-    await ensure_org_runtime(org_id)
+    state.org_registry.invalidate(runtime_key(org_id, env))
+    log.info(
+        "rebuilding org %s environment %s runtime: dedicated engine shard %s restarted",
+        org_id,
+        env,
+        shard,
+    )
+    await ensure_org_runtime(org_id, env)
 
 
 def active_shard(state: Any) -> str | None:
@@ -450,17 +460,20 @@ def active_shard(state: Any) -> str | None:
     if not k8s.provisioning_available():
         return None
 
-    from provisa.api.org_runtime import current_org
+    from provisa.api.org_runtime import active_env, current_org, runtime_key
 
     org_id = current_org.get()
     if org_id is None:
         return boot_shard()
 
-    runtime = state.org_registry.get(org_id)
+    # The environment's key, because that is the runtime the request bound: an org whose queries all
+    # name an environment need never have built its prod one.
+    env = active_env()
+    runtime = state.org_registry.get(runtime_key(org_id, env))
     if runtime is None:
         raise RuntimeError(
-            f"org {org_id!r} is bound for this query but has no built runtime — the shard it "
-            "queries cannot be resolved (REQ-1448)"
+            f"org {org_id!r} environment {env!r} is bound for this query but has no built "
+            "runtime — the shard it queries cannot be resolved (REQ-1448)"
         )
     if runtime.engine_endpoint is not None or runtime.engine_url is not None:
         return None
@@ -554,6 +567,42 @@ async def readdress_lost_coordinator(exc: BaseException, state: Any) -> bool:
     return True
 
 
+async def _rebuild_env_runtime(state: Any, org_id: str, env: str, shard: str) -> None:
+    """REQ-1448/REQ-1488: reissue an ENVIRONMENT's catalogs after its coordinator was replaced.
+
+    An environment is a separate schema holding a separate copy of the model, so it registers
+    catalogs of its own — ``org_<id>_env_<env>__<source>`` — under its own runtime key. Neither
+    :func:`restore_shared_terminal`, which reissues the default org's, nor a rebuild of the org's
+    prod runtime names them. Left out, a query made inside an environment reaches a resumed
+    coordinator that is perfectly healthy and has never heard of that environment: the engine
+    answers CATALOG_NOT_FOUND for a catalog it was serving minutes earlier, and the wake reports
+    success while doing it.
+
+    Prod IS the org's runtime, already rebuilt by the caller, so it is not rebuilt twice here.
+    """
+    from provisa.api.org_runtime import PROD, runtime_key
+
+    if env == PROD:
+        return
+    key = runtime_key(org_id, env)
+    runtime = state.org_registry.get(key)
+    if runtime is None:
+        raise RuntimeError(
+            f"org {org_id!r} environment {env!r} is bound for this query but has no built "
+            "runtime — the catalogs it queries cannot be reissued (REQ-1448)"
+        )
+    if runtime.engine_generation == generation(shard):
+        return
+
+    from provisa.api.app import ensure_org_runtime
+
+    state.org_registry.invalidate(key)
+    log.info(
+        "rebuilding org %s environment %s runtime: engine shard %s restarted", org_id, env, shard
+    )
+    await ensure_org_runtime(org_id, env)
+
+
 async def ensure_engine_awake(state: Any) -> None:
     """The query path's wake: the active org's shard is serving, and its catalogs are on it.
 
@@ -565,9 +614,12 @@ async def ensure_engine_awake(state: Any) -> None:
     if not k8s.provisioning_available():
         return
 
-    from provisa.api.org_runtime import current_org
+    from provisa.api.org_runtime import active_env, current_org, runtime_key
 
     org_id = current_org.get()
+    # REQ-1488/REQ-1529: which COPY of the model this query reads. It selects the runtime whose
+    # generation is compared and whose catalogs are reissued -- see _rebuild_env_runtime.
+    env = active_env()
     if org_id is None:
         # NOT only boot and background: _OrgRoutingMiddleware binds current_org only when a
         # NON-default org is selected, so the deployment's own org — the one a single-tenant
@@ -585,20 +637,21 @@ async def ensure_engine_awake(state: Any) -> None:
             )
         if default.engine_generation != generation(shard):
             await restore_shared_terminal(state, shard)
+        await _rebuild_env_runtime(state, state.org_id, env, shard)
         return
 
-    runtime = state.org_registry.get(org_id)
+    runtime = state.org_registry.get(runtime_key(org_id, env))
     if runtime is None:
         raise RuntimeError(
-            f"org {org_id!r} is bound for this query but has no built runtime — the shard it "
-            "queries cannot be resolved (REQ-1448)"
+            f"org {org_id!r} environment {env!r} is bound for this query but has no built "
+            "runtime — the shard it queries cannot be resolved (REQ-1448)"
         )
     # REQ-1412/REQ-1418: an org that runs its own coordinator is not on a shard this control plane
     # operates, so there is nothing here to wake.
     if runtime.engine_endpoint is not None or runtime.engine_url is not None:
         return
     if runtime.isolated_engine:
-        await _wake_isolated(state, org_id, runtime)
+        await _wake_isolated(state, org_id, env, runtime)
         return
     shard = runtime.shard
     if not shard:
@@ -625,9 +678,11 @@ async def ensure_engine_awake(state: Any) -> None:
     if state.org_registry.get(state.org_id).engine_generation != generation(boot):
         await restore_shared_terminal(state, boot)
 
-    state.org_registry.invalidate(org_id)
-    log.info("rebuilding org %s runtime: engine shard %s restarted", org_id, shard)
-    await ensure_org_runtime(org_id)
+    state.org_registry.invalidate(runtime_key(org_id, env))
+    log.info(
+        "rebuilding org %s environment %s runtime: engine shard %s restarted", org_id, env, shard
+    )
+    await ensure_org_runtime(org_id, env)
 
 
 # ── Reaper ──────────────────────────────────────────────────────────────────────

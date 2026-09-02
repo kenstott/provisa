@@ -11,6 +11,7 @@
     "signInWithGithub": "Sign in with GitHub",
     "signInWithMicrosoft": "Sign in with Microsoft",
     "signInWithEmail": "Sign in with Email",
+    "continueWithEmail": "Continue with email",
     "orDivider": "or",
     "haveAccountSignIn": "Have an account? Sign in",
     "needAccountRegister": "Need an account? Register",

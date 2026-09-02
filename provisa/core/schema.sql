@@ -320,7 +320,13 @@ CREATE TABLE IF NOT EXISTS roles (
     demonstrated    JSONB NOT NULL DEFAULT '[]',
     domain_access   JSONB NOT NULL DEFAULT '[]',
     rate_limit      JSONB,  -- REQ-1174: per-role rate + burst; mirrors schema_org.roles.rate_limit
-    parent_role_id  TEXT REFERENCES roles(id)
+    parent_role_id  TEXT REFERENCES roles(id),
+    -- REQ-1597/REQ-1624: this row's capabilities are DERIVED from the named role's, in this schema
+    -- only -- a sandbox visitor's `org_admin` is `sandbox` (env_copy.adopt_role_definition). Held
+    -- as a column rather than applied once at creation because the tenancy seam
+    -- (db.apply_tenancy_role_grants) re-asserts org_admin's rights into every environment schema on
+    -- every runtime build, which handed the subtracted rights straight back.
+    defined_from    TEXT
 );
 
 -- Migration: add parent_role_id if missing
@@ -911,6 +917,14 @@ END $$;
 -- selects every column.
 DO $$ BEGIN
     ALTER TABLE roles ADD COLUMN IF NOT EXISTS demonstrated JSONB NOT NULL DEFAULT '[]';
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- Add defined_from to roles (REQ-1624) -- an environment schema created before the column keeps a
+-- derived role that no re-assertion can restore, so the column comes first and the derivation is
+-- re-applied at the end of every apply_tenancy_role_grants.
+DO $$ BEGIN
+    ALTER TABLE roles ADD COLUMN IF NOT EXISTS defined_from TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

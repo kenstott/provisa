@@ -61,7 +61,7 @@ const fetchOrgRoles = vi.fn(async () => [
   { id: "auditor", capabilities: [], demonstrated: [], domain_access: [] },
   { id: "vet", capabilities: [], demonstrated: [], domain_access: [] },
 ]);
-vi.mock("../api/admin", () => ({ fetchOrgRoles: (...a: unknown[]) => fetchOrgRoles(...a) }));
+vi.mock("../api/admin", () => ({ fetchOrgRoles: () => fetchOrgRoles() }));
 
 // Stub the cytoscape-backed DAG (cytoscape needs a real layout engine, unavailable in jsdom).
 // The stub surfaces the collapse/expand and modal callbacks as buttons so the page's REQ-1627

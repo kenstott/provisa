@@ -297,7 +297,15 @@ async def adopt_role_definition(
             scoped.update()
             .where(scoped.c.id == target)
             .values(
-                capabilities=row._mapping["capabilities"], demonstrated=row._mapping["demonstrated"]
+                capabilities=row._mapping["capabilities"],
+                demonstrated=row._mapping["demonstrated"],
+                # REQ-1624: and the derivation is RECORDED, not just applied. The tenancy seam
+                # (db.apply_tenancy_role_grants) re-asserts org_admin's own rights into every
+                # environment schema on every runtime build, so a subtraction applied once here was
+                # given back on the visitor's next request -- environment_management among them,
+                # which is how a sandbox visitor reached the org's environments surface. The column
+                # is what that seam re-reads the definition from, so the subtraction survives it.
+                defined_from=source,
             )
         )
 

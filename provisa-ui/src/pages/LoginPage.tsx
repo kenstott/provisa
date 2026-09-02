@@ -11,7 +11,18 @@
 import { useState, useEffect } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Alert, Button, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Collapse,
+  Divider,
+  Loader,
+  PasswordInput,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import {
   fetchProviderType,
@@ -68,6 +79,9 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   const [inviteError, setInviteError] = useState<string | null>(null);
   // REQ-1472: the deployment's break-glass account. It is not an IdP account, so under a
   // provider like firebase there is no button that can sign it in — this reveals its own form.
+  // The email form is the tallest part of the sign-in card and most visitors use an SSO button, so
+  // it stays collapsed behind a disclosure until asked for -- the card opens at roughly half height.
+  const [emailOpen, setEmailOpen] = useState(false);
   const [operatorMode, setOperatorMode] = useState(false);
   // REQ-1486: the branding of the org this sign-in is for. Null until it is read, and null forever
   // on a sign-in that belongs to no org — the header renders nothing in both cases.
@@ -408,7 +422,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
         color="violet"
         mb="md"
         title="Building your sandbox…"
-        icon={<Text size="xl">✨</Text>}
+        icon={<Loader color="violet" size="sm" data-testid="sandbox-provisioning-spinner" />}
         data-testid="sandbox-provisioning-notice"
       >
         Setting up a private copy of the sample data just for you — this takes a few seconds.
@@ -421,10 +435,8 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
         icon={<Text size="xl">✨</Text>}
         data-testid="sandbox-notice"
       >
-        Explore our full platform with sample data — no credit card required. Your sandbox account is
-        temporary and will be deleted when you log out. You can always create a new sandbox account
-        by using the invite link again. When you're ready, upgrade to a Starter plan to create your
-        own organization.
+        Explore the full platform with sample data — no credit card required. Your sandbox is
+        temporary: it disappears when you log out.
       </Alert>
     )
   ) : null;
@@ -471,57 +483,69 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
           >
             {loading ? t("loginPage.signingIn") : t("loginPage.signInWithMicrosoft")}
           </Button>
-          <Text c="dimmed" size="sm" ta="center">
-            {t("loginPage.orDivider")}
-          </Text>
-          <form onSubmit={handleFirebaseEmail}>
-            <Stack gap="sm">
-              <TextInput
-                type="email"
-                label={t("loginPage.email")}
-                data-testid="firebase-email-input"
-                value={regEmail}
-                onChange={(e) => setRegEmail(e.currentTarget.value)}
-                required
-              />
-              <PasswordInput
-                label={t("loginPage.password")}
-                data-testid="firebase-password-input"
-                value={password}
-                onChange={(e) => setPassword(e.currentTarget.value)}
-                required
-              />
-              {mode === "register" && (
-                <PasswordInput
-                  label={t("loginPage.confirmPassword")}
-                  data-testid="firebase-confirm-password-input"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+          <Divider label={t("loginPage.orDivider")} labelPosition="center" />
+          {!emailOpen && (
+            <Button
+              variant="default"
+              data-testid="firebase-email-disclosure"
+              onClick={() => {
+                setError(null);
+                setEmailOpen(true);
+              }}
+            >
+              {t("loginPage.continueWithEmail")}
+            </Button>
+          )}
+          <Collapse in={emailOpen}>
+            <form onSubmit={handleFirebaseEmail}>
+              <Stack gap="sm">
+                <TextInput
+                  type="email"
+                  label={t("loginPage.email")}
+                  data-testid="firebase-email-input"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.currentTarget.value)}
                   required
                 />
-              )}
-              <Button type="submit" data-testid="firebase-email-submit" disabled={loading}>
-                {loading
-                  ? t("loginPage.signingIn")
-                  : mode === "register"
-                    ? t("loginPage.createAccount")
-                    : t("loginPage.signInWithEmail")}
-              </Button>
-              <Button
-                variant="subtle"
-                size="compact-sm"
-                data-testid="firebase-email-toggle"
-                onClick={() => {
-                  setError(null);
-                  setMode(mode === "register" ? "login" : "register");
-                }}
-              >
-                {mode === "register"
-                  ? t("loginPage.haveAccountSignIn")
-                  : t("loginPage.needAccountRegister")}
-              </Button>
-            </Stack>
-          </form>
+                <PasswordInput
+                  label={t("loginPage.password")}
+                  data-testid="firebase-password-input"
+                  value={password}
+                  onChange={(e) => setPassword(e.currentTarget.value)}
+                  required
+                />
+                {mode === "register" && (
+                  <PasswordInput
+                    label={t("loginPage.confirmPassword")}
+                    data-testid="firebase-confirm-password-input"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+                    required
+                  />
+                )}
+                <Button type="submit" data-testid="firebase-email-submit" disabled={loading}>
+                  {loading
+                    ? t("loginPage.signingIn")
+                    : mode === "register"
+                      ? t("loginPage.createAccount")
+                      : t("loginPage.signInWithEmail")}
+                </Button>
+                <Button
+                  variant="subtle"
+                  size="compact-sm"
+                  data-testid="firebase-email-toggle"
+                  onClick={() => {
+                    setError(null);
+                    setMode(mode === "register" ? "login" : "register");
+                  }}
+                >
+                  {mode === "register"
+                    ? t("loginPage.haveAccountSignIn")
+                    : t("loginPage.needAccountRegister")}
+                </Button>
+              </Stack>
+            </form>
+          </Collapse>
           <Button
             variant="subtle"
             size="compact-sm"

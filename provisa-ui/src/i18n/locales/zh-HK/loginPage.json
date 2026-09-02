@@ -11,6 +11,7 @@
     "signInWithGithub": "以 GitHub 登入",
     "signInWithMicrosoft": "以 Microsoft 登入",
     "signInWithEmail": "以電郵登入",
+    "continueWithEmail": "以電郵繼續",
     "orDivider": "或",
     "haveAccountSignIn": "已有帳戶？登入",
     "needAccountRegister": "需要帳戶？註冊",

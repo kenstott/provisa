@@ -251,17 +251,24 @@ export function declineTour(): void {
 }
 
 /**
- * Whether to open the welcome modal now, marking the session offered if so.
+ * Whether to open the welcome modal now, marking the offer pending if so.
  *
  * One offer per browser session, and none once the tour has been taken or permanently declined.
  * Reading and marking together keeps a double mount (StrictMode, a route remount) from counting as
- * two offers.
+ * two offers. An offer stays "pending" until the user answers it, so a remount of the shell -- the
+ * identity gate re-reads /auth/me and drops its children while it does, which acknowledging a join
+ * notice triggers -- puts the unanswered offer back rather than spending it.
  */
 export function claimTourOffer(): boolean {
   if (hasSeenTour() || tourDeclined()) return false;
-  if (sessionStorage.getItem(TOUR_OFFERED_KEY) === "true") return false;
-  sessionStorage.setItem(TOUR_OFFERED_KEY, "true");
+  if (sessionStorage.getItem(TOUR_OFFERED_KEY) === "answered") return false;
+  sessionStorage.setItem(TOUR_OFFERED_KEY, "pending");
   return true;
+}
+
+/** The offer was answered -- started, deferred, or declined. It does not return this session. */
+export function resolveTourOffer(): void {
+  sessionStorage.setItem(TOUR_OFFERED_KEY, "answered");
 }
 
 /**

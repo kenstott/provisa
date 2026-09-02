@@ -345,6 +345,30 @@ async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy:
                 await conn.execute_core(
                     update(roles).where(roles.c.id == role_id).values(capabilities=sorted(caps))
                 )
+        # REQ-1624: the derived roles are re-read LAST, exactly as on PostgreSQL -- see the comment
+        # at the end of apply_tenancy_role_grants for what re-asserting over a subtraction did.
+        derived = (
+            await conn.execute_core(
+                select(roles.c.id, roles.c.defined_from).where(roles.c.defined_from.isnot(None))
+            )
+        ).fetchall()
+        for role_id, source in derived:
+            if role_id == source:
+                continue
+            row = (
+                await conn.execute_core(
+                    select(roles.c.capabilities, roles.c.demonstrated).where(roles.c.id == source)
+                )
+            ).fetchone()
+            if row is None:
+                raise ValueError(
+                    f"role {role_id!r} is defined from {source!r}, which this schema does not have"
+                )
+            await conn.execute_core(
+                update(roles)
+                .where(roles.c.id == role_id)
+                .values(capabilities=row[0], demonstrated=row[1])
+            )
 
 
 async def apply_tenancy_role_grants(  # REQ-1337
@@ -435,3 +459,15 @@ async def apply_tenancy_role_grants(  # REQ-1337
                 "UPDATE roles SET capabilities = capabilities || '[\"platform_settings\"]'::jsonb"
                 " WHERE id = 'org_admin' AND NOT capabilities ? 'platform_settings'"
             )
+        # REQ-1624: LAST, and after every re-assertion above. A role whose `defined_from` names
+        # another is DERIVED from it in this schema -- the sandbox visitor's `org_admin`, which
+        # REQ-1597 defines by subtraction from org_admin and env_copy.adopt_role_definition applies
+        # in the visitor's own environment. Every block above re-asserts org_admin's rights into
+        # whatever schema is being asserted, environment schemas included, so the subtraction was
+        # given back on the visitor's next runtime build: a sandbox visitor recovered
+        # environment_management and reached the org's environments surface, other visitors'
+        # environments and all. Re-reading the definition here is what makes the withholding hold.
+        await conn.execute(
+            "UPDATE roles t SET capabilities = s.capabilities, demonstrated = s.demonstrated"
+            " FROM roles s WHERE t.defined_from = s.id AND t.id <> s.id"
+        )

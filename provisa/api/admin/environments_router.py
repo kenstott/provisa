@@ -155,13 +155,65 @@ async def _member(request: Request, org_id: str, *rights: str) -> str | None:
     return user_id
 
 
+async def _pinned_env(request: Request, org_id: str) -> str | None:
+    """The environment this caller's membership is CONFINED to (REQ-1596), or ``None`` for a member
+    who may work across the org's environments.
+
+    Read from the membership row rather than from the request's bound environment: the binding says
+    which environment is answering, and a pinned member can address this router with any name in the
+    path. The pin is the fact that decides whether they may.
+    """
+    user_id = _caller_user_id(request)
+    if user_id is None:
+        return None  # dev mode — no auth configured, matching _require_org_admin
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(
+            select(user_org_memberships.c.env_name).where(
+                (user_org_memberships.c.user_id == user_id)
+                & (user_org_memberships.c.org_id == org_id)
+            )
+        )
+        row = result.fetchone()
+    return None if row is None else row[0]
+
+
+async def _confined(request: Request, org_id: str, *names: str) -> None:
+    """Refuse an act that names an environment outside the caller's pin (REQ-1596, REQ-1624).
+
+    The rights check is the first answer and this is the second, because the two say different
+    things. A right says what the ROLE may do; the pin says which environment this MEMBERSHIP
+    exists in, and a sandbox visitor's exists in one. Without this, ownership alone carried a
+    visitor into another environment — ``_guard_within`` grants the creator of an environment
+    org_admin's model-editing rights, and a merge is guarded on the SOURCE, so owning an ephemeral
+    environment authorized merging it into anybody else's.
+    """
+    pinned = await _pinned_env(request, org_id)
+    if pinned is None:
+        return
+    for name in names:
+        if name != pinned:
+            raise ApiError(
+                403,
+                "environments.pinned",
+                f"This membership is confined to environment {pinned!r} and cannot act on "
+                f"{name!r}.",
+                org=org_id,
+                env=name,
+            )
+
+
 async def _guard_within(request: Request, org_id: str, name: str) -> str | None:
     """An act INSIDE one environment. Held either by an org_admin, or by whoever created the
     environment — who holds org_admin's model-editing rights within it and nowhere else (REQ-1528).
 
     The owner's authority is derived from ``environments.created_by`` at this moment rather than
     read from a grant table, so it cannot describe an environment that no longer exists.
+
+    The pin is asked FIRST (REQ-1624), because ownership is exactly what carried a confined member
+    out of their environment: a sandbox visitor owns the ephemeral environment minted for them, and
+    a merge is guarded on its SOURCE, so owning it authorized merging it into anybody else's.
     """
+    await _confined(request, org_id, name)
     user_id = _caller_user_id(request)
     if user_id is not None and await owns_environment(_admin_pool(), org_id, name, user_id):
         return user_id
@@ -304,9 +356,14 @@ async def list_environments(request: Request, org_id: str) -> dict:
     # which to propose into, without seeing them (REQ-1528). REQ-1573: either environment right
     # answers — the switcher lists them to choose one, the admin surface to manage them.
     await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
-    return {
-        "environments": [_with_history(org_id, r) for r in await list_envs(_admin_pool(), org_id)]
-    }
+    rows = await list_envs(_admin_pool(), org_id)
+    # REQ-1624: a membership confined to one environment is shown that one and nothing else. The
+    # listing is what a sandbox visitor read to learn that other visitors exist and what their
+    # environments are named; the org's shape is not part of what the sandbox demonstrates.
+    pinned = await _pinned_env(request, org_id)
+    if pinned is not None:
+        rows = [r for r in rows if r["name"] == pinned]
+    return {"environments": [_with_history(org_id, r) for r in rows]}
 
 
 def _with_history(org_id: str, row: dict) -> dict:
@@ -357,6 +414,8 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
             "cannot create environments in the sandbox org; it provides one ephemeral environment per user",
             org=org_id,
         )
+
+    await _confined(request, org_id, body.name)
 
     from provisa.api.admin.orgs_router import _org_tenant_db
     from provisa.core.env_create import create_environment as _create_env
@@ -448,6 +507,7 @@ async def delete_environment(
     after the local retirement succeeded: an org left with the remote copy of an environment it
     could not retire still has its work.
     """
+    await _confined(request, org_id, name)
     actor = await _guard(request, org_id)
     await _known(org_id, name)
     try:
@@ -519,6 +579,7 @@ async def delete_environment(
 async def patch_environment(request: Request, org_id: str, name: str, body: PatchEnvBody) -> dict:
     """Set what the registry row holds and the schema cannot: expiry (REQ-1523) and whether a merge
     into this environment waits for someone else's approval (REQ-1504)."""
+    await _confined(request, org_id, name)
     actor = await _guard(request, org_id)
     await _known(org_id, name)
     detail: dict = {}
@@ -553,6 +614,7 @@ async def merge_into_environment(request: Request, org_id: str, name: str, body:
     """
     from provisa.api.admin.orgs_router import _org_tenant_db
 
+    await _confined(request, org_id, name, body.from_env)
     actor = await _guard_within(request, org_id, body.from_env)
     await _known(org_id, name)
     await _known(org_id, body.from_env)
@@ -950,6 +1012,11 @@ async def list_merge_requests(request: Request, org_id: str, open_only: bool = F
     await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
     db = await _org_tenant_db(org_id)
     rows = await env_approvals.list_requests(_admin_pool(), org_id, open_only=open_only)
+    # REQ-1624: a confined membership sees only the proposals its own environment is party to --
+    # the listing names other environments, and naming them is what the pin withholds.
+    pinned = await _pinned_env(request, org_id)
+    if pinned is not None:
+        rows = [r for r in rows if pinned in (r["source_env"], r["target_env"])]
     return {
         "requests": [
             _rendered(row, await env_approvals.effective_state(db, org_id, row)) for row in rows
@@ -964,6 +1031,7 @@ async def get_merge_request(request: Request, org_id: str, request_id: int) -> d
 
     await _member(request, org_id, MANAGE_CAPABILITY, SWITCH_CAPABILITY)
     row = await _request_or_404(org_id, request_id)
+    await _confined(request, org_id, row["source_env"], row["target_env"])
     state = await env_approvals.effective_state(await _org_tenant_db(org_id), org_id, row)
     return {"request": _rendered(row, state)}
 
@@ -980,7 +1048,8 @@ async def decide_merge_request(
     from provisa.api.admin.orgs_router import _org_tenant_db
 
     actor = await _guard(request, org_id)
-    await _request_or_404(org_id, request_id)
+    decided_on = await _request_or_404(org_id, request_id)
+    await _confined(request, org_id, decided_on["source_env"], decided_on["target_env"])
     try:
         decided = await env_approvals.decide(
             _admin_pool(),
@@ -1070,6 +1139,7 @@ async def preview_merge(
     """
     from provisa.api.admin.orgs_router import _org_tenant_db
 
+    await _confined(request, org_id, name, from_env)
     await _guard_within(request, org_id, from_env)
     await _known(org_id, name)
     await _known(org_id, from_env)

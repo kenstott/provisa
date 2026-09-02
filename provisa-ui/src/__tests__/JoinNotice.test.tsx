@@ -112,6 +112,31 @@ describe("JoinNotice", () => {
     expect(screen.getByTestId("join-notice-leave")).toBeTruthy();
   });
 
+  it("explains sandbox mode instead of announcing an org join", () => {
+    mockAuth.orgMemberships = [
+      membership({
+        org_id: "sandbox",
+        org_name: "Sandbox",
+        joined_via: "invite",
+        env_name: "sandbox_a3446a2c11f0",
+      }),
+    ];
+    render(<JoinNotice />);
+    expect(screen.getByTestId("join-notice-sandbox")).toBeInTheDocument();
+    expect(screen.queryByTestId("join-notice-reason")).not.toBeInTheDocument();
+    expect(screen.getByText(/isolated environment of your own/)).toBeInTheDocument();
+    expect(screen.getByText(/Signing out wipes it/)).toBeInTheDocument();
+  });
+
+  it("offers no exit from a sandbox, which is reclaimed rather than left", () => {
+    mockAuth.orgMemberships = [
+      membership({ joined_via: "admin", env_name: "sandbox_a3446a2c11f0" }),
+    ];
+    render(<JoinNotice />);
+    expect(screen.queryByTestId("join-notice-leave")).not.toBeInTheDocument();
+    expect(screen.getByTestId("join-notice-ack")).toBeInTheDocument();
+  });
+
   it("keeps the notice up and reports why when leaving fails", async () => {
     mockAuth.orgMemberships = [membership({})];
     mockLeave.mockRejectedValue(new Error("last admin cannot leave"));

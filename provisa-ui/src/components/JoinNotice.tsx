@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Alert, Button, Group, Modal, Stack, Text } from "@mantine/core";
+import { Alert, Button, Group, List, Modal, Stack, Text } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { acknowledgeJoin, leaveOrg } from "../api/admin";
@@ -29,14 +29,16 @@ export function JoinNotice() {
   const [error, setError] = useState<string | null>(null);
 
   const pending = orgMemberships.find(
-    (m) =>
-      m.acknowledged === false &&
-      ANNOUNCED.includes(m.joined_via ?? "") &&
-      // A per_visitor ephemeral membership (sandbox invite) was never a choice to join an org --
-      // it's a throwaway environment minted for one visitor, so there is nothing to announce.
-      !m.env_name,
+    (m) => m.acknowledged === false && ANNOUNCED.includes(m.joined_via ?? ""),
   );
   if (!pending) return null;
+
+  // A per_visitor ephemeral membership (sandbox invite) is not a choice to join an org -- it is a
+  // throwaway environment minted for one visitor. "You were added to Sandbox" would explain the
+  // wrong thing, so the sandbox gets its own explanation: what the environment is, what may be
+  // done in it, and when it goes away. Hardcoded rather than translated, like the sandbox banner
+  // on LoginPage: the sandbox is served in English from cloud.provisa.dev.
+  const isSandbox = Boolean(pending.env_name);
 
   async function acknowledge(orgId: string) {
     setBusy(true);
@@ -64,24 +66,60 @@ export function JoinNotice() {
     <Modal
       opened
       onClose={() => {}}
-      title={t("joinNotice.title", { org: pending.org_name })}
+      title={
+        isSandbox
+          ? "Welcome to the Provisa sandbox"
+          : t("joinNotice.title", { org: pending.org_name })
+      }
       centered
       closeOnClickOutside={false}
       closeOnEscape={false}
       withCloseButton={false}
+      // Both this and the tour offer (TourAutoStart) open on the first screen after sign-in, and the
+      // tour offer mounts later, so at equal depth it would cover this one. What the environment IS
+      // has to be read before an offer to walk around in it, so this notice sits above it.
+      zIndex={300}
       data-testid="join-notice-modal"
     >
       <Stack gap="md">
-        <Text data-testid="join-notice-reason">
-          {t(`joinNotice.${pending.joined_via}`, { org: pending.org_name })}
-        </Text>
+        {isSandbox ? (
+          <Stack gap="sm" data-testid="join-notice-sandbox">
+            <Text>
+              You are on our shared starter instance, in an isolated environment of your own. The
+              sample data is a private copy — nothing you do here is visible to another visitor, and
+              nothing here touches anyone else's data.
+            </Text>
+            <List size="sm" spacing="xs">
+              <List.Item>
+                Almost every operation is open to you: register your own sources, model them, write
+                policies and masking rules, and query the result in SQL, GraphQL, or Cypher.
+              </List.Item>
+              <List.Item>
+                Held back are the org-wide controls — switching or managing environments, inviting
+                people and conferring roles, org settings, and org-wide observability. Those pages
+                stay visible, marked as part of the production system.
+              </List.Item>
+              <List.Item>
+                Your environment is temporary. Signing out wipes it, and it is also reclaimed after
+                a day of inactivity. Nothing you build here is meant to be kept.
+              </List.Item>
+              <List.Item>
+                When you are ready for an organization that persists, upgrade to a Starter plan.
+              </List.Item>
+            </List>
+          </Stack>
+        ) : (
+          <Text data-testid="join-notice-reason">
+            {t(`joinNotice.${pending.joined_via}`, { org: pending.org_name })}
+          </Text>
+        )}
         {error && (
           <Alert color="red" data-testid="join-notice-error">
             {error}
           </Alert>
         )}
         <Group justify="flex-end">
-          {UNASKED_FOR.includes(pending.joined_via ?? "") && (
+          {!isSandbox && UNASKED_FOR.includes(pending.joined_via ?? "") && (
             <Button
               variant="subtle"
               color="red"
@@ -97,7 +135,7 @@ export function JoinNotice() {
             onClick={() => acknowledge(pending.org_id)}
             data-testid="join-notice-ack"
           >
-            {t("joinNotice.ack")}
+            {isSandbox ? "Start exploring" : t("joinNotice.ack")}
           </Button>
         </Group>
       </Stack>

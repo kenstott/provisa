@@ -215,7 +215,7 @@ class _FakeEngine:
         return []
 
 
-async def _noop_rebuild(oid: str) -> None:
+async def _noop_rebuild(oid: str, env: str | None = None) -> None:
     """Stands in for ensure_org_runtime: a cold start rebuilds the org, which needs a database."""
 
 
@@ -284,7 +284,7 @@ async def test_cold_start_rebuilds_the_org_runtime(fake_k8s, monkeypatch):
     rebuilt: list[str] = []
     built: list[str] = []
 
-    async def _ensure(oid: str):
+    async def _ensure(oid: str, env: str | None = None):
         built.append(oid)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _ensure, raising=False)
@@ -307,7 +307,7 @@ async def test_warm_shard_does_not_rebuild_the_org_runtime(fake_k8s, monkeypatch
     fake_k8s.state = "ready"
     rebuilt: list[str] = []
 
-    async def _boom(oid: str):
+    async def _boom(oid: str, env: str | None = None):
         raise AssertionError("a warm shard still holds this org's catalogs")
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _boom, raising=False)
@@ -387,7 +387,7 @@ async def test_tenant_cold_start_restores_the_shared_terminal_before_reissuing_c
     rt = OrgRuntime(org_id="acme", shard="shared_1", engine_generation=0)
     state = _state_with(rt, [], default=default)
 
-    async def _ensure(oid: str):
+    async def _ensure(oid: str, env: str | None = None):
         order.append(f"rebuild:{oid}")
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _ensure, raising=False)
@@ -406,6 +406,150 @@ async def test_tenant_cold_start_restores_the_shared_terminal_before_reissuing_c
         current_org.reset(token)
 
     assert order == ["restore", "rebuild:acme"]
+
+
+def _state_keyed(runtimes: dict, rebuilt: list):
+    """A state whose registry is keyed the way OrgRegistry keys it: one entry per ENVIRONMENT."""
+    registry = SimpleNamespace(get=runtimes.get, invalidate=lambda key: rebuilt.append(key))
+    return SimpleNamespace(
+        org_registry=registry,
+        org_id="default",
+        federation_engine=_FakeEngine(),
+        engine_conn=object(),
+        config=None,
+        tenant_db=None,
+    )
+
+
+async def test_cold_start_rebuilds_the_ENVIRONMENT_the_query_reads(fake_k8s, monkeypatch):
+    """REQ-1448/REQ-1488: the catalogs a resumed coordinator lost are the environment's.
+
+    An environment registers ``org_<id>_env_<env>__<source>`` under its own runtime key. Waking on
+    the org's prod runtime found that one already stamped with the live coordinator, returned
+    early, and released the query at an engine that had never heard of the environment — a
+    CATALOG_NOT_FOUND naming a catalog it had been serving minutes before.
+    """
+    from provisa.api.org_runtime import OrgRuntime, current_org, set_current_env
+
+    rebuilt: list[str] = []
+    built: list[tuple[str, str]] = []
+
+    async def _ensure(oid: str, env: str | None = None):
+        built.append((oid, env))
+
+    monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _ensure, raising=False)
+
+    await engine_wake.ensure_shard_awake("shared_1")
+    live = engine_wake.generation("shared_1")
+    fake_k8s.state = "ready"
+    state = _state_keyed(
+        {
+            "default": OrgRuntime(org_id="default", shard="shared_1", engine_generation=live),
+            # Prod is current: nothing about it says the environment's catalogs are gone.
+            "acme": OrgRuntime(org_id="acme", shard="shared_1", engine_generation=live),
+            "acme_env_ephemeral_e6d020": OrgRuntime(
+                org_id="acme", env="ephemeral_e6d020", shard="shared_1", engine_generation=0
+            ),
+        },
+        rebuilt,
+    )
+
+    token = current_org.set("acme")
+    env_token = set_current_env("ephemeral_e6d020")
+    try:
+        await engine_wake.ensure_engine_awake(state)
+    finally:
+        current_org.reset(token)
+        env_token.var.reset(env_token)
+
+    assert rebuilt == ["acme_env_ephemeral_e6d020"]
+    assert built == [("acme", "ephemeral_e6d020")]
+
+
+async def test_a_warm_shard_leaves_the_environment_runtime_alone(fake_k8s, monkeypatch):
+    from provisa.api.org_runtime import OrgRuntime, current_org, set_current_env
+
+    async def _boom(oid: str, env: str | None = None):
+        raise AssertionError("a warm shard still holds this environment's catalogs")
+
+    monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _boom, raising=False)
+
+    await engine_wake.ensure_shard_awake("shared_1")
+    live = engine_wake.generation("shared_1")
+    fake_k8s.state = "ready"
+    rebuilt: list[str] = []
+    state = _state_keyed(
+        {
+            "default": OrgRuntime(org_id="default", shard="shared_1", engine_generation=live),
+            "acme_env_ephemeral_e6d020": OrgRuntime(
+                org_id="acme", env="ephemeral_e6d020", shard="shared_1", engine_generation=live
+            ),
+        },
+        rebuilt,
+    )
+
+    token = current_org.set("acme")
+    env_token = set_current_env("ephemeral_e6d020")
+    try:
+        await engine_wake.ensure_engine_awake(state)
+    finally:
+        current_org.reset(token)
+        env_token.var.reset(env_token)
+
+    assert rebuilt == []
+
+
+async def test_the_default_orgs_environment_is_rebuilt_too(fake_k8s, monkeypatch):
+    """current_org is unbound for the deployment's own org, and its environments are still its own
+    schemas with their own catalogs. Restoring the shared terminal reissues prod's, not theirs."""
+    from provisa.api.org_runtime import OrgRuntime, set_current_env
+
+    rebuilt: list[str] = []
+    built: list[tuple[str, str]] = []
+
+    async def _ensure(oid: str, env: str | None = None):
+        built.append((oid, env))
+
+    monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _ensure, raising=False)
+
+    state = _state_keyed(
+        {
+            "default": OrgRuntime(org_id="default", shard="shared_1", engine_generation=0),
+            "default_env_review": OrgRuntime(
+                org_id="default", env="review", shard="shared_1", engine_generation=0
+            ),
+        },
+        rebuilt,
+    )
+
+    env_token = set_current_env("review")
+    try:
+        await engine_wake.ensure_engine_awake(state)
+    finally:
+        env_token.var.reset(env_token)
+
+    assert rebuilt == ["default_env_review"]
+    assert built == [("default", "review")]
+
+
+async def test_a_query_in_an_unbuilt_environment_raises(fake_k8s):
+    from provisa.api.org_runtime import OrgRuntime, current_org, set_current_env
+
+    state = _state_keyed(
+        {
+            "default": OrgRuntime(org_id="default", shard="shared_1", engine_generation=0),
+            "acme": OrgRuntime(org_id="acme", shard="shared_1", engine_generation=0),
+        },
+        [],
+    )
+    token = current_org.set("acme")
+    env_token = set_current_env("ephemeral_e6d020")
+    try:
+        with pytest.raises(RuntimeError, match="no built"):
+            await engine_wake.ensure_engine_awake(state)
+    finally:
+        current_org.reset(token)
+        env_token.var.reset(env_token)
 
 
 # ── reaper ──────────────────────────────────────────────────────────────────────
@@ -644,7 +788,7 @@ async def test_prewarm_does_not_bind_the_deployments_own_org(fake_k8s, monkeypat
     rebuilt: list[str] = []
     state = _state_with(None, rebuilt, default=default)
 
-    async def _boom(oid: str) -> None:
+    async def _boom(oid: str, env: str | None = None) -> None:
         raise AssertionError("the default org's runtime must not be rebuilt by a prewarm")
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _boom, raising=False)
@@ -799,7 +943,7 @@ def test_an_isolated_org_wakes_its_own_shard_and_skips_the_shared_terminal():
     src = inspect.getsource(engine_wake._wake_isolated)
     assert "isolated_shard(org_id)" in src
     assert "restore_shared_terminal" not in src
-    assert src.index("ensure_shard_awake(") < src.index("ensure_org_runtime(org_id)")
+    assert src.index("ensure_shard_awake(") < src.index("ensure_org_runtime(org_id, env)")
 
 
 # ── attach_if_serving ───────────────────────────────────────────────────────────

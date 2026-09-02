@@ -28,11 +28,11 @@ vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({ loading: false, capabilities: ["admin"] }),
 }));
 
-
 const {
   TourProvider,
   useTour,
   claimTourOffer,
+  resolveTourOffer,
   tourDeclined,
   declineTour,
   resetTourStateForDemoSession,
@@ -70,9 +70,17 @@ describe("tour welcome offer", () => {
     sessionStorage.clear();
   });
 
-  it("offers once per browser session", () => {
+  it("offers once per browser session, once the offer has been answered", () => {
     expect(claimTourOffer()).toBe(true);
+    resolveTourOffer();
     expect(claimTourOffer()).toBe(false);
+  });
+
+  // Acknowledging a join notice re-reads the identity, and the gate drops the shell while it does.
+  // The offer was never answered, so it comes back with the shell instead of being spent.
+  it("puts an unanswered offer back when the shell remounts", () => {
+    expect(claimTourOffer()).toBe(true);
+    expect(claimTourOffer()).toBe(true);
   });
 
   it("does not offer once the tour has been taken", () => {

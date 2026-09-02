@@ -11,6 +11,7 @@
     "signInWithGithub": "Iniciar sesión con GitHub",
     "signInWithMicrosoft": "Iniciar sesión con Microsoft",
     "signInWithEmail": "Iniciar sesión con correo electrónico",
+    "continueWithEmail": "Continuar con correo electrónico",
     "orDivider": "o",
     "haveAccountSignIn": "¿Ya tiene una cuenta? Inicie sesión",
     "needAccountRegister": "¿Necesita una cuenta? Regístrese",

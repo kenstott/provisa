@@ -10,7 +10,8 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { render } from "../test-utils/render";
 import { CapabilityGate } from "../components/CapabilityGate";
 import type { Capability } from "../types/auth";
@@ -247,6 +248,67 @@ describe("CapabilityGate", () => {
       expect(screen.getByText("Environments")).toBeInTheDocument();
       expect(screen.getByTestId("demonstrated-badge")).toBeInTheDocument();
       expect(screen.queryByTestId("demonstrated-children")).not.toBeInTheDocument();
+    });
+
+    // REQ-1624: the banner says the surface is not available; what it does not say is what the
+    // surface would have been FOR. A right carrying an explanation opens it over the region on
+    // arrival, so a visitor learns what they are looking at rather than only that it is closed.
+    it("explains the purpose of a right that has an explanation", async () => {
+      holding("usage");
+      authState.demonstrated = ["environment_management"];
+
+      render(
+        <CapabilityGate
+          capability={"environment_management" as Capability}
+          fallback={<div>Not Authorized</div>}
+        >
+          <span>Environments</span>
+        </CapabilityGate>,
+      );
+
+      const modal = await screen.findByTestId("demonstrated-purpose-modal");
+      expect(modal).toHaveTextContent("separately governed copy of your model");
+      // The region beneath is still the real one, still inert.
+      expect(screen.getByTestId("demonstrated-children")).toHaveAttribute("aria-disabled", "true");
+    });
+
+    it("closes the explanation and leaves the region standing", async () => {
+      holding("usage");
+      authState.demonstrated = ["environment_management"];
+
+      render(
+        <CapabilityGate
+          capability={"environment_management" as Capability}
+          fallback={<div>Not Authorized</div>}
+        >
+          <span>Environments</span>
+        </CapabilityGate>,
+      );
+
+      await userEvent.click(await screen.findByRole("button", { name: "Got it" }));
+
+      // The Modal root outlives its own transition; what closes is the dialog inside it.
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(screen.getByTestId("demonstrated-banner")).toBeInTheDocument();
+    });
+
+    it("opens no explanation for a right that has none", () => {
+      // An absent entry is not an empty dialog: the modal appears only where something was
+      // written to say.
+      holding("usage");
+      authState.demonstrated = ["observability"];
+
+      render(
+        <CapabilityGate
+          capability={"observability" as Capability}
+          fallback={<div>Not Authorized</div>}
+        >
+          <span>Reports</span>
+        </CapabilityGate>,
+      );
+
+      expect(screen.queryByTestId("demonstrated-purpose-modal")).not.toBeInTheDocument();
+      expect(screen.getByTestId("demonstrated-banner")).toBeInTheDocument();
     });
 
     it("says nothing about a right that is held", () => {

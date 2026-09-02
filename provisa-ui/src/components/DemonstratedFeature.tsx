@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { ReactNode } from "react";
-import { Alert, Badge, Box, Group, Tooltip } from "@mantine/core";
+import { useState, type ReactNode } from "react";
+import { Alert, Badge, Box, Button, Group, Modal, Stack, Text, Tooltip } from "@mantine/core";
 import { Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -26,6 +26,12 @@ interface Props {
    * the far side of it, and a nav entry that refuses the click shows nothing at all.
    */
   navigable?: boolean;
+  /**
+   * The right being demonstrated. A right with a `demonstrated.purpose.<right>` entry opens that
+   * explanation over the region on arrival: the banner says the surface is not available, and the
+   * question a visitor is left with is what it would have been FOR.
+   */
+  capability?: string;
 }
 
 /**
@@ -37,8 +43,13 @@ interface Props {
  * production system, not of the sandbox. The children are rendered exactly as a holder of the right
  * would see them; what is taken away is the ability to act through them.
  */
-export function DemonstratedFeature({ children, block, navigable }: Props) {
-  const { t } = useTranslation("capabilityGate");
+export function DemonstratedFeature({ children, block, navigable, capability }: Props) {
+  const { t, i18n } = useTranslation();
+  const purpose = `capabilityGate.demonstrated.purpose.${capability}`;
+  // Only a right that HAS an explanation gets the modal -- an absent key would otherwise open a
+  // dialog showing its own name.
+  const explained = block && capability !== undefined && i18n.exists(`${purpose}.title`);
+  const [explaining, setExplaining] = useState(true);
   const badge = (
     <Badge size="sm" variant="light" color="gray" data-testid="demonstrated-badge">
       {t("capabilityGate.demonstrated.badge")}
@@ -50,6 +61,29 @@ export function DemonstratedFeature({ children, block, navigable }: Props) {
     // remembering to. Screen readers are told the same thing by aria-disabled.
     return (
       <Box>
+        {explained && (
+          <Modal
+            opened={explaining}
+            onClose={() => setExplaining(false)}
+            title={t(`${purpose}.title`)}
+            centered
+            size="lg"
+            data-testid="demonstrated-purpose-modal"
+          >
+            <Stack gap="md">
+              {t(`${purpose}.body`)
+                .split("\n\n")
+                .map((para) => (
+                  <Text key={para}>{para}</Text>
+                ))}
+              <Group justify="flex-end">
+                <Button onClick={() => setExplaining(false)}>
+                  {t("capabilityGate.demonstrated.dismiss")}
+                </Button>
+              </Group>
+            </Stack>
+          </Modal>
+        )}
         <Alert
           icon={<Info size={16} aria-hidden />}
           color="gray"

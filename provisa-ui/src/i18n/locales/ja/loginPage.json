@@ -11,6 +11,7 @@
     "signInWithGithub": "GitHubでサインイン",
     "signInWithMicrosoft": "Microsoftでサインイン",
     "signInWithEmail": "メールでサインイン",
+    "continueWithEmail": "メールで続行",
     "orDivider": "または",
     "haveAccountSignIn": "アカウントをお持ちですか？サインイン",
     "needAccountRegister": "アカウントが必要ですか？登録",

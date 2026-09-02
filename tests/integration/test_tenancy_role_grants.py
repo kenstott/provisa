@@ -244,3 +244,41 @@ async def test_no_other_role_gains_platform_settings(tenant_db):
     caps = await _caps(tenant_db)
     for role_id in ("developer", "analyst"):
         assert "platform_settings" not in caps[role_id], role_id
+
+
+async def test_a_derived_role_is_re_read_after_every_re_assertion(tenant_db):
+    """REQ-1624: a role whose ``defined_from`` names another IS that other role, here.
+
+    REQ-1597 defines the sandbox visitor by subtracting six rights from ``org_admin`` in the
+    visitor's own environment (``env_copy.adopt_role_definition``), and the visitor holds both
+    names, so the union has to be the narrow one. Every branch above re-asserts ``org_admin``'s
+    rights into whatever schema is being asserted, environment schemas included, so a subtraction
+    applied once was handed straight back on the next runtime build: a sandbox visitor recovered
+    ``environment_management`` and reached the org's environments surface, other visitors'
+    environments and all.
+    """
+    async with tenant_db.acquire() as conn:
+        await conn.execute("UPDATE roles SET defined_from = 'sandbox' WHERE id = 'org_admin'")
+
+    await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=True)
+
+    caps = await _caps(tenant_db)
+    assert caps["org_admin"] == caps["sandbox"]
+    for withheld in (
+        "environment_management",
+        "environment_switch",
+        "org_settings",
+        "observability",
+        "org_glossary_rw",
+    ):
+        assert withheld not in caps["org_admin"], withheld
+
+
+async def test_an_underived_role_keeps_the_tenancy_answer(tenant_db):
+    # The re-read is scoped by the column: an org_admin with no ``defined_from`` is unaffected by
+    # the sandbox row sitting in the same table.
+    await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=True)
+
+    caps = await _caps(tenant_db)
+    assert "environment_management" in caps["org_admin"]
+    assert "environment_management" not in caps["sandbox"]

@@ -20,7 +20,10 @@ import type { LineageGraphData } from "../../api/lineage";
 
 // The named `Core` export resolves to the package's own bundler-broken type (no fit/png);
 // the factory return carries the ambient shim's full instance API, so derive it from there.
-type CyCore = ReturnType<typeof cytoscape>;
+// That shim is still missing `resize`, a real runtime method (http://js.cytoscape.org/#cy.resize)
+// — the same declaration breakage under moduleResolution "bundler" that components/graph/
+// cytoscape-types.ts exists to work around. Name it here rather than casting the instance away.
+type CyCore = ReturnType<typeof cytoscape> & { resize(): void };
 
 interface LineageDagProps {
   graph: LineageGraphData;
@@ -292,7 +295,7 @@ export function LineageDag({
       ],
       layout: { name: "breadthfirst", directed: true, spacingFactor: 1.3, padding: 20 },
       wheelSensitivity: 0.2,
-    });
+    }) as CyCore;
 
     // A tap on a relation — collapsed node or the box around its columns — toggles it; a tap on a
     // column drives federation focus.

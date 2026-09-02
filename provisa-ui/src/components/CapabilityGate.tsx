@@ -52,7 +52,11 @@ export function CapabilityGate({
   // region, an inline gate demonstrates a control.
   if (!allowed && isDemonstrated(demonstrated, req)) {
     return (
-      <DemonstratedFeature block={fallback !== undefined} navigable={navigable}>
+      <DemonstratedFeature
+        block={fallback !== undefined}
+        navigable={navigable}
+        capability={capability}
+      >
         {children}
       </DemonstratedFeature>
     );

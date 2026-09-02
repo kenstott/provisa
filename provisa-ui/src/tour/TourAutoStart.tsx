@@ -10,7 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
-import { claimTourOffer, resetTourStateForDemoSession, useTour } from "./useTour";
+import { claimTourOffer, resetTourStateForDemoSession, resolveTourOffer, useTour } from "./useTour";
 import { useAuth } from "../context/AuthContext";
 import { TourWelcomeModal } from "./TourWelcomeModal";
 
@@ -61,5 +61,12 @@ export function TourAutoStart({ demoMode }: { demoMode: boolean }) {
   }, [tourParam, authLoading, startTour, setSearchParams]);
   // A viewer whose rights open none of the tour's pages is offered nothing: the modal's Start would
   // open a tour with no steps in it.
-  return offering && available ? <TourWelcomeModal onClose={() => setOffering(false)} /> : null;
+  return offering && available ? (
+    <TourWelcomeModal
+      onClose={() => {
+        resolveTourOffer();
+        setOffering(false);
+      }}
+    />
+  ) : null;
 }
