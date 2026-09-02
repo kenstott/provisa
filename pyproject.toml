@@ -105,7 +105,12 @@ dependencies = [
     # cp39-cp312 wheels and no sdist, which is why requires-python caps at <3.13: a 3.13 interpreter
     # must be refused by the RESOLVER with "requires a different Python", never installed and then
     # crashed at first `provisa run`.
-    "pgserver",
+    #
+    # The marker is the wheel matrix, not a fallback: pgserver publishes linux x86_64, macOS
+    # (x86_64 + arm64) and win_amd64 — no linux aarch64. The container tier's arm64 image is built
+    # there and does not use the embedded plane (it runs a real PostgreSQL), so it must resolve;
+    # `provisa run` on linux/aarch64 aborts with the explanation instead (cli._require_embedded_pg).
+    "pgserver; sys_platform != 'linux' or platform_machine != 'aarch64'",
 ]
 
 [project.scripts]

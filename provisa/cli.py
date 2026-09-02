@@ -26,7 +26,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib.util
 import os
+import platform
 import sys
 from pathlib import Path
 
@@ -509,15 +511,30 @@ _SUPPORTED_PY = (3, 12)
 
 
 def _require_supported_interpreter() -> None:
-    """Abort ``provisa run`` on an interpreter the embedded runtime cannot boot on.
+    """Abort ``provisa run`` on a platform the embedded runtime cannot boot on.
 
     The native control plane and telemetry store are an embedded PostgreSQL (REQ-1535) supplied by
-    pgserver, which publishes cp39-cp312 wheels and no sdist. pyproject pins requires-python to
-    <3.13 so pip refuses a newer interpreter, but a source checkout or a hand-built venv bypasses the
-    resolver — those must die HERE with the fix, not 60 frames deep in ModuleNotFoundError: pgserver.
+    pgserver, which publishes cp39-cp312 wheels for linux x86_64 / macOS / win_amd64 and no sdist.
+    pyproject encodes that matrix (requires-python <3.13 plus a linux-aarch64 marker) so pip refuses
+    or omits it, but a source checkout or hand-built venv bypasses the resolver — those must die HERE
+    with the fix, not 60 frames deep in ModuleNotFoundError: pgserver.
     """
-    if sys.version_info[:2] == _SUPPORTED_PY:
-        return
+    if sys.version_info[:2] != _SUPPORTED_PY:
+        _abort_unsupported_interpreter()
+    if importlib.util.find_spec("pgserver") is None:
+        raise SystemExit(
+            "Provisa's embedded PostgreSQL control plane needs pgserver, which is not installed "
+            f"for this platform ({sys.platform}/{platform.machine()}).\n"
+            "pgserver publishes wheels for linux x86_64, macOS and Windows x86_64 only — there is "
+            "no linux/aarch64 build and no source distribution, so the embedded (`provisa run`) "
+            "tier does not run here.\n"
+            "Use an x86_64 host, or run the container tier, which uses a real PostgreSQL control "
+            "plane instead of the embedded one."
+        )
+
+
+def _abort_unsupported_interpreter() -> None:
+    """The interpreter half of :func:`_require_supported_interpreter`."""
     have = "%d.%d" % sys.version_info[:2]
     want = "%d.%d" % _SUPPORTED_PY
     raise SystemExit(
