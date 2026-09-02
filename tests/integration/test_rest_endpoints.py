@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 
 import pytest
+import pytest_asyncio
 
 from provisa.api.rest.generator import (
     _build_graphql_query,
@@ -229,6 +230,32 @@ class TestGetScalarFields:
 # ---------------------------------------------------------------------------
 
 
+@pytest_asyncio.fixture
+async def rest_tenant_db():
+    """REQ-074/REQ-1386: a real tenant database for the audit row every executed statement writes.
+
+    query_audit_log lives in the org's tenant schema, so a state that serves a governed REST query
+    must be bound to one. A throwaway org id gives this module a schema of its own, dropped at
+    teardown.
+    """
+    import os
+    import uuid as _uuid
+
+    from provisa.audit.query_log import init_audit_schema
+    from provisa.core.database import Database, create_engine_from_url
+
+    org = f"rest{_uuid.uuid4().hex[:8]}"
+    engine = create_engine_from_url(os.environ["TENANT_DATABASE_URL"], pool_size=2)
+    db = Database(engine, name="tenant", search_path=f"org_{org}")
+    await init_audit_schema(db, org_id=org)
+    try:
+        yield db
+    finally:
+        async with db.acquire() as conn:
+            await conn.execute(f"DROP SCHEMA IF EXISTS org_{org} CASCADE")
+        await db.close()
+
+
 @pytest.fixture(scope="module")
 def _rest_app_state(tenant_db):
     """Build a minimal AppState with a schema for 'admin' role.
@@ -246,7 +273,7 @@ class TestRestEndpointsHTTP:
     schema pre-loaded (same stack as the other integration tests).
     """
 
-    async def _make_client(self, tenant_db):
+    async def _make_client(self, rest_tenant_db):
         """Construct a minimal AppState and return an AsyncClient."""
         httpx = pytest.importorskip("httpx")
         from provisa.api.rest.generator import create_rest_router
@@ -328,6 +355,7 @@ class TestRestEndpointsHTTP:
         app_state.source_types = {"test-pg": "postgresql"}
         app_state.source_dialects = {"test-pg": "postgres"}
         app_state.masking_rules = {}
+        app_state.tenant_db = rest_tenant_db
         # REST routes are domain-scoped (/data/rest/{domain_id}/{table_name}); the handler resolves
         # the GraphQL field via this path map (REQ-256).
         app_state.table_path_maps = {
@@ -350,9 +378,9 @@ class TestRestEndpointsHTTP:
         client = httpx.AsyncClient(transport=transport, base_url="http://test")
         return client, source_pool
 
-    async def test_get_list_endpoint_returns_rows(self, tenant_db):
+    async def test_get_list_endpoint_returns_rows(self, rest_tenant_db):
         """GET /data/rest/orders returns array of objects."""
-        client, pool = await self._make_client(tenant_db)
+        client, pool = await self._make_client(rest_tenant_db)
 
         try:
             async with client:
@@ -364,9 +392,9 @@ class TestRestEndpointsHTTP:
         finally:
             await pool.close_all()
 
-    async def test_get_list_with_filter(self, tenant_db):
+    async def test_get_list_with_filter(self, rest_tenant_db):
         """GET /data/rest/orders?where.region.eq=us-east filters results."""
-        client, pool = await self._make_client(tenant_db)
+        client, pool = await self._make_client(rest_tenant_db)
 
         try:
             async with client:
@@ -386,9 +414,9 @@ class TestRestEndpointsHTTP:
         finally:
             await pool.close_all()
 
-    async def test_get_list_with_limit(self, tenant_db):
+    async def test_get_list_with_limit(self, rest_tenant_db):
         """GET /data/rest/orders?limit=3 returns at most 3 items."""
-        client, pool = await self._make_client(tenant_db)
+        client, pool = await self._make_client(rest_tenant_db)
 
         try:
             async with client:
@@ -399,9 +427,9 @@ class TestRestEndpointsHTTP:
         finally:
             await pool.close_all()
 
-    async def test_get_by_id_not_found(self, tenant_db):
+    async def test_get_by_id_not_found(self, rest_tenant_db):
         """GET /data/rest/orders?where.id.eq=99999 returns empty data."""
-        client, pool = await self._make_client(tenant_db)
+        client, pool = await self._make_client(rest_tenant_db)
 
         try:
             async with client:
@@ -417,9 +445,9 @@ class TestRestEndpointsHTTP:
         finally:
             await pool.close_all()
 
-    async def test_get_list_rls_applied(self, tenant_db):
+    async def test_get_list_rls_applied(self, rest_tenant_db):
         """REST endpoint applies RLS for the requesting role (no crash)."""
-        client, pool = await self._make_client(tenant_db)
+        client, pool = await self._make_client(rest_tenant_db)
 
         try:
             async with client:
@@ -429,9 +457,9 @@ class TestRestEndpointsHTTP:
         finally:
             await pool.close_all()
 
-    async def test_response_content_type(self, tenant_db):
+    async def test_response_content_type(self, rest_tenant_db):
         """REST response Content-Type is application/json."""
-        client, pool = await self._make_client(tenant_db)
+        client, pool = await self._make_client(rest_tenant_db)
 
         try:
             async with client:

@@ -41,7 +41,8 @@ _DDL = f"""
 CREATE SCHEMA IF NOT EXISTS {_SCHEMA};
 CREATE TABLE IF NOT EXISTS {_SCHEMA}.query_audit_log (
     id BIGSERIAL PRIMARY KEY,
-    tenant_id UUID,
+    -- REQ-594: the tenant IS the org, so tenant_id carries the org id, matching AUDIT_SCHEMA_SQL.
+    tenant_id TEXT,
     user_id TEXT NOT NULL,
     role_id TEXT NOT NULL,
     query_hash TEXT NOT NULL,

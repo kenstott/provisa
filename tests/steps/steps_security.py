@@ -479,9 +479,16 @@ def request_to_skip_path(shared_data: dict) -> None:
         "/data/openapi/redoc",
         "/data/openapi/openapi.json",
         "/auth/login",
+        # REQ-1472: the break-glass credential exchange produces a token, so it cannot sit behind
+        # the bearer gate any more than /auth/login can.
+        "/auth/superuser-login",
         "/auth/provider-type",
         "/auth/bootstrap-status",
         "/setup/status",
+        # REQ-1486: an org's branding dresses its sign-in page, which renders before a token
+        # exists. Both answer only what the org chose to show every visitor at its address.
+        "/orgs/branding",
+        "/orgs/branding/logo",
     }
     assert _SKIP_PATHS == expected
 

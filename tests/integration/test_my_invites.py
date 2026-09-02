@@ -39,7 +39,7 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import org_invites, orgs
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import roles, user_role_assignments
+from provisa.core.schema_org import roles, user_directory, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
 pytestmark = [pytest.mark.integration]
@@ -67,7 +67,7 @@ def _prepare_sync():
         # The middleware resolves role assignments from the tenant plane on every request, so the
         # tenant tables must exist even though this endpoint reads only the platform plane.
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(conn, tables=[roles, user_role_assignments])
+        org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
         conn.execute(insert(orgs).values(id="acme", name="Acme", created_by="super"))
@@ -110,7 +110,8 @@ def _prepare_sync():
         ]
         for row in rows:
             conn.execute(insert(org_invites).values(created_by="super", **row))
-        # Already redeemed.
+        # Already redeemed. REQ-1594 counts redemptions, so what makes this invite spent is
+        # uses reaching max_uses; used_at/used_by only record who took the last one.
         conn.execute(
             insert(org_invites).values(
                 token="tok-used",
@@ -118,6 +119,8 @@ def _prepare_sync():
                 role_id="analyst",
                 email="alice@example.com",
                 expires_at=future,
+                uses=1,
+                max_uses=1,
                 used_at=now,
                 used_by="alice",
                 created_by="super",

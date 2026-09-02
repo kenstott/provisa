@@ -42,8 +42,11 @@ def test_aliased_physical_table_keeps_semantic_alias(ops_ctx):
     )
     out = rewrite_semantic_to_physical(sql, ops_ctx)
     assert '"org_kstott"."query_audit_log_ops"' in out
-    assert "AS query_audit_log" in out
-    assert "AS query_audit_log_ops" not in out
+    # Quoted, like the schema and table beside it: a semantic name is free to be a reserved word
+    # ("order", "user") or to differ in case from the physical one, and an unquoted alias makes
+    # either one a syntax error.
+    assert 'AS "query_audit_log"' in out
+    assert "query_audit_log_ops" not in out.split(" AS ", 1)[1]
     assert '"ops"."query_audit_log"' not in out
 
 

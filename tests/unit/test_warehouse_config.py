@@ -34,6 +34,17 @@ def _clean_tls_env(monkeypatch):
     return monkeypatch
 
 
+@pytest.fixture
+def _bundles(tmp_path):
+    """Three CA bundle paths that exist — the resolver rejects a path that names no file."""
+    paths = {}
+    for name in ("explicit", "requests", "ssl"):
+        p = tmp_path / f"{name}.pem"
+        p.write_text("")
+        paths[name] = str(p)
+    return paths
+
+
 class TestDatabricksTlsKwargs:  # REQ-1076
     def test_default_is_connector_default(self, _clean_tls_env):
         # No env set → no TLS overrides → connector keeps its default verified behavior.
@@ -49,20 +60,31 @@ class TestDatabricksTlsKwargs:  # REQ-1076
         _clean_tls_env.setenv("DATABRICKS_TLS_CA_FILE", "/ca.pem")
         assert databricks_tls_kwargs() == {"_tls_no_verify": True}
 
-    def test_ca_file_beats_conventional_bundles(self, _clean_tls_env):
-        _clean_tls_env.setenv("DATABRICKS_TLS_CA_FILE", "/explicit.pem")
-        _clean_tls_env.setenv("REQUESTS_CA_BUNDLE", "/requests.pem")
-        _clean_tls_env.setenv("SSL_CERT_FILE", "/ssl.pem")
-        assert databricks_tls_kwargs() == {"_tls_trusted_ca_file": "/explicit.pem"}
+    def test_ca_file_beats_conventional_bundles(self, _clean_tls_env, _bundles):
+        _clean_tls_env.setenv("DATABRICKS_TLS_CA_FILE", _bundles["explicit"])
+        _clean_tls_env.setenv("REQUESTS_CA_BUNDLE", _bundles["requests"])
+        _clean_tls_env.setenv("SSL_CERT_FILE", _bundles["ssl"])
+        assert databricks_tls_kwargs() == {"_tls_trusted_ca_file": _bundles["explicit"]}
 
-    def test_requests_ca_bundle_is_next(self, _clean_tls_env):
-        _clean_tls_env.setenv("REQUESTS_CA_BUNDLE", "/requests.pem")
-        _clean_tls_env.setenv("SSL_CERT_FILE", "/ssl.pem")
-        assert databricks_tls_kwargs() == {"_tls_trusted_ca_file": "/requests.pem"}
+    def test_requests_ca_bundle_is_next(self, _clean_tls_env, _bundles):
+        _clean_tls_env.setenv("REQUESTS_CA_BUNDLE", _bundles["requests"])
+        _clean_tls_env.setenv("SSL_CERT_FILE", _bundles["ssl"])
+        assert databricks_tls_kwargs() == {"_tls_trusted_ca_file": _bundles["requests"]}
 
-    def test_ssl_cert_file_is_last_resort(self, _clean_tls_env):
-        _clean_tls_env.setenv("SSL_CERT_FILE", "/ssl.pem")
-        assert databricks_tls_kwargs() == {"_tls_trusted_ca_file": "/ssl.pem"}
+    def test_ssl_cert_file_is_last_resort(self, _clean_tls_env, _bundles):
+        _clean_tls_env.setenv("SSL_CERT_FILE", _bundles["ssl"])
+        assert databricks_tls_kwargs() == {"_tls_trusted_ca_file": _bundles["ssl"]}
+
+    def test_a_bundle_path_that_does_not_exist_names_itself(self, _clean_tls_env, tmp_path):
+        # The connector loads the path inside its HTTPS transport and raises a FileNotFoundError
+        # naming nothing, so a stale bundle path took every Databricks test down with an
+        # unexplained connect failure. The variable and the path both have to be in the message.
+        missing = str(tmp_path / "gone.pem")
+        _clean_tls_env.setenv("DATABRICKS_TLS_CA_FILE", missing)
+        with pytest.raises(FileNotFoundError) as exc:
+            databricks_tls_kwargs()
+        assert missing in str(exc.value)
+        assert "DATABRICKS_TLS_CA_FILE" in str(exc.value)
 
     def test_no_verify_only_on_exact_1(self, _clean_tls_env):
         # A truthy-looking but non-"1" value does not disable verification (fail safe).

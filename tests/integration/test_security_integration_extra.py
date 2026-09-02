@@ -264,17 +264,28 @@ class TestReq594AuthMiddlewareSkipPaths:
         assert resp.status_code in [200, 404]
 
     def test_webhook_reaches_signature_check_without_a_token(self, client):
-        """An unauthenticated POST /billing/webhook must be rejected by the SIGNATURE check.
+        """An unauthenticated POST /billing/webhook must never be rejected by the TOKEN gate.
 
-        400 billing.invalid_signature proves the request got past the auth gate and into the
-        handler. A 401 here is the REQ-1355 regression: Lemon Squeezy has no bearer token to
-        send, so a token gate on this path drops every subscription event on the floor.
+        A 401 here is the REQ-1355 regression: Lemon Squeezy has no bearer token to send, so a
+        token gate on this path drops every subscription event on the floor. What the request meets
+        once it is past that gate depends on the deployment: REQ-1469 puts the /billing routes in
+        the commercial plugin, so with the plugin installed the signature check rejects the unsigned
+        body with 400 billing.invalid_signature, and without it there is no such route and the
+        router answers 404. Either way the bearer gate stood aside, which is what REQ-594 asserts.
         """
+        from provisa.core.commerce import enabled as billing_enabled
+
         resp = client.post("/billing/webhook", json={"meta": {"event_name": "ping"}})
-        assert resp.status_code == 400, (
-            f"expected the signature check to reject this, got {resp.status_code}: {resp.text}"
-        )
-        assert "signature" in resp.text.lower()
+        if billing_enabled():
+            assert resp.status_code == 400, (
+                f"expected the signature check to reject this, got {resp.status_code}: {resp.text}"
+            )
+            assert "signature" in resp.text.lower()
+        else:
+            assert resp.status_code == 404, (
+                "no commercial plugin, so /billing/webhook is unrouted — but the auth gate must "
+                f"still have stood aside; got {resp.status_code}: {resp.text}"
+            )
 
 
 # ============================================================================

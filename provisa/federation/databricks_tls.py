@@ -30,5 +30,14 @@ def databricks_tls_kwargs() -> dict[str, Any]:
         or os.environ.get("SSL_CERT_FILE")
     )
     if ca_file:
+        if not os.path.isfile(ca_file):
+            # The connector loads this path deep inside its HTTPS transport and raises a bare
+            # FileNotFoundError naming nothing, so a stale bundle path reads as an unexplained
+            # connect failure on every Databricks test at once. Name the path and the variable.
+            raise FileNotFoundError(
+                f"databricks TLS CA bundle not found: {ca_file} — the connector was pointed at it "
+                "by DATABRICKS_TLS_CA_FILE, REQUESTS_CA_BUNDLE or SSL_CERT_FILE. Point it at a "
+                "bundle that exists, or unset it to use the connector's own certifi trust."
+            )
         return {"_tls_trusted_ca_file": ca_file}
     return {}

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 import struct
 import threading
@@ -22,6 +23,7 @@ import pytest
 from pytest_bdd import given, when, then, parsers, scenarios
 
 from provisa.auth.models import AuthIdentity
+from provisa.core.egress import CountingWriter
 
 _SECRET = "test-signing-key-at-least-32-bytes-long"
 
@@ -248,6 +250,9 @@ def _handler529(shared_data: dict):
     handler.handle_post_auth = lambda ctx: None  # noqa: ARG005
     handler._assert_peer_binding = lambda username: None  # noqa: ARG005 — no mTLS in tests
     handler._sasl_offered = False
+    # REQ-1452: setup() is what wraps the socket in the egress meter, and the auth path binds the
+    # admitted session's org to it — so a handler built without setup() still needs one.
+    handler._meter = CountingWriter(io.BytesIO(), None)
     return handler
 
 

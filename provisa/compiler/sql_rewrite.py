@@ -260,7 +260,12 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
             this=exp.Identifier(this=table_q, quoted=True),
             db=exp.Identifier(this=schema_q, quoted=True),
             catalog=exp.Identifier(this=catalog_q, quoted=True) if catalog_q else None,
-            alias=exp.TableAlias(this=exp.Identifier(this=alias_q)),
+            # Quoted like the table/schema/catalog identifiers beside it: the alias carries a
+            # SEMANTIC name, which is free to be a reserved word ("order", "user", "table") and
+            # to differ in case from the physical one. Unquoted, `FROM "public"."orders" AS order`
+            # is a syntax error, and the column qualifiers this alias exists to keep bound are
+            # themselves emitted quoted.
+            alias=exp.TableAlias(this=exp.Identifier(this=alias_q, quoted=True)),
         )
         return new_tbl
 

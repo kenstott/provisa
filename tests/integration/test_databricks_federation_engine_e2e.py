@@ -45,6 +45,14 @@ from provisa.compiler.stage2 import apply_governance, build_governance_context  
 from provisa.core.catalog import _to_catalog_name  # noqa: E402
 from provisa.federation.databricks_runtime import DatabricksFederationRuntime  # noqa: E402
 from provisa.transpiler.transpile import transpile  # noqa: E402
+from tests.integration.databricks_warehouse import ensure_warehouse_running  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _warehouse_awake():
+    """A suspended serverless warehouse rejects OpenSession outright — wake it first."""
+    ensure_warehouse_running()
+
 
 _ADMIN = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
 _SRC = "e2e-dbx"  # source id → Unity Catalog e2e_dbx (compiler naming: hyphen → underscore)

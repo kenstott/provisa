@@ -179,7 +179,10 @@ def planes(monkeypatch, smtp):
         registry.set(org_id, OrgRuntime(org_id=org_id, tenant_db=db, roles=dict(loaded_roles)))
     monkeypatch.setattr(app_state, "org_registry", registry, raising=False)
 
-    async def _org_runtime(org_id: str):
+    # REQ-1488: ensure_org_runtime takes the environment as well — an environment is a schema of
+    # its own, so a runtime is keyed by both. Invite delivery is served in prod, which is the
+    # environment a caller naming none is in (REQ-1487), so the registry here is keyed by org.
+    async def _org_runtime(org_id: str, env: str | None = None):
         return registry.get(org_id)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)

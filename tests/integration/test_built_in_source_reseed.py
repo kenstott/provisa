@@ -69,8 +69,13 @@ async def seeded_schema(docker_postgres, monkeypatch):
     monkeypatch.setattr(state, "tenant_db", db, raising=False)
 
     async def seed(engine_name: str) -> None:
+        # The otel Iceberg catalog is Trino's alone (EngineBackend.has_otel_catalog), and the ops
+        # seed reads it to decide whether to register or remove the provisa-otel rows.
         monkeypatch.setattr(
-            state, "federation_engine", SimpleNamespace(name=engine_name), raising=False
+            state,
+            "federation_engine",
+            SimpleNamespace(name=engine_name, has_otel_catalog=engine_name == "trino"),
+            raising=False,
         )
         await _seed_built_in_sources(host, port, "provisa", "provisa", org_id=org_id)
 

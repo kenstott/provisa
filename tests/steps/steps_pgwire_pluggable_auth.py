@@ -74,6 +74,13 @@ def _handler(shared_data):
     from provisa.pgwire.server import ProvisaHandler
 
     handler = object.__new__(ProvisaHandler)
+    # REQ-1452: setup() is what wraps the socket in the egress meter, and the auth path binds the
+    # admitted session's org to it — so a handler built without setup() still needs one.
+    import io
+
+    from provisa.core.egress import CountingWriter
+
+    handler._meter = CountingWriter(io.BytesIO(), None)
     errors = shared_data["errors"]
     admitted = shared_data.setdefault("admitted", [])
 

@@ -516,6 +516,33 @@ def pgwire_pg_backend(docker_postgres):
 
     state = _pgw_build_state(pool)
 
+    # REQ-074/REQ-1386: the executed statement writes an audit row, and that row lands in the org's
+    # tenant schema — so the state serving a real query carries a real tenant database. A throwaway
+    # org id gives it a schema of its own, dropped with the rest of the fixture.
+    import uuid as _uuid
+
+    from provisa.audit.query_log import init_audit_schema
+    from provisa.core.database import Database, create_engine_from_url
+
+    audit_org = f"pgw{_uuid.uuid4().hex[:8]}"
+    audit_engine = create_engine_from_url(
+        f"postgresql+asyncpg://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}"
+        f"/{pg['database']}",
+        pool_size=2,
+    )
+    tenant_db = Database(audit_engine, name="tenant", search_path=f"org_{audit_org}")
+    asyncio.run_coroutine_threadsafe(init_audit_schema(tenant_db, org_id=audit_org), loop).result(
+        timeout=30
+    )
+    state.tenant_db = tenant_db
+    # The audit row's tenant_id is `current_org.get() or state.org_id`, and nothing binds the
+    # ContextVar on this transport — so the org id has to be a real string here, or asyncpg is
+    # handed a MagicMock for a VARCHAR parameter. It is the org whose schema the row lands in.
+    state.org_id = audit_org
+    # REQ-1454 meters the active hour off state.admin_db. This harness is the pgwire server against
+    # a bare Postgres: there is no control plane behind it, which is what `None` says.
+    state.admin_db = None
+
     with (
         patch("provisa.api.app.state", state),
         patch.object(_srv, "state", state, create=True),
@@ -542,6 +569,13 @@ def pgwire_pg_backend(docker_postgres):
             }
         finally:
             server.shutdown()
+
+            async def _drop_audit() -> None:
+                async with tenant_db.acquire() as conn:
+                    await conn.execute(f"DROP SCHEMA IF EXISTS org_{audit_org} CASCADE")
+                await audit_engine.dispose()
+
+            asyncio.run_coroutine_threadsafe(_drop_audit(), loop).result(timeout=30)
             asyncio.run_coroutine_threadsafe(pool.close_all(), loop).result(timeout=10)
             asyncio.run_coroutine_threadsafe(_pgw_drop(asyncpg, pg), loop).result(timeout=10)
             with _srv._loop_lock:

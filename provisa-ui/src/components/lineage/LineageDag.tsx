@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import cytoscape, { type NodeSingular } from "cytoscape";
 import { ActionIcon, Tooltip } from "@mantine/core";
-import { Maximize2, Download } from "lucide-react";
+import { Maximize2, Download, Expand, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import type { LineageGraphData } from "../../api/lineage";
 
 // The named `Core` export resolves to the package's own bundler-broken type (no fit/png);
@@ -24,8 +24,17 @@ type CyCore = ReturnType<typeof cytoscape>;
 
 interface LineageDagProps {
   graph: LineageGraphData;
-  height?: number;
+  height?: number | string;
   onNodeClick?: (nodeId: string) => void;
+  // REQ-1627: relations rendered as ONE node with their column-edges rolled up. Federation-scale
+  // graphs are unreadable column-by-column, so Complete Lineage collapses everything by default and
+  // the reader expands the relations they are actually tracing.
+  collapsedRelations?: ReadonlySet<string>;
+  onToggleRelation?: (relation: string) => void;
+  onCollapseAll?: () => void;
+  onExpandAll?: () => void;
+  // Opens the same graph in a near-fullscreen modal; omitted when already rendering inside one.
+  onOpenModal?: () => void;
 }
 
 // Colour by ROLE in the flow (computed from in/out degree), not just kind: a column that is both
@@ -35,12 +44,18 @@ const ROLE_COLOR: Record<string, string> = {
   intermediate: "#0c8599", // teal — produced here AND consumed downstream (a dataset hand-off)
   output: "#1c7ed6", // blue — produced here, not consumed further (a terminal result column)
   command: "#9c36b5", // purple — an opaque command boundary
+  dataset: "#5c7cfa", // indigo — a whole relation, collapsed to one node
 };
 
 export function LineageDag({
   graph,
   height = 520,
   onNodeClick,
+  collapsedRelations,
+  onToggleRelation,
+  onCollapseAll,
+  onExpandAll,
+  onOpenModal,
 }: LineageDagProps): React.ReactElement {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<CyCore | null>(null);
@@ -60,8 +75,10 @@ export function LineageDag({
   // rebuilding the graph. Assign it in a commit-phase effect — a render-phase ref write mutates
   // state while React is rendering.
   const clickRef = useRef(onNodeClick);
+  const toggleRef = useRef(onToggleRelation);
   useEffect(() => {
     clickRef.current = onNodeClick;
+    toggleRef.current = onToggleRelation;
   });
 
   useEffect(() => {
@@ -90,36 +107,90 @@ export function LineageDag({
       new Set(graph.nodes.map((n) => n.relation).filter((r): r is string => !!r)),
     );
     const parentId = (relation: string) => `rel:${relation}`;
+    const isCollapsed = (relation: string | null): relation is string =>
+      !!relation && !!collapsedRelations?.has(relation);
+
+    // A collapsed relation renders as ONE node standing for all its columns; an edge touching it is
+    // drawn to that node instead. Two collapsed relations with many column-edges between them
+    // therefore share a single edge carrying the count — the shape of the model, not its plumbing.
+    const columnsIn = new Map<string, number>();
+    for (const n of graph.nodes) {
+      if (n.relation) columnsIn.set(n.relation, (columnsIn.get(n.relation) ?? 0) + 1);
+    }
+    const nodeRelation = new Map(graph.nodes.map((n) => [n.id, n.relation]));
+    const drawnId = (nodeId: string): string => {
+      const relation = nodeRelation.get(nodeId) ?? null;
+      return isCollapsed(relation) ? parentId(relation) : nodeId;
+    };
+
+    const expandedRelations = relations.filter((r) => !isCollapsed(r));
+    const collapsed = relations.filter((r) => isCollapsed(r));
+
+    // Roll every column-edge up to the pair of nodes actually drawn, dropping the ones that vanish
+    // inside a single collapsed relation. `count` is how many column-edges one drawn edge stands for.
+    const rolled = new Map<
+      string,
+      { source: string; target: string; label: string; command: boolean; count: number }
+    >();
+    for (const e of graph.edges) {
+      const source = drawnId(e.source);
+      const target = drawnId(e.target);
+      if (source === target) continue; // an internal edge of a collapsed relation
+      const key = `${source}\u0000${target}`;
+      // A pure passthrough (identity/constant) has no transform to name — leave the edge
+      // unlabelled rather than repeating the column name. Only real ops (functions, operators,
+      // commands) get labelled, rendered as a formula with their literal args: substring(1, 3).
+      const label = (e.ops ?? [])
+        .filter((o) => o.kind !== "identity" && o.kind !== "constant")
+        .map((o) => (o.args?.length ? `${o.name}(${o.args.join(", ")})` : o.name))
+        .join(" ");
+      const command = (e.ops ?? []).some((o) => o.kind === "command");
+      const prior = rolled.get(key);
+      if (prior) {
+        prior.count += 1;
+        prior.command = prior.command || command;
+        // A rolled-up edge stands for several transforms; naming one of them would misdescribe the
+        // rest, so it reports the count instead and the reader expands to see the formulas.
+        prior.label = "";
+      } else {
+        rolled.set(key, { source, target, label, command, count: 1 });
+      }
+    }
 
     const elements = [
-      ...relations.map((relation) => ({
-        data: { id: parentId(relation), label: relation, isParent: "yes" },
+      ...expandedRelations.map((relation) => ({
+        data: { id: parentId(relation), label: relation, isParent: "yes", relation },
       })),
-      ...graph.nodes.map((n) => ({
+      ...collapsed.map((relation) => ({
         data: {
-          id: n.id,
-          parent: n.relation ? parentId(n.relation) : undefined,
-          label: n.column,
-          kind: n.kind,
-          role: roleOf(n),
-          materialized: n.materialized ? "yes" : "no",
-          cycle: cycleClass[n.id] ?? "no",
-          output: outputs.has(n.id) ? "yes" : "no",
+          id: parentId(relation),
+          label: `${relation}\n${columnsIn.get(relation) ?? 0} cols`,
+          role: "dataset",
+          isCollapsed: "yes",
+          relation,
         },
       })),
-      ...graph.edges.map((e, i) => ({
+      ...graph.nodes
+        .filter((n) => !isCollapsed(n.relation))
+        .map((n) => ({
+          data: {
+            id: n.id,
+            parent: n.relation ? parentId(n.relation) : undefined,
+            label: n.column,
+            kind: n.kind,
+            role: roleOf(n),
+            materialized: n.materialized ? "yes" : "no",
+            cycle: cycleClass[n.id] ?? "no",
+            output: outputs.has(n.id) ? "yes" : "no",
+          },
+        })),
+      ...Array.from(rolled.values()).map((e, i) => ({
         data: {
           id: `e${i}`,
           source: e.source,
           target: e.target,
-          // A pure passthrough (identity/constant) has no transform to name — leave the edge
-          // unlabelled rather than repeating the column name. Only real ops (functions, operators,
-          // commands) get labelled, rendered as a formula with their literal args: substring(1, 3).
-          label: (e.ops ?? [])
-            .filter((o) => o.kind !== "identity" && o.kind !== "constant")
-            .map((o) => (o.args?.length ? `${o.name}(${o.args.join(", ")})` : o.name))
-            .join(" "),
-          command: (e.ops ?? []).some((o) => o.kind === "command") ? "yes" : "no",
+          label: e.count > 1 ? `${e.count} columns` : e.label,
+          command: e.command ? "yes" : "no",
         },
       })),
     ];
@@ -188,6 +259,19 @@ export function LineageDag({
           },
         },
         {
+          // A collapsed relation: one node standing for the whole dataset, clicked to expand.
+          selector: 'node[isCollapsed = "yes"]',
+          style: {
+            width: 150,
+            height: 52,
+            "font-size": 10,
+            "font-weight": "bold",
+            "border-width": 2,
+            "border-color": "#3b5bdb",
+            "text-max-width": "140px",
+          },
+        },
+        {
           // The dataset container: a labelled box wrapping its columns.
           selector: 'node[isParent = "yes"]',
           style: {
@@ -210,17 +294,28 @@ export function LineageDag({
       wheelSensitivity: 0.2,
     });
 
-    // Column clicks drive federation focus; ignore taps on the dataset container itself.
+    // A tap on a relation — collapsed node or the box around its columns — toggles it; a tap on a
+    // column drives federation focus.
     cy.on("tap", "node", (evt) => {
-      if (evt.target.data("isParent") !== "yes") clickRef.current?.(evt.target.id());
+      const relation = evt.target.data("relation") as string | undefined;
+      if (relation) {
+        toggleRef.current?.(relation);
+        return;
+      }
+      clickRef.current?.(evt.target.id());
     });
 
     cyRef.current = cy;
+    // The panel now grows with the window (height="100%"), and cytoscape reads its canvas size once
+    // at init — without this the graph keeps the size it was born with and clips or floats.
+    const observer = new ResizeObserver(() => cy.resize());
+    observer.observe(containerRef.current);
     return () => {
+      observer.disconnect();
       cy.destroy();
       cyRef.current = null;
     };
-  }, [graph]);
+  }, [graph, collapsedRelations]);
 
   return (
     <div
@@ -241,6 +336,42 @@ export function LineageDag({
           pointerEvents: hovered ? "auto" : "none",
         }}
       >
+        {onExpandAll && (
+          <Tooltip label="Expand all datasets">
+            <ActionIcon
+              variant="default"
+              onClick={onExpandAll}
+              aria-label="Expand all datasets"
+              data-testid="lineage-expand-all"
+            >
+              <ChevronsUpDown size={16} />
+            </ActionIcon>
+          </Tooltip>
+        )}
+        {onCollapseAll && (
+          <Tooltip label="Collapse all datasets">
+            <ActionIcon
+              variant="default"
+              onClick={onCollapseAll}
+              aria-label="Collapse all datasets"
+              data-testid="lineage-collapse-all"
+            >
+              <ChevronsDownUp size={16} />
+            </ActionIcon>
+          </Tooltip>
+        )}
+        {onOpenModal && (
+          <Tooltip label="Open full view">
+            <ActionIcon
+              variant="default"
+              onClick={onOpenModal}
+              aria-label="Open full view"
+              data-testid="lineage-open-modal"
+            >
+              <Expand size={16} />
+            </ActionIcon>
+          </Tooltip>
+        )}
         <Tooltip label="Fit to screen">
           <ActionIcon
             variant="default"

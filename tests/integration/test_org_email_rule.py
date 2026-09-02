@@ -35,7 +35,7 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import org_invites, orgs, user_org_memberships
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import roles, user_role_assignments
+from provisa.core.schema_org import roles, user_directory, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
 pytestmark = [pytest.mark.integration]
@@ -92,7 +92,7 @@ def _prepare_sync():
         )
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(conn, tables=[roles, user_role_assignments])
+        org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
         conn.execute(insert(roles).values(id="org_admin"))
     return engine
 
@@ -116,7 +116,7 @@ def planes(monkeypatch):
 
     from types import SimpleNamespace
 
-    async def _org_runtime(_org_id: str):
+    async def _org_runtime(_org_id: str, _env: str | None = None):
         return SimpleNamespace(tenant_db=tenant_db)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
@@ -151,7 +151,14 @@ def _q(sync_engine, schema, stmt):
         return conn.execute(stmt).fetchall()
 
 
-def test_redeem_rejected_when_email_rule_excludes(planes):
+def test_redeem_admitted_even_when_email_rule_excludes(planes):
+    """REQ-1572: the rule guards self-service joining, not an invitation an admin issued.
+
+    alice@example.com does not match acme's ``@acme\\.com$``. Applying the rule here refused
+    exactly the people an admin deliberately reached outside their own domain — a contractor,
+    an auditor, an IdP account carrying a different address — with an error the invitee could
+    do nothing about. The invitation is the admission decision, so it admits and burns.
+    """
     admin_db, tenant_db, sync_engine = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         resp = client.post(
@@ -159,21 +166,23 @@ def test_redeem_rejected_when_email_rule_excludes(planes):
             json={"token": "tok-acme"},
             headers={"Authorization": "Bearer tok-alice"},
         )
-    assert resp.status_code == 403, resp.text
-    # No membership granted on rejection.
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["org_id"] == "acme"
     membership = _q(
         sync_engine,
         _ADMIN_SCHEMA,
         select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == "alice"),
     )
-    assert membership == []
-    # Invite NOT burned — the rejected redemption must leave it usable by a permitted address.
+    assert [r[0] for r in membership] == ["acme"]
+    # Spent by the redemption it admitted — a single-use invite is burnt whoever redeems it.
     invite = _q(
         sync_engine,
         _ADMIN_SCHEMA,
-        select(org_invites.c.used_at).where(org_invites.c.token == "tok-acme"),
+        select(org_invites.c.uses, org_invites.c.max_uses, org_invites.c.used_by).where(
+            org_invites.c.token == "tok-acme"
+        ),
     )[0]
-    assert invite[0] is None
+    assert (invite[0], invite[1], invite[2]) == (1, 1, "alice")
 
 
 def test_redeem_allowed_when_email_rule_matches(planes):

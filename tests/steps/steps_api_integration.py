@@ -1179,7 +1179,12 @@ def rest_same_governance_as_graphql(shared_data):
     assert hasattr(_pipeline, "_govern_and_route_compiled"), (
         "REST + GraphQL must share _govern_and_route_compiled for governance"
     )
-    src = inspect.getsource(_pipeline._govern_and_route_compiled)
+    # `_govern_and_route_compiled` wakes the engine, delegates the planning to
+    # `_govern_and_route_compiled_planned`, and binds the tier ceilings to what comes back; the
+    # governance stages live in the planned half, so the pair is what "the shared pipeline" means.
+    src = inspect.getsource(_pipeline._govern_and_route_compiled) + inspect.getsource(
+        _pipeline._govern_and_route_compiled_planned
+    )
     assert "rls" in src, "shared pipeline must apply RLS"
     assert "masking_rules" in src, "shared pipeline must apply masking"
     assert "decide_route" in src, "shared pipeline must apply routing"

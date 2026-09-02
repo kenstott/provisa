@@ -31,6 +31,14 @@ pytestmark.append(
 )
 
 from provisa.executor.pool import SourcePool  # noqa: E402
+from tests.integration.databricks_warehouse import ensure_warehouse_running  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _warehouse_awake():
+    """A suspended serverless warehouse rejects OpenSession outright — wake it first."""
+    ensure_warehouse_running()
+
 
 _SID = "dbx_src_e2e"
 _SCHEMA = "provisa_src_e2e"

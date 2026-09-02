@@ -8,9 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1297: every org schema seeds exactly four system roles, and the retired ids are gone.
+"""REQ-1297: every org schema seeds exactly the system roles, and the retired ids are gone.
 
-The four ids — platform_admin, org_admin, developer, analyst — are the whole role vocabulary.
+The ids — platform_admin, org_admin, developer, analyst, modeler and sandbox (REQ-1597) — are the
+whole role vocabulary.
 'admin' and 'superadmin' survive only as CAPABILITY strings; as ROLE ids they are retired, and an
 assignment naming one is rewritten to platform_admin the next time the seed runs over the schema.
 
@@ -74,17 +75,25 @@ async def _system_roles(db: Database) -> dict[str, list[str]]:
     return out
 
 
-async def test_the_five_system_roles_and_nothing_else_are_seeded(tenant_db):
+async def test_the_system_roles_and_nothing_else_are_seeded(tenant_db):
     seeded = await _system_roles(tenant_db)
 
-    assert set(seeded) == {"platform_admin", "org_admin", "developer", "analyst", "modeler"}
+    # REQ-1597: sandbox joins the vocabulary as what a "Try it Out" invitation confers.
+    assert set(seeded) == {
+        "platform_admin",
+        "org_admin",
+        "developer",
+        "analyst",
+        "modeler",
+        "sandbox",
+    }
 
 
 async def test_only_platform_admin_carries_the_bypass_capabilities(tenant_db):
     seeded = await _system_roles(tenant_db)
 
     assert {"admin", "superadmin"} <= set(seeded["platform_admin"])
-    for role_id in ("org_admin", "developer", "analyst", "modeler"):
+    for role_id in ("org_admin", "developer", "analyst", "modeler", "sandbox"):
         assert not ({"admin", "superadmin"} & set(seeded[role_id])), role_id
 
 
@@ -113,7 +122,9 @@ async def test_the_tenant_roles_hold_the_authority_the_requirement_names(tenant_
         set(seeded["developer"])
     )
     # analyst reads: no authoring, no governance, no member management.
-    assert set(seeded["analyst"]) == {"usage", "query_development"}
+    # glossary_read is read access to the org's term definitions — reading, which is what the role
+    # is for; it authors nothing (glossary_rw and org_glossary_rw stay out).
+    assert set(seeded["analyst"]) == {"usage", "query_development", "glossary_read"}
     assert not ({"create_view", "user_management", "write"} & set(seeded["analyst"]))
 
 

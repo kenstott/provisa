@@ -21,6 +21,8 @@ import {
   Button,
   Group,
   Input,
+  Modal,
+  MultiSelect,
   Paper,
   Stack,
   Text,
@@ -37,6 +39,9 @@ import { LineageDag } from "../components/lineage/LineageDag";
 import { fetchLineageGraph, fetchFederationGraph } from "../api/lineage";
 import type { LineageGraphData } from "../api/lineage";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { useAuth } from "../context/AuthContext";
+import { CapabilityGate } from "../components/CapabilityGate";
+import { fetchOrgRoles } from "../api/admin";
 
 const LEGEND: { label: string; color: string }[] = [
   { label: "source column", color: "#2f9e44" },
@@ -44,6 +49,7 @@ const LEGEND: { label: string; color: string }[] = [
   { label: "result column", color: "#1c7ed6" },
   { label: "command boundary", color: "#9c36b5" },
   { label: "final output (orange ring)", color: "#f08c00" },
+  { label: "dataset (collapsed — click to expand)", color: "#5c7cfa" },
 ];
 
 const DEFAULT_SQL =
@@ -51,6 +57,9 @@ const DEFAULT_SQL =
 // Persist the last query + rendered graph so leaving and returning to the page restores the view.
 const SQL_KEY = "provisa.lineage.sql";
 const GRAPH_KEY = "provisa.lineage.graph";
+// Collapse state is part of what the reader was looking at, so it is restored with the graph —
+// otherwise a return to the page re-explodes a federation they had narrowed down.
+const COLLAPSED_KEY = "provisa.lineage.collapsed";
 
 function loadStoredGraph(): LineageGraphData | null {
   try {
@@ -58,6 +67,15 @@ function loadStoredGraph(): LineageGraphData | null {
     return raw ? (JSON.parse(raw) as LineageGraphData) : null;
   } catch {
     return null;
+  }
+}
+
+function loadStoredCollapsed(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(COLLAPSED_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
   }
 }
 
@@ -77,6 +95,42 @@ export function LineagePage(): React.ReactElement {
   const [sqlHovered, setSqlHovered] = useState(false);
   const [sqlCopied, setSqlCopied] = useState(false);
   const { checkedDomains } = useDomainFilter();
+  // REQ-1625/REQ-1628: Complete Lineage is read from a role's vantage point, and the role is picked
+  // HERE rather than taken from the NavBar. The NavBar picker chooses which of the user's own roles
+  // they act as; this one chooses whose lineage is being analysed, and a governance analyst must be
+  // able to name ANY role in the org — including ones they do not hold — to see what that role's data
+  // is derived from. The right to do that is view_governance, the same right the visible_to columns
+  // carry, enforced on the endpoint and gated here so the control is absent without it.
+  const { selectedRoles, activeOrgId } = useAuth();
+  const [orgRoles, setOrgRoles] = useState<string[]>([]);
+  // The user's current roles are the natural opening perspective; empty means "every role".
+  const [lineageRoles, setLineageRoles] = useState<string[]>(() => selectedRoles.map((r) => r.id));
+  // REQ-1627: which relations are drawn as a single node. Complete Lineage arrives collapsed — a
+  // federation is unreadable column-by-column — and statement lineage arrives expanded, being small.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => loadStoredCollapsed());
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const relationsOf = (g: LineageGraphData): string[] => [
+    ...new Set(g.nodes.map((n) => n.relation).filter((r): r is string => !!r)),
+  ];
+  const toggleRelation = (relation: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(relation)) next.add(relation);
+      return next;
+    });
+
+  useEffect(() => {
+    if (!activeOrgId) return;
+    let cancelled = false;
+    void (async () => {
+      const rows = await fetchOrgRoles(activeOrgId);
+      if (!cancelled) setOrgRoles(rows.map((r) => r.id));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOrgId]);
 
   // Persist query + graph on every change so a later remount restores exactly what was here.
   useEffect(() => {
@@ -86,12 +140,17 @@ export function LineagePage(): React.ReactElement {
     if (graph) sessionStorage.setItem(GRAPH_KEY, JSON.stringify(graph));
     else sessionStorage.removeItem(GRAPH_KEY);
   }, [graph]);
+  useEffect(() => {
+    sessionStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
+  }, [collapsed]);
 
-  const run = async (fn: () => Promise<LineageGraphData>) => {
+  const run = async (fn: () => Promise<LineageGraphData>, collapseAll = false) => {
     setLoading(true);
     setError(null);
     try {
-      setGraph(await fn());
+      const built = await fn();
+      setCollapsed(collapseAll ? new Set(relationsOf(built)) : new Set());
+      setGraph(built);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setGraph(null);
@@ -136,7 +195,9 @@ export function LineagePage(): React.ReactElement {
   );
 
   return (
-    <Stack p="md" gap="md">
+    // The graph panel grows to the bottom of the page rather than ending at a fixed height, so the
+    // canvas is as tall as the window allows and the DAG is not read through a letterbox.
+    <Stack p="md" gap="md" style={{ flex: 1, minHeight: 0 }}>
       <Title order={3}>Data Lineage</Title>
       <Text c="dimmed" size="sm">
         Trace where data comes from. Paste a query below and Provisa maps each result column back
@@ -201,6 +262,19 @@ export function LineagePage(): React.ReactElement {
           </div>
         </Input.Wrapper>
         <Stack gap="xs">
+          <CapabilityGate capability="view_governance">
+            <MultiSelect
+              size="xs"
+              label="Lineage for role"
+              placeholder={lineageRoles.length ? undefined : "All roles"}
+              data={orgRoles}
+              value={lineageRoles}
+              onChange={setLineageRoles}
+              searchable
+              clearable
+              data-testid="lineage-roles"
+            />
+          </CapabilityGate>
           <Button
             onClick={() => run(() => fetchLineageGraph(sql))}
             loading={loading}
@@ -208,14 +282,25 @@ export function LineagePage(): React.ReactElement {
           >
             Statement Lineage
           </Button>
-          <Button
-            variant="light"
-            onClick={() => run(() => fetchFederationGraph({ domains: Array.from(checkedDomains) }))}
-            loading={loading}
-            data-testid="lineage-federation"
-          >
-            Complete Lineage
-          </Button>
+          <CapabilityGate capability="view_governance">
+            <Button
+              variant="light"
+              onClick={() =>
+                run(
+                  () =>
+                    fetchFederationGraph({
+                      domains: Array.from(checkedDomains),
+                      roles: lineageRoles,
+                    }),
+                  true,
+                )
+              }
+              loading={loading}
+              data-testid="lineage-federation"
+            >
+              Complete Lineage
+            </Button>
+          </CapabilityGate>
         </Stack>
       </Group>
 
@@ -255,7 +340,11 @@ export function LineagePage(): React.ReactElement {
       )}
 
       {graph && graph.nodes.length > 0 && (
-        <Paper withBorder p="xs">
+        <Paper
+          withBorder
+          p="xs"
+          style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+        >
           <Group gap="md" mb="xs">
             {LEGEND.map((l) => (
               <Group key={l.label} gap={4}>
@@ -267,9 +356,42 @@ export function LineagePage(): React.ReactElement {
               {graph.nodes.length} columns · {graph.edges.length} edges
             </Text>
           </Group>
-          <LineageDag graph={graph} />
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <LineageDag
+              graph={graph}
+              height="100%"
+              collapsedRelations={collapsed}
+              onToggleRelation={toggleRelation}
+              onCollapseAll={() => setCollapsed(new Set(relationsOf(graph)))}
+              onExpandAll={() => setCollapsed(new Set())}
+              onOpenModal={() => setModalOpen(true)}
+            />
+          </div>
         </Paper>
       )}
+
+      {/* REQ-1627: the same graph at near-fullscreen. A federation carries far more than the inline
+          panel can show, and the collapse state is shared, so opening the modal continues the trace
+          rather than restarting it. */}
+      <Modal
+        opened={modalOpen && !!graph}
+        onClose={() => setModalOpen(false)}
+        size="90%"
+        title="Data Lineage"
+        data-testid="lineage-modal"
+        styles={{ body: { padding: 0 } }}
+      >
+        {graph && (
+          <LineageDag
+            graph={graph}
+            height="calc(90vh - 120px)"
+            collapsedRelations={collapsed}
+            onToggleRelation={toggleRelation}
+            onCollapseAll={() => setCollapsed(new Set(relationsOf(graph)))}
+            onExpandAll={() => setCollapsed(new Set())}
+          />
+        )}
+      </Modal>
     </Stack>
   );
 }

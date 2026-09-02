@@ -113,7 +113,22 @@ def planes(monkeypatch):
     async def _fake_provision_org(*_a, **_k):
         return None
 
-    async def _fake_build_org_runtime(org_id, *, include_demo=False, isolated_engine=False):
+    # Keyword-for-keyword with provisa.api.app.build_org_runtime (REQ-1266). Spelled out rather
+    # than swallowed by **kwargs so that a keyword the real builder no longer takes fails here
+    # too, instead of this stub quietly accepting a call the real one would reject.
+    async def _fake_build_org_runtime(
+        org_id,
+        *,
+        env=None,
+        ephemeral=False,
+        include_demo=False,
+        isolated_engine=False,
+        external_engine=None,
+        engine_kind=None,
+        engine_url=None,
+        shard="",
+        storage_url=None,
+    ):
         import types as _types
 
         return _types.SimpleNamespace(tenant_db=admin_db, org_id=org_id)

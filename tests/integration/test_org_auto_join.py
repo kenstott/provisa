@@ -33,7 +33,7 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import roles, user_role_assignments
+from provisa.core.schema_org import roles, user_directory, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
 pytestmark = [pytest.mark.integration]
@@ -67,7 +67,7 @@ def _prepare_sync(*, org_rows: list[dict]):
             conn.execute(_seed_org(**values))
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(conn, tables=[roles, user_role_assignments])
+        org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
         conn.execute(insert(roles).values(id="analyst"))
     return engine
 
@@ -93,7 +93,7 @@ def _planes(monkeypatch, *org_rows: dict):
     # resolve the runtime to a stub carrying tenant_db (same seam as test_redeem_invite).
     from types import SimpleNamespace
 
-    async def _org_runtime(_org_id: str):
+    async def _org_runtime(_org_id: str, _env: str | None = None):
         return SimpleNamespace(tenant_db=tenant_db)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)

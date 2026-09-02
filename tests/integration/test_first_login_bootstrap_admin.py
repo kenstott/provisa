@@ -38,7 +38,7 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import roles, user_role_assignments
+from provisa.core.schema_org import roles, user_directory, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
 pytestmark = [pytest.mark.integration]
@@ -79,7 +79,7 @@ def _prepare_sync():
         )
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(conn, tables=[roles, user_role_assignments])
+        org_metadata.create_all(conn, tables=[roles, user_role_assignments, user_directory])
         for rid in ("platform_admin", "analyst", "org_admin"):
             conn.execute(text("INSERT INTO roles (id) VALUES (:i)"), {"i": rid})
     return engine
@@ -198,7 +198,17 @@ def test_first_login_claims_and_holds_platform_admin(planes):
     assert body["active_org_id"] == _ORG
     # REQ-1296: the claimant is seated in the bootstrap org. Landing with no membership is what left
     # the first admin staring at an empty deployment they could not query.
-    assert body["org_memberships"] == [{"org_id": _ORG, "org_name": "Enterprise"}]
+    # REQ-1478 carries joined_via/acknowledged with each membership: the claimant created this org,
+    # so there is nothing about it to explain to them and nothing to acknowledge.
+    assert body["org_memberships"] == [
+        {
+            "org_id": _ORG,
+            "org_name": "Enterprise",
+            "joined_via": "created",
+            "acknowledged": True,
+            "env_name": None,
+        }
+    ]
 
 
 def test_claim_seats_the_admin_in_both_planes(planes):

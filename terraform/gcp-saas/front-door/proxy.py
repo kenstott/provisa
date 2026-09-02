@@ -22,6 +22,7 @@ this box fronts dev-scale traffic, not the data plane.
 """
 
 import datetime
+import ipaddress
 import json
 import logging
 import select
@@ -49,6 +50,12 @@ STATUS_PORT = CFG["status_port"]
 STATUS_TOKEN = CFG["status_token"]
 IDLE_STOP_SECONDS = CFG["idle_stop_minutes"] * 60
 BOOT_GRACE_SECONDS = CFG["boot_grace_seconds"]
+# Whose traffic counts as use of the coordinator. Every spliced connection reset the idle clock,
+# and the shared IP takes unsolicited connections from the internet all day, so the reaper fired
+# twice in a fortnight and a machine meant to scale to zero billed as a 24/7 VM. These are the
+# same CIDRs the firewall admits: a client that is not allowed to reach the coordinator is not
+# allowed to keep it awake either.
+ACTIVITY_NETWORKS = [ipaddress.ip_network(c) for c in CFG["activity_cidrs"]]
 TLS_CERT = CFG["tls_cert"]  # path; "" when the deploy runs without TLS material
 TLS_KEY = CFG["tls_key"]
 
@@ -144,6 +151,12 @@ def _touch() -> None:
     _last_activity = time.monotonic()
 
 
+def counts_as_activity(peer: str) -> bool:
+    """Whether a connection from this address is evidence the coordinator is in use."""
+    addr = ipaddress.ip_address(peer)
+    return any(addr in net for net in ACTIVITY_NETWORKS)
+
+
 def _backend_connect(port: int, timeout: float = BACKEND_CONNECT_TIMEOUT):
     try:
         return socket.create_connection((BACKEND_HOST, port), timeout=timeout)
@@ -211,11 +224,17 @@ def _https_ready(port: int) -> bool:
     return _backend_ready(port, fresh=True)
 
 
-def _splice(client: socket.socket, backend: socket.socket) -> None:
+def _splice(client: socket.socket, backend: socket.socket, activity: bool) -> None:
+    """Pump bytes between the two sockets.
+
+    ``activity`` says whether this connection may reset the idle clock -- see counts_as_activity.
+    An unrecognised client is still served; it simply does not vote on the coordinator's lifetime.
+    """
     global _active_conns
     with _state_lock:
         _active_conns += 1
-    _touch()
+    if activity:
+        _touch()
     try:
         # Both sockets stay BLOCKING. select() only decides what is readable; the
         # write is a blocking sendall, which is the only way it can deliver a body
@@ -238,7 +257,8 @@ def _splice(client: socket.socket, backend: socket.socket) -> None:
                     return
                 if not data:
                     return
-                _touch()
+                if activity:
+                    _touch()
                 try:
                     pairs[sock].sendall(data)
                 except OSError:
@@ -246,7 +266,8 @@ def _splice(client: socket.socket, backend: socket.socket) -> None:
     finally:
         with _state_lock:
             _active_conns -= 1
-        _touch()
+        if activity:
+            _touch()
         for sock in (client, backend):
             try:
                 sock.close()
@@ -433,7 +454,12 @@ def _listen_status() -> None:
         threading.Thread(target=_serve_status, args=(client,), daemon=True).start()
 
 
-def _handle(client: socket.socket, port: int) -> None:
+def _handle(client: socket.socket, port: int, peer: str) -> None:
+    # An unsolicited connection from the internet is served whatever is already up and nothing
+    # more: it neither starts the coordinator nor resets its idle clock. Both halves matter --
+    # waking costs an hour of VM time, and the reset is what kept a scale-to-zero box running
+    # all month. counts_as_activity names the CIDRs the firewall admits.
+    activity = counts_as_activity(peer)
     if PORTS[port]["wake_style"] in ("html", "json"):
         # Readiness on an HTTPS port is /health, not an accept: see _backend_ready. A port that
         # accepts but is not serving still gets the waking page, and still triggers the wake —
@@ -441,14 +467,20 @@ def _handle(client: socket.socket, port: int) -> None:
         if _https_ready(port):
             backend = _backend_connect(port)
             if backend:
-                _splice(client, backend)
+                _splice(client, backend, activity)
                 return
+        if not activity:
+            client.close()
+            return
         trigger_wake()
         _serve_wake_response(client, port)
         return
     backend = _backend_connect(port)
     if backend:
-        _splice(client, backend)
+        _splice(client, backend, activity)
+        return
+    if not activity:
+        client.close()
         return
     trigger_wake()
     # Raw TCP protocol: hold the client while the coordinator boots, then splice.
@@ -457,7 +489,7 @@ def _handle(client: socket.socket, port: int) -> None:
         time.sleep(3)
         backend = _backend_connect(port)
         if backend:
-            _splice(client, backend)
+            _splice(client, backend, activity)
             return
     client.close()
 
@@ -469,8 +501,8 @@ def _listen(port: int) -> None:
     srv.listen(128)
     log.info("listening on :%s (%s)", port, PORTS[port]["wake_style"])
     while True:
-        client, _ = srv.accept()
-        threading.Thread(target=_handle, args=(client, port), daemon=True).start()
+        client, addr = srv.accept()
+        threading.Thread(target=_handle, args=(client, port, addr[0]), daemon=True).start()
 
 
 def idle_stop_due() -> float | None:

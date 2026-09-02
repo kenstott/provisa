@@ -41,6 +41,7 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import pytest_asyncio
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -355,11 +356,49 @@ class TestPresignedURLRedirect:
 # REQ-256 — REST auto-generated endpoint integration
 # ---------------------------------------------------------------------------
 
+_REST_AUDIT_ORG = "rest_req256"
+
+
+@pytest_asyncio.fixture
+async def rest_audit_plane():
+    """A tenant plane the REST audit row can actually land in (REQ-074/REQ-1386).
+
+    The session ``tenant_db`` runs on the role's default search_path, and ``query_audit_log``
+    lives in the org's own schema — so a Database scoped to that schema, with the audit
+    relations created in it, is what the executed statement needs. Its own org id, because the
+    log is append-only and these rows are this module's.
+    """
+    from provisa.audit.query_log import init_audit_schema
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.environments import org_schema
+
+    schema = org_schema(_REST_AUDIT_ORG)
+    engine = create_engine_from_url(os.environ["TENANT_DATABASE_URL"], pool_size=2, max_overflow=2)
+    db = Database(engine, name="org", search_path=schema)
+    await init_audit_schema(db, _REST_AUDIT_ORG)
+    yield db
+    async with db.acquire() as conn:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+    await db.close()
+
+
+def _wire_audit_plane(state, rest_audit_plane) -> None:
+    """Point ``state`` at the audit plane above.
+
+    ``org_id`` has to be a real string: the audit row's tenant_id is ``current_org.get() or
+    state.org_id``, and nothing binds the ContextVar here, so a MagicMock would reach asyncpg
+    as a VARCHAR parameter. ``admin_db`` is None because REQ-1454's active-hour metering reads
+    it, and there is no control plane behind this router.
+    """
+    state.tenant_db = rest_audit_plane
+    state.org_id = _REST_AUDIT_ORG
+    state.admin_db = None
+
 
 class TestRESTAutoGenEndpoint:
     """REQ-256: GET /data/rest/{table} auto-generated from registered tables."""
 
-    async def test_rest_list_endpoint_exists(self, tenant_db):
+    async def test_rest_list_endpoint_exists(self, rest_audit_plane):
         """REQ-256: /data/rest/orders returns 200 with a data array."""
         httpx = pytest.importorskip("httpx")
         from fastapi import FastAPI
@@ -378,6 +417,7 @@ class TestRESTAutoGenEndpoint:
             password=os.environ.get("PG_PASSWORD", "provisa"),
         )
         state.source_pools = source_pool
+        _wire_audit_plane(state, rest_audit_plane)
 
         try:
             from provisa.auth.middleware import AuthMiddleware
@@ -399,7 +439,7 @@ class TestRESTAutoGenEndpoint:
         finally:
             await source_pool.close_all()
 
-    async def test_rest_where_filter_applied(self, tenant_db):
+    async def test_rest_where_filter_applied(self, rest_audit_plane):
         """REQ-256: WHERE filter in query string restricts results."""
         httpx = pytest.importorskip("httpx")
         from fastapi import FastAPI
@@ -418,6 +458,7 @@ class TestRESTAutoGenEndpoint:
             password=os.environ.get("PG_PASSWORD", "provisa"),
         )
         state.source_pools = source_pool
+        _wire_audit_plane(state, rest_audit_plane)
 
         try:
             from provisa.auth.middleware import AuthMiddleware
@@ -442,7 +483,7 @@ class TestRESTAutoGenEndpoint:
         finally:
             await source_pool.close_all()
 
-    async def test_rest_endpoint_same_governance_as_graphql(self, tenant_db):
+    async def test_rest_endpoint_same_governance_as_graphql(self, rest_audit_plane):
         """REQ-256: REST path applies RLS/masking (no unguarded access)."""
         httpx = pytest.importorskip("httpx")
         from fastapi import FastAPI
@@ -461,6 +502,7 @@ class TestRESTAutoGenEndpoint:
             password=os.environ.get("PG_PASSWORD", "provisa"),
         )
         state.source_pools = source_pool
+        _wire_audit_plane(state, rest_audit_plane)
 
         try:
             from provisa.auth.middleware import AuthMiddleware

@@ -109,12 +109,17 @@ export async function fetchFederationGraph(opts?: {
   direction?: "upstream" | "downstream" | "both";
   depth?: number;
   domains?: string[]; // REQ-1161: restrict to these domain ids (empty/undefined = all)
+  // REQ-1625: read the federation from these roles' vantage point — the columns they can query seed
+  // the graph and everything those columns derive from is returned, ancestors in full. Empty = the
+  // "All roles" selection, which seeds from every registered column.
+  roles?: string[];
 }): Promise<LineageGraphData> {
   const params = new URLSearchParams();
   if (opts?.focus) params.set("focus", opts.focus);
   if (opts?.direction) params.set("direction", opts.direction);
   if (opts?.depth != null) params.set("depth", String(opts.depth));
   if (opts?.domains?.length) params.set("domains", opts.domains.join(","));
+  if (opts?.roles?.length) params.set("roles", opts.roles.join(","));
   const qs = params.toString();
   const resp = await fetch(`${API_BASE}/admin/lineage/federation${qs ? `?${qs}` : ""}`);
   if (!resp.ok) {

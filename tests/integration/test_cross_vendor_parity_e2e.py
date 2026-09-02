@@ -283,6 +283,10 @@ _SNOWFLAKE = Lane(
 # ---- Databricks -------------------------------------------------------------
 def _dbx_connect():
     from provisa.federation.databricks_runtime import DatabricksFederationRuntime
+    from tests.integration.databricks_warehouse import ensure_warehouse_running
+
+    # A suspended serverless warehouse rejects OpenSession outright; wake it before connecting.
+    ensure_warehouse_running()
 
     return DatabricksFederationRuntime(
         url=(

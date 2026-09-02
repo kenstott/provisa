@@ -212,11 +212,52 @@ def _reach(start: str, adj: dict[str, list[str]], depth: int | None, keep: set[s
                 frontier.append((nxt, d + 1))
 
 
+def ancestor_closure(graph: LineageGraph, seeds: set[str]) -> LineageGraph:
+    """Everything ``seeds`` derives from, transitively — the role-perspective cut (REQ-1625).
+
+    Complete Lineage is analysed FROM a role's vantage point: the seeds are the columns that role can
+    query, and the answer is "where does that data come from". So the walk is upstream only and
+    UNRESTRICTED — an ancestor is shown in full even when the role has no grant on it, because the
+    question is provenance, not access. Anything reachable only DOWNSTREAM of the seeds belongs to
+    another role's perspective and is cut. A seed with no upstream survives as an isolated node."""
+    up: dict[str, list[str]] = {}
+    for e in graph.edges:
+        up.setdefault(e.target, []).append(e.source)
+    keep = {s for s in seeds if s in graph.nodes}
+    for s in list(keep):
+        _reach(s, up, None, keep)
+    out = LineageGraph()
+    for nid in keep:
+        out.nodes[nid] = graph.nodes[nid]
+    for e in graph.edges:
+        if e.source in keep and e.target in keep:
+            out.add_edge(e)
+    out.outputs = [o for o in graph.outputs if o in keep]
+    return out
+
+
+def _bare_to_full(view_relations: list[str], extra_relations: list[str]) -> dict[str, str]:
+    """Bare table name → its qualified relation, for stitching schema-dropped references (REQ-1161).
+
+    ``extra_relations`` are registered BASE tables (REQ-1625): a view that reads ``pet_store.pets``
+    yields a bare ``pets`` source node, which must carry the same id as the registry's ``pet_store.pets``
+    or the base table appears twice — once inside the lineage, once as a disconnected registry entry. A
+    bare name owned by two different qualified relations is AMBIGUOUS and is left unmapped rather than
+    stitched to an arbitrary one; views keep precedence because their outputs are already qualified."""
+    counts: collections.Counter[str] = collections.Counter(
+        r.split(".")[-1] for r in extra_relations
+    )
+    out = {r.split(".")[-1]: r for r in extra_relations if counts[r.split(".")[-1]] == 1}
+    out.update({r.split(".")[-1]: r for r in view_relations})
+    return out
+
+
 def build_federation_graph(
     views: list[tuple[str, str]],
     *,
     commands: dict[str, dict] | None = None,
     materialized_relations: set[str] | None = None,
+    extra_relations: list[str] | None = None,
     dialect: str = "postgres",
 ) -> MergedGraph:
     """Merge every view/MV definition into one federation-wide provenance graph (REQ-1161).
@@ -230,7 +271,7 @@ def build_federation_graph(
     # A view that reads another view references it by bare table name (sqlglot drops the schema), so
     # requalify those refs to the full relation before stitching — else the same view appears twice
     # (once qualified as an output, once as a disconnected bare-name source).
-    bare_to_full = {relation.split(".")[-1]: relation for relation, _ in views}
+    bare_to_full = _bare_to_full([r for r, _ in views], extra_relations or [])
     graphs: list[LineageGraph] = []
     for relation, sql in views:
         try:
@@ -297,6 +338,7 @@ def build_federation_graph_incremental(
     *,
     commands: dict[str, dict] | None = None,
     materialized_relations: set[str] | None = None,
+    extra_relations: list[str] | None = None,
     dialect: str = "postgres",
 ) -> MergedGraph:
     """REQ-1161 incremental federation build — identical RESULT to build_federation_graph, but each
@@ -308,14 +350,20 @@ def build_federation_graph_incremental(
     # Whole-input fingerprint: if identical to the last build, nothing changed — return the prior graph.
     top_key = hashlib.sha256(
         json.dumps(
-            {"views": sorted(views), "fp": fp, "mats": sorted(mats), "dialect": dialect},
+            {
+                "views": sorted(views),
+                "fp": fp,
+                "mats": sorted(mats),
+                "extra": sorted(extra_relations or []),
+                "dialect": dialect,
+            },
             sort_keys=True,
         ).encode()
     ).hexdigest()
     if _LAST_FEDERATION.get("key") == top_key:
         return _LAST_FEDERATION["result"]  # type: ignore[return-value]
 
-    bare_to_full = {relation.split(".")[-1]: relation for relation, _ in views}
+    bare_to_full = _bare_to_full([r for r, _ in views], extra_relations or [])
     graphs: list[LineageGraph] = []
     for relation, sql in views:
         base = _cached_subdag(sql, dialect, commands, fp)

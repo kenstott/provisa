@@ -96,7 +96,10 @@ async def test_bitemporal_view_http_end_to_end(client):
     # (2) Current-by-default read through the real endpoint reconstructs current state from the log.
     cur = await _sql(client, 'SELECT id, amount FROM "bt"."bt_view"')
     assert cur.status_code == 200, cur.text
-    assert cur.json() == {"data": {"sql": [{"id": 1, "amount": 10}]}}, cur.text
+    assert cur.json() == {
+        "data": {"sql": [{"id": 1, "amount": 10}]},
+        "columns": ["id", "amount"],
+    }, cur.text
 
     # (3) X-Provisa-As-Of after the refresh → the reconstructed current row (time-travel path).
     fut = await _sql(
@@ -105,7 +108,10 @@ async def test_bitemporal_view_http_end_to_end(client):
         **{"X-Provisa-As-Of": "2999-01-01T00:00:00"},
     )
     assert fut.status_code == 200, fut.text
-    assert fut.json() == {"data": {"sql": [{"id": 1, "amount": 10}]}}, fut.text
+    assert fut.json() == {
+        "data": {"sql": [{"id": 1, "amount": 10}]},
+        "columns": ["id", "amount"],
+    }, fut.text
 
     # (4) X-Provisa-As-Of BEFORE the first refresh → no version was effective yet → empty.
     past = await _sql(
@@ -114,7 +120,9 @@ async def test_bitemporal_view_http_end_to_end(client):
         **{"X-Provisa-As-Of": "2000-01-01T00:00:00"},
     )
     assert past.status_code == 200, past.text
-    assert past.json() == {"data": {"sql": []}}, past.text
+    # REQ-1436: the projection rides alongside the rows, and is still present when the result is
+    # empty — that is the case it exists for.
+    assert past.json() == {"data": {"sql": []}, "columns": ["id", "amount"]}, past.text
 
     # (5) A malformed X-Provisa-As-Of is rejected at the endpoint before execution → HTTP 400.
     bad = await _sql(

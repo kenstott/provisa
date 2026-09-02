@@ -182,13 +182,13 @@ variable "coordinator_machine_type" {
   description = <<-EOT
     Machine type for the Trino coordinator. With the DB offloaded to Cloud SQL and
     node-scheduler.include-coordinator=false, the coordinator only plans + coordinates
-    + streams results, so e2-standard-4 (4 vCPU, 16 GB) is the SaaS baseline: E2's
-    ~10-25% lower per-core throughput only shows up as planning latency under
-    concurrent load, and the box idle-stops via the front door anyway. Move back to
-    n2-standard-4 (the enterprise baseline) when paying concurrency exists.
+    + streams results, and execution belongs to the engine cluster's shards, so
+    e2-standard-2 (2 vCPU, 8 GB) is the SaaS baseline. e2-standard-4 was sized for a
+    concurrency this deployment does not have; step back up when paying concurrency
+    exists, and to n2-standard-4 (the enterprise baseline) beyond that.
   EOT
   type        = string
-  default     = "e2-standard-4"
+  default     = "e2-standard-2"
 }
 
 # ── Front door (always-free e2-micro: wake-on-hit + idle-stop) ──────────────────
@@ -330,6 +330,18 @@ variable "ssh_public_key" {
   description = "SSH public key for admin access (format: 'user:ssh-rsa ...'). Leave blank to disable SSH."
   type        = string
   default     = ""
+}
+
+variable "client_cidrs" {
+  description = <<-EOT
+    CIDRs allowed to reach the public protocol ports and the front-door status port,
+    and the only sources whose traffic counts as activity for the idle reaper. A
+    deployment serving the internet leaves this at 0.0.0.0/0; a private one narrows
+    it, and the two effects are deliberately the same list — a client that cannot
+    reach the coordinator must not be able to keep it awake either.
+  EOT
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
 }
 
 variable "admin_cidr" {

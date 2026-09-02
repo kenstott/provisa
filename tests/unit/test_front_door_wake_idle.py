@@ -44,6 +44,7 @@ CONFIG = {
     "status_port": 9443,
     "status_token": "s3cr3t-token",
     "idle_stop_minutes": 60,
+    "activity_cidrs": ["10.9.0.0/16"],
     "boot_grace_seconds": 300,
     "tls_cert": "/etc/ssl/front-door.crt",
     "tls_key": "/etc/ssl/front-door.key",
@@ -290,6 +291,88 @@ def test_a_coordinator_that_is_already_stopped_is_not_stopped_again(proxy, monke
 
 def test_the_idle_window_comes_from_the_configured_minutes(proxy):
     assert proxy.IDLE_STOP_SECONDS == CONFIG["idle_stop_minutes"] * 60
+
+
+# --- whose traffic counts (REQ-1333) ----------------------------------------------------------
+#
+# The shared IP takes unsolicited connections from the internet all day. Each one reached the
+# splice, reset the idle clock, and — while the box was stopped — started it: a coordinator meant
+# to scale to zero billed as a 24/7 VM. Only the CIDRs the firewall admits vote on its lifetime.
+
+
+@pytest.mark.parametrize("peer", ["10.9.0.4", "10.9.255.255"])
+def test_an_admitted_client_counts_as_activity(proxy, peer):
+    assert proxy.counts_as_activity(peer) is True
+
+
+@pytest.mark.parametrize("peer", ["10.8.0.4", "45.33.32.156"])
+def test_a_client_outside_the_admitted_range_does_not(proxy, peer):
+    assert proxy.counts_as_activity(peer) is False
+
+
+def _dead_pair():
+    """A socket whose peer is already closed, so a splice returns on the first read."""
+    import socket as _socket
+
+    near, far = _socket.socketpair()
+    far.close()
+    return near
+
+
+def test_a_splice_from_an_unadmitted_client_leaves_the_idle_clock_alone(proxy, monkeypatch):
+    _clock(monkeypatch, proxy, 100_000.0)
+    proxy._last_activity = 1.0
+
+    proxy._splice(_dead_pair(), _dead_pair(), False)
+
+    assert proxy._last_activity == 1.0
+
+
+def test_a_splice_from_an_admitted_client_resets_the_idle_clock(proxy, monkeypatch):
+    _clock(monkeypatch, proxy, 100_000.0)
+    proxy._last_activity = 1.0
+
+    proxy._splice(_dead_pair(), _dead_pair(), True)
+
+    assert proxy._last_activity == 100_000.0
+
+
+class _FakeClient:
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.mark.parametrize("port,ready", [(443, False), (5432, None)])
+def test_an_unadmitted_client_cannot_start_a_stopped_coordinator(proxy, monkeypatch, port, ready):
+    """Waking is the expensive half: a port scan should not buy an hour of VM time."""
+    woke: list[bool] = []
+    monkeypatch.setattr(proxy, "trigger_wake", lambda: woke.append(True))
+    monkeypatch.setattr(proxy, "_https_ready", lambda p: False)
+    monkeypatch.setattr(proxy, "_backend_connect", lambda p, timeout=None: ready)
+    client = _FakeClient()
+
+    proxy._handle(client, port, "45.33.32.156")
+
+    assert woke == []
+    assert client.closed is True
+
+
+@pytest.mark.parametrize("port", [443, 5432])
+def test_an_admitted_client_still_wakes_a_stopped_coordinator(proxy, monkeypatch, port):
+    """The scoping must not become a latch that leaves the operator unable to wake the box."""
+    woke: list[bool] = []
+    monkeypatch.setattr(proxy, "trigger_wake", lambda: woke.append(True))
+    monkeypatch.setattr(proxy, "_https_ready", lambda p: False)
+    monkeypatch.setattr(proxy, "_backend_connect", lambda p, timeout=None: None)
+    monkeypatch.setattr(proxy, "_serve_wake_response", lambda c, p: None)
+    monkeypatch.setattr(proxy, "WAKE_HOLD_SECONDS", 0)
+
+    proxy._handle(_FakeClient(), port, "10.9.0.4")
+
+    assert woke == [True]
 
 
 # --- readiness (REQ-1333) ---------------------------------------------------------------------
@@ -698,7 +781,7 @@ def _routing(proxy, monkeypatch, ready: bool):
     monkeypatch.setattr(proxy, "_splice", lambda *_a: took.append("spliced"))
     monkeypatch.setattr(proxy, "_serve_wake_response", lambda *_a: took.append("wake_page"))
     monkeypatch.setattr(proxy, "trigger_wake", lambda: took.append("wake_call"))
-    proxy._handle(object(), 443)
+    proxy._handle(object(), 443, "10.9.0.4")
     return took
 
 

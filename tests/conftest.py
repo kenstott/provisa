@@ -222,6 +222,15 @@ _HEAVY_MARKERS = frozenset(
     }
 )
 
+# `up --wait` budget per heavy service, in seconds. 180 is enough for an engine that boots
+# natively; it is not enough for a JVM stack running under amd64 emulation whose own healthcheck
+# start_period is already most of that. Atlas boots an embedded HBase, an embedded Solr and the
+# Atlas JVM in one container and answers 503 on /api/atlas/v2 until all three are up — observed
+# still initialising 8 minutes in, so a 180s wait failed the service every time and took the whole
+# module's five tests down as errors.
+_SERVICE_WAIT_TIMEOUT: dict[str, int] = {"atlas": 900}
+_DEFAULT_WAIT_TIMEOUT = 180
+
 # Host-published services whose ephemeral port the in-process app / test clients
 # read from these env vars. compose interpolates the same ${VAR} at `up` time.
 _ITEST_PORT_ENV = [
@@ -629,6 +638,9 @@ def _heavy_db_service(request):  # pyright: ignore
         # whole pytest process — which skips this fixture's own `finally` teardown below and
         # leaves the container running (observed: an orphaned Atlas container still
         # "health: starting" 6 minutes after the harness had already killed the test run).
+        wait_timeout = max(
+            _SERVICE_WAIT_TIMEOUT.get(svc, _DEFAULT_WAIT_TIMEOUT) for svc in services
+        )
         cmd = [
             "docker",
             "compose",
@@ -637,7 +649,7 @@ def _heavy_db_service(request):  # pyright: ignore
             "-d",
             "--wait",
             "--wait-timeout",
-            "180",
+            str(wait_timeout),
             *sorted(services),
         ]
         last_error: subprocess.CalledProcessError | None = None
@@ -654,6 +666,26 @@ def _heavy_db_service(request):  # pyright: ignore
                 break
             except subprocess.CalledProcessError as exc:
                 last_error = exc
+                # A retry only helps if the next attempt boots a NEW container. `up -d` leaves an
+                # existing-but-unhealthy container in place and re-waits on it, and its healthcheck
+                # retries are already spent — so all three attempts would wait on the same corpse
+                # (observed: atlas unhealthy with FailingStreak 40, embedded ZooKeeper never up).
+                # Destroy the containers and their anonymous volumes so the retry is a cold boot.
+                # Not after the final attempt — _dump_service_diagnostics below needs the failed
+                # container's state and logs still present.
+                if _attempt < 2:
+                    subprocess.run(
+                        [
+                            "docker",
+                            "compose",
+                            *_ITEST_COMPOSE_ARGS,
+                            "rm",
+                            "-fsv",
+                            *sorted(services),
+                        ],
+                        cwd=_REPO_ROOT,
+                        check=False,
+                    )
         if last_error is not None:
             # `up --wait` reports only "container ... is unhealthy", and the `rm -fsv`
             # below then destroys the evidence — on CI that left an exasol boot failure

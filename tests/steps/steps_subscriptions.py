@@ -136,7 +136,7 @@ def test_trigger_sql_is_idempotent_and_notifies() -> None:
     assert "FOR EACH ROW" in sql
 
     # Notifies on the table-derived channel with op + row payload.
-    assert f"pg_notify(\n    '{channel}'" in sql
+    assert f"pg_notify('{channel}', payload)" in sql
     assert "lower(TG_OP)" in sql
     assert "json_build_object" in sql
     assert "row_to_json(OLD)" in sql
