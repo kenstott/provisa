@@ -137,10 +137,13 @@ def run_soda(payload: dict) -> dict:
     except ModuleNotFoundError as exc:
         _require("soda", exc)
 
+    # ``from_str`` is inherited from soda's YamlSource base and is annotated as returning the BASE
+    # type, so the subclass constructors above are seen as list[YamlSource] by a checker that has
+    # soda_core installed. The objects are the right classes; only the library's annotation is wide.
     session_result = ContractVerificationSession.execute(
-        contract_yaml_sources=[ContractYamlSource.from_str(payload["contract_text"])],
+        contract_yaml_sources=[ContractYamlSource.from_str(payload["contract_text"])],  # pyright: ignore[reportArgumentType]
         data_source_yaml_sources=[
-            DataSourceYamlSource.from_str(
+            DataSourceYamlSource.from_str(  # pyright: ignore[reportArgumentType]
                 _soda_data_source_yaml(payload["data_source_name"], payload["connection"])
             )
         ],

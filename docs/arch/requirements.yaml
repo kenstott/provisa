@@ -54326,8 +54326,8 @@
 - id: REQ-1629
   status: complete
   since: 2026-09
-  group: 4. Deployment & Operations
-  category: SaaS Engine Cluster
+  group: 13. Multi-Tenancy & Organizations
+  category: Federation Engine
   priority: MUST
   type: behavioral
   description: A shard is never left running by the departure of the process that would have scaled

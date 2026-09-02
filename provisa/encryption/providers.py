@@ -212,7 +212,11 @@ class GcpKmsMasterKey(MasterKeyProvider):  # REQ-693
     def __init__(self, key_name: str) -> None:
         if not key_name:
             raise ValueError("gcp_kms provider requires a key_name (full cryptoKey resource path)")
-        from google.cloud import kms  # noqa: PLC0415
+        # ``import google.cloud.kms``, not ``from google.cloud import kms``: ``google.cloud`` is a
+        # namespace package other installed google libraries populate, so the from-form asks for a
+        # name inside a package that IS present and resolves to nothing. The module form names this
+        # optional distribution outright (same reasoning as core/secrets_providers.py).
+        import google.cloud.kms as kms  # noqa: PLC0415
 
         self._key_name = key_name
         self._client = kms.KeyManagementServiceClient()
