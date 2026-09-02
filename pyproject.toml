@@ -2,7 +2,7 @@
 name = "provisa"
 version = "0.1.0"
 description = "Config-driven data virtualization platform"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi",
     "uvicorn",
@@ -99,6 +99,13 @@ dependencies = [
     # already present transitively (databricks-sql-connector); a first-party surface that writes
     # XLSX cannot depend on another package's dependency graph to keep it there.
     "openpyxl",
+    # The native/desktop control plane (REQ-1535) and the dedicated telemetry store are an
+    # EMBEDDED PostgreSQL, so `provisa run` cannot start without pgserver — as an optional extra a
+    # plain `pip install provisa` died at startup with ModuleNotFoundError: pgserver. pgserver ships
+    # cp39-cp312 wheels and no sdist, which is why requires-python caps at <3.13: a 3.13 interpreter
+    # must be refused by the RESOLVER with "requires a different Python", never installed and then
+    # crashed at first `provisa run`.
+    "pgserver",
 ]
 
 [project.scripts]
@@ -116,10 +123,6 @@ provisa = "provisa.cli:main"
 # hard dep here: pip install provisa[embedded] stages the extensions offline (no extensions.duckdb.org
 # reach on first LOAD), matching _stage_duckdb_extensions in cli.py.
 embedded = ["duckdb", "aiosqlite", "greenlet", "fakeredis", "provisa-duckdb-ext>=0.1.0"]
-# Embedded PostgreSQL for the desktop/native tier (control plane + dedicated
-# telemetry store). Optional because pgserver has no cp313 wheel yet — this
-# extra fails to resolve under Python 3.13; use a 3.12 interpreter for it.
-telemetry-pg = ["pgserver"]
 # Native/desktop tier: mcp-proxy is the Node-free stdio<->Streamable-HTTP bridge Claude Desktop
 # launches to reach the local MCP server (REQ-1104). Bundled into the standalone runtime by the
 # native installers (build-sfx.ps1 / build-dmg.sh) so the connector needs no Node and no user pip.
