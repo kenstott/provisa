@@ -56,12 +56,14 @@ const auth = {
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 
 // The lineage role picker lists EVERY role in the org, not only the ones the user holds (REQ-1628).
-const fetchOrgRoles = vi.fn(async () => [
+const fetchOrgRoles = vi.fn(async (_orgId: string) => [
   { id: "analyst", capabilities: [], demonstrated: [], domain_access: [] },
   { id: "auditor", capabilities: [], demonstrated: [], domain_access: [] },
   { id: "vet", capabilities: [], demonstrated: [], domain_access: [] },
 ]);
-vi.mock("../api/admin", () => ({ fetchOrgRoles: () => fetchOrgRoles() }));
+// The org id is forwarded, not swallowed: which org's roles are fetched is part of what this
+// suite asserts, and a zero-arg wrapper would make that assertion unfalsifiable.
+vi.mock("../api/admin", () => ({ fetchOrgRoles: (orgId: string) => fetchOrgRoles(orgId) }));
 
 // Stub the cytoscape-backed DAG (cytoscape needs a real layout engine, unavailable in jsdom).
 // The stub surfaces the collapse/expand and modal callbacks as buttons so the page's REQ-1627

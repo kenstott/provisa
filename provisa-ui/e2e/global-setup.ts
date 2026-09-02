@@ -20,6 +20,14 @@ const SNAPSHOT_PATH = CONFIG_PATH + ".snapshot";
 const BACKEND_URLS = (process.env.PROVISA_E2E_BACKEND_PORTS ?? "8901")
   .split(",")
   .map((port) => `http://localhost:${port}`);
+// The org each of those backends runs as, in the same worker order — published by
+// playwright.config.ts alongside the port list.
+const BACKEND_ORGS = (process.env.PROVISA_E2E_BACKEND_ORGS ?? "e2e").split(",");
+// The person the glossary spec attaches to a term. REQ-1592 made experts and authors PICKED from
+// the org's roster rather than typed, so a term cannot be attributed to nobody — which means an org
+// whose roster is empty offers no one to pick. A fresh e2e org has no members at all, so the
+// roster is seeded here, once per backend, before any spec opens the picker.
+const ROSTER_MEMBER = "jane.doe";
 // Use 127.0.0.1 explicitly — Node.js resolves `localhost` to ::1 on this platform
 // but the Vite dev server binds to 127.0.0.1 (IPv4) only.
 const UI_URL = `http://127.0.0.1:${process.env.PROVISA_E2E_UI_PORT ?? "3901"}`;
@@ -58,7 +66,7 @@ async function putAdminConfig(url: string, body: string): Promise<Response> {
 }
 
 /** Bring one worker's backend from a bare uvicorn to a queryable, warmed-up instance. */
-async function bootstrapBackend(BACKEND_URL: string, yaml: string) {
+async function bootstrapBackend(BACKEND_URL: string, yaml: string, orgId: string) {
   const res = await putAdminConfig(`${BACKEND_URL}/admin/config`, yaml);
   if (!res.ok) {
     throw new Error(`Config reload failed: ${res.status} ${await res.text()}`);
@@ -86,6 +94,19 @@ async function bootstrapBackend(BACKEND_URL: string, yaml: string) {
         throw new Error(`Setup failed: ${setupRes.status} ${await setupRes.text()}`);
       }
     }
+  }
+
+  // Seed the org roster (see ROSTER_MEMBER). The endpoint is an upsert on (org_id, user_id), so a
+  // re-run against a data dir that survived an earlier run adds nothing and still succeeds.
+  const memberRes = await fetch(`${BACKEND_URL}/admin/orgs/${orgId}/members`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: ROSTER_MEMBER }),
+  });
+  if (!memberRes.ok) {
+    throw new Error(
+      `Seeding org ${orgId}'s roster failed: ${memberRes.status} ${await memberRes.text()}`,
+    );
   }
 
   // Wait for schema to rebuild (graph-schema endpoint reflects PetStore tables)
@@ -158,7 +179,7 @@ export default async function globalSetup() {
   // In parallel: the bootstrap is dominated by each backend's cold DuckDB warm-up queries
   // (30-90 s apiece), and they are separate processes on separate data dirs with nothing to
   // serialise on. Serially this would add minutes to every run's fixed cost.
-  await Promise.all(BACKEND_URLS.map((url) => bootstrapBackend(url, yaml)));
+  await Promise.all(BACKEND_URLS.map((url, i) => bootstrapBackend(url, yaml, BACKEND_ORGS[i])));
 
   // Bootstrap the Trino-backed backend (sharepoint/splunk tests).  It uses a minimal
   // config (domains only, no pre-registered sources) so TrinoPgBackedConnector is never

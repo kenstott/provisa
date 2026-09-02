@@ -415,7 +415,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
     () => tourItinerary((capability) => hasCapability(capabilities, capability)),
     [capabilities],
   );
-  // Read inside handlers whose closure predates a capability refresh.
+  // Read inside handlers whose closure predates a capability refresh. Effects only: startTour reads
+  // the memo itself, because a child's effect runs before its parent's — `?tour=1` (TourAutoStart,
+  // a child of this provider) called startTour on the very render the rights landed, when this ref
+  // still held the empty itinerary of the render before. startTour declines an empty one, and the
+  // param is spent by then, so the tour never started at all.
   const itineraryRef = useRef(itinerary);
   useEffect(() => {
     itineraryRef.current = itinerary;
@@ -618,7 +622,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
       // Nothing this viewer may open: every step's page is denied to them. There is no tour to
       // give, and the offer itself is withheld (see `tourAvailable`), so this is the belt to that
       // brace rather than a state anyone reaches by clicking.
-      if (itineraryRef.current.length === 0) return;
+      if (itinerary.length === 0) return;
       const resuming = !opts?.restart && tourResumeStep() !== null;
       // The prefetch below is seconds of work on a loaded machine and the button gives no feedback
       // of its own; without this the click looks ignored and gets clicked again.
@@ -658,12 +662,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // lands, or replaces it with waiting/stuck.
         // The itinerary's own first step, which is TOUR_STEPS[0] only when this viewer gets it. A
         // resumed index outside the itinerary is snapped forward by the runner effect.
-        setActiveStep(
-          opts?.restart ? itineraryRef.current[0] : (tourResumeStep() ?? itineraryRef.current[0]),
-        );
+        setActiveStep(opts?.restart ? itinerary[0] : (tourResumeStep() ?? itinerary[0]));
       });
     },
-    [prefetchTourData],
+    [itinerary, prefetchTourData],
   );
 
   return (

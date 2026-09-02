@@ -47,7 +47,10 @@ export function TourAutoStart({ demoMode }: { demoMode: boolean }) {
     // The itinerary is built from the viewer's rights, and those arrive from the identity
     // bootstrap after the first render. Starting before they land asks for a tour of no steps,
     // which startTour declines — and the param is consumed by then, so nothing ever asks again.
-    if (authLoading) return;
+    // `authLoading` alone does not settle this: the rights land in the roles state, and the
+    // itinerary derived from them is still empty on the render that clears the loading flag, so
+    // the wait runs until the itinerary itself says there is a tour to give.
+    if (authLoading || !available) return;
     setSearchParams(
       (p) => {
         const n = new URLSearchParams(p);
@@ -58,7 +61,7 @@ export function TourAutoStart({ demoMode }: { demoMode: boolean }) {
     );
     // ?tour=1 always starts fresh from the top.
     startTour({ restart: true });
-  }, [tourParam, authLoading, startTour, setSearchParams]);
+  }, [tourParam, authLoading, available, startTour, setSearchParams]);
   // A viewer whose rights open none of the tour's pages is offered nothing: the modal's Start would
   // open a tour with no steps in it.
   return offering && available ? (

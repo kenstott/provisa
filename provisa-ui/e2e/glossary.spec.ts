@@ -144,7 +144,14 @@ test.describe("REQ-1387 glossary curation", () => {
       .fill("Umbrella concept for animal classification terms.");
     // REQ-1591: an abstract term has no refs to derive its domains from, so it declares them and
     // the modal will not save without one. This deployment is multi-domain, so the field is there.
-    await page.getByTestId("glossary-add-domains-input").click();
+    // The click lands on the MultiSelect's box, not on the element carrying the test id: this
+    // picker is not `searchable`, so Mantine renders its field as a zero-width hidden input and
+    // the box painted over it takes every pointer event aimed at the field's centre. The box is
+    // also what a curator clicks.
+    await page
+      .locator(".mantine-MultiSelect-input")
+      .filter({ has: page.getByTestId("glossary-add-domains-input") })
+      .click();
     await page.getByRole("option", { name: "shelter", exact: true }).click();
     // The MultiSelect keeps its dropdown open after a pick, and it overlays the save button.
     await page.keyboard.press("Escape");
@@ -185,7 +192,11 @@ test.describe("REQ-1387 glossary curation", () => {
     await selectTerm(page, DERIVED_SPECIES);
 
     // add_expert is a server-side upsert, so a retry re-adding the same user passes.
-    await page.getByTestId("glossary-expert-user-input").fill("jane.doe");
+    // REQ-1592: the expert is PICKED from the org roster, not typed — typing into the Select's
+    // search box leaves the chosen user unset and the Add button disabled. global-setup seeds this
+    // person into every backend's org so there is someone to pick.
+    await page.getByTestId("glossary-expert-user-input").click();
+    await page.getByRole("option", { name: "jane.doe", exact: true }).click();
     await page.getByTestId("glossary-expert-kind-select").click();
     await page.getByRole("option", { name: "Expert" }).click();
     await page.getByTestId("glossary-expert-add-btn").click();

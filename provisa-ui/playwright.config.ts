@@ -191,6 +191,10 @@ process.env.PROVISA_E2E_API_PORT = String(E2E_API_PORT);
 // Vite dev server reads it to route each proxied request to the backend named by the
 // x-e2e-worker header the same fixture attaches.
 process.env.PROVISA_E2E_BACKEND_PORTS = CORE_BACKENDS.map((b) => b.port).join(",");
+// The orgs those backends run as, in the same worker order. global-setup seeds each org's roster
+// (an expert or an author is PICKED from it — REQ-1592), and it must name the same org the backend
+// on that port was started with, so the list is published here rather than re-derived there.
+process.env.PROVISA_E2E_BACKEND_ORGS = CORE_BACKENDS.map((b) => b.orgId).join(",");
 // Exported so global-setup can pre-warm the Vite dev server before workers start.
 process.env.PROVISA_E2E_UI_PORT = String(E2E_UI_PORT);
 // Exported so global-setup can bootstrap the Trino backend.
