@@ -2410,6 +2410,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.table_profile_router import router as table_profile_router
 
     app.include_router(table_profile_router)
+    from provisa.api.admin.lifecycle_router import router as lifecycle_router
+
+    app.include_router(lifecycle_router)
     from provisa.api.admin.table_search_router import router as table_search_router
 
     app.include_router(table_search_router)

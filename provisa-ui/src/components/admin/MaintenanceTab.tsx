@@ -15,6 +15,7 @@ import {
   setMaintenanceNotice,
   type MaintenanceNotice,
 } from "../../api/maintenance";
+import { shutdownAllServices } from "../../api/lifecycle";
 
 /**
  * REQ-1466: the platform admin's control over the scheduled-downtime banner.
@@ -38,6 +39,8 @@ export function MaintenanceTab() {
   const [endsAt, setEndsAt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [stopBusy, setStopBusy] = useState(false);
+  const [stopError, setStopError] = useState("");
 
   const load = useCallback(() => {
     fetchMaintenanceNotice()
@@ -71,6 +74,24 @@ export function MaintenanceTab() {
       setError((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const stopAllServices = async () => {
+    if (
+      !window.confirm(
+        "Kill the backend and UI dev server on this machine? This ends your session immediately.",
+      )
+    ) {
+      return;
+    }
+    setStopBusy(true);
+    setStopError("");
+    try {
+      await shutdownAllServices();
+    } catch (e) {
+      setStopError((e as Error).message);
+      setStopBusy(false);
     }
   };
 
@@ -143,6 +164,35 @@ export function MaintenanceTab() {
       {/* REQ-1349: exporting, diffing and re-applying the config file is deployment maintenance,
           not an overview statistic. */}
       <ConfigFileSection />
+
+      <div>
+        <Title order={3} c="red">
+          Danger zone
+        </Title>
+        <Text c="dimmed" size="sm">
+          Stops the backend and the UI dev server on this machine. Only works against a --demo/
+          --native desktop launch — refused everywhere else.
+        </Text>
+      </div>
+
+      {stopError && (
+        <Alert color="red" data-testid="stop-all-services-error">
+          {stopError}
+        </Alert>
+      )}
+
+      <Card withBorder padding="md">
+        <Group>
+          <Button
+            color="red"
+            loading={stopBusy}
+            onClick={stopAllServices}
+            data-testid="stop-all-services"
+          >
+            Stop all services
+          </Button>
+        </Group>
+      </Card>
     </Stack>
   );
 }
