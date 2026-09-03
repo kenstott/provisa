@@ -224,6 +224,8 @@ async def neo4j_export(body: Neo4jExportRequest) -> JSONResponse:
     http_url = body.url.rstrip("/") + f"/db/{body.database}/tx/commit"
     token = _base64.b64encode(f"{body.username}:{body.password}".encode()).decode()
 
+    from provisa.api.data.endpoint_helpers import _request_timeout
+
     errors: list[str] = []
     try:
         async with _httpx.AsyncClient() as client:
@@ -235,7 +237,7 @@ async def neo4j_export(body: Neo4jExportRequest) -> JSONResponse:
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
-                timeout=30.0,
+                timeout=_request_timeout(),
             )
     except _httpx.ConnectError as exc:
         return JSONResponse(status_code=502, content={"error": f"Cannot connect to Neo4j: {exc}"})
