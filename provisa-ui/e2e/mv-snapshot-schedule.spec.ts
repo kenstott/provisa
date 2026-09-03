@@ -16,7 +16,13 @@ test("create a calendar and configure an MV snapshot schedule", async ({ page })
   // A schema-version advance (file-connector / sharepoint tests registering tables) makes
   // apolloClient.ts re-fetch every active query, so "Loading tables..." can reappear for up to
   // 15s mid-test. All per-step timeouts are increased to survive that.
-  test.setTimeout(120000);
+  //
+  // Two saves, and each one blocks on a full MV rebuild server-side (updateTable awaits
+  // _rebuild_schemas() and activate_view_mv()). Locally the whole test costs ~35s of waiting;
+  // on the 2-core CI runner with four workers it exhausted a 120s budget with the second save
+  // still in flight, and the failure was reported against the line-103 wait even though that
+  // wait's own 60s had not elapsed. Nothing stalls here — the budget was simply short.
+  test.setTimeout(240000);
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 30000 });
   await page.waitForFunction(() => document.querySelectorAll("tr").length > 2, {

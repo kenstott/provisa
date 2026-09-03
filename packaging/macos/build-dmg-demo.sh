@@ -29,6 +29,38 @@ curl_retry() {
   exit 1
 }
 
+# codesign's --timestamp flag contacts Apple's secure timestamp server, and that wait has no
+# bound of its own: on v0.1.0-alpha.370 the first call blocked for 39 minutes until the job's
+# 45-minute limit cancelled the build, leaving an orphan codesign process and no release. The
+# timestamp is required for notarization, so the answer is not to drop it but to cap how long a
+# single attempt may wait and try again. macOS ships no coreutils `timeout`, hence the watchdog.
+CODESIGN_TIMEOUT="${CODESIGN_TIMEOUT:-180}"
+codesign_retry() {
+  local attempt pid waited
+  for attempt in 1 2 3 4 5; do
+    codesign "$@" &
+    pid=$!
+    waited=0
+    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$CODESIGN_TIMEOUT" ]; do
+      sleep 2
+      waited=$((waited + 2))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      info "codesign attempt ${attempt} exceeded ${CODESIGN_TIMEOUT}s (timestamp server unresponsive), retrying..."
+      continue
+    fi
+    if wait "$pid"; then
+      return 0
+    fi
+    info "codesign attempt ${attempt} failed, retrying in 10s..."
+    sleep 10
+  done
+  err "codesign failed after 5 attempts: $*"
+  exit 1
+}
+
 check_prereqs() {
   for cmd in curl hdiutil codesign; do
     if ! command -v "$cmd" &>/dev/null; then
@@ -210,7 +242,7 @@ sign_script() {
     info "APPLE_DEVELOPER_ID not set — skipping signing."
     return
   fi
-  codesign --force --sign "${APPLE_DEVELOPER_ID}" --options runtime --timestamp "$script"
+  codesign_retry --force --sign "${APPLE_DEVELOPER_ID}" --options runtime --timestamp "$script"
   ok "Signed: $(basename "$script")"
 }
 
