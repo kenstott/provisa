@@ -24,6 +24,7 @@ import i18n from "./i18n/index.ts";
 import { DirectionSync } from "./i18n/direction.tsx";
 import "./index.css";
 import App from "./App.tsx";
+import { cacheRestored } from "./apolloClient.ts";
 import { isOrgSubdomainHost } from "./lib/authHost.ts";
 import { LOGOUT_PATH, signOut } from "./lib/session.ts";
 
@@ -77,6 +78,11 @@ async function bootstrap() {
     const firebase = await import("./lib/firebase.ts");
     await firebase.installFirebaseTokenSync();
   }
+
+  // The persisted Apollo snapshot lives in IndexedDB, which is read asynchronously — so the read
+  // has to finish before the first render, or the dashboard's initial queries run against an empty
+  // cache and the warm start is lost. It never rejects (see cacheRestored).
+  await cacheRestored;
 
   createRoot(document.getElementById("root")!).render(
     <DirectionProvider>

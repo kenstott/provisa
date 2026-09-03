@@ -465,9 +465,20 @@ export function TourProvider({ children }: { children: ReactNode }) {
     // Aborts any anchor wait still pending when the step changes or the provider unmounts.
     const abort = new AbortController();
     // An advance that resolves promptly should not flash a spinner; one that doesn't must say so.
+    // The attempt is settled the moment it reaches ANY end — the popover is up, the step was
+    // snapped forward, or it failed — and a settled attempt must never be re-announced as waiting.
+    // Without this flag a failure raised inside the first WAITING_HINT_MS (a prep action throwing,
+    // say) set "stuck" and was then overwritten by this timer, leaving the visitor on a spinner
+    // whose only button is Cancel: the anchor timeout that would have offered Retry/Skip/Exit had
+    // already been and gone.
+    let settled = false;
     const waitingTimer = setTimeout(() => {
-      if (!cancelled) setStatus({ kind: "waiting", step: i });
+      if (!cancelled && !settled) setStatus({ kind: "waiting", step: i });
     }, WAITING_HINT_MS);
+    const settle = () => {
+      settled = true;
+      clearTimeout(waitingTimer);
+    };
     (async () => {
       try {
         // Indices only ever advance within range (step 0 has no Back button and
@@ -478,6 +489,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // withdrawn. Entering it would render NotAuthorized and wait out the anchor window, so move
         // to the next step this viewer does get; past the end there is nothing left to show.
         if (!itineraryRef.current.includes(i)) {
+          settle();
           const next = itineraryRef.current.find((n) => n > i);
           if (next === undefined) endTour("completed");
           else setActiveStep(next);
@@ -515,9 +527,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
           await waitForElement(step.readySelector, step.waitMs, abort.signal);
         }
         const element = await waitForElement(step.element, step.waitMs, abort.signal);
+        // The anchor is here; whatever the visitor was told to wait for is done. Settled before the
+        // guard below, because leaving with the timer armed is what strands the spinner.
+        settle();
         if (cancelled || !driverRef.current) return;
-        // The anchor is here; whatever the visitor was told to wait for is done.
-        clearTimeout(waitingTimer);
         setStatus(null);
         // Expand a native <select> into an inline list box so its options and
         // <optgroup> headers are visible (a dropdown can't be opened
@@ -592,6 +605,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // The NEXT step on this itinerary, which is not i + 1 when a step between them was dropped.
         if (!isLast) warmStep(steps[pos + 1]);
       } catch {
+        settle();
         // The anchor never appeared: the page is still working, or this step's target is gone
         // (layout changed / gated by permission). The two are indistinguishable from here, so
         // hand the choice to the visitor — Retry re-enters the step, Skip moves past it, Exit

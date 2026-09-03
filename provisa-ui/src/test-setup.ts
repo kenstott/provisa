@@ -9,6 +9,10 @@
 // permission from the copyright holder.
 
 import "@testing-library/jest-dom/vitest";
+// jsdom implements no IndexedDB, and the persisted Apollo cache (src/apolloClient.ts) lives there.
+// A real in-memory implementation rather than a stub, so a test exercising the store gets the
+// store's actual semantics — asynchronous, structured-clone, transactional.
+import "fake-indexeddb/auto";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 

@@ -21,9 +21,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { TOUR_STEPS } from "../tour/tourSteps";
 
+// One `t` for the whole suite, not one per render. The runner effect lists `t` in its
+// dependencies, so a fresh identity on every render re-runs the step — which is unbounded when the
+// step ends by setting a status (a re-render), as the failing-prep case below does.
+const t = (key: string) => key;
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t }),
 }));
 
 let chunksResolve: () => void;
@@ -116,6 +121,47 @@ describe("tour resilience under load", () => {
 
     // The position survives the failed step — this is what the old endTour("failed") threw away.
     expect(localStorage.getItem("provisa_tour_progress")).toBe("5");
+  });
+
+  it("stays stuck when the step fails before the waiting hint, instead of spinning forever", async () => {
+    // The step's prep writes the visitor's NL state to localStorage, and an origin whose quota is
+    // exhausted refuses it — a failure raised in the first few milliseconds of the step, long
+    // before WAITING_HINT_MS. The waiting timer used to fire afterwards and overwrite "stuck" with
+    // "waiting", stranding the visitor on a spinner whose only button is Cancel: the anchor
+    // timeout that offers Retry / Skip / Exit had already come and gone.
+    const nlStep = TOUR_STEPS.findIndex((s) => s.prep === "seedNl");
+    expect(nlStep).toBeGreaterThan(-1);
+    localStorage.setItem("provisa_tour_progress", String(nlStep));
+    const realSetItem = Storage.prototype.setItem;
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key.startsWith("nl-") || key === "provisa_tour_nl_backup") {
+          throw new DOMException("quota", "QuotaExceededError");
+        }
+        realSetItem.call(this, key, value);
+      });
+
+    renderTour();
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => {
+      chunksResolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(screen.getByText("tour.status.stuck")).toBeInTheDocument();
+
+    // Past WAITING_HINT_MS and past the anchor window: the failed step is still the failed step.
+    await act(async () => {
+      vi.advanceTimersByTime(60000);
+    });
+    expect(screen.getByText("tour.status.stuck")).toBeInTheDocument();
+    expect(screen.queryByText("tour.status.waiting")).not.toBeInTheDocument();
+    expect(screen.getByText("tour.status.retry")).toBeInTheDocument();
+
+    setItem.mockRestore();
   });
 
   it("exits a stuck step with the position saved", async () => {

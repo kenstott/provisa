@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { ApolloClient, InMemoryCache, HttpLink, ApolloLink } from "@apollo/client";
+import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import { map } from "rxjs/operators";
 import { currentBearer, ENV_HEADER, ORG_HEADER, selectedEnv } from "./lib/authFetch";
 
@@ -60,25 +61,33 @@ const cache = new InMemoryCache({
 // Bump when the GraphQL schema or any persisted entity shape changes. A
 // mismatch discards the stored snapshot so stale/partial entities (dangling
 // refs, dropped non-null fields) can never be replayed into a live read.
-const CACHE_VERSION = "4";
+export const CACHE_VERSION = "4";
+// IndexedDB, not localStorage. The snapshot grows with the catalog (TablesQuery alone is ~200 KB
+// for a 54-table model) and localStorage is a ~5 MB budget shared by the whole origin — every
+// other feature that stores anything, the guided tour's saved state among them. On a large model
+// the write exceeded it and threw QuotaExceededError out of a setInterval, where nothing could
+// catch it, and the snapshot already on disk went on occupying the budget: the guided tour then
+// hung because its OWN localStorage write was the one that threw. IndexedDB's quota is derived
+// from free disk rather than a fixed 5 MB, and it is a separate store, so a large catalog can no
+// longer starve anything else. It also stores the extract structurally, so nothing is stringified.
 const CACHE_KEY = "apollo-cache";
-const CACHE_VERSION_KEY = "apollo-cache-version";
+// Read synchronously by the response link below, and a few bytes — it stays in localStorage.
 const SCHEMA_VERSION_KEY = "admin-schema-version";
 
-/** REQ-1326: discard the persisted admin snapshot. The cache is written to localStorage every 5s
- * and restored at module load, so without this a new sign-in replays the PREVIOUS identity's roles,
+/** REQ-1326: discard the persisted admin snapshot. The cache is written to IndexedDB every 5s and
+ * restored during boot, so without this a new sign-in replays the PREVIOUS identity's roles,
  * domains and tables — org-scoped data belonging to an org the new user may not even be a member
  * of. Called when a session starts or ends, never mid-session. */
 export function clearPersistedAdminCache(): void {
-  localStorage.removeItem(CACHE_KEY);
+  void dropPersistedCache();
   localStorage.removeItem(SCHEMA_VERSION_KEY);
   void client.clearStore();
 }
 
 /** REQ-1487/REQ-1543: the reader is now looking at a DIFFERENT model — another environment, or the
  * same one stepped back along its history — and every entity in the cache belongs to the one it was
- * just looking at. Both stores go: the in-memory one, and the snapshot persisted to localStorage,
- * which would otherwise be restored on the next load and replay the model that was left.
+ * just looking at. Both stores go: the in-memory one, and the persisted snapshot, which would
+ * otherwise be restored on the next load and replay the model that was left.
  *
  * This is what a full page reload used to do, and the reload is why choosing an environment threw
  * the whole application away and rebuilt it — a splash screen in the middle of a two-click gesture.
@@ -86,24 +95,22 @@ export function clearPersistedAdminCache(): void {
  * the environment now selected, and the views holding them re-render with the answer.
  */
 export function modelReplaced(): Promise<unknown> {
-  localStorage.removeItem(CACHE_KEY);
   localStorage.removeItem(SCHEMA_VERSION_KEY);
-  return client.resetStore().catch(() => {});
+  return Promise.all([dropPersistedCache(), client.resetStore().catch(() => {})]);
 }
 
-if (typeof window !== "undefined") {
-  const stored = localStorage.getItem(CACHE_KEY);
-  if (stored && localStorage.getItem(CACHE_VERSION_KEY) === CACHE_VERSION) {
-    try {
-      cache.restore(JSON.parse(stored));
-    } catch (e) {
-      console.warn("Failed to restore Apollo cache:", e);
-    }
-  } else {
-    localStorage.removeItem(CACHE_KEY);
-    localStorage.setItem(CACHE_VERSION_KEY, CACHE_VERSION);
-  }
+/** Discard the persisted snapshot in both stores. The localStorage removal is not dead code: the
+ * snapshot lived there until the move to IndexedDB, and a browser that ran the previous build
+ * still holds that entry — several megabytes of the origin's 5 MB budget, charged to every other
+ * feature that stores anything, until something deletes it. */
+function dropPersistedCache(): Promise<void> {
+  localStorage.removeItem(CACHE_KEY);
+  return idbDel(CACHE_KEY).catch((e: unknown) => {
+    console.warn("Failed to discard the persisted Apollo cache:", e);
+  });
 }
+
+
 
 // Afterware: read X-Schema-Version from every /admin/graphql response.
 // When the server-side version advances (schema rebuilt after table mutations),
@@ -181,16 +188,60 @@ export const client = new ApolloClient({
   },
 });
 
+/** Resolves when the persisted snapshot has been restored into the cache, or when there is nothing
+ * to restore. Awaited by the bootstrap before the first render (main.tsx): an IndexedDB read is
+ * asynchronous, where the localStorage read it replaces happened at module load, so without the
+ * gate the first queries would run against an empty cache and the warm start would be lost.
+ *
+ * A snapshot written by an older schema is refused, not migrated — that is what CACHE_VERSION is
+ * for: stale or partial entities (dangling refs, dropped non-null fields) must never be replayed
+ * into a live read. */
+export const cacheRestored: Promise<void> =
+  typeof window === "undefined"
+    ? Promise.resolve()
+    : idbGet<{ version: string; data: unknown }>(CACHE_KEY)
+        .then((stored) => {
+          if (stored === undefined) return;
+          if (stored.version !== CACHE_VERSION) return dropPersistedCache();
+          cache.restore(stored.data as Parameters<typeof cache.restore>[0]);
+        })
+        .catch((e: unknown) => {
+          // A snapshot that cannot be read is a warm start that does not happen; the session runs
+          // from an empty cache exactly as a first visit does.
+          console.warn("Failed to restore Apollo cache:", e);
+        });
+
 if (typeof window !== "undefined") {
+  // A snapshot that does not fit is not persisted at all: the copy on disk is dropped (it is a
+  // read-through convenience, and a stale one is what version-gating already exists to refuse), and
+  // persistence stops for the session rather than failing again every 5 s. The cache itself is
+  // untouched — the session keeps running from memory and only loses the warm start on reload.
+  // IndexedDB's quota is far larger than the localStorage budget this used to exhaust, but it is
+  // still a quota: a full disk raises QuotaExceededError here too.
+  let persistIntervalId: ReturnType<typeof setInterval> | null = null;
+  let persisting: Promise<void> = Promise.resolve();
   const persist = () => {
-    const cacheData = cache.extract();
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
-    localStorage.setItem(CACHE_VERSION_KEY, CACHE_VERSION);
+    // Serialized: idbSet is asynchronous and the interval does not wait for it, so two writes of a
+    // multi-megabyte extract could otherwise overlap on every tick.
+    persisting = persisting.then(() =>
+      idbSet(CACHE_KEY, { version: CACHE_VERSION, data: cache.extract() }).catch((e: unknown) => {
+        if (persistIntervalId !== null) clearInterval(persistIntervalId);
+        document.removeEventListener("visibilitychange", flushIfHidden);
+        void dropPersistedCache();
+        console.warn("Apollo cache snapshot could not be persisted; disabled for this session:", e);
+      }),
+    );
+    return persisting;
   };
-  setInterval(persist, 5000);
-  // The interval alone loses up to 5s of writes: a mutation's refetch lands, the user
-  // navigates (full document load), and the restored snapshot resurrects PRE-save values
-  // (#98 — the edit form then initializes from them). pagehide is the last synchronous
-  // moment before the document is torn down, so the restored snapshot is always current.
-  window.addEventListener("pagehide", persist);
+  persistIntervalId = setInterval(persist, 5000);
+  // The interval alone loses up to 5s of writes: a mutation's refetch lands, the user navigates
+  // (full document load), and the restored snapshot resurrects PRE-save values (#98 — the edit form
+  // then initializes from them). The localStorage version flushed on `pagehide`, the last
+  // synchronous moment before teardown; an IndexedDB write started there is not guaranteed to
+  // commit, so the flush moves one event earlier to `visibilitychange`, which fires when the tab is
+  // hidden — including on the way to being unloaded — while the document is still live.
+  const flushIfHidden = () => {
+    if (document.visibilityState === "hidden") void persist();
+  };
+  document.addEventListener("visibilitychange", flushIfHidden);
 }

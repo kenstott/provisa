@@ -30,6 +30,7 @@ Copy-Item (Join-Path $ScriptDir 'startup-monitor.ps1')     $BuildDir
 Copy-Item (Join-Path $ScriptDir 'first-launch-native.ps1') $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa-native.ps1')      $BuildDir
 Copy-Item (Join-Path $ScriptDir 'launch-gui.vbs')          $BuildDir
+Copy-Item (Join-Path $ScriptDir 'stop-gui.vbs')            $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.cmd')             $BuildDir
 Copy-Item (Join-Path $ScriptDir 'uninstall.ps1')           $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.ico')             $BuildDir
@@ -189,6 +190,9 @@ Source: "$BuildDir\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\Provisa"; Filename: "wscript.exe"; Parameters: "/nologo ""{app}\launch-gui.vbs"""; IconFilename: "{app}\provisa.ico"
+; Provisa's servers are background processes with no window, so there is nothing to close to stop
+; them; without this entry the only ways out are a terminal or the uninstaller.
+Name: "{group}\Stop Provisa"; Filename: "wscript.exe"; Parameters: "/nologo ""{app}\stop-gui.vbs"""; IconFilename: "{app}\provisa.ico"
 
 [Run]
 Filename: "wscript.exe"; Parameters: "/nologo ""{app}\launch-gui.vbs"""; Description: "Launch Provisa"; Flags: postinstall nowait
