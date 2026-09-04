@@ -35,6 +35,8 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { useAuth } from "../context/AuthContext";
 import { signOut } from "../lib/session";
+import { deleteSandboxAccount } from "../api/admin";
+import { notifications } from "@mantine/notifications";
 import { NAV_GROUPS, activeGroupId, entryItem, labelKeyFor, writeLastSubnav } from "./navGroups";
 
 export function NavBar() {
@@ -98,8 +100,16 @@ export function NavBar() {
   }
 
   async function proceedWithLogout() {
-    // Ephemeral environment cleanup happens server-side via cascade delete on TTL expiry
+    // REQ-1630: delete the Firebase Auth account before it signs itself out — the modal says the
+    // account is deleted on logout, so this must happen first, while the caller can still
+    // authenticate the request. Environment/schema cleanup happens separately, server-side, via
+    // cascade delete on TTL expiry.
     setShowUpgradeModal(false);
+    try {
+      await deleteSandboxAccount();
+    } catch (e) {
+      notifications.show({ color: "red", message: (e as Error).message });
+    }
     await signOut();
   }
 

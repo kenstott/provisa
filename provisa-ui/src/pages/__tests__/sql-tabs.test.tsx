@@ -46,6 +46,10 @@ vi.mock("../../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({ checkedDomains: new Set<string>() }),
 }));
 
+vi.mock("../../context/AuthContext", () => ({
+  useAuth: () => ({ role: { id: "admin", capabilities: [] } }),
+}));
+
 vi.mock("../../hooks/useCapability", () => ({
   useCapability: () => true,
 }));

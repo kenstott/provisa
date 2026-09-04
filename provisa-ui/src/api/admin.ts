@@ -69,6 +69,16 @@ export async function updateProfile(body: {
   return res.json();
 }
 
+// REQ-1630: called from the sandbox exit modal so its "deleted when you log out" claim is true.
+// Server refuses (409) unless the sandbox org is the caller's only membership.
+export async function deleteSandboxAccount(): Promise<void> {
+  const res = await fetch("/auth/sandbox-account", { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(serverMessage(data, requestFailed("deleteSandboxAccount", res.status)));
+  }
+}
+
 export async function fetchProviderType(): Promise<string | null> {
   const res = await fetch("/auth/provider-type");
   if (!res.ok) return null;

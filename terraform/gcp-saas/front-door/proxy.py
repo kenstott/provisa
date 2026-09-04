@@ -278,12 +278,101 @@ def _splice(client: socket.socket, backend: socket.socket, activity: bool) -> No
 WAKE_HTML = """\
 <!doctype html><html><head><title>Provisa &mdash; waking up</title>
 <meta http-equiv="refresh" content="8">
-<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0b1220;color:#e6edf3}
-.card{text-align:center;max-width:26rem}.spin{width:2.5rem;height:2.5rem;border:3px solid #2d3b55;border-top-color:#4c9aff;border-radius:50%;margin:0 auto 1.2rem;animation:s 1s linear infinite}@keyframes s{to{transform:rotate(360deg)}}</style>
-</head><body><div class="card"><div class="spin"></div>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:radial-gradient(120% 120% at 50% 45%,#16213f 0%,#0f1117 55%,#0b0d13 100%);color:#e6edf3;overflow:hidden}
+#wake-canvas{position:fixed;inset:0;width:100%;height:100%}
+.card{position:relative;text-align:center;max-width:26rem}
+.mark{display:flex;flex-direction:column;align-items:center;gap:14px;animation:rise 700ms ease both}
+.mark svg{filter:drop-shadow(0 0 22px rgba(16,185,129,.35))}
+.word{font:600 15px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;letter-spacing:.42em;text-indent:.42em;color:#e1e4ed;opacity:.9}
+h2{margin:18px 0 8px;font-size:1.25rem}
+p{margin:0;color:#9aa3b5;font-size:.9rem;line-height:1.5}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@media (prefers-reduced-motion: reduce){.mark{animation:none}#wake-canvas{display:none}}
+</style>
+</head><body>
+<canvas id="wake-canvas"></canvas>
+<div class="card">
+<div class="mark">
+<svg viewBox="0 0 100 100" width="76" height="76" role="img" aria-label="Provisa">
+<g fill="#e1e4ed"><rect x="28" y="18" width="15" height="64" rx="7"/><circle cx="50" cy="35" r="22"/></g>
+<circle cx="50" cy="35" r="10.5" fill="#0f1117"/><circle cx="50" cy="35" r="4.5" fill="#10B981"/>
+</svg>
+<div class="word">PROVISA</div>
+</div>
 <h2>Waking your instance</h2>
 <p>The environment scaled to zero while idle. It is starting now and will be ready in about two minutes. This page refreshes automatically.</p>
-</div></body></html>"""
+</div>
+<script>
+(function(){
+var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+var canvas=document.getElementById("wake-canvas");
+if(reduce||!canvas||!canvas.getContext)return;
+var ctx=canvas.getContext("2d");
+var dpr=Math.min(window.devicePixelRatio||1,2);
+var W=0,H=0,cx=0,cy=0,spawnR=0,coreR=0;
+var mark=document.querySelector(".mark svg");
+function markCenter(){
+if(mark){var r=mark.getBoundingClientRect();if(r.width)return{x:r.left+r.width/2,y:r.top+r.height/2};}
+return{x:W/2,y:H*0.4};
+}
+function resize(){
+W=canvas.clientWidth;H=canvas.clientHeight;
+canvas.width=W*dpr;canvas.height=H*dpr;
+ctx.setTransform(dpr,0,0,dpr,0,0);
+var c=markCenter();cx=c.x;cy=c.y;
+spawnR=Math.max(W,H)*0.72;
+coreR=Math.max(56,Math.min(W,H)*0.13);
+ctx.fillStyle="#0f1117";ctx.fillRect(0,0,W,H);
+}
+window.addEventListener("resize",resize);
+resize();
+requestAnimationFrame(function(){var c=markCenter();cx=c.x;cy=c.y;});
+setTimeout(function(){var c=markCenter();cx=c.x;cy=c.y;},760);
+var N=Math.max(140,Math.min(320,Math.round((W*H)/5200)));
+var P=[];
+function spawn(p){
+var a=Math.random()*Math.PI*2;
+var r=spawnR*(0.7+Math.random()*0.5);
+p.x=cx+Math.cos(a)*r;p.y=cy+Math.sin(a)*r*0.82;
+p.px=p.x;p.py=p.y;p.spd=0.6+Math.random()*1.1;p.life=0;
+}
+for(var i=0;i<N;i++){var seed={};spawn(seed);P.push(seed);}
+function frame(){
+ctx.fillStyle="rgba(15,17,23,0.085)";ctx.fillRect(0,0,W,H);
+for(var i=0;i<P.length;i++){
+var p=P[i];
+var dx=cx-p.x,dy=cy-p.y;
+var d=Math.sqrt(dx*dx+dy*dy)||1;
+var curl=Math.sin(p.x*0.012+p.y*0.01)*0.9;
+var ang=Math.atan2(dy,dx)+curl*(d/spawnR);
+var v=p.spd*(0.6+(1-d/spawnR)*2.2);
+p.px=p.x;p.py=p.y;
+p.x+=Math.cos(ang)*v;p.y+=Math.sin(ang)*v;
+p.life++;
+var t=Math.max(0,Math.min(1,1-d/(spawnR*0.55)));
+var rr=Math.round(99+(16-99)*t);
+var gg=Math.round(102+(185-102)*t);
+var bb=Math.round(241+(129-241)*t);
+var alpha=0.22+t*0.6;
+ctx.strokeStyle="rgba("+rr+","+gg+","+bb+","+alpha+")";
+ctx.lineWidth=0.9+t*1.6;
+ctx.beginPath();ctx.moveTo(p.px,p.py);ctx.lineTo(p.x,p.y);ctx.stroke();
+if(d<coreR||p.life>900)spawn(p);
+}
+var pulse=0.55+0.45*Math.sin(Date.now()*0.002);
+var g=ctx.createRadialGradient(cx,cy,0,cx,cy,coreR*1.3);
+g.addColorStop(0,"rgba(16,185,129,"+0.16*pulse+")");
+g.addColorStop(0.5,"rgba(52,120,180,"+0.06*pulse+")");
+g.addColorStop(1,"rgba(16,185,129,0)");
+ctx.fillStyle=g;
+ctx.beginPath();ctx.arc(cx,cy,coreR*1.3,0,Math.PI*2);ctx.fill();
+requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body></html>"""
 
 
 def _wants_html(request: bytes) -> bool:

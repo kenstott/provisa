@@ -68,7 +68,11 @@ _ASYNC_URL = f"postgresql+asyncpg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provis
 _ADMIN_SCHEMA = "test_orglife_admin"
 # One schema per org: the tenant plane is per-org, and an offboarding bug that writes to the wrong
 # org's schema is invisible if every org shares one.
-_ORG_SCHEMAS = {"root": "test_orglife_root", "acme": "test_orglife_acme"}
+_ORG_SCHEMAS = {
+    "root": "test_orglife_root",
+    "acme": "test_orglife_acme",
+    "sandbox": "test_orglife_sandbox",
+}
 
 _TENANT_TABLES = [roles, user_role_assignments, admin_audit_log, query_audit_log]
 
@@ -88,8 +92,16 @@ _SEEDED_ROLE_CAPS: dict[str, list[str]] = {
 }
 
 # alice administers acme; bob is an ordinary member of it; pat is the platform administrator,
-# whose platform_admin assignment lives in the root (default-org) schema.
-_TOKENS = {"tok-alice": "alice", "tok-bob": "bob", "tok-pat": "pat"}
+# whose platform_admin assignment lives in the root (default-org) schema. viv is a member of the
+# sandbox org only (REQ-1630 happy path); dana is a member of sandbox AND acme (REQ-1630 refusal
+# path — a real account must never be reachable through the sandbox-only deletion endpoint).
+_TOKENS = {
+    "tok-alice": "alice",
+    "tok-bob": "bob",
+    "tok-pat": "pat",
+    "tok-viv": "viv",
+    "tok-dana": "dana",
+}
 
 
 def _prepare_sync():
@@ -115,7 +127,15 @@ def _prepare_sync():
                 auto_join_role="analyst",
             )
         )
-        for user_id, org_id in (("pat", "root"), ("alice", "acme"), ("bob", "acme")):
+        conn.execute(insert(orgs).values(id="sandbox", name="Sandbox", created_by="viv"))
+        for user_id, org_id in (
+            ("pat", "root"),
+            ("alice", "acme"),
+            ("bob", "acme"),
+            ("viv", "sandbox"),
+            ("dana", "sandbox"),
+            ("dana", "acme"),
+        ):
             conn.execute(insert(user_org_memberships).values(user_id=user_id, org_id=org_id))
 
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['root']}"))
@@ -145,6 +165,17 @@ def _prepare_sync():
         )
         conn.execute(
             insert(user_role_assignments).values(user_id="bob", role_id="analyst", domain_id="*")
+        )
+
+        conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['sandbox']}"))
+        org_metadata.create_all(conn, tables=_TENANT_TABLES)
+        for role_id, caps in _SEEDED_ROLE_CAPS.items():
+            conn.execute(insert(roles).values(id=role_id, capabilities=caps))
+        conn.execute(
+            insert(user_role_assignments).values(user_id="viv", role_id="analyst", domain_id="*")
+        )
+        conn.execute(
+            insert(user_role_assignments).values(user_id="dana", role_id="analyst", domain_id="*")
         )
     return engine
 
@@ -693,3 +724,83 @@ def test_a_second_platform_admin_unblocks_deletion(planes):  # REQ-1307
     assert _rows(
         planes.sync, _ADMIN_SCHEMA, select(orgs.c.created_by).where(orgs.c.id == "root")
     ) == [(tombstone_id("pat"),)]
+
+
+def test_sandbox_account_deletion_deletes_membership_and_firebase_user(
+    planes, monkeypatch
+):  # REQ-1630
+    """A sandbox-only visitor's exit deletes their membership, profile, tenant role, and the
+    Firebase identity itself — the deletion the exit modal claims actually happens."""
+    with planes.sync.begin() as conn:
+        conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
+        conn.execute(insert(user_profiles).values(user_id="viv", email="viv@example.com"))
+
+    deleted_uids: list[str] = []
+    monkeypatch.setattr(
+        "provisa.auth.providers.firebase.delete_user", lambda uid: deleted_uids.append(uid)
+    )
+
+    with TestClient(_make_app(planes)) as client:
+        resp = client.delete("/auth/sandbox-account", headers=_auth("tok-viv"))
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"deleted": "viv"}
+    assert deleted_uids == ["viv"]
+
+    assert (
+        _rows(
+            planes.sync,
+            _ADMIN_SCHEMA,
+            select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == "viv"),
+        )
+        == []
+    )
+    assert (
+        _rows(
+            planes.sync,
+            _ADMIN_SCHEMA,
+            select(user_profiles.c.user_id).where(user_profiles.c.user_id == "viv"),
+        )
+        == []
+    )
+    assert (
+        _rows(
+            planes.sync,
+            _ORG_SCHEMAS["sandbox"],
+            select(user_role_assignments.c.role_id).where(user_role_assignments.c.user_id == "viv"),
+        )
+        == []
+    )
+
+
+def test_sandbox_account_deletion_refused_for_non_sandbox_only_member(
+    planes, monkeypatch
+):  # REQ-1630
+    """A visitor who also belongs to a real org must never be reachable through the sandbox-only
+    deletion endpoint — a scoping bug here would delete a paying customer's identity."""
+    deleted_uids: list[str] = []
+    monkeypatch.setattr(
+        "provisa.auth.providers.firebase.delete_user", lambda uid: deleted_uids.append(uid)
+    )
+
+    with TestClient(_make_app(planes)) as client:
+        resp = client.delete("/auth/sandbox-account", headers=_auth("tok-dana"))
+    assert resp.status_code == 409, resp.text
+    assert "sandbox" in resp.json()["detail"]
+    assert deleted_uids == []
+
+    assert _rows(
+        planes.sync,
+        _ADMIN_SCHEMA,
+        select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == "dana"),
+    )
+
+
+def test_sandbox_account_deletion_requires_authentication(planes, monkeypatch):  # REQ-1630
+    deleted_uids: list[str] = []
+    monkeypatch.setattr(
+        "provisa.auth.providers.firebase.delete_user", lambda uid: deleted_uids.append(uid)
+    )
+    with TestClient(_make_app(planes)) as client:
+        resp = client.delete("/auth/sandbox-account")
+    assert resp.status_code == 401, resp.text
+    assert deleted_uids == []

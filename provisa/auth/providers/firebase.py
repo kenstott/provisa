@@ -73,3 +73,15 @@ class FirebaseAuthProvider(AuthProvider):  # REQ-120, REQ-121
             roles=decoded.get("roles", []),
             raw_claims=decoded,
         )
+
+
+def delete_user(uid: str) -> None:  # REQ-1630
+    """Permanently delete a Firebase Auth account by uid via the Admin SDK.
+
+    Requires an initialized firebase_admin app (``FirebaseAuthProvider.__init__``). Raises
+    ``firebase_auth.UserNotFoundError`` if the uid does not exist and propagates every other
+    SDK error — the caller decides how to scope and report this, never this function.
+    """
+    if not _HAS_FIREBASE:
+        raise ImportError("firebase-admin is required: pip install provisa[firebase]")
+    firebase_auth.delete_user(uid)  # type: ignore[union-attr]

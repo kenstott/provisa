@@ -784,6 +784,52 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
         reset_current_org(token)
 
 
+@router.delete("/sandbox-account")  # REQ-1630
+async def delete_sandbox_account(request: Request):
+    """Delete the caller's Firebase Auth identity on sandbox logout — sandbox visitors only.
+
+    NavBar's exit modal (REQ-1594/1595) tells a sandbox visitor their account will be deleted
+    when they log out; nothing previously made that true. Refuses unless the sandbox org is the
+    caller's ONLY org membership, so this can never reach a real account that also belongs to a
+    paying org — a scoping bug here would be catastrophic, not cosmetic.
+    """
+    from provisa.api.admin.orgs_router import _org_tenant_db
+    from provisa.api.app import state
+    from provisa.api.sandbox_org import SANDBOX_ORG_ID
+    from provisa.auth.providers.firebase import delete_user as delete_firebase_user
+    from provisa.core.org_membership import remove_from_org
+
+    identity = getattr(request.state, "identity", None)
+    user_id = getattr(identity, "user_id", None) if identity is not None else None
+    if user_id in (None, "anonymous"):
+        raise ApiError(401, "auth.authentication_required", "Authentication required")
+
+    admin_db = state.admin_db
+    assert admin_db is not None
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == user_id)
+        )
+        member_org_ids = [r[0] for r in result.fetchall()]
+
+    if member_org_ids != [SANDBOX_ORG_ID]:
+        raise ApiError(
+            409,
+            "auth.not_sandbox_only",
+            "Only a visitor whose sole org membership is the sandbox can be deleted on logout.",
+        )
+
+    # Delete the Firebase identity first: it is the one step that can fail on infra/IAM grounds
+    # (see below), and running it last left orphaned-account reports where the DB rows were
+    # already gone but the Firebase user survived a failed final call.
+    delete_firebase_user(user_id)
+    tenant_db = await _org_tenant_db(SANDBOX_ORG_ID)
+    await remove_from_org(admin_db, tenant_db, user_id, SANDBOX_ORG_ID)
+    async with admin_db.acquire() as conn:
+        await conn.execute_core(delete(user_profiles).where(user_profiles.c.user_id == user_id))
+    return {"deleted": user_id}
+
+
 class ProfileUpdate(BaseModel):
     given_name: str | None = None
     family_name: str | None = None

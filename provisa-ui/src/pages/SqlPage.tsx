@@ -26,6 +26,7 @@ import {
 } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { useAuth } from "../context/AuthContext";
 import { runSql, explainSql } from "../api/admin";
 import type { ExplainResponse } from "../api/admin";
 import {
@@ -61,6 +62,7 @@ export function SqlPage() {
   const navigate = useNavigate();
   const canCreateView = useCapability("create_view");
   const canRequestView = useCapability("query_development");
+  const { role: authRole } = useAuth();
   const { roles: rolesData } = useRoles();
   const { domains: domainsData } = useDomains();
   const { tables: tablesData, refetch: refetchTables } = useTables();
@@ -114,6 +116,27 @@ export function SqlPage() {
     () => (rolesData.length ? rolesData.map((r) => r.id) : ["admin"]),
     [rolesData],
   );
+  // REQ-1013: the SQL Explorer's "run as" picker is a preview tool separate from the app-wide
+  // role switcher (RoleSelector / useAuth().role), which is what Cypher and GraphQL send as
+  // X-Provisa-Role. Defaulting to an arbitrary roles[0] instead of the caller's own acting role
+  // reproduced the same spurious V003 "column not visible" errors the placeholder-"admin" default
+  // did — just for a different, still-wrong role. Seed from the caller's own role, once, so the
+  // SQL Explorer starts in agreement with every other query surface; the picker can still be
+  // changed to preview another role's visibility, and that choice must not be overwritten once
+  // roles/authRole finish loading (they can resolve after this effect's own settle).
+  const roleInitialized = useRef(false);
+  /* eslint-disable react-hooks/set-state-in-effect -- syncing the picker to the roles list
+     (existing role removed) and, once, to the caller's own acting role once it resolves */
+  useEffect(() => {
+    if (roleInitialized.current) {
+      if (!roles.includes(role)) setRole(roles[0] ?? role);
+      return;
+    }
+    if (!rolesData.length || authRole === null) return;
+    roleInitialized.current = true;
+    setRole(roles.includes(authRole.id) ? authRole.id : roles[0]);
+  }, [roles, role, rolesData.length, authRole]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const [running, setRunning] = useState(false);
   const [sampleMode, setSampleMode] = useState<"first" | "last" | "random">("first");
   const [sampleSize, setSampleSize] = useState(100);

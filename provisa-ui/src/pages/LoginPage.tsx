@@ -425,7 +425,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
         icon={<Loader color="violet" size="sm" data-testid="sandbox-provisioning-spinner" />}
         data-testid="sandbox-provisioning-notice"
       >
-        Setting up a private copy of the sample data just for you — this takes a few seconds.
+        Setting up a private copy of the sample data just for you — this can take a couple of minutes.
       </Alert>
     ) : (
       <Alert
