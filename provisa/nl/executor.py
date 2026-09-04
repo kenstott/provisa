@@ -29,18 +29,6 @@ log = logging.getLogger(__name__)
 NlTarget = Literal["cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"]
 
 
-class FederationError(RuntimeError):
-    """Wraps federation engine (the engine) errors with a clean message."""
-
-
-def _federation_error(exc: Exception) -> FederationError:
-    """Extract human-readable message from the engine exception repr."""
-    raw = str(exc)
-    m = re.search(r'message="([^"]*)"', raw)
-    msg = m.group(1) if m else raw
-    return FederationError(msg)
-
-
 async def execute(
     query: str, target: NlTarget, role: str, app_state: Any
 ) -> Any:  # REQ-357, REQ-359
@@ -80,9 +68,8 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     from provisa.cypher.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.params import collect_param_names, bind_params
     from provisa.cypher.assembler import assemble_rows, to_serializable
-    from provisa.compiler.rls import RLSContext
-    from provisa.compiler.sql_rewrite import make_semantic_sql, rewrite_semantic_to_catalog_physical
-    from provisa.compiler.stage2 import apply_governance, build_governance_context
+    from provisa.compiler.sql_rewrite import make_semantic_sql
+    from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
     ctx = _get_ctx(app_state, role)
     ast = parse_cypher(query)
@@ -93,22 +80,14 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
     # Render to postgres SQL; make_semantic_sql handles catalog-qualified refs
     sql_str = sql_ast.sql(dialect="postgres")
-    # Governance. A role with no rules is legitimately empty; a missing
-    # rls_contexts/masking_rules attribute is a wiring bug — fail loud.
-    rls = app_state.rls_contexts.get(role, RLSContext.empty())
-    gov_ctx = build_governance_context(
-        role,
-        rls,
-        app_state.masking_rules,
-        ctx,
-        getattr(app_state, "tables", []),
-        role=getattr(app_state, "roles", {}).get(role),
-    )
-    governed_sql = apply_governance(make_semantic_sql(sql_str, ctx), gov_ctx)
-    exec_sql = rewrite_semantic_to_catalog_physical(governed_sql, ctx)
-    exec_sql = _expand_views(exec_sql, app_state)
-    physical_sql = app_state.federation_engine.transpile_physical(exec_sql)
-    rows = await _run_engine(physical_sql, [], app_state)
+    semantic_sql = make_semantic_sql(sql_str, ctx)
+
+    # Route through the ONE compiled pipeline (_govern_and_route_compiled → _execute_plan) —
+    # same entrypoint the real Bolt/Cypher session uses (provisa/bolt/session.py) — so governance,
+    # API-table hydration/materialization, and cache rewrites all apply exactly as they do there.
+    plan = await _govern_and_route_compiled(semantic_sql, role, state=app_state)
+    result = await _execute_plan(plan, app_state)
+    rows = [dict(zip(result.column_names, row)) for row in result.rows]
     assembled = assemble_rows(rows, graph_vars)
     columns = list(rows[0].keys()) if rows else []
     return {"columns": columns, "rows": [to_serializable(r) for r in assembled]}
@@ -121,6 +100,11 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
     branches (protocol-shaped envelopes, REQ-1359) build on, so there is exactly one place that
     compiles/governs/executes GraphQL text."""
     from graphql import GraphQLSchema
+    from provisa.api.data.hydration import _hydrate_api_tables_before_engine
+    from provisa.api.data.materialization import _materialize_api_to_engine_cache
+    from provisa.cache.hot_tables import build_values_cte_sql
+    from provisa.api_source.engine_cache import rewrite_all_from_cache
+    from provisa.compiler.nf_extractor import drop_union_branches_for_table
     from provisa.compiler.parser import parse_query
     from provisa.compiler.sql_gen import compile_query
     from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical
@@ -151,16 +135,41 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
 
     out: list[tuple] = []
     for cq in compiled_queries:
+        await _hydrate_api_tables_before_engine(cq, ctx, app_state)
+
         governed = apply_governance(cq.sql, gov_ctx)
-        physical = rewrite_semantic_to_catalog_physical(governed, ctx)
-        physical = _expand_views(physical, app_state)
+        exec_sql = rewrite_semantic_to_catalog_physical(governed, ctx)
+        cache_rewrites, values_ctes, dropped = await _materialize_api_to_engine_cache(
+            exec_sql, app_state, cq.gql_remote_extra_selections
+        )
+        for table_name in dropped:
+            exec_sql = drop_union_branches_for_table(exec_sql, table_name)
+        for table_name, entry in values_ctes.items():
+            exec_sql = build_values_cte_sql(exec_sql, table_name, entry)
+        if cache_rewrites:
+            exec_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
+        physical = _expand_views(exec_sql, app_state)
         physical = engine.transpile_physical(physical)
         result = await engine.execute_engine(physical, cq.params)
+
         nodes_result = None
         if cq.nodes_sql is not None:
             governed_nodes = apply_governance(cq.nodes_sql, gov_ctx)
-            physical_nodes = rewrite_semantic_to_catalog_physical(governed_nodes, ctx)
-            physical_nodes = _expand_views(physical_nodes, app_state)
+            nodes_exec_sql = rewrite_semantic_to_catalog_physical(governed_nodes, ctx)
+            (
+                nodes_cache_rewrites,
+                nodes_values_ctes,
+                nodes_dropped,
+            ) = await _materialize_api_to_engine_cache(
+                nodes_exec_sql, app_state, cq.gql_remote_extra_selections
+            )
+            for table_name in nodes_dropped:
+                nodes_exec_sql = drop_union_branches_for_table(nodes_exec_sql, table_name)
+            for table_name, entry in nodes_values_ctes.items():
+                nodes_exec_sql = build_values_cte_sql(nodes_exec_sql, table_name, entry)
+            if nodes_cache_rewrites:
+                nodes_exec_sql = rewrite_all_from_cache(nodes_exec_sql, nodes_cache_rewrites)
+            physical_nodes = _expand_views(nodes_exec_sql, app_state)
             physical_nodes = engine.transpile_physical(physical_nodes)
             nodes_result = await engine.execute_engine(physical_nodes, cq.nodes_params)
         out.append((cq, result, nodes_result))
@@ -199,26 +208,14 @@ async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
 
 
 async def _execute_sql(query: str, role: str, app_state: Any) -> dict:
-    from provisa.compiler.rls import RLSContext
-    from provisa.compiler.sql_rewrite import make_semantic_sql, rewrite_semantic_to_catalog_physical
-    from provisa.compiler.stage2 import apply_governance, build_governance_context
+    # Route through the ONE raw-SQL pipeline (execute_sql_batch → _govern_and_route → _execute_plan)
+    # — the exact entrypoint /data/sql uses — so governance, API-table hydration/materialization,
+    # and cache rewrites all apply exactly as they do for Explore/SQL running the same query text.
+    from provisa.pgwire._pipeline import execute_sql_batch
 
-    ctx = _get_ctx(app_state, role)
-    rls = getattr(app_state, "rls_contexts", {}).get(role, RLSContext.empty())
-    gov_ctx = build_governance_context(
-        role,
-        rls,
-        getattr(app_state, "masking_rules", {}),
-        ctx,
-        getattr(app_state, "tables", []),
-        role=getattr(app_state, "roles", {}).get(role),
-    )
-    governed_sql = apply_governance(make_semantic_sql(query, ctx), gov_ctx)
-    exec_sql = rewrite_semantic_to_catalog_physical(governed_sql, ctx)
-    exec_sql = _expand_views(exec_sql, app_state)
-    physical_sql = app_state.federation_engine.transpile_physical(exec_sql)
-    rows = await _run_engine(physical_sql, [], app_state)
-    columns = list(rows[0].keys()) if rows else []
+    result = await execute_sql_batch(query, role, app_state)
+    rows = [dict(zip(result.column_names, row)) for row in result.rows]
+    columns = list(result.column_names)
     return {"columns": columns, "rows": rows}
 
 
@@ -550,12 +547,3 @@ def _get_ctx(app_state: Any, role: str) -> Any:
     if ctx is None:
         raise RuntimeError(f"Schema not loaded for role: {role}")
     return ctx
-
-
-async def _run_engine(sql: str, params: list, app_state: Any) -> list[dict]:
-    # execute_engine guards its own connection/availability — no direct engine-connection check.
-    try:
-        result = await app_state.federation_engine.execute_engine(sql, params or [])
-    except Exception as exc:
-        raise _federation_error(exc) from exc
-    return [dict(zip(result.column_names, row)) for row in result.rows]

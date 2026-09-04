@@ -685,7 +685,7 @@ class ProvisaAirportServer(
         # Register in the governed model (schema-mutation core: table_repo.upsert + rebuild) so the
         # one catalog serves it. Columns are visible+writable to every role — a create_table author
         # publishes an open governed table; governance can be tightened afterward via the admin API.
-        all_roles = list(self._state.roles.keys()) or ["admin"]
+        all_roles = list(self._state.roles.keys()) or ["org_admin"]
         col_models = [
             ColumnModel(name=name, data_type=ir_type, visible_to=all_roles, writable_by=all_roles)
             for name, ir_type in columns

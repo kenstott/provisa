@@ -249,7 +249,7 @@ async def test_no_other_role_gains_platform_settings(tenant_db):
 async def test_a_derived_role_is_re_read_after_every_re_assertion(tenant_db):
     """REQ-1624: a role whose ``defined_from`` names another IS that other role, here.
 
-    REQ-1597 defines the sandbox visitor by subtracting six rights from ``org_admin`` in the
+    REQ-1602 defines the sandbox visitor by subtracting four rights from ``org_admin`` in the
     visitor's own environment (``env_copy.adopt_role_definition``), and the visitor holds both
     names, so the union has to be the narrow one. Every branch above re-asserts ``org_admin``'s
     rights into whatever schema is being asserted, environment schemas included, so a subtraction
@@ -267,8 +267,6 @@ async def test_a_derived_role_is_re_read_after_every_re_assertion(tenant_db):
     for withheld in (
         "environment_management",
         "environment_switch",
-        "org_settings",
-        "observability",
         "org_glossary_rw",
     ):
         assert withheld not in caps["org_admin"], withheld

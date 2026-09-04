@@ -109,8 +109,10 @@ async def _auto_configure_idp(provider: str, pool) -> None:
                 "service_account_key": "${env:FIREBASE_SERVICE_ACCOUNT_KEY:-}",
             }
     else:
-        # basic and every other IdP: the configured principal is the admin.
-        auth_section["default_assignments"] = [{"role_id": "admin", "domain_id": "*"}]
+        # basic and every other IdP: the configured principal is org_admin (REQ-1297: 'admin' is a
+        # retired role id). Single-tenant apply_tenancy_role_grants also grants org_admin
+        # platform_settings, so this one role covers both control-plane and data-plane rights.
+        auth_section["default_assignments"] = [{"role_id": "org_admin", "domain_id": "*"}]
 
     # REQ-124: same signing key the wizard writes — PROVISA_IDP=basic skips the wizard entirely,
     # and without a secret the browser's /auth/login answers 503. REQ-1472: written for every
@@ -291,7 +293,7 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
     auth_section: dict = {
         "provider": body.provider,
         "assignments_source": "provisa",
-        "default_assignments": [{"role_id": "admin", "domain_id": "*"}],
+        "default_assignments": [{"role_id": "org_admin", "domain_id": "*"}],
     }
 
     if body.provider == "basic":

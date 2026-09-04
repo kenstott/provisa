@@ -177,9 +177,9 @@ def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
                         # registered column. Dropping it here made the table repository refuse the
                         # synthesized table, since nothing downstream infers a type.
                         "data_type": col.get("data_type") if isinstance(col, dict) else None,
-                        "visible_to": col.get("visible_to", ["admin", "analyst"])
+                        "visible_to": col.get("visible_to", ["org_admin", "analyst"])
                         if isinstance(col, dict)
-                        else ["admin", "analyst"],
+                        else ["org_admin", "analyst"],
                         "writable_by": col.get("writable_by", []) if isinstance(col, dict) else [],
                         "description": col.get("description", "") if isinstance(col, dict) else "",
                     }

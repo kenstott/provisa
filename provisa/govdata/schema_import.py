@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 # Requirements: REQ-492, REQ-540, REQ-018, REQ-413
 
 # All govdata columns default visible to these roles unless overridden.
-_DEFAULT_VISIBLE_TO = ["admin", "analyst"]
+_DEFAULT_VISIBLE_TO = ["org_admin", "analyst"]
 
 
 class _ColumnInfo(TypedDict):

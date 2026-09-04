@@ -86,5 +86,5 @@ async def test_execute_sql_substitutes_and_routes(monkeypatch):
     assert "{{" not in captured["sql"]
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     assert today in captured["sql"]
-    assert captured["role"] == "admin"
+    assert captured["role"] == "org_admin"
     assert captured["executed"] is True

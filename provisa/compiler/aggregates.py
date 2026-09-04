@@ -214,7 +214,7 @@ def _build_nodes_subquery(
     use_catalog: bool,
     by_cols: list[str] | None = None,
     phys_by_cols: list[str] | None = None,
-) -> tuple[str | None, list[ColumnRef] | None, list]:
+) -> tuple[str | None, list[ColumnRef] | None, list, set[str]]:
     """Build the nodes sub-query SQL, columns, and params (or Nones when not requested).
 
     Scalar fields are emitted as plain columns; relationship fields are emitted as
@@ -229,7 +229,7 @@ def _build_nodes_subquery(
             nodes_sel = sel
             break
     if nodes_sel is None or nodes_sel.selection_set is None:
-        return None, None, []
+        return None, None, [], set()
 
     has_rel = any(
         isinstance(s, FieldNode) and (table.type_name, s.name.value) in ctx.joins
@@ -311,7 +311,7 @@ def _build_nodes_subquery(
             )
 
     if not nodes_select_parts:
-        return None, None, []
+        return None, None, [], sources
 
     from_sql = f"{ref} {_q(root_alias)}" if root_alias else ref
     nodes_sql = f"SELECT {', '.join(nodes_select_parts)} FROM {from_sql}"
@@ -328,7 +328,7 @@ def _build_nodes_subquery(
         )
         nodes_sql += f" WHERE {nodes_where_sql}"
         nodes_params = nodes_collector.params
-    return nodes_sql, nodes_cols, nodes_params
+    return nodes_sql, nodes_cols, nodes_params, sources
 
 
 def _compile_having(
@@ -545,7 +545,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
 
     # Build nodes subquery: plain SELECT with same WHERE, no GROUP BY.
     # Group-by join key columns are appended last with nested_in="__join_key__".
-    nodes_sql, nodes_columns, nodes_params = _build_nodes_subquery(
+    nodes_sql, nodes_columns, nodes_params, nodes_sources = _build_nodes_subquery(
         field_node,
         ref,
         args,
@@ -556,6 +556,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
         by_cols=by_cols,
         phys_by_cols=phys_by_cols,
     )
+    sources |= nodes_sources
 
     return CompiledQuery(
         sql=sql,
@@ -663,9 +664,10 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
     nodes_columns: list[ColumnRef] | None = None
     nodes_params: list = []
     if has_nodes:
-        nodes_sql, nodes_columns, nodes_params = _build_nodes_subquery(
+        nodes_sql, nodes_columns, nodes_params, nodes_sources = _build_nodes_subquery(
             field_node, ref, args, ctx, table, variables, use_catalog
         )
+        sources |= nodes_sources
 
     return CompiledQuery(
         sql=sql,

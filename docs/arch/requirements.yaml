@@ -53080,39 +53080,46 @@
     it, query it, write to it -- inside an environment that expires. Defining the role by ENUMERATING
     what it may do would make every capability added later invisible to visitors until somebody remembered
     to edit this one row, so the demo would silently narrow with every release; subtracting is the direction
-    that stays correct, and a new right reaches the sandbox with no second edit. WHAT IS WITHHELD -- six
-    rights, each because it reaches something the environment does not contain. ``environment_switch``:
-    the visitor would leave the sandbox, and REQ-1596''s membership pin is pointless against a role that
-    can name another environment -- the two halves contain a stranger only together. ``environment_management``:
-    spends the org''''s plan ceiling and drops other environments'''' schemas. ``user_management``: would
-    let a visitor confer roles or admit more people, and withholding it is also what closes the role-editing
-    surface to them, so the denylist cannot be edited away from inside the sandbox. ``org_settings`` and
-    ``observability``: org-WIDE surfaces -- provider overrides, scheduled tasks, and the query telemetry
-    of everyone working in production. ``org_glossary_rw``: the override over terms the org''''s own people
-    authored. TWO PLANES, ONE DEFINITION -- schema.sql is PostgreSQL-only DDL and provisa/core/db.py is
-    its portable mirror; a role seeded into one and not the other exists on SaaS and not on a laptop,
-    so the two are asserted equal. The re-assertion seams that hand ``environment_management``/``environment_switch``
-    to pre-existing role rows name org_admin and developer only: naming sandbox there would give back
-    on the next init_schema exactly what the denylist took away. WHERE THE SUBTRACTION HAPPENS, AND WHY
-    THE VISITOR ALSO HOLDS org_admin -- a column is visible to a role when ``table_columns.visible_to``
-    NAMES that role, and every grant in an authored model names the roles the model was authored against.
-    ``sandbox`` is named by none of them, so a visitor holding only that id is shown no column on any
-    table, and schema_gen then drops every table left with none -- leaving the tables whose API path/query
+    that stays correct, and a new right reaches the sandbox with no second edit. WHAT IS WITHHELD -- four
+    rights, each because it reaches something the environment does not contain or lets a visitor
+    write back into shared state. ``environment_switch``: the visitor would leave the sandbox, and
+    REQ-1596''s membership pin is pointless against a role that can name another environment -- the
+    two halves contain a stranger only together. ``environment_management``: spends the org''''s plan
+    ceiling and drops other environments'''' schemas. ``user_management``: would let a visitor confer
+    roles or admit more people, and withholding it is also what closes the role-editing surface to
+    them, so the denylist cannot be edited away from inside the sandbox. ``org_glossary_rw``: the
+    override over terms the org''''s own people authored. ``org_settings`` and ``observability`` are
+    HELD, not withheld: REQ-1349 made ``org_settings`` the single capability nearly every org-scoped
+    admin surface is gated on (cache, AI models, import, tags, secrets, scheduler, requests, org-engine,
+    billing, domains -- see adminNavCapabilities.test.ts), so denying it wholesale took out most of
+    the Admin tab rather than the few org-wide surfaces the original denylist intended; a sandbox
+    visitor is meant to see the product, including its settings and telemetry, and only loses the
+    right to write back into what it does not own. TWO PLANES, ONE DEFINITION -- schema.sql is
+    PostgreSQL-only DDL and provisa/core/db.py is its portable mirror; a role seeded into one and not
+    the other exists on SaaS and not on a laptop, so the two are asserted equal. The re-assertion
+    seams that hand ``environment_management``/``environment_switch`` to pre-existing role rows name
+    org_admin and developer only: naming sandbox there would give back on the next init_schema exactly
+    what the denylist took away. WHERE THE SUBTRACTION HAPPENS, AND WHY THE VISITOR ALSO HOLDS
+    org_admin -- a column is visible to a role when ``table_columns.visible_to`` NAMES that role, and
+    every grant in an authored model names the roles the model was authored against. ``sandbox`` is
+    named by none of them, so a visitor holding only that id is shown no column on any table, and
+    schema_gen then drops every table left with none -- leaving the tables whose API path/query
     parameters are exempt from the gate and nothing else. That is not a narrower demo; it is an empty
-    one, and it is not fixable by re-granting columns, because the model belongs to the org and the visitor
-    is a stranger to it. So redeeming a sandbox invitation seats the redeemer under BOTH names: the role
-    the invitation confers, and ``org_admin``, whose row in the visitor''s own ephemeral environment is
-    reduced at creation to the ``sandbox`` row''s own capabilities and demonstrated list. Capabilities
-    resolve as the UNION over the holder''s roles, so the union is the sandbox definition exactly, the
-    denylist keeps one author, and production''s org_admin is untouched (REQ-1539 makes roles the environment''s
-    own answer). AND THE ROLE IS CONFERRABLE NOWHERE ELSE: minting an invitation that names ``sandbox``
-    under any policy but ``per_visitor`` is refused, because the reduction is performed by the environment
-    creation that only that policy triggers -- conferred anywhere else the name would carry org_admin''s
-    full definition, unnarrowed. STILL TO SUBTRACT (open): the settled target is most of org_admin, less
-    the ability to WRITE BACK to the original sample data sources -- a visitor''s hour is disposable but
-    the demo sources it points at are shared and outlive it -- and less further destructive acts still
-    to be enumerated. The six above are the rights withheld today; the denylist is where those additions
-    land, so the subtraction stays the one definition.'
+    one, and it is not fixable by re-granting columns, because the model belongs to the org and the
+    visitor is a stranger to it. So redeeming a sandbox invitation seats the redeemer under BOTH names:
+    the role the invitation confers, and ``org_admin``, whose row in the visitor''s own ephemeral
+    environment is reduced at creation to the ``sandbox`` row''s own capabilities and demonstrated
+    list. Capabilities resolve as the UNION over the holder''s roles, so the union is the sandbox
+    definition exactly, the denylist keeps one author, and production''s org_admin is untouched
+    (REQ-1539 makes roles the environment''s own answer). AND THE ROLE IS CONFERRABLE NOWHERE ELSE:
+    minting an invitation that names ``sandbox`` under any policy but ``per_visitor`` is refused,
+    because the reduction is performed by the environment creation that only that policy triggers --
+    conferred anywhere else the name would carry org_admin''s full definition, unnarrowed. STILL TO
+    SUBTRACT (open): the settled target is most of org_admin, less the ability to WRITE BACK to the
+    original sample data sources -- a visitor''s hour is disposable but the demo sources it points at
+    are shared and outlive it -- and less further destructive acts still to be enumerated. The four
+    above are the rights withheld today; the denylist is where those additions land, so the
+    subtraction stays the one definition.'
   tests:
   - tests/unit/test_sandbox_role_seed.py
   - tests/unit/test_open_invite.py
@@ -53128,7 +53135,7 @@
 
     When the sandbox role is resolved
 
-    Then it holds every capability org_admin holds except the six on the denylist
+    Then it holds every capability org_admin holds except the four on the denylist
 
     And a capability later added to org_admin is held by it without a second edit
 
@@ -53367,8 +53374,8 @@
   description: 'A ROLE MAY BE SHOWN A RIGHT IT DOES NOT HOLD. Alongside its capabilities, a role carries
     a DEMONSTRATED list -- rights it is deliberately denied whose surfaces are still rendered, labelled
     as part of the production system rather than removed from the page. The sandbox role (REQ-1597) is
-    the first holder: it is org_admin minus six rights, and a visitor holding it is being shown the product,
-    so deleting those six surfaces would advertise a smaller product than the one being sold. The two
+    the first holder: it is org_admin minus four rights, and a visitor holding it is being shown the product,
+    so deleting those four surfaces would advertise a smaller product than the one being sold. The two
     lists are disjoint by construction -- a right the role holds is used, never explained -- and the client
     unions them across the acting roles the same way it unions capabilities, subtracting everything actually
     held. THE DEMONSTRATION IS REACHABLE, NOT A DEAD BADGE: a nav entry into a demonstrated region stays
@@ -53678,9 +53685,9 @@
 
     When _DEMONSTRATED_ROLES["sandbox"] is consulted
 
-    Then it includes five withheld capabilities (environment_switch, environment_management,
+    Then it includes three withheld capabilities (environment_switch, environment_management,
 
-    org_settings, observability, org_glossary_rw) but not user_management
+    org_glossary_rw) but not user_management
 
     And the /team endpoint rejects sandbox-role requests with NotAuthorized rather than rendering
 
@@ -53696,11 +53703,12 @@
   type: structural
   description: The schema.sql role seed for sandbox excludes user_management from the demonstrated jsonb
     column, and the reconciliation UPDATE migrates any legacy rows still containing user_management by
-    matching on demonstrated @> '["user_management"]'::jsonb and replacing with the five-right list.
-  use_case: 'Deployment continuity: earlier releases seeded sandbox with six demonstrated rights. Older
-    databases may have legacy rows still carrying user_management in the demonstrated column. The reconciliation
-    ensures schema state matches the new backend definition (REQ-1610) even on databases created before
-    this change.'
+    matching on demonstrated @> '["user_management"]'::jsonb and replacing with the three-right list.
+  use_case: 'Deployment continuity: earlier releases seeded sandbox with six demonstrated rights, later
+    narrowed to five (REQ-1610) and now to three now that org_settings/observability are held rather
+    than demonstrated (REQ-1597). Older databases may have legacy rows still carrying user_management,
+    org_settings, or observability in the demonstrated column. The reconciliation ensures schema state
+    matches the current backend definition even on databases created before these changes.'
   code:
   - provisa/core/schema.sql
   scenario: 'Given a PostgreSQL database with a legacy sandbox role row (demonstrated includes user_management)
@@ -53709,7 +53717,7 @@
 
     Then the UPDATE clause matches rows where demonstrated contains user_management
 
-    And demonstrated is rewritten to the five-right list
+    And demonstrated is rewritten to the three-right list
 
     And subsequent schema introspection sees user_management excluded from sandbox''s demonstrated rights
 

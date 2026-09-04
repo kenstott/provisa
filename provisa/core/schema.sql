@@ -1054,30 +1054,34 @@ ON CONFLICT (id) DO NOTHING;
 -- make every capability added later invisible to them until someone remembered this row; taking
 -- away is the direction that stays correct.
 --
--- Six rights are withheld, each because it reaches something the environment does not contain:
+-- Four rights are withheld, each because it reaches something the environment does not contain:
 -- environment_switch would leave the sandbox (REQ-1596 pins the membership to it, and the pin is
 -- pointless against a role that can name another); environment_management spends the org's plan
 -- ceiling and drops other environments' schemas; user_management would let a visitor confer roles
--- or admit more people; org_settings and observability are org-WIDE surfaces -- provider overrides,
--- scheduled tasks, and the query telemetry of everyone working in production; org_glossary_rw is
--- the override over terms the org's own people authored.
+-- or admit more people; org_glossary_rw is the override over terms the org's own people authored.
 --
--- REQ-1602/REQ-1608: five of the six are DEMONSTRATED rather than merely absent. A visitor is being
--- shown the product, so the surfaces those rights open stay on the page -- disabled, and badged as
--- belonging to the production system. Withholding them by hiding them would make the sandbox look
--- like a smaller product instead of the same one with the org's own controls held back.
--- `user_management` is the exception: letting a sandbox visitor see a page that implies they could
--- confer roles or admit people, even inertly, misrepresents what the role can ever do here, so
--- /team stays a hard block instead of a demonstration.
+-- org_settings and observability are NOT withheld: REQ-1349 made org_settings the single right
+-- nearly every org-scoped admin page is gated on (cache, AI models, import, tags, secrets,
+-- scheduler, requests, org-engine, billing, domains), so denying it took out most of the Admin tab
+-- rather than the few surfaces REQ-1602 originally intended. The design is that a sandbox visitor
+-- can do everything the product does except reach past the environment it was minted in and write
+-- back to the shared sample sources it points at -- viewing settings and telemetry is not that.
+--
+-- REQ-1602/REQ-1608: three of the four are DEMONSTRATED rather than merely absent. A visitor is
+-- being shown the product, so the surfaces those rights open stay on the page -- disabled, and
+-- badged as belonging to the production system. Withholding them by hiding them would make the
+-- sandbox look like a smaller product instead of the same one with the org's own controls held
+-- back. `user_management` is the exception: letting a sandbox visitor see a page that implies they
+-- could confer roles or admit people, even inertly, misrepresents what the role can ever do here,
+-- so /team stays a hard block instead of a demonstration.
 INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id)
 VALUES (
     'sandbox',
     '["access_config","approve_relationship","approve_view","column_grant","create_relationship",
       "create_view","full_results","glossary_read","glossary_rw","masking_config",
-      "query_development","source_registration","table_registration","usage","view_governance",
-      "write"]'::jsonb,
-    '["environment_switch","environment_management","org_settings",
-      "observability","org_glossary_rw"]'::jsonb,
+      "observability","org_settings","query_development","source_registration",
+      "table_registration","usage","view_governance","write"]'::jsonb,
+    '["environment_management","environment_switch","org_glossary_rw"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
@@ -1085,12 +1089,18 @@ ON CONFLICT (id) DO NOTHING;
 
 -- REQ-1602/REQ-1608: the demonstrated list is part of the role's definition, and the insert above
 -- cannot reach a sandbox row an earlier release already created -- including a row an earlier
--- release of this same reconcile left with `user_management` still in it.
+-- release of this same reconcile left with `user_management`, `org_settings` or `observability`
+-- still in it.
 UPDATE roles
-SET demonstrated = '["environment_switch","environment_management",
-                     "org_settings","observability","org_glossary_rw"]'::jsonb
+SET demonstrated = '["environment_management","environment_switch","org_glossary_rw"]'::jsonb
 WHERE id = 'sandbox'
-  AND (demonstrated = '[]'::jsonb OR demonstrated @> '["user_management"]'::jsonb);
+  AND demonstrated <> '["environment_management","environment_switch","org_glossary_rw"]'::jsonb;
+
+UPDATE roles
+SET capabilities = (SELECT jsonb_agg(DISTINCT v ORDER BY v)
+                     FROM jsonb_array_elements_text(capabilities || '["org_settings","observability"]'::jsonb) v)
+WHERE id = 'sandbox'
+  AND NOT (capabilities @> '["org_settings","observability"]'::jsonb);
 
 -- REQ-1297: platform_admin is the deployment-wide administrator and the last system
 -- template role. It is the role the bootstrap claim grants (REQ-1296) and the only one carrying the

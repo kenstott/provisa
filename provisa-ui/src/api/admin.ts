@@ -1280,7 +1280,7 @@ export interface CompileResult {
 
 export async function runSql(
   sqlText: string,
-  role: string = "admin",
+  role: string = "org_admin",
   statsEnabled: boolean = false,
 ): Promise<{
   columns: string[];
@@ -1348,7 +1348,7 @@ export interface ExplainResponse {
 
 export async function explainSql(
   sqlText: string,
-  role: string = "admin",
+  role: string = "org_admin",
   analyze: boolean = false,
 ): Promise<ExplainResponse> {
   const resp = await fetch(`${API_BASE_RAW}/data/sql/explain`, {
@@ -1366,7 +1366,7 @@ export async function explainSql(
 
 export async function nlToSql(
   question: string,
-  role: string = "admin",
+  role: string = "org_admin",
   strict: boolean = true,
 ): Promise<{ sql: string; cypher?: string; attempts: number; error?: string }> {
   try {

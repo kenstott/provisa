@@ -81,7 +81,7 @@ async def test_a_non_firebase_provider_seats_its_configured_principal_as_admin(
 ):
     written = await _auto_configure("oidc", tmp_path, monkeypatch)
 
-    assert written["auth"]["default_assignments"] == [{"role_id": "admin", "domain_id": "*"}]
+    assert written["auth"]["default_assignments"] == [{"role_id": "org_admin", "domain_id": "*"}]
 
 
 @pytest.mark.asyncio

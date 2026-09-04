@@ -670,7 +670,7 @@ class ProvisaFlightServer(
             raise flight.FlightServerError(f"Invalid ticket: {e}") from e  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         query_text = request.get("query")
-        role_id = request.get("role", "admin")
+        role_id = request.get("role", "org_admin")
         variables = request.get("variables")
 
         if not query_text:
@@ -894,7 +894,7 @@ class ProvisaFlightServer(
         from provisa.pgwire.function_call import maybe_invoke_registered_function
 
         sql = str(request.get("query", ""))
-        role_id = str(request.get("role", "admin"))
+        role_id = str(request.get("role", "org_admin"))
 
         # REQ-1156: a `SELECT fn(...)` naming a registered command invokes it through the single
         # governed executor, matching pgwire/MCP — otherwise commands are dark over Flight SQL.

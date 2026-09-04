@@ -533,9 +533,35 @@ async def _exec_nodes_query(compiled, ctx, state, decision):
             nodes_target_sql,
             compiled.nodes_params,
         )
-    nodes_physical_sql = state.federation_engine.transpile_physical(
-        rewrite_semantic_to_catalog_physical(compiled.nodes_sql, ctx)
+
+    # The nodes sub-query is a standalone SELECT that can reference API/graphql_remote/gRPC-remote
+    # tables the same way compiled.sql can (e.g. a group-by `nodes { relation { ... } }` selection
+    # joining to a graphql_remote-sourced table) — it needs the same pre-engine hydrate +
+    # materialize-to-cache pass as _execute_engine_standard, or those tables are empty/absent in the
+    # engine and the relation resolves to null on every row.
+    from provisa.cache.hot_tables import build_values_cte_sql
+    from provisa.api_source.engine_cache import rewrite_all_from_cache
+
+    await _hydrate_api_tables_before_engine(compiled, ctx, state)
+    nodes_exec_sql = rewrite_semantic_to_catalog_physical(compiled.nodes_sql, ctx)
+    (
+        _nodes_cache_rewrites,
+        _nodes_values_ctes,
+        _nodes_dropped,
+    ) = await _materialize_api_to_engine_cache(
+        nodes_exec_sql, state, compiled.gql_remote_extra_selections
     )
+    if _nodes_dropped:
+        from provisa.compiler.nf_extractor import drop_union_branches_for_table
+
+        for _dtn in _nodes_dropped:
+            nodes_exec_sql = drop_union_branches_for_table(nodes_exec_sql, _dtn)
+    for _tn, _entry in _nodes_values_ctes.items():
+        nodes_exec_sql = build_values_cte_sql(nodes_exec_sql, _tn, _entry)
+    if _nodes_cache_rewrites:
+        nodes_exec_sql = rewrite_all_from_cache(nodes_exec_sql, _nodes_cache_rewrites)
+
+    nodes_physical_sql = state.federation_engine.transpile_physical(nodes_exec_sql)
     return await engine.execute_engine(
         nodes_physical_sql,
         compiled.nodes_params,

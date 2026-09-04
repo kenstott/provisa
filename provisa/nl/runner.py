@@ -186,21 +186,48 @@ def _plan_for_root_field(ctx: Any, meta: Any, field_node: Any) -> AggregationPla
             }
             funcs = [fn for fn in AGG_FUNCS if fn in requested]
         elif sub.name.value == "nodes" and sub.selection_set:
+
+            def _walk_relation(
+                node_sel: Any,
+                cur_type_name: str,
+                cur_table_id: int,
+                schema_path: list[str],
+                api_path: list[str],
+            ) -> None:
+                # A sub-selection under nodes is a relationship field; the query is
+                # schema-validated, so ctx.joins always carries its JoinMeta. Recurse
+                # through nested relation fields (e.g. assignment.employee.firstName)
+                # instead of only handling one hop (REQ-1405/REQ-1408, mirroring
+                # _insert_include_path in provisa/grpc/query_ir.py).
+                for rel_sel in node_sel.selection_set.selections:
+                    if not isinstance(rel_sel, FieldNode):
+                        continue
+                    if rel_sel.selection_set is None:
+                        phys_col = _physical(cur_table_id, rel_sel.name.value)
+                        dim_paths.append(".".join([*schema_path, phys_col]))
+                        dim_paths_api.append(".".join([*api_path, phys_col]))
+                        continue
+                    nested_rel = rel_sel.name.value
+                    nested_target = ctx.joins[(cur_type_name, nested_rel)].target
+                    _walk_relation(
+                        rel_sel,
+                        nested_target.type_name,
+                        nested_target.table_id,
+                        [*schema_path, nested_rel],
+                        [*api_path, physical_rel_name(nested_rel)],
+                    )
+
             for node_sel in sub.selection_set.selections:
                 if not isinstance(node_sel, FieldNode):
                     continue
                 if node_sel.selection_set is None:
                     node_scalars.append(_physical(meta.table_id, node_sel.name.value))
                     continue
-                # A sub-selection under nodes is a relationship field; the query is
-                # schema-validated, so ctx.joins always carries its JoinMeta.
                 rel = node_sel.name.value
                 target = ctx.joins[(meta.type_name, rel)].target
-                for rel_sel in node_sel.selection_set.selections:
-                    if isinstance(rel_sel, FieldNode):
-                        phys_col = _physical(target.table_id, rel_sel.name.value)
-                        dim_paths.append(f"{rel}.{phys_col}")
-                        dim_paths_api.append(f"{physical_rel_name(rel)}.{phys_col}")
+                _walk_relation(
+                    node_sel, target.type_name, target.table_id, [rel], [physical_rel_name(rel)]
+                )
 
     return AggregationPlan(
         meta, group_cols, is_aggregate_only, funcs, dim_paths, node_scalars, dim_paths_api

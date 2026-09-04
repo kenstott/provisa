@@ -91,7 +91,7 @@ def build_catalog_tables(state) -> list[CatalogTable]:  # REQ-127, REQ-128
     """Build the virtual catalog from AppState.
 
     Reads registered tables and introspected column metadata from the
-    compilation contexts. Uses the 'admin' role context as the broadest view.
+    compilation contexts. Uses whichever role context has the broadest view.
     """
     import asyncio
 

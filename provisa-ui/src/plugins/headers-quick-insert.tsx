@@ -31,7 +31,7 @@ const PROVISA_HEADERS: HeaderDef[] = [
   {
     label: "Role",
     key: "X-Provisa-Role",
-    defaultValue: "admin",
+    defaultValue: "org_admin",
     title: "Override the role used for this request",
   },
   {

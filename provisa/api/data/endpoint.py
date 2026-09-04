@@ -90,7 +90,7 @@ router = APIRouter(prefix="/data", tags=["data"])
 class GraphQLRequest(BaseModel):
     query: str | None = None
     variables: dict | None = None
-    role: str = "admin"  # test mode: role passed in request
+    role: str = "org_admin"  # test mode: role passed in request
     extensions: dict | None = None  # APQ: {"persistedQuery": {"sha256Hash": "..."}}
 
 
@@ -827,7 +827,7 @@ async def _handle_query(
     variables,
     role,
     output_format="json",
-    role_id="admin",
+    role_id="org_admin",
     *,
     force_redirect=False,
     redirect_threshold=None,

@@ -331,11 +331,9 @@ def _node_item_type(schema: GraphQLSchema, table: str) -> GraphQLObjectType | No
     return item_type if isinstance(item_type, GraphQLObjectType) else None
 
 
-def _node_field_names(schema: GraphQLSchema, table: str) -> list[str]:
-    """Scalar field names selectable inside a ``{table}_group_by`` row's ``nodes { ... }`` (REQ-1401)."""
-    item_type = _node_item_type(schema, table)
-    if item_type is None:
-        return []
+def _scalar_field_names(item_type: GraphQLObjectType) -> list[str]:
+    """Scalar (non-object-typed) field names of a GraphQL object type, excluding the schema's
+    ``_xxx_`` dunder-style internal fields."""
     return [
         name
         for name, f in item_type.fields.items()
@@ -344,36 +342,59 @@ def _node_field_names(schema: GraphQLSchema, table: str) -> list[str]:
     ]
 
 
+def _node_field_names(schema: GraphQLSchema, table: str) -> list[str]:
+    """Scalar field names selectable inside a ``{table}_group_by`` row's ``nodes { ... }`` (REQ-1401)."""
+    item_type = _node_item_type(schema, table)
+    if item_type is None:
+        return []
+    return _scalar_field_names(item_type)
+
+
 def _insert_node_path(tree: dict[str, dict], path: str) -> None:
     node = tree
     for seg in path.split("."):
         node = node.setdefault(seg, {})
 
 
-def _render_node_selection(tree: dict[str, dict]) -> str:
+def _render_node_selection(item_type: GraphQLObjectType | None, tree: dict[str, dict]) -> str:
     """Render a dot-path tree into GraphQL selection-set text, translating each segment via
-    ``apply_gql_name``. No schema lookup here — same as ``by_cols`` elsewhere in this module, an
-    unresolvable name is left for ``parse_query``'s own validation to reject with a proper
+    ``apply_gql_name``. A leaf segment that resolves (via ``item_type``) to an object-typed
+    relationship field — e.g. ``"assignment.employee"`` where ``employee`` is itself a
+    relationship, not a scalar column of ``assignment`` — auto-expands to that relationship's own
+    scalar fields instead of emitting a bare name GraphQL would reject as "must have a selection
+    of subfields" (REQ-1401/REQ-1402: multi-hop dot-paths at any depth). A segment that can't be
+    resolved against the schema at all (``item_type`` unknown, or the name doesn't match any
+    field) is left as a bare name for ``parse_query``'s own validation to reject with a proper
     ``GraphQLValidationError`` (mapped to a 400 at the call site), rather than silently vanishing
     from the selection with no signal to the caller that their path was wrong.
     """
     parts = []
     for seg, children in tree.items():
         name = apply_gql_name(seg.strip())
+        field = item_type.fields.get(name) if item_type is not None else None
+        field_type = _unwrap_type(field.type) if field is not None else None
+        is_object = isinstance(field_type, GraphQLObjectType)
         if children:
-            parts.append(f"{name} {{ {_render_node_selection(children)} }}")
+            parts.append(
+                f"{name} {{ {_render_node_selection(field_type if is_object else None, children)} }}"
+            )
+        elif is_object:
+            sub_fields = " ".join(apply_gql_name(c) for c in _scalar_field_names(field_type))
+            parts.append(f"{name} {{ {sub_fields} }}")
         else:
             parts.append(name)
     return " ".join(parts)
 
 
-def _build_nodes_selection(paths: list[str]) -> str:
+def _build_nodes_selection(schema: GraphQLSchema, table: str, paths: list[str]) -> str:
     """Convert ``includeNodes`` dot-notated paths (REQ-1402) into a GraphQL selection set.
 
     ``"user_id"`` selects a scalar field on the base ``nodes`` row directly; ``"user.email"``
-    selects a scalar field one relationship hop away; ``"user.company.name"`` two hops, and so
-    on — depth is bounded only by how far the schema's relationship types actually go, not by
-    this function. Path segments are API-native (physical) names, same convention as
+    selects a scalar field one relationship hop away; ``"assignment.employee"`` two hops — and
+    since ``employee`` is itself a relationship rather than a scalar, it auto-expands to
+    ``employee``'s own scalar fields, same as ``"assignment.employee.firstName"`` naming the
+    field explicitly. Depth is bounded only by how far the schema's relationship types actually
+    go, not by this function. Path segments are API-native (physical) names, same convention as
     ``?groupBy=``/``?fields=``, so each segment is run through ``apply_gql_name`` before matching
     against the schema's own spelling — comparing physical names against GQL-convention field
     names directly would fail every path whenever the two conventions diverge (e.g. ``user_id``
@@ -382,7 +403,7 @@ def _build_nodes_selection(paths: list[str]) -> str:
     tree: dict[str, dict] = {}
     for path in paths:
         _insert_node_path(tree, path)
-    return _render_node_selection(tree)
+    return _render_node_selection(_node_item_type(schema, table), tree)
 
 
 def _build_group_by_graphql_query(
@@ -430,7 +451,7 @@ def _build_group_by_graphql_query(
         if node_fields:
             nodes_part = f" nodes {{ {' '.join(node_fields)} }}"
     elif include_nodes:
-        nodes_selection = _build_nodes_selection(include_nodes)
+        nodes_selection = _build_nodes_selection(schema, table, include_nodes)
         if nodes_selection:
             nodes_part = f" nodes {{ {nodes_selection} }}"
     return f"{{ {field_name}{args_str} {{ groupKey aggregate {{ {selection} }}{nodes_part} }} }}"

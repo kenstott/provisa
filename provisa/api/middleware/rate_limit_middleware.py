@@ -49,8 +49,8 @@ class RateLimitMiddleware:  # REQ-369, REQ-371
         # An empty roles registry means no config was loaded (unsecured / not-yet-set-up native
         # server): there is no role model to validate against and no per-role limits to apply, so
         # pass through. A POPULATED registry still denies an unknown role — it must not be silently
-        # treated as unlimited. Without this, the unsecured default role ('admin') is "unknown" and
-        # every request 403s, walling off a configless server (and its setup flow) entirely.
+        # treated as unlimited. Without this, the unsecured default role ('org_admin') is "unknown"
+        # and every request 403s, walling off a configless server (and its setup flow) entirely.
         if state.roles:
             if role_id not in state.roles:
                 return JSONResponse(

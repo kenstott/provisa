@@ -639,47 +639,33 @@ async def _materialize_api_to_engine_cache(
                 assert isinstance(gql_tbl, dict)
             if gql_reg is not None and gql_tbl is not None:
                 req_args = gql_tbl.get("required_args") or []
-                if req_args:
-                    # required_args carry the REMOTE arg name (e.g. ``name``, ``breedName``); the
-                    # extracted nf_args are keyed by the GraphQL schema arg, which Provisa prefixes
-                    # with ``_`` when it collides with a scalar field and stores in sql convention
-                    # (``breedName`` → ``_breed_name``). Match through the naming authority: both
-                    # sides reduce to the same sql name once the disambiguation ``_`` is dropped.
-                    from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+                # required_args carry the REMOTE arg name (e.g. ``name``, ``breedName``); the
+                # extracted nf_args are keyed by the GraphQL schema arg, which Provisa prefixes
+                # with ``_`` when it collides with a scalar field and stores in sql convention
+                # (``breedName`` → ``_breed_name``). Match through the naming authority: both
+                # sides reduce to the same sql name once the disambiguation ``_`` is dropped.
+                from provisa.compiler.naming import apply_sql_name as _apply_sql_name
 
-                    _nf_canon = {
-                        _apply_sql_name(k.lstrip("_")): v for k, v in (nf_args or {}).items()
-                    }
-                    resolved = {}
-                    missing = []
-                    for a in req_args:
-                        canon = _apply_sql_name(a["name"].lstrip("_"))
-                        if canon in _nf_canon:
-                            resolved[a["name"]] = _nf_canon[canon]
-                        else:
-                            missing.append(a["name"])
-                    if missing:
-                        # Required filter(s) absent — exclude the object (drop its union branch) so a
-                        # broad sweep (graph counts, multi-label union) skips it instead of erroring.
-                        log.warning("[MAT] %s requires filter(s) %s — dropping branch", tn, missing)
-                        dropped_tables.append(tn)
+                _nf_canon = {_apply_sql_name(k.lstrip("_")): v for k, v in (nf_args or {}).items()}
+                # Every nf_arg the query pushed down for this table must distinguish the
+                # materialized cache entry — a required arg resolves to its REMOTE name (so it
+                # is also forwarded to the remote fetch); any other filter still keyed here
+                # under its canonical name so two queries that differ only by that filter never
+                # collide on the same cache_table_name (REQ-848/REQ-941 scoped this for
+                # required args only, leaving non-required filters unkeyed).
+                resolved = dict(_nf_canon)
+                missing = []
+                for a in req_args:
+                    canon = _apply_sql_name(a["name"].lstrip("_"))
+                    if canon in _nf_canon:
+                        resolved[a["name"]] = resolved.pop(canon)
                     else:
-                        try:
-                            await _mat_gql_remote_table(
-                                tn,
-                                gql_reg,
-                                gql_tbl,
-                                state,
-                                hot_mgr,
-                                _hot_threshold,
-                                cache_rewrites,
-                                values_cte_entries,
-                                extra_selections=(gql_remote_extra_selections or {}).get(tn),
-                                variables=resolved,
-                            )
-                        except RuntimeError as _gql_err:
-                            log.warning("[MAT] GQL remote unreachable for %s: %s", tn, _gql_err)
-                            dropped_tables.append(tn)
+                        missing.append(a["name"])
+                if missing:
+                    # Required filter(s) absent — exclude the object (drop its union branch) so a
+                    # broad sweep (graph counts, multi-label union) skips it instead of erroring.
+                    log.warning("[MAT] %s requires filter(s) %s — dropping branch", tn, missing)
+                    dropped_tables.append(tn)
                 else:
                     try:
                         await _mat_gql_remote_table(
@@ -692,13 +678,10 @@ async def _materialize_api_to_engine_cache(
                             cache_rewrites,
                             values_cte_entries,
                             extra_selections=(gql_remote_extra_selections or {}).get(tn),
+                            variables=resolved or None,
                         )
                     except RuntimeError as _gql_err:
-                        log.warning(
-                            "[MAT] GQL remote unreachable for %s — dropping union branch: %s",
-                            tn,
-                            _gql_err,
-                        )
+                        log.warning("[MAT] GQL remote unreachable for %s: %s", tn, _gql_err)
                         dropped_tables.append(tn)
             continue
 

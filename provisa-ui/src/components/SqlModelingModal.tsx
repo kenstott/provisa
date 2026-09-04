@@ -60,12 +60,12 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
   const [topTab, setTopTab] = useState<TopTab>("sql");
   const [sqlText, setSqlText] = useState("");
-  const [role, setRole] = useState("admin");
+  const [role, setRole] = useState("org_admin");
   const { roles: roleObjs } = useRoles();
   const { domains } = useDomains();
   const roles = useMemo(() => {
     const ids = roleObjs.map((r) => r.id);
-    return ids.length ? ids : ["admin"];
+    return ids.length ? ids : ["org_admin"];
   }, [roleObjs]);
   const domainMap = useMemo(
     () => Object.fromEntries(domains.map((d: Domain) => [normalizeDomain(d.id), d])),

@@ -61,11 +61,11 @@ async def _execute_webhook(
         logger.exception("Trigger %s: webhook %s failed", trigger_id, url)
 
 
-# The "admin" role is the platform's well-known system execution role for governed
+# The "org_admin" role is the platform's well-known system execution role for governed
 # internal SQL (same default used by the Flight server, provisa/api/flight/server.py).
 # Scheduled triggers carry no per-run identity, so scheduled SQL runs under it.
 # REQ-1003: governed execution requires a role; this is the documented system role.
-_SCHEDULER_ROLE = "admin"
+_SCHEDULER_ROLE = "org_admin"
 
 
 async def _execute_sql(sql: str, trigger_id: str) -> None:  # REQ-1003, REQ-1004

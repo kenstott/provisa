@@ -111,15 +111,15 @@ export function SqlPage() {
   const [editingTitle, setEditingTitle] = useState("");
 
   const [sqlText, setSqlText] = useState(active0.sqlText);
-  const [role, setRole] = useState("admin");
+  const [role, setRole] = useState("org_admin");
   const roles = useMemo(
-    () => (rolesData.length ? rolesData.map((r) => r.id) : ["admin"]),
+    () => (rolesData.length ? rolesData.map((r) => r.id) : ["org_admin"]),
     [rolesData],
   );
   // REQ-1013: the SQL Explorer's "run as" picker is a preview tool separate from the app-wide
   // role switcher (RoleSelector / useAuth().role), which is what Cypher and GraphQL send as
   // X-Provisa-Role. Defaulting to an arbitrary roles[0] instead of the caller's own acting role
-  // reproduced the same spurious V003 "column not visible" errors the placeholder-"admin" default
+  // reproduced the same spurious V003 "column not visible" errors the placeholder-"org_admin" default
   // did — just for a different, still-wrong role. Seed from the caller's own role, once, so the
   // SQL Explorer starts in agreement with every other query surface; the picker can still be
   // changed to preview another role's visibility, and that choice must not be overwritten once

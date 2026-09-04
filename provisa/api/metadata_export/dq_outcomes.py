@@ -35,10 +35,10 @@ from provisa.dq.contract import CHECKERS
 
 logger = logging.getLogger(__name__)
 
-# The "admin" role is the platform's well-known system execution role for governed internal SQL
+# The "org_admin" role is the platform's well-known system execution role for governed internal SQL
 # (REQ-1003 requires a role, and provisa/scheduler/jobs.py runs its statements under this one). A
 # metadata publish carries no end-user identity, so it reads under that role.
-_EXPORT_ROLE = "admin"
+_EXPORT_ROLE = "org_admin"
 
 # What an assertion outcome needs. The rest of the envelope is diagnostic detail no catalog has a
 # field for — it stays queryable in the results table, where it already is.

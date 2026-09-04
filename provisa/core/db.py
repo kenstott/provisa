@@ -107,13 +107,20 @@ _ORG_ADMIN_CAPABILITIES: list[str] = [
 ]
 
 # REQ-1597: the rights sandbox does NOT inherit from org_admin -- see the seed entry below.
+# REQ-1602 originally denied org_settings/observability wholesale, on the theory that they were
+# narrow org-wide surfaces. In practice REQ-1349 made org_settings the single right nearly every
+# org-scoped admin page is gated on (cache, AI models, import, tags, secrets, scheduler, requests,
+# org-engine, billing, domains -- see adminNavCapabilities.test.ts), so denying it took out most of
+# the Admin tab, not the few surfaces this list intended. The design (per REQ-1597/REQ-1598) is that
+# a sandbox visitor can do everything the product does except reach past the environment it was
+# minted in and write back to the shared sample sources it points at -- so the denylist narrows to
+# exactly that: leaving/managing environments, conferring roles, and overriding the org's own
+# glossary terms. Viewing settings and telemetry is no longer withheld.
 _SANDBOX_DENIED: frozenset[str] = frozenset(
     {
         "environment_switch",
         "environment_management",
         "user_management",
-        "org_settings",
-        "observability",
         "org_glossary_rw",
     }
 )
@@ -158,18 +165,17 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
     # make every new capability invisible to them until someone remembered to add it here; taking
     # away is the direction that stays correct.
     #
-    # Six rights are withheld, each because it reaches something the environment does not contain:
+    # Four rights are withheld, each because it reaches something the environment does not contain:
     # environment_switch would leave the sandbox (REQ-1596 pins the membership to it, and the pin
     # would be pointless against a role that could name another); environment_management would spend
     # the org's plan ceiling and can drop another environment's schemas; user_management would let a
-    # visitor confer roles or admit more people; org_settings and observability are org-wide surfaces
-    # — the org's provider overrides, scheduled tasks, and the query telemetry of everyone working in
-    # production; org_glossary_rw is the override over terms the org's own people authored.
+    # visitor confer roles or admit more people; org_glossary_rw is the override over terms the org's
+    # own people authored.
     ("sandbox", sorted(set(_ORG_ADMIN_CAPABILITIES) - _SANDBOX_DENIED)),
     ("platform_admin", ["admin", "superadmin", "platform_settings", "cross_org"]),
 )
 
-# REQ-1602/REQ-1608: rights a role is SHOWN but does not hold. Five of the sandbox's six withheld
+# REQ-1602/REQ-1608: rights a role is SHOWN but does not hold. Three of the sandbox's four withheld
 # rights stay on the page, disabled and badged as belonging to the production system -- hiding them
 # would make the sandbox look like a smaller product rather than the same one with the org's controls
 # held back. `user_management` is the exception (REQ-1608): letting a sandbox visitor see a page that

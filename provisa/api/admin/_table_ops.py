@@ -260,7 +260,9 @@ async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult |
     if input.view_sql and not columns:
         async with pool.acquire() as _vc:
             _roles = [r.id for r in (await _vc.execute_core(select(roles.c.id))).fetchall()]
-            columns, _err = await _introspect_view_columns(_vc, input.view_sql, _roles or ["admin"])
+            columns, _err = await _introspect_view_columns(
+                _vc, input.view_sql, _roles or ["org_admin"]
+            )
             if _err is not None:
                 return [], _err
     elif input.view_sql and columns:

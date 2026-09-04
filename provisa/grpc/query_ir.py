@@ -165,35 +165,73 @@ def grpc_relation_scalars(ctx: Any, type_name: str, rel_field: str) -> list[str]
     return [c for c, _t in ctx.aggregate_columns.get(join_meta.target.table_id, [])]
 
 
+def _insert_include_path(
+    ctx: Any, table_id: int, type_name: str, tree: dict[str, Any], segments: list[str]
+) -> None:
+    """Insert one dot-path's segments into a nested selection tree, recursing through
+    many-to-one relations at any depth (REQ-1405/REQ-1408). A leaf ``None`` value marks a
+    selected scalar; a ``dict`` value marks a relation with its own nested selection. A
+    relation segment with no remaining scalar/relation descendants is pruned so an unresolvable
+    tail (unknown column, non-many-to-one hop) drops the whole entry rather than emitting an
+    empty ``{ }`` block."""
+    head, *rest = segments
+    join_meta = ctx.joins.get((type_name, head))
+    if join_meta is not None and join_meta.cardinality == "many-to-one":
+        child = tree.setdefault(head, {})
+        if rest:
+            _insert_include_path(
+                ctx, join_meta.target.table_id, join_meta.target.type_name, child, rest
+            )
+        else:
+            for column, _col_type in ctx.aggregate_columns.get(join_meta.target.table_id, []):
+                child.setdefault(column, None)
+        if not child:
+            tree.pop(head, None)
+        return
+    if rest:
+        return
+    scalars = {c for c, _t in ctx.aggregate_columns.get(table_id, [])}
+    if head in scalars:
+        tree.setdefault(head, None)
+
+
+def _render_include_tree(tree: dict[str, Any]) -> list[str]:
+    fields = []
+    for name, sub in tree.items():
+        if sub is None:
+            fields.append(apply_gql_name(name))
+        else:
+            fields.append(f"{name} {{ {' '.join(_render_include_tree(sub))} }}")
+    return fields
+
+
 def _include_node_fields(ctx: Any, meta: Any, include: list[str]) -> list[str]:
     """The ``nodes { ... }`` selection for a group-by query's ``include`` list (REQ-1408).
 
     Entries are either a relationship field (``user`` — every scalar of the related table, the
-    REQ-1405 shape), a dot-path (``user.email`` — just that column), or a base-table scalar
-    (``status``). Dot-paths make the gRPC ``include`` accept the same projection REST expresses
-    through ``?includeNodes=id,status,user.email``, so one plan drives both surfaces. Naming no
-    base scalar keeps all of them, which is what ``include_nodes=true`` alone means. Entries that
-    match neither a many-to-one relation nor a known column are skipped, same as an unknown
-    relationship field has always been.
+    REQ-1405 shape), a dot-path at any depth (``user.email``, ``assignment.employee.firstName``
+    — recursing through many-to-one relations), or a base-table scalar (``status``). Dot-paths
+    make the gRPC ``include`` accept the same projection REST/JSON:API express through
+    ``?includeNodes=id,status,assignment.employee.firstName``, so one plan drives every surface.
+    Naming no base scalar keeps all of them, which is what ``include_nodes=true`` alone means.
+    Entries that resolve to neither a many-to-one relation chain nor a known column are skipped,
+    same as an unknown relationship field has always been.
     """
     base_scalars = [c for c, _t in ctx.aggregate_columns.get(meta.table_id, [])]
-    selected_base: list[str] = []
-    rel_columns: dict[str, list[str]] = {}
+    tree: dict[str, Any] = {}
     for entry in include:
-        rel, _, column = entry.partition(".")
-        rel_scalars = grpc_relation_scalars(ctx, meta.type_name, rel)
-        if rel_scalars:
-            requested = rel_columns.setdefault(rel, [])
-            for col in [column] if column else rel_scalars:
-                if col in rel_scalars and col not in requested:
-                    requested.append(col)
-        elif not column and entry in base_scalars and entry not in selected_base:
-            selected_base.append(entry)
+        segments = [s for s in entry.split(".") if s]
+        if segments:
+            _insert_include_path(ctx, meta.table_id, meta.type_name, tree, segments)
 
+    selected_base = [name for name, sub in tree.items() if sub is None]
+    rel_fields = [
+        f"{name} {{ {' '.join(_render_include_tree(sub))} }}"
+        for name, sub in tree.items()
+        if sub is not None
+    ]
     fields = [apply_gql_name(c) for c in (selected_base or base_scalars)]
-    for rel, columns in rel_columns.items():
-        if columns:
-            fields.append(f"{rel} {{ {' '.join(apply_gql_name(c) for c in columns)} }}")
+    fields.extend(rel_fields)
     return fields
 
 

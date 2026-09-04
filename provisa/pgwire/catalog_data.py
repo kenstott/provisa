@@ -159,7 +159,7 @@ _KNOWN_SETTINGS = {
     "extra_float_digits": "0",
     "application_name": "",
     "is_superuser": "on",
-    "session_authorization": "admin",
+    "session_authorization": "org_admin",
     # PG-14 startup ParameterStatus fields (see PG protocol §54.2).
     "default_transaction_read_only": "off",
     "in_hot_standby": "off",
