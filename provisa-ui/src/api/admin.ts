@@ -1292,6 +1292,10 @@ export async function runSql(
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "application/json",
+      // REQ-273: the server trusts only this header to select the acting role — the body's
+      // `role` is a fallback for callers with no auth context at all. Without it here, the
+      // middleware's default-assigned role silently overrode the SQL Explorer's picker.
+      "X-Provisa-Role": role,
     };
     if (statsEnabled) headers["X-Provisa-Stats"] = "true";
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
@@ -1349,7 +1353,11 @@ export async function explainSql(
 ): Promise<ExplainResponse> {
   const resp = await fetch(`${API_BASE_RAW}/data/sql/explain`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "X-Provisa-Role": role,
+    },
     body: JSON.stringify({ sql: sqlText, role, analyze }),
   });
   if (!resp.ok) throw new Error(await resp.text());
@@ -1364,7 +1372,7 @@ export async function nlToSql(
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/nl-to-sql`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Provisa-Role": role },
       body: JSON.stringify({ question, role, strict }),
     });
     if (!resp.ok) {
@@ -1786,7 +1794,7 @@ export async function submitNlQuery(
 ): Promise<{ job_id: string }> {
   const res = await fetch(`${API_BASE}/query/nl`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Provisa-Role": role },
     body: JSON.stringify({ q, role, strict }),
   });
   if (!res.ok) {
