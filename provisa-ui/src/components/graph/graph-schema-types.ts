@@ -26,6 +26,7 @@ export interface SchemaRel {
   type: string;
   source: string;
   target: string;
+  properties: string[];
 }
 
 export interface CypherSchema {

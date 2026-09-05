@@ -113,7 +113,9 @@ class TranslatorExprContext:
         if var is not None:
             if var in t._all_rels_rel_vars:
                 return _anon(
-                    "JSON_EXTRACT_SCALAR", exp.column(var), exp.Literal.string(f"$.{name}")
+                    "JSON_EXTRACT_SCALAR",
+                    exp.column(var),
+                    exp.Literal.string(f"$.properties.{name}"),
                 )
             if var in t._all_rels_node_vars:
                 return _anon(
@@ -296,10 +298,10 @@ class TranslatorExprContext:
         t = self._t
         endpoints = t._rel_var_endpoints.get(var)
         if endpoints:
-            src_alias, src_nm, tgt_alias, tgt_nm, _ = endpoints
-            return t._build_node_object_expr(
-                *((src_alias, src_nm) if start else (tgt_alias, tgt_nm))
-            )
+            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
+            disp_start = (tgt_alias, tgt_nm) if is_reversed else (src_alias, src_nm)
+            disp_end = (src_alias, src_nm) if is_reversed else (tgt_alias, tgt_nm)
+            return t._build_node_object_expr(*(disp_start if start else disp_end))
         path_info = t._path_vars.get(var)
         if path_info:
             node_alias = path_info[0] if start else path_info[1]

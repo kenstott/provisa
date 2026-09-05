@@ -202,11 +202,19 @@ export function GraphPage() {
             seenRel.add(key);
             return true;
           })
-          .map((r: { type: string; source: string; target: string }) => ({
-            type: r.type,
-            source: r.source ?? "",
-            target: r.target ?? "",
-          }));
+          .map(
+            (r: {
+              type: string;
+              source: string;
+              target: string;
+              properties?: string[];
+            }) => ({
+              type: r.type,
+              source: r.source ?? "",
+              target: r.target ?? "",
+              properties: r.properties ?? [],
+            }),
+          );
         const seen = new Set<string>();
         const uniqueNodeLabels = nodeLabels.filter((n) => {
           const key = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
@@ -710,10 +718,9 @@ export function GraphPage() {
     relationshipTypes: visibleSchemaRels.map((r) => r.type),
     propertyKeys: [
       ...new Set(
-        visibleNodeLabels.flatMap((n) => [
-          ...n.properties,
-          ...n.nativeFilterColumns.map((c) => c.name),
-        ]),
+        visibleNodeLabels
+          .flatMap((n) => [...n.properties, ...n.nativeFilterColumns.map((c) => c.name)])
+          .concat(visibleSchemaRels.flatMap((r) => r.properties)),
       ),
     ],
   };

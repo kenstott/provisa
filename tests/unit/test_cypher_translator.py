@@ -13,7 +13,12 @@
 import pytest
 
 from provisa.cypher.parser import parse_cypher
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.cypher.label_map import (
+    CypherLabelMap,
+    JunctionMapping,
+    NodeMapping,
+    RelationshipMapping,
+)
 from provisa.cypher.translator import cypher_to_sql, cypher_calls_to_sql_list
 
 
@@ -902,6 +907,39 @@ def test_fully_unlabeled_match_produces_all_rels_union():
     assert "persons" in sql.lower()
     assert "companies" in sql.lower()
     assert "LIMIT 50" in sql or "limit 50" in sql.lower()
+
+
+def test_unlabeled_rel_where_on_junction_property_extracts_from_properties():
+    """MATCH ()-[r]-() WHERE r.since IS NOT NULL — r's JSON nests attrs under "properties" (per
+    the all-rels union's edge_json in translator_union.py), so property access on an unlabeled
+    rel var must extract "$.properties.since", not the wrong top-level "$.since" (which would
+    make every row's r.since resolve to NULL, filtering out all rows)."""
+    lm = _make_label_map()
+    lm.relationships["LITTERMATE"] = RelationshipMapping(
+        rel_type="LITTERMATE",
+        source_label="Person",
+        target_label="Person",
+        join_source_column="id",
+        join_target_column="id",
+        field_name="littermates",
+        via=JunctionMapping(
+            catalog_name="postgresql",
+            schema_name="public",
+            table_name="pet_companions",
+            type_name="PetCompanion",
+            source_columns=("pet_id",),
+            target_columns=("companion_pet_id",),
+            type_column="relation_type",
+            type_value="LITTERMATE",
+            attributes={"since": "since", "note": "note"},
+            label_source="column",
+        ),
+    )
+    ast = parse_cypher("MATCH ()-[r]-() WHERE r.since IS NOT NULL RETURN r.since LIMIT 25")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "$.properties.since" in sql
+    assert "$.since" not in sql.replace("$.properties.since", "")
 
 
 def test_domain_labeled_target_filters_rels_union():
