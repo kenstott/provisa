@@ -419,9 +419,10 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                 body, "columns", "relationships", "row_policies", "glossary", "meta_links", "tags"
             )
             tid = table_id[path]
-            rows["registered_tables"].append({**own, "id": tid, "domain_id": _domain_of(path)})
+            domain = _domain_of(path)
+            rows["registered_tables"].append({**own, "id": tid, "domain_id": domain})
             for column in nested["columns"]:
-                rows["table_columns"].append({**column, "table_id": tid})
+                rows["table_columns"].append({**column, "table_id": tid, "domain_id": domain})
             for rel in nested["relationships"]:
                 target = rel.pop("target", None)
                 rows["relationships"].append(

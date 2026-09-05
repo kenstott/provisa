@@ -310,6 +310,7 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     # classification build_agg_fields_type (REQ-196) already applies.
     is_implicit_measure: bool = False
     is_implicit_dimension: bool = False
+    domain_id: str | None = None
 
 
 @strawberry.type

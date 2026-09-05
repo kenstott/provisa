@@ -291,6 +291,7 @@ async def _seed_meta_domain(
                 _table_columns_t,
                 {
                     "table_id": table_id,
+                    "domain_id": "meta",
                     "column_name": col["column_name"],
                     "visible_to": [],
                     "data_type": col["data_type"],
@@ -392,6 +393,7 @@ async def _seed_ops_domain(
                 _table_columns_t,
                 {
                     "table_id": table_id,
+                    "domain_id": "ops",
                     "column_name": col["column_name"],
                     # ops is a _LOCKDOWN_DOMAINS domain (schema_gen.py): visible_to=[]
                     # means visible to NO role there, not "unrestricted" as elsewhere.
@@ -446,6 +448,7 @@ async def _seed_ops_domain(
                 _table_columns_t,
                 {
                     "table_id": table_id,
+                    "domain_id": "ops",
                     "column_name": col["column_name"],
                     # ops is a _LOCKDOWN_DOMAINS domain (schema_gen.py): visible_to=[]
                     # means visible to NO role there, not "unrestricted" as elsewhere.
@@ -618,6 +621,7 @@ async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
                 _table_columns_t,
                 {
                     "table_id": table_id,
+                    "domain_id": "ops",
                     "column_name": col_name,
                     # ops is a _LOCKDOWN_DOMAINS domain (schema_gen.py): visible_to=[]
                     # means visible to NO role, so a telemetry table seeded empty was in
@@ -919,6 +923,7 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
                 _table_columns_t,
                 {
                     "table_id": table_id,
+                    "domain_id": "meta",
                     "column_name": col["column_name"],
                     "visible_to": [],
                     "data_type": col["data_type"],

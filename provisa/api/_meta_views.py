@@ -202,7 +202,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     """,
     "table_columns": """
         CREATE OR REPLACE VIEW table_columns_meta AS
-        SELECT id, table_id, column_name,
+        SELECT id, table_id, domain_id, column_name,
                -- REQ-1584: the stable column identity the glossary binds to, and the join key of
                -- the registered glossary_term_refs -> table_columns edge (relationships is
                -- single-column, and table_columns.id is replaced wholesale by the table upsert).

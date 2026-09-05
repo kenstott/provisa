@@ -326,6 +326,7 @@ async def _fetch_table_with_columns(
             scope=r.get("scope") or "domain",
             is_implicit_measure=r["column_name"] in _measure_names,
             is_implicit_dimension=r["column_name"] in _dimension_names,
+            domain_id=r.get("domain_id"),
         )
         for r in col_rows
     ]

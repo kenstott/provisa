@@ -140,6 +140,10 @@ DO $$ BEGIN
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS object_fields JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'domain';
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS gql_selection TEXT;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS domain_id TEXT REFERENCES domains(id) ON DELETE CASCADE;
+    -- Backfill existing rows from the owning table's domain_id (registration now sets it going forward).
+    UPDATE table_columns tc SET domain_id = rt.domain_id
+        FROM registered_tables rt WHERE rt.id = tc.table_id AND tc.domain_id IS NULL;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_enabled BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS prefer_materialized BOOLEAN NOT NULL DEFAULT FALSE;

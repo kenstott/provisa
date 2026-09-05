@@ -197,6 +197,7 @@ table_columns = Table(
         ForeignKey("registered_tables.id", ondelete="CASCADE"),
         nullable=False,
     ),
+    Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE")),
     Column("column_name", Text, nullable=False),
     Column("visible_to", JSON, nullable=False, default=list, server_default="[]"),
     Column("alias", Text),

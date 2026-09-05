@@ -54,6 +54,7 @@ def _ungrant_control_plane(role_ids: list[str] | None, control_plane: set[str]) 
 
 _COLUMN_PROJECTION = [
     table_columns.c.column_name,
+    table_columns.c.domain_id,
     table_columns.c.data_type,
     table_columns.c.alias,
     table_columns.c.description,
@@ -218,6 +219,7 @@ async def upsert(
         await conn.execute_core(
             table_columns.insert().values(
                 table_id=table_id,
+                domain_id=domain_id,
                 column_name=col.name,
                 visible_to=_ungrant_control_plane(col.visible_to, _control_plane),
                 writable_by=_ungrant_control_plane(getattr(col, "writable_by", []), _control_plane),
