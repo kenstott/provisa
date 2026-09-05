@@ -92,14 +92,14 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
   // accident of list order, so the same account showed different domains as its role set changed.
   // Any active role with `*` means the whole catalog; otherwise the union of the named domains.
   const roleIds = selectedRoles.map((r) => r.id).join(",");
-  const hasWildcard = selectedRoles.some((r) => r.domain_access.includes("*"));
+  const wildcardRoleId = selectedRoles.find((r) => r.domain_access.includes("*"))?.id ?? null;
   const namedDomains = [
     ...new Set(selectedRoles.flatMap((r) => r.domain_access).filter((d) => d !== "*")),
   ].join(",");
   useEffect(() => {
     if (selectedRoles.length === 0) return;
-    if (hasWildcard) {
-      fetch("/data/domains", { headers: { "X-Provisa-Role": roleIds.split(",")[0] } })
+    if (wildcardRoleId !== null) {
+      fetch("/data/domains", { headers: { "X-Provisa-Role": wildcardRoleId } })
         .then((r) => r.json())
         .then((ids: string[]) => {
           if (ids.length > 0) {
@@ -118,7 +118,7 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the role SET (the joined ids), not the array identity, so the fetch does not re-run on every render
-  }, [roleIds, hasWildcard, namedDomains]);
+  }, [roleIds, wildcardRoleId, namedDomains]);
 
   function toggleDomain(id: string) {
     setCheckedDomains((prev) => {
