@@ -222,6 +222,22 @@ def test_drop_union_branches_nested_in_cte():
     assert "good_table" in out
 
 
+def test_drop_union_branches_only_drops_inner_arm_not_outer_branch():
+    # An outer UNION ALL branch whose own top-level FROM has nothing to do with
+    # bad_table, but which *wraps* a nested union where one inner arm references
+    # bad_table, must keep its other inner arm and must not be dropped wholesale
+    # by the outer union — only the one inner arm referencing bad_table goes.
+    sql = (
+        "SELECT * FROM node_table "
+        "UNION ALL "
+        "SELECT * FROM (SELECT * FROM bad_table UNION ALL SELECT * FROM rel_table) AS _ub0"
+    )
+    out = drop_union_branches_for_table(sql, "bad_table")
+    assert "bad_table" not in out.lower()
+    assert "node_table" in out.lower()
+    assert "rel_table" in out.lower()
+
+
 # --- where_referenced_tables ------------------------------------------------------
 
 

@@ -218,7 +218,25 @@ def drop_union_branches_for_table(sql: str, table_name: str) -> str:  # REQ-599
 
     root = tree
     modified = False
-    for union in list(tree.find_all(exp.Union)):
+
+    # Process nested unions before the unions that contain them: `_has_from_table`
+    # recurses into subqueries, so a branch that wraps a nested UNION (e.g. a
+    # relationship-type union nested inside an outer Cypher UNION ALL branch)
+    # would otherwise look like a whole-branch match on *table_name* the moment
+    # *any* inner arm references it, dropping the entire outer branch instead of
+    # just the one inner arm. Innermost-first ensures the inner arm is pruned
+    # first, so the outer branch no longer references the table by the time it
+    # is checked.
+    def _depth(node: exp.Expression) -> int:
+        depth = 0
+        parent = node.parent
+        while parent is not None:
+            depth += 1
+            parent = parent.parent
+        return depth
+
+    unions_deepest_first = sorted(tree.find_all(exp.Union), key=_depth, reverse=True)
+    for union in unions_deepest_first:
         left, right = union.this, union.expression
         left_match = isinstance(left, exp.Select) and _has_from_table(left)
         right_match = isinstance(right, exp.Select) and _has_from_table(right)
