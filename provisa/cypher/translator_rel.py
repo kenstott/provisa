@@ -348,6 +348,13 @@ class _RelJoinMixin:  # mixin for _Translator
             src_table_ref = src_var or src_nm.table_name
 
         primary_rm, primary_bwd = candidates[0]
+        # _make_rel_join derives orientation from labels for non-self-ref rels; mirror that
+        # here so the captured edge's start/end nodes match the emitted join (REQ-575).
+        _eff_bwd = (
+            (src_nm.type_name == primary_rm.target_label)
+            if primary_rm.source_label != primary_rm.target_label
+            else primary_bwd
+        )
         if rel.variable:
             self._rel_var_types[rel.variable] = primary_rm.rel_type
             _src_alias = src_var or src_nm.table_name
@@ -357,7 +364,7 @@ class _RelJoinMixin:  # mixin for _Translator
                     src_nm,
                     tgt_alias,
                     tgt_nm,
-                    primary_bwd,
+                    _eff_bwd,
                 )
 
         primary_joins = _make_rel_joins(
@@ -449,7 +456,7 @@ class _RelJoinMixin:  # mixin for _Translator
                     src_nm,
                     _tgt_alias,
                     tgt_nm,
-                    primary_bwd,
+                    _eff_bwd,
                 )
 
         primary_joins = _make_rel_joins(

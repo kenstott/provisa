@@ -88,6 +88,12 @@ class _UnionMixin:  # mixin for _Translator
             tgt_nm = self._lm.nodes.get(rm.target_label)
             if src_nm is None or tgt_nm is None:
                 continue
+            # REQ-1132: mirror _build_domain_union — an unlabeled relationship match roots
+            # only on directly-queryable nodes, so an endpoint reachable only by traversal
+            # (e.g. the meta/catalog domain for a role without a meta grant) is excluded here
+            # too, or this union would emit a direct FROM the role is V001-blocked on.
+            if src_nm.traversal_only or tgt_nm.traversal_only:
+                continue
             if src_type_set is not None and rm.source_label not in src_type_set:
                 continue
             if tgt_type_set is not None and rm.target_label not in tgt_type_set:
