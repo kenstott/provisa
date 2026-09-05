@@ -152,6 +152,20 @@ class TestViewSqlPhysicalRewrite:
         out = rewrite_semantic_to_catalog_physical(normalize_table_refs(sql, ctx), ctx)
         assert '"sales_pg"."public"."orders"' in out
 
+    def test_mixed_case_alias_column_qualifiers_match_quoted_from_alias(self, schema_and_ctx):
+        """A mixed-case alias (e.g. auto-generated Cypher variable names like `mRegisteredTa`)
+        must have its column qualifiers quoted the same way as its FROM/JOIN alias — else
+        Postgres folds the unquoted qualifier to lowercase and it no longer matches the
+        quoted, case-preserved alias ("missing FROM-clause entry for table ...").
+        """
+        from provisa.compiler.sql_rewrite import normalize_table_refs
+
+        _, ctx = schema_and_ctx
+        sql = 'SELECT custRef."id" FROM customers AS custRef'
+        out = normalize_table_refs(sql, ctx)
+        assert '"custRef"."id"' in out
+        assert 'AS "custRef"' in out
+
 
 class TestMaterializedViewPhysicalCompile:
     """Regression: a materialized user-view MV must have its semantic SQL compiled to a

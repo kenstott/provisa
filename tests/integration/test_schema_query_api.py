@@ -128,6 +128,26 @@ class TestRelationships:
                 if r["viaLabelSource"]:
                     assert r["viaTableName"], r
 
+    # REQ-1590: _register_meta_synthetic_joins anchors every data row to its own
+    # registered_tables definition via a constant join, never a persisted relationships row —
+    # allRelationships must synthesize it so the graph explorer's drop-onto-canvas feature can
+    # discover it.
+    async def test_all_relationships_includes_has_table_synthetic_rows(self, client):
+        data = await _gql(
+            client,
+            "{ allRelationships { id alias sourceTableName targetTableName "
+            "sourceColumn targetColumn cardinality } }",
+        )
+        rows = data["data"]["allRelationships"]
+        has_table = [r for r in rows if r["alias"] == "HAS_TABLE"]
+        assert has_table, sorted(r["id"] for r in rows)
+        for r in has_table:
+            assert r["targetTableName"] == "registered_tables", r
+            assert r["sourceColumn"] == "__table_id__", r
+            assert r["targetColumn"] == "id", r
+            assert r["cardinality"] == "many-to-one", r
+        assert any(r["sourceTableName"] == "pets" for r in has_table), has_table
+
 
 class TestRoles:
     async def test_list_roles(self, client):

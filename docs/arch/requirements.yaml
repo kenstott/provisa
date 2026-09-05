@@ -54370,3 +54370,49 @@
   - REQ-1448
   - REQ-1464
   - REQ-1333
+- id: REQ-1630
+  status: proposed
+  group: 5. Query Languages, Compilation & Operations
+  category: Graph Metadata & Relationships
+  priority: MUST
+  type: structural
+  target: 2026-Q4
+  description: >-
+    Every graph node representing a data-instance row from a registered table carries
+    `_name` and `_domain` meta properties identifying its source table and domain.
+    The graph-sync layer auto-generates relationship edges connecting each data-instance
+    node to its corresponding `RegisteredTables` meta node.
+  use_case: >-
+    Data-instance nodes must be traceable to their source table and domain for proper
+    data lineage, governance, and relationship enforcement in federated graph queries.
+  code:
+  - provisa/cypher/label_map.py
+  - provisa/api/_meta_seed.py
+- id: REQ-1631
+  status: complete
+  since: "2026-09"
+  group: "10. UI & Admin Surfaces"
+  category: Graph Explorer
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The admin GraphQL allRelationships resolver synthesizes virtual HAS_TABLE relationship
+    rows — one per non-meta registered table — linking each data-instance row to its
+    registered_tables meta-definition row. These rows are computed at query time without
+    schema migration, enabling the graph explorer's drag-and-drop feature to discover and
+    wire HAS_TABLE relationships.
+  use_case: >-
+    When a registered table node is dropped onto the graph canvas, the drag-and-drop feature
+    must discover HAS_TABLE relationships to existing data-instance nodes. Previously,
+    allRelationships only read persisted Postgres relationships, making this discovery impossible.
+  code:
+  - provisa/api/admin/schema_query.py
+  - provisa/compiler/context.py
+  - provisa-ui/src/pages/graph-drop.ts
+  scenario: |
+    Given the graph explorer has data-instance nodes from a registered table on canvas
+    When a registered table node is dropped onto the canvas
+    Then the allRelationships resolver returns synthetic HAS_TABLE rows linking the new node to existing data-instance nodes
+    And the drag-and-drop expansion wires the relationships without manual user setup
+  e2e: true
+  e2e_reason: The behavior requires verifying that dropping a registered table node discovers the synthetic HAS_TABLE relationship and connects to data-instance nodes in the graph explorer UI.

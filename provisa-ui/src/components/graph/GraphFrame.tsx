@@ -76,6 +76,11 @@ interface GraphFrameProps {
   pkMap: Record<string, string[]>;
   labelToTableLabel: Record<string, string>;
   relationships?: Relationship[];
+  // Full relationship set (including meta:%-prefixed system relationships, e.g. HAS_TABLE_COLUMNS)
+  // for graph traversal — expand/collapse affordances and exclude-node query rewriting need to see
+  // these edges even though `relationships` (admin-editable set) excludes them. Falls back to
+  // `relationships` when omitted so existing callers keep working.
+  graphRelationships?: Relationship[];
   autoImpute?: boolean;
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<void>;
   onSelectedLabelChange?: (label: string | null) => void;
@@ -105,6 +110,7 @@ export function GraphFrame({
   pkMap,
   labelToTableLabel,
   relationships,
+  graphRelationships = relationships,
   autoImpute: autoImputeProp = false,
   onSaveEdgeAlias,
   onSelectedLabelChange,
@@ -205,7 +211,7 @@ export function GraphFrame({
     overlayData,
     setOverlayData,
     frameNodes: frame.nodes,
-    relationships,
+    relationships: graphRelationships,
   });
 
   const handleExcludeNode = useCallback(
@@ -226,7 +232,7 @@ export function GraphFrame({
           nodeId,
           pkCol,
           pkValue,
-          relationships,
+          graphRelationships,
         );
         if (newQuery) currentQuery = newQuery;
       }
@@ -234,7 +240,7 @@ export function GraphFrame({
         setEditQuery(currentQuery);
       }
     },
-    [frame.nodes, pkMap, relationships],
+    [frame.nodes, pkMap, graphRelationships],
   );
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -790,7 +796,7 @@ export function GraphFrame({
               onExcludeNode={handleExcludeNode}
               pkMap={pkMap}
               labelToTableLabel={labelToTableLabel}
-              relationships={relationships ?? []}
+              relationships={graphRelationships ?? []}
               showingChildrenNatural={showingChildrenNatural}
               onToggleChildren={handleToggleChildren}
               onToggleChildrenBatch={handleToggleChildrenBatch}

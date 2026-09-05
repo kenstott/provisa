@@ -143,6 +143,63 @@ def _dq_kind(kind: dict) -> DqCheckKindType:  # REQ-1443 clause 7
     )
 
 
+async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType]:
+    """Virtual HAS_TABLE rows mirroring context.py's _register_meta_synthetic_joins.
+
+    That function anchors every data row to its own registered_tables definition via a
+    constant join (never a persisted relationships row, since the join key is a literal
+    string, not a real FK column) — so the graph explorer's drop-onto-canvas feature, which
+    only reads persisted relationships, never saw it. Synthesizing it here (not persisting
+    it) keeps the single runtime join definition as the source of truth.
+    """
+    meta_res = await conn.execute_core(
+        select(registered_tables.c.id, registered_tables.c.table_name).where(
+            registered_tables.c.domain_id == "meta",
+            registered_tables.c.table_name == "registered_tables",
+        )
+    )
+    meta_row = meta_res.fetchone()
+    if not meta_row:
+        return []
+    meta_id, meta_table_name = meta_row
+    src_res = await conn.execute_core(
+        select(
+            registered_tables.c.id,
+            registered_tables.c.table_name,
+            registered_tables.c.domain_id,
+        ).where(registered_tables.c.domain_id != "meta")
+    )
+    return [
+        RelationshipType(
+            id=f"meta:has_table:{r.id}",
+            source_table_id=r.id,
+            target_table_id=meta_id,
+            source_table_name=r.table_name,
+            source_domain_id=r.domain_id or "",
+            target_table_name=meta_table_name,
+            source_column="__table_id__",
+            target_column="id",
+            cardinality="many-to-one",
+            materialize=False,
+            refresh_interval=300,
+            target_function_name=None,
+            function_arg=None,
+            alias="HAS_TABLE",
+            graphql_alias=None,
+            computed_cypher_alias=None,
+            disable_cypher=False,
+            via_table_id=None,
+            via_table_name=None,
+            via_source_column=None,
+            via_target_column=None,
+            via_type_column=None,
+            via_type_value=None,
+            via_label_source=None,
+        )
+        for r in src_res.fetchall()
+    ]
+
+
 @strawberry.type
 class Query:  # REQ-021, REQ-042
     @strawberry.field
@@ -440,7 +497,9 @@ class Query:  # REQ-021, REQ-042
                 .where(relationships.c.id.not_like("gql_auto__%"))
                 .order_by(relationships.c.id)
             )
-            return [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
+            rows = [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
+            rows.extend(await _has_table_synthetic_relationships(conn))
+            return rows
 
     @strawberry.field
     async def roles(
@@ -461,7 +520,6 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def rls_rules(self) -> list[RLSRuleType]:  # REQ-041, REQ-402, REQ-686
-
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await rls_repo.list_all(conn)  # repo decrypts filter_expr at the boundary

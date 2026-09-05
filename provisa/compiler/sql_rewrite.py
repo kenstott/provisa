@@ -222,6 +222,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
 
     # Parse failure must fail loud: returning un-rewritten SQL skips physical/catalog qualification.
     tree = sqlglot.parse_one(sql, read="postgres")
+    quoted_aliases: set[str] = set()
 
     def _rewrite(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         if not isinstance(node, exp.Table):
@@ -256,6 +257,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
         # an explicit alias here, that later rename silently strands those column qualifiers,
         # producing "missing FROM-clause entry" / "no such table" at execution.
         alias_q = alias if alias else name
+        quoted_aliases.add(alias_q)
         new_tbl = exp.Table(
             this=exp.Identifier(this=table_q, quoted=True),
             db=exp.Identifier(this=schema_q, quoted=True),
@@ -263,13 +265,21 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
             # Quoted like the table/schema/catalog identifiers beside it: the alias carries a
             # SEMANTIC name, which is free to be a reserved word ("order", "user", "table") and
             # to differ in case from the physical one. Unquoted, `FROM "public"."orders" AS order`
-            # is a syntax error, and the column qualifiers this alias exists to keep bound are
-            # themselves emitted quoted.
+            # is a syntax error. Column qualifiers referencing this alias are quoted separately
+            # below (they're built unquoted upstream, e.g. graph_rewriter._build_row_cast) —
+            # Postgres folds an unquoted qualifier to lowercase, which stops matching a quoted
+            # mixed-case alias like "mRegisteredTa".
             alias=exp.TableAlias(this=exp.Identifier(this=alias_q, quoted=True)),
         )
         return new_tbl
 
     tree = tree.transform(_rewrite)
+
+    for col in tree.find_all(exp.Column):
+        tbl_id = col.args.get("table")
+        if isinstance(tbl_id, exp.Identifier) and tbl_id.this in quoted_aliases:
+            tbl_id.set("quoted", True)
+
     return tree.sql(dialect="postgres")
 
 

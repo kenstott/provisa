@@ -363,16 +363,28 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # require_capability — previously the admin UI only worked unsecured because the
         # default role rode the platform bypass.
         if self._provider is None:
-            unsecured_role = request.headers.get("x-provisa-role") or ORG_ADMIN_ROLE
+            # REQ-1620: X-Provisa-Role may carry a comma-separated set of roles (the UI's
+            # "Role: All" sends every active role so the union of their domain_access is
+            # queryable, not just whichever role happened to be state.role). Unsecured mode
+            # takes the whole set at face value, same as it always took the single value.
+            unsecured_roles = [
+                r.strip()
+                for r in (request.headers.get("x-provisa-role") or ORG_ADMIN_ROLE).split(",")
+                if r.strip()
+            ] or [ORG_ADMIN_ROLE]
+            unsecured_role = unsecured_roles[0]
             request.state.identity = AuthIdentity(
                 user_id="anonymous",
                 email=None,
                 display_name=unsecured_role,
-                roles=[unsecured_role],
+                roles=unsecured_roles,
                 raw_claims={},
             )
             request.state.role = unsecured_role
-            request.state.assignments = [RoleAssignment(role_id=unsecured_role, domain_id="*")]
+            request.state.roles = unsecured_roles
+            request.state.assignments = [
+                RoleAssignment(role_id=r, domain_id="*") for r in unsecured_roles
+            ]
             request.state.active_org_id = self._default_org_id
             return None
 

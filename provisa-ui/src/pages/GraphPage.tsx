@@ -21,7 +21,11 @@ import {
   type GNode,
   type GEdge,
 } from "../components/graph/graph-model";
-import { useRelationships, useUpsertRelationship } from "../hooks/useAdminQueries";
+import {
+  useRelationships,
+  useAllRelationships,
+  useUpsertRelationship,
+} from "../hooks/useAdminQueries";
 import { useAuth } from "../context/AuthContext";
 import "./GraphPage.css";
 import { useLocalStorage, graphState, saveGraphState } from "../components/graph/graph-persistence";
@@ -98,6 +102,12 @@ export function GraphPage() {
     {},
   );
   const { relationships: adminRels, refetch: refetchRelationships } = useRelationships();
+  // Graph traversal (drag-drop discovery, expand/collapse, exclude-node rewriting) needs the full
+  // relationship set including meta:%-prefixed system relationships (e.g. HAS_TABLE_COLUMNS) — the
+  // same set Auto Impute Relationships already queries server-side. `adminRels` stays scoped to the
+  // `relationships` GraphQL field (meta:% excluded) because it also backs relationship-alias editing,
+  // where system-generated rows must stay read-only.
+  const { relationships: graphRels } = useAllRelationships();
   const { upsertRelationship } = useUpsertRelationship();
   const [nfModal, setNfModal] = useState<{
     label: string;
@@ -562,7 +572,7 @@ export function GraphPage() {
       const { query: newQueryBase, targetVars } = buildDropExpansion(
         frame.query,
         compoundLabel,
-        adminRels,
+        graphRels,
         labelToTableLabel,
       );
 
@@ -591,7 +601,7 @@ export function GraphPage() {
         rerunFrame(frameId, newQueryBase);
       }
     },
-    [rerunFrame, adminRels, schemaNodeLabels, buildNfWhereClauses, labelToTableLabel],
+    [rerunFrame, graphRels, schemaNodeLabels, buildNfWhereClauses, labelToTableLabel],
   );
 
   const onDomainDrop = useCallback(
@@ -908,6 +918,7 @@ export function GraphPage() {
                 pkMap={pkMap}
                 labelToTableLabel={labelToTableLabel}
                 relationships={adminRels}
+                graphRelationships={graphRels}
                 autoImpute={autoImpute}
                 onSaveEdgeAlias={handleSaveEdgeAlias}
                 onSelectedLabelChange={setActiveLabel}
