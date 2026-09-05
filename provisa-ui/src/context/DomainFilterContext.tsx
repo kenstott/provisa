@@ -99,7 +99,7 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (selectedRoles.length === 0) return;
     if (hasWildcard) {
-      fetch("/data/domains", { headers: { "X-Role": roleIds.split(",")[0] } })
+      fetch("/data/domains", { headers: { "X-Provisa-Role": roleIds.split(",")[0] } })
         .then((r) => r.json())
         .then((ids: string[]) => {
           if (ids.length > 0) {
