@@ -79,9 +79,10 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             'startNode', JSON_OBJECT('id', src.id, 'label', 'SrcLabel', 'properties', JSON_OBJECT()),
             'endNode', JSON_OBJECT('id', tgt.id, 'label', 'TgtLabel', 'properties', JSON_OBJECT()))
         startNode/endNode are Provisa extensions for graph visualization.
-        When is_reversed=True the pattern traverses the canonical edge backward; identity uses
-        canonical (src→tgt) order so it matches imputed-edge identities (always canonical).
-        startNode/endNode remain in pattern order for display.
+        When is_reversed=True the pattern traverses the canonical edge backward; identity, start,
+        end, startNode and endNode all use canonical (src→tgt) order, matching imputed-edge
+        identities and Neo4j semantics (a relationship's direction is intrinsic, not dependent on
+        which end the query pattern named first).
         """
         src_id_col = exp.Column(
             this=exp.Identifier(this=src_nm.id_column, quoted=True),
@@ -133,56 +134,53 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 )
             return exp.Anonymous(this="JSON_OBJECT", expressions=exprs)
 
-        src_compound_id = exp.DPipe(
-            this=exp.DPipe(
-                this=exp.Literal.string(src_nm.label),
-                expression=exp.Literal.string("|"),
-            ),
-            expression=exp.Cast(
-                this=exp.Column(
-                    this=exp.Identifier(this=src_nm.id_column, quoted=True),
-                    table=exp.Identifier(this=src_alias),
+        # Canonical (src->tgt) display order: when is_reversed, the pattern's src/tgt aliases
+        # are swapped relative to the canonical relationship, so start/end/startNode/endNode
+        # must swap too (mirroring identity_first/identity_second above).
+        disp_src_alias, disp_src_nm = (tgt_alias, tgt_nm) if is_reversed else (src_alias, src_nm)
+        disp_tgt_alias, disp_tgt_nm = (src_alias, src_nm) if is_reversed else (tgt_alias, tgt_nm)
+        disp_src_id_col = tgt_id_col if is_reversed else src_id_col
+        disp_tgt_id_col = src_id_col if is_reversed else tgt_id_col
+
+        def _compound_id(alias: str, nm: NodeMapping) -> exp.Expression:
+            return exp.DPipe(
+                this=exp.DPipe(
+                    this=exp.Literal.string(nm.label),
+                    expression=exp.Literal.string("|"),
                 ),
-                to=exp.DataType.build("VARCHAR"),
-            ),
-        )
-        tgt_compound_id = exp.DPipe(
-            this=exp.DPipe(
-                this=exp.Literal.string(tgt_nm.label),
-                expression=exp.Literal.string("|"),
-            ),
-            expression=exp.Cast(
-                this=exp.Column(
-                    this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
-                    table=exp.Identifier(this=tgt_alias),
+                expression=exp.Cast(
+                    this=exp.Column(
+                        this=exp.Identifier(this=nm.id_column, quoted=True),
+                        table=exp.Identifier(this=alias),
+                    ),
+                    to=exp.DataType.build("VARCHAR"),
                 ),
-                to=exp.DataType.build("VARCHAR"),
-            ),
-        )
+            )
+
         start_node = exp.Anonymous(
             this="JSON_OBJECT",
             expressions=[
                 exp.Literal.string("id"),
-                src_compound_id,
+                _compound_id(disp_src_alias, disp_src_nm),
                 exp.Literal.string("label"),
-                exp.Literal.string(src_nm.label),
+                exp.Literal.string(disp_src_nm.label),
                 exp.Literal.string("tableLabel"),
-                exp.Literal.string(src_nm.table_label),
+                exp.Literal.string(disp_src_nm.table_label),
                 exp.Literal.string("properties"),
-                _node_props_expr(src_alias, src_nm),
+                _node_props_expr(disp_src_alias, disp_src_nm),
             ],
         )
         end_node = exp.Anonymous(
             this="JSON_OBJECT",
             expressions=[
                 exp.Literal.string("id"),
-                tgt_compound_id,
+                _compound_id(disp_tgt_alias, disp_tgt_nm),
                 exp.Literal.string("label"),
-                exp.Literal.string(tgt_nm.label),
+                exp.Literal.string(disp_tgt_nm.label),
                 exp.Literal.string("tableLabel"),
-                exp.Literal.string(tgt_nm.table_label),
+                exp.Literal.string(disp_tgt_nm.table_label),
                 exp.Literal.string("properties"),
-                _node_props_expr(tgt_alias, tgt_nm),
+                _node_props_expr(disp_tgt_alias, disp_tgt_nm),
             ],
         )
         return exp.Anonymous(
@@ -191,9 +189,9 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                 exp.Literal.string("identity"),
                 identity,
                 exp.Literal.string("start"),
-                src_id_col,
+                disp_src_id_col,
                 exp.Literal.string("end"),
-                tgt_id_col,
+                disp_tgt_id_col,
                 exp.Literal.string("type"),
                 exp.Literal.string(rel_type),
                 *edge_fields,

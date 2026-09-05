@@ -1030,6 +1030,29 @@ def test_backward_traversal_edge_identity_is_canonical():
     )
 
 
+def test_backward_traversal_edge_start_end_are_canonical():
+    """MATCH (c:Company)<-[r:WORKS_AT]-(p:Person) RETURN r — startNode/endNode must stay canonical
+    (person->company) regardless of which end the pattern names first; a relationship's direction
+    is intrinsic, not display-order-dependent."""
+    lm = _make_label_map()
+    fwd_ast = parse_cypher("MATCH (p:Person)-[r:WORKS_AT]->(c:Company) RETURN r LIMIT 25")
+    fwd_sql = cypher_to_sql(fwd_ast, lm, {})[0].sql(dialect="trino")
+
+    bwd_ast = parse_cypher("MATCH (c:Company)<-[r:WORKS_AT]-(p:Person) RETURN r LIMIT 25")
+    bwd_sql = cypher_to_sql(bwd_ast, lm, {})[0].sql(dialect="trino")
+
+    import re
+
+    fwd_start = re.findall(r"'startNode'.*?(?='endNode')", fwd_sql)
+    bwd_start = re.findall(r"'startNode'.*?(?='endNode')", bwd_sql)
+
+    assert fwd_start and bwd_start
+    assert fwd_start[0] == bwd_start[0], (
+        f"startNode differs between forward and backward traversal: "
+        f"fwd={fwd_start[0]!r} bwd={bwd_start[0]!r}"
+    )
+
+
 def test_anonymous_src_named_tgt_relationship():
     """MATCH ()-[r:WORKS_AT]->(c:Company) RETURN r.join_source_column — anonymous src inferred."""
     lm = _make_label_map()
