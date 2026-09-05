@@ -31,6 +31,7 @@ async engines are only ever driven inside the TestClient's event loop.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 import time
@@ -172,6 +173,12 @@ def planes(monkeypatch):
         conn.execute(text(f"DROP SCHEMA IF EXISTS {_ADMIN_SCHEMA} CASCADE"))
         conn.execute(text(f"DROP SCHEMA IF EXISTS {_TENANT_SCHEMA} CASCADE"))
     sync_engine.dispose()
+
+    # admin_db/tenant_db are never disposed by the code under test (the app they back is torn
+    # down by TestClient's own finalizer, which closes its portal loop before this one runs), so
+    # each test leaks a pool's worth of connections into the shared Postgres unless disposed here.
+    asyncio.run(admin_db.engine.dispose())
+    asyncio.run(tenant_db.engine.dispose())
 
 
 def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:

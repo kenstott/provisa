@@ -16,6 +16,12 @@ marked non-retryable, so the connector gives up on its first attempt. That surfa
 Databricks test erroring at once with a message that reads like broken credentials or a broken
 workspace, when the warehouse is merely asleep. The REST start endpoint is the wake-up the
 connector will not perform: call it, wait for RUNNING, then let the suite connect.
+
+The start endpoint itself can reject the very first wake call the same way, while the workspace
+gatekeeper is still settling the warehouse out of idle (``DENY_NEW_AND_EXISTING_RESOURCES`` /
+``denyReason: INACTIVE``, same "try again later" wording). That is the gatekeeper asking for a
+retry, not a refusal, so the start call is retried on 4xx until it either succeeds or the
+timeout budget below is exhausted.
 """
 
 from __future__ import annotations
@@ -63,10 +69,18 @@ def ensure_warehouse_running() -> None:
         state = client.get(f"{base}/{warehouse_id}").raise_for_status().json()["state"]
         if state == "RUNNING":
             return
-        if state != "STARTING":
-            client.post(f"{base}/{warehouse_id}/start").raise_for_status()
 
         deadline = time.monotonic() + _START_TIMEOUT_S
+
+        if state != "STARTING":
+            while True:
+                resp = client.post(f"{base}/{warehouse_id}/start")
+                if resp.status_code < 400:
+                    break
+                if resp.status_code >= 500 or time.monotonic() >= deadline:
+                    resp.raise_for_status()
+                time.sleep(_POLL_S)
+
         while time.monotonic() < deadline:
             body = client.get(f"{base}/{warehouse_id}").raise_for_status().json()
             state = body["state"]

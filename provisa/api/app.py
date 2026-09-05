@@ -1979,18 +1979,28 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         await state.tenant_db.close()
     # REQ-1244: every org with a dedicated federation engine owns a live terminal — close each,
     # then the shared engine (the default runtime's, reached by the unrouted property below).
+    # Each non-default org runtime also owns its own tenant_db pool (the default's is state.tenant_db,
+    # already closed above) — leaving it open leaks a pool's worth of connections per org built
+    # during this process's life.
     for _oid in state.org_registry.all_org_ids():
         _rt = state.org_registry.get(_oid)
-        if _rt is not None and _rt.federation_engine is not None and _oid != state.org_id:
-            with tolerate_shutdown_failure(f"org {_oid} federation engine close"):
-                # close() reaches its terminal through the routed state shims, so the org must
-                # be bound or the shims would resolve the SHARED engine's connection.
-                _tok = set_current_org(_oid)
-                try:
-                    _rt.federation_engine.close()
-                finally:
-                    reset_current_org(_tok)
+        if _rt is not None and _oid != state.org_id:
+            if _rt.tenant_db is not None:
+                with tolerate_shutdown_failure(f"org {_oid} tenant_db close"):
+                    await _rt.tenant_db.close()
+            if _rt.federation_engine is not None:
+                with tolerate_shutdown_failure(f"org {_oid} federation engine close"):
+                    # close() reaches its terminal through the routed state shims, so the org must
+                    # be bound or the shims would resolve the SHARED engine's connection.
+                    _tok = set_current_org(_oid)
+                    try:
+                        _rt.federation_engine.close()
+                    finally:
+                        reset_current_org(_tok)
     state.federation_engine.close()
+    if state.admin_db is not None:
+        with tolerate_shutdown_failure("admin_db close"):
+            await state.admin_db.close()
 
 
 def create_app() -> FastAPI:
