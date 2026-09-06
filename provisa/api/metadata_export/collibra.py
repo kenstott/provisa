@@ -125,6 +125,14 @@ DATABASE_TYPE = "Database"
 COLUMN_TO_TABLE_RELATION = "Column is part of Table"
 TABLE_TO_DATABASE_RELATION = "Table is part of Database"
 
+# REQ-1634: Collibra's Data Product Ops module ships a "Data Product" asset type — unverified
+# against a live target, same caveat atlan.py documents for its own DataProduct type guess. A
+# product does not own its member tables (removing the product must never delete a table), so
+# the relation is named as a grouping, not the containment vocabulary "is part of" uses above.
+DATA_PRODUCT_TYPE = "Data Product"
+DATA_PRODUCT_TABLE_RELATION = "Data Product groups Table"
+DOMAIN_ATTRIBUTE = "Provisa Domain"
+
 # Attributes Provisa writes. `Description` is Collibra's own; the rest are custom attribute
 # types the target must have, and a target that lacks one refuses the rows carrying it — which
 # the publish reports rather than dropping.
@@ -360,6 +368,29 @@ def to_rows(snapshot: MetadataSnapshot, community: str, domain: str) -> list[dic
                     },
                 }
             )
+    for product in snapshot.data_products:  # REQ-1634
+        attributes: dict[str, Any] = {
+            DESCRIPTION_ATTRIBUTE: [{"value": product.description}],
+            URI_ATTRIBUTE: [{"value": product.semantic_uri}],  # REQ-1385
+            DOMAIN_ATTRIBUTE: [{"value": product.domain_id}],
+        }
+        if product.owner is not None:
+            attributes[STEWARD_ATTRIBUTE] = [{"value": product.owner.id}]
+        rows.append(
+            {
+                "resourceType": "Asset",
+                "identifier": _identifier(product.ref.fqn(), community, domain),
+                "name": product.ref.fqn(),
+                "displayName": product.name,
+                "type": {"name": DATA_PRODUCT_TYPE},
+                "attributes": attributes,
+                "relations": {
+                    f"{DATA_PRODUCT_TABLE_RELATION}:TARGET": [
+                        _identifier(member.fqn(), community, domain) for member in product.members
+                    ]
+                },
+            }
+        )
     return rows
 
 

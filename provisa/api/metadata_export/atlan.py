@@ -56,6 +56,8 @@ TYPE_MAP = {
     "rdbms_table": "Table",
     "rdbms_column": "Column",
     "Process": "Process",
+    # REQ-1634: Atlan's own Data Mesh/Domains built-in type for a product listing.
+    "provisa_data_product": "DataProduct",
 }
 
 # Every Atlan asset declares which source system it came from. Provisa is the governed access

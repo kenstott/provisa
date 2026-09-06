@@ -79,6 +79,7 @@ _REL_KEYS = frozenset(
 _ROLE_KEYS = frozenset({"id", "capabilities", "domain_access"})
 _RLS_KEYS = frozenset({"table_id", "domain_id", "role_id", "filter"})
 _DOMAIN_KEYS = frozenset({"id", "description", "steward"})  # REQ-609
+_DATA_PRODUCT_KEYS = frozenset({"id", "domain_id", "name", "owner", "description"})  # REQ-1634
 
 
 def _plain(obj: Any) -> Any:
@@ -151,6 +152,7 @@ async def build_live_config() -> dict:
     projected to the config schema and table-id refs resolved to names. File-only sections and source
     credentials are preserved; internal meta/ops and unassigned-domain entities are excluded."""
     from provisa.api.admin.schema_helpers import _get_pool
+    from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import domain as domain_repo
     from provisa.core.repositories import metric as metric_repo
     from provisa.core.repositories import relationship as rel_repo
@@ -167,6 +169,7 @@ async def build_live_config() -> dict:
         rls = await rls_repo.list_all(conn)
         domains = await domain_repo.list_all(conn)
         metric_rows = await metric_repo.list_all(conn)  # REQ-1317
+        data_products = await data_product_repo.list_all(conn)  # REQ-1634
 
     def _internal_domain(d: Any) -> bool:
         return not d or str(d) in _INTERNAL_DOMAINS
@@ -217,6 +220,9 @@ async def build_live_config() -> dict:
         _project(d, _DOMAIN_KEYS, id_to_name=id_to_name)
         for d in domains
         if not _internal_domain(d.get("id"))
+    ]
+    base["data_products"] = [  # REQ-1634
+        _project(p, _DATA_PRODUCT_KEYS, id_to_name=id_to_name) for p in data_products
     ]
     base["metrics"] = [  # REQ-1317
         _project(m, _METRIC_KEYS, id_to_name=id_to_name) for m in metric_rows

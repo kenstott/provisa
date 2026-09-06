@@ -31,6 +31,7 @@ class AssetKind(str, Enum):  # REQ-1070
     TABLE = "table"
     COLUMN = "column"
     DOMAIN = "domain"
+    DATA_PRODUCT = "data_product"  # REQ-1634
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,26 @@ class TableAsset:  # REQ-1070
     # catalog publish, which exports nothing else; the model report builds over every registered
     # table and carries the flag as a column so a reviewer can filter on it in the spreadsheet.
     data_product: bool = False
+
+
+@dataclass
+class DataProductAsset:  # REQ-1634
+    """A named, owned bundle of member tables/views published as one catalog listing.
+
+    ``members`` are the exported TableAssets whose ``product_id`` names this product — the
+    same domain-alignment Provisa enforces at save time (a member's domain_id always equals
+    ``domain_id`` here). A product with no exported members does not build: publishing an
+    empty listing would tell the catalog about a product with nothing behind it.
+    """
+
+    ref: AssetRef
+    id: str
+    name: str
+    domain_id: str
+    owner: OwnerRef | None
+    description: str
+    members: tuple[AssetRef, ...] = ()
+    semantic_uri: str = ""
 
 
 @dataclass
@@ -342,6 +363,7 @@ class MetadataSnapshot:  # REQ-1070
     sources: list[SourceAsset] = field(default_factory=list)
     domains: list[DomainAsset] = field(default_factory=list)
     tables: list[TableAsset] = field(default_factory=list)
+    data_products: list[DataProductAsset] = field(default_factory=list)  # REQ-1634
     relationships: list[RelationshipEdge] = field(default_factory=list)
     lineage: list[LineageEdge] = field(default_factory=list)
     governance_tags: list[GovernanceTag] = field(default_factory=list)

@@ -40,6 +40,7 @@ from provisa.api.metadata_export.registry import registered_providers
 from provisa.core.models import (
     Cardinality,
     Column,
+    DataProduct,
     Domain,
     MetadataExportConfig,
     ProvisaConfig,
@@ -194,6 +195,35 @@ def test_openlineage_dataset_event_carries_schema_ownership_and_description(snap
     assert fields["amount"]["description"] == "Order total"
     assert facets["ownership"]["owners"] == [{"name": "data-steward", "type": "STEWARD"}]
     assert facets["provisa_domain"]["domainId"] == "sales"
+
+
+def test_openlineage_dataset_facet_names_its_data_product():  # REQ-1634
+    # OpenLineage has no persistent entity for a data product — only per-event dataset/run
+    # facets — so membership rides the member table's own facets, alongside provisa_domain.
+    config = ProvisaConfig(
+        sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
+        domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        tables=[_table("orders", [Column(name="id", data_type="integer", visible_to=["analyst"])])],
+        roles=[Role(id="analyst", capabilities=[], domain_access=["*"])],
+        data_products=[
+            DataProduct(
+                id="prod",
+                domain_id="sales",
+                name="Sales 360",
+                owner="alice",
+                description="Unified",
+            )
+        ],
+    )
+    snap = build_snapshot(config, org_id="acme", dialect="postgres")
+    events = to_events(snap, event_time=EVENT_TIME)
+    orders = next(
+        e for e in events if e.payload.get("dataset", {}).get("name") == "wh.public.orders"
+    )
+    facet = orders.payload["dataset"]["facets"]["provisa_data_product"]
+    assert facet["productId"] == "prod"
+    assert facet["name"] == "Sales 360"
+    assert facet["owner"] == "alice"
 
 
 def test_openlineage_column_lineage_facet_names_input_field_and_transform(snapshot):

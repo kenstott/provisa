@@ -217,6 +217,7 @@ def _dataset_facets(
     snapshot: MetadataSnapshot,
     table: TableAsset,
     domain_owner: dict[str, str],
+    product_by_table: dict[str, Any],
 ) -> dict[str, Any]:
     facets: dict[str, Any] = {"schema": _schema_facet(table)}
     # REQ-1385: the stable business-identity address — the cross-catalog join key a lineage
@@ -236,6 +237,14 @@ def _dataset_facets(
         facets["ownership"] = _ownership_facet(steward)
     if table.domain_id:
         facets["provisa_domain"] = _custom_facet(domainId=table.domain_id)
+
+    product = product_by_table.get(table.ref.fqn())
+    if product is not None:
+        facets["provisa_data_product"] = _custom_facet(
+            productId=product.id,
+            name=product.name,
+            **({"owner": product.owner.id} if product.owner is not None else {}),
+        )
 
     asset_prefix = table.ref.fqn()
     tags = [
@@ -332,9 +341,15 @@ def to_events(snapshot: MetadataSnapshot, *, event_time: datetime) -> list[Expor
     domain_owner = {
         domain.id: domain.steward.id for domain in snapshot.domains if domain.steward is not None
     }
+    # REQ-1634: OpenLineage has no persistent entity for a data product — only per-event
+    # dataset/run facets — so membership rides each member table's own facets, the same way
+    # ``provisa_domain`` already does above.
+    product_by_table = {
+        member.fqn(): product for product in snapshot.data_products for member in product.members
+    }
 
     facets_by_name = {
-        _dataset_name(table): _dataset_facets(snapshot, table, domain_owner)
+        _dataset_name(table): _dataset_facets(snapshot, table, domain_owner, product_by_table)
         for table in snapshot.tables
     }
 

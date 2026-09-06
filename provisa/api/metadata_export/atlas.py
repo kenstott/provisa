@@ -55,6 +55,7 @@ from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
+        DataProductAsset,
         DomainAsset,
         GlossaryTermAsset,
         MetadataSnapshot,
@@ -130,6 +131,10 @@ def _column_qn(table: TableAsset, column_name: str) -> str:
     return _qualified(*table.ref.parts, column_name)
 
 
+def _data_product_qn(product: DataProductAsset) -> str:  # REQ-1634
+    return _qualified("data-product", product.id)
+
+
 # REQ-1388: Provisa-native Atlas entity types. The rdbms_* transport misrepresents every
 # non-database source as an RDBMS and cannot carry typed Provisa attributes; these types
 # state what the model actually holds. provisa_table/provisa_column extend DataSet so the
@@ -137,6 +142,9 @@ def _column_qn(table: TableAsset, column_name: str) -> str:
 PROVISA_SOURCE_TYPE = "provisa_source"
 PROVISA_TABLE_TYPE = "provisa_table"
 PROVISA_COLUMN_TYPE = "provisa_column"
+# REQ-1634: a data product groups existing tables — it never owns/contains them, so it is a
+# top-level Asset carrying an AGGREGATION relationship, not another DataSet in the composition.
+PROVISA_DATA_PRODUCT_TYPE = "provisa_data_product"
 
 
 def _attr_def(name: str, type_name: str = "string") -> dict[str, Any]:
@@ -179,6 +187,17 @@ def entity_type_defs() -> list[dict[str, Any]]:  # REQ-1388
             "superTypes": ["DataSet"],
             "attributeDefs": [_attr_def("dataType"), _attr_def("provisaUri")],
         },
+        {
+            "name": PROVISA_DATA_PRODUCT_TYPE,  # REQ-1634
+            "description": "A Provisa data product grouping existing tables across domains.",
+            "serviceType": "provisa",
+            "superTypes": ["Asset"],
+            "attributeDefs": [
+                _attr_def("provisaDomain"),
+                _attr_def("provisaUri"),
+                _attr_def("owner"),
+            ],
+        },
     ]
 
 
@@ -203,12 +222,42 @@ def relationship_type_defs() -> list[dict[str, Any]]:  # REQ-1388
             },
         }
 
+    def _aggregation(name: str, owner: str, member: str, plural: str, singular: str):
+        # REQ-1634: a data product's member tables are pre-existing assets it does not own or
+        # contain (unlike source→table/table→column composition), so this is AGGREGATION —
+        # neither end is a container, and removing the product must never delete the table.
+        return {
+            "name": name,
+            "serviceType": "provisa",
+            "relationshipCategory": "AGGREGATION",
+            "propagateTags": "NONE",
+            "endDef1": {
+                "type": owner,
+                "name": plural,
+                "isContainer": False,
+                "cardinality": "SET",
+            },
+            "endDef2": {
+                "type": member,
+                "name": singular,
+                "isContainer": False,
+                "cardinality": "SET",
+            },
+        }
+
     return [
         _composition(
             "provisa_source_tables", PROVISA_SOURCE_TYPE, PROVISA_TABLE_TYPE, "tables", "source"
         ),
         _composition(
             "provisa_table_columns", PROVISA_TABLE_TYPE, PROVISA_COLUMN_TYPE, "columns", "table"
+        ),
+        _aggregation(
+            "provisa_data_product_members",
+            PROVISA_DATA_PRODUCT_TYPE,
+            PROVISA_TABLE_TYPE,
+            "members",
+            "dataProducts",
         ),
     ]
 
@@ -434,9 +483,13 @@ def rebind_to_live_identities(
     if not guid_map:
         return 0
     for entity in entities:
-        for ref in entity.relationships.values():
-            if isinstance(ref, dict) and ref.get("guid") in guid_map:
-                ref["guid"] = guid_map[ref["guid"]]
+        for value in entity.relationships.values():
+            # A SET-cardinality end (e.g. a data product's "members") carries a list of refs
+            # rather than the single-ref dict a SINGLE-cardinality end carries — REQ-1634.
+            refs = value if isinstance(value, list) else [value]
+            for ref in refs:
+                if isinstance(ref, dict) and ref.get("guid") in guid_map:
+                    ref["guid"] = guid_map[ref["guid"]]
         for key in ("inputs", "outputs"):
             for ref in entity.attributes.get(key) or []:
                 if isinstance(ref, dict) and ref.get("guid") in guid_map:
@@ -526,7 +579,48 @@ def to_native_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:  # REQ-
                 )
             )
 
+    entities.extend(_data_product_entities(snapshot, guid, PROVISA_TABLE_TYPE, table_guids))
     entities.extend(_lineage_entities(snapshot, guid, table_guids))
+    return entities
+
+
+def _data_product_entities(
+    snapshot: MetadataSnapshot,
+    guid: _GuidCounter,
+    member_type_name: str,
+    table_guids: dict[str, str],
+) -> list[AtlasEntity]:  # REQ-1634
+    """One ``provisa_data_product`` entity per DataProductAsset, aggregating its member tables.
+
+    A member absent from ``table_guids`` (not exported in this snapshot) is a builder fault —
+    ``DataProductAsset.members`` is built from the same exported tables, so a miss here means
+    the two collections have already diverged upstream, not something to skip past silently.
+    """
+    entities: list[AtlasEntity] = []
+    for product in snapshot.data_products:
+        entities.append(
+            AtlasEntity(
+                asset=product.ref,
+                kind="data_product",
+                type_name=PROVISA_DATA_PRODUCT_TYPE,
+                guid=guid.next(),
+                attributes={
+                    "qualifiedName": _data_product_qn(product),
+                    "name": product.name or product.id,
+                    "description": product.description,
+                    "provisaDomain": product.domain_id,
+                    "provisaUri": product.semantic_uri,
+                    **({"owner": product.owner.id} if product.owner is not None else {}),
+                },
+                classifications=_classifications(snapshot, product.ref.fqn()),
+                relationships={
+                    "members": [
+                        {"guid": table_guids[member.fqn()], "typeName": member_type_name}
+                        for member in product.members
+                    ]
+                },
+            )
+        )
     return entities
 
 
@@ -642,6 +736,7 @@ def to_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:
                 )
             )
 
+    entities.extend(_data_product_entities(snapshot, guid, "rdbms_table", table_guids))
     entities.extend(_lineage_entities(snapshot, guid, table_guids))
     return entities
 
@@ -1308,7 +1403,12 @@ class AtlasExport(MetadataExport):  # REQ-1069
         canonical identity the rebind keys on.
         """
         index: dict[str, tuple[str, str]] = {}
-        for type_name in (PROVISA_SOURCE_TYPE, PROVISA_TABLE_TYPE, PROVISA_COLUMN_TYPE):
+        for type_name in (
+            PROVISA_SOURCE_TYPE,
+            PROVISA_TABLE_TYPE,
+            PROVISA_COLUMN_TYPE,
+            PROVISA_DATA_PRODUCT_TYPE,
+        ):
             offset = 0
             while True:
                 response = await client.post(

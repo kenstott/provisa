@@ -20,8 +20,17 @@ import pytest
 from pytest_bdd import given, when, then, scenarios
 from sqlalchemy.sql import Select
 
+from provisa.api.metadata_export import build_snapshot
 from provisa.core.database import Connection
-from provisa.core.models import Table
+from provisa.core.models import (
+    Column,
+    DataProduct,
+    Domain,
+    ProvisaConfig,
+    Source,
+    SourceType,
+    Table,
+)
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import data_products
 
@@ -74,14 +83,31 @@ def shared_data() -> dict:
 @given('a DataProduct "customer_360" owned by "alice" in domain "sales"')
 def dataproduct_exists(shared_data: dict) -> None:
     shared_data["product_row"] = {"id": "customer_360", "domain_id": "sales", "owner": "alice"}
+    shared_data["product"] = DataProduct(
+        id="customer_360", domain_id="sales", name="customer_360", owner="alice"
+    )
 
 
 @given('two tables in domain "sales" both set product_id="customer_360"')
 def tables_assigned_to_product(shared_data: dict) -> None:
-    pytest.skip(
-        "REQ-1634 Phase 4: MetadataSnapshot.data_products (multi-table product grouping) "
-        "is not implemented yet — see provisa/api/metadata_export/builder.py:143"
-    )
+    shared_data["tables"] = [
+        Table(
+            source_id="wh",
+            domain_id="sales",
+            schema_name="public",
+            table_name="customers",
+            product_id="customer_360",
+            columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
+        ),
+        Table(
+            source_id="wh",
+            domain_id="sales",
+            schema_name="public",
+            table_name="orders",
+            product_id="customer_360",
+            columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
+        ),
+    ]
 
 
 @given('a table in domain "marketing"')
@@ -96,10 +122,14 @@ def table_in_marketing_domain(shared_data: dict) -> None:
 
 @when("metadata is exported")
 def metadata_export_runs(shared_data: dict) -> None:
-    pytest.skip(
-        "REQ-1634 Phase 4: MetadataSnapshot.data_products (multi-table product grouping) "
-        "is not implemented yet — see provisa/api/metadata_export/builder.py:143"
+    config = ProvisaConfig(
+        sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
+        domains=[Domain(id="sales", description="Sales")],
+        tables=shared_data["tables"],
+        data_products=[shared_data["product"]],
+        roles=[],
     )
+    shared_data["snapshot"] = build_snapshot(config, org_id="acme", dialect="postgres")
 
 
 @when('an attempt is made to set product_id="customer_360" on the marketing table')
@@ -126,10 +156,12 @@ def change_saved(shared_data: dict) -> None:
 
 @then('both tables publish as one data product named "customer_360" attributed to owner "alice"')
 def tables_published_as_single_product(shared_data: dict) -> None:
-    pytest.skip(
-        "REQ-1634 Phase 4: MetadataSnapshot.data_products (multi-table product grouping) "
-        "is not implemented yet — see provisa/api/metadata_export/builder.py:143"
-    )
+    products = shared_data["snapshot"].data_products
+    assert len(products) == 1, products
+    product = products[0]
+    assert product.name == "customer_360"
+    assert product.owner is not None and product.owner.id == "alice"
+    assert len(product.members) == 2
 
 
 @then("it is rejected because the table's domain_id does not match the DataProduct's domain_id")

@@ -27,6 +27,7 @@ from provisa.api.metadata_export.refs import AmbiguousTableError, UnknownTableEr
 from provisa.core.models import (
     Cardinality,
     Column,
+    DataProduct,
     Domain,
     ProvisaConfig,
     Relationship,
@@ -126,6 +127,67 @@ def test_only_data_product_tables_are_published():
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
 
     assert [t.ref.fqn() for t in snapshot.tables] == ["wh.public.orders"]
+
+
+def test_tables_sharing_a_product_id_publish_as_one_data_product():
+    config = _config(
+        tables=[
+            _table(table_name="orders", product_id="customer_360"),
+            _table(table_name="customers", product_id="customer_360"),
+        ],
+        data_products=[
+            DataProduct(
+                id="customer_360",
+                domain_id="sales",
+                name="Customer 360",
+                owner="alice",
+                description="Unified customer view",
+            )
+        ],
+    )
+
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+
+    assert len(snapshot.data_products) == 1
+    product = snapshot.data_products[0]
+    assert product.id == "customer_360"
+    assert product.name == "Customer 360"
+    assert product.domain_id == "sales"
+    assert product.description == "Unified customer view"
+    assert product.owner is not None
+    assert product.owner.id == "alice"
+    assert product.owner.kind == "data_product_owner"
+    assert {m.fqn() for m in product.members} == {"wh.public.orders", "wh.public.customers"}
+    assert product.semantic_uri.endswith("customer_360") or "customer_360" in product.semantic_uri
+
+
+def test_data_product_with_no_exported_members_does_not_publish():
+    # A DataProduct listed in config but with zero tables actually exported (e.g. every member
+    # table is unmarked) would tell the catalog about a listing with nothing behind it.
+    config = _config(
+        tables=[_table(table_name="orders", product_id=None)],
+        data_products=[
+            DataProduct(id="customer_360", domain_id="sales", name="Customer 360", owner="alice")
+        ],
+    )
+
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+
+    assert snapshot.data_products == []
+
+
+def test_data_product_without_owner_publishes_with_no_owner_ref():
+    config = _config(
+        tables=[_table(table_name="orders", product_id="customer_360")],
+        data_products=[
+            DataProduct(id="customer_360", domain_id="sales", name="Customer 360", owner=None)
+        ],
+    )
+
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+
+    assert len(snapshot.data_products) == 1
+    assert snapshot.data_products[0].owner is None
 
 
 def test_edges_and_tags_touching_an_unmarked_table_are_withheld():

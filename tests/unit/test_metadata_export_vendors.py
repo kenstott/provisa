@@ -36,8 +36,11 @@ from provisa.api.metadata_export.atlas import (
 )
 from provisa.api.metadata_export.collibra import (
     COLUMN_TO_TABLE_RELATION,
+    DATA_PRODUCT_TABLE_RELATION,
+    DATA_PRODUCT_TYPE,
     DATA_QUALITY_ATTRIBUTE,
     DESCRIPTION_ATTRIBUTE,
+    DOMAIN_ATTRIBUTE,
     GOVERNANCE_ATTRIBUTE as COLLIBRA_GOVERNANCE,
     LINEAGE_ATTRIBUTE,
     RELATIONSHIP_ATTRIBUTE,
@@ -47,11 +50,14 @@ from provisa.api.metadata_export.collibra import (
     CollibraExport,
     to_rows,
 )
+from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.datahub import DataHubExport, to_proposals
 from provisa.core.models import MetadataExportConfig
 from tests.integration.metadata_export_fixture import (
     MASK_PATTERN,
+    ORG_ID,
     RLS_FILTER,
+    governed_config,
     governed_snapshot,
 )
 
@@ -204,6 +210,52 @@ def test_atlan_retypes_every_entity_into_atlans_own_type_set(snapshot):
     assert by_kind["column"].type_name == "Column"
 
 
+def _snapshot_with_data_product():  # REQ-1634
+    from provisa.core.models import DataProduct
+
+    config = governed_config()
+    config.data_products = [
+        DataProduct(
+            id="prod", domain_id="sales", name="Sales 360", owner="alice", description="Unified"
+        )
+    ]
+    return build_snapshot(config, org_id=ORG_ID, dialect="postgres")
+
+
+def test_atlas_data_product_aggregates_rdbms_tables_by_fqn():  # REQ-1634
+    entities = to_entities(_snapshot_with_data_product())
+    tables_by_guid = {e.guid: e for e in entities if e.type_name == "rdbms_table"}
+    product = next(e for e in entities if e.type_name == "provisa_data_product")
+    member_guids = {ref["guid"] for ref in product.relationships["members"]}
+    assert member_guids and member_guids <= set(tables_by_guid)
+    assert all(ref["typeName"] == "rdbms_table" for ref in product.relationships["members"])
+    assert product.attributes["owner"] == "alice"
+
+
+def test_atlan_retypes_the_data_product_via_the_type_map():  # REQ-1634
+    export = metadata_export(
+        MetadataExportConfig(
+            enabled=True, provider="atlan", endpoint="https://tenant.atlan.com", token="t"
+        )
+    )
+    entities = export._atlan_entities(_snapshot_with_data_product())
+    assert {entity.type_name for entity in entities} <= set(TYPE_MAP.values())
+    product = next(e for e in entities if e.kind == "data_product")
+    assert product.type_name == "DataProduct"
+
+
+def test_collibra_data_product_row_groups_its_member_tables():  # REQ-1634
+    snapshot = _snapshot_with_data_product()
+    rows = to_rows(snapshot, CollibraExport.community, CollibraExport.domain)
+    product_row = next(r for r in rows if r["type"]["name"] == DATA_PRODUCT_TYPE)
+    table_identifiers = {r["identifier"]["name"] for r in rows if r["type"]["name"] == "Table"}
+    assert product_row["attributes"][DOMAIN_ATTRIBUTE] == [{"value": "sales"}]
+    assert product_row["attributes"][STEWARD_ATTRIBUTE] == [{"value": "alice"}]
+    targets = product_row["relations"][f"{DATA_PRODUCT_TABLE_RELATION}:TARGET"]
+    assert targets
+    assert {t["name"] for t in targets} <= table_identifiers
+
+
 def test_atlan_roots_every_asset_at_the_orgs_own_connection(snapshot):
     export = metadata_export(
         MetadataExportConfig(
@@ -292,6 +344,22 @@ def test_datahub_leaves_an_unstewarded_domains_tables_unowned(snapshot):
 
 def test_datahub_payload_carries_no_rule_body(snapshot):
     _no_rule_body(json.dumps([p.payload() for p in to_proposals(snapshot)]))
+
+
+def test_datahub_publishes_a_native_data_product_entity_with_its_assets():  # REQ-1634
+    snapshot = _snapshot_with_data_product()
+    proposals = to_proposals(snapshot)
+    product = next(p for p in proposals if p.entity_type == "dataProduct")
+    assert product.aspect_name == "dataProductProperties"
+    assert product.aspect["name"] == "Sales 360"
+    assert product.aspect["customProperties"]["provisaDomain"] == "sales"
+    member_urns = {a["destinationUrn"] for a in product.aspect["assets"]}
+    assert member_urns
+    assert all(urn.startswith("urn:li:dataset:") for urn in member_urns)
+    ownership = next(
+        p for p in proposals if p.entity_type == "dataProduct" and p.aspect_name == "ownership"
+    )
+    assert ownership.aspect["owners"][0]["owner"] == "urn:li:corpuser:alice"
 
 
 # REQ-1389: the globalTags read-merge — the one aspect where human and Provisa authorship
