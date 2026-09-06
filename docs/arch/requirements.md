@@ -17221,3 +17221,67 @@ The admin GraphQL allRelationships resolver synthesizes virtual HAS_TABLE relati
 **Code:** `provisa/api/admin/schema_query.py`, `provisa/compiler/context.py`, `provisa-ui/src/pages/graph-drop.ts`
 
 **Tests:** —
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-1632 · Boot-Time Replica Landing {#REQ-1632}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Boot-time eager landing for MATERIALIZED sources must create schema-only (zero-row) replica tables, not full data copies. Before creating a replica, check whether a matching replica with identical column metadata already exists in the target federation engine's store. If so, skip creation (idempotent no-op). Only when no existing matching replica is found should a DDL-only CREATE TABLE be issued. Actual row population remains under the existing poll/push refresh cadence, not boot. Applies uniformly to any federation engine (Snowflake, Databricks, BigQuery, Postgres, DuckDB, etc.) — the fix belongs in the engine-agnostic boot_create()/ land_source_table() path, not in per-engine connector code, since Strategy.MATERIALIZED resolution and boot-time landing are already engine-agnostic. Post-boot column edits must reconcile the same way: editing a registered table's columns is saved as one whole-table metadata write (update_table), which already triggers reconcile_landed_tables() -> reconcile_duckdb_native() synchronously before the mutation returns (provisa/api/app.py:_rebuild_schemas -> app.py:1691). The reconciler always receives the complete new column list in a single call, never a per-column diff, and on drift RECREATES the landed table (DDL only, zero rows) rather than re-inserting data — data reland remains the refresh cadence's job, not the edit's.
+
+**Use case:** Boot-time replica landing currently pulls entire MATERIALIZED source tables into memory as list[dict] with no row-count check, chunking, or concurrency limit, risking large memory consumption and event-loop monopolization at every boot. Schema-only replicas with idempotent creation bound boot cost to O(number of NEW sources without existing replicas) DDL statements, independent of source table size, eliminating memory and scheduler starvation risk.
+
+**Code:** `provisa/events/boot.py`, `provisa/events/handlers.py`, `provisa/federation/strategy.py`, `provisa/federation/native_backend.py`, `provisa/federation/duckdb_runtime.py`, `provisa/events/supervisor.py`, `provisa/federation/store_connection.py`, `provisa/api/app.py`
+
+**Tests:** `tests/unit/test_boot.py`, `tests/unit/test_duckdb_store_native.py (test_reconcile_eager_create_is_zero_row_and_skips_when_matching, test_reconcile_on_column_edit_recreates_zero_row) — validate the create/skip/recreate DDL-only primitive this requirement builds on; boot_create() itself does not yet route through it (still posts an unconditional full-data 'replace' event per source every boot) — that wiring remains unimplemented pending this requirement's acceptance.`
+
+### REQ-1633 · Federation Engine Native Landing Terminals {#REQ-1633}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Every federation engine runtime must implement `attach_landed_source` (DDL-only zero-row reconcile, dispatched from native_backend.py's reconcile_landed_tables()) so [REQ-1632](#REQ-1632)'s eager boot-time/post-edit landing works uniformly regardless of which engine is configured. Audited across all ~10 engine keys (trino, trino-byo, pg, duckdb, clickhouse, clickhouse-server, snowflake, databricks, bigquery, fabric, synapse, sqlalchemy): only DuckDBFederationRuntime and DatabricksFederationRuntime implement attach_landed_source. BigQueryFederationRuntime, SnowflakeFederationRuntime, ClickHouseFederationRuntime, PgFederationRuntime, SqlAlchemyFederationRuntime, and MssqlWarehouseRuntime (backing both fabric and synapse) do not — for all of these, NativeEngineBackend.reconcile_landed_tables() (native_backend.py:315-316) silently returns an empty list with no error, so [REQ-1632](#REQ-1632)'s zero-row replica never appears in that engine's own catalog. Trino is NOT affected by this gap: TrinoBackend overrides reconcile_landed_tables() independently (provisa/federation/backend.py:634) via store_writer.reconcile_table(), which already performs the same DDL-only zero-row convergence against Trino's own materialize store. Full-data landing (`land_table`, the event-queue-triggered terminal dispatched from land_source_table()) is separately implemented only by DuckDBFederationRuntime; every other NativeEngineBackend-based runtime falls back to the generic store_writer DSN path for that trigger. Databricks, BigQuery, and MssqlWarehouseRuntime instead land data natively through the unrelated poll/refresh-cadence terminal `materialize_source` (provisa/federation/residency.py's run_prep()) — Snowflake has none of the three terminals (`land_table`, `attach_landed_source`, `materialize_source`), so Snowflake-as-engine cannot land any source's data into its own native tables today by any path, undercutting Horizon Catalog visibility entirely, independent of [REQ-1632](#REQ-1632).
+
+**Use case:** Uniform native landing terminals let every federation engine participate in boot-time eager landing ([REQ-1632](#REQ-1632)) and post-edit replica reconciliation, so MATERIALIZED sources land native, zero-row-then-refreshed replicas visible in that engine's own catalog product (Snowflake Horizon Catalog, BigQuery Dataplex, Databricks Unity Catalog, etc.) consistently across every supported engine, not only the ones exercised by existing tests.
+
+**Code:** `provisa/federation/native_backend.py`, `provisa/federation/backend.py`, `provisa/federation/duckdb_runtime.py`, `provisa/federation/databricks_runtime.py`, `provisa/federation/bigquery_runtime.py`, `provisa/federation/snowflake_runtime.py`, `provisa/federation/clickhouse_runtime.py`, `provisa/federation/pg_runtime.py`, `provisa/federation/sqlalchemy_runtime.py`, `provisa/federation/mssql_warehouse_runtime.py`, `provisa/federation/store_connection.py`
+
+**Tests:** `tests/integration/test_snowflake_federation_engine_e2e.py — exercises Snowflake-as-engine query/RLS round trip only, via manually-seeded raw DDL/INSERT against the account; never calls land_table/attach_landed_source/materialize_source (none exist), so it provides no coverage of this requirement and is also skipped in this environment (no Snowflake creds/driver installed) — no engine besides DuckDB has empirical landing-terminal test coverage today.`
+
+## 1. Access Governance & Security
+
+### REQ-1634 · Data Catalog Integration {#REQ-1634}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+
+New DataProduct entity, domain-scoped: id, domain_id (required FK — a data product has exactly one owning domain), name, owner (person accountable for this product, distinct from Domain.steward), description. Table gains product_id: str | None (FK -> DataProduct.id), replacing the boolean data_product flag ([REQ-1372](#REQ-1372)) as the signal that a table is a data-product member — membership is product_id being set, not a separate flag. A DataProduct's member tables must all share its domain_id; a table cannot reference a DataProduct in a different domain. A data product needing data from another domain is composed via a view defined within the owning domain that sources from the other domain, and that view (not the foreign table) is given product_id. MetadataSnapshot (provisa/api/metadata_export/model.py) gains a data_products: list[DataProductAsset] section — one entry per DataProduct with name, owner, and description as top-level fields, plus its member TableAssets' refs — replacing the per-table data_product: bool field [REQ-1372](#REQ-1372) added to TableAsset. build_snapshot (builder.py) populates this from the new DataProduct entity instead of the boolean filter. Each vendor adapter (openmetadata.py, atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — [REQ-1069](#REQ-1069)) maps DataProductAsset to that catalog's native product/collection construct (e.g. OpenMetadata's Data Product entity, Collibra's Data Product asset type) so owner and description register as first-class attributes there, not just an inferred flag on each member table. The table-edit UI (TableEditForm.tsx, replacing the dataProduct checkbox at TableEditForm.tsx:411-421) presents a product_id picker scoped to DataProducts whose domain_id matches the table's own domain_id — a table in domain "marketing" is never offered a DataProduct owned by domain "sales" as a choice, enforcing the domain-alignment constraint at selection time, not only as a save-time rejection.
+
+**Use case:** Lets a domain create named, owned data products bundling one or more datasets for publication (mirroring the collection-oriented "data product" concept in Snowflake Marketplace, Starburst Data Products, and data-mesh implementations like Nextdata), with per-product ownership distinct from domain-level stewardship, while keeping every data product aligned to exactly one owning domain.
+
+**Code:** `provisa/core/models.py`, `provisa/api/metadata_export/builder.py`, `provisa-ui/src/pages/tables/TableEditForm.tsx`
+
+**Tests:** —
+
+### REQ-1635 · Data Catalog Integration {#REQ-1635}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+
+New engine-native MetadataExport adapter(s), alongside the vendor-neutral ones (openmetadata.py, atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — [REQ-1069](#REQ-1069)), that populate a warehouse engine's own native catalog/data-product construct from MetadataSnapshot's data_products section ([REQ-1634](#REQ-1634)): snowflake_horizon.py populates Snowflake Horizon Catalog and registers each DataProduct as a Snowflake Data Product / Marketplace listing (backed by a share over the product's member tables). Unlike the vendor-neutral adapters, this adapter is engine-aware: it resolves each member TableAsset's semantic_uri/AssetRef to its actual landed Snowflake object identity (database.schema.table in that account) via provisa/federation/snowflake_runtime.py before calling Horizon's catalog API — vendor-neutral adapters need no such resolution since they only emit portable metadata. Runs only when Snowflake is the configured engine and [REQ-1633](#REQ-1633)'s Snowflake landing terminal exists for the member tables being published; otherwise the adapter has nothing to resolve against and is skipped. A parallel bigquery_dataplex.py adapter for BigQuery Analytics Hub listings follows the same pattern if pursued.
+
+**Use case:** Lets a data product declared in Provisa also show up as a first-class, consumable listing inside the engine's own catalog/marketplace surface (Snowflake Horizon Catalog + Marketplace, BigQuery Dataplex + Analytics Hub) via the same metadata-export pipeline that already populates external metadata tools, instead of a separate native-terminal mechanism.
+
+**Code:** `provisa/api/metadata_export/snowflake_horizon.py`, `provisa/api/metadata_export/builder.py`, `provisa/federation/snowflake_runtime.py`
+
+**Tests:** —
+
+### REQ-1636 · Data Catalog Integration {#REQ-1636}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+
+New bigquery_dataplex.py MetadataExport adapter, the BigQuery counterpart to [REQ-1635](#REQ-1635)'s snowflake_horizon.py: populates BigQuery Dataplex catalog entries and registers each DataProduct ([REQ-1634](#REQ-1634)) as a BigQuery Analytics Hub listing, backed by a dataset containing the product's member tables. Same engine-aware shape as [REQ-1635](#REQ-1635): resolves each member TableAsset's semantic_uri/AssetRef to its actual landed BigQuery object identity (project.dataset.table) via provisa/federation/bigquery_runtime.py before calling Dataplex/Analytics Hub's catalog API, unlike the vendor-neutral adapters (openmetadata.py, atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — [REQ-1069](#REQ-1069)) which need no such resolution. Runs only when BigQuery is the configured engine and [REQ-1633](#REQ-1633)'s BigQuery landing terminal exists for the member tables being published; otherwise skipped.
+
+**Use case:** Lets a data product declared in Provisa also show up as a first-class, consumable listing inside BigQuery's own catalog/marketplace surface (Dataplex + Analytics Hub) via the same metadata-export pipeline that already populates external metadata tools and Snowflake Horizon ([REQ-1635](#REQ-1635)).
+
+**Code:** `provisa/api/metadata_export/bigquery_dataplex.py`, `provisa/api/metadata_export/builder.py`, `provisa/federation/bigquery_runtime.py`
+
+**Tests:** —

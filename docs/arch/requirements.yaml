@@ -53081,45 +53081,42 @@
     what it may do would make every capability added later invisible to visitors until somebody remembered
     to edit this one row, so the demo would silently narrow with every release; subtracting is the direction
     that stays correct, and a new right reaches the sandbox with no second edit. WHAT IS WITHHELD -- four
-    rights, each because it reaches something the environment does not contain or lets a visitor
-    write back into shared state. ``environment_switch``: the visitor would leave the sandbox, and
-    REQ-1596''s membership pin is pointless against a role that can name another environment -- the
-    two halves contain a stranger only together. ``environment_management``: spends the org''''s plan
-    ceiling and drops other environments'''' schemas. ``user_management``: would let a visitor confer
-    roles or admit more people, and withholding it is also what closes the role-editing surface to
-    them, so the denylist cannot be edited away from inside the sandbox. ``org_glossary_rw``: the
-    override over terms the org''''s own people authored. ``org_settings`` and ``observability`` are
-    HELD, not withheld: REQ-1349 made ``org_settings`` the single capability nearly every org-scoped
-    admin surface is gated on (cache, AI models, import, tags, secrets, scheduler, requests, org-engine,
-    billing, domains -- see adminNavCapabilities.test.ts), so denying it wholesale took out most of
-    the Admin tab rather than the few org-wide surfaces the original denylist intended; a sandbox
-    visitor is meant to see the product, including its settings and telemetry, and only loses the
-    right to write back into what it does not own. TWO PLANES, ONE DEFINITION -- schema.sql is
-    PostgreSQL-only DDL and provisa/core/db.py is its portable mirror; a role seeded into one and not
-    the other exists on SaaS and not on a laptop, so the two are asserted equal. The re-assertion
-    seams that hand ``environment_management``/``environment_switch`` to pre-existing role rows name
-    org_admin and developer only: naming sandbox there would give back on the next init_schema exactly
-    what the denylist took away. WHERE THE SUBTRACTION HAPPENS, AND WHY THE VISITOR ALSO HOLDS
-    org_admin -- a column is visible to a role when ``table_columns.visible_to`` NAMES that role, and
-    every grant in an authored model names the roles the model was authored against. ``sandbox`` is
-    named by none of them, so a visitor holding only that id is shown no column on any table, and
-    schema_gen then drops every table left with none -- leaving the tables whose API path/query
-    parameters are exempt from the gate and nothing else. That is not a narrower demo; it is an empty
-    one, and it is not fixable by re-granting columns, because the model belongs to the org and the
-    visitor is a stranger to it. So redeeming a sandbox invitation seats the redeemer under BOTH names:
-    the role the invitation confers, and ``org_admin``, whose row in the visitor''s own ephemeral
-    environment is reduced at creation to the ``sandbox`` row''s own capabilities and demonstrated
-    list. Capabilities resolve as the UNION over the holder''s roles, so the union is the sandbox
-    definition exactly, the denylist keeps one author, and production''s org_admin is untouched
-    (REQ-1539 makes roles the environment''s own answer). AND THE ROLE IS CONFERRABLE NOWHERE ELSE:
-    minting an invitation that names ``sandbox`` under any policy but ``per_visitor`` is refused,
-    because the reduction is performed by the environment creation that only that policy triggers --
-    conferred anywhere else the name would carry org_admin''s full definition, unnarrowed. STILL TO
-    SUBTRACT (open): the settled target is most of org_admin, less the ability to WRITE BACK to the
-    original sample data sources -- a visitor''s hour is disposable but the demo sources it points at
-    are shared and outlive it -- and less further destructive acts still to be enumerated. The four
-    above are the rights withheld today; the denylist is where those additions land, so the
-    subtraction stays the one definition.'
+    rights, each because it reaches something the environment does not contain or lets a visitor write
+    back into shared state. ``environment_switch``: the visitor would leave the sandbox, and REQ-1596''s
+    membership pin is pointless against a role that can name another environment -- the two halves contain
+    a stranger only together. ``environment_management``: spends the org''''s plan ceiling and drops other
+    environments'''' schemas. ``user_management``: would let a visitor confer roles or admit more people,
+    and withholding it is also what closes the role-editing surface to them, so the denylist cannot be
+    edited away from inside the sandbox. ``org_glossary_rw``: the override over terms the org''''s own
+    people authored. ``org_settings`` and ``observability`` are HELD, not withheld: REQ-1349 made ``org_settings``
+    the single capability nearly every org-scoped admin surface is gated on (cache, AI models, import,
+    tags, secrets, scheduler, requests, org-engine, billing, domains -- see adminNavCapabilities.test.ts),
+    so denying it wholesale took out most of the Admin tab rather than the few org-wide surfaces the original
+    denylist intended; a sandbox visitor is meant to see the product, including its settings and telemetry,
+    and only loses the right to write back into what it does not own. TWO PLANES, ONE DEFINITION -- schema.sql
+    is PostgreSQL-only DDL and provisa/core/db.py is its portable mirror; a role seeded into one and not
+    the other exists on SaaS and not on a laptop, so the two are asserted equal. The re-assertion seams
+    that hand ``environment_management``/``environment_switch`` to pre-existing role rows name org_admin
+    and developer only: naming sandbox there would give back on the next init_schema exactly what the
+    denylist took away. WHERE THE SUBTRACTION HAPPENS, AND WHY THE VISITOR ALSO HOLDS org_admin -- a column
+    is visible to a role when ``table_columns.visible_to`` NAMES that role, and every grant in an authored
+    model names the roles the model was authored against. ``sandbox`` is named by none of them, so a visitor
+    holding only that id is shown no column on any table, and schema_gen then drops every table left with
+    none -- leaving the tables whose API path/query parameters are exempt from the gate and nothing else.
+    That is not a narrower demo; it is an empty one, and it is not fixable by re-granting columns, because
+    the model belongs to the org and the visitor is a stranger to it. So redeeming a sandbox invitation
+    seats the redeemer under BOTH names: the role the invitation confers, and ``org_admin``, whose row
+    in the visitor''s own ephemeral environment is reduced at creation to the ``sandbox`` row''s own capabilities
+    and demonstrated list. Capabilities resolve as the UNION over the holder''s roles, so the union is
+    the sandbox definition exactly, the denylist keeps one author, and production''s org_admin is untouched
+    (REQ-1539 makes roles the environment''s own answer). AND THE ROLE IS CONFERRABLE NOWHERE ELSE: minting
+    an invitation that names ``sandbox`` under any policy but ``per_visitor`` is refused, because the
+    reduction is performed by the environment creation that only that policy triggers -- conferred anywhere
+    else the name would carry org_admin''s full definition, unnarrowed. STILL TO SUBTRACT (open): the
+    settled target is most of org_admin, less the ability to WRITE BACK to the original sample data sources
+    -- a visitor''s hour is disposable but the demo sources it points at are shared and outlive it --
+    and less further destructive acts still to be enumerated. The four above are the rights withheld today;
+    the denylist is where those additions land, so the subtraction stays the one definition.'
   tests:
   - tests/unit/test_sandbox_role_seed.py
   - tests/unit/test_open_invite.py
@@ -53705,10 +53702,10 @@
     column, and the reconciliation UPDATE migrates any legacy rows still containing user_management by
     matching on demonstrated @> '["user_management"]'::jsonb and replacing with the three-right list.
   use_case: 'Deployment continuity: earlier releases seeded sandbox with six demonstrated rights, later
-    narrowed to five (REQ-1610) and now to three now that org_settings/observability are held rather
-    than demonstrated (REQ-1597). Older databases may have legacy rows still carrying user_management,
-    org_settings, or observability in the demonstrated column. The reconciliation ensures schema state
-    matches the current backend definition even on databases created before these changes.'
+    narrowed to five (REQ-1610) and now to three now that org_settings/observability are held rather than
+    demonstrated (REQ-1597). Older databases may have legacy rows still carrying user_management, org_settings,
+    or observability in the demonstrated column. The reconciliation ensures schema state matches the current
+    backend definition even on databases created before these changes.'
   code:
   - provisa/core/schema.sql
   scenario: 'Given a PostgreSQL database with a legacy sandbox role row (demonstrated includes user_management)
@@ -54169,17 +54166,17 @@
   category: Environments
   priority: MUST
   type: behavioral
-  description: The schema a connection defaults to follows the environment being served. Three seams
-    set a default schema outside the query path - the roles table a runtime build re-asserts tenancy
-    rights into, the currentSchema the provisa_admin Trino catalog resolves an unqualified name in,
-    and the Trino terminal's own default schema - and each named org_<id> outright. Served for a non-prod
-    environment, all three reached prod's copy of the model, so building an environment's runtime wrote
-    prod's roles while the environment's forked copy kept whatever it was created with, and a materialized
-    view landed through prod's catalog. Each now derives its schema from the environment bound to the
-    serving context. A fourth site wrote org_<id> into the search_path the pgwire surface reports; that
-    schema holds none of a pgwire client's tables - the catalog presents them under public and current_schema()
-    answers public - and the value was a process global naming the boot org for every session, so it
-    is removed rather than routed.
+  description: The schema a connection defaults to follows the environment being served. Three seams set
+    a default schema outside the query path - the roles table a runtime build re-asserts tenancy rights
+    into, the currentSchema the provisa_admin Trino catalog resolves an unqualified name in, and the Trino
+    terminal's own default schema - and each named org_<id> outright. Served for a non-prod environment,
+    all three reached prod's copy of the model, so building an environment's runtime wrote prod's roles
+    while the environment's forked copy kept whatever it was created with, and a materialized view landed
+    through prod's catalog. Each now derives its schema from the environment bound to the serving context.
+    A fourth site wrote org_<id> into the search_path the pgwire surface reports; that schema holds none
+    of a pgwire client's tables - the catalog presents them under public and current_schema() answers
+    public - and the value was a process global naming the boot org for every session, so it is removed
+    rather than routed.
   code:
   - provisa/core/db.py
   - provisa/api/app.py
@@ -54212,12 +54209,12 @@
   priority: MUST
   type: behavioral
   description: The federation lineage graph (REQ-1161) is read through a role. The role is an analytic
-    lens, not a redaction - an analyst holding several roles switches between them to see where each
-    role's data comes from. The columns the selected roles can query seed the graph; the walk from those
-    seeds runs upstream and unrestricted, so every ancestor of a seed is shown in full whether or not
-    the role could query it. What is reachable only downstream of the seeds belongs to another role's
-    perspective and is cut. The domain filter restricts which relations may seed, never which may be
-    an ancestor, so a chain crossing an unchecked domain is not severed.
+    lens, not a redaction - an analyst holding several roles switches between them to see where each role's
+    data comes from. The columns the selected roles can query seed the graph; the walk from those seeds
+    runs upstream and unrestricted, so every ancestor of a seed is shown in full whether or not the role
+    could query it. What is reachable only downstream of the seeds belongs to another role's perspective
+    and is cut. The domain filter restricts which relations may seed, never which may be an ancestor,
+    so a chain crossing an unchecked domain is not severed.
   code:
   - provisa/lineage/merge.py
   - provisa/api/admin/lineage_router.py
@@ -54244,13 +54241,13 @@
   category: Federation-Wide Provenance Graph
   priority: MUST
   type: behavioral
-  description: Complete lineage covers every relation the platform can reach, not only those with a
-    derivation in front of them. A registered table that nothing selects from and that selects from
-    nothing still appears, as an isolated source node per column - its absence reads as "not reachable"
-    rather than "not derived". Registered relations are also supplied to the parser as known relations
-    so a bare table reference a view parse yields is stitched to the registered relation rather than
-    standing as a second node for the same data; a bare name matching more than one registered relation
-    is left unstitched rather than guessed.
+  description: Complete lineage covers every relation the platform can reach, not only those with a derivation
+    in front of them. A registered table that nothing selects from and that selects from nothing still
+    appears, as an isolated source node per column - its absence reads as "not reachable" rather than
+    "not derived". Registered relations are also supplied to the parser as known relations so a bare table
+    reference a view parse yields is stitched to the registered relation rather than standing as a second
+    node for the same data; a bare name matching more than one registered relation is left unstitched
+    rather than guessed.
   code:
   - provisa/lineage/merge.py
   - provisa/api/admin/lineage_router.py
@@ -54275,12 +54272,12 @@
   category: Federation-Wide Provenance Graph
   priority: SHOULD
   type: behavioral
-  description: A federation-wide graph carries more nodes than a column-per-node render can show, so
-    it arrives collapsed - one node per relation, labelled with its column count - and expands per relation
+  description: A federation-wide graph carries more nodes than a column-per-node render can show, so it
+    arrives collapsed - one node per relation, labelled with its column count - and expands per relation
     on click, with expand-all and collapse-all for the whole graph. Edges between two collapsed relations
     roll up into one edge carrying the count of columns it stands for. The same graph opens in a near-fullscreen
-    modal, sharing the collapse state with the inline panel so opening it continues the trace rather
-    than restarting it.
+    modal, sharing the collapse state with the inline panel so opening it continues the trace rather than
+    restarting it.
   code:
   - provisa-ui/src/components/lineage/LineageDag.tsx
   - provisa-ui/src/pages/LineagePage.tsx
@@ -54305,14 +54302,14 @@
   category: Federation-Wide Provenance Graph
   priority: MUST
   type: behavioral
-  description: The role the lineage is read through is picked on the lineage form itself, not taken
-    from the NavBar role picker. The two answer different questions - the NavBar picks which of the
-    user's own roles they act as, the lineage picker picks whose data is being analysed - and the analytic
-    use requires naming ANY role in the org, including roles the analyst does not hold. Because reading
-    the federation through an arbitrary role discloses which columns that role can query, the perspective
-    is gated by view_governance, the same right the visible_to / masking / grant columns carry. The
-    gate is enforced on GET /admin/lineage/federation and the picker and Complete Lineage control are
-    absent without it. No selection means every role.
+  description: The role the lineage is read through is picked on the lineage form itself, not taken from
+    the NavBar role picker. The two answer different questions - the NavBar picks which of the user's
+    own roles they act as, the lineage picker picks whose data is being analysed - and the analytic use
+    requires naming ANY role in the org, including roles the analyst does not hold. Because reading the
+    federation through an arbitrary role discloses which columns that role can query, the perspective
+    is gated by view_governance, the same right the visible_to / masking / grant columns carry. The gate
+    is enforced on GET /admin/lineage/federation and the picker and Complete Lineage control are absent
+    without it. No selection means every role.
   code:
   - provisa/api/admin/lineage_router.py
   - provisa-ui/src/pages/LineagePage.tsx
@@ -54338,17 +54335,17 @@
   category: Federation Engine
   priority: MUST
   type: behavioral
-  description: A shard is never left running by the departure of the process that would have scaled
-    it down. The engine idle reaper (REQ-1448) runs inside the control plane, so a control plane that
-    stops with a shard awake leaves a 6 vCPU / 24 GiB Autopilot pod billing with nothing left that
-    can stop it - which is what the front door's VM idle-stop produced whenever its window was shorter
-    than PROVISA_ENGINE_IDLE_SECONDS. Two things hold. PROVISA_ENGINE_IDLE_SECONDS is DERIVED from
-    the front door's idle_stop_minutes (half of it) rather than set independently, so the reaper always
-    fires before the VM stops; and the app's shutdown scales every shard it woke to zero, which is
-    the guarantee behind that ordering rather than a second timer. The shutdown path does not wait
-    for the drain - the PATCH is the instruction the cluster acts on whether or not this process survives
-    to watch it, so scale_shard_to_zero takes await_drain and reports "stopping" when it skips the
-    wait. One unreachable shard is logged and the rest still go down.
+  description: A shard is never left running by the departure of the process that would have scaled it
+    down. The engine idle reaper (REQ-1448) runs inside the control plane, so a control plane that stops
+    with a shard awake leaves a 6 vCPU / 24 GiB Autopilot pod billing with nothing left that can stop
+    it - which is what the front door's VM idle-stop produced whenever its window was shorter than PROVISA_ENGINE_IDLE_SECONDS.
+    Two things hold. PROVISA_ENGINE_IDLE_SECONDS is DERIVED from the front door's idle_stop_minutes (half
+    of it) rather than set independently, so the reaper always fires before the VM stops; and the app's
+    shutdown scales every shard it woke to zero, which is the guarantee behind that ordering rather than
+    a second timer. The shutdown path does not wait for the drain - the PATCH is the instruction the cluster
+    acts on whether or not this process survives to watch it, so scale_shard_to_zero takes await_drain
+    and reports "stopping" when it skips the wait. One unreachable shard is logged and the rest still
+    go down.
   code:
   - provisa/federation/engine_wake.py
   - provisa/federation/k8s_provisioner.py
@@ -54377,42 +54374,254 @@
   priority: MUST
   type: structural
   target: 2026-Q4
-  description: >-
-    Every graph node representing a data-instance row from a registered table carries
-    `_name` and `_domain` meta properties identifying its source table and domain.
-    The graph-sync layer auto-generates relationship edges connecting each data-instance
-    node to its corresponding `RegisteredTables` meta node.
-  use_case: >-
-    Data-instance nodes must be traceable to their source table and domain for proper
-    data lineage, governance, and relationship enforcement in federated graph queries.
+  description: Every graph node representing a data-instance row from a registered table carries `_name`
+    and `_domain` meta properties identifying its source table and domain. The graph-sync layer auto-generates
+    relationship edges connecting each data-instance node to its corresponding `RegisteredTables` meta
+    node.
+  use_case: Data-instance nodes must be traceable to their source table and domain for proper data lineage,
+    governance, and relationship enforcement in federated graph queries.
   code:
   - provisa/cypher/label_map.py
   - provisa/api/_meta_seed.py
 - id: REQ-1631
   status: complete
-  since: "2026-09"
-  group: "10. UI & Admin Surfaces"
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
   category: Graph Explorer
   priority: SHOULD
   type: behavioral
-  description: >-
-    The admin GraphQL allRelationships resolver synthesizes virtual HAS_TABLE relationship
-    rows — one per non-meta registered table — linking each data-instance row to its
-    registered_tables meta-definition row. These rows are computed at query time without
-    schema migration, enabling the graph explorer's drag-and-drop feature to discover and
-    wire HAS_TABLE relationships.
-  use_case: >-
-    When a registered table node is dropped onto the graph canvas, the drag-and-drop feature
-    must discover HAS_TABLE relationships to existing data-instance nodes. Previously,
-    allRelationships only read persisted Postgres relationships, making this discovery impossible.
+  description: The admin GraphQL allRelationships resolver synthesizes virtual HAS_TABLE relationship
+    rows — one per non-meta registered table — linking each data-instance row to its registered_tables
+    meta-definition row. These rows are computed at query time without schema migration, enabling the
+    graph explorer's drag-and-drop feature to discover and wire HAS_TABLE relationships.
+  use_case: When a registered table node is dropped onto the graph canvas, the drag-and-drop feature must
+    discover HAS_TABLE relationships to existing data-instance nodes. Previously, allRelationships only
+    read persisted Postgres relationships, making this discovery impossible.
   code:
   - provisa/api/admin/schema_query.py
   - provisa/compiler/context.py
   - provisa-ui/src/pages/graph-drop.ts
-  scenario: |
-    Given the graph explorer has data-instance nodes from a registered table on canvas
+  scenario: 'Given the graph explorer has data-instance nodes from a registered table on canvas
+
     When a registered table node is dropped onto the canvas
-    Then the allRelationships resolver returns synthetic HAS_TABLE rows linking the new node to existing data-instance nodes
+
+    Then the allRelationships resolver returns synthetic HAS_TABLE rows linking the new node to existing
+    data-instance nodes
+
     And the drag-and-drop expansion wires the relationships without manual user setup
+
+    '
   e2e: true
-  e2e_reason: The behavior requires verifying that dropping a registered table node discovers the synthetic HAS_TABLE relationship and connects to data-instance nodes in the graph explorer UI.
+  e2e_reason: The behavior requires verifying that dropping a registered table node discovers the synthetic
+    HAS_TABLE relationship and connects to data-instance nodes in the graph explorer UI.
+- id: REQ-1632
+  status: proposed
+  group: 6. Execution, Routing, Caching & Performance
+  category: Boot-Time Replica Landing
+  priority: MUST
+  type: behavioral
+  target: 2026-Q4
+  description: 'Boot-time eager landing for MATERIALIZED sources must create schema-only (zero-row) replica
+    tables, not full data copies. Before creating a replica, check whether a matching replica with identical
+    column metadata already exists in the target federation engine''s store. If so, skip creation (idempotent
+    no-op). Only when no existing matching replica is found should a DDL-only CREATE TABLE be issued.
+    Actual row population remains under the existing poll/push refresh cadence, not boot. Applies uniformly
+    to any federation engine (Snowflake, Databricks, BigQuery, Postgres, DuckDB, etc.) — the fix belongs
+    in the engine-agnostic boot_create()/ land_source_table() path, not in per-engine connector code,
+    since Strategy.MATERIALIZED resolution and boot-time landing are already engine-agnostic.
+
+    Post-boot column edits must reconcile the same way: editing a registered table''s columns is saved
+    as one whole-table metadata write (update_table), which already triggers reconcile_landed_tables()
+    -> reconcile_duckdb_native() synchronously before the mutation returns (provisa/api/app.py:_rebuild_schemas
+    -> app.py:1691). The reconciler always receives the complete new column list in a single call, never
+    a per-column diff, and on drift RECREATES the landed table (DDL only, zero rows) rather than re-inserting
+    data — data reland remains the refresh cadence''s job, not the edit''s.'
+  use_case: Boot-time replica landing currently pulls entire MATERIALIZED source tables into memory as
+    list[dict] with no row-count check, chunking, or concurrency limit, risking large memory consumption
+    and event-loop monopolization at every boot. Schema-only replicas with idempotent creation bound boot
+    cost to O(number of NEW sources without existing replicas) DDL statements, independent of source table
+    size, eliminating memory and scheduler starvation risk.
+  code:
+  - provisa/events/boot.py
+  - provisa/events/handlers.py
+  - provisa/federation/strategy.py
+  - provisa/federation/native_backend.py
+  - provisa/federation/duckdb_runtime.py
+  - provisa/events/supervisor.py
+  - provisa/federation/store_connection.py
+  - provisa/api/app.py
+  tests:
+  - tests/unit/test_boot.py
+  - tests/unit/test_duckdb_store_native.py (test_reconcile_eager_create_is_zero_row_and_skips_when_matching,
+    test_reconcile_on_column_edit_recreates_zero_row) — validate the create/skip/recreate DDL-only primitive
+    this requirement builds on; boot_create() itself does not yet route through it (still posts an unconditional
+    full-data 'replace' event per source every boot) — that wiring remains unimplemented pending this
+    requirement's acceptance.
+- id: REQ-1633
+  status: proposed
+  group: 6. Execution, Routing, Caching & Performance
+  category: Federation Engine Native Landing Terminals
+  priority: MUST
+  type: behavioral
+  target: 2026-Q4
+  description: 'Every federation engine runtime must implement `attach_landed_source` (DDL-only zero-row
+    reconcile, dispatched from native_backend.py''s reconcile_landed_tables()) so REQ-1632''s eager boot-time/post-edit
+    landing works uniformly regardless of which engine is configured. Audited across all ~10 engine keys
+    (trino, trino-byo, pg, duckdb, clickhouse, clickhouse-server, snowflake, databricks, bigquery, fabric,
+    synapse, sqlalchemy): only DuckDBFederationRuntime and DatabricksFederationRuntime implement attach_landed_source.
+    BigQueryFederationRuntime, SnowflakeFederationRuntime, ClickHouseFederationRuntime, PgFederationRuntime,
+    SqlAlchemyFederationRuntime, and MssqlWarehouseRuntime (backing both fabric and synapse) do not —
+    for all of these, NativeEngineBackend.reconcile_landed_tables() (native_backend.py:315-316) silently
+    returns an empty list with no error, so REQ-1632''s zero-row replica never appears in that engine''s
+    own catalog. Trino is NOT affected by this gap: TrinoBackend overrides reconcile_landed_tables() independently
+    (provisa/federation/backend.py:634) via store_writer.reconcile_table(), which already performs the
+    same DDL-only zero-row convergence against Trino''s own materialize store. Full-data landing (`land_table`,
+    the event-queue-triggered terminal dispatched from land_source_table()) is separately implemented
+    only by DuckDBFederationRuntime; every other NativeEngineBackend-based runtime falls back to the generic
+    store_writer DSN path for that trigger. Databricks, BigQuery, and MssqlWarehouseRuntime instead land
+    data natively through the unrelated poll/refresh-cadence terminal `materialize_source` (provisa/federation/residency.py''s
+    run_prep()) — Snowflake has none of the three terminals (`land_table`, `attach_landed_source`, `materialize_source`),
+    so Snowflake-as-engine cannot land any source''s data into its own native tables today by any path,
+    undercutting Horizon Catalog visibility entirely, independent of REQ-1632.'
+  use_case: Uniform native landing terminals let every federation engine participate in boot-time eager
+    landing (REQ-1632) and post-edit replica reconciliation, so MATERIALIZED sources land native, zero-row-then-refreshed
+    replicas visible in that engine's own catalog product (Snowflake Horizon Catalog, BigQuery Dataplex,
+    Databricks Unity Catalog, etc.) consistently across every supported engine, not only the ones exercised
+    by existing tests.
+  code:
+  - provisa/federation/native_backend.py
+  - provisa/federation/backend.py
+  - provisa/federation/duckdb_runtime.py
+  - provisa/federation/databricks_runtime.py
+  - provisa/federation/bigquery_runtime.py
+  - provisa/federation/snowflake_runtime.py
+  - provisa/federation/clickhouse_runtime.py
+  - provisa/federation/pg_runtime.py
+  - provisa/federation/sqlalchemy_runtime.py
+  - provisa/federation/mssql_warehouse_runtime.py
+  - provisa/federation/store_connection.py
+  tests:
+  - tests/integration/test_snowflake_federation_engine_e2e.py — exercises Snowflake-as-engine query/RLS
+    round trip only, via manually-seeded raw DDL/INSERT against the account; never calls land_table/attach_landed_source/materialize_source
+    (none exist), so it provides no coverage of this requirement and is also skipped in this environment
+    (no Snowflake creds/driver installed) — no engine besides DuckDB has empirical landing-terminal test
+    coverage today.
+  depends_on:
+  - REQ-1632
+- id: REQ-1634
+  status: accepted
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q3
+  description: 'New DataProduct entity, domain-scoped: id, domain_id (required FK — a data product has
+    exactly one owning domain), name, owner (person accountable for this product, distinct from Domain.steward),
+    description. Table gains product_id: str | None (FK -> DataProduct.id), replacing the boolean data_product
+    flag (REQ-1372) as the signal that a table is a data-product member — membership is product_id being
+    set, not a separate flag. A DataProduct''s member tables must all share its domain_id; a table cannot
+    reference a DataProduct in a different domain. A data product needing data from another domain is
+    composed via a view defined within the owning domain that sources from the other domain, and that
+    view (not the foreign table) is given product_id. MetadataSnapshot (provisa/api/metadata_export/model.py)
+    gains a data_products: list[DataProductAsset] section — one entry per DataProduct with name, owner,
+    and description as top-level fields, plus its member TableAssets'' refs — replacing the per-table
+    data_product: bool field REQ-1372 added to TableAsset. build_snapshot (builder.py) populates this
+    from the new DataProduct entity instead of the boolean filter. Each vendor adapter (openmetadata.py,
+    atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — REQ-1069) maps DataProductAsset to that
+    catalog''s native product/collection construct (e.g. OpenMetadata''s Data Product entity, Collibra''s
+    Data Product asset type) so owner and description register as first-class attributes there, not just
+    an inferred flag on each member table. The table-edit UI (TableEditForm.tsx, replacing the dataProduct
+    checkbox at TableEditForm.tsx:411-421) presents a product_id picker scoped to DataProducts whose domain_id
+    matches the table''s own domain_id — a table in domain "marketing" is never offered a DataProduct
+    owned by domain "sales" as a choice, enforcing the domain-alignment constraint at selection time,
+    not only as a save-time rejection.'
+  use_case: Lets a domain create named, owned data products bundling one or more datasets for publication
+    (mirroring the collection-oriented "data product" concept in Snowflake Marketplace, Starburst Data
+    Products, and data-mesh implementations like Nextdata), with per-product ownership distinct from domain-level
+    stewardship, while keeping every data product aligned to exactly one owning domain.
+  scenario: Given a DataProduct "customer_360" owned by "alice" in domain "sales", and two tables in domain
+    "sales" both set product_id="customer_360", when metadata is exported, then both tables publish as
+    one data product named "customer_360" attributed to owner "alice" instead of two separate products;
+    given an attempt to set product_id="customer_360" on a table in domain "marketing", when saved, then
+    it is rejected because the table's domain_id does not match the DataProduct's domain_id.
+  code:
+  - provisa/core/models.py
+  - provisa/api/metadata_export/builder.py
+  - provisa-ui/src/pages/tables/TableEditForm.tsx
+  relates_to:
+  - REQ-1372
+  tests:
+  - tests/steps/steps_data_products.py
+- id: REQ-1635
+  status: accepted
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q3
+  description: 'New engine-native MetadataExport adapter(s), alongside the vendor-neutral ones (openmetadata.py,
+    atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — REQ-1069), that populate a warehouse
+    engine''s own native catalog/data-product construct from MetadataSnapshot''s data_products section
+    (REQ-1634): snowflake_horizon.py populates Snowflake Horizon Catalog and registers each DataProduct
+    as a Snowflake Data Product / Marketplace listing (backed by a share over the product''s member tables).
+    Unlike the vendor-neutral adapters, this adapter is engine-aware: it resolves each member TableAsset''s
+    semantic_uri/AssetRef to its actual landed Snowflake object identity (database.schema.table in that
+    account) via provisa/federation/snowflake_runtime.py before calling Horizon''s catalog API — vendor-neutral
+    adapters need no such resolution since they only emit portable metadata. Runs only when Snowflake
+    is the configured engine and REQ-1633''s Snowflake landing terminal exists for the member tables being
+    published; otherwise the adapter has nothing to resolve against and is skipped. A parallel bigquery_dataplex.py
+    adapter for BigQuery Analytics Hub listings follows the same pattern if pursued.'
+  use_case: Lets a data product declared in Provisa also show up as a first-class, consumable listing
+    inside the engine's own catalog/marketplace surface (Snowflake Horizon Catalog + Marketplace, BigQuery
+    Dataplex + Analytics Hub) via the same metadata-export pipeline that already populates external metadata
+    tools, instead of a separate native-terminal mechanism.
+  scenario: Given a DataProduct "customer_360" with member tables exists in Provisa, when metadata export
+    runs with Snowflake as the configured engine and the Snowflake landing terminal exists for the member
+    tables, then the DataProduct appears as a first-class listing in Snowflake Horizon Catalog and as
+    a Snowflake Data Product / Marketplace listing backed by a share over the product's member tables.
+  code:
+  - provisa/api/metadata_export/snowflake_horizon.py
+  - provisa/api/metadata_export/builder.py
+  - provisa/federation/snowflake_runtime.py
+  relates_to:
+  - REQ-1069
+  - REQ-1633
+  depends_on:
+  - REQ-1634
+  tests:
+  - tests/steps/steps_data_products.py
+- id: REQ-1636
+  status: accepted
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: behavioral
+  target: 2026-Q3
+  description: 'New bigquery_dataplex.py MetadataExport adapter, the BigQuery counterpart to REQ-1635''s
+    snowflake_horizon.py: populates BigQuery Dataplex catalog entries and registers each DataProduct (REQ-1634)
+    as a BigQuery Analytics Hub listing, backed by a dataset containing the product''s member tables.
+    Same engine-aware shape as REQ-1635: resolves each member TableAsset''s semantic_uri/AssetRef to its
+    actual landed BigQuery object identity (project.dataset.table) via provisa/federation/bigquery_runtime.py
+    before calling Dataplex/Analytics Hub''s catalog API, unlike the vendor-neutral adapters (openmetadata.py,
+    atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — REQ-1069) which need no such resolution.
+    Runs only when BigQuery is the configured engine and REQ-1633''s BigQuery landing terminal exists
+    for the member tables being published; otherwise skipped.'
+  use_case: Lets a data product declared in Provisa also show up as a first-class, consumable listing
+    inside BigQuery's own catalog/marketplace surface (Dataplex + Analytics Hub) via the same metadata-export
+    pipeline that already populates external metadata tools and Snowflake Horizon (REQ-1635).
+  scenario: Given a DataProduct "customer_360" with member tables exists in Provisa, when metadata export
+    runs with BigQuery as the configured engine and the BigQuery landing terminal exists for the member
+    tables, then the DataProduct appears as a first-class listing in BigQuery Dataplex and as a BigQuery
+    Analytics Hub listing backed by a dataset containing the product's member tables.
+  code:
+  - provisa/api/metadata_export/bigquery_dataplex.py
+  - provisa/api/metadata_export/builder.py
+  - provisa/federation/bigquery_runtime.py
+  relates_to:
+  - REQ-1069
+  - REQ-1633
+  - REQ-1635
+  depends_on:
+  - REQ-1634
+  tests:
+  - tests/steps/steps_data_products.py
