@@ -21,6 +21,8 @@ from provisa.compiler.introspect import (
     introspect_fk_candidates,
     introspect_table_columns,
 )
+from provisa.core.catalog import create_catalog
+from provisa.core.models import Source, SourceType
 
 pytestmark = [pytest.mark.integration]
 
@@ -42,6 +44,36 @@ def _wait_for_trino():
         except Exception:
             time.sleep(2)
     raise RuntimeError("Trino did not become ready within 120s")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _sales_pg_catalog(_wait_for_trino):
+    """Provision the ``sales_pg`` Trino catalog this module introspects.
+
+    Must not depend on some other module (e.g. test_schema_gen.py's ``_load_config``) having
+    registered it first — that hidden cross-file ordering dependency produces CATALOG_NOT_FOUND
+    whenever this module happens to run before one that does the registration (see
+    test_schema_gen.py's ``_load_config`` docstring for the same defect class, fixed there the
+    same way: provision the catalog this module needs directly).
+    """
+    source = Source(
+        id="sales-pg",
+        type=SourceType.postgresql,
+        host=os.environ.get("PG_HOST", "localhost"),
+        port=int(os.environ.get("PG_PORT", "5432")),
+        database=os.environ.get("PG_DATABASE", "provisa"),
+        username=os.environ.get("PG_USER", "provisa"),
+        password=os.environ.get("PG_PASSWORD", "provisa"),
+    )
+    conn = trino.dbapi.connect(
+        host=os.environ.get("TRINO_HOST", "localhost"),
+        port=int(os.environ.get("TRINO_PORT", "8080")),
+        user="test",
+    )
+    try:
+        create_catalog(conn, source, resolved_password=source.password)
+    finally:
+        conn.close()
 
 
 class TestIntrospectTableColumns:
