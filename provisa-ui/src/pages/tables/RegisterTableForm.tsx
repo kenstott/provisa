@@ -263,7 +263,6 @@ export function RegisterTableForm({
       setColumns([]);
       setUniqueConstraints([]);
       setWatermarkColumn("");
-      setDataProduct(false);
       setDiscover(false);
       onSuccess();
     } catch (e) {
