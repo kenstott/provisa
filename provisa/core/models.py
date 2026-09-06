@@ -1356,11 +1356,16 @@ class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073
         # here names the setting; failing at publish time names a connection.
         if not self.enabled:
             return self
-        missing = [
-            name
-            for name, value in (("provider", self.provider), ("endpoint", self.endpoint))
-            if not value
-        ]
+        # REQ-1635: snowflake_horizon is engine-native — it opens its own connection off
+        # configured_engine_url() rather than a remote catalog's endpoint, so endpoint is not
+        # a setting this provider has, and requiring it here would ask for one that can never
+        # be filled in correctly.
+        required = (
+            (("provider", self.provider),)
+            if self.provider == "snowflake_horizon"
+            else (("provider", self.provider), ("endpoint", self.endpoint))
+        )
+        missing = [name for name, value in required if not value]
         if missing:
             raise ValueError(
                 f"metadata_export.enabled is true but {', '.join(missing)} "

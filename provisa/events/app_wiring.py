@@ -252,7 +252,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             try:
                 _probe = await engine.execute_engine(f"SELECT * FROM ({_sql}) AS _mv_probe LIMIT 0")
             except Exception:
-                log.warning("event loop: MV %s not introspectable yet — skipping", _key)
+                log.exception("event loop: MV %s not introspectable yet — skipping", _key)
                 continue
             if _probe.column_types is None:
                 log.warning(

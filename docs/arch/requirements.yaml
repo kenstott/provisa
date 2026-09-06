@@ -54625,3 +54625,35 @@
   - REQ-1634
   tests:
   - tests/steps/steps_data_products.py
+- id: REQ-1637
+  status: complete
+  since: "2026-09"
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Materialization Routing
+  priority: MUST
+  type: constraint
+  description: >-
+    For any warehouse engine, all data source types that the engine cannot natively/directly attach
+    (e.g. OpenAPI, SQLite, GraphQL-remote, Great Expectations sources) must be replicated/materialized
+    into a location that the engine CAN reach. The materialize store must resolve to the same target
+    engine as the deployment's primary engine, never silently defaulting to a separate platform database
+    when the primary engine is something else (e.g. Snowflake).
+  use_case: >-
+    Ensures non-attachable sources land in the configured deployment engine rather than silently
+    materializing to a fallback Postgres instance, preserving query engine consistency and preventing
+    split-brain data estates.
+  scenario: |
+    Given a Snowflake-engine deployment with non-attachable sources (petstore-api, pet-store-sqlite)
+    When sources are bootstrapped without PROVISA_MATERIALIZE_URL set to Snowflake
+    Then materialization fails or raises an error rather than silently materializing to local Postgres
+
+    Given any deployment with a configured primary warehouse engine E
+    When a non-attachable source requires materialization
+    Then the materialize store resolves to a location readable by engine E (not a separate default database)
+  code:
+  - provisa/federation/materialize_exec.py
+  - provisa/core/env_files.py
+  tests:
+  - tests/integration/test_materialization_engine_e2e.py
+  relates_to:
+  - REQ-1266

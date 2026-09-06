@@ -17260,7 +17260,7 @@ New DataProduct entity, domain-scoped: id, domain_id (required FK — a data pro
 
 **Code:** `provisa/core/models.py`, `provisa/api/metadata_export/builder.py`, `provisa-ui/src/pages/tables/TableEditForm.tsx`
 
-**Tests:** —
+**Tests:** `tests/steps/steps_data_products.py`
 
 ### REQ-1635 · Data Catalog Integration {#REQ-1635}
 
@@ -17272,7 +17272,7 @@ New engine-native MetadataExport adapter(s), alongside the vendor-neutral ones (
 
 **Code:** `provisa/api/metadata_export/snowflake_horizon.py`, `provisa/api/metadata_export/builder.py`, `provisa/federation/snowflake_runtime.py`
 
-**Tests:** —
+**Tests:** `tests/steps/steps_data_products.py`
 
 ### REQ-1636 · Data Catalog Integration {#REQ-1636}
 
@@ -17284,4 +17284,30 @@ New bigquery_dataplex.py MetadataExport adapter, the BigQuery counterpart to [RE
 
 **Code:** `provisa/api/metadata_export/bigquery_dataplex.py`, `provisa/api/metadata_export/builder.py`, `provisa/federation/bigquery_runtime.py`
 
-**Tests:** —
+**Tests:** `tests/steps/steps_data_products.py`
+
+### REQ-1638 · Data Catalog Integration {#REQ-1638}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+
+Amendment to DataProductAsset ([REQ-1634](#REQ-1634)): build_snapshot must roll up the tags already present on a DataProduct's member tables/columns via the existing tag_assignments mechanism (object_type in "table", "column", ...) into an aggregated tag set exposed on DataProductAsset — not a new independent tag-assignment surface on the DataProduct entity itself. DataProductAsset also gains domain_id (the DataProduct's single owning domain FK, per [REQ-1634](#REQ-1634)) and the domain's display name, since domain_id alone is an opaque key to an external catalog. Every adapter that maps DataProductAsset — snowflake_horizon.py's listing manifest ([REQ-1635](#REQ-1635)) and the vendor-neutral adapters (openmetadata.py, atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — [REQ-1069](#REQ-1069)) — must surface both the aggregated tag set and the domain_id/domain name.
+
+**Use case:** Lets an external catalog consuming a published data product see the classification/intent carried by its member tables' and columns' tags, and see which domain owns the product, instead of an opaque listing with no domain or classification context.
+
+**Code:** `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/builder.py`, `provisa/api/metadata_export/snowflake_horizon.py`
+
+**Tests:** `tests/steps/steps_data_products.py`
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-1637 · Materialization Routing {#REQ-1637}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+For any warehouse engine, all data source types that the engine cannot natively/directly attach (e.g. OpenAPI, SQLite, GraphQL-remote, Great Expectations sources) must be replicated/materialized into a location that the engine CAN reach. The materialize store must resolve to the same target engine as the deployment's primary engine, never silently defaulting to a separate platform database when the primary engine is something else (e.g. Snowflake).
+
+**Use case:** Ensures non-attachable sources land in the configured deployment engine rather than silently materializing to a fallback Postgres instance, preserving query engine consistency and preventing split-brain data estates.
+
+**Code:** `provisa/federation/materialize_exec.py`, `provisa/core/env_files.py`
+
+**Tests:** `tests/integration/test_materialization_engine_e2e.py`

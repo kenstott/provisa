@@ -117,8 +117,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "id": "Surrogate key for the column registration",
         "table_id": "The registered table this column belongs to",
         "column_name": "Column name at the source",
-        "domain_id": "Business domain the column's table belongs to, mirrored from "
-        "registered_tables",
+        "domain_id": "Domain of the owning table, mirrored for graph-sync consumers that key a "
+        "column node without joining to registered_tables",
         # REQ-1584: the stable column identity the glossary binds to.
         "column_key": "Synthesized column identity (table_id:column_name), the join key from "
         "glossary_term_refs",

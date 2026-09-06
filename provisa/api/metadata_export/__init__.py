@@ -41,6 +41,7 @@ from provisa.api.metadata_export.collibra import CollibraExport  # noqa: E402
 from provisa.api.metadata_export.datahub import DataHubExport  # noqa: E402
 from provisa.api.metadata_export.openlineage import OpenLineageExport  # noqa: E402
 from provisa.api.metadata_export.openmetadata import OpenMetadataExport  # noqa: E402
+from provisa.api.metadata_export.snowflake_horizon import SnowflakeHorizonExport  # noqa: E402
 
 __all__ = [
     "AssetError",
@@ -50,6 +51,7 @@ __all__ = [
     "DataHubExport",
     "OpenLineageExport",
     "OpenMetadataExport",
+    "SnowflakeHorizonExport",
     "MetadataExport",
     "MetadataExportNotConfiguredError",
     "MetadataSnapshot",

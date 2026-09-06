@@ -413,6 +413,31 @@ def _load_mv_and_views_config(
     from provisa.api.app import state
     from provisa.mv.models import MVDefinition, JoinPattern, SDLConfig
 
+    # REQ-1443/description pull-forward: base-table column descriptions, keyed by table name, as
+    # declared BEFORE this function appends any MV/view-derived table entries — a pass-through MV
+    # column with no explicit description inherits its base column's description from here rather
+    # than shipping undocumented.
+    _base_table_columns: dict[str, dict] = {}
+    for _t in raw_config.get("tables", []):
+        _tname = _t.get("table") or _t.get("table_name")
+        if _tname:
+            _base_table_columns[_tname] = {
+                c["name"]: c["description"]
+                for c in _t.get("columns", [])
+                if isinstance(c, dict) and c.get("description")
+            }
+
+    def _pull_forward_descriptions(columns: list[dict], candidate_tables: list[str]) -> None:
+        for col in columns:
+            if not isinstance(col, dict) or col.get("description"):
+                continue
+            name = col.get("name")
+            for tname in candidate_tables:
+                desc = _base_table_columns.get(tname, {}).get(name)
+                if desc:
+                    col["description"] = desc
+                    break
+
     mv_configs = raw_config.get("materialized_views", [])
     for mvc in mv_configs:
         jp = None
@@ -434,9 +459,17 @@ def _load_mv_and_views_config(
         sdl_cfg = None
         if "sdl_config" in mvc:
             sc = mvc["sdl_config"]
+            sdl_columns = sc.get("columns") or []
+            _candidate_tables = [jp.left_table, jp.right_table] if jp else []
+            if jp and jp.via_table:
+                _candidate_tables.append(jp.via_table)
+            for _st in mvc.get("source_tables", []):
+                if _st not in _candidate_tables:
+                    _candidate_tables.append(_st)
+            _pull_forward_descriptions(sdl_columns, _candidate_tables)
             sdl_cfg = SDLConfig(
                 domain_id=sc["domain_id"],
-                columns=sc.get("columns"),
+                columns=sdl_columns,
             )
         # Default the target to the store the ACTIVE engine materializes into (DuckDB → mat_store,
         # not postgresql); an explicit config value still wins.
@@ -486,6 +519,13 @@ def _load_mv_and_views_config(
             # REQ-1623: a materialized view lands in the environment's own cache schema.
             view_schema = active_org_schema(state.org_id, "_mv_cache" if materialize else "")
 
+            view_columns = view_cfg.get("columns", [])
+            # REQ-1443/description pull-forward: a materialized custom-SQL view is a real
+            # landed table (like an MV), so its declared source_tables give real lineage; a
+            # non-materialized view is inline-expanded SQL with no landed columns to pull into.
+            if materialize:
+                _pull_forward_descriptions(view_columns, view_cfg.get("source_tables", []))
+
             view_table = {
                 "source_id": view_source_id,
                 "domain_id": domain_id,
@@ -493,7 +533,7 @@ def _load_mv_and_views_config(
                 "table": view_table_name,
                 "description": description,
                 "alias": view_cfg.get("alias"),
-                "columns": view_cfg.get("columns", []),
+                "columns": view_columns,
             }
             raw_config.setdefault("tables", []).append(view_table)
 

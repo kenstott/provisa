@@ -68,6 +68,15 @@ DERIVED_COLUMNS: frozenset[str] = frozenset(
     {"l1_cluster", "l2_cluster", "l3_cluster", "clusters_computed_at"}
 )
 
+#: Per-table derived caches: mirrored from another row rather than authored on this one, so a copy
+#: recomputes them rather than carrying them. ``table_columns.domain_id`` mirrors the owning
+#: ``registered_tables`` row's ``domain_id`` (REQ-1385's table path already encodes it) so graph-sync
+#: consumers can key a column node by domain without a join -- it is not a second, independently
+#: authored domain assignment, so the tree does not carry it.
+DERIVED_COLUMNS_BY_TABLE: dict[str, frozenset[str]] = {
+    "table_columns": frozenset({"domain_id"}),
+}
+
 #: The file extension. One extension, because a loader that accepts two has to decide which wins
 #: when both exist.
 SUFFIX = ".yaml"
@@ -122,7 +131,7 @@ def kind_path(kind_dir: str, *parts: str) -> str:
 
 def _model_columns(table: str, row: dict[str, Any]) -> dict[str, Any]:
     """``row`` less everything that is storage, derivation, or a binding."""
-    excluded = STORAGE_COLUMNS | DERIVED_COLUMNS
+    excluded = STORAGE_COLUMNS | DERIVED_COLUMNS | DERIVED_COLUMNS_BY_TABLE.get(table, frozenset())
     if table in BINDING_COLUMNS:
         excluded = excluded | BINDING_COLUMNS[table] | {BOUND_COLUMN}
     return {k: v for k, v in row.items() if k not in excluded and v is not None}
