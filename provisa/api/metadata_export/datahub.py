@@ -130,6 +130,12 @@ def glossary_term_urn(org_id: str, name: str) -> str:
     return f"urn:li:glossaryTerm:{PLATFORM}.{org_id}.{name}"
 
 
+def data_product_urn(org_id: str, product_id: str) -> str:  # REQ-1634
+    """DataHub ships a native ``dataProduct`` entity — id-derived, stable across renames since
+    the Provisa ``id`` (unlike the display name) never changes for a product's lifetime."""
+    return f"urn:li:dataProduct:{PLATFORM}.{org_id}.{product_id}"
+
+
 def _field_path(ref: AssetRef) -> str:
     """The column name inside its dataset, which is how DataHub addresses a schema field."""
     return ref.parts[-1]
@@ -434,6 +440,55 @@ def _glossary_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # 
     return proposals
 
 
+def _data_product_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  # REQ-1634
+    """A data product as DataHub's own native ``dataProduct`` entity.
+
+    ``assets`` names the member datasets by their dataset URN — DataHub's Data Product feature
+    is built exactly for this grouping, unlike the domain/data-product retrofits the other
+    adapters need. Ownership rides ``ownership`` the same way a table's steward does; the
+    product's own domain rides as a ``customProperties`` entry (``provisaDomain``) rather than
+    an association to a native ``domain`` entity, since this adapter does not publish domains
+    as entities of their own.
+    """
+    proposals: list[AspectProposal] = []
+    for product in snapshot.data_products:
+        urn = data_product_urn(snapshot.org_id, product.id)
+        proposals.append(
+            AspectProposal(
+                asset=product.ref,
+                kind="data_product",
+                entity_type="dataProduct",
+                urn=urn,
+                aspect_name="dataProductProperties",
+                aspect={
+                    "name": product.name,
+                    "description": product.description,
+                    "customProperties": {
+                        "provisaDomain": product.domain_id,
+                        "provisaUri": product.semantic_uri,  # REQ-1385
+                    },
+                    "externalUrl": product.semantic_uri,
+                    "assets": [
+                        {"destinationUrn": _dataset_urn_for(member.fqn())}
+                        for member in product.members
+                    ],
+                },
+            )
+        )
+        if product.owner is not None:
+            proposals.append(
+                AspectProposal(
+                    asset=product.ref,
+                    kind="data_product_ownership",
+                    entity_type="dataProduct",
+                    urn=urn,
+                    aspect_name="ownership",
+                    aspect=_ownership(product.owner.id),
+                )
+            )
+    return proposals
+
+
 def _assertion_urn(assertion: Any) -> str:  # REQ-1443
     """A stable assertion URN, derived from what the assertion IS.
 
@@ -694,6 +749,7 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
 
     proposals.extend(_lineage_aspects(snapshot))
     proposals.extend(_glossary_proposals(snapshot))  # REQ-1387
+    proposals.extend(_data_product_proposals(snapshot))  # REQ-1634
     proposals.extend(_assertion_proposals(snapshot))  # REQ-1443
     return proposals
 

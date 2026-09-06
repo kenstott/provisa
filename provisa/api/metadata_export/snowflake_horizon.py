@@ -26,13 +26,10 @@ query execution (:func:`provisa.core.catalog._to_catalog_name` on the source id)
 a non-attachable source as a VIEW at that physical name, and a share over the view works exactly
 like a share over a table.
 
-``MetadataSnapshot.data_products`` does not exist yet (REQ-1634 Phase 4, landing separately); this
-adapter reads it via ``getattr`` and no-ops when absent, per the feature's own precondition — a
-snapshot with no DataProducts publishes nothing here, which is correct, not a fallback masking a
-bug. Once that field lands, no change is required here as long as each entry exposes ``id``,
-``name``, ``description`` and ``member_tables: list[AssetRef]`` (table-kind refs, ``(source_id,
-schema_name, table_name)`` — the same shape :func:`provisa.api.metadata_export.refs.table_ref`
-already produces).
+Each ``DataProductAsset`` (REQ-1634) exposes ``id``, ``name``, ``description`` and
+``members: tuple[AssetRef, ...]`` (table-kind refs, ``(source_id, schema_name, table_name)`` — the
+same shape :func:`provisa.api.metadata_export.refs.table_ref` produces). A snapshot with no
+DataProducts publishes nothing here, which is correct, not a fallback masking a bug.
 """
 
 # Requirements: REQ-1068, REQ-1635
@@ -162,7 +159,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
         self, runtime: SnowflakeFederationRuntime, product: Any, result: PublishResult
     ) -> bool:
         try:
-            tables = [physical_parts(ref) for ref in product.member_tables]
+            tables = [physical_parts(ref) for ref in product.members]
         except ValueError as exc:
             result.errors.append(AssetError(AssetRefStub(product.name), str(exc)))
             return False

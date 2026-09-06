@@ -4,10 +4,9 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-1635: the Snowflake Horizon Catalog adapter. ``MetadataSnapshot.data_products`` does not
-exist yet (REQ-1634 Phase 4 lands it separately), so these tests use a locally-constructed
-duck-typed stand-in exposing the contract the adapter documents: ``id``, ``name``, ``description``,
-``member_tables: list[AssetRef]``."""
+"""REQ-1635: the Snowflake Horizon Catalog adapter. Uses a locally-constructed duck-typed
+stand-in for ``DataProductAsset`` (REQ-1634) exposing the contract the adapter reads: ``id``,
+``name``, ``description``, ``members: list[AssetRef]``."""
 
 from __future__ import annotations
 
@@ -32,7 +31,7 @@ class _FakeDataProduct:
     id: str
     name: str
     description: str
-    member_tables: list[AssetRef] = field(default_factory=list)
+    members: list[AssetRef] = field(default_factory=list)
 
 
 def _table_ref(source_id: str, schema: str, table: str) -> AssetRef:

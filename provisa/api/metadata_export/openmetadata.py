@@ -84,6 +84,7 @@ if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
         AssetRef,
         ColumnAsset,
+        DataProductAsset,
         DataQualityAssertion,
         GlossaryTermAsset,
         MetadataSnapshot,
@@ -320,6 +321,30 @@ def _table_entity(snapshot: MetadataSnapshot, table: TableAsset) -> Entity:
             )
         }
     return Entity(asset=table.ref, path="/api/v1/tables", kind="table", body=body)
+
+
+def _data_product_entity(product: DataProductAsset) -> Entity:
+    """A published DataProductAsset as OpenMetadata's own DataProducts construct (REQ-1634).
+
+    ``assets`` names member tables by fullyQualifiedName; ``publish`` substitutes each one's
+    server-assigned id (harvested from the table upsert), the same resolve-by-id pattern the
+    lineage requests use, since ``CreateDataProduct`` requires an EntityReference id.
+    """
+    body: dict[str, Any] = {
+        "name": product.id,
+        "domain": product.domain_id,
+        "description": product.description,
+        "assets": [{"fullyQualifiedName": ref.fqn(), "type": "table"} for ref in product.members],
+    }
+    if product.name and product.name != product.id:
+        body["displayName"] = product.name
+    return Entity(
+        asset=product.ref,
+        path="/api/v1/dataProducts",
+        kind="data_product",
+        body=body,
+        owned_by=product.owner.id if product.owner is not None else None,
+    )
 
 
 # REQ-1443: Provisa's scan outcomes in OpenMetadata's own vocabulary. A warn maps to Failed, not
@@ -564,10 +589,12 @@ def to_entities(snapshot: MetadataSnapshot) -> list[Entity]:
             )
         )
 
-    # Stewards become OpenMetadata users before the domains that own them: an owner is an
-    # entity reference the server resolves by UUID, so a domain naming a user the catalog has
-    # never heard of is rejected outright.
-    for steward_id in sorted({d.steward.id for d in snapshot.domains if d.steward is not None}):
+    # Stewards and data-product owners become OpenMetadata users before the domains/products
+    # that name them: an owner is an entity reference the server resolves by UUID, so naming a
+    # user the catalog has never heard of is rejected outright.
+    owner_ids = {d.steward.id for d in snapshot.domains if d.steward is not None}
+    owner_ids |= {p.owner.id for p in snapshot.data_products if p.owner is not None}  # REQ-1634
+    for steward_id in sorted(owner_ids):
         entities.append(
             Entity(
                 asset=AssetRefStub(steward_id),
@@ -604,6 +631,8 @@ def to_entities(snapshot: MetadataSnapshot) -> list[Entity]:
         )
 
     entities.extend(_table_entity(snapshot, table) for table in snapshot.tables)
+    # REQ-1634: after the tables their members reference, before lineage/dataquality.
+    entities.extend(_data_product_entity(product) for product in snapshot.data_products)
     # REQ-1443: after the tables, because a test case's entityLink addresses the table it
     # observes and OpenMetadata resolves that link at creation time.
     entities.extend(_data_quality_entities(snapshot))
@@ -800,6 +829,16 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         """Fill both endpoints' ``id`` in place; return the first FQN that has no id yet."""
         for side in ("fromEntity", "toEntity"):
             ref = body["edge"][side]
+            entity_id = table_ids.get(ref["fullyQualifiedName"])
+            if entity_id is None:
+                return ref["fullyQualifiedName"]
+            ref["id"] = entity_id
+        return None
+
+    @staticmethod
+    def _resolve_assets(body: dict[str, Any], table_ids: dict[str, str]) -> str | None:
+        """Fill every member's ``id`` in place; return the first FQN that has no id yet."""
+        for ref in body["assets"]:
             entity_id = table_ids.get(ref["fullyQualifiedName"])
             if entity_id is None:
                 return ref["fullyQualifiedName"]
@@ -1356,6 +1395,22 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                                 message=(
                                     f"lineage {entity.asset.fqn()}: endpoint {unresolved!r} "
                                     "was not upserted, so the edge cannot be addressed"
+                                ),
+                            )
+                        )
+                        continue
+                if entity.kind == "data_product":
+                    unresolved = self._resolve_assets(entity.body, table_ids)
+                    if unresolved is not None:
+                        # REQ-1634: same failure shape as lineage — the member table's own
+                        # upsert error is already reported, so this is a distinct, narrower
+                        # failure about the product's membership rather than the table.
+                        result.errors.append(
+                            AssetError(
+                                asset=entity.asset,
+                                message=(
+                                    f"data_product {entity.asset.fqn()}: member {unresolved!r} "
+                                    "was not upserted, so it cannot be addressed"
                                 ),
                             )
                         )

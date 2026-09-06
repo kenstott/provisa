@@ -37,6 +37,7 @@ from provisa.api.metadata_export.registry import (
 # would reject as unknown (REQ-1069).
 from provisa.api.metadata_export.atlan import AtlanExport  # noqa: E402
 from provisa.api.metadata_export.atlas import AtlasExport  # noqa: E402
+from provisa.api.metadata_export.bigquery_dataplex import BigQueryDataplexExport  # noqa: E402
 from provisa.api.metadata_export.collibra import CollibraExport  # noqa: E402
 from provisa.api.metadata_export.datahub import DataHubExport  # noqa: E402
 from provisa.api.metadata_export.openlineage import OpenLineageExport  # noqa: E402
@@ -47,6 +48,7 @@ __all__ = [
     "AssetError",
     "AtlanExport",
     "AtlasExport",
+    "BigQueryDataplexExport",
     "CollibraExport",
     "DataHubExport",
     "OpenLineageExport",

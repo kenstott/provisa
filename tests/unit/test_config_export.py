@@ -28,7 +28,9 @@ class _FakePool:
         yield self._conn
 
 
-async def _run(*, base, tables, rels=None, roles=None, rls=None, domains=None, metrics=None):
+async def _run(
+    *, base, tables, rels=None, roles=None, rls=None, domains=None, metrics=None, data_products=None
+):
     from provisa.api.admin import config_export
 
     conn = object()
@@ -48,6 +50,10 @@ async def _run(*, base, tables, rels=None, roles=None, rls=None, domains=None, m
         patch(
             "provisa.core.repositories.metric.list_all", AsyncMock(return_value=metrics or [])
         ),  # REQ-1317
+        patch(
+            "provisa.core.repositories.data_product.list_all",
+            AsyncMock(return_value=data_products or []),
+        ),  # REQ-1634
     ):
         return await config_export.build_live_config()
 
@@ -86,6 +92,18 @@ async def test_file_only_sections_and_credentials_preserved():
     assert cfg["sources"] == [{"id": "pg", "password": "secret"}]
     assert cfg["auth"] == {"provider": "oidc"}
     assert cfg["server"] == {"port": 8000}
+
+
+async def test_data_products_projected_from_live_state():  # REQ-1634
+    row = {
+        "id": "customer_360",
+        "domain_id": "sales",
+        "name": "Customer 360",
+        "owner": "alice",
+        "description": "Unified customer view",
+    }
+    cfg = await _run(base={"tables": []}, tables=[], data_products=[row])
+    assert cfg["data_products"] == [row]
 
 
 async def test_quoted_name_flattened_to_plain_strings():

@@ -54,6 +54,7 @@ RESERVED_KIND_KEYWORDS = (
     "calendars",
     "naming",
     "domain",
+    "data-products",
 )
 
 _URI_SCHEME = "provisa"
@@ -77,6 +78,18 @@ def domain_uri(org_id: str, domain_id: str) -> str:  # REQ-1385
 
 def source_uri(org_id: str, source_id: str) -> str:  # REQ-1385
     return f"{_URI_SCHEME}://{_segment(org_id)}/sources/{_segment(source_id)}"
+
+
+def data_product_ref(product_id: str) -> AssetRef:  # REQ-1634
+    return AssetRef(kind=AssetKind.DATA_PRODUCT, parts=(product_id,))
+
+
+def data_product_uri(org_id: str, domain_id: str, product_id: str) -> str:  # REQ-1385, REQ-1634
+    # Domain-segmented like table_uri: a data product lives under its one owning domain.
+    return (
+        f"{_URI_SCHEME}://{_segment(org_id)}/"
+        f"{_domain_segments(domain_id)}data-products/{_segment(product_id)}"
+    )
 
 
 def command_uri(org_id: str, command_name: str) -> str:  # REQ-1385

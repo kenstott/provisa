@@ -28,6 +28,7 @@ from __future__ import annotations
 from provisa.api.metadata_export.governance import build_governance_tags
 from provisa.api.metadata_export.model import (
     ColumnAsset,
+    DataProductAsset,
     DataQualityAssertion,
     DataQualityOutcome,
     DomainAsset,
@@ -48,6 +49,8 @@ from provisa.api.metadata_export.refs import (
     UnqualifiedLineageError,
     column_ref,
     column_uri,
+    data_product_ref,
+    data_product_uri,
     domain_uri,
     relationship_uri,
     source_ref,
@@ -140,10 +143,41 @@ def _table_assets(
                 if (table_ref(table).parts, column.name) not in technical_columns
             ],
             semantic_uri=table_uri(org_id, table),
-            data_product=table.product_id is not None,  # REQ-1634: full export rework is Phase 4
+            data_product=table.product_id is not None,  # REQ-1592: model-report column, kept
         )
         for table in tables
     ]
+
+
+def _data_product_assets(
+    config: ProvisaConfig, exported: list[Table], org_id: str
+) -> list[DataProductAsset]:
+    # A product with no exported members does not build: publishing an empty listing would tell
+    # the catalog about a product with nothing behind it.
+    members_by_product: dict[str, list[Table]] = {}
+    for table in exported:
+        if table.product_id is not None:
+            members_by_product.setdefault(table.product_id, []).append(table)
+    assets: list[DataProductAsset] = []
+    for product in config.data_products:
+        members = members_by_product.get(product.id, [])
+        if not members:
+            continue
+        assets.append(
+            DataProductAsset(
+                ref=data_product_ref(product.id),
+                id=product.id,
+                name=product.name,
+                domain_id=product.domain_id,
+                owner=OwnerRef(id=product.owner, kind="data_product_owner")
+                if product.owner
+                else None,
+                description=product.description,
+                members=tuple(table_ref(t) for t in members),
+                semantic_uri=data_product_uri(org_id, product.domain_id, product.id),
+            )
+        )
+    return assets
 
 
 def _relationship_edges(
@@ -562,6 +596,7 @@ def build_snapshot(
         sources=_source_assets(config, org_id, published_source_ids),
         domains=_domain_assets(config, org_id),
         tables=tables,
+        data_products=_data_product_assets(config, exported, org_id),
         relationships=relationships,
         lineage=[
             edge

@@ -1702,6 +1702,7 @@ class ProvisaConfig(BaseModel):
     tag_assignments: list[TagAssignment] = Field(default_factory=list)  # REQ-1377
     naming: NamingConfig = Field(default_factory=NamingConfig)
     tables: list[Table]
+    data_products: list[DataProduct] = Field(default_factory=list)  # REQ-1634
     relationships: list[Relationship] = Field(default_factory=list)
     # REQ-1317: governed metric definitions — named aggregates with query-time grain.
     metrics: list[Metric] = Field(default_factory=list)

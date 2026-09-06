@@ -22,6 +22,7 @@ from __future__ import annotations
 from provisa.api.metadata_export.atlan import AtlanExport
 from provisa.api.metadata_export.atlas import (
     PROVISA_COLUMN_TYPE,
+    PROVISA_DATA_PRODUCT_TYPE,
     PROVISA_SOURCE_TYPE,
     PROVISA_TABLE_TYPE,
     entity_type_defs,
@@ -85,6 +86,32 @@ def test_native_entities_state_what_the_model_holds():
     assert column.relationships == {"table": {"guid": table.guid}}
 
 
+def test_data_product_entity_aggregates_its_member_table():  # REQ-1634
+    from provisa.core.models import DataProduct
+
+    config = _config(
+        data_products=[
+            DataProduct(
+                id="prod",
+                domain_id="pet-store",
+                name="Pets 360",
+                owner="alice",
+                description="Unified pet view",
+            )
+        ]
+    )
+    entities = to_native_entities(build_snapshot(config, org_id="acme", dialect="postgres"))
+    by_type = {e.type_name: e for e in entities}
+    table = by_type[PROVISA_TABLE_TYPE]
+    product = by_type[PROVISA_DATA_PRODUCT_TYPE]
+    assert product.attributes["name"] == "Pets 360"
+    assert product.attributes["provisaDomain"] == "pet-store"
+    assert product.attributes["owner"] == "alice"
+    assert product.relationships == {
+        "members": [{"guid": table.guid, "typeName": PROVISA_TABLE_TYPE}]
+    }
+
+
 def test_user_description_is_never_written_it_belongs_to_humans():
     # REQ-1389: userDescription is the field the Atlas UI edits — writing it clobbers
     # steward-authored descriptions on every publish. Governance rides its own attribute.
@@ -129,7 +156,12 @@ def test_governance_document_rides_the_typed_attribute():
 
 def test_typedefs_cover_the_types_and_containments():
     entity_names = {d["name"] for d in entity_type_defs()}
-    assert entity_names == {PROVISA_SOURCE_TYPE, PROVISA_TABLE_TYPE, PROVISA_COLUMN_TYPE}
+    assert entity_names == {
+        PROVISA_SOURCE_TYPE,
+        PROVISA_TABLE_TYPE,
+        PROVISA_COLUMN_TYPE,
+        PROVISA_DATA_PRODUCT_TYPE,
+    }
     # Tables/columns extend DataSet so built-in Process lineage keeps working.
     supers = {d["name"]: d["superTypes"] for d in entity_type_defs()}
     assert supers[PROVISA_TABLE_TYPE] == ["DataSet"]
@@ -137,6 +169,13 @@ def test_typedefs_cover_the_types_and_containments():
     rels = {d["name"]: d for d in relationship_type_defs()}
     assert rels["provisa_source_tables"]["endDef1"]["isContainer"] is True
     assert rels["provisa_table_columns"]["endDef2"]["type"] == PROVISA_COLUMN_TYPE
+    # REQ-1634: a data product does not own its members, so neither end containers.
+    members_rel = rels["provisa_data_product_members"]
+    assert members_rel["relationshipCategory"] == "AGGREGATION"
+    assert members_rel["endDef1"]["isContainer"] is False
+    assert members_rel["endDef2"]["isContainer"] is False
+    assert members_rel["endDef1"]["type"] == PROVISA_DATA_PRODUCT_TYPE
+    assert members_rel["endDef2"]["type"] == PROVISA_TABLE_TYPE
 
 
 def test_urn_rebind_updates_in_place_when_the_physical_address_moved():
