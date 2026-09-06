@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 import { Trash2, Pencil } from "lucide-react";
 import { ActionIcon, Badge, Box, Button, Group, Table, Text } from "@mantine/core";
 import type { NavigateFunction } from "react-router-dom";
-import type { RegisteredTable } from "../../types/admin";
+import type { RegisteredTable, DataProduct } from "../../types/admin";
 import { computeProfile } from "./helpers";
 import { TagControl } from "../../components/TagControl";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
@@ -26,6 +26,7 @@ interface TableProfileResult {
 
 interface TableReadViewProps {
   t: RegisteredTable;
+  dataProducts: DataProduct[]; // REQ-1634
   navigate: NavigateFunction;
   viewsOnly: boolean;
   deploying: Record<number, boolean>;
@@ -48,6 +49,7 @@ interface TableReadViewProps {
 
 export function TableReadView({
   t: table,
+  dataProducts,
   navigate,
   viewsOnly,
   deploying,
@@ -208,9 +210,9 @@ export function TableReadView({
       )}
       <Group px="0.75rem" py="0.5rem" gap="0.4rem">
         <Text c="dimmed">{t("tableReadView.dataProduct")}</Text>
-        {table.dataProduct ? (
+        {table.productId != null ? (
           <Text c="var(--color-success, #22c55e)" fw={600}>
-            {t("tableReadView.dataProductYes")}
+            {dataProducts.find((p) => p.id === table.productId)?.name ?? table.productId}
           </Text>
         ) : (
           <Text c="dimmed">{t("tableReadView.dataProductNo")}</Text>

@@ -56,6 +56,7 @@ import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { MetadataExportTab } from "../components/admin/MetadataExportTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
+import { DataProductsTab } from "../components/admin/DataProductsTab"; // REQ-1634
 import { ReportsTab } from "../components/admin/ReportsTab";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
@@ -87,6 +88,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/metadata-export": "Metadata Export",
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
+  "/admin/data-products": "Data Products", // REQ-1634
   "/admin/reports": "Reports", // REQ-1386: ops-domain management report viewer
   "/admin/glossary": "Glossary", // REQ-1387: business-glossary curation
   // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
@@ -422,6 +424,7 @@ export function AdminPage() {
         {activeTab === "Metadata Export" && <MetadataExportTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}
+        {activeTab === "Data Products" && <DataProductsTab />}
         {activeTab === "Reports" && <ReportsTab />}
         {activeTab === "Glossary" && <GlossaryTab />}
       </Stack>

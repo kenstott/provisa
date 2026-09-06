@@ -138,6 +138,7 @@
     "preprocessAria": "MV preflight check Python source",
     "preprocessPlaceholder": "def preflight(streams, ctx):\n    if any(r[\"quantity\"] < 0 for r in streams[\"sales.orders\"]):\n        return ctx.abort(\"negative quantity\")\n    return ctx.ok()",
     "dataProductLabel": "Data Product",
+    "dataProductNone": "None",
     "dataProductDesc": "(publish to catalog / export to Atlas, Atlan, etc.)",
     "enableAggregatesLabel": "Enable Aggregates",
     "enableAggregatesDesc": "(expose _aggregate root field in GraphQL)",

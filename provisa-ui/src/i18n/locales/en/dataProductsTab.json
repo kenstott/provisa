@@ -1,0 +1,32 @@
+{
+  "dataProductsTab": {
+    "heading": "Data Products",
+    "filterPlaceholder": "Filter data products…",
+    "addDataProduct": "Data Product",
+    "closeForm": "Close",
+    "idLabel": "ID",
+    "idPlaceholder": "e.g. customer_360",
+    "domainLabel": "Domain",
+    "nameLabel": "Name",
+    "namePlaceholder": "Display name",
+    "ownerLabel": "Owner",
+    "ownerPlaceholder": "Person accountable for this product",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "What this data product publishes",
+    "createButton": "Create data product",
+    "colId": "ID",
+    "colDomain": "Domain",
+    "colName": "Name",
+    "colOwner": "Owner",
+    "colDescription": "Description",
+    "colActions": "Actions",
+    "empty": "No data products yet",
+    "deleteDataProduct": "Delete data product {{id}}",
+    "deleteConfirm": "Delete data product \"{{id}}\"? Tables that reference it lose the membership.",
+    "created": "Data product {{id}} created",
+    "deleted": "Data product {{id}} deleted",
+    "purposeTitle": "What data products are for",
+    "purposeBody": "A data product groups tables published together for consumption, owned by exactly one domain. A table joins a data product only when both share the same domain.",
+    "purposeAria": "About data products"
+  }
+}

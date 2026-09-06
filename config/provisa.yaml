@@ -15,6 +15,17 @@ discovery:
   api_key: ${env:ANTHROPIC_API_KEY:-}
   min_confidence: 0.7
   sample_size: 20
+data_products:
+- description: "Pet health records \u2014 inventory and referral vets for care history"
+  domain_id: pet-store
+  id: pet_health
+  name: Pet Health
+  owner: org_admin
+- description: "Shelter staffing \u2014 employee roster and shift coverage"
+  domain_id: shelter
+  id: workforce_ops
+  name: Workforce Ops
+  owner: org_admin
 domains:
 - description: "Pet store \u2014 Petstore public API (OpenAPI), internal inventory\
     \ (PG), and customer inquiries (SQLite) federated into one virtual database"
@@ -284,6 +295,7 @@ tables:
   domain_id: pet-store
   enable_aggregates: true
   enable_group_by: true
+  product_id: pet_health
   schema: pet_store
   source_id: pet-store-pg
   table: pets
@@ -359,6 +371,7 @@ tables:
     - org_admin
   description: "Veterinarians the store refers pets to"
   domain_id: pet-store
+  product_id: pet_health
   schema: pet_store
   source_id: pet-store-pg
   table: vets
@@ -968,6 +981,7 @@ tables:
   description: "All staff eligible for breed assignments \u2014 use to identify who\
     \ can be assigned or scheduled"
   domain_id: shelter
+  product_id: workforce_ops
   schema: graphql
   source_id: graphql-demo
   table: employees
@@ -1215,6 +1229,7 @@ tables:
   description: "Full weekly shift roster \u2014 use for shelter-wide coverage analysis\
     \ and to surface days where any location is understaffed"
   domain_id: shelter
+  product_id: workforce_ops
   schema: graphql
   source_id: graphql-demo
   table: schedules

@@ -48,6 +48,7 @@ import {
   useSuggestTableAlias,
   useForceRegen,
   useAllRelationships,
+  useDataProducts, // REQ-1634
 } from "../hooks/useAdminQueries";
 import { usePurgeCacheByTable, useInvalidateFileSource } from "../hooks/useAdminOpsQueries";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
@@ -81,6 +82,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   } = useTables();
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
+  const { dataProducts } = useDataProducts(); // REQ-1634
   const { relationships } = useAllRelationships();
   const [showErd, setShowErd] = useState(false);
   const { roles, refetch: refetchRoles } = useRoles();
@@ -1034,7 +1036,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               )}
                             </>
                           )}
-                          {t.dataProduct && (
+                          {t.productId != null && (
                             <Badge
                               size="xs"
                               variant="light"
@@ -1042,7 +1044,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               title={translate("tablesPage.dataProductTitle")}
                               data-testid={`tables-data-product-${t.tableName}`}
                             >
-                              {translate("tablesPage.dataProduct")}
+                              {dataProducts.find((p) => p.id === t.productId)?.name ?? t.productId}
                             </Badge>
                           )}
                           <TagControl objectType="table" tableId={t.id} />
@@ -1127,6 +1129,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                           {!isEditing ? (
                             <TableReadView
                               t={t}
+                              dataProducts={dataProducts}
                               navigate={navigate}
                               viewsOnly={viewsOnly}
                               onEditDefinition={viewsOnly ? setEditingViewDef : undefined}
@@ -1152,6 +1155,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                 setCacheTtlEdits={setCacheTtlEdits}
                                 sources={sources}
                                 roles={roles}
+                                dataProducts={dataProducts}
                                 settings={settings}
                                 saving={saving}
                                 generatingDesc={generatingDesc}

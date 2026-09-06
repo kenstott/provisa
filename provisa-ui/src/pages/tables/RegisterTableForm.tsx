@@ -74,7 +74,6 @@ export function RegisterTableForm({
   const [columns, setColumns] = useState<ColumnForm[]>([]);
   const [uniqueConstraints, setUniqueConstraints] = useState<UniqueConstraint[]>([]); // REQ-1093
   const [watermarkColumn, setWatermarkColumn] = useState<string>("");
-  const [dataProduct, setDataProduct] = useState(false);
   const [discover, setDiscover] = useState(false); // REQ-252: infer columns from the live source
   const [loadingColumns, setLoadingColumns] = useState(false);
 
@@ -244,7 +243,6 @@ export function RegisterTableForm({
         alias: tableAlias || undefined,
         description: tableDescription || undefined,
         watermarkColumn: watermarkColumn || null,
-        dataProduct,
         discover, // REQ-252
         columns: selectedCols,
         // REQ-1093: drop empty/incomplete rows — a constraint needs a name and >=1 column.
@@ -396,18 +394,6 @@ export function RegisterTableForm({
         value={tableDescription}
         onChange={(e) => setTableDescription(e.currentTarget.value)}
         placeholder={t("registerTableForm.descriptionPlaceholder")}
-      />
-      <Checkbox
-        checked={dataProduct}
-        onChange={(e) => setDataProduct(e.currentTarget.checked)}
-        label={
-          <>
-            {t("registerTableForm.dataProductLabel")}{" "}
-            <Text span fw="normal" c="dimmed" fz="xs">
-              {t("registerTableForm.dataProductHint")}
-            </Text>
-          </>
-        }
       />
       <Checkbox
         checked={discover}
