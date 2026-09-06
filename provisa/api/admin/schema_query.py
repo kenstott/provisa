@@ -44,6 +44,7 @@ from provisa.api.admin.types import (
     CalendarType,
     ColumnDependentsType,
     ColumnDependentType,
+    DataProductType,
     DomainType,
     DqCheckBuildInput,
     DqCheckCatalogType,
@@ -343,6 +344,25 @@ class Query:  # REQ-021, REQ-042
                 select(domains).where(domains.c.id != "").order_by(domains.c.id)
             )
             return [_domain_from_row(dict(r._mapping)) for r in _res.fetchall()]
+
+    @strawberry.field
+    async def data_products(self, info: StrawberryInfo) -> list[DataProductType]:  # REQ-1634
+        from provisa.core.repositories import data_product as data_product_repo
+
+        _resolve_admin_context(info)
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await data_product_repo.list_all(cast("Connection", conn))
+        return [
+            DataProductType(
+                id=r["id"],
+                domain_id=r["domain_id"],
+                name=r["name"],
+                owner=r["owner"],
+                description=r["description"],
+            )
+            for r in rows
+        ]
 
     @strawberry.field
     async def tags(self, info: StrawberryInfo) -> list[TagType]:  # REQ-1373

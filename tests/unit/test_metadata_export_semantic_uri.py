@@ -47,7 +47,7 @@ def _config(**kwargs) -> ProvisaConfig:
                 domain_id="sales",
                 schema_name="public",
                 table_name="orders",
-                data_product=True,
+                product_id="prod",
                 alias="Order",
                 columns=[
                     Column(name="id", data_type="integer", visible_to=["admin"]),
@@ -112,7 +112,7 @@ def test_relationship_uri_anchors_at_source_table():
                 domain_id="sales",
                 schema_name="public",
                 table_name="customers",
-                data_product=True,
+                product_id="prod",
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
         ],
@@ -147,7 +147,7 @@ def test_uri_segments_are_percent_encoded():
                 domain_id="sales ops",
                 schema_name="public",
                 table_name="order lines",
-                data_product=True,
+                product_id="prod",
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
         ],

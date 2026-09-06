@@ -49,7 +49,7 @@ def _table(name: str, **kwargs) -> Table:
         schema_name="public",
         table_name=name,
         description=kwargs.pop("description", f"{name} table"),
-        data_product=kwargs.pop("data_product", True),
+        product_id=kwargs.pop("product_id", "prod"),
         columns=columns,
         **kwargs,
     )
@@ -68,7 +68,7 @@ def _config() -> ProvisaConfig:
                     Column(name="amount", data_type="numeric", visible_to=["*"]),
                 ],
             ),
-            _table("staging", data_product=False),
+            _table("staging", product_id=None),
             _table("order_totals", view_sql="SELECT 1", description="a view"),
             _table(
                 "order_rollup",

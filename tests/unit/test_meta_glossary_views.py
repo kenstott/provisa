@@ -42,7 +42,7 @@ CREATE TABLE table_columns (
     mask_type TEXT, mask_pattern TEXT, mask_replace TEXT, mask_value TEXT,
     mask_precision TEXT, native_filter_type TEXT, is_foreign_key BOOLEAN,
     is_alternate_key BOOLEAN, object_fields TEXT, visible_to TEXT, unmasked_to TEXT,
-    writable_by TEXT, tenant_id TEXT);
+    writable_by TEXT, domain_id TEXT, tenant_id TEXT);
 CREATE TABLE tag_assignments (
     id TEXT PRIMARY KEY, tag_id TEXT, base_tag_id TEXT, object_type TEXT, source_id TEXT,
     table_id INTEGER, column_name TEXT, relationship_id TEXT, command_name TEXT,
@@ -75,11 +75,12 @@ def db() -> sqlite3.Connection:
         "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1')"
     )
     conn.executemany(
-        "INSERT INTO table_columns (id, table_id, column_name, alias, mask_type, tenant_id)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO table_columns (id, table_id, column_name, alias, mask_type, domain_id,"
+        " tenant_id)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
-            (1, 7, "usr_nm", "user name", None, "org1"),
-            (2, 7, "ssn", "social security number", "regex", "org1"),
+            (1, 7, "usr_nm", "user name", None, "sales", "org1"),
+            (2, 7, "ssn", "social security number", "regex", "sales", "org1"),
         ],
     )
     conn.executemany(

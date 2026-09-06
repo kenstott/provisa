@@ -43,7 +43,7 @@ def _config(**kwargs) -> ProvisaConfig:
                 schema_name="default",
                 table_name="find_pets_by_status",
                 alias="pets",
-                data_product=True,
+                product_id="prod",
                 columns=[
                     Column(
                         name="pet_id",
@@ -105,7 +105,7 @@ def test_governance_document_rides_the_typed_attribute():
                 domain_id="pet-store",
                 schema_name="default",
                 table_name="orders",
-                data_product=True,
+                product_id="prod",
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
         ],

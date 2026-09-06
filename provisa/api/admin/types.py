@@ -101,6 +101,15 @@ class DomainType:  # REQ-533, REQ-609
 
 
 @strawberry.type
+class DataProductType:  # REQ-1634
+    id: str
+    domain_id: str
+    name: str
+    owner: str | None = None
+    description: str = ""
+
+
+@strawberry.type
 class TagParamValueType:  # REQ-1467
     value: str
     description: str
@@ -262,7 +271,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     mv_business_day_grain: bool = False  # REQ-962: gate windows to business days
     modeling_role: str | None = None  # REQ-1320: "dimension" | "fact" | None
     modeling_history: str | None = None  # REQ-1320: "scd2" | "snapshot" | None
-    data_product: bool = False
+    product_id: str | None = None  # REQ-1634
     enable_aggregates: bool = False
     enable_group_by: bool = False
     can_deploy_to_db: bool = False
@@ -449,6 +458,15 @@ class DomainInput:  # REQ-533, REQ-609
 
 
 @strawberry.input
+class DataProductInput:  # REQ-1634
+    id: str
+    domain_id: str
+    name: str
+    owner: str | None = None
+    description: str = ""
+
+
+@strawberry.input
 class TagInput:  # REQ-1373
     id: str
     description: str = ""
@@ -596,7 +614,7 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     mv_business_day_grain: bool = False  # REQ-962: gate windows to business days
     modeling_role: str | None = None  # REQ-1320: "dimension" | "fact" | None
     modeling_history: str | None = None  # REQ-1320: "scd2" | "snapshot" | None
-    data_product: bool = False
+    product_id: str | None = None  # REQ-1634
     enable_aggregates: bool = False
     enable_group_by: bool = False
     discover: bool = False  # REQ-252: infer columns from the live NoSQL source at registration

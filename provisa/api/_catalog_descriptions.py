@@ -104,7 +104,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "watermark_column": "Column whose high value marks how far incremental refresh has read",
         "column_presets": "Named column subsets consumers can select instead of listing columns",
         "view_sql": "Defining SQL, for a Provisa-managed virtual view rather than a source table",
-        "data_product": "Whether the table is published as a data product",
+        "product_id": "The DataProduct this table is published as a member of, if any",
         "materialize": "Whether Provisa maintains a materialization of this table",
         "mv_refresh_interval": "How often the materialization is refreshed",
         "l1_cluster": "Top-level semantic cluster, computed from the table's relationships",
@@ -117,6 +117,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "id": "Surrogate key for the column registration",
         "table_id": "The registered table this column belongs to",
         "column_name": "Column name at the source",
+        "domain_id": "Business domain the column's table belongs to, mirrored from "
+        "registered_tables",
         # REQ-1584: the stable column identity the glossary binds to.
         "column_key": "Synthesized column identity (table_id:column_name), the join key from "
         "glossary_term_refs",

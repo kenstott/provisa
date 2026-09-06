@@ -41,6 +41,7 @@ from provisa.api.admin.types import (
     ColumnAliasType,
     CompileQueryInput,
     CompileQueryResult,
+    DataProductInput,
     DomainInput,
     DqDryRunCheckType,
     DqDryRunType,
@@ -907,6 +908,70 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Domain {id!r} not found",
             code="schema.domain_not_found",
             params={"domain": id},
+        )
+
+    @strawberry.mutation
+    async def create_data_product(
+        self, info: StrawberryInfo, input: DataProductInput
+    ) -> MutationResult:  # REQ-1634
+        # REQ-1634: a data product is scoped to one owning domain — gated by the same right that
+        # owns the domain vocabulary, since a data product is a domain-level publication decision.
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.core.models import DataProduct as DataProductModel
+        from provisa.core.repositories import data_product as data_product_repo
+        from provisa.core.repositories import domain as domain_repo
+
+        require_capability(info, "org_settings")
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            conn = cast("Connection", conn)
+            if await domain_repo.get(conn, input.domain_id) is None:
+                return MutationResult(
+                    success=False,
+                    message=f"Domain {input.domain_id!r} not found",
+                    code="schema.domain_not_found",
+                    params={"domain": input.domain_id},
+                )
+            model = DataProductModel(
+                id=input.id,
+                domain_id=input.domain_id,
+                name=input.name,
+                owner=input.owner or None,
+                description=input.description,
+            )
+            await data_product_repo.upsert(conn, model)
+        return MutationResult(
+            success=True,
+            message=f"Data product {input.id!r} created",
+            code="schema.data_product_created",
+            params={"data_product": input.id},
+        )
+
+    @strawberry.mutation
+    async def delete_data_product(
+        self, info: StrawberryInfo, id: str
+    ) -> MutationResult:  # REQ-1634
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.core.repositories import data_product as data_product_repo
+
+        require_capability(info, "org_settings")
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            deleted = await data_product_repo.delete(cast("Connection", conn), id)
+        if deleted:
+            return MutationResult(
+                success=True,
+                message=f"Data product {id!r} deleted",
+                code="schema.data_product_deleted",
+                params={"data_product": id},
+            )
+        return MutationResult(
+            success=False,
+            message=f"Data product {id!r} not found",
+            code="schema.data_product_not_found",
+            params={"data_product": id},
         )
 
     @strawberry.mutation

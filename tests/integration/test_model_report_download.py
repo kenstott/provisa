@@ -109,7 +109,7 @@ def _config() -> dict:
                 "domain_id": "sales",
                 "schema": "public",
                 "table": "orders",
-                "data_product": True,
+                "product_id": "prod-sales",
                 "columns": [
                     {"name": "id", "data_type": "integer", "visible_to": ["*"]},
                     {"name": "amount", "data_type": "numeric", "visible_to": ["*"]},
@@ -120,7 +120,7 @@ def _config() -> dict:
                 "domain_id": "petstore",
                 "schema": "public",
                 "table": "pets",
-                "data_product": True,
+                "product_id": "prod-petstore",
                 "columns": [{"name": "order_id", "data_type": "integer", "visible_to": ["*"]}],
             },
             {
@@ -128,7 +128,6 @@ def _config() -> dict:
                 "domain_id": "sales",
                 "schema": "public",
                 "table": "staging",
-                "data_product": False,
                 "columns": [{"name": "id", "data_type": "integer", "visible_to": ["*"]}],
             },
             {
@@ -136,7 +135,7 @@ def _config() -> dict:
                 "domain_id": "sales",
                 "schema": "public",
                 "table": "order_totals",
-                "data_product": True,
+                "product_id": "prod-sales",
                 "view_sql": "SELECT id FROM orders",
                 "columns": [{"name": "id", "data_type": "integer", "visible_to": ["*"]}],
             },
@@ -145,7 +144,7 @@ def _config() -> dict:
                 "domain_id": "petstore",
                 "schema": "public",
                 "table": "pet_rollup",
-                "data_product": True,
+                "product_id": "prod-petstore",
                 "view_sql": "SELECT order_id FROM pets",
                 "materialize": True,
                 "mv_refresh_interval": 900,
@@ -182,10 +181,24 @@ async def served(tenant_db, monkeypatch):
     from provisa.api import app as app_module
     from provisa.api.admin import config_export
 
+    from provisa.core.models import DataProduct, Domain
+    from provisa.core.repositories import data_product as data_product_repo
+    from provisa.core.repositories import domain as domain_repo
     from provisa.core.repositories import glossary as glossary_repo
 
     raw = _config()
     async with tenant_db.acquire() as conn:
+        # The DataProduct FK/domain check in table_repo.upsert requires the domain to already
+        # exist, but load_config only creates domains as part of the same run — so the domains
+        # and products must be seeded ahead of it, not derived from raw["domains"].
+        await domain_repo.upsert(conn, Domain(id="sales"))
+        await domain_repo.upsert(conn, Domain(id="petstore"))
+        await data_product_repo.upsert(
+            conn, DataProduct(id="prod-sales", domain_id="sales", name="Sales Product")
+        )
+        await data_product_repo.upsert(
+            conn, DataProduct(id="prod-petstore", domain_id="petstore", name="Petstore Product")
+        )
         await load_config(parse_config_dict(raw), conn)
         # A derived term publishes only once a curator has defined it (REQ-1387), so the
         # curation step is part of the fixture: without it the Glossary sheet is empty for a

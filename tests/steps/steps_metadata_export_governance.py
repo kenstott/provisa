@@ -48,7 +48,7 @@ def _governed_config(shared_data):
                 schema_name="public",
                 table_name="customers",
                 # Marked so the table publishes: only Data Product tables enter the snapshot.
-                data_product=True,
+                product_id="prod",
                 columns=[
                     Column(
                         name="ssn",

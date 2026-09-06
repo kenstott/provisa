@@ -423,7 +423,7 @@ async def _fetch_table_with_columns(
         mv_business_day_grain=bool(row.get("mv_business_day_grain", False)),  # REQ-962
         modeling_role=row.get("modeling_role"),  # REQ-1320
         modeling_history=row.get("modeling_history"),  # REQ-1320
-        data_product=bool(row.get("data_product", False)),
+        product_id=row.get("product_id"),  # REQ-1634
         enable_aggregates=bool(row.get("enable_aggregates", False)),
         enable_group_by=bool(row.get("enable_group_by", False)),
         can_deploy_to_db=can_deploy,

@@ -18,6 +18,7 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core import domain_policy
 from provisa.core.models import Table
+from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.schema_org import registered_tables, roles, table_columns
 from provisa.security.rights import Capability
@@ -90,6 +91,19 @@ async def upsert(
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
     """Upsert a registered table and its columns. Returns the table row id."""
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
+    # REQ-1634: a DataProduct's member tables must all share its domain_id — a table cannot
+    # reference a DataProduct in a different domain. Enforced at the last write gate so every
+    # caller (config load, admin GraphQL, introspection) is covered, not only the picker UI.
+    product_id = getattr(table, "product_id", None)
+    if product_id is not None:
+        product = await data_product_repo.get(conn, product_id)
+        if product is None:
+            raise ValueError(f"data product {product_id!r} does not exist")
+        if product["domain_id"] != domain_id:
+            raise ValueError(
+                f"table {table.table_name} is in domain {domain_id!r} but data product "
+                f"{product_id!r} belongs to domain {product['domain_id']!r}"
+            )
     # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
     values = {
         "source_id": table.source_id,
@@ -108,7 +122,7 @@ async def upsert(
         "view_metrics": (
             vm.model_dump() if (vm := getattr(table, "view_metrics", None)) else None
         ),  # REQ-1318
-        "data_product": getattr(table, "data_product", False),
+        "product_id": getattr(table, "product_id", None),  # REQ-1634
         "materialize": getattr(table, "materialize", False),
         "mv_refresh_interval": getattr(table, "mv_refresh_interval", 300),
         "mv_debounce_quiet": getattr(table, "mv_debounce_quiet", 0.0),  # REQ-963
@@ -147,7 +161,7 @@ async def upsert(
         "view_sql",
         "dq_contract",  # REQ-1443
         "view_metrics",  # REQ-1318
-        "data_product",
+        "product_id",
         "materialize",
         "mv_refresh_interval",
         "mv_debounce_quiet",

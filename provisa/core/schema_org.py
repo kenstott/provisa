@@ -106,6 +106,16 @@ domains = Table(
     Column("tenant_id", Uuid),
 )
 
+data_products = Table(  # REQ-1634
+    "data_products",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE"), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("owner", Text),
+    Column("description", Text, nullable=False, server_default=""),
+)
+
 naming_rules = Table(
     "naming_rules",
     metadata,
@@ -143,7 +153,7 @@ registered_tables = Table(
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON),
-    Column("data_product", Boolean, nullable=False, server_default=false()),
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),  # REQ-1634
     Column("materialize", Boolean, nullable=False, server_default=false()),
     Column("mv_refresh_interval", Integer, nullable=False, server_default="300"),
     # REQ-963 live-MV debounce (event-loop path). quiet=0 → real-time recompute.

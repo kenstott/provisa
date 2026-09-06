@@ -315,6 +315,14 @@ class Domain(BaseModel):  # REQ-471, REQ-609
     ddl_schema: str | None = None  # schema within ddl_catalog; defaults to domain id
 
 
+class DataProduct(BaseModel):  # REQ-1634
+    id: str
+    domain_id: str  # required FK — a data product has exactly one owning domain
+    name: str
+    owner: str | None = None  # person accountable for this product; distinct from Domain.steward
+    description: str = ""
+
+
 TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command")
 
 
@@ -871,7 +879,7 @@ class Table(
     mv_persist: str = "replace"
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
-    data_product: bool = False  # publish as a Data Product (catalog export)
+    product_id: str | None = None  # REQ-1634: FK -> DataProduct.id; membership is this being set
     enable_aggregates: bool = False  # REQ-653: opt-in for _aggregate root field
     enable_group_by: bool = False  # REQ-653: opt-in for _group_by root field
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this table

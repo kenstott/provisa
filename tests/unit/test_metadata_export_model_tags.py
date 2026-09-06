@@ -36,13 +36,15 @@ from provisa.core.models import (
 )
 
 
-def _table(table_name: str, *, data_product: bool = True, columns: list[Column] | None = None):
+def _table(
+    table_name: str, *, product_id: str | None = "prod", columns: list[Column] | None = None
+):
     return Table(
         source_id="wh",
         domain_id="sales",
         schema_name="public",
         table_name=table_name,
-        data_product=data_product,
+        product_id=product_id,
         columns=columns
         if columns is not None
         else [Column(name="id", data_type="integer", visible_to=["admin"])],
@@ -115,7 +117,7 @@ def test_sources_publish_only_when_one_of_their_tables_does():
             Source(id="wh", type=SourceType.postgresql, description="warehouse"),
             Source(id="internal-admin", type=SourceType.postgresql, description="plumbing"),
         ],
-        tables=[_table("orders"), _table("drafts", data_product=False)],
+        tables=[_table("orders"), _table("drafts", product_id=None)],
         tag_assignments=[
             TagAssignment(
                 tag_id="deprecated",
@@ -132,7 +134,7 @@ def test_sources_publish_only_when_one_of_their_tables_does():
 
 def test_tags_on_published_assets_ship_and_withheld_assets_keep_theirs_back():
     config = _config(
-        tables=[_table("orders"), _table("drafts", data_product=False)],
+        tables=[_table("orders"), _table("drafts", product_id=None)],
         tag_assignments=[
             TagAssignment(tag_id="gold", object_type="table", table_ref="wh.public.orders"),
             TagAssignment(tag_id="gold", object_type="table", table_ref="wh.public.drafts"),

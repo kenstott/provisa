@@ -46,7 +46,7 @@ def _table(name: str, columns: list[Column], domain_id: str = "sales") -> Table:
         table_name=name,
         columns=columns,
         # Marked so the table publishes: only Data Product tables enter the snapshot.
-        data_product=True,
+        product_id="prod",
     )
 
 

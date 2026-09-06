@@ -77,7 +77,7 @@ def _observed() -> Table:
         domain_id="sales",
         schema_name="sales",
         table_name="orders",
-        data_product=True,
+        product_id="orders-product",
         columns=[
             Column(name="id", data_type="integer", visible_to=["admin"]),
             Column(name="customer", data_type="varchar", visible_to=["admin"]),
@@ -91,7 +91,7 @@ def _results(contract: str = CONTRACT) -> Table:
         domain_id="sales",
         schema_name="quality",
         table_name="orders_scans",
-        data_product=True,
+        product_id="orders-product",
         dq_contract=contract,
         columns=[Column(name="check_name", data_type="varchar", visible_to=["admin"])],
     )
@@ -195,7 +195,7 @@ def test_the_results_table_carries_the_derived_data_quality_tag(snapshot):
 def test_an_unpublished_observed_table_publishes_no_assertion():
     """Both ends must publish or the reference dangles — the filter's whole purpose."""
     observed = _observed()
-    observed.data_product = False
+    observed.product_id = None
     config = _config(tables=[observed, _results()])
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
     assert snapshot.assertions == []

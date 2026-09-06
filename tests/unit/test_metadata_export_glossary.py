@@ -19,13 +19,13 @@ from provisa.api.metadata_export.builder import build_snapshot
 from provisa.core.models import Column, Domain, ProvisaConfig, Source, SourceType, Table
 
 
-def _table(table_name: str, *, data_product: bool = True, columns: list[str] | None = None):
+def _table(table_name: str, *, product_id: str | None = "prod", columns: list[str] | None = None):
     return Table(
         source_id="wh",
         domain_id="sales",
         schema_name="public",
         table_name=table_name,
-        data_product=data_product,
+        product_id=product_id,
         columns=[
             Column(name=c, data_type="integer", visible_to=["admin"]) for c in (columns or ["id"])
         ],
@@ -94,7 +94,7 @@ def test_terms_follow_the_data_product_filter():
     config = _config(
         [
             _table("orders", columns=["cust_id"]),
-            _table("staging", data_product=False, columns=["hidden_id"]),
+            _table("staging", product_id=None, columns=["hidden_id"]),
         ]
     )
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", glossary=_glossary())

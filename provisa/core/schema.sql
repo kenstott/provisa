@@ -53,6 +53,15 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO domains (id, description) VALUES ('shelter', 'Animal shelter staff and breed management')
 ON CONFLICT (id) DO NOTHING;
 
+-- REQ-1634: a data product groups tables within a single domain for governed publication.
+CREATE TABLE IF NOT EXISTS data_products (
+    id          TEXT PRIMARY KEY,
+    domain_id   TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    owner       TEXT,
+    description TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS naming_rules (
     id          SERIAL PRIMARY KEY,
     pattern     TEXT NOT NULL,
@@ -166,7 +175,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS column_presets JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS dq_contract TEXT;  -- REQ-1443
-    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS data_product BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;  -- REQ-1634
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_refresh_interval INTEGER NOT NULL DEFAULT 300;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_quiet DOUBLE PRECISION NOT NULL DEFAULT 0;

@@ -195,7 +195,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         SELECT id, source_id, domain_id, schema_name, table_name,
                alias, description, cache_ttl, gql_naming_convention, watermark_column,
                column_presets,
-               view_sql, data_product, materialize, mv_refresh_interval,
+               view_sql, product_id, materialize, mv_refresh_interval,
                l1_cluster, l2_cluster, l3_cluster, clusters_computed_at,
                tenant_id
         FROM registered_tables

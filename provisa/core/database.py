@@ -699,7 +699,19 @@ class Database:
             if self.search_path and (sql := self.capabilities.enter_org_sql(self.search_path)):
                 await ac.execute(text(sql))
                 await ac.commit()
-            yield Connection(ac, self.capabilities)
+            try:
+                yield Connection(ac, self.capabilities)
+            finally:
+                # PG session state (search_path) survives pool checkin — SQLAlchemy's
+                # reset_on_return only rolls back an open transaction, and callers that
+                # scope a connection with a raw "SET search_path" (e.g. per-acquire org
+                # scoping) commit it. Without this, the next checkout of this pooled
+                # connection inherits the wrong schema regardless of its own Database's
+                # search_path setting. Reset unconditionally so every acquire starts the
+                # role's default search_path, matching the guarantee this class documents.
+                if self.dialect == "postgresql":
+                    await ac.execute(text("RESET search_path"))
+                    await ac.commit()
 
     # Pool-style passthrough (asyncpg pools proxy connection methods). Used by
     # the few call sites that call db.execute(...) / db.fetch(...) directly.

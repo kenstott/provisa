@@ -79,7 +79,7 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
         mv_business_day_grain=inp.mv_business_day_grain,  # REQ-962
         modeling_role=inp.modeling_role,  # REQ-1320
         modeling_history=inp.modeling_history,  # REQ-1320
-        data_product=inp.data_product,
+        product_id=inp.product_id,  # REQ-1634
         enable_aggregates=inp.enable_aggregates,
         enable_group_by=inp.enable_group_by,
         live=live_model_from_input(inp.live),

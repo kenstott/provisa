@@ -140,7 +140,7 @@ def _table_assets(
                 if (table_ref(table).parts, column.name) not in technical_columns
             ],
             semantic_uri=table_uri(org_id, table),
-            data_product=table.data_product,
+            data_product=table.product_id is not None,  # REQ-1634: full export rework is Phase 4
         )
         for table in tables
     ]
@@ -540,7 +540,9 @@ def build_snapshot(
     # REQ-1592: the model report projects the SAME governance over every registered table — it is a
     # steward's view of what is modelled, not a catalog publish — so it turns the export filter off
     # and reads the Data Product flag off each row instead.
-    exported = [table for table in config.tables if table.data_product or not data_products_only]
+    exported = [
+        table for table in config.tables if table.product_id is not None or not data_products_only
+    ]
     keep = {table_ref(table).parts for table in exported}
     published_source_ids = {table.source_id for table in exported}
     tables = _table_assets(exported, org_id, technical_columns)

@@ -47,17 +47,17 @@ def _table(
     table_name: str,
     domain_id: str = "sales",
     columns: list[Column] | None = None,
-    data_product: bool = True,
+    product_id: str | None = "prod",
     **kwargs,
 ) -> Table:
-    # data_product defaults True here: these tests exercise what a PUBLISHED table carries,
-    # and only tables marked Data Product publish at all (the export filter).
+    # product_id defaults to a non-None value here: these tests exercise what a PUBLISHED table
+    # carries, and only tables marked Data Product publish at all (the export filter).
     return Table(
         source_id=source_id,
         domain_id=domain_id,
         schema_name="public",
         table_name=table_name,
-        data_product=data_product,
+        product_id=product_id,
         columns=columns
         if columns is not None
         else [Column(name="id", data_type="integer", visible_to=["admin"])],
@@ -119,7 +119,7 @@ def test_only_data_product_tables_are_published():
     config = _config(
         tables=[
             _table(table_name="orders"),
-            _table(table_name="staging_orders", data_product=False),
+            _table(table_name="staging_orders", product_id=None),
         ]
     )
 
@@ -134,7 +134,7 @@ def test_edges_and_tags_touching_an_unmarked_table_are_withheld():
     config = _config(
         tables=[
             _table(table_name="orders"),
-            _table(table_name="customers", data_product=False),
+            _table(table_name="customers", product_id=None),
             _table(
                 table_name="order_totals",
                 view_sql="SELECT id FROM customers",

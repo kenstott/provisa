@@ -80,7 +80,7 @@ def snapshot():
                 domain_id="sales",
                 schema_name="public",
                 table_name="orders",
-                data_product=True,
+                product_id="prod",
                 columns=[
                     Column(name="id", data_type="integer", visible_to=["analyst", "admin"]),
                     Column(

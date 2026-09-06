@@ -29,6 +29,7 @@ from __future__ import annotations
 CARRIED: frozenset[str] = frozenset(
     {
         "domains",
+        "data_products",  # REQ-1634: domain-scoped metadata, travels with the domain it belongs to
         "naming_rules",
         "registered_tables",
         "table_columns",
