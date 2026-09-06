@@ -92,6 +92,16 @@ query DomainsQuery {
   }
 }
 
+query DataProductsQuery {
+  dataProducts {
+    id
+    domainId
+    name
+    owner
+    description
+  }
+}
+
 query TagsQuery {
   tags {
     id
@@ -172,7 +182,7 @@ query TablesQuery {
     mvAllowedLateness
     mvExpectedEvents
     mvBusinessDayGrain
-    dataProduct
+    productId
     enableAggregates
     enableGroupBy
     canDeployToDb
@@ -603,6 +613,26 @@ mutation CreateDomain($id: String!, $description: String!, $graphqlAlias: String
 
 mutation DeleteDomain($id: String!) {
   deleteDomain(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation CreateDataProduct(
+  $id: String!
+  $domainId: String!
+  $name: String!
+  $owner: String
+  $description: String!
+) {
+  createDataProduct(
+    input: { id: $id, domainId: $domainId, name: $name, owner: $owner, description: $description }
+  ) {
+    ...MutationResult
+  }
+}
+
+mutation DeleteDataProduct($id: String!) {
+  deleteDataProduct(id: $id) {
     ...MutationResult
   }
 }

@@ -101,7 +101,7 @@ function table(
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    dataProduct: false,
+    productId: null, // REQ-1634
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -147,6 +147,7 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useSources: () => ({ sources: SOURCES, loading: false, refetch: vi.fn() }),
   useDomains: () => ({ domains: DOMAINS, loading: false, refetch: vi.fn() }),
   useRoles: () => ({ roles: ROLES, loading: false, refetch: vi.fn() }),
+  useDataProducts: () => ({ dataProducts: [], loading: false, refetch: vi.fn() }), // REQ-1634
   useAllRelationships: () => ({ relationships: [], loading: false, refetch: vi.fn() }),
   useForceRegen: () => ({ forceRegen, loading: false }),
 }));

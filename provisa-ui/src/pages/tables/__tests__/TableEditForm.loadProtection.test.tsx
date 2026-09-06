@@ -71,7 +71,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    dataProduct: false,
+    productId: null, // REQ-1634
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -91,6 +91,7 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn(), sources: 
       setCacheTtlEdits={vi.fn()}
       sources={sources}
       roles={[]}
+      dataProducts={[]}
       settings={null}
       saving={false}
       generatingDesc={false}

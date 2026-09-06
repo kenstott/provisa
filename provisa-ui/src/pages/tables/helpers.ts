@@ -49,7 +49,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     mvAllowedLateness: t.mvAllowedLateness, // REQ-961
     mvExpectedEvents: t.mvExpectedEvents, // REQ-961
     mvBusinessDayGrain: t.mvBusinessDayGrain, // REQ-962
-    dataProduct: t.dataProduct,
+    productId: t.productId, // REQ-1634
     enableAggregates: t.enableAggregates,
     enableGroupBy: t.enableGroupBy,
     live: t.live

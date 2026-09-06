@@ -99,7 +99,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    dataProduct: false,
+    productId: null, // REQ-1634
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -119,6 +119,7 @@ function formEl(table: RegisteredTable) {
       setCacheTtlEdits={vi.fn()}
       sources={[]}
       roles={[]}
+      dataProducts={[]}
       settings={null}
       saving={false}
       generatingDesc={false}

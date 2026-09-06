@@ -27,7 +27,7 @@ import {
 import { MultiSelect } from "../../components/MultiSelect";
 import { ColumnPresetsEditor } from "../../components/admin/ColumnPresetsEditor";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
-import type { RegisteredTable, Source } from "../../types/admin";
+import type { RegisteredTable, Source, DataProduct } from "../../types/admin";
 import { DQ_CHECKERS } from "../../types/admin";
 import type { Role } from "../../types/auth";
 import type { PlatformSettings } from "../../api/admin";
@@ -59,6 +59,7 @@ interface TableEditFormProps {
   setCacheTtlEdits: React.Dispatch<React.SetStateAction<Record<number, CacheTtlEdit>>>;
   sources: Source[];
   roles: Role[];
+  dataProducts: DataProduct[]; // REQ-1634
   settings: PlatformSettings | null;
   saving: boolean;
   generatingDesc: boolean;
@@ -80,6 +81,7 @@ export function TableEditForm({
   setCacheTtlEdits,
   sources,
   roles,
+  dataProducts,
   settings,
   saving,
   generatingDesc,
@@ -407,15 +409,22 @@ export function TableEditForm({
           </>
         )}
         <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
-          <Checkbox
-            checked={editingTable.dataProduct}
-            onChange={(e) =>
+          <Select
+            label={t("tableEditForm.dataProductLabel")}
+            placeholder={t("tableEditForm.dataProductNone")}
+            clearable
+            // REQ-1634: a table may only join a data product owned by its own domain.
+            data={dataProducts
+              .filter((p) => p.domainId === editingTable.domainId)
+              .map((p) => ({ value: p.id, label: p.name }))}
+            value={editingTable.productId}
+            onChange={(value) =>
               setEditingTable({
                 ...editingTable,
-                dataProduct: e.currentTarget.checked,
+                productId: value,
               })
             }
-            label={t("tableEditForm.dataProductLabel")}
+            data-testid="table-edit-product-id"
           />
           <Text size="sm" c="dimmed">
             {t("tableEditForm.dataProductDesc")}

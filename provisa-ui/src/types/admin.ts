@@ -54,6 +54,15 @@ export interface Domain {
   graphqlAlias?: string | null;
 }
 
+// REQ-1634: a first-class DataProduct entity; a table joins one via product_id.
+export interface DataProduct {
+  id: string;
+  domainId: string;
+  name: string;
+  owner?: string | null;
+  description: string;
+}
+
 // REQ-1373: one org-level tag registry; appliesTo scopes which object types a tag may attach to.
 export type TagObjectType = "source" | "table" | "column" | "relationship" | "command";
 
@@ -239,7 +248,7 @@ export interface RegisteredTable {
   mvAllowedLateness: number; // REQ-961: seal-deadline slack in seconds
   mvExpectedEvents: string[] | null; // REQ-961: preflight freshness inputs (null = all lineage inputs)
   mvBusinessDayGrain: boolean; // REQ-962: gate snapshot windows to business days
-  dataProduct: boolean;
+  productId: string | null; // REQ-1634
   enableAggregates: boolean;
   enableGroupBy: boolean;
   canDeployToDb: boolean;

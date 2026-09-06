@@ -14,6 +14,7 @@ import type { Role } from "../types/auth";
 import type {
   Source,
   Domain,
+  DataProduct,
   RegisteredTable,
   Metric,
   RefreshPolicySummary,
@@ -37,6 +38,7 @@ import {
   RolesQuery as ROLES_QUERY,
   SourcesQuery as SOURCES_QUERY,
   DomainsQuery as DOMAINS_QUERY,
+  DataProductsQuery as DATA_PRODUCTS_QUERY,
   TablesQuery as TABLES_QUERY,
   Calendars as CALENDARS_QUERY,
   CreateCalendar as CREATE_CALENDAR_MUTATION,
@@ -63,6 +65,8 @@ import {
   CompileQuery,
   CreateDomain,
   DeleteDomain,
+  CreateDataProduct,
+  DeleteDataProduct,
   RegisterTable,
   RegisterEntity,
   RegisterFact,
@@ -160,6 +164,7 @@ export function useTourPrefetch(): () => Promise<void> {
 
 const NO_SOURCES: Source[] = [];
 const NO_DOMAINS: Domain[] = [];
+const NO_DATA_PRODUCTS: DataProduct[] = []; // REQ-1634
 const NO_TABLES: RegisteredTable[] = [];
 const NO_RELATIONSHIPS: Relationship[] = [];
 const NO_RLS_RULES: RLSRule[] = [];
@@ -182,6 +187,20 @@ export function useDomains() {
   });
   return {
     domains: data?.domains ?? NO_DOMAINS,
+    loading: firstLoad(loading, data),
+    error,
+    refetch,
+  };
+}
+
+export function useDataProducts() {
+  // REQ-1634
+  const { data, loading, error, refetch } = useQuery<{ dataProducts: DataProduct[] }>(
+    DATA_PRODUCTS_QUERY,
+    { fetchPolicy: "cache-and-network" },
+  );
+  return {
+    dataProducts: data?.dataProducts ?? NO_DATA_PRODUCTS,
     loading: firstLoad(loading, data),
     error,
     refetch,
@@ -428,6 +447,44 @@ export function useDeleteDomain() {
     deleteDomain: async (id: string) => {
       const result = await deleteDomain({ variables: { id } });
       return (result.data?.deleteDomain ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useCreateDataProduct() {
+  // REQ-1634
+  const [createDataProduct, { loading }] = useMutation<{ createDataProduct: MutationResult }>(
+    CreateDataProduct,
+    { refetchQueries: [{ query: DATA_PRODUCTS_QUERY }] },
+  );
+  return {
+    createDataProduct: async (
+      id: string,
+      domainId: string,
+      name: string,
+      owner: string | null,
+      description: string,
+    ) => {
+      const result = await createDataProduct({
+        variables: { id, domainId, name, owner: owner ?? null, description },
+      });
+      return (result.data?.createDataProduct ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useDeleteDataProduct() {
+  // REQ-1634
+  const [deleteDataProduct, { loading }] = useMutation<{ deleteDataProduct: MutationResult }>(
+    DeleteDataProduct,
+    { refetchQueries: [{ query: DATA_PRODUCTS_QUERY }] },
+  );
+  return {
+    deleteDataProduct: async (id: string) => {
+      const result = await deleteDataProduct({ variables: { id } });
+      return (result.data?.deleteDataProduct ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
