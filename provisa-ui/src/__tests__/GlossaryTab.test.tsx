@@ -100,6 +100,7 @@ const REVENUE: GlossaryTermSummary = {
   export_excluded: false,
   retired: false,
   live: true,
+  grounded: true,
   domains: [],
 };
 const CHURN: GlossaryTermSummary = {
@@ -112,6 +113,7 @@ const CHURN: GlossaryTermSummary = {
   export_excluded: false,
   retired: false,
   live: true,
+  grounded: true,
   domains: [],
 };
 const MARGIN: GlossaryTermSummary = {
@@ -124,6 +126,21 @@ const MARGIN: GlossaryTermSummary = {
   export_excluded: false,
   retired: false,
   live: true,
+  grounded: true,
+  domains: [],
+};
+// Abstract with no edge chain to a rooted term -- the dangling case (grounded: false).
+const DANGLING: GlossaryTermSummary = {
+  id: 4,
+  name: "Orphan Concept",
+  definition: "Declared but wired to nothing physical.",
+  is_abstract: true,
+  deprecated: false,
+  ref_count: 0,
+  export_excluded: false,
+  retired: false,
+  live: false,
+  grounded: false,
   domains: [],
 };
 
@@ -153,6 +170,15 @@ const CHURN_DETAIL: GlossaryTermDetail = {
   experts: [],
 };
 
+// No refs, no relationships: the one fixture where delete is actually enabled.
+const MARGIN_DETAIL: GlossaryTermDetail = {
+  ...MARGIN,
+  refs: [],
+  edges_out: [],
+  edges_in: [],
+  experts: [],
+};
+
 // Mantine Select in jsdom: floating-ui hides the detached dropdown (all rects are 0),
 // so visible-only role queries miss the options. Scope by the input's aria-controls
 // listbox and query with hidden: true.
@@ -176,10 +202,12 @@ describe("GlossaryTab", () => {
     mockMoveRef.mockReset();
     mockRetypeEdge.mockReset();
     mockNotify.mockClear();
+    window.localStorage.clear();
     mockList.mockResolvedValue([REVENUE, CHURN, MARGIN]);
     mockFetchTerm.mockImplementation(async (id) => {
       if (id === 1) return REVENUE_DETAIL;
       if (id === 2) return CHURN_DETAIL;
+      if (id === 3) return MARGIN_DETAIL;
       throw new Error(`no detail fixture for term ${id}`);
     });
   });
@@ -205,6 +233,18 @@ describe("GlossaryTab", () => {
     expect(within(margin).getByText(t("glossaryTab.deprecated"))).toBeInTheDocument();
   });
 
+  it("flags a dangling abstract term (no path to a rooted term) in red", async () => {
+    mockList.mockResolvedValue([REVENUE, CHURN, DANGLING]);
+    render(<GlossaryTab />);
+
+    const churn = await screen.findByTestId("glossary-item-2");
+    expect(within(churn).queryByTestId("glossary-dangling-2")).not.toBeInTheDocument();
+
+    const orphan = screen.getByTestId("glossary-item-4");
+    const badge = within(orphan).getByTestId("glossary-dangling-4");
+    expect(badge).toHaveTextContent(t("glossaryTab.abstract"));
+  });
+
   it("explains what the glossary is for next to the add button", async () => {
     render(<GlossaryTab />);
 
@@ -222,19 +262,32 @@ describe("GlossaryTab", () => {
   it("corrects a relationship's type in place, in both directions", async () => {
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    fireEvent.click(await screen.findByTestId("glossary-relationships-edit-toggle"));
     await screen.findByTestId("glossary-edge-out-rel-2");
 
     const outgoing = await openSelect("glossary-edge-out-rel-2");
     fireEvent.click(within(outgoing).getByText(t("glossaryTab.rel_KIND_OF")));
     await waitFor(() => expect(mockRetypeEdge).toHaveBeenCalledWith(1, 2, "RELATED_TO", "KIND_OF"));
 
-    // The incoming picker reads in reverse but sends the stored forward type, and the edge
-    // keeps its own direction: the other term is still the source.
+    // The incoming picker shows the same forward types and sends the stored forward type; the
+    // edge keeps its own direction: the other term is still the source. Edit mode resets per
+    // term, so it needs re-enabling.
     fireEvent.click(screen.getByTestId("glossary-item-2"));
+    fireEvent.click(await screen.findByTestId("glossary-relationships-edit-toggle"));
     await screen.findByTestId("glossary-edge-in-rel-1");
     const incoming = await openSelect("glossary-edge-in-rel-1");
-    fireEvent.click(within(incoming).getByText(t("glossaryTab.rel_PART_OF_reverse")));
+    fireEvent.click(within(incoming).getByText(t("glossaryTab.rel_PART_OF")));
     await waitFor(() => expect(mockRetypeEdge).toHaveBeenCalledWith(1, 2, "RELATED_TO", "PART_OF"));
+  });
+
+  it("navigates to a relationship's target term when its link is clicked, in both directions", async () => {
+    render(<GlossaryTab />);
+    fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    fireEvent.click(await screen.findByTestId("glossary-edge-out-link-2"));
+    await screen.findByTestId("glossary-edge-in-link-1");
+
+    fireEvent.click(screen.getByTestId("glossary-edge-in-link-1"));
+    await screen.findByTestId("glossary-edge-out-link-2");
   });
 
   it("passes the search text and the deprecated toggle to the list endpoint", async () => {
@@ -248,7 +301,7 @@ describe("GlossaryTab", () => {
     expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
 
     mockList.mockResolvedValue([REVENUE, CHURN]);
-    fireEvent.click(screen.getByTestId("glossary-hide-deprecated"));
+    fireEvent.click(screen.getByTestId("glossary-show-deprecated"));
     await waitFor(() => expect(mockList).toHaveBeenCalledWith("rev", false, null));
   });
 
@@ -292,6 +345,7 @@ describe("GlossaryTab", () => {
   it("offers exactly the ten closed rel_type values in the add-edge form", async () => {
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    fireEvent.click(await screen.findByTestId("glossary-relationships-edit-toggle"));
     await screen.findByTestId("glossary-edge-rel-select");
 
     const listbox = await openSelect("glossary-edge-rel-select");
@@ -310,7 +364,7 @@ describe("GlossaryTab", () => {
     ]);
   });
 
-  it("disables delete for a term with refs and surfaces the server 400 otherwise", async () => {
+  it("disables delete for a term with refs or relationships, otherwise surfaces the server 400", async () => {
     render(<GlossaryTab />);
 
     // Revenue has a physical ref: delete is disabled.
@@ -318,15 +372,21 @@ describe("GlossaryTab", () => {
     await screen.findByTestId("glossary-delete-btn");
     expect(screen.getByTestId("glossary-delete-btn")).toBeDisabled();
 
-    // Churn is refless: delete is enabled, and a server 400 lands in the error alert.
+    // Churn is refless but has a relationship: delete is still disabled.
     fireEvent.click(screen.getByTestId("glossary-item-2"));
+    await screen.findByTestId("glossary-edge-in-1-RELATED_TO");
+    expect(screen.getByTestId("glossary-delete-btn")).toBeDisabled();
+
+    // Margin has neither refs nor relationships: delete is enabled, and a server 400 lands in
+    // the error alert.
+    fireEvent.click(screen.getByTestId("glossary-item-3"));
     await waitFor(() => expect(screen.getByTestId("glossary-delete-btn")).toBeEnabled());
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    mockDelete.mockRejectedValue(new Error("term 2 still has refs"));
+    mockDelete.mockRejectedValue(new Error("term 3 still has refs"));
 
     fireEvent.click(screen.getByTestId("glossary-delete-btn"));
-    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith(2));
-    expect(await screen.findByTestId("glossary-error")).toHaveTextContent("term 2 still has refs");
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith(3));
+    expect(await screen.findByTestId("glossary-error")).toHaveTextContent("term 3 still has refs");
   });
 
   it("toggles export exclusion through the PATCH endpoint", async () => {
@@ -436,6 +496,7 @@ describe("GlossaryTab", () => {
   it("picks the author from the org roster and sends that user's id", async () => {
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
+    fireEvent.click(await screen.findByTestId("glossary-experts-edit-toggle"));
     await screen.findByTestId("glossary-expert-user-input");
 
     const listbox = await openSelect("glossary-expert-user-input");

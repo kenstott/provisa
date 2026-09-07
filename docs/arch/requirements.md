@@ -1124,7 +1124,7 @@ Every domain must have a designated steward before it can serve governed data. A
 
 **Code:** `provisa/core/domain_policy.py`
 
-**Tests:** `tests/unit/test_domain_policy.py`, `tests/unit/test_metadata_snapshot_builder.py`, `tests/unit/test_metadata_export_atlas_native.py`
+**Tests:** `tests/unit/test_domain_policy.py`, `tests/unit/test_metadata_snapshot_builder.py`, `tests/unit/test_metadata_export_atlas_native.py`, `tests/integration/test_admin_resolve_owners.py`
 
 ### REQ-610 · Domain Model {#REQ-610}
 
@@ -17286,18 +17286,6 @@ New bigquery_dataplex.py MetadataExport adapter, the BigQuery counterpart to [RE
 
 **Tests:** `tests/steps/steps_data_products.py`
 
-### REQ-1638 · Data Catalog Integration {#REQ-1638}
-
-**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
-
-Amendment to DataProductAsset ([REQ-1634](#REQ-1634)): build_snapshot must roll up the tags already present on a DataProduct's member tables/columns via the existing tag_assignments mechanism (object_type in "table", "column", ...) into an aggregated tag set exposed on DataProductAsset — not a new independent tag-assignment surface on the DataProduct entity itself. DataProductAsset also gains domain_id (the DataProduct's single owning domain FK, per [REQ-1634](#REQ-1634)) and the domain's display name, since domain_id alone is an opaque key to an external catalog. Every adapter that maps DataProductAsset — snowflake_horizon.py's listing manifest ([REQ-1635](#REQ-1635)) and the vendor-neutral adapters (openmetadata.py, atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — [REQ-1069](#REQ-1069)) — must surface both the aggregated tag set and the domain_id/domain name.
-
-**Use case:** Lets an external catalog consuming a published data product see the classification/intent carried by its member tables' and columns' tags, and see which domain owns the product, instead of an opaque listing with no domain or classification context.
-
-**Code:** `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/builder.py`, `provisa/api/metadata_export/snowflake_horizon.py`
-
-**Tests:** `tests/steps/steps_data_products.py`
-
 ## 6. Execution, Routing, Caching & Performance
 
 ### REQ-1637 · Materialization Routing {#REQ-1637}
@@ -17311,3 +17299,95 @@ For any warehouse engine, all data source types that the engine cannot natively/
 **Code:** `provisa/federation/materialize_exec.py`, `provisa/core/env_files.py`
 
 **Tests:** `tests/integration/test_materialization_engine_e2e.py`
+
+## 1. Access Governance & Security
+
+### REQ-1638 · Capability Model {#REQ-1638}
+
+**Status:** ✓ accepted · **Priority:** MUST · **Type:** behavioral
+
+Data Products get their own dedicated capability pair, data_product_read / data_product_rw, replacing the blanket org_settings gate previously used for the nav link, the /data-products route, both create/delete GraphQL mutations, and the data_products query field (which previously had no capability check at all). Mirrors the glossary_read/glossary_rw pair ([REQ-1590](#REQ-1590)): data_product_read opens the read surface and is seeded to org_admin, analyst, developer, and modeler; data_product_rw gates create/delete and is seeded to org_admin only, matching table_registration's precedent rather than glossary_rw's broader (org_admin+modeler) scope, since no ownerless-content edge case analogous to glossary's enterprise-scoped/ author-abandoned terms was identified. DataProductsPage.tsx additionally hides its New/Edit/ Delete controls and disables the table-picker for a caller holding only data_product_read, following GlossaryTab.tsx's canEdit pattern.
+
+**Use case:** Lets an analyst/developer/modeler browse what data products a domain publishes without being granted org_settings (which also opens unrelated org-admin surfaces), while keeping product creation and deletion restricted to org_admin as catalog curation.
+
+**Code:** `provisa/security/rights.py`, `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_query.py`, `provisa-ui/src/types/auth.ts`, `provisa-ui/src/components/NavBar.tsx`, `provisa-ui/src/App.tsx`, `provisa-ui/src/pages/DataProductsPage.tsx`
+
+**Tests:** —
+
+### REQ-1639 · Data Catalog Integration {#REQ-1639}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+
+The Data Product detail panel shows a computed, read-only "Related Tables" section: tables one approved relationship away from the product's member tables (source or target of a relationships-table row where exactly one end is a current member), each annotated with the connecting relationship's alias or cardinality. Purely informational — derived at render time from existing relationships + registered_tables, never written into product_id membership or any new stored field, so a curated consuming view can pull in the related data, or the product's owner can see how to extend the product, without requiring a view to be created first for every approved relationship.
+
+**Use case:** Surfaces catalog-adjacent tables that a data product could incorporate (or that a consumer could join to) without forcing every approved relationship to be materialized as a view before it is discoverable.
+
+**Code:** `provisa-ui/src/pages/DataProductsPage.tsx`, `provisa-ui/src/pages/data-products/DataProductDetailPanel.tsx`
+
+**Tests:** —
+
+### REQ-1640 · Data Catalog Integration {#REQ-1640}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
+
+The Data Product detail panel shows a computed, read-only "Lineage" section rendering the same interactive LineageDag graph visualization used on the Lineage page ("model / lineage"), scoped to a subgraph of the whole federation-wide column lineage graph (GET /admin/lineage/federation, no domains filter, so cross-domain ancestor chains are never severed): the product's member tables plus every node one relation-hop upstream or downstream of them, matched via each node's relation string (<sql_domain>.<table>, using the domainToSqlName TS mirror of domain_to_sql_name). The graph opens dataset-collapsed by default (one node per relation), same as the Lineage page's Complete Lineage view ([REQ-1627](#REQ-1627)), with per-relation expand/collapse. Gated independently on the view_governance capability — separate from data_product_read/data_product_rw — and hidden entirely (not merely disabled) for a caller lacking it, since Data Product access does not imply lineage/governance visibility. Purely informational, mirrors the Related Tables panel's non-stored, computed-at-render pattern.
+
+**Use case:** Lets a data product owner or consumer see, without leaving the product's detail view, which tables feed the product's data and which tables consume it, without requiring a separate trip to the Lineage page or knowledge of the underlying SQL views.
+
+**Code:** `provisa-ui/src/pages/DataProductsPage.tsx`, `provisa-ui/src/pages/data-products/DataProductDetailPanel.tsx`, `provisa-ui/src/naming.ts`, `provisa-ui/src/components/lineage/LineageDag.tsx`
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-1641 · Glossary Admin {#REQ-1641}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The Relationships and Experts sections in the glossary term-detail panel default to a read-only view; a Pencil icon button next to each section's heading toggles that section into edit mode, revealing the relationship-type editor, delete icons, and the add-relationship/add-expert forms. Edit mode resets to off whenever the selected term changes.
+
+**Use case:** Read-only defaults reduce clutter in the glossary view while allowing editors to quickly toggle edit mode for relationship management without page navigation.
+
+**Code:** `provisa-ui/src/components/admin/GlossaryTab.tsx`
+
+**Tests:** —
+
+### REQ-1642 · Glossary Admin {#REQ-1642}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The add-relationship row in the glossary term-detail panel includes a "Flip" button (ArrowLeftRight icon) that swaps which term (the current term vs. the newly picked term) is the "from"/subject side of the relationship being created, without requiring two separate forms.
+
+**Use case:** Flip button eliminates the need to create and immediately delete a relationship just to reverse its direction, improving editor efficiency when declaring bidirectional relationships.
+
+**Code:** `provisa-ui/src/components/admin/GlossaryTab.tsx`
+
+**Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1643 · Glossary Lifecycle {#REQ-1643}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+A glossary term cannot be deleted if it has any incoming or outgoing relationships (edges_in or edges_out) or any table/column references. The delete button's disabled state and tooltip hint now cover both relationship conditions and refs.
+
+**Use case:** Preventing orphaned relationships and dangling term references preserves glossary integrity and prevents data inconsistency.
+
+**Code:** `provisa-ui/src/components/admin/GlossaryTab.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/GlossaryTab.test.tsx`, `tests/integration/test_glossary_lifecycle.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1644 · Glossary Admin {#REQ-1644}
+
+**Status:** ✅ complete · **Priority:** MAY · **Type:** ui
+
+The glossary term-detail panel container fills to the bottom of the viewport via the existing .page-sticky-head CSS pattern applied conditionally in AdminPage.tsx when the Glossary tab is active.
+
+**Use case:** Filling the viewport improves the visual hierarchy and usability of the glossary admin interface by maximizing the term-detail editing area.
+
+**Code:** `provisa-ui/src/components/admin/GlossaryTab.tsx`, `provisa-ui/src/pages/AdminPage.tsx`
+
+**Tests:** —

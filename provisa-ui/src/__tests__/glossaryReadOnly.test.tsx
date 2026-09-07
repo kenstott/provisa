@@ -50,6 +50,7 @@ const REVENUE: GlossaryTermSummary = {
   export_excluded: false,
   retired: false,
   live: true,
+  grounded: true,
   domains: [],
 };
 const CHURN: GlossaryTermSummary = {
@@ -128,6 +129,10 @@ describe("glossary read-only mode", () => {
     // the testid moved or the control was deleted outright.
     auth.capabilities = ["glossary_read", "glossary_rw"];
     await openRevenue();
+    // Relationships/experts open read-only even for a curator; the pencil toggles reveal
+    // their write controls.
+    fireEvent.click(screen.getByTestId("glossary-relationships-edit-toggle"));
+    fireEvent.click(screen.getByTestId("glossary-experts-edit-toggle"));
     for (const testid of WRITE_CONTROLS) {
       expect(screen.queryByTestId(testid), testid).not.toBeNull();
     }
@@ -157,7 +162,7 @@ describe("glossary read-only mode", () => {
     const outgoing = screen.getByTestId("glossary-edge-out-2-RELATED_TO");
     expect(within(outgoing).getByText(t("glossaryTab.rel_RELATED_TO"))).toBeInTheDocument();
     const incoming = screen.getByTestId("glossary-edge-in-2-PART_OF");
-    expect(within(incoming).getByText(t("glossaryTab.rel_PART_OF_reverse"))).toBeInTheDocument();
+    expect(within(incoming).getByText(t("glossaryTab.rel_PART_OF"))).toBeInTheDocument();
   });
 
   it("leaves the name and the export toggle unwritable", async () => {
@@ -171,6 +176,6 @@ describe("glossary read-only mode", () => {
   it("keeps searching and filtering, which write nothing", async () => {
     await openRevenue();
     expect(screen.getByTestId("glossary-search")).toBeInTheDocument();
-    expect(screen.getByTestId("glossary-hide-deprecated")).toBeInTheDocument();
+    expect(screen.getByTestId("glossary-show-deprecated")).toBeInTheDocument();
   });
 });

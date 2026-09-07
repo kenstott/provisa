@@ -41,6 +41,7 @@ import { fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
 import { domainGqlAlias } from "../types/admin";
+import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
 import { CacheManager } from "../components/admin/CacheManager";
 import { SystemHealth } from "../components/admin/SystemHealth";
@@ -56,7 +57,6 @@ import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { MetadataExportTab } from "../components/admin/MetadataExportTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
-import { DataProductsTab } from "../components/admin/DataProductsTab"; // REQ-1634
 import { ReportsTab } from "../components/admin/ReportsTab";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
@@ -88,7 +88,6 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/metadata-export": "Metadata Export",
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
-  "/admin/data-products": "Data Products", // REQ-1634
   "/admin/reports": "Reports", // REQ-1386: ops-domain management report viewer
   "/admin/glossary": "Glossary", // REQ-1387: business-glossary curation
   // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
@@ -216,8 +215,14 @@ export function AdminPage() {
 
   if (loading) return <PageLoading message={t("adminPage.loading")} />;
 
+  // Glossary's detail panel is meant to fill to the bottom of the viewport rather than
+  // shrink-wrap its content, so its page and content Stack join the flex-height chain that
+  // `main` already provides (the same `page-sticky-head` pattern the sticky-header list
+  // pages use) instead of the plain block-flow the other admin tabs render into.
+  const isGlossary = activeTab === "Glossary";
+
   return (
-    <div className="page">
+    <div className={isGlossary ? "page page-sticky-head" : "page"}>
       {activeTab !== "Glossary" && (
         <Title order={2} mb="md">
           {/* Reads as a breadcrumb: the area, then the section within it. */}
@@ -227,7 +232,11 @@ export function AdminPage() {
 
       {/* Anchor the tour waits on: step23 highlights the navbar link, which exists before this
           page has painted, so it gates on the admin content itself. */}
-      <Stack gap="lg" data-tour="admin-content">
+      <Stack
+        gap="lg"
+        data-tour="admin-content"
+        style={isGlossary ? { flex: 1, minHeight: 0 } : undefined}
+      >
         {activeTab === "Dashboard" && (
           <>
             <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
@@ -316,13 +325,14 @@ export function AdminPage() {
                             <Table.Th>{t("adminPage.colId")}</Table.Th>
                             <Table.Th>{t("adminPage.colDescription")}</Table.Th>
                             <Table.Th>{t("adminPage.colGqlAlias")}</Table.Th>
+                            <Table.Th>{t("adminPage.colSteward")}</Table.Th>
                             <Table.Th>{t("adminPage.colActions")}</Table.Th>
                           </Table.Tr>
                         </Table.Thead>
                         <Table.Tbody>
                           {userDomains.length === 0 && (
                             <Table.Tr>
-                              <Table.Td colSpan={4} ta="center" c="dimmed">
+                              <Table.Td colSpan={5} ta="center" c="dimmed">
                                 {t("adminPage.noDomains")}
                               </Table.Td>
                             </Table.Tr>
@@ -335,6 +345,17 @@ export function AdminPage() {
                                 <Text c="dimmed" ff="monospace" fz="sm">
                                   {domainGqlAlias(d)}
                                 </Text>
+                              </Table.Td>
+                              <Table.Td>
+                                <Group gap={4} wrap="nowrap">
+                                  <Text fz="sm">{d.steward || "—"}</Text>
+                                  {d.steward && (
+                                    <OwnerResolutionIcon
+                                      refs={[d.steward]}
+                                      ariaLabel={t("adminPage.resolveSteward", { id: d.id })}
+                                    />
+                                  )}
+                                </Group>
                               </Table.Td>
                               <Table.Td>
                                 <ActionIcon
@@ -424,7 +445,6 @@ export function AdminPage() {
         {activeTab === "Metadata Export" && <MetadataExportTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}
-        {activeTab === "Data Products" && <DataProductsTab />}
         {activeTab === "Reports" && <ReportsTab />}
         {activeTab === "Glossary" && <GlossaryTab />}
       </Stack>

@@ -3507,6 +3507,7 @@
   - tests/unit/test_domain_policy.py
   - tests/unit/test_metadata_snapshot_builder.py
   - tests/unit/test_metadata_export_atlas_native.py
+  - tests/integration/test_admin_resolve_owners.py
   since: 2026-01
   scenario: 'Given a domain with no steward assigned
 
@@ -54627,29 +54628,33 @@
   - tests/steps/steps_data_products.py
 - id: REQ-1637
   status: complete
-  since: "2026-09"
-  group: "6. Execution, Routing, Caching & Performance"
+  since: 2026-09
+  group: 6. Execution, Routing, Caching & Performance
   category: Materialization Routing
   priority: MUST
   type: constraint
-  description: >-
-    For any warehouse engine, all data source types that the engine cannot natively/directly attach
-    (e.g. OpenAPI, SQLite, GraphQL-remote, Great Expectations sources) must be replicated/materialized
-    into a location that the engine CAN reach. The materialize store must resolve to the same target
-    engine as the deployment's primary engine, never silently defaulting to a separate platform database
-    when the primary engine is something else (e.g. Snowflake).
-  use_case: >-
-    Ensures non-attachable sources land in the configured deployment engine rather than silently
+  description: For any warehouse engine, all data source types that the engine cannot natively/directly
+    attach (e.g. OpenAPI, SQLite, GraphQL-remote, Great Expectations sources) must be replicated/materialized
+    into a location that the engine CAN reach. The materialize store must resolve to the same target engine
+    as the deployment's primary engine, never silently defaulting to a separate platform database when
+    the primary engine is something else (e.g. Snowflake).
+  use_case: Ensures non-attachable sources land in the configured deployment engine rather than silently
     materializing to a fallback Postgres instance, preserving query engine consistency and preventing
     split-brain data estates.
-  scenario: |
-    Given a Snowflake-engine deployment with non-attachable sources (petstore-api, pet-store-sqlite)
+  scenario: 'Given a Snowflake-engine deployment with non-attachable sources (petstore-api, pet-store-sqlite)
+
     When sources are bootstrapped without PROVISA_MATERIALIZE_URL set to Snowflake
+
     Then materialization fails or raises an error rather than silently materializing to local Postgres
 
+
     Given any deployment with a configured primary warehouse engine E
+
     When a non-attachable source requires materialization
+
     Then the materialize store resolves to a location readable by engine E (not a separate default database)
+
+    '
   code:
   - provisa/federation/materialize_exec.py
   - provisa/core/env_files.py
@@ -54657,3 +54662,186 @@
   - tests/integration/test_materialization_engine_e2e.py
   relates_to:
   - REQ-1266
+- id: REQ-1638
+  status: accepted
+  since: 2026-09
+  group: 1. Access Governance & Security
+  category: Capability Model
+  priority: MUST
+  type: behavioral
+  description: 'Data Products get their own dedicated capability pair, data_product_read / data_product_rw,
+    replacing the blanket org_settings gate previously used for the nav link, the /data-products route,
+    both create/delete GraphQL mutations, and the data_products query field (which previously had no capability
+    check at all). Mirrors the glossary_read/glossary_rw pair (REQ-1590): data_product_read opens the
+    read surface and is seeded to org_admin, analyst, developer, and modeler; data_product_rw gates create/delete
+    and is seeded to org_admin only, matching table_registration''s precedent rather than glossary_rw''s
+    broader (org_admin+modeler) scope, since no ownerless-content edge case analogous to glossary''s enterprise-scoped/
+    author-abandoned terms was identified. DataProductsPage.tsx additionally hides its New/Edit/ Delete
+    controls and disables the table-picker for a caller holding only data_product_read, following GlossaryTab.tsx''s
+    canEdit pattern.'
+  use_case: Lets an analyst/developer/modeler browse what data products a domain publishes without being
+    granted org_settings (which also opens unrelated org-admin surfaces), while keeping product creation
+    and deletion restricted to org_admin as catalog curation.
+  scenario: 'Given a role holding data_product_read but not data_product_rw
+
+    When it opens Data Products
+
+    Then it sees the list and detail view, with New/Edit/Delete and the table picker hidden
+
+
+    Given a role holding neither right
+
+    When it calls the data_products query or either mutation, or visits /data-products
+
+    Then it is rejected/redirected, whereas previously only org_settings gated the UI paths and
+
+    the query field had no gate at all
+
+    '
+  code:
+  - provisa/security/rights.py
+  - provisa/core/db.py
+  - provisa/core/schema.sql
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/admin/schema_query.py
+  - provisa-ui/src/types/auth.ts
+  - provisa-ui/src/components/NavBar.tsx
+  - provisa-ui/src/App.tsx
+  - provisa-ui/src/pages/DataProductsPage.tsx
+  relates_to:
+  - REQ-1590
+  - REQ-1634
+- id: REQ-1639
+  status: accepted
+  since: 2026-09
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: behavioral
+  description: 'The Data Product detail panel shows a computed, read-only "Related Tables" section: tables
+    one approved relationship away from the product''s member tables (source or target of a relationships-table
+    row where exactly one end is a current member), each annotated with the connecting relationship''s
+    alias or cardinality. Purely informational — derived at render time from existing relationships +
+    registered_tables, never written into product_id membership or any new stored field, so a curated
+    consuming view can pull in the related data, or the product''s owner can see how to extend the product,
+    without requiring a view to be created first for every approved relationship.'
+  use_case: Surfaces catalog-adjacent tables that a data product could incorporate (or that a consumer
+    could join to) without forcing every approved relationship to be materialized as a view before it
+    is discoverable.
+  scenario: 'Given a data product with member table A, and an approved relationship from A to table B
+    (not
+
+    a member), and no relationship at all to table C
+
+    When the product''s detail panel is opened
+
+    Then B is listed under Related Tables with its connecting relationship''s alias/cardinality,
+
+    and C is not listed; adding B to the product''s own table picker removes it from Related Tables
+
+    '
+  code:
+  - provisa-ui/src/pages/DataProductsPage.tsx
+  - provisa-ui/src/pages/data-products/DataProductDetailPanel.tsx
+  relates_to:
+  - REQ-1634
+- id: REQ-1640
+  status: accepted
+  since: 2026-09
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: behavioral
+  description: 'The Data Product detail panel shows a computed, read-only "Lineage" section rendering
+    the same interactive LineageDag graph visualization used on the Lineage page ("model / lineage"),
+    scoped to a subgraph of the whole federation-wide column lineage graph (GET /admin/lineage/federation,
+    no domains filter, so cross-domain ancestor chains are never severed): the product''s member tables
+    plus every node one relation-hop upstream or downstream of them, matched via each node''s relation
+    string (<sql_domain>.<table>, using the domainToSqlName TS mirror of domain_to_sql_name). The graph
+    opens dataset-collapsed by default (one node per relation), same as the Lineage page''s Complete Lineage
+    view (REQ-1627), with per-relation expand/collapse. Gated independently on the view_governance capability
+    — separate from data_product_read/data_product_rw — and hidden entirely (not merely disabled) for
+    a caller lacking it, since Data Product access does not imply lineage/governance visibility. Purely
+    informational, mirrors the Related Tables panel''s non-stored, computed-at-render pattern.'
+  use_case: Lets a data product owner or consumer see, without leaving the product's detail view, which
+    tables feed the product's data and which tables consume it, without requiring a separate trip to the
+    Lineage page or knowledge of the underlying SQL views.
+  scenario: 'Given a caller with view_governance, and a data product with member table A, and a compiled
+
+    view deriving A''s columns from table B, and a compiled view deriving table C''s columns from A
+
+    When the product''s detail panel is opened
+
+    Then a LineageDag graph renders showing B, A, and C as dataset-collapsed nodes with edges
+
+    between them; a caller without view_governance sees no Lineage section at all
+
+    '
+  code:
+  - provisa-ui/src/pages/DataProductsPage.tsx
+  - provisa-ui/src/pages/data-products/DataProductDetailPanel.tsx
+  - provisa-ui/src/naming.ts
+  - provisa-ui/src/components/lineage/LineageDag.tsx
+  relates_to:
+  - REQ-1634
+  - REQ-1161
+- id: REQ-1641
+  status: complete
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
+  category: Glossary Admin
+  priority: SHOULD
+  type: ui
+  description: The Relationships and Experts sections in the glossary term-detail panel default to a read-only view; a Pencil icon button next to each section's heading toggles that section into edit mode, revealing the relationship-type editor, delete icons, and the add-relationship/add-expert forms. Edit mode resets to off whenever the selected term changes.
+  use_case: Read-only defaults reduce clutter in the glossary view while allowing editors to quickly toggle edit mode for relationship management without page navigation.
+  code:
+  - provisa-ui/src/components/admin/GlossaryTab.tsx
+  e2e: true
+  e2e_reason: Edit mode toggle and term-change reset behavior requires full UI interaction to verify.
+- id: REQ-1642
+  status: complete
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
+  category: Glossary Admin
+  priority: SHOULD
+  type: ui
+  description: The add-relationship row in the glossary term-detail panel includes a "Flip" button (ArrowLeftRight icon) that swaps which term (the current term vs. the newly picked term) is the "from"/subject side of the relationship being created, without requiring two separate forms.
+  use_case: Flip button eliminates the need to create and immediately delete a relationship just to reverse its direction, improving editor efficiency when declaring bidirectional relationships.
+  code:
+  - provisa-ui/src/components/admin/GlossaryTab.tsx
+  e2e: true
+  e2e_reason: Flip button interaction and relationship direction swap requires full UI interaction to verify.
+- id: REQ-1643
+  status: complete
+  since: 2026-09
+  group: 3. Source Registration & Data Modeling
+  category: Glossary Lifecycle
+  priority: MUST
+  type: constraint
+  description: A glossary term cannot be deleted if it has any incoming or outgoing relationships (edges_in or edges_out) or any table/column references. The delete button's disabled state and tooltip hint now cover both relationship conditions and refs.
+  use_case: Preventing orphaned relationships and dangling term references preserves glossary integrity and prevents data inconsistency.
+  code:
+  - provisa-ui/src/components/admin/GlossaryTab.tsx
+  tests:
+  - provisa-ui/src/__tests__/GlossaryTab.test.tsx
+  - tests/integration/test_glossary_lifecycle.py
+  scenario: 'Given a glossary term with one or more relationships
+    When a user attempts to delete that term
+    Then the delete button is disabled and a tooltip explains that the term has relationships or references
+    '
+  e2e: true
+  e2e_reason: Deletion prevention and tooltip display for multiple conditions requires full UI interaction to verify.
+- id: REQ-1644
+  status: complete
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
+  category: Glossary Admin
+  priority: MAY
+  type: ui
+  description: The glossary term-detail panel container fills to the bottom of the viewport via the existing .page-sticky-head CSS pattern applied conditionally in AdminPage.tsx when the Glossary tab is active.
+  use_case: Filling the viewport improves the visual hierarchy and usability of the glossary admin interface by maximizing the term-detail editing area.
+  code:
+  - provisa-ui/src/components/admin/GlossaryTab.tsx
+  - provisa-ui/src/pages/AdminPage.tsx
+  e2e: true
+  e2e_reason: Viewport-filling layout behavior requires full browser rendering to verify.
