@@ -79,7 +79,17 @@ _REL_KEYS = frozenset(
 _ROLE_KEYS = frozenset({"id", "capabilities", "domain_access"})
 _RLS_KEYS = frozenset({"table_id", "domain_id", "role_id", "filter"})
 _DOMAIN_KEYS = frozenset({"id", "description", "steward"})  # REQ-609
-_DATA_PRODUCT_KEYS = frozenset({"id", "domain_id", "name", "owner", "description"})  # REQ-1634
+_DATA_PRODUCT_KEYS = frozenset(
+    {
+        "id",
+        "domain_id",
+        "name",
+        "owner_role",
+        "purpose",
+        "support_contact",
+        "publish",
+    }  # REQ-1634, REQ-1635
+)
 
 
 def _plain(obj: Any) -> Any:

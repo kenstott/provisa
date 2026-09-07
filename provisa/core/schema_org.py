@@ -106,14 +106,26 @@ domains = Table(
     Column("tenant_id", Uuid),
 )
 
-data_products = Table(  # REQ-1634
+data_products = Table(  # REQ-1634, REQ-1660
     "data_products",
     metadata,
     Column("id", Text, primary_key=True),
     Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE"), nullable=False),
     Column("name", Text, nullable=False),
-    Column("owner", Text),
-    Column("description", Text, nullable=False, server_default=""),
+    Column("owner_role", Text),
+    Column("team_role", Text),
+    Column("purpose", Text, nullable=False, server_default=""),
+    Column("limitations", Text, nullable=False, server_default=""),
+    Column("usage", Text, nullable=False, server_default=""),
+    Column("version", Text),
+    Column("status", Text),
+    Column("sla", Text),
+    Column("support", Text),
+    Column("support_contact", Text),  # REQ-1635: Horizon Catalog listing manifest requirement
+    Column(
+        "publish", Boolean, nullable=False, server_default=false()
+    ),  # REQ-1635: PUBLISH = TRUE vs DRAFT
+    Column("custom_properties", JSON, nullable=False, default=dict, server_default="{}"),
 )
 
 naming_rules = Table(
@@ -389,6 +401,7 @@ tag_assignments = Table(
     Column("column_name", Text),
     Column("relationship_id", Text, ForeignKey("relationships.id", ondelete="CASCADE")),
     Column("command_name", Text),  # tracked function/webhook name; no FK (two registries)
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1660
     Column("object_key", Text, nullable=False),
     Column("reason", Text),  # required for 'deprecated' (enforced at the mutation layer)
     Column("expires_on", Text),  # ISO date; planned removal for 'deprecated', typed for reporting
@@ -794,6 +807,7 @@ tracked_functions = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("kind", Text, nullable=False, server_default="mutation"),
+    Column("product_id", Text),  # REQ-1634: optional data-product membership
     Column("return_schema", JSON),
     # REQ-1159: canonical IR-typed output dataset contract [{name,type}]; return_schema projects it to GraphQL.
     Column("output_columns", JSON),

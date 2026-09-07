@@ -97,7 +97,7 @@ def test_sources_domains_tables_and_columns_are_published():
         ]
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     assert snapshot.org_id == "acme"
     assert snapshot.asset_count() == {"source": 1, "domain": 1, "table": 1, "column": 2}
@@ -124,7 +124,7 @@ def test_only_data_product_tables_are_published():
         ]
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     assert [t.ref.fqn() for t in snapshot.tables] == ["wh.public.orders"]
 
@@ -140,13 +140,13 @@ def test_tables_sharing_a_product_id_publish_as_one_data_product():
                 id="customer_360",
                 domain_id="sales",
                 name="Customer 360",
-                owner="alice",
-                description="Unified customer view",
+                owner_role="alice",
+                purpose="Unified customer view",
             )
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     assert len(snapshot.data_products) == 1
     product = snapshot.data_products[0]
@@ -167,11 +167,13 @@ def test_data_product_with_no_exported_members_does_not_publish():
     config = _config(
         tables=[_table(table_name="orders", product_id=None)],
         data_products=[
-            DataProduct(id="customer_360", domain_id="sales", name="Customer 360", owner="alice")
+            DataProduct(
+                id="customer_360", domain_id="sales", name="Customer 360", owner_role="alice"
+            )
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     assert snapshot.data_products == []
 
@@ -180,11 +182,11 @@ def test_data_product_without_owner_publishes_with_no_owner_ref():
     config = _config(
         tables=[_table(table_name="orders", product_id="customer_360")],
         data_products=[
-            DataProduct(id="customer_360", domain_id="sales", name="Customer 360", owner=None)
+            DataProduct(id="customer_360", domain_id="sales", name="Customer 360", owner_role=None)
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     assert len(snapshot.data_products) == 1
     assert snapshot.data_products[0].owner is None
@@ -220,7 +222,7 @@ def test_edges_and_tags_touching_an_unmarked_table_are_withheld():
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     assert snapshot.relationships == []
     assert snapshot.lineage == []
@@ -239,7 +241,7 @@ def test_domain_without_steward_publishes_as_pending_not_dropped():
         ]
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     by_id = {d.id: d for d in snapshot.domains}
     assert set(by_id) == {"sales", "lab"}
@@ -270,7 +272,7 @@ def test_relationship_carries_owner_version_and_review_flag():
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     edge = snapshot.relationships[0]
     assert edge.source.fqn() == "wh.public.orders"
@@ -301,7 +303,7 @@ def test_computed_relationship_publishes_with_no_target():
         ]
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     assert snapshot.relationships[0].target is None
 
@@ -321,7 +323,7 @@ def test_unknown_relationship_table_is_refused():
     )
 
     with pytest.raises(UnknownTableError) as exc:
-        build_snapshot(config, org_id="acme", dialect="postgres")
+        build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert exc.value.name == "ghost"
     assert "dangling" in str(exc.value)
 
@@ -347,7 +349,7 @@ def test_ambiguous_bare_table_name_is_refused_not_guessed():
     )
 
     with pytest.raises(AmbiguousTableError) as exc:
-        build_snapshot(config, org_id="acme", dialect="postgres")
+        build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert sorted(exc.value.candidates) == ["crm.public.orders", "wh.public.orders"]
 
 
@@ -371,7 +373,7 @@ def test_qualified_reference_disambiguates_a_duplicated_table_name():
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     target = snapshot.relationships[0].target
     assert target is not None
@@ -383,6 +385,7 @@ def test_snapshot_of_an_empty_config_publishes_nothing_rather_than_failing():
         ProvisaConfig(sources=[], domains=[], tables=[], roles=[]),
         org_id="acme",
         dialect="postgres",
+        contexts={},
     )
     assert snapshot.asset_count() == {"source": 0, "domain": 0, "table": 0, "column": 0}
     assert snapshot.relationships == []
@@ -416,7 +419,7 @@ def test_junction_relationship_publishes_its_associative_table():
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     edge = snapshot.relationships[0]
     assert edge.kind == "junction"
@@ -443,7 +446,7 @@ def test_fk_relationship_publishes_as_direct_with_no_junction():
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     edge = snapshot.relationships[0]
     assert edge.kind == "direct"

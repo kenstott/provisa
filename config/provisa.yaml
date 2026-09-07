@@ -16,16 +16,80 @@ discovery:
   min_confidence: 0.7
   sample_size: 20
 data_products:
-- description: "Pet health records \u2014 inventory and referral vets for care history"
+- purpose: "Pet health records \u2014 inventory and referral vets for care history"
   domain_id: pet-store
   id: pet_health
   name: Pet Health
   owner: org_admin
-- description: "Shelter staffing \u2014 employee roster and shift coverage"
+  support_contact: kennethstott@gmail.com
+- purpose: "Shelter staffing \u2014 employee roster and shift coverage"
   domain_id: shelter
   id: workforce_ops
   name: Workforce Ops
   owner: org_admin
+  support_contact: kennethstott@gmail.com
+glossary_terms:
+- name: referral
+  definition: "The act of sending a pet to an outside veterinary practice for care\
+    \ beyond in-house capability."
+  domains:
+  - pet-store
+  edges:
+  - to: clinic
+    rel_type: RELATED_TO
+  - to: specialty
+    rel_type: RELATED_TO
+- name: clinic
+  definition: "The outside veterinary practice a pet is referred to."
+  domains:
+  - pet-store
+- name: specialty
+  definition: "The area of veterinary care a referral clinic focuses on."
+  domains:
+  - pet-store
+- name: personnel record
+  definition: "An employee's role and tenure at the shelter, held for staffing and\
+    \ HR reporting."
+  domains:
+  - shelter
+- name: department
+  definition: "The organizational unit an employee is assigned to."
+  domains:
+  - shelter
+  edges:
+  - to: personnel record
+    rel_type: PART_OF
+- name: hire date
+  definition: "The date an employee started working at the shelter."
+  domains:
+  - shelter
+  edges:
+  - to: personnel record
+    rel_type: PART_OF
+- name: shift coverage
+  definition: "The window and place a shelter staff member is scheduled to work,\
+    \ used for weekly coverage and handoff planning."
+  domains:
+  - shelter
+  edges:
+  - to: shift start
+    rel_type: RELATED_TO
+  - to: shift end
+    rel_type: RELATED_TO
+  - to: schedule location
+    rel_type: RELATED_TO
+- name: shift start
+  definition: "The time a scheduled shift begins."
+  domains:
+  - shelter
+- name: shift end
+  definition: "The time a scheduled shift ends."
+  domains:
+  - shelter
+- name: schedule location
+  definition: "The place a scheduled shift takes place."
+  domains:
+  - shelter
 domains:
 - description: "Pet store \u2014 Petstore public API (OpenAPI), internal inventory\
     \ (PG), and customer inquiries (SQLite) federated into one virtual database"
@@ -254,6 +318,15 @@ sources:
   id: graphql-demo
   path: ${env:GRAPHQL_DEMO_URL:-http://graphql-demo:4000/graphql}
   type: graphql_remote
+- description: "Order records on Cloudflare R2 (S3-compatible) \u2014 zero-copy external\
+    \ link attached in place by the active warehouse engine (REQ-988)"
+  id: r2-orders
+  path: s3://pubs/provisa_snowflake_e2e/orders.parquet
+  type: parquet
+  federation_hints:
+    access_key_id: ${env:AWS_ACCESS_KEY_ID}
+    secret_access_key: ${env:AWS_SECRET_ACCESS_KEY}
+    endpoint: ${env:AWS_ENDPOINT_OVERRIDE}
 tables:
 - columns:
   - description: Unique identifier for the pet record
@@ -1088,6 +1161,7 @@ tables:
   description: "Complete accountability map of staff to breeds \u2014 use to spot\
     \ coverage gaps or single-keeper risk across all species"
   domain_id: shelter
+  product_id: workforce_ops
   schema: graphql
   source_id: graphql-demo
   table: assignments
@@ -1282,7 +1356,59 @@ tables:
   schema: graphql
   source_id: graphql-demo
   table: scheduleByEmployee
+- columns:
+  - description: Order identifier
+    name: id
+    data_type: bigint
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Sales region
+    name: region
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Order amount
+    name: amount
+    data_type: double
+    visible_to:
+    - analyst
+    - org_admin
+  description: "Order records on Cloudflare R2 \u2014 zero-copy external table attached\
+    \ by the active warehouse engine at boot"
+  domain_id: pet-store
+  schema: public
+  source_id: r2-orders
+  table: orders
 functions:
+- name: add_pet
+  description: Add a new pet to inventory
+  domain_id: pet-store
+  kind: mutation
+  impl_kind: python
+  product_id: pet_health
+  source_id: ""
+  function_name: add_pet
+  returns: ""
+  binding:
+    callable: demo.py_functions:add_pet
+  arguments:
+  - name: name
+    type: String
+  - name: breed
+    type: String
+  - name: status
+    type: String
+  visible_to:
+  - org_admin
+  return_schema:
+    type: object
+    properties:
+      id: {type: integer}
+      name: {type: string}
+      breed: {type: string}
+      status: {type: string}
 - name: random_python_set
   description: Demo Provisa-hosted Python command returning a random-valued dataset (set-returning, REQ-885)
   domain_id: pet-store

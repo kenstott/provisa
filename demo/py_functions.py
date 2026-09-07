@@ -45,6 +45,20 @@ def random_dataset(payload: dict[str, Any], _session: Any) -> list[dict[str, Any
     ]
 
 
+def add_pet(payload: dict[str, Any], _session: Any) -> dict[str, Any]:
+    """Add a new pet to inventory.
+
+    Takes name/breed/status arguments and returns the created pet row with a fabricated id.
+    """
+    args = payload.get("args", payload) if isinstance(payload, dict) else {}
+    return {
+        "id": random.randint(1000, 999999),
+        "name": args.get("name"),
+        "breed": args.get("breed"),
+        "status": args.get("status"),
+    }
+
+
 def enrich_orders(payload: dict[str, Any], _session: Any) -> list[dict[str, Any]]:
     """ENRICH a relation (REQ-1159): take the materialized result_set input dataset and return only
     DERIVED columns per row — {id, score, region_label}. In-process (python impl_kind), so no external

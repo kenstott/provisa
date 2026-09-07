@@ -291,7 +291,7 @@ async def _fetch_table_with_columns(
         .order_by(table_columns.c.id)
     )
     col_rows = [dict(r._mapping) for r in _col_res.fetchall()]
-    from provisa.compiler.naming import apply_sql_name
+    from provisa.compiler.naming import apply_gql_name, apply_sql_name
 
     # REQ-1360: metadata-only implicit measure/dimension annotations, gated by the
     # table's own enable_aggregates/enable_group_by flags.
@@ -317,6 +317,8 @@ async def _fetch_table_with_columns(
             mask_precision=r.get("mask_precision"),
             alias=r.get("alias"),
             computed_sql_alias=r.get("alias") or apply_sql_name(r["column_name"]),
+            computed_gql_alias=r.get("alias")
+            or apply_gql_name(r["column_name"], row.get("gql_naming_convention")),
             description=r.get("description"),
             data_type=r.get("data_type"),
             native_filter_type=r.get("native_filter_type"),
@@ -423,7 +425,7 @@ async def _fetch_table_with_columns(
         mv_business_day_grain=bool(row.get("mv_business_day_grain", False)),  # REQ-962
         modeling_role=row.get("modeling_role"),  # REQ-1320
         modeling_history=row.get("modeling_history"),  # REQ-1320
-        product_id=row.get("product_id"),  # REQ-1634
+        stored_product_id=row.get("product_id"),  # REQ-1634
         enable_aggregates=bool(row.get("enable_aggregates", False)),
         enable_group_by=bool(row.get("enable_group_by", False)),
         can_deploy_to_db=can_deploy,

@@ -255,18 +255,36 @@ def _gx_check_row(validation_result: Any) -> dict:
     kwargs.pop("batch_id", None)
     column_name = kwargs.get("column") or ""
     exception_info = validation_result.exception_info or {}
-    raised = any(
-        info.get("raised_exception") for info in exception_info.values() if isinstance(info, dict)
-    )
-    if raised:
+    exception_messages = [
+        info.get("exception_message")
+        for info in exception_info.values()
+        if isinstance(info, dict) and info.get("raised_exception")
+    ]
+    if exception_messages:
         outcome = "NOT_EVALUATED"
     else:
         outcome = "PASSED" if validation_result.success else "FAILED"
     diagnostics = dict(validation_result.result or {})
+    if exception_messages:
+        # The checker DID raise — swallowing the message here is what previously made a real error
+        # indistinguishable from "nothing to report". It travels in diagnostics because that is the
+        # single per-check-type detail column the shipped schema already has (REQ-1443, results.py).
+        diagnostics["exception_message"] = "; ".join(m for m in exception_messages if m)
     # GX has no warn level: an expectation succeeds or it does not. ``mostly`` is the closest thing
     # to a declared threshold, so it is reported as one when present and left null when absent —
     # rather than inventing "100%" for an expectation that never named a tolerance.
     mostly = kwargs.get("mostly")
+    # Column map expectations report unexpected_percent/element_count/unexpected_count; whole-table
+    # expectations (expect_table_row_count_to_be_between) report only observed_value. Reading only
+    # the map-expectation keys left every table-level check blank even when it evaluated cleanly.
+    if "unexpected_percent" in diagnostics or "unexpected_count" in diagnostics:
+        metric_value = diagnostics.get("unexpected_percent")
+        rows_tested = diagnostics.get("element_count")
+        failed_rows = diagnostics.get("unexpected_count")
+    else:
+        metric_value = diagnostics.get("observed_value")
+        rows_tested = None
+        failed_rows = None
     return {
         "column_name": column_name,
         "check_name": f"{config.type}({column_name})" if column_name else config.type,
@@ -274,9 +292,9 @@ def _gx_check_row(validation_result: Any) -> dict:
         "check_definition": json.dumps({"type": config.type, "kwargs": kwargs}, sort_keys=True),
         "outcome": outcome,
         "threshold": f"mostly: {mostly}" if mostly is not None else None,
-        "metric_value": diagnostics.get("unexpected_percent"),
-        "rows_tested": diagnostics.get("element_count"),
-        "failed_rows": diagnostics.get("unexpected_count"),
+        "metric_value": metric_value,
+        "rows_tested": rows_tested,
+        "failed_rows": failed_rows,
         "diagnostics": diagnostics,
     }
 

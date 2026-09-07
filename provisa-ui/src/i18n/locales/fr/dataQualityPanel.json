@@ -21,6 +21,8 @@
     "addCheck": "Ajouter un contrôle",
     "dryRun": "Exécution à blanc",
     "dryRunHelp": "Exécute le contrat sur la table en production et n'enregistre rien.",
+    "runNow": "Exécuter maintenant",
+    "runNowHelp": "Exécute immédiatement la tâche de vérification planifiée et enregistre le résultat.",
     "dryRunNoResponse": "L'exécution à blanc n'a renvoyé aucune réponse.",
     "datasetLabel": "Jeu de données",
     "datasetHelp": "La table observée par le vérificateur, sous la forme « <source de données>/<schéma>/<table> ». Elle est résolue sur le catalogue gouverné, de la même façon que lors du scan.",

@@ -32,6 +32,7 @@ import type {
   RLSRule,
   MutationResult,
   ColumnDependentsResult,
+  UserSummary,
 } from "../types/admin";
 import type { CompileResult, TableMetadata, ColumnMetadata } from "../api/admin";
 import {
@@ -49,6 +50,7 @@ import {
   DqCheckCatalog as DQ_CHECK_CATALOG_QUERY,
   DqCheckDefinition as DQ_CHECK_DEFINITION_QUERY,
   DryRunDqContract as DRY_RUN_DQ_CONTRACT_MUTATION,
+  RunDqCheckNow as RUN_DQ_CHECK_NOW_MUTATION,
   MetricsQuery as METRICS_QUERY,
   UpsertMetric as UPSERT_METRIC_MUTATION,
   DeleteMetric as DELETE_METRIC_MUTATION,
@@ -95,6 +97,7 @@ import {
   UpdateTableNaming,
   UpdateSourceAllowedDomains,
   SuggestTableAlias,
+  ResolveOwners,
 } from "./admin.graphql";
 
 /**
@@ -357,6 +360,10 @@ export function useDqContract() {
   const [dryRun] = useMutation<{ dryRunDqContract: DqDryRun }, DqDryRunVars>(
     DRY_RUN_DQ_CONTRACT_MUTATION,
   );
+  const [runNow] = useMutation<
+    { runDqCheckNow: MutationResult },
+    { schemaName: string; tableName: string }
+  >(RUN_DQ_CHECK_NOW_MUTATION);
   return {
     checkCatalog: useCallback(
       async (vars: DqCheckCatalogVars): Promise<DqCheckCatalog | null> =>
@@ -382,6 +389,14 @@ export function useDqContract() {
       async (vars: DqDryRunVars): Promise<DqDryRun | null> =>
         (await dryRun({ variables: vars })).data?.dryRunDqContract ?? null,
       [dryRun],
+    ),
+    runCheckNow: useCallback(
+      async (vars: { schemaName: string; tableName: string }): Promise<MutationResult> =>
+        (await runNow({ variables: vars })).data?.runDqCheckNow ?? {
+          success: false,
+          message: "",
+        },
+      [runNow],
     ),
   };
 }
@@ -452,6 +467,23 @@ export function useDeleteDomain() {
   };
 }
 
+// REQ-1660: mirrors the DataProductInput GraphQL input type field-for-field.
+export interface DataProductInput {
+  id: string;
+  domainId: string;
+  name: string;
+  ownerRole: string | null;
+  teamRole: string | null;
+  purpose: string;
+  limitations: string;
+  usage: string;
+  version: string | null;
+  status: string | null;
+  sla: string | null;
+  support: string | null;
+  customProperties: Record<string, unknown>;
+}
+
 export function useCreateDataProduct() {
   // REQ-1634
   const [createDataProduct, { loading }] = useMutation<{ createDataProduct: MutationResult }>(
@@ -459,16 +491,8 @@ export function useCreateDataProduct() {
     { refetchQueries: [{ query: DATA_PRODUCTS_QUERY }] },
   );
   return {
-    createDataProduct: async (
-      id: string,
-      domainId: string,
-      name: string,
-      owner: string | null,
-      description: string,
-    ) => {
-      const result = await createDataProduct({
-        variables: { id, domainId, name, owner: owner ?? null, description },
-      });
+    createDataProduct: async (input: DataProductInput) => {
+      const result = await createDataProduct({ variables: { input } });
       return (result.data?.createDataProduct ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
@@ -885,6 +909,20 @@ export function useColumnDependents() {
         variables: { tableId: String(tableId), renamed, removed },
       });
       return data?.columnDependents ?? [];
+    },
+    [run],
+  );
+}
+
+// REQ-609/REQ-1634: resolves an owner_role/steward/visible_to ref list to the individuals it grants to.
+export function useResolveOwners() {
+  const [run] = useLazyQuery<{ resolveOwners: UserSummary[] }>(ResolveOwners, {
+    fetchPolicy: "cache-first",
+  });
+  return useCallback(
+    async (refs: string[]): Promise<UserSummary[]> => {
+      const { data } = await run({ variables: { refs } });
+      return data?.resolveOwners ?? [];
     },
     [run],
   );

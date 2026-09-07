@@ -55,6 +55,8 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "glossary_read", // REQ-1590
     "glossary_rw", // REQ-1590
     "org_glossary_rw", // REQ-1592
+    "data_product_read", // REQ-1634
+    "data_product_rw", // REQ-1634
   ] as Capability[],
   // REQ-1602: org_admin holds every right it is offered, so it is shown nothing it cannot use.
   demonstrated: [],

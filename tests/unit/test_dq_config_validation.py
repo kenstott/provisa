@@ -21,7 +21,9 @@ import pytest
 
 from provisa.core.config_loader import _validate_dq_contracts
 from provisa.core.models import Column, ProvisaConfig, Source, SourceType, Table
+from provisa.dq.registration import check_contract_target
 from provisa.dq.results import DQ_PROMOTIONS, DQ_WATERMARK_COLUMN, RESULT_FIELDS
+from tests.helpers import dq_contexts
 
 CONTRACT = """
 dataset: provisa/sales/orders
@@ -145,6 +147,15 @@ def test_a_contract_on_a_non_checker_source_is_rejected():
         _validate_dq_contracts(_config(table))
 
 
+def test_a_checker_table_declaring_its_own_product_is_rejected():
+    """REQ-1443 clause 10: membership is inherited from the scanned table, so a declared one could
+    only agree with the derivation or contradict it."""
+    table = _results_table()
+    table.product_id = "orders-product"
+    with pytest.raises(ValueError, match="cannot declare product_id"):
+        _validate_dq_contracts(_config(table, _target_table()))
+
+
 def test_a_checker_table_without_a_contract_is_rejected():
     with pytest.raises(ValueError, match="must carry a dq_contract"):
         _validate_dq_contracts(_config(_results_table(contract=None), _target_table()))
@@ -172,9 +183,11 @@ def test_disagreeing_visible_to_is_rejected_rather_than_merged():
 
 def test_a_contract_naming_an_ungoverned_table_is_rejected():
     """A checker may only observe what Provisa governs (REQ-967); rows about anything else would
-    describe a table with no lineage, no governance and no RLS."""
-    with pytest.raises(ValueError, match="resolves to no governed table"):
-        _validate_dq_contracts(_config(_results_table()))
+    describe a table with no lineage, no governance and no RLS. Checked against the compiled
+    contexts — the pgwire names the dataset carries — once the schema build has produced them."""
+    contexts = dq_contexts((1, "warehouse", "sales", "sales", "customers"))
+    with pytest.raises(ValueError, match="'orders_scans': .*resolves to no governed table"):
+        check_contract_target(_results_table(), "provisa/sales/orders", contexts)
 
 
 def test_an_unparseable_contract_names_the_table_it_broke_on():
@@ -186,6 +199,7 @@ def test_an_unparseable_contract_names_the_table_it_broke_on():
 def test_a_contract_pointed_at_its_own_results_table_is_rejected():
     """A contract observes a governed table, not the scan history it produces — the scan would
     otherwise be reading rows it is in the middle of writing."""
-    results = _results_table(contract="dataset: provisa/quality/orders_scans\n")
+    results = _results_table(contract="dataset: provisa/default/orders_scans\n")
+    contexts = dq_contexts((1, "dq", "default", "quality", "orders_scans"))
     with pytest.raises(ValueError, match="resolves to the results table itself"):
-        _validate_dq_contracts(_config(results, _target_table()))
+        check_contract_target(results, "provisa/default/orders_scans", contexts)

@@ -28,6 +28,8 @@ from provisa.core.schema_org import (
     roles,
     sources,
     table_columns,
+    user_directory,
+    user_role_assignments,
 )
 
 if TYPE_CHECKING:
@@ -71,6 +73,7 @@ from provisa.api.admin.types import (
     TagAssignmentType,
     TagParamValueType,
     TagType,
+    UserSummaryType,
 )
 
 from provisa.api.admin.schema_helpers import (
@@ -347,9 +350,11 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def data_products(self, info: StrawberryInfo) -> list[DataProductType]:  # REQ-1634
+        from provisa.api.admin.capabilities import require_capability
         from provisa.core.repositories import data_product as data_product_repo
 
         _resolve_admin_context(info)
+        require_capability(info, "data_product_read")
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await data_product_repo.list_all(cast("Connection", conn))
@@ -358,11 +363,77 @@ class Query:  # REQ-021, REQ-042
                 id=r["id"],
                 domain_id=r["domain_id"],
                 name=r["name"],
-                owner=r["owner"],
-                description=r["description"],
+                owner_role=r["owner_role"],
+                team_role=r["team_role"],
+                purpose=r["purpose"],
+                limitations=r["limitations"],
+                usage=r["usage"],
+                version=r["version"],
+                status=r["status"],
+                sla=r["sla"],
+                support=r["support"],
+                custom_properties=r["custom_properties"],
             )
             for r in rows
         ]
+
+    @strawberry.field
+    async def resolve_owners(self, info: StrawberryInfo, refs: list[str]) -> list[UserSummaryType]:
+        """Resolve owner-ish refs (DataProduct.owner_role, Domain.steward, Column.visible_to) to
+        the individuals they grant to. Each ref is a role id (most callers) or, for Domain.steward
+        (REQ-609), possibly a raw user id — role lookup is tried first, and a ref matching neither
+        is echoed back bare so the UI still shows the raw id rather than nothing."""
+        _resolve_admin_context(info)
+        pool = await _get_pool()
+        seen: dict[str, UserSummaryType] = {}
+        async with pool.acquire() as conn:
+            for ref in dict.fromkeys(refs):  # de-dup, preserve order
+                role_row = (
+                    await conn.execute_core(select(roles.c.id).where(roles.c.id == ref))
+                ).fetchone()
+                if role_row is not None:
+                    _res = await conn.execute_core(
+                        select(
+                            user_role_assignments.c.user_id,
+                            user_directory.c.display_name,
+                            user_directory.c.email,
+                        )
+                        .select_from(
+                            user_role_assignments.join(
+                                user_directory,
+                                user_directory.c.user_id == user_role_assignments.c.user_id,
+                                isouter=True,
+                            )
+                        )
+                        .where(user_role_assignments.c.role_id == ref)
+                        .distinct()
+                    )
+                    for r in _res.fetchall():
+                        seen.setdefault(
+                            r.user_id,
+                            UserSummaryType(
+                                user_id=r.user_id, display_name=r.display_name, email=r.email
+                            ),
+                        )
+                    continue
+                _res = await conn.execute_core(
+                    select(
+                        user_directory.c.user_id,
+                        user_directory.c.display_name,
+                        user_directory.c.email,
+                    ).where(user_directory.c.user_id == ref)
+                )
+                row = _res.fetchone()
+                if row is not None:
+                    seen.setdefault(
+                        row.user_id,
+                        UserSummaryType(
+                            user_id=row.user_id, display_name=row.display_name, email=row.email
+                        ),
+                    )
+                else:
+                    seen.setdefault(ref, UserSummaryType(user_id=ref))
+        return list(seen.values())
 
     @strawberry.field
     async def tags(self, info: StrawberryInfo) -> list[TagType]:  # REQ-1373

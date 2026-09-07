@@ -71,7 +71,7 @@ def test_view_publishes_column_level_edges_with_transforms():
         ]
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     assert _edges(snapshot) == {
         ("wh.public.orders.id", "wh.public.order_totals.id"),
@@ -107,7 +107,7 @@ def test_three_hop_chain_publishes_one_edge_per_hop():
         ]
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     assert _edges(snapshot) == {
         ("wh.public.orders.id", "wh.public.hop1.id"),
@@ -138,7 +138,7 @@ def test_join_view_attributes_each_output_to_its_own_upstream_table():
         ]
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     assert _edges(snapshot) == {
         ("wh.public.orders.amount", "wh.public.orders_by_region.amount"),
@@ -160,7 +160,7 @@ def test_constant_projection_publishes_no_upstream_edge():
         ]
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     assert _edges(snapshot) == {("wh.public.orders.id", "wh.public.tagged.id")}
     published = {c.ref.fqn() for c in snapshot.columns()}
@@ -180,14 +180,14 @@ def test_view_over_an_unknown_relation_is_refused():
     )
 
     with pytest.raises(UnknownTableError) as exc:
-        build_snapshot(config, org_id="acme", dialect="postgres")
+        build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert exc.value.name == "ghost"
 
 
 def test_non_view_tables_contribute_no_lineage():
     config = _config([_table("orders", _cols("id", "amount"))])
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
     assert snapshot.lineage == []
 
@@ -203,7 +203,7 @@ def test_unqualified_leaf_is_refused_rather_than_attributed_to_a_guess():
     )
 
     try:
-        snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+        snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     except UnqualifiedLineageError as exc:
         assert exc.output == "id"
         return

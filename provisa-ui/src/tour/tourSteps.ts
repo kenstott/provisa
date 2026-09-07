@@ -352,6 +352,15 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-testid="glossary-bulk-definitions-btn"]',
     key: "stepGlossary",
   },
+  {
+    // REQ-1660: the ODPS-aligned data product catalog, and its always-reconciled auto-publish
+    // to warehouse-native product surfaces (Snowflake Horizon, BigQuery Dataplex).
+    route: "/data-products",
+    capability: "data_product_read",
+    element: '[data-tour="nav-data-products"]',
+    readySelector: '[data-tour="data-products-content"]',
+    key: "stepDataProducts",
+  },
   // ─── CLOSE ───
   {
     route: "/sources",

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { User, Compass, ChevronDown } from "lucide-react";
 import {
@@ -189,18 +189,30 @@ export function NavBar() {
           {NAV_GROUPS.filter((group) => entryItem(group, capabilities, billing)).map((group) => {
             const isActive = routeGroup === group.id || pinnedGroup === group.id;
             return (
-              <button
-                key={group.id}
-                type="button"
-                data-tour={`nav-${group.id}`}
-                data-testid={`nav-group-${group.id}`}
-                className={`nav-group-label${isActive ? " nav-group-active" : ""}`}
-                aria-expanded={isActive}
-                aria-current={isActive ? "true" : undefined}
-                onClick={() => toggleGroup(group.id)}
-              >
-                {t(group.labelKey)}
-              </button>
+              <React.Fragment key={group.id}>
+                <button
+                  type="button"
+                  data-tour={`nav-${group.id}`}
+                  data-testid={`nav-group-${group.id}`}
+                  className={`nav-group-label${isActive ? " nav-group-active" : ""}`}
+                  aria-expanded={isActive}
+                  aria-current={isActive ? "true" : undefined}
+                  onClick={() => toggleGroup(group.id)}
+                >
+                  {t(group.labelKey)}
+                </button>
+                {/* REQ-1634: Data Products is a top-level list/detail page, not an admin sub-tab —
+                    placed right after Model so it reads as a peer of the modeling surfaces. */}
+                {/* REQ-1634: gated on the data product read right, not org_settings — every
+                    seeded role reads the catalog. */}
+                {group.id === "model" && (
+                  <CapabilityGate capability="data_product_read">
+                    <NavLink to="/data-products" data-tour="nav-data-products">
+                      {t("navBar.itemDataProducts")}
+                    </NavLink>
+                  </CapabilityGate>
+                )}
+              </React.Fragment>
             );
           })}
           {/* Docs — ungated, available to everyone */}

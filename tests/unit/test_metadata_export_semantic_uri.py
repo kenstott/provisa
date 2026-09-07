@@ -67,7 +67,7 @@ def _config(**kwargs) -> ProvisaConfig:
 
 
 def test_uri_grammar_addresses_business_identity():
-    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
     # Alias wins over the physical table name; source/schema never appear in the path.
     assert snapshot.tables[0].semantic_uri == "provisa://acme/sales/tables/Order"
     by_name = {c.name: c.semantic_uri for c in snapshot.columns()}
@@ -90,7 +90,9 @@ def test_relationships_resolve_tables_by_alias_the_config_vocabulary():
         cardinality=Cardinality.many_to_one,
         target_function_name="lookup",
     )
-    snapshot = build_snapshot(_config(relationships=[rel]), org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(
+        _config(relationships=[rel]), org_id="acme", dialect="postgres", contexts={}
+    )
     assert snapshot.relationships[0].source.fqn() == "wh.public.orders"
 
 
@@ -118,7 +120,7 @@ def test_relationship_uri_anchors_at_source_table():
         ],
         relationships=[rel],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert snapshot.relationships[0].semantic_uri == (
         "provisa://acme/sales/tables/Order#rel:customer"
     )
@@ -134,7 +136,9 @@ def test_unaliased_relationship_uri_uses_registry_id():
         cardinality=Cardinality.many_to_one,
         target_function_name="lookup",
     )
-    snapshot = build_snapshot(_config(relationships=[rel]), org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(
+        _config(relationships=[rel]), org_id="acme", dialect="postgres", contexts={}
+    )
     assert snapshot.relationships[0].semantic_uri.endswith("#rel:rel-9")
 
 
@@ -152,12 +156,12 @@ def test_uri_segments_are_percent_encoded():
             )
         ],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert snapshot.tables[0].semantic_uri == "provisa://acme/sales%20ops/tables/order%20lines"
 
 
 def test_atlas_carries_uri_as_entity_attribute():
-    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
     entities = to_entities(snapshot)
     instance = next(e for e in entities if e.kind == "instance")
     assert instance.attributes["provisaUri"] == "provisa://acme/sources/wh"
@@ -168,7 +172,7 @@ def test_atlas_carries_uri_as_entity_attribute():
 
 
 def test_datahub_carries_uri_as_external_url_and_custom_property():
-    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
     props = next(p for p in to_proposals(snapshot) if p.aspect_name == "datasetProperties")
     assert props.aspect["externalUrl"] == "provisa://acme/sales/tables/Order"
     assert props.aspect["customProperties"]["provisaUri"] == "provisa://acme/sales/tables/Order"
@@ -177,7 +181,7 @@ def test_datahub_carries_uri_as_external_url_and_custom_property():
 def test_openlineage_carries_uri_facet():
     from datetime import datetime, timezone
 
-    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
     events = to_events(snapshot, event_time=datetime(2026, 8, 5, tzinfo=timezone.utc))
     payload = json.dumps([e.payload for e in events], default=str)
     assert "provisa_uri" in payload and "provisa://acme/sales/tables/Order" in payload

@@ -10,7 +10,6 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "../test-utils/render";
-import { MemoryRouter } from "react-router-dom";
 import { OrgEngineTab } from "../components/admin/OrgEngineTab";
 import type { OrgEngineState } from "../api/admin";
 
@@ -159,11 +158,7 @@ describe("OrgEngineTab", () => {
         isolated_engine: { state: "ready" },
       }),
     );
-    render(
-      <MemoryRouter>
-        <OrgEngineTab />
-      </MemoryRouter>,
-    );
+    render(<OrgEngineTab />);
     expect(await screen.findByTestId("org-engine-hosted")).toBeInTheDocument();
     expect(screen.getByTestId("org-engine-hosted-size")).toHaveTextContent("n2-highmem-8");
     expect(screen.getByTestId("org-engine-hosted-plan")).toHaveTextContent("pro_m");
@@ -180,11 +175,7 @@ describe("OrgEngineTab", () => {
     mockFetch.mockResolvedValue(
       state({ mode: "shared", plan: "starter", plan_derived: true, isolated_engine: null }),
     );
-    render(
-      <MemoryRouter>
-        <OrgEngineTab />
-      </MemoryRouter>,
-    );
+    render(<OrgEngineTab />);
     const change = await screen.findByTestId("org-engine-hosted-change");
     expect(change).toHaveTextContent(/Billing page/);
     expect(change.querySelector("a")).toHaveAttribute("href", "/admin/billing");

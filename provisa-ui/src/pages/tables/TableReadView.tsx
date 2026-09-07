@@ -17,6 +17,7 @@ import type { RegisteredTable, DataProduct } from "../../types/admin";
 import { computeProfile } from "./helpers";
 import { TagControl } from "../../components/TagControl";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
+import { OwnerResolutionIcon } from "../../components/OwnerResolution";
 
 interface TableProfileResult {
   columns: string[];
@@ -150,7 +151,17 @@ export function TableReadView({
                   <Table.Td c={c.alias ? "white" : "dimmed"}>{c.computedSqlAlias}</Table.Td>
                   <Table.Td className="reasoning-cell">{c.description || ""}</Table.Td>
                   <Table.Td>
-                    {c.visibleTo.length > 0 ? c.visibleTo.join(", ") : t("tableReadView.all")}
+                    <Group gap={4} wrap="nowrap">
+                      <Text span size="sm">
+                        {c.visibleTo.length > 0 ? c.visibleTo.join(", ") : t("tableReadView.all")}
+                      </Text>
+                      {c.visibleTo.length > 0 && (
+                        <OwnerResolutionIcon
+                          refs={c.visibleTo}
+                          ariaLabel={t("ownerResolution.columnIconLabel")}
+                        />
+                      )}
+                    </Group>
                   </Table.Td>
                   <Table.Td>
                     {c.writableBy.length > 0 ? c.writableBy.join(", ") : t("tableReadView.none")}

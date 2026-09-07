@@ -136,6 +136,10 @@
       "stepGlossary": {
         "title": "A living business glossary",
         "description": "📖 Every term links back to the columns that carry it — curate names, definitions, and typed relationships (kind-of, part-of, synonym-of) by hand, or let AI fill in the gaps: <strong>✨ Definitions</strong> drafts only the terms still missing one, and <strong>✨ Relationships</strong> proposes links across the whole glossary. Flag a term <strong>excluded from export</strong> to keep it out of published metadata."
+      },
+      "stepDataProducts": {
+        "title": "Data products, published where consumers already look",
+        "description": "📦 Every product here speaks <strong>ODPS</strong> (the Open Data Product Standard) — owner, team, purpose, limitations, usage, SLA, support, custom properties — and Provisa auto-publishes it straight into <strong>Snowflake Horizon</strong> and <strong>BigQuery Dataplex</strong>, so it shows up as a native product in the catalog your consumers already use.<p>🔁 There's no separate export step to forget: the spec is <strong>derived from the live model</strong> — tables, lineage, tags, glossary terms — every time, so what's published can't drift out of date the way a hand-maintained ODPS file would.</p>"
       }
     },
     "status": {

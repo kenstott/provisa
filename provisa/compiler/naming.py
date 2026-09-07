@@ -37,6 +37,12 @@ def _engine() -> "_Engine":
     return _inflect
 
 
+# inflect applies the generic consonant+y -> ies rule to any word, but these are actor-reference
+# particles (treated_by, created_by, owned_by), not countable nouns — "by" pluralizes to "bys",
+# never "bies".
+_PLURAL_OVERRIDES = {"by": "bys"}
+
+
 _VERB_PREFIXES = frozenset(
     {
         "find",
@@ -79,14 +85,17 @@ def rel_field_name(target_field_name: str, cardinality: str) -> str:  # REQ-194,
         noun, modifiers = parts[0], parts[1:]
     eng = _engine()
     if cardinality == "one-to-many":
-        singular = eng.singular_noun(cast("Word", noun))
-        if singular is False:
-            # noun is singular — pluralize it
-            noun = eng.plural_noun(cast("Word", noun)) or noun
-        elif singular.endswith("s") and not noun.endswith("ies"):
-            # inflect returned a false singular ending in 's' (e.g. address→addres) — force plural
-            noun = eng.plural_noun(cast("Word", noun)) or noun
-        # else: genuinely plural (e.g. inquiries, orders) — leave as-is
+        if noun in _PLURAL_OVERRIDES:
+            noun = _PLURAL_OVERRIDES[noun]
+        else:
+            singular = eng.singular_noun(cast("Word", noun))
+            if singular is False:
+                # noun is singular — pluralize it
+                noun = eng.plural_noun(cast("Word", noun)) or noun
+            elif singular.endswith("s") and not noun.endswith("ies"):
+                # inflect returned a false singular ending in 's' (e.g. address→addres) — force plural
+                noun = eng.plural_noun(cast("Word", noun)) or noun
+            # else: genuinely plural (e.g. inquiries, orders) — leave as-is
     else:
         singular = eng.singular_noun(cast("Word", noun))
         if singular:

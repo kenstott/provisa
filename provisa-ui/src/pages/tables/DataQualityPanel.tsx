@@ -45,10 +45,9 @@ import {
   TextInput,
 } from "@mantine/core";
 import { Play, Plus, Trash2 } from "lucide-react";
-import { useDqContract } from "../../hooks/useAdminQueries";
+import { useDqContract, useTables } from "../../hooks/useAdminQueries";
 import type { DqCheck, DqCheckCatalog, DqCheckKind, DqDryRun } from "../../types/admin";
 import { CollapsibleSection } from "./CollapsibleSection";
-import { FieldLabel } from "./FieldLabel";
 
 /** A column-less key for the dataset-level checks, matching the server's empty `column_name`. */
 const DATASET_SCOPE = "";
@@ -58,6 +57,9 @@ interface DataQualityPanelProps {
   checker: string;
   /** The source the dry run scans through; the checker's connection lives on it. */
   sourceId: string;
+  /** The registered table this contract belongs to — REQ-1443's "run now" fires its poll job. */
+  schemaName: string;
+  tableName: string;
   contractText: string;
   onChange: (contractText: string) => void;
 }
@@ -65,12 +67,15 @@ interface DataQualityPanelProps {
 export function DataQualityPanel({
   checker,
   sourceId,
+  schemaName,
+  tableName,
   contractText,
   onChange,
 }: DataQualityPanelProps) {
   const { t } = useTranslation();
-  const { parseContract, buildContract, checkCatalog, buildCheck, dryRunContract } =
+  const { parseContract, buildContract, checkCatalog, buildCheck, dryRunContract, runCheckNow } =
     useDqContract();
+  const { tables: governedTables } = useTables();
 
   const [dataset, setDataset] = useState<string | null>(null);
   const [checks, setChecks] = useState<DqCheck[]>([]);
@@ -81,6 +86,10 @@ export function DataQualityPanel({
   const [buildError, setBuildError] = useState<string | null>(null);
   const [dryRun, setDryRun] = useState<DqDryRun | null>(null);
   const [running, setRunning] = useState(false);
+  const [runNowResult, setRunNowResult] = useState<{ success: boolean; message: string } | null>(
+    null,
+  );
+  const [runningNow, setRunningNow] = useState(false);
 
   // The editors for the check being composed.
   const [column, setColumn] = useState<string>(DATASET_SCOPE);
@@ -218,6 +227,21 @@ export function DataQualityPanel({
     }
   }, [contractText, dryRunContract, sourceId, t]);
 
+  const runNowClick = useCallback(async () => {
+    setRunningNow(true);
+    try {
+      const result = await runCheckNow({ schemaName, tableName });
+      setRunNowResult(result);
+    } catch (error) {
+      setRunNowResult({
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setRunningNow(false);
+    }
+  }, [runCheckNow, schemaName, tableName]);
+
   return (
     // REQ-1358: `tourId` marks the whole section, not just its header, so the tour step highlights
     // the contract editor and the check builder together.
@@ -228,24 +252,26 @@ export function DataQualityPanel({
       defaultOpen
     >
       <Stack gap="sm">
-        {/* The dataset the contract observes. Committing on blur rather than per keystroke keeps a
-            half-typed path from being serialized and rejected on every character. */}
-        <div>
-          <FieldLabel
-            text={t("dataQualityPanel.datasetLabel")}
-            help={t("dataQualityPanel.datasetHelp")}
-          />
-          <TextInput
-            data-testid="dq-dataset-input"
-            aria-label={t("dataQualityPanel.datasetLabel")}
-            value={datasetDraft}
-            onChange={(e) => setDatasetDraft(e.currentTarget.value)}
-            onBlur={() => {
-              if (datasetDraft !== (dataset ?? "")) void rewrite(checks, datasetDraft);
-            }}
-            styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
-          />
-        </div>
+        {/* The dataset the contract observes, offered as the server-derived pgwire dataset and
+            shown as the logical name {domain-slug}.{table}. */}
+        <Select
+          label={t("dataQualityPanel.datasetTableLabel")}
+          data-testid="dq-dataset-table-select"
+          searchable
+          data={governedTables
+            .filter((tbl) => tbl.dqDataset !== null)
+            .map((tbl) => {
+              const [, domain, table] = (tbl.dqDataset as string).split("/");
+              return { value: tbl.dqDataset as string, label: `${domain}.${table}` };
+            })}
+          value={datasetDraft || null}
+          onChange={(v) => {
+            if (v === null) return;
+            setDatasetDraft(v);
+            void rewrite(checks, v);
+          }}
+          comboboxProps={{ withinPortal: true }}
+        />
         {parseError !== null && (
           <Alert color="red" data-testid="dq-parse-error">
             {parseError}
@@ -462,6 +488,30 @@ export function DataQualityPanel({
             {t("dataQualityPanel.dryRunHelp")}
           </Text>
         </Group>
+        {/* Unlike the dry run above, this fires the table's own registered poll job — the scan lands
+            and persists in its history instead of being thrown away with the response. */}
+        <Group>
+          <Button
+            variant="default"
+            leftSection={<Play size={14} />}
+            data-testid="dq-run-now"
+            loading={runningNow}
+            disabled={contractText.trim() === ""}
+            onClick={() => void runNowClick()}
+          >
+            {t("dataQualityPanel.runNow")}
+          </Button>
+          <Text size="xs" c="dimmed">
+            {t("dataQualityPanel.runNowHelp")}
+          </Text>
+        </Group>
+        {runNowResult !== null && (
+          <Alert
+            color={runNowResult.success ? "green" : "red"}
+            data-testid="dq-run-now-result"
+            title={runNowResult.message}
+          />
+        )}
         {dryRun !== null && (
           <Alert
             color={dryRun.success ? "green" : "red"}
@@ -485,7 +535,22 @@ export function DataQualityPanel({
                       <Table.Td>{c.columnName ?? t("dataQualityPanel.datasetScope")}</Table.Td>
                       <Table.Td>{c.checkType}</Table.Td>
                       <Table.Td>
-                        <Badge color={c.outcome === "pass" ? "green" : "red"}>{c.outcome}</Badge>
+                        <Stack gap={2}>
+                          <Badge color={c.outcome === "pass" ? "green" : "red"}>{c.outcome}</Badge>
+                          {/* error means the checker raised rather than evaluated the check — the
+                              value/failed-rows columns are blank because nothing was measured, so
+                              the exception the checker reported is the only useful signal here. */}
+                          {c.outcome === "error" && c.diagnostics !== null && (
+                            <Text
+                              size="xs"
+                              c="red"
+                              data-testid={`dq-dry-run-error-${i}`}
+                              style={{ wordBreak: "break-word" }}
+                            >
+                              {JSON.parse(c.diagnostics).exception_message ?? c.diagnostics}
+                            </Text>
+                          )}
+                        </Stack>
                       </Table.Td>
                       <Table.Td>{c.value ?? ""}</Table.Td>
                       <Table.Td>{c.failedRows ?? ""}</Table.Td>

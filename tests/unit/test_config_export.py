@@ -99,8 +99,9 @@ async def test_data_products_projected_from_live_state():  # REQ-1634
         "id": "customer_360",
         "domain_id": "sales",
         "name": "Customer 360",
-        "owner": "alice",
-        "description": "Unified customer view",
+        "owner_role": "alice",
+        "purpose": "Unified customer view",
+        "support_contact": "data-team@example.com",
     }
     cfg = await _run(base={"tables": []}, tables=[], data_products=[row])
     assert cfg["data_products"] == [row]

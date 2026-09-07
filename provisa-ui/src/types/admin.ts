@@ -52,15 +52,34 @@ export interface Domain {
   id: string;
   description: string;
   graphqlAlias?: string | null;
+  steward?: string | null; // REQ-609: role or user id; null means PENDING
 }
 
-// REQ-1634: a first-class DataProduct entity; a table joins one via product_id.
+// REQ-1634/REQ-1660: a first-class DataProduct entity; a table joins one via product_id.
+// Field set aligned to the ODPS (Open Data Product Standard) metamodel — team/owner resolve to
+// individuals via the existing role machinery, tags/authoritativeDefinitions/inputPorts/
+// outputPorts are derived from existing tag assignments/glossary/lineage rather than stored here.
 export interface DataProduct {
   id: string;
   domainId: string;
   name: string;
-  owner?: string | null;
-  description: string;
+  ownerRole?: string | null;
+  teamRole?: string | null;
+  purpose: string;
+  limitations: string;
+  usage: string;
+  version?: string | null;
+  status?: string | null;
+  sla?: string | null;
+  support?: string | null;
+  customProperties: Record<string, unknown>;
+}
+
+// REQ-609/REQ-1634: an owner_role/steward/visible_to ref resolved to one individual.
+export interface UserSummary {
+  userId: string;
+  displayName?: string | null;
+  email?: string | null;
 }
 
 // REQ-1373: one org-level tag registry; appliesTo scopes which object types a tag may attach to.
@@ -152,6 +171,7 @@ export interface TableColumn {
   maskPrecision: string | null;
   alias: string | null;
   computedSqlAlias: string;
+  computedGqlAlias: string;
   description: string | null;
   dataType: string | null;
   nativeFilterType: string | null;
@@ -222,6 +242,12 @@ export interface RegisteredTable {
   offPeakTz: string | null; // REQ-1141: window zone override
   refreshPolicySummary: RefreshPolicySummary | null; // REQ-1143: server-derived effective policy
   gqlNamingConvention: string | null;
+  // REQ-1634: this table's root query field name in the compiled data-plane GraphQL schema,
+  // server-derived (provisa.compiler.naming.generate_name) — null if no role's schema exposes it.
+  graphqlFieldName: string | null;
+  // REQ-1443: "provisa/<domain-slug>/<table>" — the pgwire names a contract's dataset uses,
+  // server-derived (provisa.dq.contract.meta_dataset) — null if no role's context exposes it.
+  dqDataset: string | null;
   watermarkColumn: string | null;
   changeSignal: string | null;
   probeQuery: string | null;

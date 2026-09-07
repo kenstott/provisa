@@ -80,7 +80,7 @@ def test_technical_is_column_only_a_table_assignment_never_excludes():
             TagAssignment(tag_id="technical", object_type="table", table_ref="wh.public.etl_audit")
         ],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert sorted(t.name for t in snapshot.tables) == ["etl_audit", "orders"]
 
 
@@ -104,7 +104,7 @@ def test_technical_column_is_dropped_from_its_published_table():
             )
         ],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert [c.name for c in snapshot.columns()] == ["id"]
     assert snapshot.model_tags == []
 
@@ -127,7 +127,7 @@ def test_sources_publish_only_when_one_of_their_tables_does():
             ),
         ],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert [s.id for s in snapshot.sources] == ["wh"]
     assert snapshot.model_tags == []
 
@@ -141,7 +141,7 @@ def test_tags_on_published_assets_ship_and_withheld_assets_keep_theirs_back():
             TagAssignment(tag_id="deprecated", object_type="source", source_id="wh"),
         ],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     published = {(t.tag_id, t.asset.fqn()) for t in snapshot.model_tags if t.asset}
     assert published == {("gold", "wh.public.orders"), ("deprecated", "wh")}
     system_flags = {t.tag_id: t.is_system for t in snapshot.model_tags}
@@ -165,7 +165,7 @@ def test_relationship_tags_survive_only_with_their_edge():
             TagAssignment(tag_id="deprecated", object_type="relationship", relationship_id="ghost"),
         ],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert [t.relationship_id for t in snapshot.model_tags] == ["rel-1"]
 
 
@@ -176,7 +176,7 @@ def test_atlas_registry_tags_become_prefixed_classifications_with_typedefs():
             TagAssignment(tag_id="deprecated", object_type="source", source_id="wh"),
         ],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     defs = {d["name"] for d in classification_defs(snapshot)}
     assert {"provisa_gold", "provisa_deprecated"} <= defs
     entities = to_entities(snapshot)
@@ -206,7 +206,7 @@ def test_atlas_relationship_tags_ride_the_governance_document():
             TagAssignment(tag_id="deprecated", object_type="relationship", relationship_id="rel-1"),
         ],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     import json
 
     table_entity = next(
@@ -223,7 +223,7 @@ def test_datahub_maps_deprecated_to_the_native_deprecation_aspect():
             TagAssignment(tag_id="gold", object_type="table", table_ref="wh.public.orders"),
         ],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     proposals = to_proposals(snapshot)
     deprecation = [p for p in proposals if p.aspect_name == "deprecation"]
     assert len(deprecation) == 1 and deprecation[0].aspect["deprecated"] is True
@@ -245,7 +245,7 @@ def test_reason_and_removal_date_ride_every_deprecation_construct():
             ),
         ],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     tag = snapshot.model_tags[0]
     assert (tag.reason, tag.expires_on) == ("Replaced by order_facts", "2026-12-01")
     # Atlas: classification attributes carry both, typed.
@@ -273,7 +273,7 @@ def test_atlan_maps_deprecated_to_certificate_status():
             TagAssignment(tag_id="deprecated", object_type="table", table_ref="wh.public.orders"),
         ],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     exporter = AtlanExport.__new__(AtlanExport)
     entities = exporter._atlan_entities(snapshot)
     table_entity = next(e for e in entities if e.type_name == "Table")

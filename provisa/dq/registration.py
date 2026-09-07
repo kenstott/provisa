@@ -31,17 +31,17 @@ def is_checker_source_type(source_type: Any) -> bool:
     return str(getattr(source_type, "value", source_type)) in CHECKERS
 
 
-def derive_checker_table(table: Any, source_type: Any, tables: list) -> Any:
-    """Validate a checker table's contract and derive its registration IN PLACE. Returns the target.
+def derive_checker_table(table: Any, source_type: Any) -> str:
+    """Validate a checker table's contract and derive its registration IN PLACE. Returns the dataset.
 
-      * the contract must parse and must name a three-part dataset;
-      * that dataset must resolve to a governed table — a checker may only observe what Provisa
-        governs (REQ-967), and the resolved target is the table's lineage (REQ-939);
+      * the contract must parse and must name a three-part dataset; whether that dataset resolves
+        to a governed table is :func:`check_contract_target`, run once the compiled names exist;
       * the columns become :func:`results_columns` — the envelope is the CHECKER's, not the
         operator's, so a hand-written column list could only ever disagree with what lands;
       * ``scan_time`` becomes the watermark, which makes the landing an append (REQ-982) and the
         table a scan history with no history subsystem;
-      * ``DQ_PROMOTIONS`` seeds the REQ-119 promotions, appended to any the operator added.
+      * ``DQ_PROMOTIONS`` seeds the REQ-119 promotions, appended to any the operator added;
+      * ``product_id`` must be unset — membership is inherited from the scanned table (clause 10).
 
     Raises :class:`ValueError` naming the table on any of those. The declared columns are read ONLY
     for their ``visible_to`` and are then replaced; ``visible_to`` must be unanimous, because one
@@ -53,6 +53,15 @@ def derive_checker_table(table: Any, source_type: Any, tables: list) -> Any:
         raise ValueError(
             f"Table {table.table_name!r}: source {table.source_id!r} is a {checker} checker, "
             f"so the table must carry a dq_contract — its rows are that contract's results"
+        )
+    # REQ-1443 clause 10: a results table belongs to whatever product the table it scans belongs
+    # to, derived at read time from the contract's dataset. A declared product_id could only ever
+    # agree with that derivation or contradict it, so it is refused rather than stored.
+    if table.product_id is not None:
+        raise ValueError(
+            f"Table {table.table_name!r}: a checker table cannot declare product_id "
+            f"{table.product_id!r}; its data-product membership is inherited from the table its "
+            f"contract scans"
         )
     if not table.columns:
         raise ValueError(
@@ -67,20 +76,35 @@ def derive_checker_table(table: Any, source_type: Any, tables: list) -> Any:
         )
     try:
         dataset = contract_dataset(table.dq_contract, checker)
-        target = resolve_contract_target(dataset, tables)
     except ContractError as exc:
         raise ValueError(f"Table {table.table_name!r}: {exc}") from exc
-    # By NAME, not identity: on the admin path the governed tables are rebuilt from rows, so the
-    # results table's own row is a different object than the model being registered.
-    if target.schema_name == table.schema_name and target.table_name == table.table_name:
-        raise ValueError(
-            f"Table {table.table_name!r}: contract dataset {dataset!r} resolves to the results "
-            f"table itself; a contract observes a governed table, not its own scan history"
-        )
     table.columns = results_columns(list(table.columns[0].visible_to))
     table.watermark_column = DQ_WATERMARK_COLUMN
     existing = {p.get("target_column") for p in table.promotions}
     table.promotions = table.promotions + [
         p for p in DQ_PROMOTIONS if p["target_column"] not in existing
     ]
+    return dataset
+
+
+def check_contract_target(table: Any, dataset: str, contexts: dict) -> Any:
+    """The compiled table ``dataset`` observes, or :class:`ValueError` naming ``table``.
+
+    A checker may only observe what Provisa governs (REQ-967), and the resolved target is the
+    results table's lineage (REQ-939). ``contexts`` is ``state.contexts`` — the dataset names the
+    pgwire (semantic) schema/table, which exist only once the schema is compiled, so this runs on
+    the admin path against the live contexts and on the YAML path after the startup build.
+
+    The self-target check is by physical NAME, not identity: the results table's own compiled meta
+    is a different object than the model being registered.
+    """
+    try:
+        target = resolve_contract_target(dataset, contexts)
+    except ContractError as exc:
+        raise ValueError(f"Table {table.table_name!r}: {exc}") from exc
+    if target.schema_name == table.schema_name and target.table_name == table.table_name:
+        raise ValueError(
+            f"Table {table.table_name!r}: contract dataset {dataset!r} resolves to the results "
+            f"table itself; a contract observes a governed table, not its own scan history"
+        )
     return target

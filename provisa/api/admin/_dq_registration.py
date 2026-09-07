@@ -22,21 +22,10 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from provisa.core.schema_org import registered_tables, sources
+from provisa.core.schema_org import sources
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
-
-
-class _GovernedTable:
-    """A registered table addressed by name. ``resolve_contract_target`` matches on (schema, table)
-    only, so a row needs nothing else to stand in for a full model here."""
-
-    __slots__ = ("schema_name", "table_name")
-
-    def __init__(self, schema_name: str, table_name: str) -> None:
-        self.schema_name = schema_name
-        self.table_name = table_name
 
 
 async def apply_dq_registration(conn: "Connection", model) -> None:
@@ -47,8 +36,13 @@ async def apply_dq_registration(conn: "Connection", model) -> None:
     which tables may carry a contract. Raises :class:`ValueError`; the callers turn that into a
     failed ``MutationResult`` rather than a 500.
     """
+    from provisa.api.app import state
     from provisa.dq.contract import CHECKERS
-    from provisa.dq.registration import derive_checker_table, is_checker_source_type
+    from provisa.dq.registration import (
+        check_contract_target,
+        derive_checker_table,
+        is_checker_source_type,
+    )
 
     result = await conn.execute_core(select(sources.c.type).where(sources.c.id == model.source_id))
     fetched = result.fetchone()
@@ -60,10 +54,5 @@ async def apply_dq_registration(conn: "Connection", model) -> None:
                 f"source ({sorted(CHECKERS)}), not on source type {str(source_type)!r}"
             )
         return
-    rows = (
-        await conn.execute_core(
-            select(registered_tables.c.schema_name, registered_tables.c.table_name)
-        )
-    ).fetchall()
-    governed = [_GovernedTable(r._mapping["schema_name"], r._mapping["table_name"]) for r in rows]
-    derive_checker_table(model, source_type, governed)
+    dataset = derive_checker_table(model, source_type)
+    check_contract_target(model, dataset, state.contexts)

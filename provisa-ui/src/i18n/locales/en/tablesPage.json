@@ -60,6 +60,11 @@
       "impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table"
     },
     "derived": "derived",
+    "checker": {
+      "soda": "Soda",
+      "great_expectations": "Great Expectations",
+      "title": "Data-quality checker — this table's rows are the results of running its contract"
+    },
     "dataProduct": "product",
     "dataProductTitle": "Data Product — included in provisa metadata export",
     "purposeTitle": "What registering a table does",

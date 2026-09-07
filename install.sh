@@ -108,9 +108,11 @@ check_compose() {
     fi
 }
 
-# REQ-1443: the demo config registers a Great Expectations suite over the pet inventory, so the
-# quality scorecard has data only when GX is installed. A demo install that named no checker takes
-# GX (Apache 2.0, no hosted-service bar) rather than shipping a demo whose scan cannot run.
+# REQ-1443: the demo config registers one contract per checker — a Great Expectations suite over the
+# pet inventory and a Soda contract over the vets — so the quality scorecard has data only when a
+# checker is installed. A demo install that named no checker takes GX (Apache 2.0, no hosted-service
+# bar) rather than shipping a demo whose scans cannot run; the Soda scan then reports the extra that
+# installs it and lands nothing until the operator selects soda.
 apply_demo_checker_default() {
     case "$INSTALL_DEMO" in [yY]|[yY][eE][sS]) : ;; *) return ;; esac
     if [ "$DQ_CHECKER" = "none" ]; then

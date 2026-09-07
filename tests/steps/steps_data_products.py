@@ -82,9 +82,9 @@ def shared_data() -> dict:
 
 @given('a DataProduct "customer_360" owned by "alice" in domain "sales"')
 def dataproduct_exists(shared_data: dict) -> None:
-    shared_data["product_row"] = {"id": "customer_360", "domain_id": "sales", "owner": "alice"}
+    shared_data["product_row"] = {"id": "customer_360", "domain_id": "sales", "owner_role": "alice"}
     shared_data["product"] = DataProduct(
-        id="customer_360", domain_id="sales", name="customer_360", owner="alice"
+        id="customer_360", domain_id="sales", name="customer_360", owner_role="alice"
     )
 
 
@@ -129,7 +129,7 @@ def metadata_export_runs(shared_data: dict) -> None:
         data_products=[shared_data["product"]],
         roles=[],
     )
-    shared_data["snapshot"] = build_snapshot(config, org_id="acme", dialect="postgres")
+    shared_data["snapshot"] = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
 
 @when('an attempt is made to set product_id="customer_360" on the marketing table')

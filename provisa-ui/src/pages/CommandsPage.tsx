@@ -44,6 +44,7 @@ import {
   useTables,
   useDomains,
   useAvailableFunctionsLazy,
+  useDataProducts,
 } from "../hooks/useAdminQueries";
 import type { TableMetadata } from "../api/admin";
 import { fetchOrgRoles } from "../api/admin";
@@ -60,6 +61,7 @@ export function CommandsPage() {
   const { sources } = useSources();
   const { tables } = useTables();
   const { domains } = useDomains();
+  const { dataProducts } = useDataProducts(); // REQ-1634: command <-> data product picker
   const { checkedDomains } = useDomainFilter();
   const getAvailableFunctions = useAvailableFunctionsLazy();
   const { activeOrgId } = useAuth();
@@ -155,6 +157,7 @@ export function CommandsPage() {
         binding: fn.binding ?? {},
         materialize: fn.materialize ?? false,
         outputColumns, // REQ-1159
+        productId: fn.productId ?? "", // REQ-1634
       });
       setExpandedFn(name);
     } else {
@@ -182,6 +185,7 @@ export function CommandsPage() {
         binding: {},
         materialize: false,
         outputColumns: [],
+        productId: "",
       });
       setExpandedWh(name);
     }
@@ -225,6 +229,7 @@ export function CommandsPage() {
           implKind: form.implKind,
           binding: form.binding,
           materialize: form.materialize,
+          productId: form.productId || null, // REQ-1634
         });
       } else {
         await saveWebhook({
@@ -281,6 +286,7 @@ export function CommandsPage() {
     domainHints,
     availableFunctions,
     loadingFunctions,
+    dataProducts,
   };
 
   if (loading) return <PageLoading message={t("commandsPage.loading")} />;

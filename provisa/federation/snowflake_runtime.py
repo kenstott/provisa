@@ -106,8 +106,27 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
     # -- materialization store -------------------------------------------------
 
     def ensure_materialize_attached(self) -> str:
-        """The store IS the warehouse; landed/cache tables live in its database directly."""
-        return self._database or ""
+        """The store IS the warehouse; landed/cache tables live in its database directly.
+
+        A DSN without a database segment relies on the session's default database
+        (set by the connecting user/role in Snowflake) rather than a literal from
+        the URL, so read it back from the live connection instead of defaulting
+        to an empty string, which produced unquoted-empty-identifier DDL."""
+        if self._database:
+            return self._database
+        cur = self._conn.cursor()
+        try:
+            cur.execute("SELECT CURRENT_DATABASE()")
+            row = cur.fetchone()
+        finally:
+            cur.close()
+        if not row or not row[0]:
+            raise RuntimeError(
+                "Snowflake session has no default database; specify one in the "
+                "engine URL (snowflake://user:pass@account/db/schema?warehouse=WH)"
+            )
+        self._database = row[0]
+        return self._database
 
     @property
     def connection(self):

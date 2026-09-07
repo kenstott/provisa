@@ -17,7 +17,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor } from "../test-utils/render";
-import { MemoryRouter } from "react-router-dom";
 import { TeamPage } from "../pages/TeamPage";
 
 const createInviteSpy = vi.fn();
@@ -82,11 +81,7 @@ function invite(over: Record<string, unknown> = {}) {
 }
 
 function renderTeamPage() {
-  return render(
-    <MemoryRouter>
-      <TeamPage />
-    </MemoryRouter>,
-  );
+  return render(<TeamPage />);
 }
 
 beforeEach(() => {

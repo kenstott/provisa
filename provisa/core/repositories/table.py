@@ -96,6 +96,15 @@ async def upsert(
     # caller (config load, admin GraphQL, introspection) is covered, not only the picker UI.
     product_id = getattr(table, "product_id", None)
     if product_id is not None:
+        # A parameterized table (native-filter query/path-param column) is a function f(args) ->
+        # rows with no snapshot (provisa/events/boot.py) — it never lands and so can never back a
+        # Share/listing export. Membership must be rejected here, the same last-write gate that
+        # enforces domain matching, so every caller is covered.
+        if any(getattr(c, "native_filter_type", None) is not None for c in table.columns):
+            raise ValueError(
+                f"table {table.table_name} has a native-filter (parameterized) column and cannot "
+                f"be a member of data product {product_id!r} — it is never landed"
+            )
         product = await data_product_repo.get(conn, product_id)
         if product is None:
             raise ValueError(f"data product {product_id!r} does not exist")

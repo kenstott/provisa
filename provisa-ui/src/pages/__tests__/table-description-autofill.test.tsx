@@ -16,7 +16,6 @@ import userEvent from "@testing-library/user-event";
 
 // The real router is used here: a MemoryRouter supplies useNavigate/useSearchParams with no mock
 // at all, which is one less module this file has to keep in sync with the rest of the suite.
-import { MemoryRouter } from "react-router-dom";
 
 // Spread the real module (shared registry — see the react-router-dom mock above).
 vi.mock("../../context/DomainFilterContext", async (importOriginal) => ({
@@ -211,11 +210,7 @@ function formSelects(): HTMLElement[] {
 }
 
 function renderPage() {
-  return render(
-    <MemoryRouter>
-      <TablesPage />
-    </MemoryRouter>,
-  );
+  return render(<TablesPage />);
 }
 
 // clearAllMocks wipes implementations too, so re-seed the module-level lazy-hook

@@ -12,7 +12,6 @@
 // and that reason rides on the posted event as the audit record of who forced the rebuild.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MemoryRouter } from "react-router-dom";
 import { render, screen, waitFor } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import type { RegisteredTable } from "../../types/admin";
@@ -82,6 +81,7 @@ function table(
     columns: [],
     columnPresets: [],
     uniqueConstraints: [],
+    graphqlFieldName: null,
     apiEndpoint: null,
     viewSql: null,
     dqContract: null,
@@ -155,11 +155,7 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 import { TablesPage } from "../TablesPage";
 
 function renderPage() {
-  return render(
-    <MemoryRouter>
-      <TablesPage />
-    </MemoryRouter>,
-  );
+  return render(<TablesPage />);
 }
 
 describe("TablesPage — forced run (REQ-968)", () => {

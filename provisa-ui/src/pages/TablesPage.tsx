@@ -1036,6 +1036,22 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               )}
                             </>
                           )}
+                          {/* REQ-1443: a checker table names the checker its contract runs under —
+                            the source's type is the one authority for that, never a table field. */}
+                          {(() => {
+                            const checker = sources.find((s) => s.id === t.sourceId)?.type;
+                            return checker === "soda" || checker === "great_expectations" ? (
+                              <Badge
+                                size="xs"
+                                variant="light"
+                                color="cyan"
+                                title={translate("tablesPage.checker.title")}
+                                data-testid={`tables-checker-${t.tableName}`}
+                              >
+                                {translate(`tablesPage.checker.${checker}`)}
+                              </Badge>
+                            ) : null;
+                          })()}
                           {t.productId != null && (
                             <Badge
                               size="xs"

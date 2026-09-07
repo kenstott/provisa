@@ -14,7 +14,6 @@
 // registerTable with viewMetrics and NO viewSql.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MemoryRouter } from "react-router-dom";
 import { render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 
@@ -128,6 +127,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     canDeployToDb: false,
     live: null,
     uniqueConstraints: [],
+    graphqlFieldName: null,
     modelingRole: null,
     viewMetrics: null,
     ...overrides,
@@ -185,18 +185,16 @@ const updateTable = vi.fn();
 function renderForm(editing: RegisteredTable | null) {
   const onSuccess = vi.fn();
   render(
-    <MemoryRouter>
-      <ViewDefinitionForm
-        editing={editing}
-        tables={[ordersTable, customersTable]}
-        relationships={[makeRel()]}
-        domainHints={["sales", "ops"]}
-        registerTable={registerTable}
-        updateTable={updateTable}
-        onSuccess={onSuccess}
-        onCancel={vi.fn()}
-      />
-    </MemoryRouter>,
+    <ViewDefinitionForm
+      editing={editing}
+      tables={[ordersTable, customersTable]}
+      relationships={[makeRel()]}
+      domainHints={["sales", "ops"]}
+      registerTable={registerTable}
+      updateTable={updateTable}
+      onSuccess={onSuccess}
+      onCancel={vi.fn()}
+    />,
   );
   return { onSuccess };
 }

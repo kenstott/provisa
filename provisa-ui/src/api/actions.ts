@@ -54,6 +54,8 @@ export interface TrackedFunction {
   implKind?: string;
   binding?: Record<string, unknown>;
   materialize?: boolean;
+  // REQ-1634: optional data-product membership.
+  productId?: string | null;
 }
 
 export interface TrackedWebhook {
@@ -92,13 +94,14 @@ export async function saveFunction(input: {
   visibleTo: string[];
   writableBy: string[];
   domainId: string;
-  description?: string;
+  description?: string | null;
   kind?: string;
   returnSchema?: Record<string, unknown> | null;
   outputColumns?: DatasetColumn[] | null;
   implKind?: string;
   binding?: Record<string, unknown>;
   materialize?: boolean;
+  productId?: string | null;
 }): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/functions`, {
     method: "POST",
@@ -120,7 +123,7 @@ export async function saveWebhook(input: {
   arguments: ActionArg[];
   visibleTo: string[];
   domainId: string;
-  description?: string;
+  description?: string | null;
   kind?: string;
 }): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/webhooks`, {

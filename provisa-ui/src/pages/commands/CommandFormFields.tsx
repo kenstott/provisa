@@ -21,7 +21,7 @@ import {
   Title,
 } from "@mantine/core";
 import { X } from "lucide-react";
-import type { Source, RegisteredTable } from "../../types/admin";
+import type { Source, RegisteredTable, DataProduct } from "../../types/admin";
 import type { TableMetadata } from "../../api/admin";
 import type { ActionArg, InlineField } from "../../api/actions";
 import {
@@ -44,6 +44,8 @@ interface CommandFormFieldsProps {
   domainHints: string[];
   availableFunctions: TableMetadata[];
   loadingFunctions: boolean;
+  // REQ-1634: optional data-product membership picker, scoped to the command's domain.
+  dataProducts: DataProduct[];
 }
 
 export function CommandFormFields({
@@ -54,6 +56,7 @@ export function CommandFormFields({
   domainHints,
   availableFunctions,
   loadingFunctions,
+  dataProducts,
 }: CommandFormFieldsProps): React.ReactElement {
   const { t } = useTranslation();
 
@@ -405,6 +408,22 @@ export function CommandFormFields({
         value={form.domainId || null}
         onChange={(val) => setForm({ ...form, domainId: val ?? "" })}
       />
+      {form.actionType === "function" && (
+        <Select
+          label={t("commandFormFields.dataProduct")}
+          placeholder={t("commandFormFields.dataProductPlaceholder")}
+          // REQ-1634: a command may only join a data product owned by its own domain.
+          data={dataProducts
+            .filter((dp) => dp.domainId === form.domainId)
+            .map((dp) => ({ value: dp.id, label: dp.name }))}
+          value={form.productId || null}
+          onChange={(val) => setForm({ ...form, productId: val ?? "" })}
+          disabled={!form.domainId}
+          clearable
+          searchable
+          data-testid="command-data-product-select"
+        />
+      )}
       <TextInput
         label={t("commandFormFields.description")}
         value={form.description}

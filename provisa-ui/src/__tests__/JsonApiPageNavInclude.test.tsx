@@ -14,7 +14,6 @@
 // the page runs a narrower query than the one the visitor clicked through from.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MemoryRouter } from "react-router-dom";
 import { render, waitFor } from "../test-utils/render";
 
 vi.mock("../context/AuthContext", () => ({
@@ -55,11 +54,9 @@ const NAV_URL =
   "&include=user.id,user.name";
 
 function renderWithNav() {
-  return render(
-    <MemoryRouter initialEntries={[{ pathname: "/jsonapi", state: { jsonapiUrl: NAV_URL } }]}>
-      <JsonApiPage />
-    </MemoryRouter>,
-  );
+  return render(<JsonApiPage />, {
+    initialEntries: [{ pathname: "/jsonapi", state: { jsonapiUrl: NAV_URL } }],
+  });
 }
 
 describe("JsonApiPage — navigation hand-off", () => {

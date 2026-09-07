@@ -191,9 +191,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
 
         # REQ-1443: a data-quality checker table's rows are the results of RUNNING its contract, so
         # its loader runs the scan. Registered unconditionally for both checkers — the contract's
-        # dataset resolves against the whole governed table list, since a contract may observe a
-        # table under any source, not only its own.
-        _dq_loader = make_dq_loader(config.tables)
+        # dataset resolves against every role's compiled tables (the pgwire names), since a
+        # contract may observe a table under any source, not only its own.
+        _dq_loader = make_dq_loader(state)
         _adapter_loaders["soda"] = _dq_loader
         _adapter_loaders["great_expectations"] = _dq_loader
 
@@ -334,6 +334,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
                     watermark_column=getattr(_cfg, "watermark_column", None),
                     cache_ttl=getattr(_cfg, "cache_ttl", None),
                     probe_type=getattr(_cfg, "probe_type", None),  # REQ-982
+                    # REQ-1443: a checker table's rows are the results of running its contract, so
+                    # the registered contract rides with the table into make_dq_loader.
+                    dq_contract=_rt["dq_contract"],
                 )
             )
 

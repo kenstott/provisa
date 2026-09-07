@@ -94,6 +94,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     canDeployToDb: false,
     live: null,
     uniqueConstraints: [],
+    graphqlFieldName: null,
     modelingRole: null,
     ...overrides,
   };

@@ -213,12 +213,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/import", labelKey: "navBar.itemImport", capability: "org_settings" },
       // REQ-1374: the tag registry is the acting org's own metadata, so org_settings.
       { to: "/admin/tags", labelKey: "navBar.itemTags", capability: "org_settings" },
-      // REQ-1634: the data product registry is the acting org's own metadata, so org_settings.
-      {
-        to: "/admin/data-products",
-        labelKey: "navBar.itemDataProducts",
-        capability: "org_settings",
-      },
       { to: "/admin/reports", labelKey: "navBar.itemReports", capability: "observability" }, // REQ-1386
       // REQ-1387: the glossary route stays /admin/glossary (org_settings) but its nav entry is
       // the top-level Glossary link in NavBar.tsx, not an item of this group.

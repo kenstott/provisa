@@ -21,6 +21,8 @@
     "addCheck": "新增檢查",
     "dryRun": "試執行",
     "dryRunHelp": "針對線上表執行合約，不會寫入任何結果。",
+    "runNow": "立即執行",
+    "runNowHelp": "立即執行已排程的檢查工作，並寫入結果。",
     "dryRunNoResponse": "試執行未傳回任何回應。",
     "datasetLabel": "數據集",
     "datasetHelp": "檢查器所觀測的表，格式為「<數據來源>/<結構描述>/<表>」。它會按掃描相同的方式，在受治理的數據目錄中解析。",

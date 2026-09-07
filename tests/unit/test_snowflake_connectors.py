@@ -72,8 +72,8 @@ def test_stage_ddl_s3_compatible_endpoint():
         "credential": {"access_key_id": "AK", "secret_access_key": "SK", "endpoint": "https://r2"},
     }
     joined = " | ".join(stage_and_external_table_ddl("db", "sch", "t", "stg", d))
-    assert "ENDPOINT = 'https://r2'" in joined
-    assert "URL = 's3://b/data/'" in joined  # directory URI → no PATTERN
+    assert "ENDPOINT = 'r2'" in joined  # scheme stripped — Snowflake wants a bare host
+    assert "URL = 's3compat://b/data/'" in joined  # directory URI → no PATTERN, s3compat scheme
 
 
 def test_stage_ddl_requires_location():

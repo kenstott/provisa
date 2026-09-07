@@ -101,12 +101,20 @@ class DomainType:  # REQ-533, REQ-609
 
 
 @strawberry.type
-class DataProductType:  # REQ-1634
+class DataProductType:  # REQ-1634, REQ-1660
     id: str
     domain_id: str
     name: str
-    owner: str | None = None
-    description: str = ""
+    owner_role: str | None = None
+    team_role: str | None = None
+    purpose: str = ""
+    limitations: str = ""
+    usage: str = ""
+    version: str | None = None
+    status: str | None = None
+    sla: str | None = None
+    support: str | None = None
+    custom_properties: JsonScalar
 
 
 @strawberry.type
@@ -271,7 +279,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     mv_business_day_grain: bool = False  # REQ-962: gate windows to business days
     modeling_role: str | None = None  # REQ-1320: "dimension" | "fact" | None
     modeling_history: str | None = None  # REQ-1320: "scd2" | "snapshot" | None
-    product_id: str | None = None  # REQ-1634
+    # REQ-1634: the row's own product_id; read through the product_id resolver below.
+    stored_product_id: strawberry.Private[str | None] = None
     enable_aggregates: bool = False
     enable_group_by: bool = False
     can_deploy_to_db: bool = False
@@ -292,6 +301,66 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
 
         return await summarize_table_policy(self)
 
+    @strawberry.field
+    def graphql_field_name(self) -> str | None:  # REQ-1634: GraphQL Queries panel
+        """This table's root query field name in the compiled data-plane GraphQL schema, so the
+        Data Product GraphQL Queries panel can build a runnable example query without duplicating
+        provisa.compiler.naming.generate_name's domain-wide uniqueness algorithm client-side.
+        None when no role's compiled schema currently exposes this table (e.g. mid-startup)."""
+        from provisa.api.admin._graphql_field_name import resolve_graphql_field_name
+
+        return resolve_graphql_field_name(
+            domain_id=self.domain_id, schema_name=self.schema_name, table_name=self.table_name
+        )
+
+    @strawberry.field
+    async def product_id(self) -> str | None:  # REQ-1634, REQ-1443 clause 10
+        """The data product this table belongs to. A checker table (one carrying a dq_contract —
+        registration admits a contract on no other source type) inherits the product of the table
+        its contract scans, resolved through the compiled contexts the same way dq_dataset is;
+        registration refuses a stored product_id on it, so the row's own column is never the
+        answer there. Every other table answers with its own row."""
+        if self.dq_contract is None:
+            return self.stored_product_id
+        from sqlalchemy import select
+
+        from provisa.api.app import state
+        from provisa.core.schema_org import registered_tables
+        from provisa.dq.contract import contract_dataset, resolve_contract_target
+
+        checker = state.source_types[self.source_id]
+        meta = resolve_contract_target(contract_dataset(self.dq_contract, checker), state.contexts)
+        if state.tenant_db is None:
+            raise RuntimeError("tenant database not connected")
+        async with state.tenant_db.acquire() as conn:
+            res = await conn.execute_core(
+                select(registered_tables.c.product_id).where(
+                    registered_tables.c.id == meta.table_id
+                )
+            )
+            row = res.fetchone()
+        if row is None:
+            raise ValueError(
+                f"contract target table {meta.table_id} for {self.schema_name}.{self.table_name} "
+                f"is not registered"
+            )
+        return row._mapping["product_id"]
+
+    @strawberry.field
+    def dq_dataset(self) -> str | None:  # REQ-1443
+        """This table as a data-quality contract dataset — the pgwire names a checker scans
+        (provisa.dq.contract.meta_dataset over the compiled TableMeta, REQ-641), so the dataset
+        picker never rebuilds them client-side. None when no role's compiled context exposes this
+        table (e.g. mid-startup)."""
+        from provisa.api.app import state
+        from provisa.dq.contract import meta_dataset
+
+        for ctx in state.contexts.values():
+            for meta in ctx.tables.values():
+                if meta.table_id == self.id:
+                    return meta_dataset(meta)
+        return None
+
 
 @strawberry.type
 class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
@@ -307,6 +376,7 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     mask_precision: str | None
     alias: str | None
     computed_sql_alias: str
+    computed_gql_alias: str  # REQ-1634: this column's field name in the compiled GraphQL schema
     description: str | None
     data_type: str | None = None
     native_filter_type: str | None = None
@@ -403,6 +473,13 @@ class RoleType:  # REQ-042
 
 
 @strawberry.type
+class UserSummaryType:  # REQ-609/REQ-1634: resolves an owner_role/steward to the individuals it grants to
+    user_id: str
+    display_name: str | None = None
+    email: str | None = None
+
+
+@strawberry.type
 class RLSRuleType:  # REQ-041, REQ-402
     id: int
     table_id: int | None
@@ -458,12 +535,20 @@ class DomainInput:  # REQ-533, REQ-609
 
 
 @strawberry.input
-class DataProductInput:  # REQ-1634
+class DataProductInput:  # REQ-1634, REQ-1660
     id: str
     domain_id: str
     name: str
-    owner: str | None = None
-    description: str = ""
+    owner_role: str | None = None
+    team_role: str | None = None
+    purpose: str = ""
+    limitations: str = ""
+    usage: str = ""
+    version: str | None = None
+    status: str | None = None
+    sla: str | None = None
+    support: str | None = None
+    custom_properties: JsonScalar = strawberry.field(default_factory=dict)
 
 
 @strawberry.input

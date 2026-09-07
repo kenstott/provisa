@@ -53,6 +53,10 @@ export interface GlossaryTermSummary {
   // physical ref. Only live terms reach an agent or a downstream catalog; anything else is
   // a proposal. Groundedness is a property of the term graph, so it is not derivable here.
   live: boolean;
+  // Server-computed, structural only (ignores definition): true when the term has a path,
+  // over in-service terms, to one holding a physical ref. An abstract term with no path is
+  // dangling — it names no data, regardless of whether it carries a definition.
+  grounded: boolean;
   // REQ-1591: a rooted term's domains are DERIVED from its refs' tables, an abstract term's are
   // DECLARED. Empty means unscoped — reachable by any glossary-right holder.
   domains: string[];
@@ -86,6 +90,17 @@ export interface GlossaryTermDetail extends GlossaryTermSummary {
   experts: GlossaryExpert[];
 }
 
+// REQ-1634: a data product's Related Terms panel — terms directly tied to any member-table
+// column, plus the full transitive closure of abstract terms reachable from those via edges.
+export interface RelatedGlossaryTerm {
+  id: number;
+  name: string;
+  definition: string | null;
+  is_abstract: boolean;
+  live: boolean;
+  domains: string[];
+}
+
 async function mutationError(res: Response, op: string): Promise<Error> {
   const data = await res.json().catch(() => ({ detail: res.statusText }));
   return new Error(serverMessage(data, requestFailed(op, res.status)));
@@ -105,6 +120,17 @@ export async function listGlossaryTerms(
   if (domains) for (const d of domains) params.append("domains", d);
   const res = await fetch(`${API_BASE}/admin/glossary/terms?${params.toString()}`);
   if (!res.ok) throw new Error(requestFailed("listGlossaryTerms", res.status));
+  return res.json();
+}
+
+export async function fetchRelatedGlossaryTerms(
+  tableIds: (number | string)[],
+): Promise<RelatedGlossaryTerm[]> {
+  if (tableIds.length === 0) return [];
+  const params = new URLSearchParams();
+  for (const id of tableIds) params.append("table_id", String(id));
+  const res = await fetch(`${API_BASE}/admin/glossary/related-to-tables?${params.toString()}`);
+  if (!res.ok) throw new Error(requestFailed("fetchRelatedGlossaryTerms", res.status));
   return res.json();
 }
 

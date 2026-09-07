@@ -54,13 +54,45 @@ INSERT INTO domains (id, description) VALUES ('shelter', 'Animal shelter staff a
 ON CONFLICT (id) DO NOTHING;
 
 -- REQ-1634: a data product groups tables within a single domain for governed publication.
+-- REQ-1660: fields aligned to the ODPS (Open Data Product Standard) metamodel where Provisa
+-- already has the underlying source of truth -- team_role/owner_role resolve to individuals
+-- via the existing role machinery (OwnerResolutionInline), tags/authoritativeDefinitions/
+-- inputPorts/outputPorts are derived from existing tag assignments/glossary/lineage rather
+-- than stored here, and sla/support stay prose because a product spans multiple tables and a
+-- structured SLA can't unambiguously attribute which member it describes.
 CREATE TABLE IF NOT EXISTS data_products (
-    id          TEXT PRIMARY KEY,
-    domain_id   TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
-    name        TEXT NOT NULL,
-    owner       TEXT,
-    description TEXT NOT NULL DEFAULT ''
+    id            TEXT PRIMARY KEY,
+    domain_id     TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    owner_role    TEXT,
+    team_role     TEXT,
+    purpose       TEXT NOT NULL DEFAULT '',
+    limitations   TEXT NOT NULL DEFAULT '',
+    usage         TEXT NOT NULL DEFAULT '',
+    version       TEXT,
+    status        TEXT,
+    sla           TEXT,
+    support       TEXT,
+    support_contact TEXT,
+    publish       BOOLEAN NOT NULL DEFAULT FALSE,
+    custom_properties JSONB NOT NULL DEFAULT '{}'
 );
+
+-- REQ-1660: added to a table that predates them.
+DO $$ BEGIN
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS team_role TEXT;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT '';
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS limitations TEXT NOT NULL DEFAULT '';
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS usage TEXT NOT NULL DEFAULT '';
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS version TEXT;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status TEXT;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS sla TEXT;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS support TEXT;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS support_contact TEXT;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS publish BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS custom_properties JSONB NOT NULL DEFAULT '{}';
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS naming_rules (
     id          SERIAL PRIMARY KEY,
@@ -420,7 +452,7 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-1467: tag_id with the parameter stripped ('entity:customer' -> 'entity'). Stored
     -- rather than derived at read time because the uniqueness rule below is stated over it.
     base_tag_id     TEXT NOT NULL,
-    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command')),
+    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product')),
     source_id       TEXT REFERENCES sources(id) ON DELETE CASCADE,
     table_id        INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     column_name     TEXT,
@@ -428,6 +460,9 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- Commands (tracked functions/webhooks) are named, not serial-keyed; no FK — their
     -- registries split across two tables and deletion cleanup is the mutation's job.
     command_name    TEXT,
+    -- REQ-1660: explicit data-product-level tags, distinct from tags inherited/rolled up
+    -- from member tables' own assignments (computed, not stored here).
+    product_id      TEXT REFERENCES data_products(id) ON DELETE CASCADE,
     object_key      TEXT NOT NULL,
     -- Why this tag is on this object; REQUIRED for 'deprecated' (system semantic).
     reason          TEXT,
@@ -444,6 +479,15 @@ DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS reason TEXT;
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS command_name TEXT;
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS expires_on TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- REQ-1660: product-level tags, added to a table that predates them.
+DO $$ BEGIN
+    ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE CASCADE;
+    ALTER TABLE tag_assignments DROP CONSTRAINT IF EXISTS tag_assignments_object_type_check;
+    ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_object_type_check
+        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -867,6 +911,12 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- REQ-1634: optional data-product membership for commands, mirroring registered_tables.product_id.
+DO $$ BEGIN
+    ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 -- Bridge table: every registered user table → its meta:registered_tables row
 -- Populated automatically on register_table; enables REGISTERED_AS Cypher edges
 CREATE TABLE IF NOT EXISTS table_meta_links (
@@ -1018,7 +1068,8 @@ VALUES (
       "masking_config","column_grant","view_governance","query_development",
       "full_results","write","usage","org_settings","observability",
       "environment_management","environment_switch",
-      "glossary_read","glossary_rw","org_glossary_rw"]'::jsonb,
+      "glossary_read","glossary_rw","org_glossary_rw",
+      "data_product_read","data_product_rw"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
@@ -1040,21 +1091,22 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO roles (id, capabilities, domain_access, org_id)
 VALUES (
     'analyst',
-    '["usage","query_development","glossary_read"]'::jsonb,
+    '["usage","query_development","glossary_read","data_product_read"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 ),
 (
     'developer',
     '["query_development","create_view","create_relationship","full_results","write",
-      "usage","environment_management","environment_switch","glossary_read"]'::jsonb,
+      "usage","environment_management","environment_switch","glossary_read",
+      "data_product_read"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 ),
 (
     'modeler',
     '["query_development","create_relationship","create_view","ignore_relationships",
-      "full_results","usage","glossary_read","glossary_rw"]'::jsonb,
+      "full_results","usage","glossary_read","glossary_rw","data_product_read"]'::jsonb,
     '["*"]'::jsonb,
     NULL
 )
@@ -1091,9 +1143,9 @@ INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id)
 VALUES (
     'sandbox',
     '["access_config","approve_relationship","approve_view","column_grant","create_relationship",
-      "create_view","full_results","glossary_read","glossary_rw","masking_config",
-      "observability","org_settings","query_development","source_registration",
-      "table_registration","usage","view_governance","write"]'::jsonb,
+      "create_view","data_product_read","data_product_rw","full_results","glossary_read",
+      "glossary_rw","masking_config","observability","org_settings","query_development",
+      "source_registration","table_registration","usage","view_governance","write"]'::jsonb,
     '["environment_management","environment_switch","org_glossary_rw"]'::jsonb,
     '["*"]'::jsonb,
     NULL

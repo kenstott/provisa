@@ -21,6 +21,8 @@
     "addCheck": "Controle toevoegen",
     "dryRun": "Proefrun",
     "dryRunHelp": "Voert het contract uit op de live tabel en legt niets vast.",
+    "runNow": "Nu uitvoeren",
+    "runNowHelp": "Voert de geplande controletaak direct uit en slaat het resultaat op.",
     "dryRunNoResponse": "De proefrun gaf geen antwoord terug.",
     "datasetLabel": "Dataset",
     "datasetHelp": "De tabel die de checker observeert, als '<gegevensbron>/<schema>/<tabel>'. Deze wordt tegen de bestuurde catalogus opgelost, net zoals de scan dat doet.",

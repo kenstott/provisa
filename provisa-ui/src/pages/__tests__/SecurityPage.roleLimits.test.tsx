@@ -14,7 +14,6 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../../test-utils/render";
-import { MemoryRouter } from "react-router-dom";
 
 const upsertRoleSpy = vi.fn(async () => ({ success: true, message: "" }));
 
@@ -45,11 +44,7 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 import { SecurityPage } from "../SecurityPage";
 
 function renderPage() {
-  return render(
-    <MemoryRouter>
-      <SecurityPage />
-    </MemoryRouter>,
-  );
+  return render(<SecurityPage />);
 }
 
 // Mantine spreads data-testid onto the underlying <input>, so the testid IS the input element.

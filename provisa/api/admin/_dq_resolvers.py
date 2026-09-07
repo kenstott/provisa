@@ -37,16 +37,6 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
-class _GovernedTable:
-    """A registered table addressed by name — what ``resolve_contract_target`` matches on."""
-
-    __slots__ = ("schema_name", "table_name")
-
-    def __init__(self, schema_name: str, table_name: str) -> None:
-        self.schema_name = schema_name
-        self.table_name = table_name
-
-
 def parse_contract(checker: str, contract_text: str) -> dict:
     """The raw text as ``{dataset, checker, checks, error}``.
 
@@ -95,6 +85,7 @@ async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str) -
     checker will really see. A dataset that resolves nowhere comes back as ``error`` with no
     columns, which is the same message the registration would fail with.
     """
+    from provisa.api.app import state
     from provisa.dq.catalog import check_catalog, checks_for_column
     from provisa.dq.contract import ContractError, resolve_contract_target
 
@@ -103,30 +94,14 @@ async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str) -
     except ContractError as exc:
         return {"error": str(exc), "dataset_checks": [], "columns": []}
     dataset_checks = [_kind_document(k) for k in kinds if k.scope == "dataset"]
-    rows = (
-        await conn.execute_core(
-            select(
-                registered_tables.c.id,
-                registered_tables.c.schema_name,
-                registered_tables.c.table_name,
-            )
-        )
-    ).fetchall()
-    governed = [_GovernedTable(r._mapping["schema_name"], r._mapping["table_name"]) for r in rows]
     try:
-        target = resolve_contract_target(dataset, governed)
+        target = resolve_contract_target(dataset, state.contexts)
     except ContractError as exc:
         return {"error": str(exc), "dataset_checks": dataset_checks, "columns": []}
-    table_id = next(
-        r._mapping["id"]
-        for r in rows
-        if r._mapping["schema_name"] == target.schema_name
-        and r._mapping["table_name"] == target.table_name
-    )
     columns = (
         await conn.execute_core(
             select(table_columns.c.column_name, table_columns.c.data_type)
-            .where(table_columns.c.table_id == table_id)
+            .where(table_columns.c.table_id == target.table_id)
             .order_by(table_columns.c.column_name)
         )
     ).fetchall()
@@ -191,6 +166,7 @@ async def dry_run_contract(conn: "Connection", *, source_id: str, contract_text:
     against Provisa's pgwire endpoint and the rows :func:`~provisa.dq.runner.run_contract` builds go
     straight into the response, so a dry run costs one scan and changes nothing.
     """
+    from provisa.api.app import state
     from provisa.dq.contract import ContractError, contract_dataset, resolve_contract_target
     from provisa.dq.registration import is_checker_source_type
     from provisa.dq.runner import CheckerError, run_contract
@@ -209,15 +185,9 @@ async def dry_run_contract(conn: "Connection", *, source_id: str, contract_text:
             "message": f"source {source_id!r} is a {checker} source, not a data-quality checker",
         }
     mapping = fetched._mapping["mapping"]
-    rows = (
-        await conn.execute_core(
-            select(registered_tables.c.schema_name, registered_tables.c.table_name)
-        )
-    ).fetchall()
-    governed = [_GovernedTable(r._mapping["schema_name"], r._mapping["table_name"]) for r in rows]
     try:
         dataset = contract_dataset(contract_text, checker)
-        target = resolve_contract_target(dataset, governed)
+        target = resolve_contract_target(dataset, state.contexts)
     except ContractError as exc:
         return {"success": False, "message": str(exc)}
     try:
@@ -244,6 +214,47 @@ async def dry_run_contract(conn: "Connection", *, source_id: str, contract_text:
         "checker_version": results[0]["checker_version"] if results else None,
         "checks": [_dry_run_check(row) for row in results],
     }
+
+
+async def run_dq_check_now(
+    conn: "Connection", *, scheduler: Any, org_id: str | None, schema_name: str, table_name: str
+) -> dict:
+    """Fire a checker table's own poll job immediately instead of waiting for its cadence, landing
+    results the same way the scheduler would (REQ-1443 "run now and retain").
+
+    Reuses the EXACT job APScheduler already registered for this node (``register_poll_job`` in
+    :mod:`provisa.events.processor`) rather than a second pipeline — the closure it points at is
+    ``TableProcessor.inject(probe_factory())``, the same claim→handle→land→complete cycle the poll
+    cadence drives. A table with no such job (not a registered checker table, or the event loop has
+    not booted it yet) is a real error, not a no-op.
+    """
+    fetched = (
+        await conn.execute_core(
+            select(registered_tables.c.dq_contract).where(
+                registered_tables.c.schema_name == schema_name,
+                registered_tables.c.table_name == table_name,
+            )
+        )
+    ).fetchone()
+    if fetched is None:
+        return {"success": False, "message": f"no table {schema_name}.{table_name}"}
+    if not fetched._mapping["dq_contract"]:
+        return {
+            "success": False,
+            "message": f"{schema_name}.{table_name} carries no dq_contract; nothing to run",
+        }
+    if scheduler is None:
+        return {"success": False, "message": "the event-loop scheduler is not running"}
+    node = f"{schema_name}.{table_name}"
+    suffix = f":org_{org_id}" if org_id else ""
+    job = scheduler.get_job(f"poll:{node}{suffix}")
+    if job is None:
+        return {
+            "success": False,
+            "message": f"{node} has no scheduled poll job yet — the event loop has not booted it",
+        }
+    await job.func()
+    return {"success": True, "message": f"ran {node} now"}
 
 
 def _dry_run_check(row: dict) -> dict:

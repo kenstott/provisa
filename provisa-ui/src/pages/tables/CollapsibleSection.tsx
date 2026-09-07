@@ -60,6 +60,7 @@ export function CollapsibleSection({
             display: "grid",
             gap: "var(--mantine-spacing-sm)",
             paddingTop: "var(--mantine-spacing-xs)",
+            paddingInline: "var(--mantine-spacing-md)",
           }}
         >
           {children}

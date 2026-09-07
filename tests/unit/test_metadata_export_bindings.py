@@ -74,7 +74,7 @@ def snapshot():
         ],
         roles=[Role(id="analyst", capabilities=[], domain_access=["*"])],
     )
-    return build_snapshot(config, org_id="acme", dialect="postgres")
+    return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
 
 def _config(provider: str) -> MetadataExportConfig:
@@ -525,12 +525,12 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(snapshot, tmp
     monkeypatch.setattr(
         publishing,
         "build_snapshot",
-        lambda model, *, org_id, dialect, glossary=None, dq_outcomes=None: snapshot,
+        lambda model, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None: snapshot,
     )
     monkeypatch.setattr(publishing, "metadata_export", lambda config: exporter)
     monkeypatch.setattr(
         "provisa.api.app.state",
-        types.SimpleNamespace(tenant_db=_TenantDb()),
+        types.SimpleNamespace(tenant_db=_TenantDb(), contexts={}),
         raising=False,
     )
 

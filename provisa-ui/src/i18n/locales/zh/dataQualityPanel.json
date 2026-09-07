@@ -21,6 +21,8 @@
     "addCheck": "添加检查",
     "dryRun": "试运行",
     "dryRunHelp": "针对线上表执行契约，不落地任何结果。",
+    "runNow": "立即运行",
+    "runNowHelp": "立即运行已排期的检查任务，并落地结果。",
     "dryRunNoResponse": "试运行未返回任何响应。",
     "datasetLabel": "数据集",
     "datasetHelp": "检查器所观测的表，格式为「<数据源>/<架构>/<表>」。它按扫描相同的方式在受治理的数据目录中解析。",

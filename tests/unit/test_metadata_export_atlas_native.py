@@ -62,7 +62,7 @@ def _config(**kwargs) -> ProvisaConfig:
 
 
 def _snapshot():
-    return build_snapshot(_config(), org_id="acme", dialect="postgres")
+    return build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
 
 
 def test_native_entities_state_what_the_model_holds():
@@ -95,12 +95,14 @@ def test_data_product_entity_aggregates_its_member_table():  # REQ-1634
                 id="prod",
                 domain_id="pet-store",
                 name="Pets 360",
-                owner="alice",
-                description="Unified pet view",
+                owner_role="alice",
+                purpose="Unified pet view",
             )
         ]
     )
-    entities = to_native_entities(build_snapshot(config, org_id="acme", dialect="postgres"))
+    entities = to_native_entities(
+        build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    )
     by_type = {e.type_name: e for e in entities}
     table = by_type[PROVISA_TABLE_TYPE]
     product = by_type[PROVISA_DATA_PRODUCT_TYPE]
@@ -147,7 +149,7 @@ def test_governance_document_rides_the_typed_attribute():
             )
         ],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     table = next(e for e in to_native_entities(snapshot) if e.attributes.get("name") == "pets")
     doc = json.loads(table.attributes["provisaGovernance"])
     assert doc["approvedRelationships"][0]["id"] == "rel-1"

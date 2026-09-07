@@ -34,6 +34,17 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
     buildCheck,
     dryRunContract,
   }),
+  // The dataset field's table picklist is scoped to this list, not to the fake TABLES_QUERY data
+  // MockedProvider would otherwise leave unresolved.
+  useTables: () => ({
+    tables: [
+      { schemaName: "sales", tableName: "orders", dqDataset: "provisa/sales/orders" },
+      { schemaName: "sales", tableName: "invoices", dqDataset: "provisa/sales/invoices" },
+    ],
+    loading: false,
+    error: undefined,
+    refetch: vi.fn(),
+  }),
 }));
 
 import { DataQualityPanel } from "../DataQualityPanel";
@@ -98,7 +109,7 @@ beforeEach(() => {
 describe("DataQualityPanel", () => {
   it("shows the dataset and each check's own args, so a hand-written contract survives being opened", async () => {
     renderPanel();
-    expect(await screen.findByTestId("dq-dataset-input")).toHaveValue("provisa/sales/orders");
+    expect(await screen.findByTestId("dq-dataset-table-select")).toHaveValue("sales.orders");
     expect(screen.getByTestId("dq-args-0")).toHaveValue("threshold:\n  must_be_less_than: 5");
     expect(screen.queryByTestId("dq-contract-text")).not.toBeInTheDocument();
   });
@@ -127,11 +138,11 @@ describe("DataQualityPanel", () => {
     expect(onChange).toHaveBeenCalledWith("REBUILT");
   });
 
-  it("retyping the dataset re-aims the contract at another table", async () => {
+  it("picking another governed table re-aims the contract at it", async () => {
     renderPanel();
-    const input = await screen.findByTestId("dq-dataset-input");
-    fireEvent.change(input, { target: { value: "provisa/sales/invoices" } });
-    fireEvent.blur(input);
+    const select = await screen.findByTestId("dq-dataset-table-select");
+    fireEvent.change(select, { target: { value: "sales.invoices" } });
+    fireEvent.click(await screen.findByText("sales.invoices"));
 
     await waitFor(() =>
       expect(buildContract).toHaveBeenCalledWith({
@@ -153,7 +164,6 @@ describe("DataQualityPanel", () => {
     renderPanel();
     await screen.findByTestId("dq-check-rows");
     fireEvent.blur(screen.getByTestId("dq-args-0"));
-    fireEvent.blur(screen.getByTestId("dq-dataset-input"));
     expect(buildContract).not.toHaveBeenCalled();
   });
 

@@ -16,7 +16,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor } from "../test-utils/render";
-import { MemoryRouter } from "react-router-dom";
 import { TeamPage } from "../pages/TeamPage";
 
 const createInviteSpy = vi.fn();
@@ -84,11 +83,7 @@ vi.mock("@mantine/notifications", () => ({
 const { OrgError } = await import("../api/admin");
 
 function renderTeamPage() {
-  return render(
-    <MemoryRouter>
-      <TeamPage />
-    </MemoryRouter>,
-  );
+  return render(<TeamPage />);
 }
 
 beforeEach(() => {

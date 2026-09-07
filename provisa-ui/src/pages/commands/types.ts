@@ -53,6 +53,8 @@ export interface FormState {
   materialize: boolean;
   // REQ-1159: canonical IR-typed output dataset contract (returnSchema is its GraphQL projection).
   outputColumns: DatasetColumn[];
+  // REQ-1634: optional data-product membership.
+  productId: string;
 }
 
 // REQ-885: selectable implementation kinds for the function/command editor.
@@ -115,6 +117,7 @@ export const EMPTY_FORM: FormState = {
   binding: {},
   materialize: false,
   outputColumns: [],
+  productId: "",
 };
 
 // REQ-1159: IR type → JSON-schema scalar. return_schema is the GraphQL projection of the

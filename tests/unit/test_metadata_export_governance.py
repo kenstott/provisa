@@ -240,7 +240,7 @@ def test_rule_bodies_never_appear_anywhere_in_a_published_snapshot():
         ],
         rls=[RLSRule(table_id="customers", role_id="analyst", filter=RLS_FILTER)],
     )
-    text = _snapshot_text(build_snapshot(config, org_id="acme", dialect="postgres"))
+    text = _snapshot_text(build_snapshot(config, org_id="acme", dialect="postgres", contexts={}))
     assert MASK_PATTERN not in text
     assert MASK_REPLACE not in text
     assert "REDACTED-TIER" not in text
@@ -269,7 +269,7 @@ def test_build_snapshot_attaches_governance_tags():
         ],
         rls=[RLSRule(table_id="customers", role_id="analyst", filter=RLS_FILTER)],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     signals = {t.signal for t in snapshot.governance_tags}
     assert signals == {
         GovernanceSignal.MASKED,
@@ -285,4 +285,6 @@ def test_ungoverned_config_publishes_no_tags():
             _table("orders", [Column(name="id", data_type="int", visible_to=["analyst", "admin"])])
         ]
     )
-    assert build_snapshot(config, org_id="acme", dialect="postgres").governance_tags == []
+    assert (
+        build_snapshot(config, org_id="acme", dialect="postgres", contexts={}).governance_tags == []
+    )

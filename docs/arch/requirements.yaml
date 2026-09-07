@@ -44551,7 +44551,11 @@
     FROM THE CONTRACT, never hand-declared: the contract YAML already names its target dataset, so the
     registration parses it the way extract_inputs parses SQL (REQ-939) and resolves it to the governed
     table — one definition, no second copy that can drift, and a contract naming an ungoverned dataset
-    fails loud at registration. Registration therefore carries a contract body plus timing, not an input
+    fails loud at registration. The dataset is spelled in the names the checker actually queries through
+    pgwire — `provisa/<domain-slug>/<table>`, i.e. domain_to_sql_name(domain_id) and semantic_table_name
+    (REQ-641), the one naming authority — NEVER the physical registered_tables schema_name/table_name;
+    resolution runs against the compiled per-role contexts, and the UI picklist labels a target
+    `{domain-slug}.{table-name}` from the server-derived dataset, exposing no physical names. Registration therefore carries a contract body plus timing, not an input
     ref. (4) ONE RESULTS NODE PER CONTRACT, never one shared results table for the estate: a single node
     fed by every governed table has a fan-in edge from everything, so blast radius is wrong, vintage is
     meaningless, and a churning table cannot debounce differently from a nightly one. The estate-wide
@@ -44614,8 +44618,10 @@
     (8) THE FEATURE IS NOT DONE UNTIL THE SURROUNDING MATERIAL MOVES WITH IT. In scope, not follow-up:
     docs/sources.md gains the checker source type and the licence split; docs/integrations.md and docs/configuration.md
     cover dq_checker and PROVISA_EXTRAS; the installer wizard (install.sh and the macOS SwiftUI parity
-    path) offers the choice; the demo config registers one contract over a demo table so the scorecard
-    is populated on a fresh install; provisa-ui/src/tour/tourSteps.ts gains a step for the quality panel
+    path) offers the choice; the demo config registers one contract PER CHECKER over a demo table (a
+    Great Expectations suite over pets, a Soda contract over vets) so the scorecard is populated on a
+    fresh install and both dialects run through the one pipeline — only GX is installed by default,
+    so the Soda scan reports the extra that installs it wherever the operator did not select soda; provisa-ui/src/tour/tourSteps.ts gains a step for the quality panel
     with copy in every locale under i18n/locales/<lng>/tour.json (REQ-1358); and capabilities.yaml carries
     both rows. A shipped checker source with no demo data and no tour step is an unfinished feature, not
     a shipped one.
@@ -44650,7 +44656,26 @@
     native run surface where one exists — an OpenMetadata testCaseResult, a DataHub assertionRunEvent,
     and the OpenLineage spec facet dataQualityAssertions with a real success boolean — and rides the Provisa-authored
     carrier everywhere else. Only states that reached a verdict appear on the native surfaces, which can
-    express nothing else; never_run, error and skipped are always present in the Provisa carrier.'
+    express nothing else; never_run, error and skipped are always present in the Provisa carrier.
+
+    (10) A RESULTS TABLE''S DATA-PRODUCT MEMBERSHIP IS INFERRED FROM THE TABLE IT SCANS, never stored
+    and never edited. Its rows are observations about one governed table, so it belongs to exactly the
+    product that table belongs to (REQ-1634) and to no other; a product_id declared on a checker table
+    could only agree with that or contradict it, so registration (YAML and admin alike, through derive_checker_table)
+    refuses one as a config error. The membership is derived at read time from the contract''s dataset,
+    resolved against the compiled contexts the way lineage is (clause 3): the admin GraphQL product_id
+    on a checker table answers with the scanned table''s product_id, and the metadata export groups
+    the results table into that product and applies the Data Product filter to it through the same
+    derivation, so a results table publishes exactly when the table it observes does. In the UI the
+    product control on a checker table is read-only and shows the inherited product, the tables list
+    badge follows the server-derived value, and the product member picker lists checker tables but
+    cannot toggle them; the update payload for a checker table never carries a product_id. On the
+    product detail, member checker tables are listed under a DATA QUALITY panel, not among the Output
+    Ports or the Access Patterns: their rows are the product''s quality evidence, not its published
+    surface. For each scan the panel offers the SQL access pattern and, beside it, a rules control
+    that opens the checker table''s contract in a 90% modal as a read-only table of checks (column,
+    check type, args) parsed server-side with the checker type of the scan''s source; the control is
+    disabled until that source is known.'
   use_case: An org already running Soda points it at a Provisa-governed table, registers the contract
     as a source, and gets scan history, a quality scorecard, lineage from check back to table, and change-driven
     rather than cron-driven scans — without Provisa shipping a data-quality engine or the operator hand-declaring
@@ -44661,6 +44686,7 @@
   - provisa/events/handlers.py
   - provisa/processors/shell.py
   - config/capabilities.yaml
+  - config/provisa-install.yaml
   - pyproject.toml
   - Dockerfile
   - docker-compose.app.yml
@@ -44682,10 +44708,31 @@
   - provisa/dq/contract.py
   - provisa/api/metadata_export/dq_outcomes.py
   - provisa/api/metadata_export/publishing.py
+  - provisa/dq/registration.py
+  - provisa/api/admin/_dq_resolvers.py
+  - provisa/api/admin/_dq_registration.py
+  - provisa/api/admin/types.py
+  - provisa/api/app_loaders.py
+  - provisa/events/source_loader.py
+  - provisa/events/app_wiring.py
+  - provisa-ui/src/pages/TablesPage.tsx
+  - provisa/api/admin/schema_helpers.py
+  - provisa-ui/src/pages/DataProductsPage.tsx
+  - provisa-ui/src/pages/data-products/DataProductDetailPanel.tsx
+  - provisa-ui/src/pages/data-products/DqRulesModal.tsx
   tests:
+  - tests/unit/test_app_wiring.py
   - tests/unit/test_metadata_export_data_quality.py
+  - tests/unit/test_dq_product_resolver.py
+  - provisa-ui/src/pages/tables/__tests__/TableEditForm.checkerProduct.test.tsx
+  - provisa-ui/src/pages/data-products/__tests__/DataProductDetailPanel.dataQuality.test.tsx
   - tests/unit/test_metadata_export_dq_outcomes.py
   - tests/unit/test_dq_contract.py
+  - tests/unit/test_dq_resolvers.py
+  - tests/unit/test_dq_config_validation.py
+  - tests/integration/test_dq_registration_path.py
+  - tests/helpers.py
+  - provisa-ui/src/pages/tables/__tests__/DataQualityPanel.test.tsx
   scenario: 'Given a Soda contract whose checks name a governed table
 
     When the contract is registered as a soda source with a debounce window
@@ -48611,13 +48658,16 @@
     in a modal at 90% of the viewport; both readings are rendered from one component so the inline and
     expanded views can never diverge. The rule between the panes is itself the handle: dragging it sets
     the split (clamped between 15% and 85%, and mirrored under RTL), because whether the tree or the diagram
-    needs the room depends on the plan.'
+    needs the room depends on the plan. The Results tab carries the same expand control: hovering the
+    grid reveals it, and it reopens the identical grid — same filters, sort and groups, since both are
+    one grid state — in a modal at 90% of the viewport.'
   use_case: A developer expands the analyzed plan to read a wide operator tree without scrolling.
   code:
   - provisa-ui/src/pages/sql/ResultsPanel.tsx
   - provisa-ui/src/pages/sql/ResultsPanel.css
   tests:
   - provisa-ui/src/__tests__/SqlAnalyzePanel.test.tsx
+  - provisa-ui/src/__tests__/SqlResultsExpand.test.tsx
   since: 2026-08
   scenario: 'Given an analyzed statement shown in the results strip
 
@@ -54845,3 +54895,53 @@
   - provisa-ui/src/pages/AdminPage.tsx
   e2e: true
   e2e_reason: Viewport-filling layout behavior requires full browser rendering to verify.
+- id: REQ-1645
+  status: proposed
+  group: 7. Result Delivery
+  category: Snowflake Horizon Catalog Export
+  priority: SHOULD
+  type: behavioral
+  description: Auto-generate Horizon Catalog listing descriptions from Provisa's Data Product Product Page metadata including owner, domain, and member tables/columns.
+  use_case: Richer listing metadata helps Snowflake Horizon catalog consumers discover and understand shared data products without requiring manual catalog updates.
+  code:
+  - provisa/api/metadata_export/snowflake_horizon.py
+  target: 2026-Q4
+- id: REQ-1646
+  status: proposed
+  group: 7. Result Delivery
+  category: Snowflake Horizon Catalog Export
+  priority: MAY
+  type: behavioral
+  description: >-
+    Snowflake Horizon Catalog export can optionally create a `_provisa` database containing user-facing
+    exposure views organized as `{domain-name-slug-as-schema}.{table-name}` (e.g., schema `pet_store`,
+    view `pets`), providing a clean, domain-organized read surface separate from the internal `_landing`
+    database.
+  use_case: >-
+    Rather than exposing raw/internal-looking objects from the internal landing database in shares and
+    listings, a dedicated `_provisa` database with domain-organized views presents a polished, end-user-facing
+    surface to Snowflake Horizon consumers, improving discoverability and perception of data products.
+  code:
+    - provisa/api/metadata_export/snowflake_horizon.py
+  target: "2026-Q4"
+- id: REQ-1647
+  status: proposed
+  group: 7. Result Delivery
+  category: Snowflake Horizon Catalog Export
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Descriptions from the `_landing` physical table/config must propagate to the corresponding
+    per-source SECURE VIEW (at the original db.schema.table address) via COMMENT ON VIEW/TABLE,
+    alongside the existing tag propagation already performed by tag_statements() in
+    snowflake_horizon.py. Currently the description field is only used in
+    share_statements/listing_statements (Marketplace share/listing text) and is never emitted as
+    an object-level comment, so the per-source view's comment stays empty even though the
+    underlying `_landing` physical table has a populated comment.
+  use_case: >-
+    Consumers browsing the per-source view directly in Snowflake (outside of a share/listing)
+    should see the same governed description that already reaches the view as tags, so the
+    view is self-describing without relying on Marketplace metadata.
+  code:
+    - provisa/api/metadata_export/snowflake_horizon.py
+  target: "2026-Q4"

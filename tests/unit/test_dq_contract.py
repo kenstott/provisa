@@ -20,7 +20,6 @@ import json
 
 import pytest
 
-from provisa.core.models import Table
 from provisa.dq.contract import (
     CHECKERS,
     ContractError,
@@ -30,6 +29,7 @@ from provisa.dq.contract import (
     dataset_parts,
     resolve_contract_target,
 )
+from tests.helpers import dq_contexts
 
 SODA_CONTRACT = """
 dataset: provisa/sales/orders
@@ -56,10 +56,6 @@ GX_SUITE = json.dumps(
         ],
     }
 )
-
-
-def _table(schema: str, name: str) -> Table:
-    return Table(source_id="warehouse", domain_id="default", schema=schema, table=name, columns=[])
 
 
 def test_soda_dataset_is_read_from_the_top_level_key():
@@ -111,23 +107,44 @@ def test_dataset_parts_splits_into_source_schema_table():
     assert dataset_parts("provisa/sales/orders") == ("provisa", "sales", "orders")
 
 
-def test_target_resolves_on_schema_and_table_not_the_leading_part():
-    """The leading part names the pgwire ENDPOINT the checker connects through, not a Provisa source
-    id, so the same governed table is reachable under whatever name the operator gave the endpoint."""
-    target = _table("sales", "orders")
-    tables = [_table("sales", "customers"), target, _table("hr", "orders")]
-    assert resolve_contract_target("anything/sales/orders", tables) is target
+def test_target_resolves_on_the_pgwire_names_not_the_physical_ones():
+    """The dataset is what the checker sees through pgwire: ``{domain-slug}.{table}`` (REQ-641),
+    where the table is the DB alias when one is set. Physical schema and name never appear."""
+    contexts = dq_contexts(
+        (1, "wh", "sales-ops", "raw_sales", "tbl_orders_v2", "orders"),
+        (2, "wh", "sales-ops", "raw_sales", "customers"),
+        (3, "hr", "people", "hr", "orders"),
+    )
+    target = resolve_contract_target("provisa/sales_ops/orders", contexts)
+    assert (target.table_id, target.schema_name, target.table_name) == (
+        1,
+        "raw_sales",
+        "tbl_orders_v2",
+    )
+    with pytest.raises(ContractError, match="resolves to no governed table"):
+        resolve_contract_target("provisa/raw_sales/tbl_orders_v2", contexts)
+
+
+def test_the_same_table_in_several_roles_contexts_is_one_target():
+    contexts = dq_contexts((1, "wh", "sales", "sales", "orders"), role="analyst")
+    contexts.update(dq_contexts((1, "wh", "sales", "sales", "orders"), role="steward"))
+    assert resolve_contract_target("provisa/sales/orders", contexts).table_id == 1
 
 
 def test_target_outside_the_governed_estate_is_rejected():
     with pytest.raises(ContractError, match="resolves to no governed table"):
-        resolve_contract_target("provisa/sales/orders", [_table("sales", "customers")])
+        resolve_contract_target(
+            "provisa/sales/orders", dq_contexts((1, "wh", "sales", "sales", "customers"))
+        )
 
 
 def test_ambiguous_target_is_rejected_rather_than_picked():
     with pytest.raises(ContractError, match="ambiguous"):
         resolve_contract_target(
-            "provisa/sales/orders", [_table("sales", "orders"), _table("sales", "orders")]
+            "provisa/sales/orders",
+            dq_contexts(
+                (1, "wh", "sales", "sales", "orders"), (2, "wh", "sales", "sales", "orders")
+            ),
         )
 
 

@@ -116,6 +116,10 @@ export function TableEditForm({
   // protection resolves off (table override, else source default) they have no effect, so they are
   // hidden — surfaced only once the table is actually load-protected.
   const editSource = sources.find((s) => s.id === editingTable.sourceId);
+  // REQ-1443: a checker source's table is a results table; the source's type is the one authority.
+  const isCheckerTable =
+    editSource != null &&
+    (DQ_CHECKERS as readonly string[]).includes((editSource.type ?? "").toLowerCase());
   const effLoadProtected =
     editingTable.loadProtected == null
       ? (editSource?.loadProtected ?? false)
@@ -130,32 +134,34 @@ export function TableEditForm({
   return (
     <>
       {shownPolicy && (
-        <Alert
-          // REQ-1143: effective refresh/serving policy, live-previewed from the draft knobs (server-
-          // derived). `serving` drives the color; a non-null `warning` flags an inert
-          // prefer_materialized or an accidental frozen table.
-          color={
-            shownPolicy.warning
-              ? "yellow"
-              : shownPolicy.serving === "live"
-                ? "blue"
-                : shownPolicy.serving === "scheduled"
-                  ? "teal"
-                  : shownPolicy.serving === "cache"
-                    ? "gray"
-                    : "orange"
-          }
-          title={t("tableEditForm.refreshPolicyTitle")}
-          style={{ marginBottom: "0.75rem", gridColumn: "1 / -1" }}
-          data-testid="refresh-policy-summary"
-        >
-          <Text size="sm">{shownPolicy.text}</Text>
-          {shownPolicy.warning && (
-            <Text size="sm" c="yellow.8" mt={4} fw={500}>
-              ⚠ {shownPolicy.warning}
-            </Text>
-          )}
-        </Alert>
+        <div style={{ paddingInline: "1.5rem" }}>
+          <Alert
+            // REQ-1143: effective refresh/serving policy, live-previewed from the draft knobs (server-
+            // derived). `serving` drives the color; a non-null `warning` flags an inert
+            // prefer_materialized or an accidental frozen table.
+            color={
+              shownPolicy.warning
+                ? "yellow"
+                : shownPolicy.serving === "live"
+                  ? "blue"
+                  : shownPolicy.serving === "scheduled"
+                    ? "teal"
+                    : shownPolicy.serving === "cache"
+                      ? "gray"
+                      : "orange"
+            }
+            title={t("tableEditForm.refreshPolicyTitle")}
+            style={{ marginBottom: "0.75rem" }}
+            data-testid="refresh-policy-summary"
+          >
+            <Text size="sm">{shownPolicy.text}</Text>
+            {shownPolicy.warning && (
+              <Text size="sm" c="yellow.8" mt={4} fw={500}>
+                ⚠ {shownPolicy.warning}
+              </Text>
+            )}
+          </Alert>
+        </div>
       )}
       <div className="form-card" style={{ marginBottom: "0.75rem" }}>
         <TextInput
@@ -409,25 +415,44 @@ export function TableEditForm({
           </>
         )}
         <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
-          <Select
-            label={t("tableEditForm.dataProductLabel")}
-            placeholder={t("tableEditForm.dataProductNone")}
-            clearable
-            // REQ-1634: a table may only join a data product owned by its own domain.
-            data={dataProducts
-              .filter((p) => p.domainId === editingTable.domainId)
-              .map((p) => ({ value: p.id, label: p.name }))}
-            value={editingTable.productId}
-            onChange={(value) =>
-              setEditingTable({
-                ...editingTable,
-                productId: value,
-              })
-            }
-            data-testid="table-edit-product-id"
-          />
+          {isCheckerTable ? (
+            // REQ-1443 clause 10: a checker table's membership is inherited from the table its
+            // contract scans — the server derives it, so it is shown, never chosen.
+            <TextInput
+              label={t("tableEditForm.dataProductLabel")}
+              value={
+                editingTable.productId == null
+                  ? t("tableEditForm.dataProductNone")
+                  : (dataProducts.find((p) => p.id === editingTable.productId)?.name ??
+                    editingTable.productId)
+              }
+              readOnly
+              disabled
+              data-testid="table-edit-product-id"
+            />
+          ) : (
+            <Select
+              label={t("tableEditForm.dataProductLabel")}
+              placeholder={t("tableEditForm.dataProductNone")}
+              clearable
+              // REQ-1634: a table may only join a data product owned by its own domain.
+              data={dataProducts
+                .filter((p) => p.domainId === editingTable.domainId)
+                .map((p) => ({ value: p.id, label: p.name }))}
+              value={editingTable.productId}
+              onChange={(value) =>
+                setEditingTable({
+                  ...editingTable,
+                  productId: value,
+                })
+              }
+              data-testid="table-edit-product-id"
+            />
+          )}
           <Text size="sm" c="dimmed">
-            {t("tableEditForm.dataProductDesc")}
+            {isCheckerTable
+              ? t("tableEditForm.dataProductInherited")
+              : t("tableEditForm.dataProductDesc")}
           </Text>
         </Group>
         <Group gap="xs" wrap="nowrap" style={{ gridColumn: "1 / -1" }}>
@@ -645,11 +670,12 @@ export function TableEditForm({
       </div>
       {/* REQ-1443 clause 7: a checker source's table lands that checker's scans, so its contract is
           edited here. Only a checker source has one — every other table has no contract to build. */}
-      {editSource != null &&
-        (DQ_CHECKERS as readonly string[]).includes((editSource.type ?? "").toLowerCase()) && (
+      {editSource != null && isCheckerTable && (
           <DataQualityPanel
             checker={(editSource.type ?? "").toLowerCase()}
             sourceId={editSource.id}
+            schemaName={editingTable.schemaName}
+            tableName={editingTable.tableName}
             contractText={editingTable.dqContract ?? ""}
             onChange={(text) => setEditingTable({ ...editingTable, dqContract: text || null })}
           />
@@ -661,20 +687,25 @@ export function TableEditForm({
         const isReadOnlyView = editingTable.viewSql != null;
         const isMutable = src && !NOSQL.has((src.type ?? "").toLowerCase()) && !isReadOnlyView;
         return isMutable ? (
-          <ColumnPresetsEditor
-            presets={editingTable.columnPresets}
-            columns={editingTable.columns.map((c) => c.columnName)}
-            columnTypes={editingColumnTypes}
-            onChange={(presets) => setEditingTable({ ...editingTable, columnPresets: presets })}
-          />
+          <div style={{ paddingInline: "1.5rem" }}>
+            <ColumnPresetsEditor
+              presets={editingTable.columnPresets}
+              columns={editingTable.columns.map((c) => c.columnName)}
+              columnTypes={editingColumnTypes}
+              onChange={(presets) => setEditingTable({ ...editingTable, columnPresets: presets })}
+            />
+          </div>
         ) : null;
       })()}
       {/* REQ-1093: table-level UNIQUE constraints editor */}
-      <UniquesPanel
-        uniques={editingTable.uniqueConstraints ?? []}
-        columns={editingTable.columns.map((c) => c.columnName)}
-        onChange={(uniques) => setEditingTable({ ...editingTable, uniqueConstraints: uniques })}
-      />
+      <div style={{ paddingInline: "1.5rem" }}>
+        <UniquesPanel
+          uniques={editingTable.uniqueConstraints ?? []}
+          columns={editingTable.columns.map((c) => c.columnName)}
+          onChange={(uniques) => setEditingTable({ ...editingTable, uniqueConstraints: uniques })}
+        />
+      </div>
+      <div style={{ paddingInline: "1.5rem" }}>
       <Table className="data-table" style={{ margin: "0 0 0.5rem" }}>
         <Table.Thead>
           <Table.Tr>
@@ -927,6 +958,7 @@ export function TableEditForm({
           ))}
         </Table.Tbody>
       </Table>
+      </div>
       <Group justify="flex-end" gap="sm" p="0.75rem 0.5rem">
         <Button
           variant="default"

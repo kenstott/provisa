@@ -45,7 +45,7 @@ async def test_upsert_then_get_round_trips_all_fields(tmp_path):
         await data_product_repo.upsert(
             conn,
             DataProduct(
-                id="checkout", domain_id="sales", name="Checkout", owner="alice", description="d"
+                id="checkout", domain_id="sales", name="Checkout", owner_role="alice", purpose="d"
             ),
         )
 
@@ -54,8 +54,8 @@ async def test_upsert_then_get_round_trips_all_fields(tmp_path):
         assert row is not None
         assert row["domain_id"] == "sales"
         assert row["name"] == "Checkout"
-        assert row["owner"] == "alice"
-        assert row["description"] == "d"
+        assert row["owner_role"] == "alice"
+        assert row["purpose"] == "d"
 
 
 @pytest.mark.asyncio

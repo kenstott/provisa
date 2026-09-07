@@ -415,6 +415,26 @@ async def term_for_ref(request: Request, table_id: int, column_name: str) -> dic
     return term
 
 
+@router.get("/related-to-tables")
+async def related_terms_for_tables(
+    request: Request, table_id: "list[int]" = Query(...)
+) -> list[dict]:
+    """Related Terms for a data product (REQ-1634): terms tied to any of ``table_id``'s columns,
+    plus the full transitive closure of abstract terms reachable from those via edges.
+
+    Gated on glossary_read like the rest of this router's read surface — the caller is looking up
+    vocabulary for tables its own domain access already exposes on the Data Products page, and
+    the result is scoped again here to the caller's readable domains (REQ-1591/1592).
+    """
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        return await glossary_repo.related_terms_for_tables(
+            cast("Connection", conn), set(table_id), domains=_authority(request)
+        )
+
+
 @router.post("/terms/{term_id}/definition/generate")
 async def generate_definition(request: Request, term_id: int) -> dict:
     """Draft a definition for the term with the org's AI model.

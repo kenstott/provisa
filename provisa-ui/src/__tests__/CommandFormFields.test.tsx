@@ -29,6 +29,7 @@ function Harness({ initial }: { initial: Partial<FormState> }) {
       domainHints={[]}
       availableFunctions={[]}
       loadingFunctions={false}
+      dataProducts={[]}
     />
   );
 }

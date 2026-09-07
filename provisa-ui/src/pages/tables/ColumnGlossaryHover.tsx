@@ -99,16 +99,12 @@ export function ColumnGlossaryHover({ tableId, columnName, children }: ColumnGlo
           {edges.length > 0 && (
             <Text fz="0.7rem" c="dimmed" mt={2}>
               {edges
-                .map(
-                  (e) =>
-                    `${
-                      e.reverse
-                        ? t(`glossaryTab.rel_${e.rel_type}_reverse`, {
-                            defaultValue: t(`glossaryTab.rel_${e.rel_type}`),
-                          })
-                        : t(`glossaryTab.rel_${e.rel_type}`)
-                    }: ${e.name}`,
-                )
+                .map((e) => {
+                  const label = t(`glossaryTab.rel_${e.rel_type}`);
+                  // Direction is conveyed by word order, not a separate reverse verb
+                  // (REQ-1590): "{connected} {rel}" for incoming, "{rel}: {connected}" outgoing.
+                  return e.reverse ? `${e.name} ${label}` : `${label}: ${e.name}`;
+                })
                 .join(" · ")}
             </Text>
           )}

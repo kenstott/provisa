@@ -154,6 +154,7 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
             dialect=GOVERNED_DIALECT,
             glossary=glossary,
             dq_outcomes=dq_outcomes,
+            contexts=state.contexts,
             # The report is a steward's view of the whole registered model, not a catalog publish:
             # an unmarked table is one of the things a review exists to find, so the Data Product
             # flag rides along as a column on the Tables sheet instead of deciding what appears.

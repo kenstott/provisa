@@ -236,6 +236,7 @@ async def publish_snapshot(org_id: str) -> PublishResult:
             dialect=GOVERNED_DIALECT,
             glossary=glossary,
             dq_outcomes=dq_outcomes,
+            contexts=state.contexts,
         )
         exporter = metadata_export(config)
         async with tenant_db.acquire() as conn:

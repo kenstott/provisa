@@ -1149,6 +1149,22 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     _wire_metrics = [{**m, "visible_to": []} for m in metrics]
     state.wire_proto = generate_proto(_schema_input(_wire_role, _wire_tables, _wire_metrics))
 
+    # REQ-1443: a YAML-registered checker table's contract names pgwire (semantic) names, which
+    # exist only now that the contexts are compiled — config load could not check them.
+    from types import SimpleNamespace
+
+    from provisa.dq.contract import contract_dataset
+    from provisa.dq.registration import check_contract_target, is_checker_source_type
+
+    for t in tables:
+        checker = state.source_types[t["source_id"]]
+        if t.get("dq_contract") and is_checker_source_type(checker):
+            check_contract_target(
+                SimpleNamespace(schema_name=t["schema_name"], table_name=t["table_name"]),
+                contract_dataset(t["dq_contract"], checker),
+                state.contexts,
+            )
+
 
 def _setup_approval_hook(st: AppState) -> None:
     """REQ-247: build ABAC approval hook + scope dicts from config (no-op when unconfigured)."""

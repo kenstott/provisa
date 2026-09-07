@@ -56,6 +56,9 @@ export function ResultsPanel({
   const { t } = useTranslation();
   const { profile, handleDownloadProfile } = grid;
   const [analyzeExpanded, setAnalyzeExpanded] = React.useState(false);
+  // A wide or long result set is cramped in the results strip; the expand control reopens the
+  // same grid (same filters, sort and groups) in a 90% modal, as the Analyze tab does for plans.
+  const [resultsExpanded, setResultsExpanded] = React.useState(false);
 
   const tabLabels: Record<ResultTab, string> = {
     results: t("sqlResultsPanel.tabResults"),
@@ -162,12 +165,40 @@ export function ResultsPanel({
                 : t("sqlResultsPanel.writeSqlPrompt")}
             </div>
           ) : (
-            <ResultsGrid
-              grid={grid}
-              totalRowCount={resultRows.length}
-              // REQ-1441: in the workbench the statement in the editor IS the construction.
-              provenance={[{ label: t("tablePreview.provStatement"), value: sqlText }]}
-            />
+            <div className="analyze-panes-wrap" style={{ height: "100%" }}>
+              <button
+                type="button"
+                className="analyze-expand"
+                onClick={() => setResultsExpanded(true)}
+                title={t("sqlResultsPanel.resultsExpand")}
+                aria-label={t("sqlResultsPanel.resultsExpand")}
+                data-testid="results-expand"
+              >
+                <Maximize2 size={12} />
+              </button>
+              <ResultsGrid
+                grid={grid}
+                totalRowCount={resultRows.length}
+                // REQ-1441: in the workbench the statement in the editor IS the construction.
+                provenance={[{ label: t("tablePreview.provStatement"), value: sqlText }]}
+              />
+              <Modal
+                opened={resultsExpanded}
+                onClose={() => setResultsExpanded(false)}
+                size="90%"
+                title={t("sqlResultsPanel.resultsExpandTitle")}
+                styles={{
+                  content: { height: "90vh" },
+                  body: { height: "calc(90vh - 3.5rem)", overflow: "hidden" },
+                }}
+              >
+                <ResultsGrid
+                  grid={grid}
+                  totalRowCount={resultRows.length}
+                  provenance={[{ label: t("tablePreview.provStatement"), value: sqlText }]}
+                />
+              </Modal>
+            </div>
           ))}
 
         {resultTab === "profile" &&

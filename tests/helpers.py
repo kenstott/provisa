@@ -82,3 +82,30 @@ def assert_sql_matches(sql: str, pattern: str) -> None:
     assert re.search(pattern, norm_sql, re.IGNORECASE), (
         f"Pattern not matched.\nPattern: {pattern}\nSQL: {norm_sql}"
     )
+
+
+def dq_contexts(*tables: tuple, role: str = "analyst") -> dict:
+    """``state.contexts``-shaped input for the DQ dataset resolver (REQ-1443).
+
+    Each entry is ``(table_id, source_id, domain_id, schema_name, table_name)`` or the same with a
+    trailing ``display_name`` (the DB alias pgwire publishes instead of the physical name).
+    """
+    from types import SimpleNamespace
+
+    from provisa.compiler.sql_types import TableMeta
+
+    metas = {}
+    for spec in tables:
+        table_id, source_id, domain_id, schema_name, table_name, *alias = spec
+        metas[f"t{table_id}"] = TableMeta(
+            table_id=table_id,
+            field_name=table_name,
+            type_name=table_name.capitalize(),
+            source_id=source_id,
+            catalog_name=source_id,
+            schema_name=schema_name,
+            table_name=table_name,
+            domain_id=domain_id,
+            display_name=alias[0] if alias else "",
+        )
+    return {role: SimpleNamespace(tables=metas)}

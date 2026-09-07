@@ -130,4 +130,4 @@ def governed_config() -> ProvisaConfig:
 
 
 def governed_snapshot() -> MetadataSnapshot:
-    return build_snapshot(governed_config(), org_id=ORG_ID, dialect="postgres")
+    return build_snapshot(governed_config(), org_id=ORG_ID, dialect="postgres", contexts={})

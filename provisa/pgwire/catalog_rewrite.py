@@ -40,6 +40,24 @@ def next_txid() -> int:
     return next(_TXID_COUNTER)
 
 
+# _pg_type.typname stores PG's internal type names (int4, bool, varchar, ...).
+# Real format_type() returns the SQL display name (integer, boolean, character
+# varying, ...); SQLAlchemy's PG dialect parses that display name against
+# ischema_names and falls back to NullType — breaking DDL generation — for any
+# name it doesn't recognize, so internal names must be mapped before they reach it.
+_PG_TYPE_DISPLAY_NAMES: dict[str, str] = {
+    "bool": "boolean",
+    "int2": "smallint",
+    "int4": "integer",
+    "int8": "bigint",
+    "float4": "real",
+    "float8": "double precision",
+    "varchar": "character varying",
+    "bpchar": "character",
+    "timestamptz": "timestamp with time zone",
+    "timetz": "time with time zone",
+}
+
 # Real PG relation oids for catalog classes. `'pg_extension'::regclass::oid`
 # must land as a number — _pg_depend.refclassid is INTEGER — so the reg-cast
 # name literal is mapped through this table instead of CAST('name' AS BIGINT).
@@ -91,10 +109,14 @@ _REG_CAST_TYPES = frozenset(
 )
 
 
-def _rewrite_pg_cast(node):
+def _rewrite_pg_cast(node, _transform):
     """Rewrite a PG-catalog-only cast into a DuckDB-compatible expression.
 
     Returns the replacement node, or None when the cast needs no rewrite.
+    ``_transform`` is the enclosing ``_rewrite_for_duckdb`` walk, needed to
+    recursively rewrite operands (e.g. a ``pg_get_serial_sequence(...)`` call)
+    that this function splices into a brand-new subtree instead of returning
+    unchanged for the top-down `.transform()` walk to revisit.
     """
     import sqlglot.expressions as exp
 
@@ -106,11 +128,14 @@ def _rewrite_pg_cast(node):
         # 'pg_class'), and DataGrip's comment queries filter
         # `classoid = 'pg_catalog.pg_class'::regclass`. Map the literal to its last
         # dotted component so the comparison matches — else every table/column
-        # description drops. Non-literal operands (a real oid column) pass through.
+        # description drops. Non-literal operands (a real oid column, or a call
+        # like pg_get_serial_sequence(...)) pass through untouched by the
+        # top-down walk that got us here — transform explicitly so a rewrite
+        # inside the operand (e.g. pg_get_serial_sequence → NULL) is not lost.
         inner = node.this
         if isinstance(inner, exp.Literal) and inner.is_string:
             return exp.Literal.string(inner.this.rsplit(".", 1)[-1])
-        return inner
+        return inner.transform(_transform)
     if dtype_str in ("oid", "xid", "tid", "cid"):
         # DuckDB has no oid/xid/tid/cid types. Preserve the operand's value by
         # re-casting to BIGINT instead of dropping it — e.g. DataGrip emits
@@ -123,15 +148,22 @@ def _rewrite_pg_cast(node):
             # Chained cast (e.g. 'pg_extension'::regclass::oid): the transform
             # visits this outer cast before the inner one, and sqlglot's
             # exp.cast() builder raises on the not-yet-rewritten reg type.
-            # Rewrite the inner cast first.
-            inner = _rewrite_pg_cast(inner) or inner
+            # Rewrite the inner cast first; _rewrite_pg_cast's own return paths
+            # are already fully transformed, so no further transform is needed.
+            inner = _rewrite_pg_cast(inner, _transform) or inner.transform(_transform)
+        elif isinstance(inner, exp.Literal) and inner.is_string:
+            class_oid = _CATALOG_CLASS_OIDS.get(inner.this.rsplit(".", 1)[-1])
+            if class_oid is not None:
+                return exp.Literal.number(class_oid)
+        else:
+            inner = inner.transform(_transform)
         if isinstance(inner, exp.Literal) and inner.is_string:
             class_oid = _CATALOG_CLASS_OIDS.get(inner.this.rsplit(".", 1)[-1])
             if class_oid is not None:
                 return exp.Literal.number(class_oid)
         return exp.cast(inner, "BIGINT")
     if dtype_str == "name":
-        return exp.cast(node.this, "VARCHAR")
+        return exp.cast(node.this.transform(_transform), "VARCHAR")
     return None
 
 
@@ -217,6 +249,13 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
                 return new_tbl
         if isinstance(node, exp.Anonymous):
             fn = node.name.lower()
+            if fn == "json_build_object":
+                # DuckDB has no json_build_object; json_object takes the same
+                # alternating key/value argument list.
+                args = node.args.get("expressions", [])
+                return exp.Anonymous(
+                    this="json_object", expressions=[a.transform(_transform) for a in args]
+                )
             if fn == "array_length":
                 args = node.args.get("expressions", [])
                 return exp.Anonymous(this="len", expressions=[args[0]] if args else [exp.null()])
@@ -240,17 +279,33 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
             if "pg_encoding_to_char" in fn:
                 return exp.Literal.string("UTF8")
             if "format_type" in fn:
+                # sqlglot visits parents before children, so args[0] here is still
+                # the untransformed original expr (e.g. a schema-qualified column
+                # like pg_catalog.pg_attribute.atttypid) — embedding it as-is into
+                # the replacement subquery skips the db-qualifier strip below and
+                # DuckDB then fails to bind it. Transform it explicitly first.
                 args = node.args.get("expressions", [])
-                typid_expr = args[0] if args else exp.null()
+                typid_expr = args[0].transform(_transform) if args else exp.null()
+                display_name = exp.Case(
+                    this=exp.column("typname"),
+                    ifs=[
+                        exp.If(
+                            this=exp.Literal.string(internal),
+                            true=exp.Literal.string(display),
+                        )
+                        for internal, display in _PG_TYPE_DISPLAY_NAMES.items()
+                    ],
+                    default=exp.column("typname"),
+                )
                 subq = (
-                    exp.select(exp.column("typname"))
+                    exp.select(display_name)
                     .from_("_pg_type")
                     .where(exp.EQ(this=exp.column("oid"), expression=typid_expr))
                 )
                 return exp.Subquery(this=subq)
             if "obj_description" in fn or "shobj_description" in fn:
                 args = node.args.get("expressions", [])
-                oid_expr = args[0] if args else exp.null()
+                oid_expr = args[0].transform(_transform) if args else exp.null()
                 subq = (
                     exp.select(exp.column("description"))
                     .from_("_pg_description")
@@ -260,8 +315,8 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
                 return exp.Subquery(this=subq)
             if "col_description" in fn:
                 args = node.args.get("expressions", [])
-                oid_expr = args[0] if args else exp.null()
-                attnum_expr = args[1] if len(args) > 1 else exp.null()
+                oid_expr = args[0].transform(_transform) if args else exp.null()
+                attnum_expr = args[1].transform(_transform) if len(args) > 1 else exp.null()
                 subq = (
                     exp.select(exp.column("description"))
                     .from_("_pg_description")
@@ -366,7 +421,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
                     expressions=[arr.transform(_transform), rhs.transform(_transform)],
                 )
         if isinstance(node, exp.Cast):
-            rewritten_cast = _rewrite_pg_cast(node)
+            rewritten_cast = _rewrite_pg_cast(node, _transform)
             if rewritten_cast is not None:
                 return rewritten_cast
         if isinstance(node, exp.Column):

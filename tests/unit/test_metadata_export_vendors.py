@@ -216,10 +216,10 @@ def _snapshot_with_data_product():  # REQ-1634
     config = governed_config()
     config.data_products = [
         DataProduct(
-            id="prod", domain_id="sales", name="Sales 360", owner="alice", description="Unified"
+            id="prod", domain_id="sales", name="Sales 360", owner_role="alice", purpose="Unified"
         )
     ]
-    return build_snapshot(config, org_id=ORG_ID, dialect="postgres")
+    return build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
 
 
 def test_atlas_data_product_aggregates_rdbms_tables_by_fqn():  # REQ-1634

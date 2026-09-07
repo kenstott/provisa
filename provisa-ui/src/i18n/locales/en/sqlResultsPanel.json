@@ -62,6 +62,8 @@
     "analyzeEstimated": "estimated (statement not executed)",
     "analyzeOptimizations": "Provisa optimizations:",
     "analyzeExpand": "Expand plan",
+    "resultsExpand": "Expand results",
+    "resultsExpandTitle": "Results",
     "analyzeExpandTitle": "Query plan",
     "analyzeResize": "Drag to resize the panes",
     "analyzeColOperator": "Operator",

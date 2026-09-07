@@ -12,7 +12,6 @@
 // environment pickers, admin rail — belongs to a session that has already identified itself, so
 // /login and /register render the standalone landing card instead, however the visitor arrives.
 import { describe, it, expect, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
 import { render, screen, waitFor } from "../test-utils/render";
 import { IdentityRoutes } from "../App";
 
@@ -24,11 +23,10 @@ const shell = <div data-testid="app-shell">navbar and pages</div>;
 
 function renderAt(path: string) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <IdentityRoutes onLoginSuccess={vi.fn()} authDisabled={false}>
-        {shell}
-      </IdentityRoutes>
-    </MemoryRouter>,
+    <IdentityRoutes onLoginSuccess={vi.fn()} authDisabled={false}>
+      {shell}
+    </IdentityRoutes>,
+    { initialEntries: [path] },
   );
 }
 

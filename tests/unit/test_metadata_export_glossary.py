@@ -97,7 +97,9 @@ def test_terms_follow_the_data_product_filter():
             _table("staging", product_id=None, columns=["hidden_id"]),
         ]
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", glossary=_glossary())
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=_glossary()
+    )
     names = {t.name for t in snapshot.glossary_terms}
     # 'shadow' is rooted only in the withheld table, so it is withheld with it; the
     # abstract term publishes on the edge that still reaches a published column.
@@ -116,7 +118,9 @@ def test_export_excluded_term_is_withheld_with_its_edges():
     config = _config([_table("orders", columns=["cust_id"])])
     glossary = _glossary()
     glossary["terms"][0]["export_excluded"] = True  # customer opts out
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", glossary=glossary)
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
+    )
     names = {t.name for t in snapshot.glossary_terms}
     # customer is withheld by the checkbox even though its column publishes; its
     # edge to party dies with it. party still publishes as abstract vocabulary.
@@ -131,7 +135,9 @@ def test_retired_term_is_withheld_and_stops_grounding_its_dependents():
     config = _config([_table("orders", columns=["cust_id"])])
     glossary = _glossary()
     glossary["terms"][0]["retired"] = True  # customer taken out of service
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", glossary=glossary)
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
+    )
     assert snapshot.glossary_terms == []
     assert snapshot.glossary_edges == []
 
@@ -142,19 +148,23 @@ def test_undefined_and_ungrounded_terms_never_reach_a_vendor():
     config = _config([_table("orders", columns=["cust_id"])])
     glossary = _glossary()
     glossary["terms"][0]["definition"] = None  # customer is still just a column name
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", glossary=glossary)
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
+    )
     # customer drops as undefined, but it still conducts: grounding is structural, so party's
     # chain reaches a real column through it either way.
     assert {t.name for t in snapshot.glossary_terms} == {"party"}
 
     glossary = _glossary()
     glossary["edges"] = []  # party wired to nothing physical
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", glossary=glossary)
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
+    )
     assert {t.name for t in snapshot.glossary_terms} == {"customer"}
 
 
 def test_snapshot_without_glossary_is_empty_not_absent():
     config = _config([_table("orders")])
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert snapshot.glossary_terms == []
     assert snapshot.glossary_edges == []

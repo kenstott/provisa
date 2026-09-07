@@ -15,20 +15,19 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "../test-utils/render";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import { OrgAddressModal } from "../components/OrgAddressModal";
 
 function renderModal(onClose = () => {}) {
   return render(
-    <MemoryRouter initialEntries={["/onboard"]}>
-      <Routes>
-        <Route
-          path="/onboard"
-          element={<OrgAddressModal url="https://acme.provisa.dev" opened onClose={onClose} />}
-        />
-        <Route path="/team" element={<div data-testid="team-page-stub" />} />
-      </Routes>
-    </MemoryRouter>,
+    <Routes>
+      <Route
+        path="/onboard"
+        element={<OrgAddressModal url="https://acme.provisa.dev" opened onClose={onClose} />}
+      />
+      <Route path="/team" element={<div data-testid="team-page-stub" />} />
+    </Routes>,
+    { initialEntries: ["/onboard"] },
   );
 }
 

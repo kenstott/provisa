@@ -21,9 +21,12 @@
     "addCheck": "Add check",
     "dryRun": "Dry run",
     "dryRunHelp": "Runs the contract against the live table and lands nothing.",
+    "runNow": "Run now",
+    "runNowHelp": "Runs the scheduled check job immediately and lands the result.",
     "dryRunNoResponse": "The dry run returned no response.",
     "datasetLabel": "Dataset",
     "datasetHelp": "The table the checker observes, as '<data source>/<schema>/<table>'. It is resolved against the governed catalog, the same way the scan resolves it.",
+    "datasetTableLabel": "Table",
     "argsHelp": "Each row is one check. Edit its args in place — the checker's own contract text is serialized from these rows.",
     "invalidRow": "This row's args did not parse; the previous value was kept."
   }

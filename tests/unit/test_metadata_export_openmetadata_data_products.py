@@ -54,8 +54,8 @@ def _config(*, owner: str | None = "alice") -> ProvisaConfig:
                 id="customer_360",
                 domain_id="sales",
                 name="Customer 360",
-                owner=owner,
-                description="Unified customer view",
+                owner_role=owner,
+                purpose="Unified customer view",
             )
         ],
         roles=[],
@@ -99,7 +99,7 @@ def _data_product_put(puts) -> dict:
 
 @pytest.mark.asyncio
 async def test_data_product_publishes_with_resolved_member_and_owner(monkeypatch):
-    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
     puts = _mock_transport(monkeypatch)
 
     result = await OpenMetadataExport(_export_config()).publish(snapshot)
@@ -117,7 +117,7 @@ async def test_data_product_publishes_with_resolved_member_and_owner(monkeypatch
 
 @pytest.mark.asyncio
 async def test_data_product_without_owner_publishes_with_no_owners_field(monkeypatch):
-    snapshot = build_snapshot(_config(owner=None), org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(_config(owner=None), org_id="acme", dialect="postgres", contexts={})
     puts = _mock_transport(monkeypatch)
 
     result = await OpenMetadataExport(_export_config()).publish(snapshot)
@@ -132,7 +132,7 @@ async def test_data_product_owner_is_upserted_as_a_user_even_without_a_stewarded
 ):
     # alice is a data-product owner but not any domain's steward — the /api/v1/users upsert
     # must still happen, or owner resolution fails for every such product.
-    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
     puts = _mock_transport(monkeypatch)
 
     await OpenMetadataExport(_export_config()).publish(snapshot)
@@ -142,7 +142,7 @@ async def test_data_product_owner_is_upserted_as_a_user_even_without_a_stewarded
 
 @pytest.mark.asyncio
 async def test_data_product_reports_error_when_member_table_upsert_failed(monkeypatch):
-    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
 
     async def _put(self, url, json=None, headers=None):
         if url.endswith("/tables"):

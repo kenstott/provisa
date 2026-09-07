@@ -13,7 +13,6 @@
 // one they do not hold leads straight to a permission error.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MemoryRouter } from "react-router-dom";
 import { cleanup, render, screen } from "../test-utils/render";
 import { AdminRail } from "../components/AdminRail";
 
@@ -34,11 +33,7 @@ beforeEach(() => {
 });
 
 function renderAt(path: string) {
-  render(
-    <MemoryRouter initialEntries={[path]}>
-      <AdminRail />
-    </MemoryRouter>,
-  );
+  render(<AdminRail />, { initialEntries: [path] });
 }
 
 describe("AdminRail", () => {

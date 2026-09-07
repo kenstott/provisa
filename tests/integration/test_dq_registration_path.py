@@ -42,6 +42,7 @@ from provisa.core.schema_org import (
     table_columns,
 )
 from provisa.dq.results import DQ_PROMOTIONS, DQ_WATERMARK_COLUMN, RESULT_FIELDS
+from tests.helpers import dq_contexts
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -64,6 +65,21 @@ columns:
     checks:
       - missing:
 """
+
+
+@pytest.fixture(autouse=True)
+def _compiled_estate():
+    """The dataset resolves against the compiled contexts — the pgwire names, ``{domain-slug}.{table}``
+    — so the governed estate this path checks is what the schema build published, not a catalog read.
+    Tests about an UNGOVERNED dataset empty it."""
+    from provisa.api.app import state
+
+    state.contexts = dq_contexts(
+        (1, "warehouse", "sales", "sales", "orders"),
+        (2, "dq", "default", "quality", "orders_scans"),
+    )
+    yield
+    state.contexts = {}
 
 
 @asynccontextmanager
@@ -95,7 +111,7 @@ async def _seed_estate(conn, checker_type: str = "soda") -> None:
         conn,
         Table(
             source_id="warehouse",
-            domain_id="default",
+            domain_id="sales",
             schema="sales",
             table="orders",
             columns=[Column(name="id", data_type="bigint", visible_to=["analyst"])],
@@ -155,6 +171,17 @@ async def test_a_checker_table_registered_without_a_contract_is_rejected(tmp_pat
             await apply_dq_registration(conn, _results_table(contract=None))
 
 
+async def test_a_checker_table_declaring_its_own_product_is_rejected(tmp_path):
+    """REQ-1443 clause 10: the same rule the YAML loader applies — the product is the scanned
+    table's, derived at read time, never a column on the results table."""
+    async with _conn(tmp_path) as conn:
+        await _seed_estate(conn)
+        model = _results_table()
+        model.product_id = "orders-product"
+        with pytest.raises(ValueError, match="cannot declare product_id"):
+            await apply_dq_registration(conn, model)
+
+
 async def test_a_contract_on_a_non_checker_source_is_rejected(tmp_path):
     """The same whole-estate rule the YAML loader applies — its rows would come from wherever that
     source's loader fetched them, which the results schema does not describe."""
@@ -168,7 +195,10 @@ async def test_a_contract_on_a_non_checker_source_is_rejected(tmp_path):
 
 async def test_a_contract_naming_an_ungoverned_table_is_rejected(tmp_path):
     """A checker may only observe what Provisa governs (REQ-967) — and on this path "governed" means
-    what the control plane actually has registered, not what a config file listed."""
+    what the compiled schema actually publishes, not what a config file listed."""
+    from provisa.api.app import state
+
+    state.contexts = {}
     async with _conn(tmp_path) as conn:
         await conn.execute_core(insert(sources).values(id="dq", type="soda"))
         with pytest.raises(ValueError, match="resolves to no governed table"):
@@ -184,7 +214,7 @@ async def test_a_contract_pointed_at_its_own_results_table_is_rejected(tmp_path)
         await apply_dq_registration(conn, registered)
         await table_repo.upsert(conn, registered)
 
-        model = _results_table(contract="dataset: provisa/quality/orders_scans\n")
+        model = _results_table(contract="dataset: provisa/default/orders_scans\n")
         with pytest.raises(ValueError, match="resolves to the results table itself"):
             await apply_dq_registration(conn, model)
 
@@ -273,7 +303,9 @@ async def test_a_dry_run_against_an_ungoverned_dataset_reports_where_it_resolved
     """The whole point of the dry run: the contract parses, the checker would happily scan, and the
     panel still has to say that the dataset names nothing Provisa governs."""
     from provisa.api.admin._dq_resolvers import dry_run_contract
+    from provisa.api.app import state
 
+    state.contexts = {}
     async with _conn(tmp_path) as conn:
         await conn.execute_core(insert(sources).values(id="dq", type="soda", mapping=_MAPPING))
         result = await dry_run_contract(conn, source_id="dq", contract_text=CONTRACT)

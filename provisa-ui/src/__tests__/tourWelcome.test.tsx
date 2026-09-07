@@ -16,7 +16,6 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
-import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../pageChunks", () => ({ prefetchAllPageChunks: () => Promise.resolve() }));
 vi.mock("../hooks/useAdminQueries", () => ({ useTourPrefetch: () => () => Promise.resolve() }));
@@ -56,11 +55,9 @@ function Compass() {
 
 function renderModal(onClose = () => {}) {
   return render(
-    <MemoryRouter>
-      <TourProvider>
-        <TourWelcomeModal onClose={onClose} />
-      </TourProvider>
-    </MemoryRouter>,
+    <TourProvider>
+      <TourWelcomeModal onClose={onClose} />
+    </TourProvider>,
   );
 }
 
@@ -112,11 +109,9 @@ describe("tour welcome offer", () => {
   it("still starts the tour from a declined state", async () => {
     declineTour();
     render(
-      <MemoryRouter>
-        <TourProvider>
-          <Compass />
-        </TourProvider>
-      </MemoryRouter>,
+      <TourProvider>
+        <Compass />
+      </TourProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "launch" }));
 
@@ -144,11 +139,10 @@ describe("where the offer is made", () => {
 
   function renderAt(path: string) {
     return render(
-      <MemoryRouter initialEntries={[path]}>
-        <TourProvider>
-          <TourAutoStart demoMode={false} />
-        </TourProvider>
-      </MemoryRouter>,
+      <TourProvider>
+        <TourAutoStart demoMode={false} />
+      </TourProvider>,
+      { initialEntries: [path] },
     );
   }
 

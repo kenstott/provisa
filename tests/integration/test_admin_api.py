@@ -208,6 +208,7 @@ class TestViewRegistrationRefreshPolicy:
                             sourceId
                             viewSql
                             refreshPolicySummary { serving text }
+                            graphqlFieldName
                         }
                     }
                 """,
@@ -221,3 +222,5 @@ class TestViewRegistrationRefreshPolicy:
         assert view is not None, "registered view missing from tables query"
         assert view["sourceId"] == "__derived__"
         assert view["refreshPolicySummary"] is None
+        # REQ-1634: no role's compiled schema exposes this brand-new domain/table yet.
+        assert view["graphqlFieldName"] is None

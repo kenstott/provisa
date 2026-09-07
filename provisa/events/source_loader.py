@@ -160,7 +160,7 @@ def make_openapi_loader(
     return _load
 
 
-def make_dq_loader(tables: list) -> AdapterLoader:
+def make_dq_loader(app_state: Any) -> AdapterLoader:
     """Build the data-quality checker row-fetch (REQ-1443).
 
     A checker table's "current rows" are one scan's results, so the load RUNS the contract: the
@@ -169,9 +169,10 @@ def make_dq_loader(tables: list) -> AdapterLoader:
     refreshes on the same cadence machinery as any other table, with no separate scheduler.
 
     The endpoint the checker connects back through is ``source.mapping`` (the per-source
-    type-specific DSL, REQ-251): host, port, database, user, password. ``tables`` is the governed
-    table list the contract's dataset resolves against — a contract aimed at a table Provisa does not
-    govern raises :class:`~provisa.dq.contract.ContractError` there, not here.
+    type-specific DSL, REQ-251): host, port, database, user, password. The contract's dataset
+    names the pgwire schema/table, resolved against ``app_state.contexts`` (read per load, since
+    the property is org-routed) — a contract aimed at a table Provisa does not govern raises
+    :class:`~provisa.dq.contract.ContractError` there, not here.
     """
 
     async def _load(source: Any, table: Any) -> list[dict]:
@@ -188,7 +189,7 @@ def make_dq_loader(tables: list) -> AdapterLoader:
                 f"a checker table's rows are the results of running one"
             )
         dataset = contract_dataset(table.dq_contract, stype)
-        target = resolve_contract_target(dataset, tables)
+        target = resolve_contract_target(dataset, app_state.contexts)
         mapping = source.mapping
         return await run_contract(
             checker=stype,

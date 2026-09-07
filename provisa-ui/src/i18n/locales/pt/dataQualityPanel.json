@@ -21,6 +21,8 @@
     "addCheck": "Adicionar verificação",
     "dryRun": "Execução de teste",
     "dryRunHelp": "Executa o contrato na tabela em produção e não grava nada.",
+    "runNow": "Executar agora",
+    "runNowHelp": "Executa imediatamente o job de verificação agendado e grava o resultado.",
     "dryRunNoResponse": "A execução de teste não devolveu resposta.",
     "datasetLabel": "Conjunto de dados",
     "datasetHelp": "A tabela que o verificador observa, no formato «<fonte de dados>/<esquema>/<tabela>». Ela é resolvida no catálogo governado, do mesmo modo que a varredura a resolve.",

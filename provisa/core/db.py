@@ -104,6 +104,11 @@ _ORG_ADMIN_CAPABILITIES: list[str] = [
     # scope and the author lock safe, so a term whose authors have all left, or one scoped
     # to the whole org, still has someone who can maintain it.
     "org_glossary_rw",
+    # REQ-1634: data products' two rights. Curating the catalog (create/delete) stays with
+    # org_admin, on the same footing as table_registration; reading it is granted separately
+    # below to analyst/developer/modeler.
+    "data_product_read",
+    "data_product_rw",
 ]
 
 # REQ-1597: the rights sandbox does NOT inherit from org_admin -- see the seed entry below.
@@ -127,7 +132,10 @@ _SANDBOX_DENIED: frozenset[str] = frozenset(
 
 _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
     ("org_admin", _ORG_ADMIN_CAPABILITIES),
-    ("analyst", ["usage", "query_development", "glossary_read"]),  # REQ-1590
+    (
+        "analyst",
+        ["usage", "query_development", "glossary_read", "data_product_read"],
+    ),  # REQ-1590, REQ-1634
     (
         "developer",
         [
@@ -140,6 +148,7 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
             "environment_management",  # REQ-1573
             "environment_switch",  # REQ-1573
             "glossary_read",  # REQ-1590
+            "data_product_read",  # REQ-1634
         ],
     ),
     # REQ-1297: modeler is the only system role holding ignore_relationships — the discovery role
@@ -156,6 +165,7 @@ _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
             # REQ-1590: modeler is the model-curation role, so it curates the glossary too.
             "glossary_read",
             "glossary_rw",
+            "data_product_read",  # REQ-1634
         ],
     ),
     # REQ-1597: sandbox is what a "Try it Out" invitation confers. It is org_admin's capability list
@@ -336,6 +346,15 @@ async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy:
             if role_id == "org_admin" and "org_glossary_rw" not in caps:
                 caps.add("org_glossary_rw")
                 changed = True
+            # REQ-1634: data products' two rights — org_admin curates, org_admin/analyst/
+            # developer/modeler read. Same seam and same reason as the glossary rights above.
+            if role_id in ("org_admin", "analyst", "developer", "modeler"):
+                if "data_product_read" not in caps:
+                    caps.add("data_product_read")
+                    changed = True
+            if role_id == "org_admin" and "data_product_rw" not in caps:
+                caps.add("data_product_rw")
+                changed = True
             if role_id == "org_admin":
                 for right in ("org_settings", "observability"):
                     if right not in caps:
@@ -446,6 +465,9 @@ async def apply_tenancy_role_grants(  # REQ-1337
             (("org_admin", "modeler"), "glossary_rw"),
             # REQ-1592: org_admin alone owns the org's glossary — see the seed table above.
             (("org_admin",), "org_glossary_rw"),
+            # REQ-1634: data products' two rights — same seam as the glossary pair above.
+            (("org_admin", "analyst", "developer", "modeler"), "data_product_read"),
+            (("org_admin",), "data_product_rw"),
         ):
             id_list = ", ".join(f"'{r}'" for r in role_ids)
             await conn.execute(

@@ -44,6 +44,11 @@ export function tableLabel(dbTableName: string): string {
   return splitCypherLabels(dbTableName)[1];
 }
 
+/** Mirror of Python domain_to_sql_name (REQ-471): domain id → the SQL schema name it's exposed as. */
+export function domainToSqlName(domainId: string): string {
+  return domainId.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
+}
+
 /** Mirror of Python apply_sql_name (snake convention): camelCase/PascalCase → snake_case. */
 export function toSnakeCase(name: string): string {
   // camelCase / PascalCase → snake_case (intermediate normalization only — not for UI display)

@@ -103,6 +103,12 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # unmaintainable the moment their people leave. Seeded to org_admin only; GLOSSARY_RW remains the
     # ordinary curator's right, bounded by the domains its ROLE carries.
     ORG_GLOSSARY_RW = "org_glossary_rw"
+    # REQ-1634: data products' two rights, on the same seam as the glossary pair above. Reading
+    # which products exist is how an analyst/developer/modeler finds what a domain already
+    # publishes, so it is a read right rather than ORG_SETTINGS. Creating and deleting a product
+    # is catalog curation, on the same footing as TABLE_REGISTRATION — org_admin only.
+    DATA_PRODUCT_READ = "data_product_read"
+    DATA_PRODUCT_RW = "data_product_rw"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
 

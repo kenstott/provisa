@@ -120,7 +120,16 @@ def stage_and_external_table_ddl(
             f" CREDENTIALS = (AWS_KEY_ID = '{cred['access_key_id']}' "
             f"AWS_SECRET_KEY = '{cred['secret_access_key']}')"
         )
-    endpoint_clause = f" ENDPOINT = '{cred['endpoint']}'" if cred.get("endpoint") else ""
+    # An S3-compatible ENDPOINT (R2, MinIO, ...) requires the s3compat:// URL scheme rather than
+    # s3:// — Snowflake rejects ENDPOINT on the default (real AWS S3) storage type with "Endpoint
+    # cannot be used with storage type S3". STORAGE_PROVIDER is a STORAGE INTEGRATION property, not
+    # a CREATE STAGE property, so it does not appear here (credentials ride the stage directly).
+    # ENDPOINT is a bare host (no scheme) — Snowflake rejects a URL-shaped value.
+    endpoint_clause = ""
+    if cred.get("endpoint"):
+        url = url.replace("s3://", "s3compat://", 1)
+        bare_endpoint = cred["endpoint"].split("://", 1)[-1]
+        endpoint_clause = f" ENDPOINT = '{bare_endpoint}'"
     fq = f'"{database}"."{schema}"."{table}"'
     stage_fq = f'"{database}"."{schema}"."{stage}"'
     pattern_clause = f" PATTERN = '.*{pattern}'" if pattern else ""

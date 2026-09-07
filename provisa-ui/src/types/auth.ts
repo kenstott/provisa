@@ -53,7 +53,12 @@ export type Capability =
   // authored it, and is alone in being able to scope a term to the whole org ("*"). Seeded to
   // org_admin only; it widens what a curator may do rather than opening the surface, so a holder
   // carries `glossary_read` and `glossary_rw` as well.
-  | "org_glossary_rw";
+  | "org_glossary_rw"
+  // REQ-1634: data products' two rights. `data_product_read` opens the surface — org_admin,
+  // analyst, developer, and modeler all hold it. `data_product_rw` is create/delete, on the
+  // same footing as `table_registration`: org_admin only.
+  | "data_product_read"
+  | "data_product_rw";
 
 export interface RoleRateLimit {
   requestsPerSecond: number | null;

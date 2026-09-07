@@ -165,7 +165,7 @@ export function ColumnPresetsEditor({ presets, columns, columnTypes, onChange }:
   };
 
   return (
-    <Stack gap="xs" data-testid="column-presets-editor">
+    <Stack gap="xs" mt="md" data-testid="column-presets-editor">
       <Group gap={4} align="center">
         <Text size="sm" c="dimmed">
           {t("columnPresetsEditor.label")}

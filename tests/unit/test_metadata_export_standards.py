@@ -136,7 +136,7 @@ def snapshot():
         ],
         rls_rules=[RLSRule(table_id="orders", role_id="analyst", filter=RLS_FILTER)],
     )
-    return build_snapshot(config, org_id="acme", dialect="postgres")
+    return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
 
 def _export_config(provider: str) -> MetadataExportConfig:
@@ -210,12 +210,12 @@ def test_openlineage_dataset_facet_names_its_data_product():  # REQ-1634
                 id="prod",
                 domain_id="sales",
                 name="Sales 360",
-                owner="alice",
-                description="Unified",
+                owner_role="alice",
+                purpose="Unified",
             )
         ],
     )
-    snap = build_snapshot(config, org_id="acme", dialect="postgres")
+    snap = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     events = to_events(snap, event_time=EVENT_TIME)
     orders = next(
         e for e in events if e.payload.get("dataset", {}).get("name") == "wh.public.orders"

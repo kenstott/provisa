@@ -21,6 +21,8 @@
     "addCheck": "Aggiungi controllo",
     "dryRun": "Esecuzione di prova",
     "dryRunHelp": "Esegue il contratto sulla tabella in produzione senza scrivere nulla.",
+    "runNow": "Esegui ora",
+    "runNowHelp": "Esegue immediatamente il job di controllo pianificato e salva il risultato.",
     "dryRunNoResponse": "L'esecuzione di prova non ha restituito alcuna risposta.",
     "datasetLabel": "Dataset",
     "datasetHelp": "La tabella osservata dal verificatore, nella forma «<origine dati>/<schema>/<tabella>». Viene risolta sul catalogo governato, allo stesso modo della scansione.",

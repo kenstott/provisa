@@ -11,13 +11,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ReactElement } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
 import { LoginPage } from "../pages/LoginPage";
 import { CLAIMED_ADMIN_FLAG } from "../components/PlatformAdminWelcomeModal";
 
-// LoginPage calls useNavigate; the shared render wrapper has no Router, so provide one here.
-const renderLogin = (ui: ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>);
+const renderLogin = (ui: ReactElement) => render(ui);
 
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other files and drops exports they need.

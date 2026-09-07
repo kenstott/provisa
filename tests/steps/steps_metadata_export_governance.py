@@ -75,7 +75,7 @@ def _governed_config(shared_data):
 @when("a metadata snapshot is built for the org")
 def _build(shared_data):
     shared_data["snapshot"] = build_snapshot(
-        shared_data["config"], org_id="acme", dialect="postgres"
+        shared_data["config"], org_id="acme", dialect="postgres", contexts={}
     )
 
 

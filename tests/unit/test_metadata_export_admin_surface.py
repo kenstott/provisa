@@ -126,7 +126,7 @@ def surface(monkeypatch, tmp_path):
     monkeypatch.setattr(org_settings_mod, "write_org_overrides", _write)
     monkeypatch.setattr(
         "provisa.api.app.state",
-        types.SimpleNamespace(tenant_db=_TenantDb(tmp_path), config=object()),
+        types.SimpleNamespace(tenant_db=_TenantDb(tmp_path), config=object(), contexts={}),
         raising=False,
     )
 
@@ -350,7 +350,7 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
     monkeypatch.setattr(
         sync_mod,
         "build_snapshot",
-        lambda config, *, org_id, dialect, glossary=None, dq_outcomes=None: object(),
+        lambda config, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None: object(),
     )
 
     async def _stub_model():

@@ -61,6 +61,9 @@ const ViewsPage = lazy(() => import("./pages/ViewsPage").then((m) => ({ default:
 const MetricsPage = lazy(() =>
   import("./pages/MetricsPage").then((m) => ({ default: m.MetricsPage })),
 );
+const DataProductsPage = lazy(() =>
+  import("./pages/DataProductsPage").then((m) => ({ default: m.DataProductsPage })),
+); // REQ-1634
 const RequestsPage = lazy(() =>
   import("./pages/RequestsPage").then((m) => ({ default: m.RequestsPage })),
 );
@@ -452,6 +455,17 @@ function App() {
                                       fallback={<NotAuthorized />}
                                     >
                                       <MetricsPage />
+                                    </CapabilityGate>
+                                  }
+                                />
+                                <Route
+                                  path="/data-products"
+                                  element={
+                                    <CapabilityGate
+                                      capability="data_product_read"
+                                      fallback={<NotAuthorized />}
+                                    >
+                                      <DataProductsPage />
                                     </CapabilityGate>
                                   }
                                 />

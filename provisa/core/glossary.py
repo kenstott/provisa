@@ -301,31 +301,19 @@ def readable_term(allowed: "AbstractSet[str] | None", term_domains: "AbstractSet
     return ENTERPRISE_DOMAIN in term_domains or within_domains(allowed, term_domains)
 
 
-def live_term_ids(
+def grounded_term_ids(
     terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int]]", rooted: "AbstractSet[int]"
 ) -> set[int]:
-    """The terms a consuming surface may offer, by the one admission rule (REQ-1387).
+    """Term ids connected, over in-service terms, to a term holding a physical ref.
 
-    A term is live when it is all three of:
+    Structural only — ignores ``definition``, unlike :func:`live_term_ids`. This is what a
+    curation surface checks to warn on a dangling abstract term: one with no definition is
+    merely a proposal, but one with no path to a column names no data at all, which a missing
+    definition alone does not convey.
 
-    * **in service** — neither ``retired`` (a curator took it out) nor ``deprecated``
-      (the derivation lost its last column but the row was kept as an anchor);
-    * **defined** — it carries a definition. A term derived from a column name is a
-      token, not a meaning: "customer" off ``cust_id`` tells an agent nothing the schema
-      does not already say, so an undefined term is a proposal awaiting a curator, never
-      vocabulary to ground a question on;
-    * **grounded** — connected, over in-service terms, to a term that holds a physical
-      ref. The glossary is an entry point into the data, so every chain must terminate
-      at a column; an abstract term wired to nothing physical names no data and cannot
-      answer anything.
-
-    Connectivity is structural and ignores definitions: an abstract term reaches data
-    through an undefined rooted term just as well as a defined one. Out-of-service terms
-    do not conduct — a retired term must not keep its dependents alive.
-
-    ``rooted`` is the set of term ids holding at least one physical ref. Callers supply
-    it because the two callers count refs differently: the repository counts every ref,
-    the exporter counts only refs whose column actually publishes.
+    ``rooted`` is the set of term ids holding at least one physical ref. Callers supply it
+    because the two callers count refs differently: the repository counts every ref, the
+    exporter counts only refs whose column actually publishes.
     """
     by_id = {t["id"]: t for t in terms}
     conducting = {
@@ -344,4 +332,30 @@ def live_term_ids(
             if neighbor not in grounded:
                 grounded.add(neighbor)
                 frontier.append(neighbor)
+    return grounded
+
+
+def live_term_ids(
+    terms: "Iterable[Mapping]", edges: "Iterable[tuple[int, int]]", rooted: "AbstractSet[int]"
+) -> set[int]:
+    """The terms a consuming surface may offer, by the one admission rule (REQ-1387).
+
+    A term is live when it is all three of:
+
+    * **in service** — neither ``retired`` (a curator took it out) nor ``deprecated``
+      (the derivation lost its last column but the row was kept as an anchor);
+    * **defined** — it carries a definition. A term derived from a column name is a
+      token, not a meaning: "customer" off ``cust_id`` tells an agent nothing the schema
+      does not already say, so an undefined term is a proposal awaiting a curator, never
+      vocabulary to ground a question on;
+    * **grounded** — see :func:`grounded_term_ids`. The glossary is an entry point into
+      the data, so every chain must terminate at a column; an abstract term wired to
+      nothing physical names no data and cannot answer anything.
+
+    Connectivity is structural and ignores definitions: an abstract term reaches data
+    through an undefined rooted term just as well as a defined one. Out-of-service terms
+    do not conduct — a retired term must not keep its dependents alive.
+    """
+    by_id = {t["id"]: t for t in terms}
+    grounded = grounded_term_ids(terms, edges, rooted)
     return {tid for tid in grounded if (by_id[tid].get("definition") or "").strip()}

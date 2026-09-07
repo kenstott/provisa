@@ -126,7 +126,8 @@ def _column_asset(table: Table, column, org_id: str) -> ColumnAsset:
 def _table_assets(
     tables: list[Table],
     org_id: str,
-    technical_columns: frozenset[tuple[tuple[str, ...], str]] = frozenset(),
+    technical_columns: frozenset[tuple[tuple[str, ...], str]],
+    product_ids: dict[tuple[str, ...], str | None],
 ) -> list[TableAsset]:
     return [
         TableAsset(
@@ -143,21 +144,65 @@ def _table_assets(
                 if (table_ref(table).parts, column.name) not in technical_columns
             ],
             semantic_uri=table_uri(org_id, table),
-            data_product=table.product_id is not None,  # REQ-1592: model-report column, kept
+            # REQ-1592: model-report column, kept. REQ-1443 clause 10: a checker table's flag is
+            # the one it inherits from the table it scans.
+            data_product=product_ids[table_ref(table).parts] is not None,
         )
         for table in tables
     ]
 
 
+def _contract_target(
+    config: ProvisaConfig, results: Table, contract: str, contexts: dict
+) -> tuple[str, Table]:  # REQ-1443
+    """``(checker, observed)``: the checker dialect ``results``' contract is written in, and the
+    config :class:`Table` its dataset resolves to.
+
+    ``contexts`` is ``state.contexts``: the dataset names the pgwire schema/table, which only the
+    compiled :class:`~provisa.compiler.sql_types.TableMeta` carries; the meta's physical triple then
+    addresses the config table. A contract that fails to parse or resolve raises rather than being
+    skipped — registration already refused one, so text that no longer resolves means the stored
+    contract disagrees with the checker that will run it.
+    """
+    by_physical = {table_ref(table).parts: table for table in config.tables}
+    checker = next(s.type.value for s in config.sources if s.id == results.source_id)
+    meta = resolve_contract_target(contract_dataset(contract, checker), contexts)
+    return checker, by_physical[(meta.source_id, meta.schema_name, meta.table_name)]
+
+
+def _effective_product_ids(
+    config: ProvisaConfig, contexts: dict
+) -> dict[tuple[str, ...], str | None]:  # REQ-1443 clause 10
+    """Every registered table's data-product membership, keyed by :func:`table_ref` parts.
+
+    A checker table's membership is DERIVED: it belongs to whatever product the table its contract
+    scans belongs to, because its rows are observations about that table and publish nowhere else.
+    Registration refuses a stored ``product_id`` on a checker table
+    (:func:`provisa.dq.registration.derive_checker_table`), so this map is the only place the two
+    are joined. Every other table's membership is its own ``product_id``.
+    """
+    product_ids: dict[tuple[str, ...], str | None] = {
+        table_ref(table).parts: table.product_id for table in config.tables
+    }
+    for results, contract in _checker_tables(config):
+        _, observed = _contract_target(config, results, contract, contexts)
+        product_ids[table_ref(results).parts] = observed.product_id
+    return product_ids
+
+
 def _data_product_assets(
-    config: ProvisaConfig, exported: list[Table], org_id: str
+    config: ProvisaConfig,
+    exported: list[Table],
+    org_id: str,
+    product_ids: dict[tuple[str, ...], str | None],
 ) -> list[DataProductAsset]:
     # A product with no exported members does not build: publishing an empty listing would tell
     # the catalog about a product with nothing behind it.
     members_by_product: dict[str, list[Table]] = {}
     for table in exported:
-        if table.product_id is not None:
-            members_by_product.setdefault(table.product_id, []).append(table)
+        product_id = product_ids[table_ref(table).parts]
+        if product_id is not None:
+            members_by_product.setdefault(product_id, []).append(table)
     assets: list[DataProductAsset] = []
     for product in config.data_products:
         members = members_by_product.get(product.id, [])
@@ -169,12 +214,14 @@ def _data_product_assets(
                 id=product.id,
                 name=product.name,
                 domain_id=product.domain_id,
-                owner=OwnerRef(id=product.owner, kind="data_product_owner")
-                if product.owner
+                owner=OwnerRef(id=product.owner_role, kind="data_product_owner")
+                if product.owner_role
                 else None,
-                description=product.description,
+                description=product.purpose,
                 members=tuple(table_ref(t) for t in members),
                 semantic_uri=data_product_uri(org_id, product.domain_id, product.id),
+                support_contact=product.support_contact,
+                publish=product.publish,
             )
         )
     return assets
@@ -413,14 +460,15 @@ def _dq_assertions(
     keep: set[tuple[str, ...]],
     published_columns: set[tuple[str, ...]],
     dq_outcomes: dict[tuple[str, str, str], DataQualityOutcome],
+    contexts: dict,
 ) -> list[DataQualityAssertion]:  # REQ-1443
     """Each registered contract's checks, published on the assets they observe.
 
+    ``contexts`` is ``state.contexts``, resolved through :func:`_contract_target`.
+
     Both ends must publish: the observed asset, because that is what the assertion is about, and
     the results table, because an assertion pointing at an asset the catalog was never sent is the
-    dangling reference the Data Product filter exists to prevent. A contract that fails to parse
-    raises rather than being skipped — registration already refused an unparseable one, so text
-    that no longer parses means the stored contract disagrees with the checker that will run it.
+    dangling reference the Data Product filter exists to prevent.
 
     ``dq_outcomes`` is the last scan's verdicts, keyed the way a results row identifies its check:
     (target table, column name, check type). A check the map does not name has not run — the
@@ -432,9 +480,7 @@ def _dq_assertions(
         results_ref = table_ref(results)
         if results_ref.parts not in keep:
             continue
-        checker = next(s.type.value for s in config.sources if s.id == results.source_id)
-        dataset = contract_dataset(contract, checker)
-        observed = resolve_contract_target(dataset, config.tables)
+        checker, observed = _contract_target(config, results, contract, contexts)
         observed_table_ref = table_ref(observed)
         if observed_table_ref.parts not in keep:
             continue
@@ -543,6 +589,7 @@ def build_snapshot(
     dialect: str,
     glossary: dict | None = None,
     dq_outcomes: dict[tuple[str, str, str], DataQualityOutcome] | None = None,
+    contexts: dict,
     data_products_only: bool = True,
 ) -> MetadataSnapshot:  # REQ-1070
     """Project the governed config into the vendor-neutral snapshot every adapter publishes.
@@ -555,7 +602,8 @@ def build_snapshot(
     (:func:`~provisa.api.metadata_export.publishing.publish_snapshot`) and passed in, because this
     function is a pure projection of the config and never queries data itself. Omitting
     ``dq_outcomes`` publishes every check as never run, which is what a caller with no results to
-    read is entitled to say.
+    read is entitled to say. ``contexts`` is ``state.contexts``, the compiled tables whose pgwire
+    names a contract's dataset addresses (REQ-1443).
 
     ``data_products_only`` is the export filter, and stays on for every catalog publish: a catalog
     receives what the admin marked for it and nothing else. REQ-1592's model report turns it off,
@@ -574,12 +622,16 @@ def build_snapshot(
     # REQ-1592: the model report projects the SAME governance over every registered table — it is a
     # steward's view of what is modelled, not a catalog publish — so it turns the export filter off
     # and reads the Data Product flag off each row instead.
+    # REQ-1443 clause 10: a checker table publishes with the product of the table it scans.
+    product_ids = _effective_product_ids(config, contexts)
     exported = [
-        table for table in config.tables if table.product_id is not None or not data_products_only
+        table
+        for table in config.tables
+        if product_ids[table_ref(table).parts] is not None or not data_products_only
     ]
     keep = {table_ref(table).parts for table in exported}
     published_source_ids = {table.source_id for table in exported}
-    tables = _table_assets(exported, org_id, technical_columns)
+    tables = _table_assets(exported, org_id, technical_columns, product_ids)
     relationships = [
         edge
         for edge in _relationship_edges(config, index, org_id)
@@ -596,7 +648,7 @@ def build_snapshot(
         sources=_source_assets(config, org_id, published_source_ids),
         domains=_domain_assets(config, org_id),
         tables=tables,
-        data_products=_data_product_assets(config, exported, org_id),
+        data_products=_data_product_assets(config, exported, org_id, product_ids),
         relationships=relationships,
         lineage=[
             edge
@@ -625,5 +677,5 @@ def build_snapshot(
         ],
         glossary_terms=glossary_terms,
         glossary_edges=glossary_edges,
-        assertions=_dq_assertions(config, keep, published_columns, dq_outcomes or {}),
+        assertions=_dq_assertions(config, keep, published_columns, dq_outcomes or {}, contexts),
     )

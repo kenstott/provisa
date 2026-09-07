@@ -10,23 +10,22 @@
 
 import { describe, it, expect, afterEach, vi } from "vitest";
 import type { ReactElement } from "react";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
 import {
   PlatformAdminWelcomeModal,
   CLAIMED_ADMIN_FLAG,
 } from "../components/PlatformAdminWelcomeModal";
 
-// The modal calls useNavigate; the shared render wrapper has no Router, so provide one here. The
-// /team route is real so the call-to-action assertion is about navigation, not a mocked spy.
+// The modal calls useNavigate. The /team route is real so the call-to-action assertion is about
+// navigation, not a mocked spy.
 const renderModal = (ui: ReactElement) =>
   render(
-    <MemoryRouter initialEntries={["/query"]}>
-      <Routes>
-        <Route path="/query" element={ui} />
-        <Route path="/team" element={<div data-testid="team-page" />} />
-      </Routes>
-    </MemoryRouter>,
+    <Routes>
+      <Route path="/query" element={ui} />
+      <Route path="/team" element={<div data-testid="team-page" />} />
+    </Routes>,
+    { initialEntries: ["/query"] },
   );
 
 describe("PlatformAdminWelcomeModal (REQ-1294)", () => {

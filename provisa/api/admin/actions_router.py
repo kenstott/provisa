@@ -83,6 +83,7 @@ def _row_to_function(row: dict) -> dict:
         "domainId": row["domain_id"],
         "description": row.get("description"),
         "kind": row.get("kind", "mutation"),
+        "productId": row.get("product_id"),  # REQ-1634
         "returnSchema": row.get("return_schema"),
         "outputColumns": row.get("output_columns"),  # REQ-1159: IR-typed output dataset contract
         # REQ-885: implementation kind + swappable binding, decoupled from addressing.
@@ -157,6 +158,7 @@ class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
     domainId: str = ""
     description: str | None = None
     kind: str = "mutation"
+    productId: str | None = None  # REQ-1634
     returnSchema: dict | None = None
     # REQ-1159: canonical IR-typed output dataset contract [{name,type}]; returnSchema is its projection.
     outputColumns: list[dict] | None = None
@@ -206,6 +208,7 @@ async def create_function(
         domain_id=body.domainId,
         description=body.description,
         kind=body.kind,
+        product_id=body.productId,  # REQ-1634
         impl_kind=body.implKind,
         binding=body.binding,
         materialize=body.materialize,
@@ -238,7 +241,26 @@ async def update_function(name: str, body: FunctionInput):  # REQ-205, REQ-253, 
 
     await _ensure_tables(state.tenant_db)
 
+    from provisa.core.repositories import data_product as data_product_repo
+
     async with state.tenant_db.acquire() as conn:
+        if body.productId is not None:
+            # REQ-1634: same domain-membership gate as function_repo.upsert_function; the
+            # update path writes tracked_functions directly and must not bypass it.
+            product = await data_product_repo.get(conn, body.productId)
+            if product is None:
+                raise ApiError(
+                    422,
+                    "actions.data_product_not_found",
+                    f"data product {body.productId!r} does not exist",
+                )
+            if product["domain_id"] != body.domainId:
+                raise ApiError(
+                    422,
+                    "actions.data_product_domain_mismatch",
+                    f"command {name} is in domain {body.domainId!r} but data product "
+                    f"{body.productId!r} belongs to domain {product['domain_id']!r}",
+                )
         result = await conn.execute_core(
             update(tracked_functions)
             .where(tracked_functions.c.name == name)
@@ -253,6 +275,7 @@ async def update_function(name: str, body: FunctionInput):  # REQ-205, REQ-253, 
                 domain_id=body.domainId,
                 description=body.description,
                 kind=body.kind,
+                product_id=body.productId,  # REQ-1634
                 return_schema=body.returnSchema,
                 output_columns=body.outputColumns,  # REQ-1159
                 impl_kind=body.implKind,

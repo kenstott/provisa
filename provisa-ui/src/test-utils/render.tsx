@@ -12,6 +12,7 @@ import type { ReactElement, ReactNode } from "react";
 import { render, type RenderOptions } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { I18nextProvider } from "react-i18next";
+import { MemoryRouter, type MemoryRouterProps } from "react-router-dom";
 import { MockedProvider } from "@apollo/client/testing/react";
 import type { MockedResponse } from "@apollo/client/testing";
 import { theme } from "../theme/theme";
@@ -23,12 +24,16 @@ import i18n from "../i18n";
 // preview) that need a client in context; unmocked operations simply never
 // resolve. Callers that assert on a hook's data pass `mocks` so the real hook
 // resolves through Apollo rather than needing a leak-prone module mock.
-function makeWrapper(mocks: readonly MockedResponse[]) {
+// MemoryRouter satisfies REQ-1387's useSearchParams deep-linking. `initialEntries` lets a
+// caller seed the route/query-string a test depends on instead of nesting its own Router.
+function makeWrapper(mocks: readonly MockedResponse[], initialEntries?: MemoryRouterProps["initialEntries"]) {
   return function AllProviders({ children }: { children: ReactNode }) {
     return (
       <MockedProvider mocks={mocks}>
         <MantineProvider theme={theme} defaultColorScheme="dark">
-          <I18nextProvider i18n={i18n}>{children}</I18nextProvider>
+          <I18nextProvider i18n={i18n}>
+            <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
+          </I18nextProvider>
         </MantineProvider>
       </MockedProvider>
     );
@@ -37,10 +42,13 @@ function makeWrapper(mocks: readonly MockedResponse[]) {
 
 export function renderWithProviders(
   ui: ReactElement,
-  options?: Omit<RenderOptions, "wrapper"> & { mocks?: readonly MockedResponse[] },
+  options?: Omit<RenderOptions, "wrapper"> & {
+    mocks?: readonly MockedResponse[];
+    initialEntries?: MemoryRouterProps["initialEntries"];
+  },
 ) {
-  const { mocks = [], ...renderOptions } = options ?? {};
-  return render(ui, { wrapper: makeWrapper(mocks), ...renderOptions });
+  const { mocks = [], initialEntries, ...renderOptions } = options ?? {};
+  return render(ui, { wrapper: makeWrapper(mocks, initialEntries), ...renderOptions });
 }
 
 export * from "@testing-library/react";

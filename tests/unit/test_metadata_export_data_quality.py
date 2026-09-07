@@ -33,6 +33,7 @@ from provisa.api.metadata_export.openlineage import to_events
 from provisa.api.metadata_export.openmetadata import to_entities as om_entities
 from provisa.core.models import (
     Column,
+    DataProduct,
     Domain,
     ProvisaConfig,
     Source,
@@ -40,6 +41,7 @@ from provisa.core.models import (
     Table,
 )
 from provisa.dq.contract import ContractError
+from tests.helpers import dq_contexts
 
 # One column check carrying an explicit warn threshold and one dataset-level check with none, so
 # the severity mapping is exercised in both directions from a single contract.
@@ -69,6 +71,10 @@ GX_CONTRACT = json.dumps(
 ORDERS_FQN = "wh.sales.orders"
 SCANS_FQN = "dq.quality.orders_scans"
 SCAN_TIME = datetime(2026, 8, 12, 3, 0, tzinfo=UTC)
+# The compiled tables the dataset's pgwire names resolve against (REQ-1443).
+CONTEXTS = dq_contexts(
+    (1, "wh", "sales", "sales", "orders"), (2, "dq", "sales", "quality", "orders_scans")
+)
 
 
 def _observed() -> Table:
@@ -91,7 +97,7 @@ def _results(contract: str = CONTRACT) -> Table:
         domain_id="sales",
         schema_name="quality",
         table_name="orders_scans",
-        product_id="orders-product",
+        # REQ-1443 clause 10: no product_id of its own — membership is the observed table's.
         dq_contract=contract,
         columns=[Column(name="check_name", data_type="varchar", visible_to=["admin"])],
     )
@@ -108,6 +114,7 @@ def _config(
             Source(id="dq", type=checker, description="quality"),
         ],
         domains=[Domain(id="sales", description="Sales", steward="data-steward")],
+        data_products=[DataProduct(id="orders-product", domain_id="sales", name="Orders")],
         tables=tables if tables is not None else [_observed(), _results()],
         roles=[],
     )
@@ -116,7 +123,7 @@ def _config(
 @pytest.fixture
 def snapshot():
     """A registered contract no scan has reached yet."""
-    return build_snapshot(_config(), org_id="acme", dialect="postgres")
+    return build_snapshot(_config(), org_id="acme", dialect="postgres", contexts=CONTEXTS)
 
 
 @pytest.fixture
@@ -127,6 +134,7 @@ def scanned():
         _config(),
         org_id="acme",
         dialect="postgres",
+        contexts=CONTEXTS,
         dq_outcomes={
             ("sales.orders", "", "row_count"): DataQualityOutcome(
                 status="pass",
@@ -175,7 +183,7 @@ def test_a_gx_suite_publishes_every_check_as_fail():
         checker=SourceType.great_expectations,
         tables=[_observed(), _results(GX_CONTRACT)],
     )
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts=CONTEXTS)
     assert [a.severity for a in snapshot.assertions] == ["fail"]
     assert [a.checker for a in snapshot.assertions] == ["great_expectations"]
 
@@ -192,19 +200,39 @@ def test_the_results_table_carries_the_derived_data_quality_tag(snapshot):
     assert ("data_quality", ORDERS_FQN) not in derived
 
 
+def test_the_results_table_inherits_the_observed_tables_product(snapshot):
+    """REQ-1443 clause 10: the results table carries no product_id of its own, yet publishes as a
+    member of the product the table it scans belongs to."""
+    scans = next(t for t in snapshot.tables if t.ref.fqn() == SCANS_FQN)
+    assert scans.data_product is True
+    product = next(p for p in snapshot.data_products if p.id == "orders-product")
+    assert {m.fqn() for m in product.members} == {ORDERS_FQN, SCANS_FQN}
+
+
+def test_a_results_table_of_an_unmarked_table_is_withheld_with_it():
+    """The observed table decides whether both publish: a results table can never be exported on
+    its own, because there is nothing for its checks to be about."""
+    observed = _observed()
+    observed.product_id = None
+    config = _config(tables=[observed, _results()])
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts=CONTEXTS)
+    assert snapshot.tables == []
+    assert snapshot.data_products == []
+
+
 def test_an_unpublished_observed_table_publishes_no_assertion():
     """Both ends must publish or the reference dangles — the filter's whole purpose."""
     observed = _observed()
     observed.product_id = None
     config = _config(tables=[observed, _results()])
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres")
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts=CONTEXTS)
     assert snapshot.assertions == []
 
 
 def test_a_contract_that_no_longer_parses_raises_rather_than_being_skipped():
     config = _config(tables=[_observed(), _results("dataset: provisa/sales/orders\nchecks: 3\n")])
     with pytest.raises(ContractError):
-        build_snapshot(config, org_id="acme", dialect="postgres")
+        build_snapshot(config, org_id="acme", dialect="postgres", contexts=CONTEXTS)
 
 
 def test_atlas_rides_the_governance_document(snapshot):
@@ -245,7 +273,9 @@ def test_datahub_assertion_urns_are_stable_across_publishes(snapshot):
     first = [p.urn for p in to_proposals(snapshot) if p.entity_type == "assertion"]
     second = [
         p.urn
-        for p in to_proposals(build_snapshot(_config(), org_id="acme", dialect="postgres"))
+        for p in to_proposals(
+            build_snapshot(_config(), org_id="acme", dialect="postgres", contexts=CONTEXTS)
+        )
         if p.entity_type == "assertion"
     ]
     assert first == second
@@ -295,6 +325,7 @@ def test_a_warn_is_published_as_a_failure_not_a_pass():
         _config(),
         org_id="acme",
         dialect="postgres",
+        contexts=CONTEXTS,
         dq_outcomes={
             ("sales.orders", "customer", "missing"): DataQualityOutcome(
                 status="warn", scan_id="scan-9", scan_time=SCAN_TIME, failed_rows=2
@@ -406,6 +437,7 @@ def test_openmetadata_test_case_names_survive_a_check_being_removed(snapshot):
         _config(tables=[_observed(), _results(trimmed_contract)]),
         org_id="acme",
         dialect="postgres",
+        contexts=CONTEXTS,
     )
     remaining = {e.body["name"] for e in om_entities(trimmed) if e.kind == "test_case"}
     assert remaining and remaining < full

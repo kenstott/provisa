@@ -11,7 +11,6 @@
 // REQ-1160/REQ-1161: lineage explorer page — build a statement graph, render cycles characterization.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MemoryRouter } from "react-router-dom";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
 import type { LineageGraphData } from "../api/lineage";
 
@@ -96,33 +95,21 @@ describe("LineagePage — REQ-1160/1161", () => {
   });
 
   it("builds a statement graph and renders the DAG", async () => {
-    render(
-      <MemoryRouter>
-        <LineagePage />
-      </MemoryRouter>,
-    );
+    render(<LineagePage />);
     fireEvent.click(screen.getByTestId("lineage-build"));
     await waitFor(() => expect(fetchLineageGraph).toHaveBeenCalled());
     expect(await screen.findByTestId("lineage-dag-stub")).toBeInTheDocument();
   });
 
   it("characterizes a boundary-less cycle as an error", async () => {
-    render(
-      <MemoryRouter>
-        <LineagePage />
-      </MemoryRouter>,
-    );
+    render(<LineagePage />);
     fireEvent.click(screen.getByTestId("lineage-build"));
     expect(await screen.findByText(/no materialization boundary/i)).toBeInTheDocument();
     expect(screen.getByText("error")).toBeInTheDocument();
   });
 
   it("loads the federation graph on demand, through the picked role", async () => {
-    render(
-      <MemoryRouter>
-        <LineagePage />
-      </MemoryRouter>,
-    );
+    render(<LineagePage />);
     fireEvent.click(screen.getByTestId("lineage-federation"));
     // REQ-1625: the role is the analytic lens, so it travels with the request. It opens on the
     // user's own role and is changed with the page's own picker.
@@ -134,11 +121,7 @@ describe("LineagePage — REQ-1160/1161", () => {
   });
 
   it("offers every role in the org as a lineage perspective, not only the held ones", async () => {
-    render(
-      <MemoryRouter>
-        <LineagePage />
-      </MemoryRouter>,
-    );
+    render(<LineagePage />);
     await waitFor(() => expect(fetchOrgRoles).toHaveBeenCalledWith("acme"));
     fireEvent.click(screen.getByTestId("lineage-roles"));
     // REQ-1628: "vet" is a role the user does not hold; analysing its lineage is the point.
@@ -148,11 +131,7 @@ describe("LineagePage — REQ-1160/1161", () => {
   it("withholds the perspective controls from a caller without view_governance", async () => {
     auth.capabilities = [];
     try {
-      render(
-        <MemoryRouter>
-          <LineagePage />
-        </MemoryRouter>,
-      );
+      render(<LineagePage />);
       expect(screen.queryByTestId("lineage-roles")).not.toBeInTheDocument();
       expect(screen.queryByTestId("lineage-federation")).not.toBeInTheDocument();
     } finally {
@@ -161,11 +140,7 @@ describe("LineagePage — REQ-1160/1161", () => {
   });
 
   it("collapses every relation when the federation loads, and expands on demand", async () => {
-    render(
-      <MemoryRouter>
-        <LineagePage />
-      </MemoryRouter>,
-    );
+    render(<LineagePage />);
     fireEvent.click(screen.getByTestId("lineage-federation"));
     // REQ-1627: a federation arrives collapsed — one node per relation, not one per column.
     expect(await screen.findByText("orders")).toBeInTheDocument();
@@ -176,11 +151,7 @@ describe("LineagePage — REQ-1160/1161", () => {
   });
 
   it("opens the near-fullscreen view over the same graph", async () => {
-    render(
-      <MemoryRouter>
-        <LineagePage />
-      </MemoryRouter>,
-    );
+    render(<LineagePage />);
     fireEvent.click(screen.getByTestId("lineage-build"));
     await screen.findByTestId("lineage-dag-stub");
     expect(screen.getAllByTestId("lineage-dag-stub")).toHaveLength(1);
@@ -190,21 +161,13 @@ describe("LineagePage — REQ-1160/1161", () => {
   });
 
   it("auto-builds from a ?sql= deep link (the show-lineage entry point)", async () => {
-    render(
-      <MemoryRouter initialEntries={["/lineage?sql=SELECT%20a%20FROM%20t"]}>
-        <LineagePage />
-      </MemoryRouter>,
-    );
+    render(<LineagePage />, { initialEntries: ["/lineage?sql=SELECT%20a%20FROM%20t"] });
     await waitFor(() => expect(fetchLineageGraph).toHaveBeenCalledWith("SELECT a FROM t"));
     expect(await screen.findByTestId("lineage-dag-stub")).toBeInTheDocument();
   });
 
   it("auto-loads the federation graph focused from a ?focus= deep link", async () => {
-    render(
-      <MemoryRouter initialEntries={["/lineage?focus=mv_daily.total"]}>
-        <LineagePage />
-      </MemoryRouter>,
-    );
+    render(<LineagePage />, { initialEntries: ["/lineage?focus=mv_daily.total"] });
     await waitFor(() =>
       expect(fetchFederationGraph).toHaveBeenCalledWith({ focus: "mv_daily.total" }),
     );

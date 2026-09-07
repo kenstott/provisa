@@ -101,7 +101,7 @@ def snapshot():
         ],
         rls_rules=[RLSRule(table_id="orders", role_id="analyst", filter="region_id = 'us'")],
     )
-    return build_snapshot(config, org_id="acme", dialect="postgres")
+    return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
 
 def _export_config() -> MetadataExportConfig:

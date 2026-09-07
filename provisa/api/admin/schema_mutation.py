@@ -453,6 +453,41 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
+    async def run_dq_check_now(  # REQ-1443: "run now and retain" from the DQ check detail
+        self, schema_name: str, table_name: str
+    ) -> MutationResult:
+        """Fire a checker table's poll job immediately instead of waiting for its cadence.
+
+        Reuses the same registered poll job the event loop already runs on cadence (REQ-941) — this
+        does not re-scan into the response like the dry run; it lands the scan's rows the normal way,
+        so results persist and the DQ check detail's history shows the new scan."""
+        from provisa.api.app import state
+        from provisa.api.admin._dq_resolvers import run_dq_check_now as _run_now
+        from provisa.api.org_runtime import current_org
+
+        # REQ-1266: the scheduler namespaces a poll job's id by org ONLY when explicitly
+        # multi-org (register_poll_job/register_runtime use `current_org.get(None)`, so
+        # single-org/default gets the bare `poll:<node>` id with no suffix). `current_org.get()
+        # or state.org_id` is the DB-routing convention used elsewhere in this module — it
+        # resolves to the "default" org string even in single-org mode, which would look up
+        # `poll:<node>:org_default` and never find the bare id boot registered.
+        org_id = current_org.get()
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            result = await _run_now(
+                cast("Connection", conn),
+                scheduler=state._scheduler,
+                org_id=org_id,
+                schema_name=schema_name,
+                table_name=table_name,
+            )
+        return MutationResult(
+            success=result["success"],
+            message=result["message"],
+            code="dq.run_now" if result["success"] else "dq.run_now_failed",
+        )
+
+    @strawberry.mutation
     async def create_calendar(self, input: "CalendarInput") -> MutationResult:  # REQ-962
         """Create/replace a versioned snapshot-boundary calendar (REQ-962). Validated by constructing
         the in-memory Calendar (fails loud on a bad base_system/tz/anchor) before it is persisted; a
@@ -914,14 +949,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def create_data_product(
         self, info: StrawberryInfo, input: DataProductInput
     ) -> MutationResult:  # REQ-1634
-        # REQ-1634: a data product is scoped to one owning domain — gated by the same right that
-        # owns the domain vocabulary, since a data product is a domain-level publication decision.
+        # REQ-1634: creating/deleting a data product is catalog curation, gated on its own
+        # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW.
         from provisa.api.admin.capabilities import require_capability
         from provisa.core.models import DataProduct as DataProductModel
         from provisa.core.repositories import data_product as data_product_repo
         from provisa.core.repositories import domain as domain_repo
 
-        require_capability(info, "org_settings")
+        require_capability(info, "data_product_rw")
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -937,8 +972,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 id=input.id,
                 domain_id=input.domain_id,
                 name=input.name,
-                owner=input.owner or None,
-                description=input.description,
+                owner_role=input.owner_role or None,
+                team_role=input.team_role or None,
+                purpose=input.purpose,
+                limitations=input.limitations,
+                usage=input.usage,
+                version=input.version,
+                status=input.status,
+                sla=input.sla,
+                support=input.support,
+                custom_properties=input.custom_properties,
             )
             await data_product_repo.upsert(conn, model)
         return MutationResult(
@@ -955,7 +998,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin.capabilities import require_capability
         from provisa.core.repositories import data_product as data_product_repo
 
-        require_capability(info, "org_settings")
+        require_capability(info, "data_product_rw")  # REQ-1634: see create_data_product
 
         pool = await _get_pool()
         async with pool.acquire() as conn:

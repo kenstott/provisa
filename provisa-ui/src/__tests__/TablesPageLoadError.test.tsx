@@ -14,7 +14,6 @@
 // data was there, the query was not answering, and the page said the org was empty.
 
 import { describe, it, expect, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
 import { render, screen } from "../test-utils/render";
 import type { MockedResponse } from "@apollo/client/testing";
 import { AuthProvider } from "../context/AuthContext";
@@ -30,13 +29,11 @@ vi.mock("../api/admin", async (importOriginal) => ({
 
 function renderTables(mocks: readonly MockedResponse[]) {
   return render(
-    <MemoryRouter>
-      <AuthProvider authEnabled={false} authSettled>
-        <DomainFilterProvider>
-          <TablesPage />
-        </DomainFilterProvider>
-      </AuthProvider>
-    </MemoryRouter>,
+    <AuthProvider authEnabled={false} authSettled>
+      <DomainFilterProvider>
+        <TablesPage />
+      </DomainFilterProvider>
+    </AuthProvider>,
     { mocks },
   );
 }

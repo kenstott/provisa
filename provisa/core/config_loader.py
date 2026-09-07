@@ -35,6 +35,7 @@ from provisa.core.schema_org import (
     api_endpoints,
     api_sources,
     domains,
+    glossary_terms,
     metrics as metrics_table,
     naming_rules,
     registered_tables,
@@ -51,6 +52,8 @@ from provisa.security.rights import SYSTEM_ROLE_IDS
 from provisa.core.repositories import (
     source as source_repo,
     domain as domain_repo,
+    data_product as data_product_repo,
+    glossary as glossary_repo,
     table as table_repo,
     metric as metric_repo,
     relationship as rel_repo,
@@ -662,8 +665,6 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # REQ-1591: a term's domains are derived by joining its refs to registered_tables, so the
     # snapshot step 11's sweep needs is taken here — before the replace cleanup and the
     # rename purge in _upsert_tables remove the very rows it reads.
-    from provisa.core.repositories import glossary as glossary_repo
-
     domains_before = await glossary_repo.term_domains(conn)
 
     if replace:
@@ -685,6 +686,19 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # 4. Roles (before tables/RLS so FK refs exist)
     for role in config.roles:
         await role_repo.upsert(conn, role)
+
+    # 4.5 Data products (before tables so product_id FK refs exist)  # REQ-1634
+    for dp in config.data_products:
+        await data_product_repo.upsert(conn, dp)
+
+    # 4.6 Glossary terms (after domains, so declared scope names something real)  # REQ-1641
+    # upsert_declared_term upserts by name (its unique key), matching every other loader step's
+    # config-is-truth semantics — a term dropped from config is not deleted here, same as a
+    # role or relationship a steward has since edited by hand outside the config file.
+    for gt in config.glossary_terms:
+        await glossary_repo.upsert_declared_term(
+            conn, gt.name, definition=gt.definition, domains=set(gt.domains)
+        )
 
     # 5. Tables + columns
     openapi_specs = _load_openapi_specs(config)
@@ -756,6 +770,27 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     # surviving row with a foreign domain_id is a hard error — re-register the offending source.
     if domain_policy.single_domain():
         await _validate_existing_domains(conn, config.naming.default_domain)
+
+    # 10.5 Glossary term edges (REQ-1641): resolved by name after every term this config
+    # declares or derives exists — an abstract term with no edge to a grounded term can never
+    # be live, so this is what actually connects it rather than the name-collision trick of
+    # declaring a term with the same name as a derived one.
+    if config.glossary_terms:
+        term_ids = {
+            row.name: row.id
+            for row in (
+                await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
+            ).fetchall()
+        }
+        for gt in config.glossary_terms:
+            from_id = term_ids[gt.name]
+            for edge in gt.edges:
+                if edge.to not in term_ids:
+                    raise ValueError(
+                        f"glossary term {gt.name!r} has an edge to {edge.to!r}, "
+                        "which does not exist in this config or the catalog"
+                    )
+                await glossary_repo.add_edge(conn, from_id, term_ids[edge.to], edge.rel_type)
 
     # 11. Glossary settle (REQ-1387): purged/replaced tables cascaded their term refs away
     # before the upserts above could relink them; runs LAST so a rename that re-registers the
@@ -932,6 +967,10 @@ def _validate_dq_contracts(config) -> None:  # REQ-1443
     identical to the same table written in YAML. What this adds is the whole-config half: a
     ``dq_contract`` on a non-checker table is a config error, because its rows would come from
     wherever that source's loader fetched them and the results schema does not describe those.
+
+    Whether the dataset names a governed table is checked after the schema build
+    (``app_loaders._build_and_register_schemas``): the dataset carries pgwire's semantic names,
+    which do not exist until the tables are compiled.
     """
     from provisa.dq.contract import CHECKERS  # noqa: PLC0415
     from provisa.dq.registration import derive_checker_table, is_checker_source_type  # noqa: PLC0415
@@ -948,7 +987,7 @@ def _validate_dq_contracts(config) -> None:  # REQ-1443
                     f"{str(getattr(stype, 'value', stype))!r}"
                 )
             continue
-        derive_checker_table(table, stype, config.tables)
+        derive_checker_table(table, stype)
 
 
 def _validate_probe_type(config) -> None:  # REQ-982

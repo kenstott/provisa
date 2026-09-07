@@ -16,13 +16,26 @@ from types import SimpleNamespace
 
 import pytest
 
-from provisa.api.metadata_export.model import AssetKind, AssetRef
+from provisa.api.metadata_export.model import (
+    AssetKind,
+    AssetRef,
+    ColumnAsset,
+    GovernanceSignal,
+    GovernanceTag,
+    ModelTag,
+    TableAsset,
+)
 from provisa.api.metadata_export.registry import registered_providers
 from provisa.api.metadata_export.snowflake_horizon import (
     SnowflakeHorizonExport,
+    _object_kind,
+    _table_exists,
+    comment_statements,
     listing_statements,
     physical_parts,
+    physical_table_and_column,
     share_statements,
+    tag_statements,
 )
 
 
@@ -32,10 +45,16 @@ class _FakeDataProduct:
     name: str
     description: str
     members: list[AssetRef] = field(default_factory=list)
+    support_contact: str | None = "data-team@example.com"
+    publish: bool = False
 
 
 def _table_ref(source_id: str, schema: str, table: str) -> AssetRef:
     return AssetRef(kind=AssetKind.TABLE, parts=(source_id, schema, table))
+
+
+def _column_ref(source_id: str, schema: str, table: str, column: str) -> AssetRef:
+    return AssetRef(kind=AssetKind.COLUMN, parts=(source_id, schema, table, column))
 
 
 def test_registered_under_its_provider_name():
@@ -62,42 +81,294 @@ def test_share_statements_grant_once_per_database_and_schema():
     assert sum(s.startswith("GRANT SELECT ON TABLE") for s in stmts) == 2
 
 
-def test_listing_statements_publish_over_the_share():
-    stmts = listing_statements("provisa_c360_listing", "provisa_c360_share", "customer_360", "desc")
-    assert 'FOR SHARE "provisa_c360_share"' in stmts[0]
-    assert stmts[1] == 'ALTER LISTING "provisa_c360_listing" PUBLISH;'
+def test_share_statements_grants_reference_usage_for_cross_database_member():
+    # REQ-1637's exposure view lives in the member's per-source database but SELECTs from the
+    # landing database. Snowflake refuses to share such a view without REFERENCE_USAGE on the
+    # landing database — but a share has exactly one database eligible for USAGE (its primary,
+    # the member's own database); a second USAGE grant on the landing database is rejected
+    # ("Database 'landing' does not belong to the database that is being shared"), so the landing
+    # database gets REFERENCE_USAGE only, after the member's USAGE grant and before SELECT.
+    tables = [("pet_store_sqlite", "pet_store", "pets")]
+    stmts = share_statements(
+        "provisa_pet_health_share", "Pet Health", tables, landing_database="landing"
+    )
+    ref_grants = [s for s in stmts if s.startswith("GRANT REFERENCE_USAGE")]
+    assert ref_grants == [
+        'GRANT REFERENCE_USAGE ON DATABASE "landing" TO SHARE "provisa_pet_health_share";'
+    ]
+    assert not any(
+        s == 'GRANT USAGE ON DATABASE "landing" TO SHARE "provisa_pet_health_share";' for s in stmts
+    )
+    member_usage_grant = (
+        'GRANT USAGE ON DATABASE "pet_store_sqlite" TO SHARE "provisa_pet_health_share";'
+    )
+    assert member_usage_grant in stmts
+    assert stmts.index(member_usage_grant) < stmts.index(ref_grants[0])
+    assert stmts.index(ref_grants[0]) < stmts.index(
+        next(s for s in stmts if s.startswith("GRANT SELECT"))
+    )
+
+
+def test_share_statements_skips_reference_usage_when_member_is_the_landing_database():
+    tables = [("landing", "public", "customers")]
+    stmts = share_statements(
+        "provisa_c360_share", "Customer 360", tables, landing_database="landing"
+    )
+    assert not any(s.startswith("GRANT REFERENCE_USAGE") for s in stmts)
+
+
+def test_listing_statements_creates_draft_organization_listing_over_the_share():
+    stmts = listing_statements(
+        "provisa_c360_listing",
+        "provisa_c360_share",
+        "customer_360",
+        "desc",
+        account="ACME1",
+        role="ACCOUNTADMIN",
+        region="AZURE_EASTUS2",
+        support_contact="data-team@example.com",
+    )
+    assert len(stmts) == 1
+    stmt = stmts[0]
+    assert stmt.startswith('CREATE ORGANIZATION LISTING IF NOT EXISTS "provisa_c360_listing"')
+    assert 'SHARE "provisa_c360_share"' in stmt
+    assert "PUBLISH = FALSE;" in stmt
+    assert 'organization_profile: "INTERNAL"' in stmt
+    assert 'account: "ACME1"' in stmt
+    assert 'roles:\n    - "ACCOUNTADMIN"' in stmt
+    assert 'name: "PUBLIC.AZURE_EASTUS2"' in stmt
+    assert 'support_contact: "data-team@example.com"' in stmt
+    assert 'approver_contact: "data-team@example.com"' in stmt
+    assert "PUBLISH = FALSE;" in stmt
+
+
+def test_listing_statements_publish_true_sets_publish_true():
+    stmt = listing_statements(
+        "provisa_c360_listing",
+        "provisa_c360_share",
+        "customer_360",
+        "desc",
+        account="ACME1",
+        role="ACCOUNTADMIN",
+        region="AZURE_EASTUS2",
+        support_contact="data-team@example.com",
+        publish=True,
+    )[0]
+    assert "PUBLISH = TRUE;" in stmt
+
+
+def test_physical_table_and_column_resolves_table_ref():
+    ref = _table_ref("petstore-api", "public", "pets")
+    assert physical_table_and_column(ref) == (("petstore_api", "public", "pets"), None)
+
+
+def test_physical_table_and_column_resolves_column_ref():
+    ref = _column_ref("petstore-api", "public", "pets", "owner_ssn")
+    assert physical_table_and_column(ref) == (("petstore_api", "public", "pets"), "owner_ssn")
+
+
+def test_physical_table_and_column_rejects_other_ref_kinds():
+    ref = AssetRef(kind=AssetKind.SOURCE, parts=("petstore-api",))
+    with pytest.raises(ValueError):
+        physical_table_and_column(ref)
+
+
+def test_tag_statements_creates_one_tag_per_distinct_signal_and_applies_to_table():
+    tags = [
+        GovernanceTag(
+            asset=_table_ref("petstore-api", "public", "pets"),
+            signal=GovernanceSignal.RLS_RESTRICTED,
+            rule_id="rule-42",
+        )
+    ]
+    stmts = tag_statements("landing", tags, [])
+    assert 'CREATE SCHEMA IF NOT EXISTS "landing"."PROVISA_GOVERNANCE"' in stmts
+    assert 'CREATE TAG IF NOT EXISTS "landing"."PROVISA_GOVERNANCE"."RLS_RESTRICTED";' in stmts
+    assert (
+        'ALTER TABLE "petstore_api"."public"."pets" '
+        'SET TAG "landing"."PROVISA_GOVERNANCE"."RLS_RESTRICTED" = \'rule-42\';'
+    ) in stmts
+
+
+def test_tag_statements_applies_to_column_via_modify_column():
+    tags = [
+        GovernanceTag(
+            asset=_column_ref("petstore-api", "public", "pets", "owner_ssn"),
+            signal=GovernanceSignal.MASKED,
+            rule_id="rule-7",
+        )
+    ]
+    stmts = tag_statements("landing", tags, [])
+    assert (
+        'ALTER TABLE "petstore_api"."public"."pets" MODIFY COLUMN "owner_ssn" '
+        'SET TAG "landing"."PROVISA_GOVERNANCE"."MASKED" = \'rule-7\';'
+    ) in stmts
+
+
+def test_tag_statements_deduplicates_signal_tags_across_multiple_governance_tags():
+    tags = [
+        GovernanceTag(
+            asset=_table_ref("s", "p", "t1"), signal=GovernanceSignal.MASKED, rule_id="r1"
+        ),
+        GovernanceTag(
+            asset=_table_ref("s", "p", "t2"), signal=GovernanceSignal.MASKED, rule_id="r2"
+        ),
+    ]
+    stmts = tag_statements("landing", tags, [])
+    assert sum(s.startswith("CREATE TAG IF NOT EXISTS") for s in stmts) == 1
+
+
+def test_tag_statements_creates_model_tag_and_uses_reason_as_value():
+    tags = [
+        ModelTag(
+            tag_id="pii",
+            is_system=True,
+            asset=_column_ref("petstore-api", "public", "pets", "owner_ssn"),
+            reason="contains SSN",
+        )
+    ]
+    stmts = tag_statements("landing", [], tags)
+    assert 'CREATE TAG IF NOT EXISTS "landing"."PROVISA_GOVERNANCE"."PII";' in stmts
+    assert (
+        'ALTER TABLE "petstore_api"."public"."pets" MODIFY COLUMN "owner_ssn" '
+        'SET TAG "landing"."PROVISA_GOVERNANCE"."PII" = \'contains SSN\';'
+    ) in stmts
+
+
+def test_tag_statements_uses_tag_id_as_value_when_no_reason():
+    tags = [ModelTag(tag_id="deprecated", is_system=True, asset=_table_ref("s", "p", "t"))]
+    stmts = tag_statements("landing", [], tags)
+    assert any(s.endswith("= 'deprecated';") for s in stmts)
+
+
+def test_tag_statements_skips_relationship_scoped_model_tags():
+    tags = [ModelTag(tag_id="derived_from", is_system=True, relationship_id="rel-1")]
+    stmts = tag_statements("landing", [], tags)
+    assert not any("SET TAG" in s for s in stmts)
+
+
+def _table_asset(
+    source_id: str,
+    schema: str,
+    table: str,
+    description: str = "",
+    columns: list[ColumnAsset] | None = None,
+) -> TableAsset:
+    return TableAsset(
+        ref=_table_ref(source_id, schema, table),
+        name=table,
+        source_id=source_id,
+        domain_id=None,
+        description=description,
+        columns=columns or [],
+    )
+
+
+def test_comment_statements_sets_table_comment_on_a_real_table():
+    table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
+    kinds = {("petstore_api", "public", "pets"): "TABLE"}
+    stmts = comment_statements([table], kinds)
+    assert stmts == ['ALTER TABLE "petstore_api"."public"."pets" SET COMMENT = \'Pets for sale\';']
+
+
+def test_comment_statements_sets_view_comment_via_alter_view():
+    table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
+    kinds = {("petstore_api", "public", "pets"): "VIEW"}
+    stmts = comment_statements([table], kinds)
+    assert stmts == ['ALTER VIEW "petstore_api"."public"."pets" SET COMMENT = \'Pets for sale\';']
+
+
+def test_comment_statements_sets_column_comment_via_modify_column_on_a_table():
+    column = ColumnAsset(
+        ref=_column_ref("petstore-api", "public", "pets", "name"),
+        name="name",
+        data_type="text",
+        description="Pet name",
+    )
+    table = _table_asset("petstore-api", "public", "pets", columns=[column])
+    kinds = {("petstore_api", "public", "pets"): "TABLE"}
+    stmts = comment_statements([table], kinds)
+    assert stmts == [
+        'ALTER TABLE "petstore_api"."public"."pets" MODIFY COLUMN "name" COMMENT \'Pet name\';'
+    ]
+
+
+def test_comment_statements_sets_column_comment_via_alter_column_on_a_view():
+    column = ColumnAsset(
+        ref=_column_ref("petstore-api", "public", "pets", "name"),
+        name="name",
+        data_type="text",
+        description="Pet name",
+    )
+    table = _table_asset("petstore-api", "public", "pets", columns=[column])
+    kinds = {("petstore_api", "public", "pets"): "VIEW"}
+    stmts = comment_statements([table], kinds)
+    assert stmts == [
+        'ALTER VIEW "petstore_api"."public"."pets" ALTER COLUMN "name" COMMENT \'Pet name\';'
+    ]
+
+
+def test_comment_statements_skips_tables_missing_from_kinds():
+    table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
+    assert comment_statements([table], {}) == []
+
+
+def test_comment_statements_skips_columns_and_tables_with_no_description():
+    column = ColumnAsset(
+        ref=_column_ref("petstore-api", "public", "pets", "name"),
+        name="name",
+        data_type="text",
+        description="",
+    )
+    table = _table_asset("petstore-api", "public", "pets", columns=[column])
+    kinds = {("petstore_api", "public", "pets"): "TABLE"}
+    assert comment_statements([table], kinds) == []
 
 
 class _FakeCursor:
-    def __init__(self, existing_objects: bool = True):
+    def __init__(self, existing_objects: bool = True, kind: str = "TABLE"):
         self.sql: list[str] = []
         self._existing_objects = existing_objects
+        self._kind = kind
+        self._last_sql = ""
+        self.description: list[tuple[str, ...]] = []
 
     def execute(self, sql, params=None):
         self.sql.append(sql)
+        self._last_sql = sql
+        if sql.startswith("SHOW OBJECTS"):
+            self.description = [("name",), ("kind",)]
+        else:
+            self.description = []
 
     def fetchall(self):
         return [("x",)] if self._existing_objects else []
+
+    def fetchone(self):
+        if self._last_sql.startswith("SHOW OBJECTS"):
+            return ("x", self._kind) if self._existing_objects else None
+        return ("ACME1", "ACCOUNTADMIN", "AZURE_EASTUS2")
 
     def close(self):
         pass
 
 
 class _FakeConn:
-    def __init__(self, existing_objects: bool = True):
-        self.cursor_obj = _FakeCursor(existing_objects)
+    def __init__(self, existing_objects: bool = True, kind: str = "TABLE"):
+        self.cursor_obj = _FakeCursor(existing_objects, kind)
 
     def cursor(self):
         return self.cursor_obj
 
 
-def _runtime(existing_objects: bool = True):
+def _runtime(existing_objects: bool = True, database: str = "landing", kind: str = "TABLE"):
     rt = object.__new__(
         __import__(
             "provisa.federation.snowflake_runtime", fromlist=["SnowflakeFederationRuntime"]
         ).SnowflakeFederationRuntime
     )
-    rt._conn = _FakeConn(existing_objects)
+    rt._conn = _FakeConn(existing_objects, kind)
+    rt._database = database
     return rt
 
 
@@ -156,8 +427,59 @@ def test_publish_creates_share_and_listing_for_each_data_product(monkeypatch):
         'GRANT SELECT ON TABLE "petstore_api"."public"."customers" TO SHARE "provisa_c360_share"'
         in joined
     )
-    assert 'CREATE OR REPLACE LISTING "provisa_c360_listing"' in joined
-    assert 'ALTER LISTING "provisa_c360_listing" PUBLISH;' in joined
+    assert 'CREATE ORGANIZATION LISTING IF NOT EXISTS "provisa_c360_listing"' in joined
+    assert 'organization_profile: "INTERNAL"' in joined
+    assert 'support_contact: "data-team@example.com"' in joined
+    assert "PUBLISH = FALSE;" in joined
+
+
+def test_publish_creates_listing_with_publish_true_when_product_opts_in(monkeypatch):
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    rt = _runtime(existing_objects=True)
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+    product = _FakeDataProduct(
+        "c360",
+        "customer_360",
+        "Customer 360",
+        [_table_ref("petstore-api", "public", "customers")],
+        publish=True,
+    )
+    snapshot = SimpleNamespace(data_products=[product])
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert result.ok
+    joined = " | ".join(rt._conn.cursor_obj.sql)
+    assert "PUBLISH = TRUE;" in joined
+
+
+def test_publish_reports_error_when_support_contact_missing(monkeypatch):
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    rt = _runtime(existing_objects=True)
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+    product = _FakeDataProduct(
+        "c360",
+        "customer_360",
+        "Customer 360",
+        [_table_ref("petstore-api", "public", "customers")],
+        support_contact=None,
+    )
+    snapshot = SimpleNamespace(data_products=[product])
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert not result.ok
+    assert "support_contact" in result.errors[0].message
 
 
 def test_publish_reports_error_when_member_table_not_landed(monkeypatch):
@@ -175,6 +497,148 @@ def test_publish_reports_error_when_member_table_not_landed(monkeypatch):
         "c360", "customer_360", "Customer 360", [_table_ref("petstore-api", "public", "customers")]
     )
     snapshot = SimpleNamespace(data_products=[product])
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert not result.ok
+    assert "landing terminal missing" in result.errors[0].message
+
+
+def test_publish_is_a_noop_when_snapshot_has_no_products_or_tags(monkeypatch):
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    snapshot = SimpleNamespace(data_products=[], governance_tags=[], model_tags=[])
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert result.ok
+    assert result.total_published() == 0
+
+
+def test_publish_applies_governance_and_model_tags_with_no_data_products(monkeypatch):
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    rt = _runtime(existing_objects=True, database="landing")
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+    snapshot = SimpleNamespace(
+        data_products=[],
+        governance_tags=[
+            GovernanceTag(
+                asset=_table_ref("petstore-api", "public", "pets"),
+                signal=GovernanceSignal.RLS_RESTRICTED,
+                rule_id="rule-42",
+            )
+        ],
+        model_tags=[
+            ModelTag(
+                tag_id="pii",
+                is_system=True,
+                asset=_column_ref("petstore-api", "public", "pets", "owner_ssn"),
+                reason="contains SSN",
+            )
+        ],
+    )
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert result.ok
+    assert result.published["tags"] == 2
+    joined = " | ".join(rt._conn.cursor_obj.sql)
+    assert 'CREATE TAG IF NOT EXISTS "landing"."PROVISA_GOVERNANCE"."RLS_RESTRICTED";' in joined
+    assert 'CREATE TAG IF NOT EXISTS "landing"."PROVISA_GOVERNANCE"."PII";' in joined
+    assert (
+        'ALTER TABLE "petstore_api"."public"."pets" '
+        'SET TAG "landing"."PROVISA_GOVERNANCE"."RLS_RESTRICTED" = \'rule-42\';'
+    ) in joined
+    assert (
+        'ALTER TABLE "petstore_api"."public"."pets" MODIFY COLUMN "owner_ssn" '
+        'SET TAG "landing"."PROVISA_GOVERNANCE"."PII" = \'contains SSN\';'
+    ) in joined
+
+
+def test_publish_reports_error_when_tagged_table_not_landed(monkeypatch):
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    rt = _runtime(existing_objects=False)
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+    snapshot = SimpleNamespace(
+        data_products=[],
+        governance_tags=[
+            GovernanceTag(
+                asset=_table_ref("petstore-api", "public", "pets"),
+                signal=GovernanceSignal.MASKED,
+                rule_id="rule-1",
+            )
+        ],
+        model_tags=[],
+    )
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert not result.ok
+    assert "landing terminal missing" in result.errors[0].message
+    assert result.total_published() == 0
+
+
+def test_object_kind_returns_table_when_object_is_a_real_table():
+    rt = _runtime(existing_objects=True, kind="TABLE")
+    assert _object_kind(rt, ("landing", "mat", "pets")) == "TABLE"
+
+
+def test_object_kind_returns_view_when_object_is_a_view():
+    rt = _runtime(existing_objects=True, kind="VIEW")
+    assert _object_kind(rt, ("petstore_api", "public", "pets")) == "VIEW"
+
+
+def test_object_kind_returns_none_when_object_does_not_exist():
+    rt = _runtime(existing_objects=False)
+    assert _object_kind(rt, ("petstore_api", "public", "pets")) is None
+
+
+def test_table_exists_delegates_to_object_kind():
+    assert _table_exists(_runtime(existing_objects=True, kind="TABLE"), ("landing", "mat", "pets"))
+    assert not _table_exists(_runtime(existing_objects=False), ("landing", "mat", "pets"))
+
+
+def test_publish_applies_descriptions_to_a_view(monkeypatch):
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    rt = _runtime(existing_objects=True, kind="VIEW")
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+    table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
+    snapshot = SimpleNamespace(data_products=[], governance_tags=[], model_tags=[], tables=[table])
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert result.ok
+    assert result.published["descriptions"] == 1
+    joined = " | ".join(rt._conn.cursor_obj.sql)
+    assert 'ALTER VIEW "petstore_api"."public"."pets" SET COMMENT = \'Pets for sale\';' in joined
+
+
+def test_publish_reports_error_when_described_table_not_landed(monkeypatch):
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    rt = _runtime(existing_objects=False)
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+    table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
+    snapshot = SimpleNamespace(data_products=[], governance_tags=[], model_tags=[], tables=[table])
     result = asyncio.run(_exporter().publish(snapshot))
     assert not result.ok
     assert "landing terminal missing" in result.errors[0].message

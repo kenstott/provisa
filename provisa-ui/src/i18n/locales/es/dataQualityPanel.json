@@ -21,6 +21,8 @@
     "addCheck": "Añadir comprobación",
     "dryRun": "Ejecución de prueba",
     "dryRunHelp": "Ejecuta el contrato contra la tabla en vivo y no guarda nada.",
+    "runNow": "Ejecutar ahora",
+    "runNowHelp": "Ejecuta el trabajo de verificación programado de inmediato y guarda el resultado.",
     "dryRunNoResponse": "La ejecución de prueba no devolvió ninguna respuesta.",
     "datasetLabel": "Conjunto de datos",
     "datasetHelp": "La tabla que observa el verificador, como «<fuente de datos>/<esquema>/<tabla>». Se resuelve contra el catálogo gobernado, igual que lo resuelve el escaneo.",

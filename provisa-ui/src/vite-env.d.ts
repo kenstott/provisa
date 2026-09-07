@@ -16,6 +16,7 @@ declare module "*.graphql" {
   export const RolesQuery: DocumentNode;
   export const SourcesQuery: DocumentNode;
   export const DomainsQuery: DocumentNode;
+  export const DataProductsQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
@@ -50,6 +51,8 @@ declare module "*.graphql" {
   export const ScheduledTasks: DocumentNode;
   export const CreateDomain: DocumentNode;
   export const DeleteDomain: DocumentNode;
+  export const CreateDataProduct: DocumentNode;
+  export const DeleteDataProduct: DocumentNode;
   export const RegisterTable: DocumentNode;
   export const RegisterEntity: DocumentNode;
   export const RegisterFact: DocumentNode;
@@ -94,6 +97,8 @@ declare module "*.graphql" {
   export const DqContractParse: DocumentNode;
   export const DqContractBuild: DocumentNode;
   export const DryRunDqContract: DocumentNode;
+  // REQ-609/REQ-1634: resolves an owner_role/steward/visible_to ref list to individuals.
+  export const ResolveOwners: DocumentNode;
   export default doc;
 }
 
@@ -103,6 +108,7 @@ declare module "*.gql" {
   export const RolesQuery: DocumentNode;
   export const SourcesQuery: DocumentNode;
   export const DomainsQuery: DocumentNode;
+  export const DataProductsQuery: DocumentNode;
   export const TablesQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
@@ -136,6 +142,8 @@ declare module "*.gql" {
   export const ScheduledTasks: DocumentNode;
   export const CreateDomain: DocumentNode;
   export const DeleteDomain: DocumentNode;
+  export const CreateDataProduct: DocumentNode;
+  export const DeleteDataProduct: DocumentNode;
   export const RegisterTable: DocumentNode;
   export const RegisterEntity: DocumentNode;
   export const RegisterFact: DocumentNode;

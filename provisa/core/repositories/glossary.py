@@ -31,6 +31,7 @@ from sqlalchemy import delete as _delete, select, update
 
 from provisa.core.glossary import (
     TERM_EDGE_TYPES,
+    grounded_term_ids,
     live_term_ids,
     normalize_term,
     readable_term,
@@ -163,6 +164,17 @@ async def sync_table_refs(
             assert graph is not None
             node = graph.terms.get(held)
             if node is None or _is_curated(graph, node) or node["name"] == wanted:
+                # Holding this ref already proves the term concrete, regardless of which
+                # loader step created it first (glossary upsert can precede table sync and
+                # leave a config-declared stub abstract) -- a stale flag is corrected here too,
+                # not just on the fresh-link path below.
+                if node is not None and node["is_abstract"]:
+                    await conn.execute_core(
+                        update(glossary_terms)
+                        .where(glossary_terms.c.id == node["id"])
+                        .values(is_abstract=False)
+                    )
+                    node["is_abstract"] = False
                 continue
             orphaned.add(held)
         term_id = await _find_or_create_term(conn, wanted)
@@ -209,13 +221,22 @@ async def sweep_refless_terms(conn: "Connection", *, domains_before: "dict[int, 
 
 
 async def _find_or_create_term(conn: "Connection", name: str) -> int:
+    """Attach a column ref's term by name, creating it if needed.
+
+    A term this resolves to is by definition concrete -- it now holds a physical ref -- so a
+    stale ``is_abstract`` flag from a config-declared stub (glossary term upsert runs before
+    table sync, so a name shared with a not-yet-synced column is created abstract first) is
+    corrected here rather than left to contradict the ref it just gained.
+    """
     row = (
         await conn.execute_core(select(glossary_terms).where(glossary_terms.c.name == name))
     ).fetchone()
     if row is not None:
-        if row.deprecated:
+        if row.deprecated or row.is_abstract:
             await conn.execute_core(
-                update(glossary_terms).where(glossary_terms.c.id == row.id).values(deprecated=False)
+                update(glossary_terms)
+                .where(glossary_terms.c.id == row.id)
+                .values(deprecated=False, is_abstract=False)
             )
         return row.id
     term_id = await conn.upsert_returning(
@@ -375,6 +396,20 @@ async def live_ids(conn: "Connection") -> set[int]:
     )
 
 
+async def grounded_ids(conn: "Connection") -> set[int]:
+    """Ids of terms with a structural path to a column, ignoring ``definition``.
+
+    Used by the curation surface to flag a dangling abstract term -- one with no edge chain
+    reaching any physical ref -- distinctly from one that is merely undefined.
+    """
+    graph = await _load_graph(conn)
+    return grounded_term_ids(
+        graph.terms.values(),
+        graph.edges,
+        {tid for tid, node in graph.terms.items() if node["ref_count"] > 0},
+    )
+
+
 def _is_curated(graph: _TermGraph, node: dict) -> bool:
     """True when a term carries curator work that losing its last column must not destroy.
 
@@ -439,12 +474,14 @@ async def list_terms(
     # export surfaces enforce, rather than re-deriving it from the flags and guessing at
     # groundedness, which is a property of the graph and not of any one row.
     live = await live_ids(conn)
+    grounded = await grounded_ids(conn)
     scope = await term_domains(conn)
     return [
         dict(r._mapping)
         | {
             "ref_count": counts.get(r.id, 0),
             "live": r.id in live,
+            "grounded": r.id in grounded,
             "domains": sorted(scope.get(r.id, set())),
         }
         for r in rows
@@ -536,6 +573,31 @@ async def create_abstract_term(
     ).fetchone()
     if existing is not None:
         raise ValueError(f"term {name!r} already exists")
+    term_id = await conn.upsert_returning(
+        glossary_terms,
+        {"name": name, "definition": definition, "is_abstract": True, "deprecated": False},
+        index_elements=["name"],
+        returning="id",
+        update_columns=["definition"],
+    )
+    await set_declared_domains(conn, term_id, domains)
+    return term_id
+
+
+async def upsert_declared_term(
+    conn: "Connection", name: str, *, definition: str | None = None, domains: "set[str]"
+) -> int:
+    """Upsert a config-declared glossary term by name (REQ-1641).
+
+    Config reload is idempotent, unlike the curator's "new term" action: a name already
+    present in the table -- whether auto-derived from a column ref or declared by a prior
+    load of this same config -- gets its definition (re)set in place rather than rejected.
+    This is also how a config entry grounds an already-physical term: naming an existing
+    rooted term adds a definition without touching its ``is_abstract`` flag or column refs.
+    """
+    name = name.strip()
+    if not name:
+        raise ValueError("term name is required")
     term_id = await conn.upsert_returning(
         glossary_terms,
         {"name": name, "definition": definition, "is_abstract": True, "deprecated": False},
@@ -830,6 +892,62 @@ async def get_term_by_ref(conn: "Connection", table_id: int, column_name: str) -
     if row is None:
         return None
     return await get_term(conn, row.term_id)
+
+
+async def related_terms_for_tables(
+    conn: "Connection", table_ids: "set[int]", *, domains: "frozenset[str] | None" = None
+) -> list[dict]:
+    """Terms tied to any column of ``table_ids``, plus abstract terms reachable from those via
+    edges — the full transitive closure (REQ-1634 data product Related Terms panel).
+
+    Traversal follows ``glossary_term_edges`` in both directions: a rooted term may name an
+    abstract KIND_OF/PART_OF ancestor, or an abstract term may name a rooted one, and the
+    relationship reads either way once curated. Only the directly-ref'd terms and the abstract
+    terms found along the way are returned — a rooted term reached only transitively (e.g. a
+    sibling under the same abstract parent) says nothing about this data product's own columns.
+
+    ``domains`` applies the same REQ-1591 ``readable_term`` scoping ``list_terms`` uses, so a
+    caller narrowed to a domain selection never sees a term outside it just by knowing a table id.
+    """
+    if not table_ids:
+        return []
+    direct_rows = (
+        await conn.execute_core(
+            select(glossary_term_refs.c.term_id)
+            .where(glossary_term_refs.c.table_id.in_(table_ids))
+            .distinct()
+        )
+    ).fetchall()
+    direct_ids = {r.term_id for r in direct_rows}
+    if not direct_ids:
+        return []
+    edge_rows = (
+        await conn.execute_core(
+            select(glossary_term_edges.c.from_term_id, glossary_term_edges.c.to_term_id)
+        )
+    ).fetchall()
+    adjacency: dict[int, set[int]] = {}
+    for r in edge_rows:
+        adjacency.setdefault(r.from_term_id, set()).add(r.to_term_id)
+        adjacency.setdefault(r.to_term_id, set()).add(r.from_term_id)
+    visited = set(direct_ids)
+    queue = list(direct_ids)
+    while queue:
+        current = queue.pop()
+        for neighbor in adjacency.get(current, ()):
+            if neighbor not in visited:
+                visited.add(neighbor)
+                queue.append(neighbor)
+    rows = (
+        await conn.execute_core(select(glossary_terms).where(glossary_terms.c.id.in_(visited)))
+    ).fetchall()
+    live = await live_ids(conn)
+    scope = await term_domains(conn)
+    return [
+        dict(r._mapping) | {"live": r.id in live, "domains": sorted(scope.get(r.id, set()))}
+        for r in rows
+        if (r.id in direct_ids or r.is_abstract) and readable_term(domains, scope.get(r.id, set()))
+    ]
 
 
 async def search_terms(

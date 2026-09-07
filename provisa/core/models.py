@@ -315,15 +315,73 @@ class Domain(BaseModel):  # REQ-471, REQ-609
     ddl_schema: str | None = None  # schema within ddl_catalog; defaults to domain id
 
 
-class DataProduct(BaseModel):  # REQ-1634
+class DataProduct(BaseModel):  # REQ-1634, REQ-1660
     id: str
     domain_id: str  # required FK — a data product has exactly one owning domain
     name: str
-    owner: str | None = None  # person accountable for this product; distinct from Domain.steward
-    description: str = ""
+    owner_role: str | None = None  # role accountable for this product; distinct from Domain.steward
+    team_role: str | None = (
+        None  # role whose holders form the working team; resolves to individuals
+    )
+    purpose: str = ""
+    limitations: str = ""
+    usage: str = ""
+    version: str | None = None
+    status: str | None = None
+    # Prose, not structured: a product spans multiple member tables and a structured SLA
+    # can't unambiguously say which member it describes.
+    sla: str | None = None
+    support: str | None = None
+    # REQ-1635: Horizon Catalog's CREATE ORGANIZATION LISTING mandates a support contact
+    # (email or URL) on the manifest — there is no other email/URL-shaped field on a data
+    # product this can be derived from (owner_role is a role name, not a contact address).
+    support_contact: str | None = None
+    # REQ-1635: Horizon Catalog organization listings default to DRAFT (PUBLISH = FALSE) so a new
+    # listing doesn't surface org-wide before it's reviewed; set true to publish it immediately.
+    publish: bool = False
+    custom_properties: dict[str, str] = Field(default_factory=dict)
 
 
-TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command")
+class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
+    """One relationship an abstract config term declares to another term.
+
+    ``to`` is a term *name*, not an id — config is written and reviewed as text, and the
+    target may be a physical term this same file causes to exist (derived from a column)
+    or another declared abstract term. Resolved to ids at load time, after every term in
+    the file has been upserted.
+    """
+
+    to: str
+    rel_type: str = "KIND_OF"
+
+    @field_validator("rel_type")
+    @classmethod
+    def _known_rel_type(cls, v: str) -> str:
+        from provisa.core.glossary import TERM_EDGE_TYPES
+
+        if v not in TERM_EDGE_TYPES:
+            raise ValueError(f"rel_type must be one of {TERM_EDGE_TYPES}")
+        return v
+
+
+class GlossaryTermConfig(BaseModel):  # REQ-1641
+    """A config-declared glossary term, upserted the same way an admin curates one by hand.
+
+    Config-declared terms are always abstract (``is_abstract``): they hold no column refs of
+    their own, so ``domains`` (required, non-empty) is the only thing that scopes them — see
+    ``create_abstract_term``'s docstring for why an unscoped term is a governance gap. An
+    abstract term is otherwise inert — the live/approved admission rule requires it be
+    *grounded*, reachable by an edge from a term that does hold a column ref — so ``edges``
+    is how config connects it to the concrete terms it actually means.
+    """
+
+    name: str
+    definition: str | None = None
+    domains: list[str] = Field(min_length=1)
+    edges: list[GlossaryTermEdgeConfig] = Field(default_factory=list)
+
+
+TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command", "product")
 
 
 TAG_FIELD_POLICIES = ("hidden", "optional", "required")
@@ -521,6 +579,7 @@ class TagAssignment(BaseModel):  # REQ-1377
     relationship_id: str | None = None
     # Commands (tracked functions/webhooks) are identified by their registered name.
     command_name: str | None = None
+    product_id: str | None = None  # REQ-1660: explicit data-product-level tag
     # Why this tag is on this object; required for 'deprecated' (system semantic).
     reason: str | None = None
     # ISO date the assignment stops being intended — for 'deprecated', the planned removal
@@ -1120,6 +1179,7 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     domain_id: str = ""
     description: str | None = None
     kind: str = "mutation"  # "mutation" or "query"
+    product_id: str | None = None  # REQ-1634: optional data-product membership
     # REQ-885: implementation-kind dimension. Addressing (name/function_name) is decoupled
     # from binding (transport + location, swappable). ``source_procedure`` is the existing
     # REQ-205–208 path; the others are Provisa-hosted / external implementations.
@@ -1703,6 +1763,7 @@ class ProvisaConfig(BaseModel):
     naming: NamingConfig = Field(default_factory=NamingConfig)
     tables: list[Table]
     data_products: list[DataProduct] = Field(default_factory=list)  # REQ-1634
+    glossary_terms: list[GlossaryTermConfig] = Field(default_factory=list)  # REQ-1641
     relationships: list[Relationship] = Field(default_factory=list)
     # REQ-1317: governed metric definitions — named aggregates with query-time grain.
     metrics: list[Metric] = Field(default_factory=list)

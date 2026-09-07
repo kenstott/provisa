@@ -90,7 +90,9 @@ def _rows() -> dict[str, list[list]]:
     config = _config()
     # REQ-1592: the report is a steward's view of the WHOLE registered model, so it projects with
     # the export filter off — exactly as provisa/api/admin/report_router.py does.
-    snapshot = build_snapshot(config, org_id=ORG, dialect="postgres", data_products_only=False)
+    snapshot = build_snapshot(
+        config, org_id=ORG, dialect="postgres", contexts={}, data_products_only=False
+    )
     return wb.sheet_rows(snapshot, config, org_id=ORG)
 
 

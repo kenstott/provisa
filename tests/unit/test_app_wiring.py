@@ -100,6 +100,7 @@ def _state(*, ready=True):
             "schema_name": "default",
             "table_name": "events",
             "columns": [_rcol("id", "bigint", pk=True)],
+            "dq_contract": None,
         }
     ]
     registry = SimpleNamespace(get_enabled=lambda: [])
@@ -174,6 +175,35 @@ async def test_mv_with_unmapped_output_type_skipped():
         _Sched(), state=_state_with_mv(column_types=["date", "geometry"]), log=_LOG
     )
     assert n == 0  # no node — its columns did not resolve to IR
+
+
+@pytest.mark.asyncio
+async def test_registered_checker_table_carries_its_contract_to_the_loop(monkeypatch):
+    # REQ-1443: a checker table's rows are the results of RUNNING its registered contract, so the
+    # table handed to the node binder (and on to make_dq_loader) must carry dq_contract — without
+    # it the DQ loader has nothing to run and every poll/forced regen lands nothing.
+    seen: dict = {}
+
+    def _capture(**kw):
+        seen["tables"] = kw["tables"]
+        return []
+
+    monkeypatch.setattr("provisa.events.app_wiring.specs_from_config", _capture)
+    st = _state()
+    contract = "dataset: provisa/pet_store/pets\nchecks: []\n"
+    st.tenant_db = _fake_db(
+        [
+            {
+                "source_id": "dq",
+                "schema_name": "quality",
+                "table_name": "pets_scan",
+                "columns": [_rcol("scan_id", "varchar", pk=True)],
+                "dq_contract": contract,
+            }
+        ]
+    )
+    await wire_event_loop(_Sched(), state=st, log=_LOG)
+    assert [t.dq_contract for t in seen["tables"]] == [contract]
 
 
 @pytest.mark.asyncio

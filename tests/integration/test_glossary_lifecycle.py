@@ -209,3 +209,113 @@ class TestTheTermFollowsTheColumnsBusinessName:
             await _load(conn, {"people": [("usr_nm", "user name"), "region_cd"]})
             terms = await _terms(conn)
         assert terms["region"]["ref_count"] == 1
+
+
+class TestAConfigDeclaredTermGroundsThroughAnEdge:
+    """A config-declared abstract term is inert on its own -- ``live_term_ids()`` requires it be
+    grounded, reached by an edge from a term that holds a real column ref. ``glossary_terms:``
+    entries declare that edge by target-term name (REQ-1641); the loader resolves it after every
+    term this config declares or derives exists, so the edge can target a term this same config
+    load derives from a column.
+    """
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_edge_to_a_derived_term_makes_the_abstract_term_live(self, tenant_db):
+        config = _config({"orders": ["cust_id"]})
+        config["glossary_terms"] = [
+            {
+                "name": "buyer",
+                "definition": "The party responsible for an order, regardless of channel.",
+                "domains": ["sales"],
+                "edges": [{"to": "customer", "rel_type": "KIND_OF"}],
+            }
+        ]
+        async with tenant_db.acquire() as conn:
+            await load_config(parse_config_dict(config), conn, replace=False)
+            terms = await _terms(conn)
+            buyer = terms["buyer"]
+            customer = terms["customer"]
+            detail = await glossary_repo.get_term(conn, buyer["id"])
+        assert buyer["is_abstract"] is True
+        assert buyer["ref_count"] == 0  # holds no column refs of its own
+        assert customer["is_abstract"] is False  # the target is untouched by the edge
+        assert {(e["rel_type"], e["name"]) for e in detail["edges_out"]} == {
+            ("KIND_OF", "customer")
+        }
+        assert buyer["live"] is True  # in-service, defined, and reachable to a rooted term
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_declaring_a_definition_for_a_not_yet_synced_column_still_ends_concrete(
+        self, tenant_db
+    ):
+        """Glossary term upsert (loader step 4.6) runs before table/column sync (step 5), so a
+        config entry naming a column this same load derives -- to give it a definition -- creates
+        the row abstract first. Sync must then flip it back: a term holding a physical ref is
+        concrete regardless of which loader step touched it first.
+        """
+        config = _config({"orders": [("cust_id", "customer")]})
+        config["glossary_terms"] = [
+            {
+                "name": "customer",
+                "definition": "The party an order belongs to.",
+                "domains": ["sales"],
+            }
+        ]
+        async with tenant_db.acquire() as conn:
+            await load_config(parse_config_dict(config), conn, replace=False)
+            terms = await _terms(conn)
+            customer = terms["customer"]
+        assert customer["is_abstract"] is False
+        assert customer["ref_count"] == 1
+        assert customer["definition"] == "The party an order belongs to."
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_reload_demotes_an_already_held_ref_stuck_abstract(self, tenant_db):
+        """A ref created by the step-ordering bug (glossary upsert before table sync) points at
+        an abstract-but-curated term. On the NEXT load, sync sees the ref already held and the
+        term already curated/name-matched, so it takes the early-continue path instead of
+        ``_find_or_create_term`` -- that path must demote ``is_abstract`` too, or a term stays
+        stuck abstract forever even after the create-path fix, since every later reload just
+        re-confirms the same stale ref without ever re-resolving it.
+        """
+        config = _config({"orders": [("cust_id", "customer")]})
+        config["glossary_terms"] = [
+            {
+                "name": "customer",
+                "definition": "The party an order belongs to.",
+                "domains": ["sales"],
+            }
+        ]
+        parsed = parse_config_dict(config)
+        async with tenant_db.acquire() as conn:
+            await load_config(parsed, conn, replace=False)
+            first = (await _terms(conn))["customer"]
+            assert first["is_abstract"] is False  # create-path fix already covers this load
+
+            # Simulate a row a pre-fix load left behind: concrete in every way (curated, holding
+            # a ref) but with the stale flag, so the SECOND load's early-continue path -- which
+            # sees the ref already held and skips ``_find_or_create_term`` entirely -- is what
+            # has to correct it, not the create path exercised above.
+            await conn.execute(
+                "UPDATE glossary_terms SET is_abstract = TRUE WHERE id = $1", first["id"]
+            )
+
+            await load_config(parsed, conn, replace=False)
+            second = (await _terms(conn))["customer"]
+        assert second["is_abstract"] is False
+        assert second["id"] == first["id"]
+        assert second["ref_count"] == 1
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_edge_to_a_name_absent_from_config_and_catalog_fails_loudly(self, tenant_db):
+        config = _config({"orders": ["cust_id"]})
+        config["glossary_terms"] = [
+            {
+                "name": "buyer",
+                "domains": ["sales"],
+                "edges": [{"to": "nonexistent term", "rel_type": "KIND_OF"}],
+            }
+        ]
+        async with tenant_db.acquire() as conn:
+            with pytest.raises(ValueError, match="nonexistent term"):
+                await load_config(parse_config_dict(config), conn, replace=False)

@@ -16,7 +16,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
 import i18n from "../i18n";
-import { MemoryRouter } from "react-router-dom";
 import { TeamPage } from "../pages/TeamPage";
 import type { OrgMember } from "../api/admin";
 
@@ -72,11 +71,7 @@ function member(over: Partial<OrgMember>): OrgMember {
 
 /** The page reads the ?section= deep link, so it renders under a router as it does in the app. */
 function renderTeamPage() {
-  return render(
-    <MemoryRouter>
-      <TeamPage />
-    </MemoryRouter>,
-  );
+  return render(<TeamPage />);
 }
 
 describe("TeamPage offboarding", () => {

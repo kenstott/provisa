@@ -7,10 +7,85 @@ auth:
 cache:
   default_ttl: 300
   enabled: true
+data_products:
+- purpose: "Pet health records — inventory and referral vets for care history"
+  domain_id: pet-store
+  id: pet_health
+  name: Pet Health
+  owner: org_admin
+  support_contact: kennethstott@gmail.com
+- purpose: "Shelter staffing — employee roster and shift coverage"
+  domain_id: shelter
+  id: workforce_ops
+  name: Workforce Ops
+  owner: org_admin
+  support_contact: kennethstott@gmail.com
 discovery:
   api_key: ${env:ANTHROPIC_API_KEY:-}
   min_confidence: 0.7
   sample_size: 20
+glossary_terms:
+- name: referral
+  definition: "The act of sending a pet to an outside veterinary practice for care\
+    \ beyond in-house capability."
+  domains:
+  - pet-store
+  edges:
+  - to: clinic
+    rel_type: RELATED_TO
+  - to: specialty
+    rel_type: RELATED_TO
+- name: clinic
+  definition: "The outside veterinary practice a pet is referred to."
+  domains:
+  - pet-store
+- name: specialty
+  definition: "The area of veterinary care a referral clinic focuses on."
+  domains:
+  - pet-store
+- name: personnel record
+  definition: "An employee's role and tenure at the shelter, held for staffing and\
+    \ HR reporting."
+  domains:
+  - shelter
+- name: department
+  definition: "The organizational unit an employee is assigned to."
+  domains:
+  - shelter
+  edges:
+  - to: personnel record
+    rel_type: PART_OF
+- name: hire date
+  definition: "The date an employee started working at the shelter."
+  domains:
+  - shelter
+  edges:
+  - to: personnel record
+    rel_type: PART_OF
+- name: shift coverage
+  definition: "The window and place a shelter staff member is scheduled to work,\
+    \ used for weekly coverage and handoff planning."
+  domains:
+  - shelter
+  edges:
+  - to: shift start
+    rel_type: RELATED_TO
+  - to: shift end
+    rel_type: RELATED_TO
+  - to: schedule location
+    rel_type: RELATED_TO
+- name: shift start
+  definition: "The time a scheduled shift begins."
+  domains:
+  - shelter
+- name: shift end
+  definition: "The time a scheduled shift ends."
+  domains:
+  - shelter
+- name: schedule location
+  definition: "The place a scheduled shift takes place."
+  domains:
+  - shelter
 domains:
 - description: "Pet store \u2014 Petstore public API (OpenAPI), internal inventory\
     \ (PG), and customer inquiries (SQLite) federated into one virtual database"
@@ -20,6 +95,37 @@ domains:
   id: shelter
 federation_engine: duckdb
 functions:
+- arguments:
+  - name: name
+    type: String
+  - name: breed
+    type: String
+  - name: status
+    type: String
+  binding:
+    callable: demo.py_functions:add_pet
+  description: Add a new pet to inventory
+  domain_id: pet-store
+  function_name: add_pet
+  impl_kind: python
+  kind: mutation
+  name: add_pet
+  product_id: pet_health
+  return_schema:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      breed:
+        type: string
+      status:
+        type: string
+    type: object
+  returns: ''
+  source_id: ''
+  visible_to:
+  - org_admin
 - arguments:
   - arg_kind: result_set
     columns:
@@ -338,6 +444,20 @@ sources:
     port: ${env:PROVISA_PGWIRE_PORT:-5439}
     user: ${env:PROVISA_DQ_USER:-org_admin}
   type: great_expectations
+# The second checker, so the demo exercises both contract dialects through the one scan pipeline.
+# soda-core is Elastic License 2.0 and is never installed by the demo default (install.sh picks GX):
+# where the operator has not selected soda, this source's scan reports the pip command that installs
+# it and lands nothing — it never blocks the GX scan or anything else.
+- description: "Soda quality scans \u2014 each results table is one contract's per-check\
+    \ outcomes, landed as ordinary source rows"
+  id: dq-soda
+  mapping:
+    database: provisa
+    host: ${env:PROVISA_DQ_HOST:-localhost}
+    password: ${env:PROVISA_DQ_PASSWORD:-provisa}
+    port: ${env:PROVISA_PGWIRE_PORT:-5439}
+    user: ${env:PROVISA_DQ_USER:-org_admin}
+  type: soda
 - description: "Animal shelter GraphQL API \u2014 staff schedules, breed catalogue,\
     \ and animal assignment records managed by shelter operations"
   id: graphql-demo
@@ -498,6 +618,7 @@ tables:
   description: "Complete accountability map of staff to breeds \u2014 use to spot\
     \ coverage gaps or single-keeper risk across all species"
   domain_id: shelter
+  product_id: workforce_ops
   schema: graphql
   source_id: graphql-demo
   table: assignments
@@ -764,6 +885,7 @@ tables:
   description: "All staff eligible for breed assignments \u2014 use to identify who\
     \ can be assigned or scheduled"
   domain_id: shelter
+  product_id: workforce_ops
   schema: graphql
   source_id: graphql-demo
   table: employees
@@ -1138,6 +1260,7 @@ tables:
   domain_id: pet-store
   enable_aggregates: true
   enable_group_by: true
+  product_id: pet_health
   schema: pet_store
   source_id: pet-store-sqlite
   table: pets
@@ -1213,6 +1336,7 @@ tables:
     - org_admin
   description: "Veterinarians the store refers pets to"
   domain_id: pet-store
+  product_id: pet_health
   schema: pet_store
   source_id: pet-store-sqlite
   table: vets
@@ -1371,6 +1495,41 @@ tables:
   schema: quality
   source_id: dq-checker
   table: pets_scan
+# REQ-1443: the Soda counterpart — same results schema, same scan pipeline, the other contract
+# dialect. No product_id: clause 10 derives it from the scanned table (vets → pet_health).
+- alias: vets_quality
+  columns:
+  - description: Placeholder carrying visible_to; replaced by the shipped results schema at parse
+    name: scan_id
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  cache_ttl: 3600
+  change_signal: ttl_probe
+  description: "Quality scan results for the referral vets — one row per check per scan,\
+    \ with outcome, metric value and threshold"
+  domain_id: pet-store
+  dq_contract: |
+    dataset: provisa/pet_store/vets
+    columns:
+      - name: name
+        checks:
+          - missing:
+          - duplicate:
+      - name: clinic
+        checks:
+          - missing:
+      - name: specialty
+        checks:
+          - missing:
+    checks:
+      - row_count:
+          must_be_greater_than: 0
+  probe_type: watermark
+  schema: quality
+  source_id: dq-soda
+  table: vets_scan
 - alias: schedule_by_employee
   columns:
   - description: Employee id to filter on - sent to the GraphQL query as an argument
@@ -1462,6 +1621,7 @@ tables:
   description: "Full weekly shift roster \u2014 use for shelter-wide coverage analysis\
     \ and to surface days where any location is understaffed"
   domain_id: shelter
+  product_id: workforce_ops
   schema: graphql
   source_id: graphql-demo
   table: schedules
@@ -1499,6 +1659,33 @@ tables:
   schema: default
   source_id: inquiries-sqlite
   table: users
+# REQ-1375: the system pii tag on every demo column that carries contact or identity data — the
+# employee contact object holds email, phone and ssn as nested fields, so the tag sits on the column.
+tag_assignments:
+- tag_id: pii
+  object_type: column
+  table_ref: graphql-demo.graphql.employee
+  column_name: contact
+- tag_id: pii
+  object_type: column
+  table_ref: graphql-demo.graphql.employees
+  column_name: contact
+- tag_id: pii
+  object_type: column
+  table_ref: petstore-api.default.get_user_by_name
+  column_name: email
+- tag_id: pii
+  object_type: column
+  table_ref: petstore-api.default.get_user_by_name
+  column_name: phone
+- tag_id: pii
+  object_type: column
+  table_ref: inquiries-sqlite.default.users
+  column_name: email
+- tag_id: pii
+  object_type: column
+  table_ref: inquiries-sqlite.default.users
+  column_name: phone
 vector_models:
   # REQ-1008: MCP catalog search (search_catalog) needs an enabled embedding model registered
   # here, or it raises "catalog search requires an enabled embedding model" and the explore

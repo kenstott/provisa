@@ -16,13 +16,12 @@
 // invitation that was never redeemed instead of asking someone who followed a link to type it.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ReactElement } from "react";
-import { MemoryRouter } from "react-router-dom";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
 import { LoginPage } from "../pages/LoginPage";
 import { OnboardOrgPage } from "../pages/OnboardOrgPage";
 import { forgetInvite, pendingInvite, rememberInvite } from "../lib/pendingInvite";
 
-const renderRouted = (ui: ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter>);
+const renderRouted = (ui: ReactElement) => render(ui);
 
 vi.mock("../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/admin")>()),

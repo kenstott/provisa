@@ -41,7 +41,7 @@ def test_oid_literal_value_preserved(con):
     assert _scalar(con, "SELECT 2215::oid AS x") == 2215
 
 
-def test_oid_predicate_preserved(con):
+def test_oid_predicate_preserved():
     rewritten = _rewrite_for_duckdb("SELECT * FROM pg_class WHERE relnamespace = 2215::oid")
     assert "= 0" not in rewritten
     assert "2215" in rewritten
@@ -85,7 +85,7 @@ def test_name_cast_becomes_varchar(con):
     assert _scalar(con, "SELECT 'public'::name AS n") == "public"
 
 
-def test_qualified_regclass_literal_shortened(con):
+def test_qualified_regclass_literal_shortened():
     # pg_description.classoid stores the short relation name ('pg_class'), so
     # DataGrip's `classoid = 'pg_catalog.pg_class'::regclass` filter must map the
     # schema-qualified literal to its last component or every comment drops.
@@ -132,3 +132,78 @@ def test_pg_available_extension_versions_maps_to_pg_extension():
     )
     assert "pg_available_extension_versions()" not in out
     assert "_pg_extension" in out
+
+
+def test_format_type_strips_schema_qualifier_from_embedded_column():
+    # Regression: sqlglot's transform() visits parents before children, so the
+    # format_type/obj_description/col_description handlers previously spliced
+    # their *untransformed* argument straight into a new subquery, leaving the
+    # `pg_catalog.` qualifier in place. DuckDB's binder rejected the result
+    # with "Referenced table 'pg_catalog.pg_attribute' not found!" — this is
+    # exactly the SQL SQLAlchemy's PG reflection issues.
+    out = _rewrite_for_duckdb(
+        "SELECT format_type(pg_catalog.pg_attribute.atttypid, null) AS x "
+        "FROM pg_catalog.pg_attribute"
+    )
+    assert "pg_catalog.pg_attribute" not in out
+    assert "_pg_attribute AS pg_attribute" in out
+
+
+def test_obj_description_strips_schema_qualifier_from_embedded_column():
+    out = _rewrite_for_duckdb(
+        "SELECT obj_description(pg_catalog.pg_class.oid) AS x FROM pg_catalog.pg_class"
+    )
+    assert "pg_catalog.pg_class" not in out
+
+
+def test_col_description_strips_schema_qualifier_from_embedded_columns():
+    out = _rewrite_for_duckdb(
+        "SELECT col_description(pg_catalog.pg_class.oid, pg_catalog.pg_attribute.attnum) AS x "
+        "FROM pg_catalog.pg_class, pg_catalog.pg_attribute"
+    )
+    assert "pg_catalog.pg_class" not in out
+    assert "pg_catalog.pg_attribute" not in out
+
+
+def test_pg_get_serial_sequence_nested_in_cast_chain_is_nulled():
+    # Regression: SQLAlchemy's PG column reflection wraps
+    # pg_get_serial_sequence(...) in `::regclass::oid` inside a WHERE predicate.
+    # _rewrite_pg_cast's oid-cast branch spliced the (untransformed) inner
+    # expression into a fresh CAST(... AS BIGINT) instead of running it back
+    # through the top-level rewrite, so the call's own `pg_get_` handling never
+    # fired and it reached DuckDB verbatim: "Scalar Function with name
+    # pg_get_serial_sequence does not exist!"
+    out = _rewrite_for_duckdb(
+        "SELECT * FROM pg_catalog.pg_sequence WHERE pg_catalog.pg_sequence.seqrelid = "
+        "CAST(CAST(pg_catalog.pg_get_serial_sequence("
+        "CAST(CAST(pg_catalog.pg_attribute.attrelid AS REGCLASS) AS TEXT), "
+        "pg_catalog.pg_attribute.attname) AS REGCLASS) AS OID)"
+    )
+    assert "pg_get_serial_sequence" not in out
+    assert "CAST(NULL AS BIGINT)" in out
+
+
+def test_format_type_maps_internal_typname_to_display_name():
+    # Regression: _pg_type.typname stores PG's internal names (int4, bool,
+    # varchar, ...), but SQLAlchemy's PG dialect parses format_type()'s
+    # *display* name (integer, boolean, character varying, ...) against
+    # ischema_names and silently falls back to NullType for anything else —
+    # breaking DDL generation for every reflected column ("Can't generate DDL
+    # for NullType()").
+    c = duckdb.connect()
+    c.execute("CREATE TABLE _pg_type (oid INTEGER, typname VARCHAR)")
+    c.execute("INSERT INTO _pg_type VALUES (23, 'int4'), (16, 'bool'), (1043, 'varchar')")
+    assert _scalar(c, "SELECT format_type(23, null) AS x") == "integer"
+    assert _scalar(c, "SELECT format_type(16, null) AS x") == "boolean"
+    assert _scalar(c, "SELECT format_type(1043, null) AS x") == "character varying"
+    c.close()
+
+
+def test_json_build_object_maps_to_json_object(con):
+    # DuckDB has no json_build_object; SQLAlchemy's identity-column reflection
+    # query emits it, and sqlglot's duckdb generator does not translate the
+    # Anonymous call, so it reached DuckDB verbatim: "Scalar Function with
+    # name json_build_object does not exist! Did you mean 'json_object'?"
+    out = _rewrite_for_duckdb("SELECT json_build_object('a', 1) AS j")
+    assert "json_build_object" not in out.lower()
+    assert con.execute(out).fetchone()[0] == '{"a":1}'

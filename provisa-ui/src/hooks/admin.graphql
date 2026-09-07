@@ -18,6 +18,7 @@ fragment ColumnFields on TableColumnType {
   maskPrecision
   alias
   computedSqlAlias
+  computedGqlAlias
   description
   dataType
   nativeFilterType
@@ -89,6 +90,15 @@ query DomainsQuery {
     id
     description
     graphqlAlias
+    steward
+  }
+}
+
+query ResolveOwners($refs: [String!]!) {
+  resolveOwners(refs: $refs) {
+    userId
+    displayName
+    email
   }
 }
 
@@ -97,8 +107,16 @@ query DataProductsQuery {
     id
     domainId
     name
-    owner
-    description
+    ownerRole
+    teamRole
+    purpose
+    limitations
+    usage
+    version
+    status
+    sla
+    support
+    customProperties
   }
 }
 
@@ -154,6 +172,8 @@ query TablesQuery {
       warning
     }
     gqlNamingConvention
+    graphqlFieldName
+    dqDataset
     watermarkColumn
     changeSignal
     probeQuery
@@ -341,6 +361,13 @@ mutation DryRunDqContract($sourceId: String!, $contractText: String!) {
       value
       diagnostics
     }
+  }
+}
+
+# REQ-1443: run a checker table's poll job now instead of waiting for its cadence; lands rows.
+mutation RunDqCheckNow($schemaName: String!, $tableName: String!) {
+  runDqCheckNow(schemaName: $schemaName, tableName: $tableName) {
+    ...MutationResult
   }
 }
 
@@ -617,16 +644,8 @@ mutation DeleteDomain($id: String!) {
   }
 }
 
-mutation CreateDataProduct(
-  $id: String!
-  $domainId: String!
-  $name: String!
-  $owner: String
-  $description: String!
-) {
-  createDataProduct(
-    input: { id: $id, domainId: $domainId, name: $name, owner: $owner, description: $description }
-  ) {
+mutation CreateDataProduct($input: DataProductInput!) {
+  createDataProduct(input: $input) {
     ...MutationResult
   }
 }

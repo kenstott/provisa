@@ -41,10 +41,17 @@ import yaml
 CHECKERS: frozenset[str] = frozenset({"soda", "great_expectations"})
 
 # The dataset identifier's shape. Soda accepts two or more parts; Provisa requires three, because a
-# governed table is addressed by (schema, table) and the leading part is the checker's own data
-# source name. A two-part identifier cannot name a Provisa table, so it is rejected at parse rather
-# than resolved by guessing which half is missing.
+# governed table is addressed by (schema, table) and the leading part is a data source label.
+# A two-part identifier cannot name a Provisa table, so it is rejected at parse rather than resolved
+# by guessing which half is missing.
 _DATASET_PARTS = 3
+
+# The leading segment's value. It is NOT the operator's own name for anything — dq/runner.py builds
+# both sides of the equality it checks: the soda/GX data-source config the worker generates
+# (dq/worker.py) is itself labelled from this same string, so the two only ever have to agree with
+# each other, never with an external Soda config or a Provisa source id. One fixed constant is
+# therefore correct, not a placeholder for something more configurable.
+PGWIRE_DATA_SOURCE = "provisa"
 
 
 class ContractError(Exception):
@@ -108,31 +115,41 @@ def dataset_parts(dataset: str) -> tuple[str, str, str]:
     return data_source, schema, table
 
 
-def resolve_contract_target(dataset: str, tables: list) -> Any:
-    """The governed :class:`~provisa.core.models.Table` the contract scans.
+def meta_dataset(meta: Any) -> str:
+    """A compiled :class:`~provisa.compiler.sql_types.TableMeta` as a contract dataset.
 
-    Matching is on (schema, table) — the trailing two parts. The leading part is the checker's data
-    source name, which addresses the pgwire ENDPOINT the checker connects through, not a Provisa
-    source id; the same governed table is reachable under whatever data source name the operator
-    gave that endpoint.
+    The checker connects through pgwire, so the schema/table are the names pgwire publishes —
+    ``domain_to_sql_name(domain_id)`` and ``semantic_table_name(meta)`` (REQ-641), the same pair
+    ``pgwire.catalog_populate`` writes — behind the fixed :data:`PGWIRE_DATA_SOURCE` label.
+    """
+    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.compiler.sql_rewrite import semantic_table_name
+
+    return f"{PGWIRE_DATA_SOURCE}/{domain_to_sql_name(meta.domain_id)}/{semantic_table_name(meta)}"
+
+
+def resolve_contract_target(dataset: str, contexts: dict) -> Any:
+    """The compiled :class:`~provisa.compiler.sql_types.TableMeta` whose :func:`meta_dataset` is
+    ``dataset``, matched over every role's compiled tables in ``contexts`` (``state.contexts``).
+    The returned meta carries the physical ``schema_name``/``table_name`` for the results row.
 
     A dataset that resolves to no governed table raises :class:`ContractError`. A checker may only
     observe what Provisa governs — a contract aimed elsewhere would land rows describing a table
     that has no lineage, no governance and no RLS, which is the opposite of REQ-967's estate.
     """
-    _, schema, table_name = dataset_parts(dataset)
-    matches = [t for t in tables if t.schema_name == schema and t.table_name == table_name]
+    matches = {
+        meta.table_id: meta
+        for ctx in contexts.values()
+        for meta in ctx.tables.values()
+        if meta_dataset(meta) == dataset
+    }
     if not matches:
-        raise ContractError(
-            f"contract dataset {dataset!r} resolves to no governed table "
-            f"(schema {schema!r}, table {table_name!r})"
-        )
+        raise ContractError(f"contract dataset {dataset!r} resolves to no governed table")
     if len(matches) > 1:
         raise ContractError(
-            f"contract dataset {dataset!r} is ambiguous: {len(matches)} governed tables share "
-            f"schema {schema!r} and table {table_name!r}"
+            f"contract dataset {dataset!r} is ambiguous: {len(matches)} governed tables publish it"
         )
-    return matches[0]
+    return next(iter(matches.values()))
 
 
 def contract_checks(text: str, checker: str) -> list[dict]:
