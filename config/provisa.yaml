@@ -182,7 +182,11 @@ relationships:
   source_table_id: animal_breeds
   target_column: breed_name
   target_table_id: pets
-- cardinality: many-to-one
+# one-to-many, not many-to-one: a breed has several keepers assigned, so assignments.breed_name is
+# NOT unique. Declaring this many-to-one made relationship creation flag breed_name as the
+# assignments table's primary key, the landing table was built with PRIMARY KEY (breed_name), and
+# every event-loop land of the demo data failed on the duplicate ("African Lion" x4).
+- cardinality: one-to-many
   id: pets-to-shelter-assignments
   source_column: breed_name
   source_table_id: pets
