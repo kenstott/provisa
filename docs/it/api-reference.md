@@ -1400,3 +1400,135 @@ Ogni adapter vendor pubblica il grafo dei termini in modo nativo, in un containe
 | Collibra | dominio di tipo Glossary "Provisa Glossary" | asset Business Term via la Import API | tipi di relazione Business Term nativi | stato asset |
 
 La proprietà è il binding, non il nome: l'id vendor di ogni termine pubblicato viene catturato in `catalog_bindings` sotto l'URN del termine (`provisa://<org>/terms/<name>`), e Provisa modifica o elimina un elemento di glossario lato vendor solo quando detiene quel binding (o l'elemento vive nel container di proprietà di Provisa che ha creato). Un elemento di glossario senza binding Provisa ha avuto origine nel sistema esterno e non viene mai toccato; gli aggiornamenti fanno read-merge così i campi aggiunti dallo steward sui termini propri di Provisa sopravvivono; nulla viene eliminato quando un termine esce dallo snapshot. Le assegnazioni steward termine-asset restano di proprietà esterna — nessun adapter scrive assegnazioni termine-asset (la pubblicazione delle assegnazioni scritte da Provisa è un follow-on esplicito). Su Collibra in particolare, la sicurezza sotto la semantica REPLACE della Import API si basa sul contenimento: il payload menziona solo asset dentro il dominio di glossario Provisa e istanze di relazione solo tra termini Provisa, così i glossari dello steward e le loro relazioni non sono mai raggiungibili. [tool-verified: `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/openmetadata.py`]
+
+---
+
+## Prodotti dati (REQ-1634)
+
+Un prodotto dati raggruppa tabelle pubblicate insieme per il consumo, di proprietà di esattamente un dominio. I campi seguono il vocabolario ODPS (Open Data Product Standard) dove Provisa è già la fonte di verità. La UI admin espone i Prodotti dati sotto **Admin → Data Products**. [tool-verified: `provisa/core/models.py:318-342`, `provisa/api/admin/schema_mutation.py:949-1017`, `provisa/api/admin/schema_query.py:352-362`]
+
+### Capability
+
+| Capability | Concede |
+| --- | --- |
+| `data_product_read` | Accesso in lettura al campo query `data_products` e alla pagina admin Data Products. Assegnata per impostazione predefinita a `org_admin`, `analyst`, `developer` e `modeler`. |
+| `data_product_rw` | Mutation di creazione ed eliminazione. Abilita i controlli New / Edit / Delete nella UI. |
+
+[tool-verified: `provisa/api/admin/schema_mutation.py:959,1001`, `provisa/api/admin/schema_query.py:357`]
+
+### GraphQL admin
+
+Tutte le operazioni sui prodotti dati passano attraverso `POST /admin/graphql`.
+
+**Query:**
+
+```graphql
+query {
+  data_products {
+    id
+    domain_id
+    name
+    owner_role
+    team_role
+    purpose
+    limitations
+    usage
+    version
+    status
+    sla
+    support
+    custom_properties
+  }
+}
+```
+
+Richiede `data_product_read`.
+
+**Creazione o aggiornamento:**
+
+```graphql
+mutation {
+  create_data_product(input: {
+    id: "customer_360"
+    domain_id: "sales"
+    name: "Customer 360"
+    owner_role: "data-product-owner"
+    team_role: "sales-analytics"
+    purpose: "Single view of a customer across all touchpoints."
+    status: "active"
+    version: "1.0.0"
+  }) {
+    success
+    message
+  }
+}
+```
+
+`create_data_product` esegue un upsert — chiamarla con un `id` esistente aggiorna il record. Richiede `data_product_rw`.
+
+**Eliminazione:**
+
+```graphql
+mutation {
+  delete_data_product(id: "customer_360") {
+    success
+    message
+  }
+}
+```
+
+Eliminare un prodotto azzera `product_id` da ogni tabella membro, rimuovendone l'appartenenza. Richiede `data_product_rw`. [tool-verified: `provisa/api/admin/schema_mutation.py:995-1017`]
+
+### Schema dei campi
+
+| Campo | Tipo | Obbligatorio | Note |
+| --- | --- | --- | --- |
+| `id` | `String` | Sì | Identificatore stabile leggibile dalla macchina, es. `customer_360` |
+| `domain_id` | `String` | Sì | Dominio proprietario. Le tabelle membro devono condividere questo `domain_id` — le discrepanze vengono rifiutate al momento del salvataggio |
+| `name` | `String` | Sì | Nome visualizzato |
+| `owner_role` | `String` | No | Ruolo responsabile di questo prodotto; distinto dal data steward del dominio |
+| `team_role` | `String` | No | Ruolo i cui detentori gestiscono questo prodotto quotidianamente; si risolve in individui |
+| `purpose` | `String` | No | Cosa pubblica questo prodotto e perché |
+| `limitations` | `String` | No | Vincoli, avvertenze o esclusioni noti |
+| `usage` | `String` | No | Come consumare questo prodotto |
+| `version` | `String` | No | es. `1.2.0` |
+| `status` | `String` | No | es. `proposed`, `active`, `deprecated`, `retired` |
+| `sla` | `String` | No | Impegni sul livello di servizio; prosa — un prodotto comprende più tabelle e uno SLA strutturato non può indicare in modo inequivocabile quale membro descrive |
+| `support` | `String` | No | Indicazioni di supporto in testo libero |
+| `custom_properties` | `JSON` | No | Metadata chiave-valore arbitrari non coperti dai campi standard |
+
+Due campi aggiuntivi esistono nel modello ma non sono esposti nel `DataProductType` / `DataProductInput` di Strawberry — sono specifici di Snowflake Horizon Catalog (REQ-1635):
+
+| Campo | Note |
+| --- | --- |
+| `support_contact` | Email o URL; richiesto dai manifest di organization listing di Horizon Catalog |
+| `publish` | `true` per pubblicare immediatamente i listing di Horizon; i nuovi listing sono DRAFT per impostazione predefinita |
+
+[tool-verified: `provisa/core/models.py:338-341`, `provisa/api/admin/types.py:104-118,538-551`]
+
+### Appartenenza delle tabelle
+
+Una tabella entra a far parte di un prodotto dati impostando il suo campo `product_id` nel form di modifica della tabella. Il selettore è limitato ai prodotti il cui `domain_id` corrisponde al dominio della tabella — una tabella nel dominio `marketing` non viene mai offerta un prodotto nel dominio `sales`. [tool-verified: `provisa/api/admin/actions_router.py:244-260`, `docs/arch/requirements.yaml:54585-54586`]
+
+Anche i comandi nello stesso dominio possono essere assegnati come membri. [tool-verified: `provisa-ui/src/i18n/locales/en/dataProductsTab.json:commandsLabel`]
+
+### Filtro export dei metadata
+
+`build_snapshot` applica `data_products_only=True` per ogni pubblicazione nel catalogo. Le tabelle senza `product_id` vengono trattenute dallo snapshot, insieme ai loro archi di relazione, agli archi di lineage e ai tag di governance. Origini e domini vengono sempre pubblicati. I termini del glossario vengono pubblicati solo quando almeno uno dei loro ref fisici appartiene a una tabella esportata (membro di un prodotto). [tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
+
+Un prodotto senza membri esportati non produce una voce nello snapshot — un elenco senza membri rappresenterebbe erroneamente il prodotto al catalogo. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]
+
+### Supporto ai prodotti dati per catalogo di destinazione
+
+`MetadataSnapshot.data_products` raggiunge ogni adapter, ma solo quelli la cui piattaforma ha un concetto nativo di prodotto dati lo pubblicano come entità di prima classe; gli altri pubblicano le tabelle membro (già filtrate) senza un raggruppamento per prodotto.
+
+| Destinazione | Rappresentazione del prodotto dati |
+| --- | --- |
+| Snowflake Horizon | Ogni prodotto diventa una `SHARE` sugli indirizzi fisici delle tabelle membro, racchiusa in una `CREATE ORGANIZATION LISTING` interna — un Data Product nativo di Horizon Catalog. `publish=true` porta il listing live immediatamente; altrimenti atterra come DRAFT. [tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:21-34,389-418`] |
+| BigQuery Dataplex | Ogni prodotto diventa un Analytics Hub listing tramite `/v1/dataProducts`. [tool-verified: `provisa/api/metadata_export/bigquery_dataplex.py:100,136,159`] |
+| OpenMetadata | Ogni prodotto diventa un'entità `DataProduct` nativa (`/api/v1/dataProducts`), con proprietà derivata dal dominio. [tool-verified: `provisa/api/metadata_export/openmetadata.py:326-344,635`] |
+| DataHub | Ogni prodotto diventa un'entità `dataProduct` nativa (`urn:li:dataProduct:...`) con proprie aspects `dataProductProperties`/ownership. [tool-verified: `provisa/api/metadata_export/datahub.py:133-136,443-483`] |
+| Collibra | Ogni prodotto diventa un asset di tipo community `Data Product`, correlato alle tabelle membro tramite una relazione `Data Product groups Table`. [tool-verified: `provisa/api/metadata_export/collibra.py:129-133,371-388`] |
+| Atlan | Pubblicato come typedef personalizzato `DataProduct` best-effort — Atlan non ha un nome di tipo documentato e stabile per questo concetto, quindi la mappatura è approssimativa. [tool-verified: `provisa/api/metadata_export/atlan.py:60`] |
+| Apache Atlas | Pubblicato come typedef personalizzato `provisa_data_product` con una relazione `provisa_data_product_members` — Atlas non ha un tipo di entità nativo per i prodotti dati. [tool-verified: `provisa/api/metadata_export/atlas.py:134-147,191,256-260`] |
+| OpenLineage | Non è un'entità di prima classe — le tabelle membro portano un custom facet `provisa_data_product` che indica il prodotto proprietario. [tool-verified: `provisa/api/metadata_export/openlineage.py:243,348`] |

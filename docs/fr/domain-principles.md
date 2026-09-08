@@ -262,3 +262,78 @@ Le rapport d'historique des requêtes du data steward est une vue agrégée sur 
 
 - **Push** — notifications après usage pour les actes structurels (une nouvelle vue a été créée en utilisant vos champs)
 - **Pull** — historique des requêtes pour les modèles d'usage à l'exécution
+
+---
+
+## 4. Produits de données (REQ-1634)
+
+Un produit de données est un ensemble nommé et approprié de tables publiées conjointement pour la consommation. C'est l'unité que le catalogue expose aux consommateurs — non pas des tables individuelles, mais une surface organisée qu'un domaine déclare explicitement prête. Les champs suivent le vocabulaire ODPS (Open Data Product Standard) là où Provisa détient déjà la source de vérité. [tool-verified: `provisa/core/models.py:318-342`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json`]
+
+### Règle de propriété de domaine
+
+Chaque produit de données appartient à exactement un domaine (`domain_id` est un champ obligatoire). Une table ne peut rejoindre un produit que si toutes deux partagent le même `domain_id`. L'interface limite le sélecteur de tables au domaine du produit ; le backend rejette à l'enregistrement toute affectation de `product_id` dont le domaine ne correspond pas à celui du produit. [tool-verified: `provisa/core/models.py:320`, `docs/arch/requirements.yaml:54573-54574`]
+
+Un produit qui a besoin de données d'un autre domaine doit d'abord importer ces données sous forme de vue de domaine, puis inclure cette vue comme membre.
+
+### Ports de sortie
+
+Les tables et commandes affectées à un produit de données constituent ses **ports de sortie** — la surface interrogeable visible des consommateurs. Affecter une table positionne `Table.product_id` ; l'effacer supprime l'appartenance. Une table appartient à au plus un produit. Des commandes du même domaine peuvent également être affectées comme membres. [tool-verified: `provisa/core/models.py:941`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json:tablesLabel,commandsLabel`]
+
+### Sections du panneau de détail
+
+L'ouverture d'un produit de données dans l'interface d'administration affiche ces panneaux :
+
+| Panneau | Contenu |
+| --- | --- |
+| Ports de sortie | Tables membres et leurs colonnes ; commandes membres ; exemples de requêtes (GraphQL, SQL, Cypher, gRPC, JSON:API, REST) |
+| Termes liés | Termes du glossaire liés aux tables membres du produit |
+| Tables liées | Tables accessibles depuis les tables membres via des relations approuvées mais ne faisant pas encore partie du produit |
+| Relations | Relations approuvées entre les tables membres de ce produit |
+| Lignage | Graphe de lignage des colonnes montrant les tables membres comme point de publication, ainsi que toutes les tables en amont. Nécessite la capacité `view_governance` |
+| Ports d'entrée | Entrées à un saut → transformation → sorties dérivées du lignage. Nécessite `view_governance` |
+| Qualité des données | Tables de contrôle dont les contrats analysent les ports de sortie de ce produit ; une ligne par vérification par exécution. Inclut une modale de règles et l'affichage des étiquettes PII |
+
+[tool-verified: `provisa-ui/src/i18n/locales/en/dataProductsTab.json:detail`]
+
+### Export de métadonnées
+
+Seules les tables affectées à un produit publient vers les catalogues externes par défaut. `build_snapshot` applique un filtre `data_products_only` : les tables non affectées sont retenues, ainsi que leurs arêtes de relation, arêtes de lignage et étiquettes de gouvernance. Les sources et domaines publient toujours, quelle que soit la configuration. [tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
+
+Un produit sans membres exportés ne publie pas — une entrée vide prétendrait qu'un produit existe sans rien derrière. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]
+
+Seuls les catalogues dotés d'un concept natif de produit de données le publient comme entité de premier rang ; les autres publient les tables membres (déjà filtrées) sans regroupement par produit :
+
+| Catalogue | Publié en tant que |
+| --- | --- |
+| Snowflake Horizon | SHARE + listing d'organisation (Data Product natif) ; `publish=false` le maintient en DRAFT, `publish=true` le met en ligne |
+| BigQuery Analytics Hub | Listing Analytics Hub (natif) |
+| OpenMetadata | Entité `DataProduct` (natif) |
+| DataHub | Entité URN `dataProduct` native avec ses propres aspects properties/ownership |
+| Collibra | Actif de type communauté `Data Product`, lié aux tables membres |
+| Apache Atlas | Au mieux, typedef personnalisé `provisa_data_product` — Atlas n'a pas de type natif pour les produits de données |
+| Atlan | Au mieux, supposition de typedef `DataProduct` personnalisé — Atlan ne dispose pas de type stable et documenté pour ce concept |
+| OpenLineage | Pas un listing — les tables membres portent une facette personnalisée `provisa_data_product` nommant le produit |
+
+[tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:389-418`, `provisa/api/metadata_export/bigquery_dataplex.py:112-136`, `provisa/api/metadata_export/openmetadata.py:326-344`, `provisa/api/metadata_export/datahub.py:133-136,443-483`, `provisa/api/metadata_export/collibra.py:129-133,371-388`, `provisa/api/metadata_export/atlas.py:134-147`, `provisa/api/metadata_export/atlan.py:60`, `provisa/api/metadata_export/openlineage.py:243,348`]
+
+### Champs
+
+| Champ | Obligatoire | Notes |
+| --- | --- | --- |
+| `id` | Oui | Identifiant stable lisible par machine, ex. `customer_360` |
+| `domain_id` | Oui | Domaine propriétaire ; règle d'appartenance appliquée en référence à ce champ |
+| `name` | Oui | Nom d'affichage |
+| `owner_role` | Non | Rôle responsable de ce produit ; distinct du data steward du domaine |
+| `team_role` | Non | Rôle dont les titulaires forment l'équipe opérationnelle quotidienne ; se résout en individus |
+| `purpose` | Non | Ce que publie ce produit et pourquoi |
+| `limitations` | Non | Contraintes, mises en garde ou exclusions connues |
+| `usage` | Non | Comment consommer ce produit |
+| `version` | Non | ex. `1.2.0` |
+| `status` | Non | ex. `proposed`, `active`, `deprecated`, `retired` |
+| `sla` | Non | Engagements de niveau de service ; prose uniquement — un produit couvre plusieurs tables membres et un SLA structuré ne peut pas désigner sans ambiguïté le membre qu'il décrit |
+| `support` | Non | Indications d'assistance en texte libre |
+| `support_contact` | Non | E-mail ou URL ; exigé par les manifestes de listing d'organisation Snowflake Horizon Catalog (REQ-1635) |
+| `publish` | Non | `true` pour publier les listings Horizon Catalog immédiatement ; les nouveaux listings sont DRAFT par défaut (REQ-1635) |
+| `custom_properties` | Non | Métadonnées clé-valeur arbitraires non couvertes par les champs standard |
+
+[tool-verified: `provisa/core/models.py:318-342`, `provisa/api/admin/types.py:104-118,538-551`]

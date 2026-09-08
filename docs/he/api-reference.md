@@ -1403,3 +1403,133 @@ search_terms(query, role=None, limit=25)
 | Collibra | תחום מסוג-מילון "Provisa Glossary" | נכסי Business Term דרך ה-Import API | סוגי יחס Business Term מקוריים | סטטוס נכס |
 
 הבעלות היא הקישור (binding), לא השם: מזהה הספק של כל מונח שפורסם נלכד לתוך `catalog_bindings` תחת ה-URN של המונח (`provisa://<org>/terms/<name>`), ו-Provisa משנה או מוחקת פריט מילון בצד הספק רק כאשר היא מחזיקה קישור זה (או שהפריט חי במכולה בבעלות Provisa שהיא יצרה). פריט מילון ללא קישור Provisa מקורו במערכת החיצונית ולעולם אינו נגע בו; עדכונים מתבצעים בקריאה-מיזוג (read-merge) כך ששדות שהוספו על ידי steward למונחי Provisa עצמם שורדים; שום דבר לא נמחק כאשר מונח עוזב את תמונת המצב. הקצאות מונח-לנכס (term-to-asset) של steward נותרות בבעלות חיצונית — אף מתאם אינו כותב הקצאות מונח-לנכס (פרסום הקצאות שנוצרו על ידי Provisa הוא המשך עתידי מפורש). ב-Collibra באופן ספציפי, הבטיחות תחת סמנטיקת ה-REPLACE של ה-Import API נשענת על הכלה (containment): המטען (payload) מזכיר רק נכסים בתוך תחום מילון Provisa ומופעי קשר רק בין מונחי Provisa, כך שמילוני steward והקשרים שלהם לעולם אינם נגישים. [tool-verified: `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/openmetadata.py`]
+
+## מוצרי נתונים (REQ-1634)
+
+מוצר נתונים מקבץ טבלאות המתפרסמות יחד לצריכה, בבעלות דומיין אחד בדיוק. השדות עוקבים אחר אוצר המילים של ODPS (Open Data Product Standard) היכן ש-Provisa כבר מחזיקה במקור האמת. ממשק המשתמש הניהולי חושף מוצרי נתונים תחת **Admin → Data Products**. [tool-verified: `provisa/core/models.py:318-342`, `provisa/api/admin/schema_mutation.py:949-1017`, `provisa/api/admin/schema_query.py:352-362`]
+
+### יכולות
+
+| יכולת | מעניקה |
+| --- | --- |
+| `data_product_read` | גישת קריאה לשדה השאילתה `data_products` ולדף הניהול של מוצרי נתונים. מוגדרת כברירת מחדל עבור `org_admin`, `analyst`, `developer`, ו-`modeler`. |
+| `data_product_rw` | מוטציות יצירה ומחיקה. מאפשרת את פקדי New / Edit / Delete בממשק המשתמש. |
+
+[tool-verified: `provisa/api/admin/schema_mutation.py:959,1001`, `provisa/api/admin/schema_query.py:357`]
+
+### Admin GraphQL
+
+כל פעולות מוצר הנתונים עוברות דרך `POST /admin/graphql`.
+
+**שאילתה:**
+
+```graphql
+query {
+  data_products {
+    id
+    domain_id
+    name
+    owner_role
+    team_role
+    purpose
+    limitations
+    usage
+    version
+    status
+    sla
+    support
+    custom_properties
+  }
+}
+```
+
+דורש `data_product_read`.
+
+**יצירה או עדכון:**
+
+```graphql
+mutation {
+  create_data_product(input: {
+    id: "customer_360"
+    domain_id: "sales"
+    name: "Customer 360"
+    owner_role: "data-product-owner"
+    team_role: "sales-analytics"
+    purpose: "Single view of a customer across all touchpoints."
+    status: "active"
+    version: "1.0.0"
+  }) {
+    success
+    message
+  }
+}
+```
+
+`create_data_product` מבצע upsert — קריאה עם `id` קיים מעדכנת את הרשומה. דורש `data_product_rw`.
+
+**מחיקה:**
+
+```graphql
+mutation {
+  delete_data_product(id: "customer_360") {
+    success
+    message
+  }
+}
+```
+
+מחיקת מוצר מנקה את `product_id` מכל טבלת חברה, ומסירה את חברותן. דורש `data_product_rw`. [tool-verified: `provisa/api/admin/schema_mutation.py:995-1017`]
+
+### סכמת שדות
+
+| שדה | סוג | חובה | הערות |
+| --- | --- | --- | --- |
+| `id` | `String` | כן | מזהה יציב קריא-מכונה, למשל `customer_360` |
+| `domain_id` | `String` | כן | דומיין הבעלים. טבלאות חברות חייבות לשתף את ה-`domain_id` הזה — אי-התאמות נדחות בעת השמירה |
+| `name` | `String` | כן | שם תצוגה |
+| `owner_role` | `String` | לא | תפקיד האחראי על מוצר זה; נבדל מסטיוארד הדומיין |
+| `team_role` | `String` | לא | תפקיד שמחזיקיו מתחזקים מוצר זה יום-יומית; מתרגם לאנשים פרטיים |
+| `purpose` | `String` | לא | מה מוצר זה מפרסם ומדוע |
+| `limitations` | `String` | לא | מגבלות, הסתייגויות, או החרגות ידועות |
+| `usage` | `String` | לא | כיצד לצרוך מוצר זה |
+| `version` | `String` | לא | למשל `1.2.0` |
+| `status` | `String` | לא | למשל `proposed`, `active`, `deprecated`, `retired` |
+| `sla` | `String` | לא | התחייבויות רמת-שירות; פרוזה — מוצר כולל מספר טבלאות ו-SLA מובנה אינו יכול לציין חד-משמעית איזה חבר הוא מתאר |
+| `support` | `String` | לא | הנחיות תמיכה בטקסט חופשי |
+| `custom_properties` | `JSON` | לא | מטא-דאטה שרירותי מסוג מפתח-ערך שאינו מכוסה על ידי השדות הסטנדרטיים |
+
+שני שדות נוספים קיימים במודל אך אינם חשופים ב-Strawberry `DataProductType` / `DataProductInput` — הם ספציפיים ל-Snowflake Horizon Catalog (REQ-1635):
+
+| שדה | הערות |
+| --- | --- |
+| `support_contact` | דוא"ל או URL; נדרש על ידי מניפסטי רישום ארגוני של Horizon Catalog |
+| `publish` | `true` לפרסום מיידי של רישומי Horizon; רישומים חדשים מוגדרים כברירת מחדל ל-DRAFT |
+
+[tool-verified: `provisa/core/models.py:338-341`, `provisa/api/admin/types.py:104-118,538-551`]
+
+### חברות טבלה
+
+טבלה מצטרפת למוצר נתונים על ידי הגדרת שדה ה-`product_id` שלה בטופס עריכת הטבלה. הבורר מוגבל למוצרים שה-`domain_id` שלהם תואם לדומיין הטבלה עצמה — טבלה בדומיין `marketing` לעולם אינה מוצעת מוצר בדומיין `sales`. [tool-verified: `provisa/api/admin/actions_router.py:244-260`, `docs/arch/requirements.yaml:54585-54586`]
+
+פקודות באותו דומיין עשויות גם הן להיות מוקצות כחברים. [tool-verified: `provisa-ui/src/i18n/locales/en/dataProductsTab.json:commandsLabel`]
+
+### מסנן ייצוא מטא-דאטה
+
+`build_snapshot` מיישם `data_products_only=True` עבור כל פרסום קטלוג. טבלאות ללא `product_id` נשללות מתמונת המצב, יחד עם קשתות הקשרים שלהן, קשתות המוצא, ותגי הממשל. מקורות ודומיינים מתפרסמים תמיד. מונחי מילון מתפרסמים רק כאשר לפחות אחת מהפניותיהם הפיזיות שייכת לטבלת חברה מיוצאת. [tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
+
+מוצר ללא חברים מיוצאים אינו בונה רשומת תמונת מצב — רשימה ללא חברים תייצג את המוצר בצורה מוטעית בפני הקטלוג. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]
+
+### תמיכה במוצר נתונים לפי יעד קטלוג
+
+`MetadataSnapshot.data_products` מגיע לכל מתאם, אך רק מתאמים שפלטפורמתם בעלת מושג מוצר-נתונים מקורי מתפרסמים אותו כישות ממדרגה-ראשונה; השאר מתפרסמים את טבלאות החברות (המסוננות כבר לעיל) ללא קיבוץ-מוצר.
+
+| יעד | ייצוג מוצר הנתונים |
+| --- | --- |
+| Snowflake Horizon | כל מוצר הופך ל-`SHARE` מעל הכתובות הפיזיות של טבלאות חברות, עטוף ב-`CREATE ORGANIZATION LISTING` פנימי — Data Product מקורי של Horizon Catalog. `publish=true` מפרסם את הרישום מיד; אחרת הוא מגיע כ-DRAFT. [tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:21-34,389-418`] |
+| BigQuery Dataplex | כל מוצר הופך לרישום Analytics Hub דרך `/v1/dataProducts`. [tool-verified: `provisa/api/metadata_export/bigquery_dataplex.py:100,136,159`] |
+| OpenMetadata | כל מוצר הופך לישות `DataProduct` מקורית (`/api/v1/dataProducts`), עם בעלות הנגזרת מדומיין. [tool-verified: `provisa/api/metadata_export/openmetadata.py:326-344,635`] |
+| DataHub | כל מוצר הופך לישות `dataProduct` מקורית (`urn:li:dataProduct:...`) עם aspects משלה של `dataProductProperties`/בעלות. [tool-verified: `provisa/api/metadata_export/datahub.py:133-136,443-483`] |
+| Collibra | כל מוצר הופך לנכס מסוג קהילת `Data Product`, קשור לטבלאות חברות דרך קשר `Data Product groups Table`. [tool-verified: `provisa/api/metadata_export/collibra.py:129-133,371-388`] |
+| Atlan | מתפרסם כניחוש typedef מותאמת-אישית `DataProduct` — ל-Atlan אין שם סוג יציב מתועד לתפיסה זו, כך שהמיפוי הוא עדיפות-מקסימלית. [tool-verified: `provisa/api/metadata_export/atlan.py:60`] |
+| Apache Atlas | מתפרסם כ-typedef מותאמת-אישית `provisa_data_product` עם קשר `provisa_data_product_members` — ל-Atlas אין סוג ישות מוצר-נתונים מקורי. [tool-verified: `provisa/api/metadata_export/atlas.py:134-147,191,256-260`] |
+| OpenLineage | לא ישות ממדרגה-ראשונה — טבלאות חברות נושאות facet מותאמת-אישית `provisa_data_product` המציינת את המוצר הבעלים. [tool-verified: `provisa/api/metadata_export/openlineage.py:243,348`] |

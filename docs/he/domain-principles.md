@@ -262,3 +262,78 @@
 
 - **דחיפה (Push)** — הודעות לאחר-שימוש עבור מעשים מבניים (תצוגה חדשה נוצרה תוך שימוש בשדות שלכם)
 - **משיכה (Pull)** — היסטוריית שאילתה עבור דפוסי שימוש בזמן-ריצה
+
+---
+
+## 4. מוצרי נתונים (REQ-1634)
+
+מוצר נתונים הוא חבילת טבלאות בעלת שם ובעלות, המפורסמות יחד לצריכה. הוא היחידה שהקטלוג חושף לצרכנים — לא טבלאות בודדות, אלא משטח מוסדר שדומיין מצהיר עליו מפורשות כמוכן. השדות עוקבים אחר אוצר המילים של ODPS (Open Data Product Standard) היכן ש-Provisa כבר מחזיקה במקור האמת. [tool-verified: `provisa/core/models.py:318-342`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json`]
+
+### כלל בעלות דומיין
+
+כל מוצר נתונים נמצא בבעלות דומיין אחד בדיוק (`domain_id` הוא שדה חובה). טבלה יכולה להצטרף למוצר נתונים רק כאשר לשתיהן אותו `domain_id`. ממשק המשתמש מגביל את בורר הטבלאות לדומיין של המוצר; הצד-שרת דוחה הקצאת `product_id` שהדומיין שלה אינו תואם את דומיין המוצר בעת השמירה. [tool-verified: `provisa/core/models.py:320`, `docs/arch/requirements.yaml:54573-54574`]
+
+מוצר הזקוק לנתונים מדומיין אחר חייב להכניס אותם תחילה כתצוגת דומיין, ולאחר מכן לכלול את התצוגה כחבר.
+
+### יציאות פלט
+
+הטבלאות והפקודות המוקצות למוצר נתונים הן **יציאות הפלט** שלו — המשטח הניתן לשאילתה שהצרכנים רואים. הקצאת טבלה מגדירה את `Table.product_id`; ניקוי הערך מסיר את החברות. טבלה משתייכת לכל היותר למוצר אחד. פקודות באותו דומיין עשויות גם הן להיות מוקצות כחברים. [tool-verified: `provisa/core/models.py:941`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json:tablesLabel,commandsLabel`]
+
+### חלקי לוח הפרטים
+
+פתיחת מוצר נתונים בממשק המשתמש הניהולי מציגה את הלוחות הבאים:
+
+| לוח | מה הוא מציג |
+| --- | --- |
+| יציאות פלט | טבלאות חברות ועמודותיהן; פקודות חברות; שאילתות לדוגמה (GraphQL, SQL, Cypher, gRPC, JSON:API, REST) |
+| מונחים קשורים | מונחי מילון המקושרים לטבלאות החברות של המוצר |
+| טבלאות קשורות | טבלאות הניתנות להגעה מטבלאות חברות דרך קשרים מאושרים, אך שאינן חלק מהמוצר עדיין |
+| קשרים | קשרים מאושרים בין טבלאות החברות של מוצר זה |
+| מוצא (Lineage) | גרף מוצא עמודות המציג טבלאות חברות כנקודת הפרסום בתוספת כל טבלת מקור. דורש את יכולת `view_governance` |
+| יציאות קלט | כניסות-בצעד-אחד ← טרנספורמציה ← פלטות הנגזרים ממוצא. דורש `view_governance` |
+| איכות נתונים | טבלאות בודקות שחוזיהן סורקים יציאות פלט של מוצר זה; שורה אחת לכל בדיקה לכל ריצה. כולל modal חוקים ותצוגת תגי PII |
+
+[tool-verified: `provisa-ui/src/i18n/locales/en/dataProductsTab.json:detail`]
+
+### ייצוא מטא-דאטה
+
+רק טבלאות המוקצות למוצר מתפרסמות לקטלוגים חיצוניים כברירת מחדל. `build_snapshot` מיישם מסנן `data_products_only`: טבלאות לא-מוקצות נשללות, יחד עם קשתות הקשרים שלהן, קשתות המוצא, ותגי הממשל. מקורות ודומיינים מתפרסמים תמיד ללא תלות. [tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
+
+מוצר ללא חברים מיוצאים אינו מתפרסם — רשימה ריקה תטען שמוצר קיים ללא כלום מאחוריו. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]
+
+רק קטלוגים בעלי מושג מוצר-נתונים מקורי מתפרסמים אותו כישות ממדרגה-ראשונה; השאר מתפרסמים את טבלאות החברות (המסוננות כבר) ללא קיבוץ-מוצר:
+
+| קטלוג | מתפרסם בתור |
+| --- | --- |
+| Snowflake Horizon | SHARE + רישום ארגוני (Data Product מקורי); `publish=false` שומר אותו כ-DRAFT, `publish=true` מפרסם אותו |
+| BigQuery Analytics Hub | רישום Analytics Hub (מקורי) |
+| OpenMetadata | ישות `DataProduct` (מקורי) |
+| DataHub | ישות URN מקורית `dataProduct` עם properties/ownership aspects משלה |
+| Collibra | נכס מסוג קהילת `Data Product`, קשור לטבלאות החברות |
+| Apache Atlas | typedef מותאמת-אישית `provisa_data_product` בצורת עדיפות-מקסימלית — ל-Atlas אין סוג מוצר-נתונים מקורי |
+| Atlan | ניחוש typedef מותאמת-אישית `DataProduct` בצורת עדיפות-מקסימלית — ל-Atlan אין סוג מתועד יציב לכך |
+| OpenLineage | לא רישום — טבלאות חברות נושאות facet מותאמת-אישית `provisa_data_product` המציינת את המוצר |
+
+[tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:389-418`, `provisa/api/metadata_export/bigquery_dataplex.py:112-136`, `provisa/api/metadata_export/openmetadata.py:326-344`, `provisa/api/metadata_export/datahub.py:133-136,443-483`, `provisa/api/metadata_export/collibra.py:129-133,371-388`, `provisa/api/metadata_export/atlas.py:134-147`, `provisa/api/metadata_export/atlan.py:60`, `provisa/api/metadata_export/openlineage.py:243,348`]
+
+### שדות
+
+| שדה | חובה | הערות |
+| --- | --- | --- |
+| `id` | כן | מזהה יציב קריא-מכונה, למשל `customer_360` |
+| `domain_id` | כן | דומיין הבעלים; כלל החברות נאכף כנגד ערך זה |
+| `name` | כן | שם תצוגה |
+| `owner_role` | לא | תפקיד האחראי על מוצר זה; נבדל מסטיוארד הדומיין |
+| `team_role` | לא | תפקיד שמחזיקיו מהווים את הצוות המבצע יום-יומי; מתרגם לאנשים פרטיים |
+| `purpose` | לא | מה מוצר זה מפרסם ומדוע |
+| `limitations` | לא | מגבלות, הסתייגויות, או החרגות ידועות |
+| `usage` | לא | כיצד לצרוך מוצר זה |
+| `version` | לא | למשל `1.2.0` |
+| `status` | לא | למשל `proposed`, `active`, `deprecated`, `retired` |
+| `sla` | לא | התחייבויות רמת-שירות; פרוזה בלבד — מוצר כולל מספר טבלאות חברות ו-SLA מובנה אינו יכול לציין חד-משמעית איזה חבר הוא מתאר |
+| `support` | לא | הנחיות תמיכה בטקסט חופשי |
+| `support_contact` | לא | דוא"ל או URL; נדרש על ידי מניפסטי רישום ארגוני של Snowflake Horizon Catalog (REQ-1635) |
+| `publish` | לא | `true` לפרסום מיידי של רישומי Horizon Catalog; רישומים חדשים מוגדרים כברירת מחדל ל-DRAFT (REQ-1635) |
+| `custom_properties` | לא | מטא-דאטה שרירותי מסוג מפתח-ערך שאינו מכוסה על ידי השדות הסטנדרטיים |
+
+[tool-verified: `provisa/core/models.py:318-342`, `provisa/api/admin/types.py:104-118,538-551`]
