@@ -754,7 +754,15 @@ def test_foreign_key_specs_many_to_one_puts_the_key_on_the_source():
     )
     assert skipped == []
     assert specs == [
-        ForeignKeySpec("provisa_fk_orders_customer", _ORDERS, ("customer_id",), _CUSTOMERS, ("id",))
+        ForeignKeySpec(
+            "provisa_fk_orders_customer",
+            _ORDERS,
+            ("customer_id",),
+            _CUSTOMERS,
+            ("id",),
+            table_ref=_table_ref("shop", "public", "orders"),
+            referenced_ref=_table_ref("shop", "public", "customers"),
+        )
     ]
 
 
@@ -1049,3 +1057,58 @@ def test_key_tag_statements_unset_stale_key_tags_on_views():
         'UNSET TAG "_landing"."PROVISA_GOVERNANCE"."FOREIGN_KEY";'
     ) in stmts
     assert not any("VISIBILITY_RESTRICTED" in s for s in stmts)
+
+
+class _JunctionLayoutCursor(_LayoutCursor):
+    """pet_companions has a landed replica but NO per-source view (it is exposed only through the
+    relationships it joins); pets is a view over its replica."""
+
+    def fetchone(self):
+        if self._last_sql.startswith("SHOW OBJECTS"):
+            if '"_landing"."mat"' in self._last_sql:
+                return ("x", "TABLE")
+            if "pet_companions" in self._last_sql:
+                return None
+            return ("x", "VIEW")
+        return super().fetchone()
+
+
+def test_publish_resolves_a_junction_replica_without_a_view(monkeypatch):
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/_landing?warehouse=W",
+    )
+    rt = _runtime(existing_objects=True, database="_landing")
+    rt._conn.cursor_obj = _JunctionLayoutCursor(True, "TABLE")
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+    tables = [_keyed_table("pet-store-sqlite", "pet_store", "pets", ("id",))]
+    via = JunctionRef(
+        table=_table_ref("pet-store-sqlite", "pet_store", "pet_companions"),
+        source_column="pet_id",
+        target_column="companion_pet_id",
+    )
+    rel = _edge(
+        "pets-littermate",
+        _table_ref("pet-store-sqlite", "pet_store", "pets"),
+        _table_ref("pet-store-sqlite", "pet_store", "pets"),
+        "id",
+        "id",
+        "one-to-many",
+        via=via,
+    )
+    result = asyncio.run(_exporter().publish(SimpleNamespace(tables=tables, relationships=[rel])))
+    assert result.ok, result.errors
+    joined = " | ".join(rt._conn.cursor_obj.sql)
+    assert (
+        'ALTER TABLE "_landing"."mat"."pet-store-sqlite__pet_store__pet_companions" ADD CONSTRAINT '
+        '"provisa_fk_pets_littermate_source" FOREIGN KEY ("pet_id") REFERENCES '
+        '"_landing"."mat"."pet-store-sqlite__pet_store__pets" ("id");'
+    ) in joined
+    assert '"provisa_fk_pets_littermate_target" FOREIGN KEY ("companion_pet_id")' in joined
+    # no view for the junction → no key tags on it; pets (a view) gets its PRIMARY_KEY tag
+    assert 'pet_companions" MODIFY COLUMN' not in joined
+    assert 'ALTER VIEW "pet_store_sqlite"."pet_store"."pets" MODIFY COLUMN "id" SET TAG' in joined

@@ -360,6 +360,11 @@ class ForeignKeySpec:
     columns: tuple[str, ...]
     referenced: tuple[str, str, str]
     referenced_columns: tuple[str, ...]
+    # The refs behind the two physical addresses: a junction table is rarely a published asset of
+    # its own, so its landed replica (REQ-1637) has to resolve from the relationship, not from the
+    # snapshot's table list.
+    table_ref: "AssetRef | None" = None
+    referenced_ref: "AssetRef | None" = None
 
 
 def _fk_name(rel_id: str, suffix: str = "") -> str:
@@ -391,6 +396,8 @@ def foreign_key_specs(
                         key_list(rel.via.source_column),
                         source,
                         key_list(rel.source_column),
+                        table_ref=rel.via.table,
+                        referenced_ref=rel.source,
                     )
                 )
                 specs.append(
@@ -400,6 +407,8 @@ def foreign_key_specs(
                         key_list(rel.via.target_column),
                         target,
                         key_list(rel.target_column or ""),
+                        table_ref=rel.via.table,
+                        referenced_ref=rel.target,
                     )
                 )
                 continue
@@ -407,20 +416,34 @@ def foreign_key_specs(
                 skipped.append((rel.id, "relationship names no target column"))
                 continue
             if rel.cardinality == "many-to-one":
-                holder, held, ref, ref_cols = (
+                holder, held, ref, ref_cols, holder_ref, ref_ref = (
                     source,
                     key_list(rel.source_column),
                     target,
                     key_list(rel.target_column),
+                    rel.source,
+                    rel.target,
                 )
             else:  # one-to-many: the "one" side is the source, the target holds the key
-                holder, held, ref, ref_cols = (
+                holder, held, ref, ref_cols, holder_ref, ref_ref = (
                     target,
                     key_list(rel.target_column),
                     source,
                     key_list(rel.source_column),
+                    rel.target,
+                    rel.source,
                 )
-            specs.append(ForeignKeySpec(_fk_name(rel.id), holder, held, ref, ref_cols))
+            specs.append(
+                ForeignKeySpec(
+                    _fk_name(rel.id),
+                    holder,
+                    held,
+                    ref,
+                    ref_cols,
+                    table_ref=holder_ref,
+                    referenced_ref=ref_ref,
+                )
+            )
         except ValueError as exc:
             skipped.append((rel.id, str(exc)))
     return specs, skipped
@@ -866,6 +889,11 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
                 refs[physical_parts(table.ref)] = table.ref
             except ValueError as exc:
                 result.errors.append(AssetError(table.ref, str(exc)))
+        for spec in specs:
+            if spec.table_ref is not None:
+                refs.setdefault(spec.table, spec.table_ref)
+            if spec.referenced_ref is not None:
+                refs.setdefault(spec.referenced, spec.referenced_ref)
         keyed = {physical_parts(t.ref) for t in tables if t.primary_key} | {
             end for spec in specs for end in (spec.table, spec.referenced)
         }
@@ -879,11 +907,16 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             kind = _object_kind(runtime, physical)
             if kind == "TABLE":
                 targets[physical] = physical
-            elif kind == "VIEW" and physical in refs:
+                continue
+            # A VIEW over the landed replica (REQ-1637), or no per-source object at all (a junction
+            # table that is landed but exposed only through the relationships it joins): either way
+            # the constraint's home is the replica, and only an existing VIEW gets key tags.
+            if physical in refs:
                 replica = landed_replica(landing_database, landing_schema, refs[physical])
                 if _object_kind(runtime, replica) == "TABLE":
                     targets[physical] = replica
-                    views.add(physical)
+                    if kind == "VIEW":
+                        views.add(physical)
         pks: dict[tuple[str, str, str], tuple[str, ...]] = {}
         fks: dict[tuple[str, str, str], frozenset[str]] = {}
         for target in set(targets.values()):
