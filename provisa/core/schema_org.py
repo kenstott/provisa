@@ -807,7 +807,9 @@ tracked_functions = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("kind", Text, nullable=False, server_default="mutation"),
-    Column("product_id", Text),  # REQ-1634: optional data-product membership
+    Column(
+        "product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")
+    ),  # REQ-1634: optional data-product membership; FK mirrors schema.sql so copies order after data_products
     Column("return_schema", JSON),
     # REQ-1159: canonical IR-typed output dataset contract [{name,type}]; return_schema projects it to GraphQL.
     Column("output_columns", JSON),

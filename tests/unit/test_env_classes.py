@@ -133,3 +133,40 @@ class TestBindingColumns:
         # source that is model rather than address comes with it.
         carried = set(org_metadata.tables["sources"].columns.keys()) - ec.binding_columns("sources")
         assert {"id", "type", "description", "cache_enabled", "load_protected"} <= carried
+
+
+def _ddl_data_product_refs() -> set[tuple[str, str]]:
+    """(table, column) pairs schema.sql binds to data_products(id) — the DDL an environment schema
+    is actually built from."""
+    import re
+    from pathlib import Path
+
+    ddl = Path("provisa/core/schema.sql").read_text()
+    refs: set[tuple[str, str]] = set()
+    for m in re.finditer(
+        r"ALTER TABLE (\w+) ADD COLUMN IF NOT EXISTS (\w+) TEXT REFERENCES data_products\(id\)", ddl
+    ):
+        refs.add((m.group(1), m.group(2)))
+    for m in re.finditer(r"CREATE TABLE IF NOT EXISTS (\w+) \((.*?)\n\);", ddl, re.S):
+        for c in re.finditer(r"\n\s+(\w+)\s+TEXT REFERENCES data_products\(id\)", m.group(2)):
+            refs.add((m.group(1), c.group(1)))
+    return refs
+
+
+def test_every_ddl_reference_to_data_products_is_declared_in_the_metadata():
+    # A copy orders its inserts by the METADATA's foreign keys but the target schema is built from
+    # schema.sql. A FK present only in the DDL let tracked_functions insert before data_products
+    # and every sandbox sign-up on cloud failed with tracked_functions_product_id_fkey (REQ-1634).
+    declared = {
+        (t.name, fk.parent.name)
+        for t in org_metadata.tables.values()
+        for fk in t.foreign_keys
+        if fk.column.table.name == "data_products"
+    }
+    assert _ddl_data_product_refs() <= declared, _ddl_data_product_refs() - declared
+
+
+def test_a_copy_inserts_data_products_before_every_table_that_names_one():
+    order = [t.name for t in org_metadata.sorted_tables if t.name in ec.CARRIED]
+    for table, _ in _ddl_data_product_refs():
+        assert order.index("data_products") < order.index(table), table
