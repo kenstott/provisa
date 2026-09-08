@@ -18,7 +18,7 @@ matches each one's ingestion API.
 | `openmetadata` | OpenMetadata | Entity upsert by fully-qualified name, then lineage edges by the server-assigned UUID [tool-verified: provisa/api/metadata_export/openmetadata.py:460-540] |
 | `atlas` | Apache Atlas, and Microsoft Purview | Atlas RDBMS entities posted to `/api/atlas/v2/entity/bulk` [tool-verified: provisa/api/metadata_export/atlas.py:409] |
 | `atlan` | Atlan | The same Atlas-shaped transport, mounted at `/api/meta` and typed by Atlan's own asset types [tool-verified: provisa/api/metadata_export/atlan.py:62-65] |
-| `datahub` | DataHub | One aspect proposal per asset facet, posted to `/aspects?action=ingestProposal` [tool-verified: provisa/api/metadata_export/datahub.py:340] |
+| `datahub` | DataHub | One aspect proposal per asset aspect, posted to `/aspects?action=ingestProposal` [tool-verified: provisa/api/metadata_export/datahub.py:340] |
 | `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` [tool-verified: provisa/api/metadata_export/collibra.py:229] |
 | `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` [tool-verified: provisa/api/metadata_export/snowflake_horizon.py:11-27] |
 | `bigquery_dataplex` | BigQuery Analytics Hub (Dataplex) | REST calls to `{endpoint}/v1/dataProducts...` [tool-verified: provisa/api/metadata_export/bigquery_dataplex.py:123-164] |
@@ -74,7 +74,7 @@ overwrite what a catalog admin has since added to it.
 
 DataHub is aspect-oriented rather than entity-oriented: each asset is a URN, and Provisa proposes
 only the aspects it owns — `tagProperties` for each governance tag, then `datasetProperties`,
-`schemaMetadata`, `globalTags`, `ownership` and `upstreamLineage`, the last carrying the
+`schemaMetadata`, `globalTags`, `ownership` and `upsimplifiesage`, the last carrying the
 column-level `fineGrainedLineages`. Aspects Provisa does
 not own are never touched. [tool-verified: provisa/api/metadata_export/datahub.py:13-16, 181-330]
 
@@ -201,7 +201,7 @@ publishes both edges, along with the functions applied.
 
 ## Governance signals in the target catalog
 
-Three enforcement facts are projected onto the assets they govern, as facets in OpenLineage and as
+Three enforcement facts are projected onto the assets they govern, as OpenLineage run/dataset metadata and as
 classification tags in OpenMetadata: `masked`, `rls_restricted` and `visibility_restricted`.
 [tool-verified: `GovernanceSignal`, provisa/api/metadata_export/model.py:131-137]
 
