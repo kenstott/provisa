@@ -55056,16 +55056,21 @@
   priority: MUST
   type: behavioral
   description: >-
-    The snowflake_horizon export publishes each landed TABLE's declared key as its physical
-    PRIMARY KEY and each approved relationship as a FOREIGN KEY on the "many" side (a junction
-    relationship as one per hop), idempotently: a matching PRIMARY KEY is left alone, a differing one
-    is replaced, an existing FOREIGN KEY of the same name is skipped. A FOREIGN KEY whose referenced
-    columns are not the referenced table's published PRIMARY KEY, or whose end is a VIEW or not yet
-    landed, is withheld and reported, never emitted.
+    The snowflake_horizon export publishes each asset's declared key as a physical PRIMARY KEY and
+    each approved relationship as a FOREIGN KEY on the "many" side (a junction relationship as one
+    per hop), on the object that can carry a constraint: the physical TABLE when the source is
+    attachable, else the landed replica in the landing database's store schema that the asset's
+    per-source VIEW reads (REQ-1637). Snowflake views hold no constraints, so every per-source VIEW
+    additionally gets PRIMARY_KEY (1-based key position) and FOREIGN_KEY (referenced physical
+    column) column TAGs in the PROVISA_GOVERNANCE namespace. Idempotent: a matching PRIMARY KEY is
+    left alone, a differing one is replaced, an existing FOREIGN KEY of the same name is skipped. A
+    FOREIGN KEY whose referenced columns are not the referenced asset's published PRIMARY KEY, or
+    whose end has no landed TABLE, is withheld and reported, never emitted.
   use_case: >-
     Horizon Catalog renders a table's keys and join paths from Snowflake's informational
     constraints. The export applied tags and comments to landed tables but no constraints, so the
-    catalog showed no primary key on pets and no relationships between the landed tables.
+    catalog showed no primary key on pets and no relationships between the landed tables; and the
+    per-source views consumers actually query could not show the keys either.
   code:
   - provisa/api/metadata_export/snowflake_horizon.py
   - provisa/api/metadata_export/builder.py
@@ -55074,6 +55079,6 @@
   - tests/unit/test_snowflake_horizon_export.py
   - tests/unit/test_metadata_export_model_tags.py
   scenario: |
-    Given landed TABLEs customers (key id) and orders (key id) and an approved many-to-one relationship orders.customer_id -> customers.id
+    Given pet_store_sqlite.pet_store.pets (key id) and pet_visits (key id) are VIEWs over _landing.mat replicas, and an approved many-to-one relationship pet_visits.pet_id -> pets.id
     When the snowflake_horizon export publishes
-    Then it runs ALTER TABLE ... ADD CONSTRAINT ... PRIMARY KEY on each table and ALTER TABLE orders ADD CONSTRAINT ... FOREIGN KEY (customer_id) REFERENCES customers (id), and a second publish emits nothing
+    Then it adds PRIMARY KEY (id) on each _landing.mat replica, FOREIGN KEY (pet_id) REFERENCES the pets replica on the pet_visits replica, tags pets.id with PRIMARY_KEY='1' and pet_visits.pet_id with FOREIGN_KEY='"pet_store_sqlite"."pet_store"."pets"."id"' on the views, and a second publish emits only the tag statements

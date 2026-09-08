@@ -691,13 +691,15 @@ if __name__ == "__main__":
     pytest.main([__file__, "-q"])
 
 
-# -- constraints (REQ-1652) ------------------------------------------------------------------------
+# -- constraints (REQ-1652)------------------------------------------------------------------------
 
 from provisa.api.metadata_export.model import JunctionRef, RelationshipEdge  # noqa: E402
 from provisa.api.metadata_export.snowflake_horizon import (  # noqa: E402
     ForeignKeySpec,
     constraint_statements,
     foreign_key_specs,
+    key_tag_statements,
+    landed_replica,
 )
 
 
@@ -731,6 +733,10 @@ def _keyed_table(source_id, schema, table, primary_key=()):
 
 _ORDERS = ("shop", "public", "orders")
 _CUSTOMERS = ("shop", "public", "customers")
+_SELF = {
+    _ORDERS: _ORDERS,
+    _CUSTOMERS: _CUSTOMERS,
+}  # attachable sources: the physical object IS a TABLE
 
 
 def test_foreign_key_specs_many_to_one_puts_the_key_on_the_source():
@@ -809,16 +815,26 @@ def test_foreign_key_specs_skips_computed_relationships_with_a_reason():
     assert skipped == [("orders-fn", "computed relationship has no target table")]
 
 
+def test_landed_replica_is_the_store_schema_under_the_landing_database():
+    # REQ-1637: pet_store_sqlite.pet_store.pets is a VIEW over this table.
+    assert landed_replica(
+        "_landing", "mat", _table_ref("pet-store-sqlite", "pet_store", "pets")
+    ) == (
+        "_landing",
+        "mat",
+        "pet-store-sqlite__pet_store__pets",
+    )
+
+
 def test_constraint_statements_add_primary_key_and_foreign_key():
     tables = [
         _keyed_table("shop", "public", "customers", ("id",)),
         _keyed_table("shop", "public", "orders", ("id",)),
     ]
-    kinds = {_ORDERS: "TABLE", _CUSTOMERS: "TABLE"}
     spec = ForeignKeySpec(
         "provisa_fk_orders_customer", _ORDERS, ("customer_id",), _CUSTOMERS, ("id",)
     )
-    stmts, withheld = constraint_statements(tables, kinds, [spec], {}, {})
+    stmts, withheld = constraint_statements(tables, _SELF, [spec], {}, {})
     assert withheld == []
     assert stmts == [
         'ALTER TABLE "shop"."public"."customers" ADD CONSTRAINT "provisa_pk_customers" PRIMARY KEY ("id");',
@@ -828,22 +844,41 @@ def test_constraint_statements_add_primary_key_and_foreign_key():
     ]
 
 
+def test_constraint_statements_target_the_landed_replica_behind_a_view():
+    pets = ("pet_store_sqlite", "pet_store", "pets")
+    visits = ("pet_store_sqlite", "pet_store", "pet_visits")
+    replica = {
+        pets: ("_landing", "mat", "pet-store-sqlite__pet_store__pets"),
+        visits: ("_landing", "mat", "pet-store-sqlite__pet_store__pet_visits"),
+    }
+    tables = [
+        _keyed_table("pet-store-sqlite", "pet_store", "pets", ("id",)),
+        _keyed_table("pet-store-sqlite", "pet_store", "pet_visits", ("id",)),
+    ]
+    spec = ForeignKeySpec("provisa_fk_visits_pet", visits, ("pet_id",), pets, ("id",))
+    stmts, withheld = constraint_statements(tables, replica, [spec], {}, {})
+    assert withheld == []
+    assert stmts[0].startswith(
+        'ALTER TABLE "_landing"."mat"."pet-store-sqlite__pet_store__pets" ADD CONSTRAINT "provisa_pk_pets"'
+    )
+    assert (
+        'ALTER TABLE "_landing"."mat"."pet-store-sqlite__pet_store__pet_visits" ADD CONSTRAINT "provisa_fk_visits_pet" '
+        'FOREIGN KEY ("pet_id") REFERENCES "_landing"."mat"."pet-store-sqlite__pet_store__pets" ("id");'
+    ) in stmts
+
+
 def test_constraint_statements_are_idempotent_and_replace_a_differing_primary_key():
     tables = [_keyed_table("shop", "public", "customers", ("id",))]
-    kinds = {_CUSTOMERS: "TABLE"}
-    # matching key already there → nothing
-    assert constraint_statements(tables, kinds, [], {_CUSTOMERS: ("id",)}, {}) == ([], [])
-    # a different key → dropped then re-added
-    stmts, _ = constraint_statements(tables, kinds, [], {_CUSTOMERS: ("email",)}, {})
+    targets = {_CUSTOMERS: _CUSTOMERS}
+    assert constraint_statements(tables, targets, [], {_CUSTOMERS: ("id",)}, {}) == ([], [])
+    stmts, _ = constraint_statements(tables, targets, [], {_CUSTOMERS: ("email",)}, {})
     assert stmts[0] == 'ALTER TABLE "shop"."public"."customers" DROP PRIMARY KEY;'
     assert 'PRIMARY KEY ("id")' in stmts[1]
-    # an existing foreign key of the same name → nothing
     spec = ForeignKeySpec("provisa_fk_x", _ORDERS, ("customer_id",), _CUSTOMERS, ("id",))
     tables.append(_keyed_table("shop", "public", "orders", ("id",)))
-    kinds[_ORDERS] = "TABLE"
     stmts, withheld = constraint_statements(
         tables,
-        kinds,
+        _SELF,
         [spec],
         {_CUSTOMERS: ("id",), _ORDERS: ("id",)},
         {_ORDERS: frozenset({"provisa_fk_x"})},
@@ -858,9 +893,8 @@ def test_constraint_statements_withhold_a_foreign_key_to_a_non_key_column():
         _keyed_table("shop", "public", "orders", ("id",)),
         _keyed_table("shop", "public", "customers", ("id",)),
     ]
-    kinds = {_ORDERS: "TABLE", _CUSTOMERS: "TABLE"}
     spec = ForeignKeySpec("provisa_fk_bad", _ORDERS, ("email",), _CUSTOMERS, ("email",))
-    stmts, withheld = constraint_statements(tables, kinds, [spec], {}, {})
+    stmts, withheld = constraint_statements(tables, _SELF, [spec], {}, {})
     assert all("FOREIGN KEY" not in s for s in stmts)
     assert (
         withheld[0][0] == "provisa_fk_bad"
@@ -868,21 +902,52 @@ def test_constraint_statements_withhold_a_foreign_key_to_a_non_key_column():
     )
 
 
-def test_constraint_statements_skip_views_and_unlanded_tables():
+def test_constraint_statements_withhold_keys_with_no_landed_table():
     tables = [_keyed_table("shop", "public", "customers", ("id",))]
     spec = ForeignKeySpec("provisa_fk_v", _ORDERS, ("customer_id",), _CUSTOMERS, ("id",))
-    stmts, withheld = constraint_statements(tables, {_CUSTOMERS: "VIEW"}, [spec], {}, {})
+    stmts, withheld = constraint_statements(tables, {}, [spec], {}, {})
     assert stmts == []
     assert withheld == [
+        ("shop.public.customers", "no landed TABLE to carry its PRIMARY KEY"),
         (
             "provisa_fk_v",
             "shop.public.orders -> shop.public.customers: both ends must be landed TABLEs",
-        )
+        ),
     ]
 
 
-class _KeyAwareCursor(_FakeCursor):
-    """A landed TABLE with no keys yet: SHOW PRIMARY KEYS / SHOW IMPORTED KEYS answer empty."""
+def test_key_tag_statements_mirror_keys_onto_the_views_only():
+    pets = ("pet_store_sqlite", "pet_store", "pets")
+    visits = ("pet_store_sqlite", "pet_store", "pet_visits")
+    tables = [
+        _keyed_table("pet-store-sqlite", "pet_store", "pets", ("id",)),
+        _keyed_table(
+            "shop", "public", "customers", ("id",)
+        ),  # a real TABLE: no tag, it has the constraint
+    ]
+    spec = ForeignKeySpec("provisa_fk_visits_pet", visits, ("pet_id",), pets, ("id",))
+    stmts = key_tag_statements("_landing", tables, [spec], {pets, visits})
+    assert stmts[:3] == [
+        'CREATE SCHEMA IF NOT EXISTS "_landing"."PROVISA_GOVERNANCE"',
+        'CREATE TAG IF NOT EXISTS "_landing"."PROVISA_GOVERNANCE"."PRIMARY_KEY";',
+        'CREATE TAG IF NOT EXISTS "_landing"."PROVISA_GOVERNANCE"."FOREIGN_KEY";',
+    ]
+    assert (
+        'ALTER VIEW "pet_store_sqlite"."pet_store"."pets" MODIFY COLUMN "id" '
+        'SET TAG "_landing"."PROVISA_GOVERNANCE"."PRIMARY_KEY" = \'1\';'
+    ) in stmts
+    assert (
+        'ALTER VIEW "pet_store_sqlite"."pet_store"."pet_visits" MODIFY COLUMN "pet_id" '
+        'SET TAG "_landing"."PROVISA_GOVERNANCE"."FOREIGN_KEY" = '
+        '\'"pet_store_sqlite"."pet_store"."pets"."id"\';'
+    ) in stmts
+    assert not any('"shop"' in s for s in stmts)
+    assert key_tag_statements("_landing", tables, [spec], set()) == []
+
+
+class _LayoutCursor(_FakeCursor):
+    """REQ-1637 layout: per-source physical names are VIEWs, ``_landing.mat.*`` replicas are
+    TABLEs with no keys yet."""
 
     def execute(self, sql, params=None):
         super().execute(sql, params)
@@ -896,35 +961,52 @@ class _KeyAwareCursor(_FakeCursor):
             return []
         return super().fetchall()
 
+    def fetchone(self):
+        if self._last_sql.startswith("SHOW OBJECTS"):
+            return ("x", "TABLE" if '"_landing"."mat"' in self._last_sql else "VIEW")
+        return super().fetchone()
 
-def test_publish_adds_keys_for_landed_tables_and_relationships(monkeypatch):
+
+def test_publish_adds_keys_on_the_replicas_and_tags_the_views(monkeypatch):
     monkeypatch.setattr(
         "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
-        lambda: "snowflake://user:pass@acct/db/schema",
+        lambda: "snowflake://user:pass@acct/_landing?warehouse=W",
     )
-    rt = _runtime(existing_objects=True)
-    rt._conn.cursor_obj = _KeyAwareCursor(True, "TABLE")
+    rt = _runtime(existing_objects=True, database="_landing")
+    rt._conn.cursor_obj = _LayoutCursor(True, "TABLE")
     monkeypatch.setattr(
         "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
         lambda url: rt,
     )
     monkeypatch.setattr(rt, "close", lambda: None)
     tables = [
-        _keyed_table("shop", "public", "customers", ("id",)),
-        _keyed_table("shop", "public", "orders", ("id",)),
+        _keyed_table("pet-store-sqlite", "pet_store", "pets", ("id",)),
+        _keyed_table("pet-store-sqlite", "pet_store", "pet_visits", ("id",)),
     ]
     rel = _edge(
-        "orders-customer",
-        _table_ref("shop", "public", "orders"),
-        _table_ref("shop", "public", "customers"),
-        "customer_id",
+        "visits-pet",
+        _table_ref("pet-store-sqlite", "pet_store", "pet_visits"),
+        _table_ref("pet-store-sqlite", "pet_store", "pets"),
+        "pet_id",
         "id",
         "many-to-one",
     )
     snapshot = SimpleNamespace(tables=tables, relationships=[rel])
     result = asyncio.run(_exporter().publish(snapshot))
     assert result.ok, result.errors
-    assert result.published["constraints"] == 3
     joined = " | ".join(rt._conn.cursor_obj.sql)
-    assert 'ADD CONSTRAINT "provisa_pk_orders" PRIMARY KEY ("id")' in joined
-    assert 'ADD CONSTRAINT "provisa_fk_orders_customer" FOREIGN KEY ("customer_id")' in joined
+    assert (
+        'ALTER TABLE "_landing"."mat"."pet-store-sqlite__pet_store__pets" ADD CONSTRAINT "provisa_pk_pets" PRIMARY KEY ("id")'
+        in joined
+    )
+    assert (
+        'ALTER TABLE "_landing"."mat"."pet-store-sqlite__pet_store__pet_visits" ADD CONSTRAINT "provisa_fk_visits_pet"'
+        in joined
+    )
+    assert 'ALTER VIEW "pet_store_sqlite"."pet_store"."pets" MODIFY COLUMN "id" SET TAG' in joined
+    assert (
+        'ALTER VIEW "pet_store_sqlite"."pet_store"."pet_visits" MODIFY COLUMN "pet_id" SET TAG'
+        in joined
+    )
+    # 3 constraint DDL + schema + 2 CREATE TAG + 2 PRIMARY_KEY column tags + 1 FOREIGN_KEY tag
+    assert result.published["constraints"] == 9

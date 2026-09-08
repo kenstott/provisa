@@ -39,15 +39,20 @@ listings never surface in the account's own Horizon Catalog / Data sharing UI). 
 the Data Product keeps the listing DRAFT; `publish=true` takes it live immediately.
 [tool-verified: provisa/api/metadata_export/snowflake_horizon.py:11-27]
 
-`snowflake_horizon` also writes the model's keys onto the landed tables themselves (REQ-1652).
-Each landed `TABLE` gets its declared key as a `PRIMARY KEY`, and each approved relationship
-becomes a `FOREIGN KEY` on the "many" side (a junction relationship becomes one per hop). Snowflake
-keeps both as informational constraints, which is what Horizon Catalog renders as the table's keys
-and join paths. The publish is idempotent: a key that already matches is left alone, a differing
-primary key is replaced, and an existing foreign key of the same name is skipped. A foreign key
-whose referenced columns are not the referenced table's primary key, or whose either end is a view
-or not yet landed, is withheld and reported in the publish result rather than emitted.
-[tool-verified: provisa/api/metadata_export/snowflake_horizon.py constraint_statements]
+`snowflake_horizon` also writes the model's keys into Snowflake (REQ-1652). Snowflake accepts a
+`PRIMARY KEY` or `FOREIGN KEY` on tables only, never on a view, so the constraint goes on the object
+that can carry it: the physical table when the source is attachable, otherwise the landed replica
+in the landing database's store schema that the per-source view reads (REQ-1637). Each declared key
+becomes a `PRIMARY KEY`, and each approved relationship becomes a `FOREIGN KEY` on the "many" side
+(a junction relationship becomes one per hop). Because consumers query the per-source views, those
+views get the same keys as column tags in the `PROVISA_GOVERNANCE` namespace: `PRIMARY_KEY` holds
+the column's position in the key and `FOREIGN_KEY` holds the referenced physical column. Snowflake
+keeps the constraints as informational metadata, which is what Horizon Catalog renders as the
+table's keys and join paths. The publish is idempotent: a key that already matches is left alone,
+a differing primary key is replaced, and an existing foreign key of the same name is skipped. A
+foreign key whose referenced columns are not the referenced asset's primary key, or whose end has
+no landed table, is withheld and reported in the publish result rather than emitted.
+[tool-verified: provisa/api/metadata_export/snowflake_horizon.py constraint_statements, key_tag_statements]
 
 `bigquery_dataplex` still speaks REST like the six vendor-neutral adapters, but — like
 `snowflake_horizon` — cannot be a pure payload builder: an Analytics Hub listing identifies a table
