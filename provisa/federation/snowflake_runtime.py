@@ -33,6 +33,22 @@ from provisa.executor.result import ResultStream
 from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
 
 
+def _arrow_result(cur: Any) -> bool:
+    """Whether the statement just executed produced an Arrow result set. A DDL or SHOW statement
+    (``CREATE SCHEMA``, the MV refresh's first statement) comes back in the connector's JSON
+    format, and ``fetch_arrow_all``/``fetch_arrow_batches`` then raise ``NotSupportedError`` with
+    no message ("Unknown error"), confirmed live. The connector records the format on the cursor
+    and exposes nothing public for it."""
+    return getattr(cur, "_query_result_format", "arrow") == "arrow"
+
+
+def _status_table(cur: Any) -> Any:
+    """A JSON-format result (a DDL's ``status`` row, a SHOW's rows) as a ``pyarrow.Table``."""
+    names = [d[0] for d in (cur.description or [])]
+    rows = cur.fetchall() or []
+    return pa.table({name: [row[i] for row in rows] for i, name in enumerate(names)})
+
+
 class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
     def __init__(self, *, url: str) -> None:
         # snowflake://<user>:<pass>@<account>/<database>/<schema>?warehouse=<WH>&role=<ROLE>
@@ -393,6 +409,8 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         cur = self._conn.cursor()
         try:
             cur.execute(sql, params or None)
+            if not _arrow_result(cur):
+                return _status_table(cur)
             table = cur.fetch_arrow_all()
             if table is None:  # snowflake returns None for a zero-row result
                 names = [d[0] for d in (cur.description or [])]
@@ -411,6 +429,10 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         an empty-schema stream (column names from the cursor description, no rows)."""
         cur = self._conn.cursor()
         cur.execute(sql, params or None)
+        if not _arrow_result(cur):
+            table = _status_table(cur)
+            cur.close()
+            return table.schema, iter(table.to_batches())
         batch_iter = iter(cur.fetch_arrow_batches())
         first = next(batch_iter, None)
         if first is None:  # snowflake yields no batches for a zero-row result

@@ -701,6 +701,16 @@ class Database:
                 await ac.commit()
             try:
                 yield Connection(ac, self.capabilities)
+            except BaseException:
+                # A statement that failed inside the block (a duplicate-key INSERT a caller
+                # catches as its success case) leaves a PostgreSQL transaction aborted, and an
+                # aborted transaction refuses every later statement -- the RESET below
+                # included, which then surfaces as "current transaction is aborted" in place of
+                # the caller's own error. Roll it back first; the caller's exception still
+                # propagates.
+                if self.dialect == "postgresql":
+                    await ac.rollback()
+                raise
             finally:
                 # PG session state (search_path) survives pool checkin — SQLAlchemy's
                 # reset_on_return only rolls back an open transaction, and callers that
