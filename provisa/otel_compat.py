@@ -64,6 +64,29 @@ class _NoopTracer:
         return _NoopSpan()
 
 
+@contextmanager
+def detached_trace_context() -> Iterator[None]:
+    """Run the body with NO active OpenTelemetry span, so work started inside it roots its own trace.
+
+    ``asyncio.create_task`` and ``loop.call_later`` copy the caller's contextvars, the active span
+    among them. A long-lived loop started from inside a request -- an engine prewarm, an APScheduler
+    wakeup chain re-rooted by ``add_job`` -- therefore parented every span it ever emitted under
+    that request: one ``POST /auth/redeem-invite`` carried 1338 spans over 47 minutes. Wrapping the
+    spawn (or the scheduler wakeup) in this detaches the span for exactly that body, and the
+    caller's own context is restored on exit. A no-op without the OTel SDK installed.
+    """
+    try:
+        from opentelemetry import context as _context
+    except ImportError:
+        yield
+        return
+    token = _context.attach(_context.Context())
+    try:
+        yield
+    finally:
+        _context.detach(token)
+
+
 def get_tracer(name: str) -> TracerProtocol:  # REQ-302, REQ-303
     """Return the OTel tracer for *name*, or a no-op tracer if OTel is absent."""
     try:

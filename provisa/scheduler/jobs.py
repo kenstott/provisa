@@ -831,6 +831,29 @@ async def _audit_reaped(org_id: str, name: str, outcome: dict) -> None:
     )
 
 
+def new_scheduler() -> AsyncIOScheduler:
+    """An AsyncIOScheduler whose wakeup chain never inherits a request's trace context.
+
+    ``add_job`` on a running scheduler calls ``wakeup`` synchronously, and ``wakeup`` re-arms the
+    timer with ``call_later`` -- which copies the CALLER's contextvars. A job registered from inside
+    a request (the event-loop poll jobs a runtime build registers, REQ-1623) re-rooted the whole
+    chain in that request's context, and every job the scheduler ran afterwards, including ones
+    registered at startup, emitted its spans under that request's trace. Wrapping ``wakeup`` keeps
+    the chain rootless whoever last called ``add_job``.
+    """
+    from provisa.otel_compat import detached_trace_context
+
+    scheduler = AsyncIOScheduler()
+    inner = scheduler.wakeup
+
+    def wakeup() -> None:
+        with detached_trace_context():
+            inner()
+
+    scheduler.wakeup = wakeup  # type: ignore[method-assign]
+    return scheduler
+
+
 def build_scheduler(
     triggers: list[ScheduledTrigger],
 ) -> AsyncIOScheduler | None:  # REQ-216, REQ-177
@@ -842,7 +865,7 @@ def build_scheduler(
     if not enabled:
         return None
 
-    scheduler = AsyncIOScheduler()
+    scheduler = new_scheduler()
 
     for trigger in enabled:
         # Mutual exclusivity: exactly one action type per trigger (REQ-1003).

@@ -597,11 +597,13 @@ def _start_scheduler(_log: logging.Logger) -> None:
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
 
     try:
-        from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
         from apscheduler.triggers.interval import IntervalTrigger
 
-        scheduler = AsyncIOScheduler()
+        from provisa.scheduler.jobs import new_scheduler
+
+        # new_scheduler: a wakeup chain that never inherits a request's trace context -- see there.
+        scheduler = new_scheduler()
         _cfg_triggers = []
         try:
             with open(config_path_str()) as _cfg_f:

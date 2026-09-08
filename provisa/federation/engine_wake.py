@@ -378,13 +378,17 @@ def prewarm_engine(state: Any, org_id: str | None) -> None:
 
     async def _run() -> None:
         from provisa.api.org_runtime import reset_current_org, set_current_org
+        from provisa.otel_compat import detached_trace_context
 
         # ensure_engine_awake reads the active org off the ContextVar, and this task does not
         # inherit the request's binding — the middleware resets it before the response. None is
         # meaningful there (the deployment's own org), so it is passed through, not defaulted.
         token = set_current_org(org_id) if org_id is not None else None
         try:
-            await ensure_engine_awake(state)
+            # The task DOES inherit the request's span: every Kubernetes poll of a minutes-long wake
+            # was parented under the sign-in that asked for it. The wake is its own trace.
+            with detached_trace_context():
+                await ensure_engine_awake(state)
         except Exception:
             # A prewarm is an optimization on a path that has its own wake: swallowing here costs
             # the session nothing but the head start, whereas raising would fail a sign-in over an
