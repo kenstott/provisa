@@ -1400,3 +1400,120 @@ Every vendor adapter publishes the term graph natively, into a Provisa-owned glo
 | Collibra | Glossary-type domain "Provisa Glossary" | Business Term assets via the Import API | native Business Term relation types | asset status |
 
 Ownership is the binding, not the name: each published term's vendor id is captured into `catalog_bindings` under the term's URN (`provisa://<org>/terms/<name>`), and Provisa modifies or deletes a vendor-side glossary item only when it holds that binding (or the item lives in the Provisa-owned container it created). A glossary item with no Provisa binding originated in the external system and is never touched; updates read-merge so steward-added fields on Provisa's own terms survive; nothing is deleted when a term leaves the snapshot. Steward term-to-asset assignments remain external-owned — no adapter writes term-to-asset assignments (Provisa-authored assignment publishing is an explicit follow-on). On Collibra specifically, safety under the Import API's REPLACE semantics rests on containment: the payload mentions only assets inside the Provisa glossary domain and relation instances only between Provisa terms, so steward glossaries and their relations are never reachable. [tool-verified: `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/openmetadata.py`]
+
+---
+
+## Data Products (REQ-1634)
+
+A data product groups tables published together for consumption, owned by exactly one domain. Fields follow the ODPS (Open Data Product Standard) vocabulary where Provisa already has the source of truth. The admin UI exposes Data Products under **Admin → Data Products**. [tool-verified: `provisa/core/models.py:318-342`, `provisa/api/admin/schema_mutation.py:949-1017`, `provisa/api/admin/schema_query.py:352-362`]
+
+### Capabilities
+
+| Capability | Grants |
+| --- | --- |
+| `data_product_read` | Read access to the `data_products` query field and the Data Products admin page. Seeded by default to `org_admin`, `analyst`, `developer`, and `modeler`. |
+| `data_product_rw` | Create and delete mutations. Enables the New / Edit / Delete controls in the UI. |
+
+[tool-verified: `provisa/api/admin/schema_mutation.py:959,1001`, `provisa/api/admin/schema_query.py:357`]
+
+### Admin GraphQL
+
+All data product operations go through `POST /admin/graphql`.
+
+**Query:**
+
+```graphql
+query {
+  data_products {
+    id
+    domain_id
+    name
+    owner_role
+    team_role
+    purpose
+    limitations
+    usage
+    version
+    status
+    sla
+    support
+    custom_properties
+  }
+}
+```
+
+Requires `data_product_read`.
+
+**Create or update:**
+
+```graphql
+mutation {
+  create_data_product(input: {
+    id: "customer_360"
+    domain_id: "sales"
+    name: "Customer 360"
+    owner_role: "data-product-owner"
+    team_role: "sales-analytics"
+    purpose: "Single view of a customer across all touchpoints."
+    status: "active"
+    version: "1.0.0"
+  }) {
+    success
+    message
+  }
+}
+```
+
+`create_data_product` upserts — calling it with an existing `id` updates the record. Requires `data_product_rw`.
+
+**Delete:**
+
+```graphql
+mutation {
+  delete_data_product(id: "customer_360") {
+    success
+    message
+  }
+}
+```
+
+Deleting a product clears `product_id` from every member table, removing their membership. Requires `data_product_rw`. [tool-verified: `provisa/api/admin/schema_mutation.py:995-1017`]
+
+### Field schema
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `id` | `String` | Yes | Machine-readable stable identifier, e.g. `customer_360` |
+| `domain_id` | `String` | Yes | Owning domain. Member tables must share this `domain_id` — mismatches are rejected at save time |
+| `name` | `String` | Yes | Display name |
+| `owner_role` | `String` | No | Role accountable for this product; distinct from the domain steward |
+| `team_role` | `String` | No | Role whose holders maintain this product day-to-day; resolves to individuals |
+| `purpose` | `String` | No | What this product publishes and why |
+| `limitations` | `String` | No | Known constraints, caveats, or exclusions |
+| `usage` | `String` | No | How to consume this product |
+| `version` | `String` | No | e.g. `1.2.0` |
+| `status` | `String` | No | e.g. `proposed`, `active`, `deprecated`, `retired` |
+| `sla` | `String` | No | Service-level commitments; prose — a product spans multiple tables and structured SLA cannot unambiguously name which member it describes |
+| `support` | `String` | No | Free-text support guidance |
+| `custom_properties` | `JSON` | No | Arbitrary key-value metadata not covered by the standard fields |
+
+Two additional fields exist on the model but are not exposed in the Strawberry `DataProductType` / `DataProductInput` — they are Snowflake Horizon Catalog-specific (REQ-1635):
+
+| Field | Notes |
+| --- | --- |
+| `support_contact` | Email or URL; required by Horizon Catalog organization listing manifests |
+| `publish` | `true` to publish Horizon listings immediately; new listings default to DRAFT |
+
+[tool-verified: `provisa/core/models.py:338-341`, `provisa/api/admin/types.py:104-118,538-551`]
+
+### Table membership
+
+A table joins a data product by setting its `product_id` field at the table edit form. The picker is scoped to products whose `domain_id` matches the table's own domain — a table in domain `marketing` is never offered a product in domain `sales`. [tool-verified: `provisa/api/admin/actions_router.py:244-260`, `docs/arch/requirements.yaml:54585-54586`]
+
+Commands in the same domain may also be assigned as members. [tool-verified: `provisa-ui/src/i18n/locales/en/dataProductsTab.json:commandsLabel`]
+
+### Metadata export filter
+
+`build_snapshot` applies `data_products_only=True` for every catalog publish. Tables without a `product_id` are withheld from the snapshot, along with their relationship edges, lineage edges, and governance tags. Sources and domains always publish. Glossary terms publish only when at least one of their physical refs belongs to an exported (product-member) table. [tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
+
+A product with no exported members does not build a snapshot entry — a listing with no members would misrepresent the product to the catalog. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]

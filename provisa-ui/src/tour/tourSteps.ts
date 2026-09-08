@@ -301,6 +301,25 @@ export const TOUR_STEPS: TourStep[] = [
     clickAfterNext: ".data-table tbody tr.clickable",
   },
   {
+    // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.
+    route: "/admin/glossary",
+    // REQ-1590: stricter than the route's own gate. /admin/glossary opens to `glossary_read`, but
+    // what this step points at is the AI-generation buttons, which only a curator is shown — so a
+    // read-only viewer skips the step rather than waiting out an anchor that never mounts.
+    capability: "glossary_rw",
+    element: '[data-testid="glossary-bulk-definitions-btn"]',
+    key: "stepGlossary",
+  },
+  {
+    // REQ-1660: the ODPS-aligned data product catalog, and its always-reconciled auto-publish
+    // to warehouse-native product surfaces (Snowflake Horizon, BigQuery Dataplex).
+    route: "/data-products",
+    capability: "data_product_read",
+    element: '[data-tour="nav-data-products"]',
+    readySelector: '[data-tour="data-products-content"]',
+    key: "stepDataProducts",
+  },
+  {
     route: "/views",
     capability: "table_registration",
     prefetch: "settings",
@@ -329,13 +348,6 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step22",
   },
   {
-    route: "/admin/overview",
-    capability: "observability",
-    element: '[data-tour="nav-admin"]',
-    readySelector: '[data-tour="admin-content"]',
-    key: "step23",
-  },
-  {
     // REQ-1390: the seeded ops-domain management reports and the add-your-own flow.
     route: "/admin/reports",
     capability: "observability",
@@ -343,23 +355,11 @@ export const TOUR_STEPS: TourStep[] = [
     key: "stepReports",
   },
   {
-    // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.
-    route: "/admin/glossary",
-    // REQ-1590: stricter than the route's own gate. /admin/glossary opens to `glossary_read`, but
-    // what this step points at is the AI-generation buttons, which only a curator is shown — so a
-    // read-only viewer skips the step rather than waiting out an anchor that never mounts.
-    capability: "glossary_rw",
-    element: '[data-testid="glossary-bulk-definitions-btn"]',
-    key: "stepGlossary",
-  },
-  {
-    // REQ-1660: the ODPS-aligned data product catalog, and its always-reconciled auto-publish
-    // to warehouse-native product surfaces (Snowflake Horizon, BigQuery Dataplex).
-    route: "/data-products",
-    capability: "data_product_read",
-    element: '[data-tour="nav-data-products"]',
-    readySelector: '[data-tour="data-products-content"]',
-    key: "stepDataProducts",
+    route: "/admin/overview",
+    capability: "observability",
+    element: '[data-tour="nav-admin"]',
+    readySelector: '[data-tour="admin-content"]',
+    key: "step23",
   },
   // ─── CLOSE ───
   {
