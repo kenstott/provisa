@@ -252,39 +252,27 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         import asyncio
 
         from provisa.core.catalog import _to_catalog_name
-        from provisa.federation.snowflake_store import KeyTarget, reconcile_metadata_native
+        from provisa.federation.landed_keys import plan_targets
+        from provisa.federation.snowflake_store import reconcile_metadata_native
 
         landing_database = self.ensure_materialize_attached()
         store_schema = self._store_schema()
-
-        def target(t: Any) -> KeyTarget:
-            if t.source_id == "__derived__":
-                # An MV's store table IS the object the compiler reads: no view over it. Its store
-                # address rides on the plan entry (see NativeEngineBackend.reconcile_mv_table).
-                replica = plan.store_parts.get(t.identity) or (
-                    landing_database,
-                    t.schema_name,
-                    t.table_name,
-                )
-                view = None
-            else:
-                replica = (
+        targets = plan_targets(
+            plan,
+            # An MV's store table IS the object the compiler reads (no view over it); its store
+            # address rides on the plan entry (NativeEngineBackend.reconcile_mv_table). Without one
+            # it sits in the landing database under its registration name.
+            replica_for=lambda t: (
+                (landing_database, t.schema_name, t.table_name)
+                if t.source_id == "__derived__"
+                else (
                     landing_database,
                     store_schema,
                     f"{t.source_id}__{t.schema_name}__{t.table_name}",
                 )
-                view = (_to_catalog_name(t.source_id), t.schema_name, t.table_name)
-            return KeyTarget(
-                replica=replica,
-                view=view,
-                primary_key=t.primary_key,
-                description=t.description,
-                column_descriptions=dict(t.column_descriptions),
-                tags=tuple(t.tags),
-                column_tags=dict(t.column_tags),
-            )
-
-        targets = {ident: target(t) for ident, t in plan.tables.items()}
+            ),
+            view_for=lambda t: (_to_catalog_name(t.source_id), t.schema_name, t.table_name),
+        )
 
         def _run() -> int:
             cur = self._conn.cursor()

@@ -39,12 +39,12 @@ from typing import TYPE_CHECKING, Any
 
 from provisa.core.ir_types import to_ir
 
+from provisa.federation.landed_keys import KeyTarget, Parts
+
 if TYPE_CHECKING:
     from provisa.federation.landed_keys import ForeignKeyEdge
 
 log = logging.getLogger(__name__)
-
-Parts = tuple[str, str, str]
 
 # IR type -> Snowflake column type. A landed replica carries the source's own values, so integers
 # and decimals map to their widest safe Snowflake type. JSON lands as VARIANT.
@@ -288,21 +288,6 @@ def expose_view(cur: Any, *, view: Parts, replica: Parts, replace: bool) -> None
 
 
 # -- keys (REQ-1652) -----------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class KeyTarget:
-    """One landed table's addresses: the replica that carries constraints, and the view (if the
-    source has one) that mirrors them as tags -- plus the descriptions both carry as COMMENTs."""
-
-    replica: Parts
-    view: Parts | None
-    primary_key: tuple[str, ...]
-    description: str = ""
-    column_descriptions: dict[str, str] | None = None
-    # Steward classifications (REQ-1655), ``(tag id, value)`` on the object and per column.
-    tags: tuple[tuple[str, str], ...] = ()
-    column_tags: dict[str, tuple[tuple[str, str], ...]] | None = None
 
 
 # -- descriptions (REQ-1654) ---------------------------------------------------------------------

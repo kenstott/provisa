@@ -83,14 +83,14 @@ def test_bigquery_engine_attaches_lake_scans_lands_rest():
 
 
 def test_bigquery_ir_type_mapping():
-    from provisa.federation.bigquery_runtime import _bq_type
+    from provisa.federation.bigquery_store import bq_type
 
-    assert _bq_type("bigint") == "INT64"
-    assert _bq_type("text") == "STRING"
-    assert _bq_type("double") == "FLOAT64"
-    assert _bq_type("timestamptz") == "TIMESTAMP"  # native spelling normalizes via to_ir
+    assert bq_type("bigint") == "INT64"
+    assert bq_type("text") == "STRING"
+    assert bq_type("double") == "FLOAT64"
+    assert bq_type("timestamptz") == "TIMESTAMP"  # native spelling normalizes via to_ir
     with pytest.raises(ValueError, match="not in the IR vocabulary"):
-        _bq_type("geography")
+        bq_type("geography")
 
 
 if __name__ == "__main__":

@@ -17,6 +17,8 @@ end-to-end — ``run_arrow``/``run_arrow_stream`` deliver ``pyarrow`` without Py
 surfaced through the Provisa Arrow Flight server. Conforms to the NativeEngineBackend runtime protocol.
 """
 
+# Requirements: REQ-987, REQ-1657
+
 from __future__ import annotations
 
 from typing import Any
@@ -183,7 +185,6 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         the landed Delta table IS the physical relation the governed query reads — no separate mat table
         or view. Columnar bulk write via ``land_databricks_native`` — a large batch takes the bulk COPY
         INTO from a staged Parquet object when a stage is configured, else the multi-row INSERT."""
-        del pk_columns  # Delta MERGE/CDC identity is a future path; batch land needs no PK
         import asyncio
 
         from provisa.federation.databricks_store import land_databricks_native
@@ -203,6 +204,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
                 change_signal=change_signal,
                 watermark_column=watermark_column,
                 stage=stage,
+                pk_columns=pk_columns,
             )
         finally:
             cur.close()
@@ -212,7 +214,6 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
     ) -> None:
         """Eager reconcile (boot/registration): converge the landing table at the physical name
         WITHOUT landing data (DDL only), so the catalog is complete at startup and survives restart."""
-        del pk_columns
         import asyncio
 
         from provisa.federation.databricks_store import reconcile_databricks_native
@@ -227,9 +228,40 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
                 schema=schema,
                 table=table,
                 columns=columns,
+                pk_columns=pk_columns,
             )
         finally:
             cur.close()
+
+    async def reconcile_landed_metadata(self, plan: Any) -> int:
+        """Apply the landed model's keys, descriptions and tags (REQ-1657): informational
+        PRIMARY/FOREIGN KEY constraints, COMMENTs and ``provisa_governance:*`` tags on each landed
+        Delta table. No view layer: the landed table is the compiler's physical name."""
+        import asyncio
+
+        from provisa.core.catalog import _to_catalog_name
+        from provisa.federation.databricks_store import reconcile_metadata_native
+        from provisa.federation.landed_keys import plan_targets
+
+        targets = plan_targets(
+            plan,
+            replica_for=lambda t: (
+                (self._catalog, t.schema_name, t.table_name)
+                if t.source_id == "__derived__"
+                else (_to_catalog_name(t.source_id), t.schema_name, t.table_name)
+            ),
+        )
+
+        def _run() -> int:
+            cur = self._conn.cursor()
+            try:
+                return reconcile_metadata_native(
+                    cur, targets=targets, edges=plan.edges, known_tags=plan.known_tags
+                )
+            finally:
+                cur.close()
+
+        return await asyncio.to_thread(_run)
 
     @property
     def connection(self):

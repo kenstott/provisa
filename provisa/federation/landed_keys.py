@@ -77,6 +77,26 @@ class ForeignKeyEdge:
     referenced_columns: tuple[str, ...]
 
 
+#: A store object's address: ``(database | catalog | project, schema, table)``.
+Parts = tuple[str, str, str]
+
+
+@dataclass(frozen=True)
+class KeyTarget:
+    """One landed table as a store applies it: the replica that carries constraints, the view (if
+    the source has one) that mirrors them as tags, and the descriptions and classifications both
+    carry. Store-neutral; each store's ``reconcile_metadata_native`` reads it."""
+
+    replica: Parts
+    view: Parts | None
+    primary_key: tuple[str, ...]
+    description: str = ""
+    column_descriptions: dict[str, str] | None = None
+    # Steward classifications (REQ-1655), ``(tag id, value)`` on the object and per column.
+    tags: tuple[tuple[str, str], ...] = ()
+    column_tags: dict[str, tuple[tuple[str, str], ...]] | None = None
+
+
 @dataclass
 class KeyPlan:
     tables: dict[Identity, LandedTable] = field(default_factory=dict)
@@ -310,3 +330,32 @@ async def key_plan_for(state: Any, landed: list[LandedTable]) -> KeyPlan:
     plan = key_plan(enriched, relationships, tables_by_id)
     plan.known_tags = known
     return plan
+
+
+def plan_targets(
+    plan: KeyPlan,
+    *,
+    replica_for: Any,
+    view_for: Any = None,
+) -> dict[Identity, KeyTarget]:
+    """The plan's tables as store targets. ``replica_for(table) -> Parts`` names the object that
+    carries the keys and comments; ``view_for(table) -> Parts | None`` the view mirroring them, for
+    a store that exposes one (Snowflake). An MV (``__derived__``) is addressed by the store parts
+    the plan carries, when it does: its store table is named for the MV id, not its registration."""
+    targets: dict[Identity, KeyTarget] = {}
+    for ident, t in plan.tables.items():
+        if t.source_id == "__derived__" and ident in plan.store_parts:
+            replica, view = plan.store_parts[ident], None
+        else:
+            replica = replica_for(t)
+            view = None if view_for is None or t.source_id == "__derived__" else view_for(t)
+        targets[ident] = KeyTarget(
+            replica=replica,
+            view=view,
+            primary_key=t.primary_key,
+            description=t.description,
+            column_descriptions=dict(t.column_descriptions),
+            tags=tuple(t.tags),
+            column_tags=dict(t.column_tags),
+        )
+    return targets

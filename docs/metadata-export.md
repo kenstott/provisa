@@ -57,7 +57,11 @@ the constraints live on the `_landing` replicas and are mirrored onto the per-so
 `PROVISA_GOVERNANCE.PRIMARY_KEY` / `FOREIGN_KEY` column tags, which is what Horizon Catalog renders
 as keys and join paths. The same reconcile writes each landed table's description and column descriptions as COMMENTs and
 the stewards' tag assignments as `PROVISA_GOVERNANCE` tags onto the replica, its backing view and
-an MV's store table when it is converged (REQ-1654, REQ-1655). `snowflake_horizon` therefore
+an MV's store table when it is converged (REQ-1654, REQ-1655). Databricks and BigQuery hold the
+same facts on the landed table itself, which is the compiler's physical name there (no view layer):
+Unity Catalog informational constraints, COMMENTs and `provisa_governance:<tag>` tags on Databricks
+(REQ-1657); `NOT ENFORCED` constraints, descriptions and `provisa_governance_<tag>` labels on
+BigQuery, where a column tag has no counterpart and is reported withheld (REQ-1658). `snowflake_horizon` therefore
 publishes no constraints and no model tags of its own; it still appends governance facts to the
 descriptions of the Data Product tables it publishes.
 [tool-verified: provisa/federation/landed_keys.py, provisa/federation/snowflake_store.py]

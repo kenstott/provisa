@@ -22,44 +22,18 @@ the schema — the runtime lands/attaches at exactly that name. Auth is Applicat
 loads where google-cloud-bigquery is absent.
 """
 
+# Requirements: REQ-1658
+
 from __future__ import annotations
 
 import json
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from provisa.core.ir_types import to_ir
 from provisa.executor.result import QueryResult
 from provisa.executor.result import ResultStream
+from provisa.federation.bigquery_store import bq_type
 from provisa.federation.runtime_support import run_async_materialized, stream_rows_from_arrow
-
-# Canonical IR name → BigQuery standard-SQL type (for landed-table DDL / load schema).
-_IR_TO_BQ: dict[str, str] = {
-    "smallint": "INT64",
-    "integer": "INT64",
-    "bigint": "INT64",
-    "text": "STRING",
-    "boolean": "BOOL",
-    "float": "FLOAT64",
-    "double": "FLOAT64",
-    "numeric": "NUMERIC",
-    "date": "DATE",
-    "timestamp": "TIMESTAMP",
-    "time": "TIME",
-    "uuid": "STRING",
-    "bytea": "BYTES",
-    "json": "JSON",
-}
-
-
-def _bq_type(ir_type: str) -> str:
-    canonical = to_ir(ir_type)
-    t = _IR_TO_BQ.get(canonical)
-    if t is None:
-        raise ValueError(
-            f"no BigQuery type mapping for IR type {ir_type!r} (canonical {canonical!r})"
-        )
-    return t
 
 
 class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
@@ -155,24 +129,62 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
         watermark_column: str | None = None,
         pk_columns: list[str] | None = None,
     ) -> None:
-        """LAND a source into a per-source BigQuery dataset at the compiler-physical name (REQ-987).
-        A columnar BigQuery LOAD job (WRITE_TRUNCATE for replace, WRITE_APPEND for a poll+watermark
-        delta) — never per-row INSERT. The dataset/table are the physical relation the governed query
-        reads directly."""
-        del pk_columns
+        """LAND a source into a per-source BigQuery dataset at the compiler-physical name (REQ-987):
+        converge the table (``attach_landed_source``), then a columnar BigQuery LOAD job
+        (WRITE_TRUNCATE for replace, WRITE_APPEND for a poll+watermark delta) — never per-row
+        INSERT. The dataset/table are the physical relation the governed query reads directly."""
         import asyncio
 
         from provisa.core.change_signal import APPEND, select_landing_shape
 
-        project, dataset, table = self._phys_parts(source)
+        await self.attach_landed_source(source, columns, pk_columns=pk_columns)
+        _, dataset, table = self._phys_parts(source)
         append = select_landing_shape(change_signal, watermark_column) == APPEND
         await asyncio.to_thread(self._load, dataset, table, columns, rows, append)
+
+    async def attach_landed_source(
+        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+    ) -> str:
+        """Eager reconcile (boot / registration, REQ-1658): converge the landed table to
+        ``columns`` + ``pk_columns`` (DDL only, no data), so the catalog is complete at startup and
+        survives restart. Returns the reconcile outcome."""
+        import asyncio
+
+        from provisa.federation.bigquery_store import reconcile_bigquery_native
+
+        parts = self._phys_parts(source)
+        return await asyncio.to_thread(
+            reconcile_bigquery_native,
+            self._client,
+            parts=parts,
+            columns=columns,
+            pk_columns=pk_columns,
+        )
+
+    async def reconcile_landed_metadata(self, plan: Any) -> int:
+        """Apply the landed model's keys, descriptions and tags (REQ-1658): ``NOT ENFORCED``
+        PRIMARY/FOREIGN KEY constraints, table and column descriptions, and ``provisa_governance_*``
+        labels on each landed table. No view layer: the landed table is the physical name."""
+        import asyncio
+
+        from provisa.federation.bigquery_store import reconcile_metadata_native
+        from provisa.federation.landed_keys import plan_targets
+
+        targets = plan_targets(
+            plan, replica_for=lambda t: (self._project, t.schema_name, t.table_name)
+        )
+        return await asyncio.to_thread(
+            reconcile_metadata_native,
+            self._client,
+            targets=targets,
+            edges=plan.edges,
+            known_tags=plan.known_tags,
+        )
 
     def _load(self, dataset: str, table: str, columns, rows: list[dict], append: bool) -> None:
         from google.cloud import bigquery
 
-        self._ensure_dataset(dataset)
-        schema = [bigquery.SchemaField(n, _bq_type(t)) for n, t in columns]
+        schema = [bigquery.SchemaField(n, bq_type(t)) for n, t in columns]
         cfg = bigquery.LoadJobConfig(
             schema=schema,
             write_disposition=(
@@ -184,11 +196,7 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
         )
         ref = f"{self._project}.{dataset}.{table}"
         if not rows:
-            # Create/truncate the empty table so the catalog is complete even with no rows.
-            self._client.query(
-                f"CREATE TABLE IF NOT EXISTS `{self._project}`.`{dataset}`.`{table}` "
-                f"({', '.join(f'`{n}` {_bq_type(t)}' for n, t in columns)})"
-            ).result()
+            # The table already exists (attach_landed_source); a replace with no rows empties it.
             if not append:
                 self._client.query(
                     f"TRUNCATE TABLE `{self._project}`.`{dataset}`.`{table}`"

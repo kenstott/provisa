@@ -55239,3 +55239,71 @@
     Given Data Product "Pet Health" with members pets and vets, and a masking rule on pets.name
     When the snowflake_horizon export publishes
     Then the listing manifest features pets and vets as VIEWs under "pet_store_sqlite", data_preview.has_pii is true with pets.name as a pii_column, and a manifest changed in Snowsight is replaced on the next publish
+- id: REQ-1657
+  status: complete
+  since: 2026-09
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: MUST
+  type: behavioral
+  description: >-
+    On a Databricks engine the landed model's keys, descriptions and tags converge with the landed
+    Delta tables in the landing reconcile and on MV refresh, as on Snowflake (REQ-1652, REQ-1654,
+    REQ-1655): the registration's PRIMARY KEY is declared inline (key columns NOT NULL, which Unity
+    Catalog requires), relationship FOREIGN KEYs are added as informational constraints, descriptions
+    are COMMENTs, and tag assignments are Unity Catalog tags keyed provisa_governance:<tag id>. A
+    drifted key recreates the table; a withdrawn relationship or assignment drops its constraint or
+    tag; keys and tags of any other origin are never touched. No view layer exists on Databricks, so
+    the landed table itself carries everything.
+  use_case: >-
+    Unity Catalog renders constraints, comments and tags in its own catalog and lineage views; a
+    landed model that carried none of them there was a bare copy of the data.
+  code:
+  - provisa/federation/databricks_store.py
+  - provisa/federation/databricks_runtime.py
+  - provisa/federation/landed_keys.py
+  tests:
+  - tests/unit/test_databricks_store.py
+  relates_to:
+  - REQ-1652
+  - REQ-1654
+  - REQ-1655
+  - REQ-987
+  scenario: |
+    Given pets (key id, description, tag gold) and pet_visits landed on Databricks with a many-to-one relationship pet_visits.pet_id -> pets.id
+    When the landing reconcile runs
+    Then pets carries provisa_pk_pets, pet_visits carries provisa_fk_<relationship>, pets carries the COMMENT and provisa_governance:gold, and a second reconcile applies no statement
+- id: REQ-1658
+  status: complete
+  since: 2026-09
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: MUST
+  type: behavioral
+  description: >-
+    BigQuery gains the eager landing terminal the other native stores have: the landing reconcile
+    converges each landed table (DDL only, with its PRIMARY KEY NOT ENFORCED) at boot and on
+    registration, and materialize_source converges before it loads. The landed model's metadata
+    then follows REQ-1652/1654/1655: FOREIGN KEYs as NOT ENFORCED constraints, descriptions on the
+    table and its columns through the client API, table tag assignments as labels keyed
+    provisa_governance_<tag id> with the value folded to the label alphabet. A column tag has no
+    BigQuery counterpart and is reported withheld. With the terminal in place the Analytics Hub
+    data-product export, which requires it, runs for BigQuery.
+  use_case: >-
+    Without an eager terminal a BigQuery deployment had no landed catalog until the first refresh,
+    no keys or descriptions in the BigQuery console, and the Analytics Hub export never ran.
+  code:
+  - provisa/federation/bigquery_store.py
+  - provisa/federation/bigquery_runtime.py
+  - provisa/api/metadata_export/bigquery_dataplex.py
+  tests:
+  - tests/unit/test_bigquery_store.py
+  relates_to:
+  - REQ-1652
+  - REQ-1654
+  - REQ-1655
+  - REQ-1636
+  scenario: |
+    Given pets and pet_visits registered as materialized on a BigQuery engine
+    When the server boots
+    Then both tables exist in their per-source datasets with PRIMARY KEY NOT ENFORCED, pet_visits holds provisa_fk_<relationship>, pets carries its description and provisa_governance_gold label, and a second reconcile applies nothing

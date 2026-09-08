@@ -16,6 +16,12 @@ import pytest
 
 from provisa.federation import databricks_store
 from provisa.federation.databricks_store import (
+    ObjectTags,
+    comment_statements,
+    constraint_statements,
+    reconcile_metadata_native,
+    tag_key,
+    tag_statements,
     COPY_INTO_ROW_THRESHOLD,
     DatabricksStage,
     _ddl_type,
@@ -32,12 +38,32 @@ class _FakeCursor:
     def __init__(self):
         self.sql: list[tuple[str, list | None]] = []
         self._existing: list[str] = []
+        self._pk: list[str] = []
+        self._fks: list[str] = []
+        self._comments: tuple[str, dict[str, str]] = ("", {})
+        self._tags: tuple[dict[str, str], dict[str, dict[str, str]]] = ({}, {})
+        self._last = ""
 
     def execute(self, sql, params=None):
         self.sql.append((sql, params))
+        self._last = sql
 
     def fetchall(self):
-        # only the _existing_columns probe calls fetchall
+        q = self._last
+        if "information_schema.key_column_usage" in q:
+            return [(c,) for c in self._pk]
+        if "constraint_type = 'FOREIGN KEY'" in q:
+            return [(n,) for n in self._fks]
+        if "SELECT comment FROM" in q:
+            return [(self._comments[0],)]
+        if "SELECT column_name, comment FROM" in q:
+            return list(self._comments[1].items())
+        if "information_schema.table_tags" in q:
+            return list(self._tags[0].items())
+        if "information_schema.column_tags" in q:
+            return [(c, k, v) for c, tags in self._tags[1].items() for k, v in tags.items()]
+        if "SELECT 1 FROM" in q:
+            return [(1,)] if self._existing else []
         return [(c,) for c in self._existing]
 
     def joined(self) -> str:
@@ -203,3 +229,138 @@ def test_land_no_rows_creates_but_no_insert():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+# -- landed metadata (REQ-1657) -------------------------------------------------------------------
+
+from provisa.federation.landed_keys import ForeignKeyEdge, KeyTarget  # noqa: E402
+
+_PETS = ("pet_store_sqlite", "pet_store", "pets")
+_VISITS = ("pet_store_sqlite", "pet_store", "pet_visits")
+
+
+def _targets(**overrides) -> dict[str, KeyTarget]:
+    base = {
+        "pets": KeyTarget(
+            replica=_PETS,
+            view=None,
+            primary_key=("id",),
+            description="Pet inventory",
+            column_descriptions={"name": "Pet name"},
+            tags=(("gold", "Curated"),),
+            column_tags={"name": (("pii", "pii"),)},
+        ),
+        "visits": KeyTarget(replica=_VISITS, view=None, primary_key=("id",)),
+    }
+    base.update(overrides)
+    return base
+
+
+_EDGE = ForeignKeyEdge("provisa_fk_visits_pet", "visits", ("pet_id",), "pets", ("id",))
+
+
+def test_create_ddl_declares_not_null_key_columns_and_an_inline_primary_key():
+    cur = _FakeCursor()
+    reconcile_databricks_native(
+        cur, catalog="c", schema="s", table="t", columns=COLS, pk_columns=["id"]
+    )
+    assert (
+        "CREATE TABLE IF NOT EXISTS `c`.`s`.`t` (`id` BIGINT NOT NULL, `s` STRING, "
+        "`amt` DECIMAL(38,9), `j` STRING, CONSTRAINT `provisa_pk_t` PRIMARY KEY (`id`)) USING DELTA"
+        in cur.joined()
+    )
+
+
+def test_reconcile_recreates_when_the_primary_key_drifted():
+    cur = _FakeCursor()
+    cur._existing = ["id", "s", "amt", "j"]
+    cur._pk = ["s"]
+    outcome = reconcile_databricks_native(
+        cur, catalog="c", schema="s", table="t", columns=COLS, pk_columns=["id"]
+    )
+    assert outcome == "recreated"
+
+
+def test_tag_key_avoids_unity_catalog_reserved_characters():
+    assert tag_key("PII") == "provisa_governance:pii"
+    assert tag_key("cost.center=x") == "provisa_governance:cost_center_x"
+
+
+def test_constraint_statements_add_missing_keys_with_not_null_first():
+    stmts = constraint_statements(_targets(), [_EDGE], {}, {})
+    assert stmts == [
+        "ALTER TABLE `pet_store_sqlite`.`pet_store`.`pets` ALTER COLUMN `id` SET NOT NULL",
+        "ALTER TABLE `pet_store_sqlite`.`pet_store`.`pets` ADD CONSTRAINT `provisa_pk_pets` "
+        "PRIMARY KEY (`id`)",
+        "ALTER TABLE `pet_store_sqlite`.`pet_store`.`pet_visits` ALTER COLUMN `id` SET NOT NULL",
+        "ALTER TABLE `pet_store_sqlite`.`pet_store`.`pet_visits` ADD CONSTRAINT "
+        "`provisa_pk_pet_visits` PRIMARY KEY (`id`)",
+        "ALTER TABLE `pet_store_sqlite`.`pet_store`.`pet_visits` ADD CONSTRAINT "
+        "`provisa_fk_visits_pet` FOREIGN KEY (`pet_id`) "
+        "REFERENCES `pet_store_sqlite`.`pet_store`.`pets` (`id`)",
+    ]
+
+
+def test_constraint_statements_are_idempotent_and_withdraw_orphaned_owned_keys():
+    pks = {_PETS: ("id",), _VISITS: ("id",)}
+    fks = {_VISITS: frozenset({"provisa_fk_visits_pet", "provisa_fk_gone", "customer_fk"})}
+    assert constraint_statements(_targets(), [_EDGE], pks, fks) == [
+        "ALTER TABLE `pet_store_sqlite`.`pet_store`.`pet_visits` DROP CONSTRAINT `provisa_fk_gone`"
+    ]
+
+
+def test_replacing_a_primary_key_cascades_and_re_adds_the_edges_into_it():
+    pks = {_PETS: ("name",), _VISITS: ("id",)}
+    fks = {_VISITS: frozenset({"provisa_fk_visits_pet"})}
+    stmts = constraint_statements(_targets(), [_EDGE], pks, fks)
+    assert stmts[0] == "ALTER TABLE `pet_store_sqlite`.`pet_store`.`pets` DROP PRIMARY KEY CASCADE"
+    assert stmts[-1].startswith(
+        "ALTER TABLE `pet_store_sqlite`.`pet_store`.`pet_visits` ADD CONSTRAINT "
+        "`provisa_fk_visits_pet`"
+    )
+
+
+def test_comment_statements_write_only_what_differs():
+    existing = {_PETS: ("Pet inventory -- extended by a catalog", {"name": ""})}
+    assert comment_statements(_targets(), existing) == [
+        "ALTER TABLE `pet_store_sqlite`.`pet_store`.`pets` ALTER COLUMN `name` COMMENT 'Pet name'"
+    ]
+    assert comment_statements(_targets(), {}) == [
+        "COMMENT ON TABLE `pet_store_sqlite`.`pet_store`.`pets` IS 'Pet inventory'",
+        "ALTER TABLE `pet_store_sqlite`.`pet_store`.`pets` ALTER COLUMN `name` COMMENT 'Pet name'",
+    ]
+
+
+def test_tag_statements_set_missing_and_unset_known_unassigned():
+    existing = {
+        _PETS: ObjectTags(
+            table={"provisa_governance:silver": "x"},
+            columns={"name": {"provisa_governance:pii": "pii"}},
+        )
+    }
+    assert tag_statements(_targets(), existing, frozenset({"gold", "silver", "pii"})) == [
+        "ALTER TABLE `pet_store_sqlite`.`pet_store`.`pets` SET TAGS "
+        "('provisa_governance:gold' = 'Curated')",
+        "ALTER TABLE `pet_store_sqlite`.`pet_store`.`pets` UNSET TAGS ('provisa_governance:silver')",
+    ]
+
+
+def test_reconcile_metadata_skips_absent_tables_and_survives_a_refused_statement(caplog):
+    cur = _FakeCursor()
+    cur._existing = ["id", "name"]
+
+    refused = {"COMMENT ON TABLE"}
+    real_execute = cur.execute
+
+    def execute(sql, params=None):
+        real_execute(sql, params)
+        if any(sql.startswith(r) for r in refused):
+            raise RuntimeError("refused")
+
+    cur.execute = execute
+    applied = reconcile_metadata_native(cur, targets=_targets(), edges=[_EDGE])
+    joined = cur.joined()
+    assert "ADD CONSTRAINT `provisa_fk_visits_pet`" in joined
+    assert "COMMENT ON TABLE" in joined
+    assert applied == len([s for s, _ in cur.sql if s.startswith(("ALTER", "COMMENT"))]) - 1
+    assert "refused" in caplog.text
