@@ -55019,3 +55019,61 @@
     secret_access_key and endpoint set
     When DuckDBParquetConnector.details() is called and DuckDBRuntime.attach_source() consumes it
     Then a CREATE OR REPLACE SECRET (TYPE s3, KEY_ID ..., SECRET ..., ENDPOINT '<bare-host>', URL_STYLE 'path') is executed, httpfs is INSTALL/LOAD'd once per connection, before the CREATE VIEW read_parquet() scan runs
+- id: REQ-1651
+  status: complete
+  since: 2026-09
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: MUST
+  type: behavioral
+  description: >-
+    A landed replica's shape includes its PRIMARY KEY. A SQLite file source's key columns are
+    resolved from the file's own PRAGMA table_info at seed time (PRAGMA pk order), and the landing
+    reconcile treats a difference between the store table's PRIMARY KEY and the registered key as
+    drift, recreating the table, so a replica created before its key was known does not stay
+    key-less for good.
+  use_case: >-
+    The demo's pets table (a SQLite file source) landed without a PRIMARY KEY: the seed's key
+    resolution skipped sqlite (the comment claimed the engine rebuild resolved it, and nothing did),
+    and the reconcile compared only the column list, so even a later-resolved key never reached the
+    store.
+  code:
+  - provisa/api/startup_seed.py
+  - provisa/federation/connector_sqlite.py
+  - provisa/federation/store_writer.py
+  tests:
+  - tests/unit/test_connector_sqlite_keys.py
+  - tests/unit/test_store_writer.py
+  scenario: |
+    Given a SQLite file source whose pets table declares id as its PRIMARY KEY
+    When the seed resolves keys and the landing reconcile converges the store
+    Then registered_tables/table_columns flags pets.id is_primary_key and the store's pets replica is created (or recreated) with PRIMARY KEY (id)
+- id: REQ-1652
+  status: complete
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
+  category: Metadata Export
+  priority: MUST
+  type: behavioral
+  description: >-
+    The snowflake_horizon export publishes each landed TABLE's declared key as its physical
+    PRIMARY KEY and each approved relationship as a FOREIGN KEY on the "many" side (a junction
+    relationship as one per hop), idempotently: a matching PRIMARY KEY is left alone, a differing one
+    is replaced, an existing FOREIGN KEY of the same name is skipped. A FOREIGN KEY whose referenced
+    columns are not the referenced table's published PRIMARY KEY, or whose end is a VIEW or not yet
+    landed, is withheld and reported, never emitted.
+  use_case: >-
+    Horizon Catalog renders a table's keys and join paths from Snowflake's informational
+    constraints. The export applied tags and comments to landed tables but no constraints, so the
+    catalog showed no primary key on pets and no relationships between the landed tables.
+  code:
+  - provisa/api/metadata_export/snowflake_horizon.py
+  - provisa/api/metadata_export/builder.py
+  - provisa/api/metadata_export/model.py
+  tests:
+  - tests/unit/test_snowflake_horizon_export.py
+  - tests/unit/test_metadata_export_model_tags.py
+  scenario: |
+    Given landed TABLEs customers (key id) and orders (key id) and an approved many-to-one relationship orders.customer_id -> customers.id
+    When the snowflake_horizon export publishes
+    Then it runs ALTER TABLE ... ADD CONSTRAINT ... PRIMARY KEY on each table and ALTER TABLE orders ADD CONSTRAINT ... FOREIGN KEY (customer_id) REFERENCES customers (id), and a second publish emits nothing

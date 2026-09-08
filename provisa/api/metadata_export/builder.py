@@ -147,6 +147,9 @@ def _table_assets(
             # REQ-1592: model-report column, kept. REQ-1443 clause 10: a checker table's flag is
             # the one it inherits from the table it scans.
             data_product=product_ids[table_ref(table).parts] is not None,
+            # REQ-1652: every declared key column, technical-tagged or not -- the physical table
+            # carries it whether or not the Data Product exposes it.
+            primary_key=tuple(c.name for c in table.columns if getattr(c, "is_primary_key", False)),
         )
         for table in tables
     ]

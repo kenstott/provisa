@@ -40,6 +40,13 @@ def table_info(path: str, table: str) -> list[tuple]:
         conn.close()
 
 
+def primary_key_columns(path: str, table: str) -> list[str]:  # REQ-1651
+    """The table's PRIMARY KEY columns in key order, from ``PRAGMA table_info`` (``pk`` is the
+    1-based position within the key, 0 for a non-key column)."""
+    keyed = [(row[5], row[1]) for row in table_info(path, table) if row[5]]
+    return [name for _, name in sorted(keyed)]
+
+
 def execute_sync(path: str, sql: str) -> list[dict]:  # REQ-229
     """Execute SQL against a SQLite file, returning rows as dicts."""
     conn = sqlite3.connect(path)

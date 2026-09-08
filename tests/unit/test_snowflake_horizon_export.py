@@ -689,3 +689,242 @@ def test_publish_reports_error_when_described_table_not_landed(monkeypatch):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+# -- constraints (REQ-1652) ------------------------------------------------------------------------
+
+from provisa.api.metadata_export.model import JunctionRef, RelationshipEdge  # noqa: E402
+from provisa.api.metadata_export.snowflake_horizon import (  # noqa: E402
+    ForeignKeySpec,
+    constraint_statements,
+    foreign_key_specs,
+)
+
+
+def _edge(rel_id, source, target, source_column, target_column, cardinality, via=None):
+    return RelationshipEdge(
+        id=rel_id,
+        source=source,
+        target=target,
+        source_column=source_column,
+        target_column=target_column,
+        cardinality=cardinality,
+        alias=None,
+        owner=None,
+        version=1,
+        needs_review=False,
+        kind="junction" if via else "direct",
+        via=via,
+    )
+
+
+def _keyed_table(source_id, schema, table, primary_key=()):
+    return TableAsset(
+        ref=_table_ref(source_id, schema, table),
+        name=table,
+        source_id=source_id,
+        domain_id=None,
+        description="",
+        primary_key=tuple(primary_key),
+    )
+
+
+_ORDERS = ("shop", "public", "orders")
+_CUSTOMERS = ("shop", "public", "customers")
+
+
+def test_foreign_key_specs_many_to_one_puts_the_key_on_the_source():
+    specs, skipped = foreign_key_specs(
+        [
+            _edge(
+                "orders-customer",
+                _table_ref("shop", "public", "orders"),
+                _table_ref("shop", "public", "customers"),
+                "customer_id",
+                "id",
+                "many-to-one",
+            )
+        ]
+    )
+    assert skipped == []
+    assert specs == [
+        ForeignKeySpec("provisa_fk_orders_customer", _ORDERS, ("customer_id",), _CUSTOMERS, ("id",))
+    ]
+
+
+def test_foreign_key_specs_one_to_many_puts_the_key_on_the_target():
+    specs, _ = foreign_key_specs(
+        [
+            _edge(
+                "customer-orders",
+                _table_ref("shop", "public", "customers"),
+                _table_ref("shop", "public", "orders"),
+                "id",
+                "customer_id",
+                "one-to-many",
+            )
+        ]
+    )
+    assert specs[0].table == _ORDERS and specs[0].columns == ("customer_id",)
+    assert specs[0].referenced == _CUSTOMERS and specs[0].referenced_columns == ("id",)
+
+
+def test_foreign_key_specs_junction_yields_one_key_per_hop_and_splits_composites():
+    via = JunctionRef(
+        table=_table_ref("shop", "public", "order_items"),
+        source_column="order_tenant, order_id",
+        target_column="product_id",
+    )
+    specs, _ = foreign_key_specs(
+        [
+            _edge(
+                "orders-products",
+                _table_ref("shop", "public", "orders"),
+                _table_ref("shop", "public", "products"),
+                "tenant_id, id",
+                "id",
+                "many-to-one",
+                via=via,
+            )
+        ]
+    )
+    assert [s.name for s in specs] == [
+        "provisa_fk_orders_products_source",
+        "provisa_fk_orders_products_target",
+    ]
+    assert specs[0].table == ("shop", "public", "order_items")
+    assert specs[0].columns == ("order_tenant", "order_id")
+    assert specs[0].referenced_columns == ("tenant_id", "id")
+
+
+def test_foreign_key_specs_skips_computed_relationships_with_a_reason():
+    specs, skipped = foreign_key_specs(
+        [
+            _edge(
+                "orders-fn", _table_ref("shop", "public", "orders"), None, "id", None, "many-to-one"
+            )
+        ]
+    )
+    assert specs == []
+    assert skipped == [("orders-fn", "computed relationship has no target table")]
+
+
+def test_constraint_statements_add_primary_key_and_foreign_key():
+    tables = [
+        _keyed_table("shop", "public", "customers", ("id",)),
+        _keyed_table("shop", "public", "orders", ("id",)),
+    ]
+    kinds = {_ORDERS: "TABLE", _CUSTOMERS: "TABLE"}
+    spec = ForeignKeySpec(
+        "provisa_fk_orders_customer", _ORDERS, ("customer_id",), _CUSTOMERS, ("id",)
+    )
+    stmts, withheld = constraint_statements(tables, kinds, [spec], {}, {})
+    assert withheld == []
+    assert stmts == [
+        'ALTER TABLE "shop"."public"."customers" ADD CONSTRAINT "provisa_pk_customers" PRIMARY KEY ("id");',
+        'ALTER TABLE "shop"."public"."orders" ADD CONSTRAINT "provisa_pk_orders" PRIMARY KEY ("id");',
+        'ALTER TABLE "shop"."public"."orders" ADD CONSTRAINT "provisa_fk_orders_customer" '
+        'FOREIGN KEY ("customer_id") REFERENCES "shop"."public"."customers" ("id");',
+    ]
+
+
+def test_constraint_statements_are_idempotent_and_replace_a_differing_primary_key():
+    tables = [_keyed_table("shop", "public", "customers", ("id",))]
+    kinds = {_CUSTOMERS: "TABLE"}
+    # matching key already there → nothing
+    assert constraint_statements(tables, kinds, [], {_CUSTOMERS: ("id",)}, {}) == ([], [])
+    # a different key → dropped then re-added
+    stmts, _ = constraint_statements(tables, kinds, [], {_CUSTOMERS: ("email",)}, {})
+    assert stmts[0] == 'ALTER TABLE "shop"."public"."customers" DROP PRIMARY KEY;'
+    assert 'PRIMARY KEY ("id")' in stmts[1]
+    # an existing foreign key of the same name → nothing
+    spec = ForeignKeySpec("provisa_fk_x", _ORDERS, ("customer_id",), _CUSTOMERS, ("id",))
+    tables.append(_keyed_table("shop", "public", "orders", ("id",)))
+    kinds[_ORDERS] = "TABLE"
+    stmts, withheld = constraint_statements(
+        tables,
+        kinds,
+        [spec],
+        {_CUSTOMERS: ("id",), _ORDERS: ("id",)},
+        {_ORDERS: frozenset({"provisa_fk_x"})},
+    )
+    assert stmts == [] and withheld == []
+
+
+def test_constraint_statements_withhold_a_foreign_key_to_a_non_key_column():
+    # The demo's assignments.breed_name: a relationship may name a column that is not the
+    # referenced table's key. Snowflake refuses the reference, so it is reported, never emitted.
+    tables = [
+        _keyed_table("shop", "public", "orders", ("id",)),
+        _keyed_table("shop", "public", "customers", ("id",)),
+    ]
+    kinds = {_ORDERS: "TABLE", _CUSTOMERS: "TABLE"}
+    spec = ForeignKeySpec("provisa_fk_bad", _ORDERS, ("email",), _CUSTOMERS, ("email",))
+    stmts, withheld = constraint_statements(tables, kinds, [spec], {}, {})
+    assert all("FOREIGN KEY" not in s for s in stmts)
+    assert (
+        withheld[0][0] == "provisa_fk_bad"
+        and "not shop.public.customers's primary key" in withheld[0][1]
+    )
+
+
+def test_constraint_statements_skip_views_and_unlanded_tables():
+    tables = [_keyed_table("shop", "public", "customers", ("id",))]
+    spec = ForeignKeySpec("provisa_fk_v", _ORDERS, ("customer_id",), _CUSTOMERS, ("id",))
+    stmts, withheld = constraint_statements(tables, {_CUSTOMERS: "VIEW"}, [spec], {}, {})
+    assert stmts == []
+    assert withheld == [
+        (
+            "provisa_fk_v",
+            "shop.public.orders -> shop.public.customers: both ends must be landed TABLEs",
+        )
+    ]
+
+
+class _KeyAwareCursor(_FakeCursor):
+    """A landed TABLE with no keys yet: SHOW PRIMARY KEYS / SHOW IMPORTED KEYS answer empty."""
+
+    def execute(self, sql, params=None):
+        super().execute(sql, params)
+        if sql.startswith("SHOW PRIMARY KEYS"):
+            self.description = [("column_name",), ("key_sequence",)]
+        elif sql.startswith("SHOW IMPORTED KEYS"):
+            self.description = [("fk_name",)]
+
+    def fetchall(self):
+        if self._last_sql.startswith(("SHOW PRIMARY KEYS", "SHOW IMPORTED KEYS")):
+            return []
+        return super().fetchall()
+
+
+def test_publish_adds_keys_for_landed_tables_and_relationships(monkeypatch):
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    rt = _runtime(existing_objects=True)
+    rt._conn.cursor_obj = _KeyAwareCursor(True, "TABLE")
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+    tables = [
+        _keyed_table("shop", "public", "customers", ("id",)),
+        _keyed_table("shop", "public", "orders", ("id",)),
+    ]
+    rel = _edge(
+        "orders-customer",
+        _table_ref("shop", "public", "orders"),
+        _table_ref("shop", "public", "customers"),
+        "customer_id",
+        "id",
+        "many-to-one",
+    )
+    snapshot = SimpleNamespace(tables=tables, relationships=[rel])
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert result.ok, result.errors
+    assert result.published["constraints"] == 3
+    joined = " | ".join(rt._conn.cursor_obj.sql)
+    assert 'ADD CONSTRAINT "provisa_pk_orders" PRIMARY KEY ("id")' in joined
+    assert 'ADD CONSTRAINT "provisa_fk_orders_customer" FOREIGN KEY ("customer_id")' in joined

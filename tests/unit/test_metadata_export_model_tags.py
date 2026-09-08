@@ -280,3 +280,39 @@ def test_atlan_maps_deprecated_to_certificate_status():
     assert table_entity.attributes["certificateStatus"] == "DEPRECATED"
     untouched = next(e for e in entities if e.type_name == "Database")
     assert "certificateStatus" not in untouched.attributes
+
+
+def test_table_asset_carries_the_declared_primary_key_even_when_a_key_column_is_technical():
+    # REQ-1652: the physical table carries every declared key column; the Data Product may hide
+    # one as technical, but the PRIMARY KEY Horizon publishes is the table's, not the product's.
+    config = _config(
+        tables=[
+            _table(
+                "orders",
+                columns=[
+                    Column(
+                        name="tenant_id",
+                        data_type="integer",
+                        visible_to=["admin"],
+                        is_primary_key=True,
+                    ),
+                    Column(
+                        name="id", data_type="integer", visible_to=["admin"], is_primary_key=True
+                    ),
+                    Column(name="total", data_type="integer", visible_to=["admin"]),
+                ],
+            )
+        ],
+        tag_assignments=[
+            TagAssignment(
+                tag_id="technical",
+                object_type="column",
+                table_ref="wh.public.orders",
+                column_name="tenant_id",
+            )
+        ],
+    )
+    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    orders = next(t for t in snapshot.tables if t.name == "orders")
+    assert orders.primary_key == ("tenant_id", "id")
+    assert [c.name for c in orders.columns] == ["id", "total"]

@@ -48,6 +48,8 @@ alongside REQ-1647's description text) — never as a TAG.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -69,6 +71,7 @@ if TYPE_CHECKING:
         GovernanceTag,
         MetadataSnapshot,
         ModelTag,
+        RelationshipEdge,
         TableAsset,
     )
 
@@ -343,6 +346,172 @@ def listing_statements(
     ]
 
 
+# -- constraints (REQ-1652) -------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ForeignKeySpec:
+    """One physical FOREIGN KEY a relationship publishes as: ``table(columns)`` REFERENCES
+    ``referenced(referenced_columns)``. Direction follows the cardinality -- the "many" side holds
+    the key -- and a junction-backed relationship (REQ-1586) yields one per hop."""
+
+    name: str
+    table: tuple[str, str, str]
+    columns: tuple[str, ...]
+    referenced: tuple[str, str, str]
+    referenced_columns: tuple[str, ...]
+
+
+def _fk_name(rel_id: str, suffix: str = "") -> str:
+    return _identifier(f"provisa_fk_{rel_id}{suffix}")
+
+
+def foreign_key_specs(
+    relationships: list["RelationshipEdge"],
+) -> tuple[list[ForeignKeySpec], list[tuple[str, str]]]:
+    """The FOREIGN KEYs ``relationships`` declare, plus ``(relationship id, reason)`` for each one
+    that publishes no key: a computed relationship has no target table, and a hop with no
+    referenced column is not a key at all."""
+    from provisa.compiler.sql_types import key_list
+
+    specs: list[ForeignKeySpec] = []
+    skipped: list[tuple[str, str]] = []
+    for rel in relationships:
+        if rel.target is None:
+            skipped.append((rel.id, "computed relationship has no target table"))
+            continue
+        try:
+            source, target = physical_parts(rel.source), physical_parts(rel.target)
+            if rel.via is not None:
+                junction = physical_parts(rel.via.table)
+                specs.append(
+                    ForeignKeySpec(
+                        _fk_name(rel.id, "_source"),
+                        junction,
+                        key_list(rel.via.source_column),
+                        source,
+                        key_list(rel.source_column),
+                    )
+                )
+                specs.append(
+                    ForeignKeySpec(
+                        _fk_name(rel.id, "_target"),
+                        junction,
+                        key_list(rel.via.target_column),
+                        target,
+                        key_list(rel.target_column or ""),
+                    )
+                )
+                continue
+            if not rel.target_column:
+                skipped.append((rel.id, "relationship names no target column"))
+                continue
+            if rel.cardinality == "many-to-one":
+                holder, held, ref, ref_cols = (
+                    source,
+                    key_list(rel.source_column),
+                    target,
+                    key_list(rel.target_column),
+                )
+            else:  # one-to-many: the "one" side is the source, the target holds the key
+                holder, held, ref, ref_cols = (
+                    target,
+                    key_list(rel.target_column),
+                    source,
+                    key_list(rel.source_column),
+                )
+            specs.append(ForeignKeySpec(_fk_name(rel.id), holder, held, ref, ref_cols))
+        except ValueError as exc:
+            skipped.append((rel.id, str(exc)))
+    return specs, skipped
+
+
+def constraint_statements(
+    tables: list["TableAsset"],
+    kinds: dict[tuple[str, str, str], str],
+    specs: list[ForeignKeySpec],
+    existing_primary_keys: dict[tuple[str, str, str], tuple[str, ...]],
+    existing_foreign_keys: dict[tuple[str, str, str], frozenset[str]],
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """PRIMARY KEY and FOREIGN KEY DDL for the landed TABLEs (REQ-1652), and ``(what, reason)`` for
+    every key withheld.
+
+    Snowflake keeps both constraints as informational metadata (never enforced), which is exactly
+    what Horizon Catalog renders as the table's keys and join paths. A PRIMARY KEY that already
+    matches is left alone; one that differs is replaced (a table holds at most one). A FOREIGN KEY
+    is added only when the referenced columns ARE the referenced table's published PRIMARY KEY --
+    Snowflake refuses a reference to a non-key, and the demo's assignments.breed_name showed why a
+    relationship can name one. A VIEW (a live-linked source) carries no constraints."""
+    stmts: list[str] = []
+    withheld: list[tuple[str, str]] = []
+    declared: dict[tuple[str, str, str], tuple[str, ...]] = {}
+    for table in tables:
+        try:
+            parts = physical_parts(table.ref)
+        except ValueError:
+            continue
+        if not table.primary_key or kinds.get(parts) != "TABLE":
+            continue
+        declared[parts] = table.primary_key
+        current = existing_primary_keys.get(parts, ())
+        if current == table.primary_key:
+            continue
+        fq = f'"{parts[0]}"."{parts[1]}"."{parts[2]}"'
+        if current:
+            stmts.append(f"ALTER TABLE {fq} DROP PRIMARY KEY;")
+        cols = ", ".join(f'"{c}"' for c in table.primary_key)
+        stmts.append(
+            f'ALTER TABLE {fq} ADD CONSTRAINT "{_identifier(f"provisa_pk_{parts[2]}")}" '
+            f"PRIMARY KEY ({cols});"
+        )
+    for spec in specs:
+        label = f"{'.'.join(spec.table)} -> {'.'.join(spec.referenced)}"
+        if kinds.get(spec.table) != "TABLE" or kinds.get(spec.referenced) != "TABLE":
+            withheld.append((spec.name, f"{label}: both ends must be landed TABLEs"))
+            continue
+        if declared.get(spec.referenced) != spec.referenced_columns:
+            withheld.append(
+                (
+                    spec.name,
+                    f"{label}: referenced columns {list(spec.referenced_columns)} are not "
+                    f"{'.'.join(spec.referenced)}'s primary key",
+                )
+            )
+            continue
+        if spec.name in existing_foreign_keys.get(spec.table, frozenset()):
+            continue
+        fq = f'"{spec.table[0]}"."{spec.table[1]}"."{spec.table[2]}"'
+        ref = f'"{spec.referenced[0]}"."{spec.referenced[1]}"."{spec.referenced[2]}"'
+        cols = ", ".join(f'"{c}"' for c in spec.columns)
+        ref_cols = ", ".join(f'"{c}"' for c in spec.referenced_columns)
+        stmts.append(
+            f'ALTER TABLE {fq} ADD CONSTRAINT "{spec.name}" FOREIGN KEY ({cols}) '
+            f"REFERENCES {ref} ({ref_cols});"
+        )
+    return stmts, withheld
+
+
+def _existing_keys(
+    runtime: SnowflakeFederationRuntime, parts: tuple[str, str, str]
+) -> tuple[tuple[str, ...], frozenset[str]]:
+    """The table's current PRIMARY KEY columns (in key order) and the names of its FOREIGN KEYs,
+    read live so the publish is idempotent -- Snowflake refuses a second PRIMARY KEY and a
+    duplicate constraint name."""
+    fq = f'"{parts[0]}"."{parts[1]}"."{parts[2]}"'
+    cur = runtime.connection.cursor()
+    try:
+        cur.execute(f"SHOW PRIMARY KEYS IN TABLE {fq}")
+        cols = [d[0] for d in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        pk = tuple(r["column_name"] for r in sorted(rows, key=lambda r: r["key_sequence"]))
+        cur.execute(f"SHOW IMPORTED KEYS IN TABLE {fq}")
+        cols = [d[0] for d in cur.description]
+        fks = frozenset(dict(zip(cols, r))["fk_name"] for r in cur.fetchall())
+        return pk, fks
+    finally:
+        cur.close()
+
+
 def _organization_context(runtime: SnowflakeFederationRuntime) -> tuple[str, str, str]:
     """(account, role, region) for the CURRENT session — the ``organization_targets``/``locations``
     fields an organization listing's manifest requires (REQ-1635). Read live rather than guessed:
@@ -422,6 +591,10 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             commented = self._publish_descriptions(runtime, tables, governance_tags, result)
             if commented:
                 result.published["descriptions"] = commented
+            relationships = getattr(snapshot, "relationships", None) or []
+            constrained = self._publish_constraints(runtime, tables, relationships, result)
+            if constrained:
+                result.published["constraints"] = constrained
         finally:
             runtime.close()
         return result
@@ -532,6 +705,57 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
                 cur.execute(stmt)
         except Exception as exc:  # noqa: BLE001 - runtime.connection is an opaque DBAPI cursor
             result.errors.append(AssetError(AssetRefStub("descriptions"), str(exc)))
+            return 0
+        finally:
+            cur.close()
+        return len(statements)
+
+    def _publish_constraints(
+        self,
+        runtime: SnowflakeFederationRuntime,
+        tables: list["TableAsset"],
+        relationships: list["RelationshipEdge"],
+        result: PublishResult,
+    ) -> int:
+        """Publishes each landed TABLE's declared key as its PRIMARY KEY and each relationship as a
+        FOREIGN KEY (REQ-1652) -- the keys and join paths Horizon Catalog shows on the table. Gated
+        on the object existing as a TABLE (a VIEW carries no constraints); a withheld key is
+        reported, never silently dropped."""
+        specs, skipped = foreign_key_specs(relationships)
+        for rel_id, reason in skipped:
+            result.errors.append(AssetError(AssetRefStub(rel_id), reason))
+        involved: set[tuple[str, str, str]] = set()
+        for table in tables:
+            if table.primary_key:
+                try:
+                    involved.add(physical_parts(table.ref))
+                except ValueError as exc:
+                    result.errors.append(AssetError(table.ref, str(exc)))
+        for spec in specs:
+            involved.update((spec.table, spec.referenced))
+        if not involved:
+            return 0
+        kinds: dict[tuple[str, str, str], str] = {}
+        pks: dict[tuple[str, str, str], tuple[str, ...]] = {}
+        fks: dict[tuple[str, str, str], frozenset[str]] = {}
+        for parts in sorted(involved):
+            kind = _object_kind(runtime, parts)
+            if kind is None:
+                continue  # not landed yet: a key on it is withheld below, with the reason
+            kinds[parts] = kind
+            if kind == "TABLE":
+                pks[parts], fks[parts] = _existing_keys(runtime, parts)
+        statements, withheld = constraint_statements(tables, kinds, specs, pks, fks)
+        for name, reason in withheld:
+            result.errors.append(AssetError(AssetRefStub(name), reason))
+        if not statements:
+            return 0
+        cur = runtime.connection.cursor()
+        try:
+            for stmt in statements:
+                cur.execute(stmt)
+        except Exception as exc:  # noqa: BLE001 - runtime.connection is an opaque DBAPI cursor
+            result.errors.append(AssetError(AssetRefStub("constraints"), str(exc)))
             return 0
         finally:
             cur.close()

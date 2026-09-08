@@ -958,6 +958,7 @@ async def _resolve_pk_from_sources() -> None:
                         _registered_tables_t.c.schema_name,
                         _registered_tables_t.c.table_name,
                         _sources_t.c.type.label("source_type"),
+                        _sources_t.c.path.label("source_path"),
                     )
                     .select_from(
                         _registered_tables_t.join(
@@ -992,9 +993,16 @@ async def _resolve_pk_from_sources() -> None:
                         if c["is_primary_key"]
                     ]
                 elif _pk_t["source_type"] == "sqlite":
-                    # External SQLite file sources have no information_schema and are not in the CP
-                    # connection; their PKs are resolved by the engine during schema rebuild.
-                    continue
+                    # REQ-1651: a SQLite file has no information_schema and is not in the CP
+                    # connection, and the engine's schema rebuild never wrote its keys either -- so
+                    # every file-backed table (the demo's pets among them) landed without a
+                    # PRIMARY KEY. PRAGMA table_info is the file's own constraint declaration.
+                    from provisa.core.secrets import resolve_secrets
+                    from provisa.federation.connector_sqlite import primary_key_columns
+
+                    _pk_cols = primary_key_columns(
+                        resolve_secrets(_pk_t["source_path"] or ""), _pk_t["table_name"]
+                    )
                 elif state.source_pools.has(_pk_t["source_id"]):
                     _pk_res = await state.source_pools.execute(_pk_t["source_id"], _pk_sql, None)
                     _pk_cols = [_row[0] for _row in _pk_res.rows]

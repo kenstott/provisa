@@ -117,3 +117,28 @@ async def test_land_replace_is_full_refresh(tmp_path):
     async with store_writer.store_connection(dsn) as conn:
         rows = await conn.fetch("SELECT id FROM pets")
     assert [r[0] for r in rows] == [9]  # replace dropped the prior row
+
+
+@pytest.mark.asyncio
+async def test_reconcile_treats_a_primary_key_change_as_drift(tmp_path):
+    # REQ-1651: a table created before its key was known (the demo's pets) stayed key-less because
+    # only the column list was compared; the declared key is part of the shape.
+    dsn = _dsn(tmp_path)
+    assert (
+        await store_writer.reconcile_table(dsn, schema="", table="pets", columns=_COLS) == "created"
+    )
+    assert (
+        await store_writer.reconcile_table(
+            dsn, schema="", table="pets", columns=_COLS, pk_columns=["id"]
+        )
+        == "recreated"
+    )
+    assert (
+        await store_writer.reconcile_table(
+            dsn, schema="", table="pets", columns=_COLS, pk_columns=["id"]
+        )
+        == "kept"
+    )
+    async with store_writer.store_connection(dsn) as conn:
+        cols = await conn.reflect_columns("pets")
+    assert [c["column_name"] for c in cols if c["is_primary_key"]] == ["id"]

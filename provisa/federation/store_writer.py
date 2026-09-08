@@ -172,7 +172,7 @@ async def reconcile_table(
     - schema drifted      -> RECREATE (drop+create; a table/engine config change is authoritative,
       landed data is re-landed on the next refresh).
 
-    Drift is a change to the column SET/order vs config (design-driven). Upstream *source* drift
+    Drift is a change to the column SET/order or the PRIMARY KEY vs config (design-driven). Upstream *source* drift
     (the live source's schema moving) is a separate land-time concern (best-effort name-map). Returns
     ``created`` | ``kept`` | ``recreated``. The engine is never the writer."""
     want = [name for name, _ in columns]
@@ -192,7 +192,11 @@ async def reconcile_table(
         if not have:
             await conn.execute_core(CreateTable(tbl))
             return "created"
-        if have == want:
+        # REQ-1651: the declared key is part of the shape. A table created before its key was
+        # resolved kept PRIMARY KEY-less for good (and one created under a wrong key kept the wrong
+        # one) because only the column list was compared.
+        have_pk = [c["column_name"] for c in existing if c["is_primary_key"]]
+        if have == want and sorted(have_pk) == sorted(pk_columns or ()):
             return "kept"
         await conn.execute_core(DropTable(tbl, if_exists=True))
         await conn.execute_core(CreateTable(tbl))

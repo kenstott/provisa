@@ -39,6 +39,16 @@ listings never surface in the account's own Horizon Catalog / Data sharing UI). 
 the Data Product keeps the listing DRAFT; `publish=true` takes it live immediately.
 [tool-verified: provisa/api/metadata_export/snowflake_horizon.py:11-27]
 
+`snowflake_horizon` also writes the model's keys onto the landed tables themselves (REQ-1652).
+Each landed `TABLE` gets its declared key as a `PRIMARY KEY`, and each approved relationship
+becomes a `FOREIGN KEY` on the "many" side (a junction relationship becomes one per hop). Snowflake
+keeps both as informational constraints, which is what Horizon Catalog renders as the table's keys
+and join paths. The publish is idempotent: a key that already matches is left alone, a differing
+primary key is replaced, and an existing foreign key of the same name is skipped. A foreign key
+whose referenced columns are not the referenced table's primary key, or whose either end is a view
+or not yet landed, is withheld and reported in the publish result rather than emitted.
+[tool-verified: provisa/api/metadata_export/snowflake_horizon.py constraint_statements]
+
 `bigquery_dataplex` still speaks REST like the six vendor-neutral adapters, but — like
 `snowflake_horizon` — cannot be a pure payload builder: an Analytics Hub listing identifies a table
 by its `project.dataset.table` in the org's real BigQuery project, which `MetadataSnapshot`'s own

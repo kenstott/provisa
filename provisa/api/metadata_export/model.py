@@ -96,6 +96,9 @@ class TableAsset:  # REQ-1070
     aliases: tuple[str, ...] = ()
     columns: list[ColumnAsset] = field(default_factory=list)
     semantic_uri: str = ""  # REQ-1385: provisa://<org>/<domain path>/tables/<business name>
+    # REQ-1652: the table's declared key columns, in declaration order -- what an engine-native
+    # catalog publishes as the physical PRIMARY KEY and what a relationship's referenced end must be.
+    primary_key: tuple[str, ...] = ()
     # REQ-1592: whether the table is marked a Data Product. Always True on a snapshot built for a
     # catalog publish, which exports nothing else; the model report builds over every registered
     # table and carries the flag as a column so a reviewer can filter on it in the spreadsheet.
