@@ -44554,13 +44554,13 @@
     fails loud at registration. The dataset is spelled in the names the checker actually queries through
     pgwire — `provisa/<domain-slug>/<table>`, i.e. domain_to_sql_name(domain_id) and semantic_table_name
     (REQ-641), the one naming authority — NEVER the physical registered_tables schema_name/table_name;
-    resolution runs against the compiled per-role contexts, and the UI picklist labels a target
-    `{domain-slug}.{table-name}` from the server-derived dataset, exposing no physical names. Registration therefore carries a contract body plus timing, not an input
-    ref. (4) ONE RESULTS NODE PER CONTRACT, never one shared results table for the estate: a single node
-    fed by every governed table has a fan-in edge from everything, so blast radius is wrong, vintage is
-    meaningless, and a churning table cannot debounce differently from a nightly one. The estate-wide
-    scorecard is an MV unioning the per-contract nodes, which is REQ-967''s shape regardless. Timing introduces
-    NO new fields: change_signal + cache_ttl give the poll cadence, mv_debounce_quiet/mv_debounce_max_delay
+    resolution runs against the compiled per-role contexts, and the UI picklist labels a target `{domain-slug}.{table-name}`
+    from the server-derived dataset, exposing no physical names. Registration therefore carries a contract
+    body plus timing, not an input ref. (4) ONE RESULTS NODE PER CONTRACT, never one shared results table
+    for the estate: a single node fed by every governed table has a fan-in edge from everything, so blast
+    radius is wrong, vintage is meaningless, and a churning table cannot debounce differently from a nightly
+    one. The estate-wide scorecard is an MV unioning the per-contract nodes, which is REQ-967''s shape
+    regardless. Timing introduces NO new fields: change_signal + cache_ttl give the poll cadence, mv_debounce_quiet/mv_debounce_max_delay
     collapse an upstream burst into one scan (REQ-963), a calendar grain makes it periodic (REQ-962),
     and expected_events holds the scan until its inputs are fresh through the window (REQ-961). probe_type
     watermark on the scan timestamp makes the landing an append, so scan history accumulates with no history
@@ -44618,13 +44618,13 @@
     (8) THE FEATURE IS NOT DONE UNTIL THE SURROUNDING MATERIAL MOVES WITH IT. In scope, not follow-up:
     docs/sources.md gains the checker source type and the licence split; docs/integrations.md and docs/configuration.md
     cover dq_checker and PROVISA_EXTRAS; the installer wizard (install.sh and the macOS SwiftUI parity
-    path) offers the choice; the demo config registers one contract PER CHECKER over a demo table (a
-    Great Expectations suite over pets, a Soda contract over vets) so the scorecard is populated on a
-    fresh install and both dialects run through the one pipeline — only GX is installed by default,
-    so the Soda scan reports the extra that installs it wherever the operator did not select soda; provisa-ui/src/tour/tourSteps.ts gains a step for the quality panel
-    with copy in every locale under i18n/locales/<lng>/tour.json (REQ-1358); and capabilities.yaml carries
-    both rows. A shipped checker source with no demo data and no tour step is an unfinished feature, not
-    a shipped one.
+    path) offers the choice; the demo config registers one contract PER CHECKER over a demo table (a Great
+    Expectations suite over pets, a Soda contract over vets) so the scorecard is populated on a fresh
+    install and both dialects run through the one pipeline — only GX is installed by default, so the Soda
+    scan reports the extra that installs it wherever the operator did not select soda; provisa-ui/src/tour/tourSteps.ts
+    gains a step for the quality panel with copy in every locale under i18n/locales/<lng>/tour.json (REQ-1358);
+    and capabilities.yaml carries both rows. A shipped checker source with no demo data and no tour step
+    is an unfinished feature, not a shipped one.
 
     (9) A RESULTS TABLE IS IDENTIFIABLE, AND ITS CHECKS PUBLISH ON THE ASSET THEY OBSERVE. The marker
     is a DERIVED tag — computed from the table''s own registration (a checker source plus a registered
@@ -44664,18 +44664,17 @@
     could only agree with that or contradict it, so registration (YAML and admin alike, through derive_checker_table)
     refuses one as a config error. The membership is derived at read time from the contract''s dataset,
     resolved against the compiled contexts the way lineage is (clause 3): the admin GraphQL product_id
-    on a checker table answers with the scanned table''s product_id, and the metadata export groups
-    the results table into that product and applies the Data Product filter to it through the same
-    derivation, so a results table publishes exactly when the table it observes does. In the UI the
-    product control on a checker table is read-only and shows the inherited product, the tables list
-    badge follows the server-derived value, and the product member picker lists checker tables but
-    cannot toggle them; the update payload for a checker table never carries a product_id. On the
-    product detail, member checker tables are listed under a DATA QUALITY panel, not among the Output
-    Ports or the Access Patterns: their rows are the product''s quality evidence, not its published
-    surface. For each scan the panel offers the SQL access pattern and, beside it, a rules control
-    that opens the checker table''s contract in a 90% modal as a read-only table of checks (column,
-    check type, args) parsed server-side with the checker type of the scan''s source; the control is
-    disabled until that source is known.'
+    on a checker table answers with the scanned table''s product_id, and the metadata export groups the
+    results table into that product and applies the Data Product filter to it through the same derivation,
+    so a results table publishes exactly when the table it observes does. In the UI the product control
+    on a checker table is read-only and shows the inherited product, the tables list badge follows the
+    server-derived value, and the product member picker lists checker tables but cannot toggle them; the
+    update payload for a checker table never carries a product_id. On the product detail, member checker
+    tables are listed under a DATA QUALITY panel, not among the Output Ports or the Access Patterns: their
+    rows are the product''s quality evidence, not its published surface. For each scan the panel offers
+    the SQL access pattern and, beside it, a rules control that opens the checker table''s contract in
+    a 90% modal as a read-only table of checks (column, check type, args) parsed server-side with the
+    checker type of the scan''s source; the control is disabled until that source is known.'
   use_case: An org already running Soda points it at a Provisa-governed table, registers the contract
     as a source, and gets scan history, a quality scorecard, lineage from check back to table, and change-driven
     rather than cron-driven scans — without Provisa shipping a data-quality engine or the operator hand-declaring
@@ -54842,8 +54841,12 @@
   category: Glossary Admin
   priority: SHOULD
   type: ui
-  description: The Relationships and Experts sections in the glossary term-detail panel default to a read-only view; a Pencil icon button next to each section's heading toggles that section into edit mode, revealing the relationship-type editor, delete icons, and the add-relationship/add-expert forms. Edit mode resets to off whenever the selected term changes.
-  use_case: Read-only defaults reduce clutter in the glossary view while allowing editors to quickly toggle edit mode for relationship management without page navigation.
+  description: The Relationships and Experts sections in the glossary term-detail panel default to a read-only
+    view; a Pencil icon button next to each section's heading toggles that section into edit mode, revealing
+    the relationship-type editor, delete icons, and the add-relationship/add-expert forms. Edit mode resets
+    to off whenever the selected term changes.
+  use_case: Read-only defaults reduce clutter in the glossary view while allowing editors to quickly toggle
+    edit mode for relationship management without page navigation.
   code:
   - provisa-ui/src/components/admin/GlossaryTab.tsx
   e2e: true
@@ -54855,12 +54858,16 @@
   category: Glossary Admin
   priority: SHOULD
   type: ui
-  description: The add-relationship row in the glossary term-detail panel includes a "Flip" button (ArrowLeftRight icon) that swaps which term (the current term vs. the newly picked term) is the "from"/subject side of the relationship being created, without requiring two separate forms.
-  use_case: Flip button eliminates the need to create and immediately delete a relationship just to reverse its direction, improving editor efficiency when declaring bidirectional relationships.
+  description: The add-relationship row in the glossary term-detail panel includes a "Flip" button (ArrowLeftRight
+    icon) that swaps which term (the current term vs. the newly picked term) is the "from"/subject side
+    of the relationship being created, without requiring two separate forms.
+  use_case: Flip button eliminates the need to create and immediately delete a relationship just to reverse
+    its direction, improving editor efficiency when declaring bidirectional relationships.
   code:
   - provisa-ui/src/components/admin/GlossaryTab.tsx
   e2e: true
-  e2e_reason: Flip button interaction and relationship direction swap requires full UI interaction to verify.
+  e2e_reason: Flip button interaction and relationship direction swap requires full UI interaction to
+    verify.
 - id: REQ-1643
   status: complete
   since: 2026-09
@@ -54868,19 +54875,22 @@
   category: Glossary Lifecycle
   priority: MUST
   type: constraint
-  description: A glossary term cannot be deleted if it has any incoming or outgoing relationships (edges_in or edges_out) or any table/column references. The delete button's disabled state and tooltip hint now cover both relationship conditions and refs.
-  use_case: Preventing orphaned relationships and dangling term references preserves glossary integrity and prevents data inconsistency.
+  description: A glossary term cannot be deleted if it has any incoming or outgoing relationships (edges_in
+    or edges_out) or any table/column references. The delete button's disabled state and tooltip hint
+    now cover both relationship conditions and refs.
+  use_case: Preventing orphaned relationships and dangling term references preserves glossary integrity
+    and prevents data inconsistency.
   code:
   - provisa-ui/src/components/admin/GlossaryTab.tsx
   tests:
   - provisa-ui/src/__tests__/GlossaryTab.test.tsx
   - tests/integration/test_glossary_lifecycle.py
-  scenario: 'Given a glossary term with one or more relationships
-    When a user attempts to delete that term
-    Then the delete button is disabled and a tooltip explains that the term has relationships or references
-    '
+  scenario: 'Given a glossary term with one or more relationships When a user attempts to delete that
+    term Then the delete button is disabled and a tooltip explains that the term has relationships or
+    references '
   e2e: true
-  e2e_reason: Deletion prevention and tooltip display for multiple conditions requires full UI interaction to verify.
+  e2e_reason: Deletion prevention and tooltip display for multiple conditions requires full UI interaction
+    to verify.
 - id: REQ-1644
   status: complete
   since: 2026-09
@@ -54888,8 +54898,10 @@
   category: Glossary Admin
   priority: MAY
   type: ui
-  description: The glossary term-detail panel container fills to the bottom of the viewport via the existing .page-sticky-head CSS pattern applied conditionally in AdminPage.tsx when the Glossary tab is active.
-  use_case: Filling the viewport improves the visual hierarchy and usability of the glossary admin interface by maximizing the term-detail editing area.
+  description: The glossary term-detail panel container fills to the bottom of the viewport via the existing
+    .page-sticky-head CSS pattern applied conditionally in AdminPage.tsx when the Glossary tab is active.
+  use_case: Filling the viewport improves the visual hierarchy and usability of the glossary admin interface
+    by maximizing the term-detail editing area.
   code:
   - provisa-ui/src/components/admin/GlossaryTab.tsx
   - provisa-ui/src/pages/AdminPage.tsx
@@ -54901,8 +54913,10 @@
   category: Snowflake Horizon Catalog Export
   priority: SHOULD
   type: behavioral
-  description: Auto-generate Horizon Catalog listing descriptions from Provisa's Data Product Product Page metadata including owner, domain, and member tables/columns.
-  use_case: Richer listing metadata helps Snowflake Horizon catalog consumers discover and understand shared data products without requiring manual catalog updates.
+  description: Auto-generate Horizon Catalog listing descriptions from Provisa's Data Product Product
+    Page metadata including owner, domain, and member tables/columns.
+  use_case: Richer listing metadata helps Snowflake Horizon catalog consumers discover and understand
+    shared data products without requiring manual catalog updates.
   code:
   - provisa/api/metadata_export/snowflake_horizon.py
   target: 2026-Q4
@@ -54912,39 +54926,34 @@
   category: Snowflake Horizon Catalog Export
   priority: MAY
   type: behavioral
-  description: >-
-    Snowflake Horizon Catalog export can optionally create a `_provisa` database containing user-facing
-    exposure views organized as `{domain-name-slug-as-schema}.{table-name}` (e.g., schema `pet_store`,
-    view `pets`), providing a clean, domain-organized read surface separate from the internal `_landing`
-    database.
-  use_case: >-
-    Rather than exposing raw/internal-looking objects from the internal landing database in shares and
-    listings, a dedicated `_provisa` database with domain-organized views presents a polished, end-user-facing
+  description: Snowflake Horizon Catalog export can optionally create a `_provisa` database containing
+    user-facing exposure views organized as `{domain-name-slug-as-schema}.{table-name}` (e.g., schema
+    `pet_store`, view `pets`), providing a clean, domain-organized read surface separate from the internal
+    `_landing` database.
+  use_case: Rather than exposing raw/internal-looking objects from the internal landing database in shares
+    and listings, a dedicated `_provisa` database with domain-organized views presents a polished, end-user-facing
     surface to Snowflake Horizon consumers, improving discoverability and perception of data products.
   code:
-    - provisa/api/metadata_export/snowflake_horizon.py
-  target: "2026-Q4"
+  - provisa/api/metadata_export/snowflake_horizon.py
+  target: 2026-Q4
 - id: REQ-1647
   status: proposed
   group: 7. Result Delivery
   category: Snowflake Horizon Catalog Export
   priority: SHOULD
   type: behavioral
-  description: >-
-    Descriptions from the `_landing` physical table/config must propagate to the corresponding
-    per-source SECURE VIEW (at the original db.schema.table address) via COMMENT ON VIEW/TABLE,
-    alongside the existing tag propagation already performed by tag_statements() in
-    snowflake_horizon.py. Currently the description field is only used in
-    share_statements/listing_statements (Marketplace share/listing text) and is never emitted as
-    an object-level comment, so the per-source view's comment stays empty even though the
-    underlying `_landing` physical table has a populated comment.
-  use_case: >-
-    Consumers browsing the per-source view directly in Snowflake (outside of a share/listing)
-    should see the same governed description that already reaches the view as tags, so the
-    view is self-describing without relying on Marketplace metadata.
+  description: Descriptions from the `_landing` physical table/config must propagate to the corresponding
+    per-source SECURE VIEW (at the original db.schema.table address) via COMMENT ON VIEW/TABLE, alongside
+    the existing tag propagation already performed by tag_statements() in snowflake_horizon.py. Currently
+    the description field is only used in share_statements/listing_statements (Marketplace share/listing
+    text) and is never emitted as an object-level comment, so the per-source view's comment stays empty
+    even though the underlying `_landing` physical table has a populated comment.
+  use_case: Consumers browsing the per-source view directly in Snowflake (outside of a share/listing)
+    should see the same governed description that already reaches the view as tags, so the view is self-describing
+    without relying on Marketplace metadata.
   code:
-    - provisa/api/metadata_export/snowflake_horizon.py
-  target: "2026-Q4"
+  - provisa/api/metadata_export/snowflake_horizon.py
+  target: 2026-Q4
 - id: REQ-1648
   status: complete
   since: 2026-09
@@ -54952,17 +54961,26 @@
   category: Metadata Export
   priority: MUST
   type: behavioral
-  description: GovernanceTag facts (signal, rule_id, restricted_roles, exempt_roles) publish via Snowflake COMMENT, not CREATE TAG/SET TAG DDL, because governance tags are automatically-computed enforcement facts not steward-assigned classifications.
-  use_case: >-
-    Governance metadata belongs in free-text COMMENT alongside descriptions (REQ-1647), and comment-based publication closes the prior defect where restricted_roles and exempt_roles were silently dropped when old tag_statements() emitted TAG DDL.
+  description: GovernanceTag facts (signal, rule_id, restricted_roles, exempt_roles) publish via Snowflake
+    COMMENT, not CREATE TAG/SET TAG DDL, because governance tags are automatically-computed enforcement
+    facts not steward-assigned classifications.
+  use_case: Governance metadata belongs in free-text COMMENT alongside descriptions (REQ-1647), and comment-based
+    publication closes the prior defect where restricted_roles and exempt_roles were silently dropped
+    when old tag_statements() emitted TAG DDL.
   code:
   - provisa/api/metadata_export/snowflake_horizon.py
   tests:
   - tests/unit/test_snowflake_horizon_export.py
-  scenario: |
-    Given a table with a governance rule attached and both restricted_roles and exempt_roles specified
+  scenario: 'Given a table with a governance rule attached and both restricted_roles and exempt_roles
+    specified
+
     When tag_statements() emits DDL for ModelTag and comment_statements() publishes governance facts
-    Then governance tag data persists in Snowflake as bracketed governance notes in COMMENT ON TABLE/COLUMN [provisa:governance <signal> rule=<rule_id> restricted=<roles> exempt=<roles>] and no TAG DDL is emitted for governance signals
+
+    Then governance tag data persists in Snowflake as bracketed governance notes in COMMENT ON TABLE/COLUMN
+    [provisa:governance <signal> rule=<rule_id> restricted=<roles> exempt=<roles>] and no TAG DDL is emitted
+    for governance signals
+
+    '
 - id: REQ-1649
   status: complete
   since: 2026-09
@@ -54970,10 +54988,15 @@
   category: Multi-Tenancy Design
   priority: MUST
   type: structural
-  description: >-
-    MetadataSnapshot.org_id must serve dual roles: (1) as a required real tenant/system identifier for runtime lookups (e.g., BigQuery Dataplex _get_runtime(snapshot.org_id)), adapter namespace URN construction, and MetadataSnapshot instantiation; and (2) as a separate, possibly-None parameter for cosmetic display values embedded in semantic URIs built by refs.py's *_uri() functions. The pending task to omit org_id from URIs when not multitenant (REQ-697) must pass org_id separately to build_snapshot (required) and *_uri() (optional), not unify them.
-  use_case: >-
-    Merging org_id into a single parameter breaks BigQuery Dataplex and other adapters' runtime resolution and namespace construction if set to None. Separation preserves correctness of adapter-specific logic while allowing URI display customization per deployment topology.
+  description: 'MetadataSnapshot.org_id must serve dual roles: (1) as a required real tenant/system identifier
+    for runtime lookups (e.g., BigQuery Dataplex _get_runtime(snapshot.org_id)), adapter namespace URN
+    construction, and MetadataSnapshot instantiation; and (2) as a separate, possibly-None parameter for
+    cosmetic display values embedded in semantic URIs built by refs.py''s *_uri() functions. The pending
+    task to omit org_id from URIs when not multitenant (REQ-697) must pass org_id separately to build_snapshot
+    (required) and *_uri() (optional), not unify them.'
+  use_case: Merging org_id into a single parameter breaks BigQuery Dataplex and other adapters' runtime
+    resolution and namespace construction if set to None. Separation preserves correctness of adapter-specific
+    logic while allowing URI display customization per deployment topology.
   code:
   - provisa/api/metadata_export/model.py
   - provisa/api/metadata_export/builder.py
@@ -54987,10 +55010,14 @@
   - provisa/api/metadata_export/workbook.py
   tests:
   - tests/unit/test_metadata_snapshot_builder.py
-  scenario: |
-    Given build_snapshot() called with org_id="acme" and uri_org_id=None
-    When the snapshot's tables, relationships, glossary, sources, domains and data products are built
-    Then MetadataSnapshot.org_id is "acme" (used by adapters for runtime lookups) while every *_uri() value and GovernanceTag.rule_id omit the org segment
+  scenario: 'Given build_snapshot() called with org_id="acme" and uri_org_id=None
+
+    When the snapshot''s tables, relationships, glossary, sources, domains and data products are built
+
+    Then MetadataSnapshot.org_id is "acme" (used by adapters for runtime lookups) while every *_uri()
+    value and GovernanceTag.rule_id omit the org segment
+
+    '
 - id: REQ-1650
   status: complete
   since: 2026-09
@@ -54998,15 +55025,13 @@
   category: DuckDB Connectors
   priority: MUST
   type: structural
-  description: >-
-    A DuckDB parquet source whose path is s3:// and whose federation_hints carry access_key_id and
-    secret_access_key must attach via an explicit DuckDB CREATE SECRET (TYPE s3), with ENDPOINT (bare
-    host, no scheme) and URL_STYLE 'path' set whenever federation_hints.endpoint is present. Without
-    it DuckDB's httpfs client defaults to AWS S3 and any S3-compatible store (e.g. Cloudflare R2)
-    resolves against the wrong endpoint.
-  use_case: >-
-    The r2-orders source (config/provisa.yaml) is a parquet file on Cloudflare R2, addressed via an
-    s3:// path with credentials/endpoint carried in federation_hints. DuckDBParquetConnector.details()
+  description: A DuckDB parquet source whose path is s3:// and whose federation_hints carry access_key_id
+    and secret_access_key must attach via an explicit DuckDB CREATE SECRET (TYPE s3), with ENDPOINT (bare
+    host, no scheme) and URL_STYLE 'path' set whenever federation_hints.endpoint is present. Without it
+    DuckDB's httpfs client defaults to AWS S3 and any S3-compatible store (e.g. Cloudflare R2) resolves
+    against the wrong endpoint.
+  use_case: The r2-orders source (config/provisa.yaml) is a parquet file on Cloudflare R2, addressed via
+    an s3:// path with credentials/endpoint carried in federation_hints. DuckDBParquetConnector.details()
     previously built only a bare read_parquet() view_ddl and never surfaced a secret, so httpfs queried
     real AWS S3 (no such bucket) instead of R2, and reads returned malformed content.
   code:
@@ -55014,11 +55039,17 @@
   - provisa/federation/duckdb_runtime.py
   tests:
   - tests/unit/test_duckdb_connectors.py
-  scenario: |
-    Given a parquet Source with path "s3://bucket/key.parquet" and federation_hints access_key_id,
+  scenario: 'Given a parquet Source with path "s3://bucket/key.parquet" and federation_hints access_key_id,
+
     secret_access_key and endpoint set
+
     When DuckDBParquetConnector.details() is called and DuckDBRuntime.attach_source() consumes it
-    Then a CREATE OR REPLACE SECRET (TYPE s3, KEY_ID ..., SECRET ..., ENDPOINT '<bare-host>', URL_STYLE 'path') is executed, httpfs is INSTALL/LOAD'd once per connection, before the CREATE VIEW read_parquet() scan runs
+
+    Then a CREATE OR REPLACE SECRET (TYPE s3, KEY_ID ..., SECRET ..., ENDPOINT ''<bare-host>'', URL_STYLE
+    ''path'') is executed, httpfs is INSTALL/LOAD''d once per connection, before the CREATE VIEW read_parquet()
+    scan runs
+
+    '
 - id: REQ-1651
   status: complete
   since: 2026-09
@@ -55026,17 +55057,13 @@
   category: Materialization Store
   priority: MUST
   type: behavioral
-  description: >-
-    A landed replica's shape includes its PRIMARY KEY. A SQLite file source's key columns are
-    resolved from the file's own PRAGMA table_info at seed time (PRAGMA pk order), and the landing
-    reconcile treats a difference between the store table's PRIMARY KEY and the registered key as
-    drift, recreating the table, so a replica created before its key was known does not stay
-    key-less for good.
-  use_case: >-
-    The demo's pets table (a SQLite file source) landed without a PRIMARY KEY: the seed's key
-    resolution skipped sqlite (the comment claimed the engine rebuild resolved it, and nothing did),
-    and the reconcile compared only the column list, so even a later-resolved key never reached the
-    store.
+  description: A landed replica's shape includes its PRIMARY KEY. A SQLite file source's key columns are
+    resolved from the file's own PRAGMA table_info at seed time (PRAGMA pk order), and the landing reconcile
+    treats a difference between the store table's PRIMARY KEY and the registered key as drift, recreating
+    the table, so a replica created before its key was known does not stay key-less for good.
+  use_case: 'The demo''s pets table (a SQLite file source) landed without a PRIMARY KEY: the seed''s key
+    resolution skipped sqlite (the comment claimed the engine rebuild resolved it, and nothing did), and
+    the reconcile compared only the column list, so even a later-resolved key never reached the store.'
   code:
   - provisa/api/startup_seed.py
   - provisa/federation/connector_sqlite.py
@@ -55044,42 +55071,139 @@
   tests:
   - tests/unit/test_connector_sqlite_keys.py
   - tests/unit/test_store_writer.py
-  scenario: |
-    Given a SQLite file source whose pets table declares id as its PRIMARY KEY
+  - tests/unit/test_snowflake_store.py
+  scenario: 'Given a SQLite file source whose pets table declares id as its PRIMARY KEY
+
     When the seed resolves keys and the landing reconcile converges the store
-    Then registered_tables/table_columns flags pets.id is_primary_key and the store's pets replica is created (or recreated) with PRIMARY KEY (id)
+
+    Then registered_tables/table_columns flags pets.id is_primary_key and the store''s pets replica is
+    created (or recreated) with PRIMARY KEY (id)
+
+    '
 - id: REQ-1652
   status: complete
   since: 2026-09
-  group: 10. UI & Admin Surfaces
-  category: Metadata Export
+  group: 4. Source Connectors
+  category: Materialization Store
   priority: MUST
   type: behavioral
   description: >-
-    The snowflake_horizon export publishes each asset's declared key as a physical PRIMARY KEY and
-    each approved relationship as a FOREIGN KEY on the "many" side (a junction relationship as one
-    per hop), on the object that can carry a constraint: the physical TABLE when the source is
-    attachable, else the landed replica in the landing database's store schema that the asset's
-    per-source VIEW reads (REQ-1637). Snowflake views hold no constraints, so every per-source VIEW
-    additionally gets PRIMARY_KEY (1-based key position) and FOREIGN_KEY (referenced physical
-    column) column TAGs in the PROVISA_GOVERNANCE namespace. Idempotent: a matching PRIMARY KEY is
-    left alone, a differing one is replaced, an existing FOREIGN KEY of the same name is skipped,
-    and a provisa_fk_* constraint or key TAG that no current relationship or key declares is
-    withdrawn. A FOREIGN KEY whose referenced columns are not the referenced asset's published PRIMARY KEY, or
-    whose end has no landed TABLE, is withheld and reported, never emitted.
+    A landed replica carries the landed model's keys, converged by the landing reconcile with the
+    tables themselves and for every landed table regardless of Data Product membership: its declared
+    PRIMARY KEY, and a FOREIGN KEY for each approved relationship whose two ends are landed and whose
+    referenced columns are the referenced table's PRIMARY KEY (many-to-one on the source, one-to-many
+    on the target, a junction relationship as one key per hop). Applied only on stores that hold
+    constraints as informational metadata (Snowflake; Databricks and BigQuery when their terminals
+    implement the hook); an enforcing store gets no FOREIGN KEY, since a REPLACE land would violate it.
+    Idempotent: a matching PRIMARY KEY is left alone, a differing one replaced, an existing FOREIGN KEY
+    of the same name skipped, and a provisa_fk_* constraint no relationship declares is withdrawn. A
+    key the store cannot hold is withheld and logged with its reason, never emitted. Where the
+    compiler's physical name is a VIEW over the replica, the view mirrors the keys as PRIMARY_KEY
+    (1-based key position) and FOREIGN_KEY (referenced physical column) column TAGs, with stale key
+    tags unset. The metadata export publishes no constraints.
   use_case: >-
     Horizon Catalog renders a table's keys and join paths from Snowflake's informational
-    constraints. The export applied tags and comments to landed tables but no constraints, so the
-    catalog showed no primary key on pets and no relationships between the landed tables; and the
-    per-source views consumers actually query could not show the keys either.
+    constraints, and consumers query the per-source views. Keys are model state, not catalog state:
+    tying them to the catalog publish left every landed table key-less until a publish ran and left
+    every table outside a Data Product key-less for good.
   code:
-  - provisa/api/metadata_export/snowflake_horizon.py
-  - provisa/api/metadata_export/builder.py
-  - provisa/api/metadata_export/model.py
+  - provisa/federation/landed_keys.py
+  - provisa/federation/snowflake_store.py
+  - provisa/federation/snowflake_runtime.py
+  - provisa/federation/native_backend.py
   tests:
-  - tests/unit/test_snowflake_horizon_export.py
-  - tests/unit/test_metadata_export_model_tags.py
+  - tests/unit/test_landed_keys.py
+  - tests/unit/test_snowflake_store.py
+  - tests/unit/test_reconcile_landed.py
   scenario: |
-    Given pet_store_sqlite.pet_store.pets (key id) and pet_visits (key id) are VIEWs over _landing.mat replicas, and an approved many-to-one relationship pet_visits.pet_id -> pets.id
-    When the snowflake_horizon export publishes
-    Then it adds PRIMARY KEY (id) on each _landing.mat replica, FOREIGN KEY (pet_id) REFERENCES the pets replica on the pet_visits replica, tags pets.id with PRIMARY_KEY='1' and pet_visits.pet_id with FOREIGN_KEY='"pet_store_sqlite"."pet_store"."pets"."id"' on the views, and a second publish emits only the tag statements
+    Given a Snowflake engine with landed pets (key id) and pet_visits (key id) and an approved many-to-one relationship pet_visits.pet_id -> pets.id
+    When the landing reconcile runs
+    Then each _landing.mat replica carries its PRIMARY KEY, the pet_visits replica carries FOREIGN KEY (pet_id) REFERENCES the pets replica, the per-source views carry PRIMARY_KEY / FOREIGN_KEY column tags, and a second reconcile emits nothing
+- id: REQ-1653
+  status: complete
+  since: 2026-09
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: MUST
+  type: behavioral
+  description: >-
+    The Snowflake federation engine owns its landing terminal: a non-attachable source's rows land
+    in the engine URL's database under the store schema (mat for prod) as
+    "<source>__<schema>__<table>", and the compiler's physical name for the source is a SECURE VIEW
+    over that replica. The eager reconcile converges the replica's columns and PRIMARY KEY (drift on
+    either recreates it) and creates the view when absent, replacing it only after a recreate; the
+    per-fire land is REPLACE (delete + insert) or APPEND, CDC being refused. An MV's own store table
+    converges and persists through the same terminal (replace, append, or upsert by MERGE). The
+    engine's default materialization store is the engine URL itself, never the platform database.
+  use_case: >-
+    Snowflake is a self-only warehouse: it reads nothing live, so every non-attachable source must
+    be replicated into it (REQ-1637). The main branch had no such terminal -- the runtime lacked
+    attach_landed_source/materialize_source and the store writer refused a snowflake:// DSN -- so a
+    Snowflake deployment could not land sources at all, and defaulting the store to the platform
+    database pointed the engine at tables it cannot reach.
+  code:
+  - provisa/federation/snowflake_runtime.py
+  - provisa/federation/snowflake_store.py
+  - provisa/federation/engine.py
+  tests:
+  - tests/unit/test_snowflake_store.py
+  scenario: |
+    Given PROVISA_ENGINE=snowflake with a SQLite source table pets (key id) registered
+    When the landing reconcile and a refresh run
+    Then "_landing"."mat"."pet-store-sqlite__pet_store__pets" exists with PRIMARY KEY (id) and the refreshed rows, and "pet_store_sqlite"."pet_store"."pets" is a secure view over it
+- id: REQ-1654
+  status: complete
+  since: 2026-09
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: MUST
+  type: behavioral
+  description: >-
+    A landed table's description and its columns' descriptions travel with the landed model: the
+    landing reconcile writes them as COMMENTs onto the replica and onto the view that backs the
+    compiler's physical name, for every landed table, and onto an MV's store table when that table
+    is converged. A comment that already begins with the description is left standing (another
+    writer may have extended it), and an empty description never erases one.
+  use_case: >-
+    Descriptions were reaching Snowflake only through the catalog publish, and only for Data
+    Product tables; every other landed table and every backing view stayed undocumented.
+  code:
+  - provisa/federation/landed_keys.py
+  - provisa/federation/snowflake_store.py
+  - provisa/federation/native_backend.py
+  tests:
+  - tests/unit/test_snowflake_store.py
+  - tests/unit/test_reconcile_landed.py
+  scenario: |
+    Given pets is registered with a table description and a column description on name
+    When the landing reconcile runs against a Snowflake engine
+    Then the _landing.mat replica and the pet_store_sqlite.pet_store.pets view both carry those COMMENTs, and a second reconcile emits none
+- id: REQ-1655
+  status: complete
+  since: 2026-09
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: MUST
+  type: behavioral
+  description: >-
+    The stewards' tag assignments on tables and columns travel with the landed model as native
+    TAGs in the PROVISA_GOVERNANCE namespace (value = the assignment's reason, else the tag id), set
+    by the landing reconcile on every replica and its backing view and on an MV's store table when
+    it is converged. A tag the model defines that sits on an object but is no longer assigned there
+    is withdrawn; a tag of any other origin is never touched. The snowflake_horizon export no longer
+    publishes model tags.
+  use_case: >-
+    Classifications are model state. Publishing them only with the catalog export left every
+    table outside a Data Product untagged in the warehouse, and tied the warehouse's own governance
+    surface to whether a publish had run.
+  code:
+  - provisa/federation/landed_keys.py
+  - provisa/federation/snowflake_store.py
+  - provisa/api/metadata_export/snowflake_horizon.py
+  tests:
+  - tests/unit/test_snowflake_store.py
+  - tests/unit/test_landed_keys.py
+  scenario: |
+    Given a table assignment gold (reason "Curated") on pets and a column assignment pii on pets.name
+    When the landing reconcile runs against a Snowflake engine
+    Then the replica and the view carry PROVISA_GOVERNANCE.GOLD = 'Curated' and pets.name carries PROVISA_GOVERNANCE.PII on both, and removing the assignment withdraws the tag on the next reconcile

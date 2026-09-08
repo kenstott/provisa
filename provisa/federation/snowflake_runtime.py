@@ -49,6 +49,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         import snowflake.connector as sf
 
         self._engine: Any = None
+        self._url = url  # the store DSN too: the landing database lives in this account
         # urlparse does not percent-decode components; a DSN must encode reserved
         # characters (e.g. '#', '@', '/', ':') in credentials, so unquote them back
         # before handing them to the connector.
@@ -127,6 +128,256 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
             )
         self._database = row[0]
         return self._database
+
+    def mv_store_schema(self, org_id: str) -> str:
+        """MVs materialize into an org-scoped cache schema inside the landing database (REQ-1623:
+        scoped to the environment being served)."""
+        from provisa.core.environments import active_org_schema
+
+        return active_org_schema(org_id, "_mv_cache")
+
+    def _store_schema(self) -> str:
+        """The landing database's replica schema for the bound environment (``mat`` for prod)."""
+        from provisa.api.org_runtime import active_env
+        from provisa.federation.store_scope import store_schema
+
+        return store_schema(self._url, active_env())
+
+    def _replica_parts(self, source: Any) -> tuple[str, str, str]:
+        from provisa.federation.snowflake_store import replica_parts
+
+        return replica_parts(
+            self.ensure_materialize_attached(),
+            self._store_schema(),
+            source.id,
+            source.schema_name,
+            source.table_name,
+        )
+
+    # -- landing terminal (REQ-1637, REQ-1653) ---------------------------------
+
+    async def attach_landed_source(
+        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+    ) -> str:
+        """Eager reconcile (boot / registration): converge the replica in the landing database to
+        ``columns`` + ``pk_columns`` (DDL only, no data) and expose the compiler's physical name as
+        a SECURE VIEW over it. Returns the reconcile outcome."""
+        import asyncio
+
+        from provisa.federation.snowflake_store import expose_view, reconcile_snowflake_native
+
+        replica = self._replica_parts(source)
+        view = self._phys_parts(source)
+
+        def _run() -> str:
+            cur = self._conn.cursor()
+            try:
+                outcome = reconcile_snowflake_native(
+                    cur, parts=replica, columns=columns, pk_columns=pk_columns
+                )
+                expose_view(cur, view=view, replica=replica, replace=outcome == "recreated")
+                return outcome
+            finally:
+                cur.close()
+
+        return await asyncio.to_thread(_run)
+
+    async def land_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        change_signal: str = "ttl",
+        watermark_column: str | None = None,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+        shape: str | None = None,
+    ) -> str:
+        """Land ``rows`` into the replica ``schema.table`` of the landing database (the per-fire
+        refresh path; the replica's DDL is ``attach_landed_source``'s)."""
+        import asyncio
+
+        from provisa.core.change_signal import select_landing_shape
+        from provisa.federation.snowflake_store import land_snowflake_native
+
+        del match_floor
+        parts = (self.ensure_materialize_attached(), schema, table)
+        landing_shape = shape or select_landing_shape(change_signal, watermark_column)
+
+        def _run() -> str:
+            cur = self._conn.cursor()
+            try:
+                return land_snowflake_native(
+                    cur,
+                    parts=parts,
+                    columns=columns,
+                    rows=rows,
+                    shape=landing_shape,
+                    pk_columns=pk_columns,
+                )
+            finally:
+                cur.close()
+
+        return await asyncio.to_thread(_run)
+
+    async def materialize_source(
+        self,
+        source: Any,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        *,
+        change_signal: str = "ttl",
+        watermark_column: str | None = None,
+        pk_columns: list[str] | None = None,
+    ) -> None:
+        """LAND a source (REQ-825 prep): converge its replica and view, then land the rows."""
+        await self.attach_landed_source(source, columns, pk_columns=pk_columns)
+        _, schema, table = self._replica_parts(source)
+        await self.land_table(
+            schema=schema,
+            table=table,
+            columns=columns,
+            rows=rows,
+            change_signal=change_signal,
+            watermark_column=watermark_column,
+            pk_columns=pk_columns,
+        )
+
+    async def reconcile_landed_metadata(self, plan: Any) -> int:
+        """Apply the landed model's keys and descriptions (REQ-1652, REQ-1654): PRIMARY/FOREIGN KEY
+        constraints on the replicas, PRIMARY_KEY / FOREIGN_KEY column tags on the per-source views,
+        and the table/column COMMENTs on both."""
+        import asyncio
+
+        from provisa.core.catalog import _to_catalog_name
+        from provisa.federation.snowflake_store import KeyTarget, reconcile_metadata_native
+
+        landing_database = self.ensure_materialize_attached()
+        store_schema = self._store_schema()
+
+        def target(t: Any) -> KeyTarget:
+            if t.source_id == "__derived__":
+                # An MV's store table IS the object the compiler reads: no view over it. Its store
+                # address rides on the plan entry (see NativeEngineBackend.reconcile_mv_table).
+                replica = plan.store_parts.get(t.identity) or (
+                    landing_database,
+                    t.schema_name,
+                    t.table_name,
+                )
+                view = None
+            else:
+                replica = (
+                    landing_database,
+                    store_schema,
+                    f"{t.source_id}__{t.schema_name}__{t.table_name}",
+                )
+                view = (_to_catalog_name(t.source_id), t.schema_name, t.table_name)
+            return KeyTarget(
+                replica=replica,
+                view=view,
+                primary_key=t.primary_key,
+                description=t.description,
+                column_descriptions=dict(t.column_descriptions),
+                tags=tuple(t.tags),
+                column_tags=dict(t.column_tags),
+            )
+
+        targets = {ident: target(t) for ident, t in plan.tables.items()}
+
+        def _run() -> int:
+            cur = self._conn.cursor()
+            try:
+                return reconcile_metadata_native(
+                    cur,
+                    tags_database=landing_database,
+                    targets=targets,
+                    edges=plan.edges,
+                    known_tags=plan.known_tags,
+                )
+            finally:
+                cur.close()
+
+        return await asyncio.to_thread(_run)
+
+    # -- MV store (REQ-970, REQ-965) -------------------------------------------
+
+    async def reconcile_mv_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str] | None = None,
+    ) -> str:
+        """Converge an MV's own store table in the landing database (REQ-970)."""
+        import asyncio
+
+        from provisa.federation.snowflake_store import reconcile_snowflake_native
+
+        parts = (self.ensure_materialize_attached(), schema, table)
+
+        def _run() -> str:
+            cur = self._conn.cursor()
+            try:
+                return reconcile_snowflake_native(
+                    cur, parts=parts, columns=columns, pk_columns=pk_columns
+                )
+            finally:
+                cur.close()
+
+        return await asyncio.to_thread(_run)
+
+    async def persist_mv_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        persist: str,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+    ) -> str:
+        """Apply an MV's recomputed rows under its persistence outcome (REQ-965): replace, append,
+        or upsert by key (MERGE)."""
+        import asyncio
+
+        from provisa.events.outcomes import require_pk, validate_persist
+        from provisa.federation.snowflake_store import (
+            land_snowflake_native,
+            merge_snowflake_native,
+        )
+
+        del match_floor
+        validate_persist(persist)
+        require_pk(persist, set(), pk_columns)
+        parts = (self.ensure_materialize_attached(), schema, table)
+
+        def _run() -> str:
+            cur = self._conn.cursor()
+            try:
+                if persist == "upsert":
+                    return merge_snowflake_native(
+                        cur,
+                        parts=parts,
+                        columns=columns,
+                        rows=rows,
+                        pk_columns=list(pk_columns or ()),
+                    )
+                return land_snowflake_native(
+                    cur,
+                    parts=parts,
+                    columns=columns,
+                    rows=rows,
+                    shape=persist,
+                    pk_columns=pk_columns,
+                )
+            finally:
+                cur.close()
+
+        return await asyncio.to_thread(_run)
 
     @property
     def connection(self):

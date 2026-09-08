@@ -39,21 +39,17 @@ listings never surface in the account's own Horizon Catalog / Data sharing UI). 
 the Data Product keeps the listing DRAFT; `publish=true` takes it live immediately.
 [tool-verified: provisa/api/metadata_export/snowflake_horizon.py:11-27]
 
-`snowflake_horizon` also writes the model's keys into Snowflake (REQ-1652). Snowflake accepts a
-`PRIMARY KEY` or `FOREIGN KEY` on tables only, never on a view, so the constraint goes on the object
-that can carry it: the physical table when the source is attachable, otherwise the landed replica
-in the landing database's store schema that the per-source view reads (REQ-1637). Each declared key
-becomes a `PRIMARY KEY`, and each approved relationship becomes a `FOREIGN KEY` on the "many" side
-(a junction relationship becomes one per hop). Because consumers query the per-source views, those
-views get the same keys as column tags in the `PROVISA_GOVERNANCE` namespace: `PRIMARY_KEY` holds
-the column's position in the key and `FOREIGN_KEY` holds the referenced physical column. Snowflake
-keeps the constraints as informational metadata, which is what Horizon Catalog renders as the
-table's keys and join paths. The publish is idempotent: a key that already matches is left alone,
-a differing primary key is replaced, an existing foreign key of the same name is skipped, and a
-`provisa_fk_*` constraint or key tag that no current relationship or key declares is withdrawn. A
-foreign key whose referenced columns are not the referenced asset's primary key, or whose end has
-no landed table, is withheld and reported in the publish result rather than emitted.
-[tool-verified: provisa/api/metadata_export/snowflake_horizon.py constraint_statements, key_tag_statements]
+Keys are not part of the catalog publish. A landed table's `PRIMARY KEY` and the `FOREIGN KEY`s its
+relationships imply belong to the landed model and converge with the tables in the landing
+reconcile, for every landed table whether or not a Data Product names it (REQ-1652). On Snowflake
+the constraints live on the `_landing` replicas and are mirrored onto the per-source views as
+`PROVISA_GOVERNANCE.PRIMARY_KEY` / `FOREIGN_KEY` column tags, which is what Horizon Catalog renders
+as keys and join paths. The same reconcile writes each landed table's description and column descriptions as COMMENTs and
+the stewards' tag assignments as `PROVISA_GOVERNANCE` tags onto the replica, its backing view and
+an MV's store table when it is converged (REQ-1654, REQ-1655). `snowflake_horizon` therefore
+publishes no constraints and no model tags of its own; it still appends governance facts to the
+descriptions of the Data Product tables it publishes.
+[tool-verified: provisa/federation/landed_keys.py, provisa/federation/snowflake_store.py]
 
 `bigquery_dataplex` still speaks REST like the six vendor-neutral adapters, but — like
 `snowflake_horizon` — cannot be a pure payload builder: an Analytics Hub listing identifies a table

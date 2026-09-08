@@ -311,10 +311,13 @@ class NativeEngineBackend(EngineBackend):
         expose the engine's read view over it. Returns the (source_id, table_name) reconciled."""
         from provisa.federation.backend import landing_worklist
 
+        from provisa.federation.landed_keys import LandedTable, key_plan_for
+
         runtime = self._runtime_for(state)
         if not hasattr(runtime, "attach_landed_source"):
             return []  # this engine's runtime has no eager-landing terminal
         reconciled: list[tuple[str, str]] = []
+        landed: list[LandedTable] = []
         for src, schema_name, table_name, columns, pk_columns in await landing_worklist(
             self.engine, state
         ):
@@ -323,6 +326,22 @@ class NativeEngineBackend(EngineBackend):
             )
             await runtime.attach_landed_source(merged, columns, pk_columns=pk_columns)
             reconciled.append((src.id, table_name))
+            landed.append(LandedTable(src.id, schema_name, table_name, tuple(pk_columns)))
+        # REQ-1652/REQ-1654: the keys and descriptions are part of the landed model's shape and
+        # converge here, with the tables, on a store that can hold informational constraints. A
+        # runtime without the hook is an enforcing store, where a FOREIGN KEY would refuse every
+        # REPLACE land -- by design.
+        if landed and hasattr(runtime, "reconcile_landed_metadata"):
+            plan = await key_plan_for(state, landed)
+            for what, reason in plan.withheld:
+                _log.info("%s: key withheld for %s: %s", self.engine.name, what, reason)
+            applied = await runtime.reconcile_landed_metadata(plan)
+            if applied:
+                _log.info(
+                    "%s: %d metadata statement(s) applied to landed tables",
+                    self.engine.name,
+                    applied,
+                )
         return reconciled
 
     # -- store write face --------------------------------------------------
@@ -383,12 +402,44 @@ class NativeEngineBackend(EngineBackend):
         (DuckDB, REQ-989); otherwise the base ``store_writer`` DSN path applies unchanged."""
         runtime = self._runtime_for(state)
         if hasattr(runtime, "reconcile_mv_table"):
-            return await runtime.reconcile_mv_table(
+            outcome = await runtime.reconcile_mv_table(
                 schema=schema, table=table, columns=columns, pk_columns=pk_columns
             )
+            await self._reconcile_mv_metadata(state, runtime, schema, table, pk_columns)
+            return outcome
         return await super().reconcile_mv_table(
             state, schema=schema, table=table, columns=columns, pk_columns=pk_columns
         )
+
+    async def _reconcile_mv_metadata(
+        self, state: Any, runtime: Any, schema: str, table: str, pk_columns: list[str] | None
+    ) -> None:
+        """REQ-1652/1654/1655 for an MV: the keys, descriptions and tags its ``__derived__``
+        registration declares converge onto its store table right after that table is converged --
+        the "on MV creation" hook. A store without the metadata hook (enforcing) gets none."""
+        if not hasattr(runtime, "reconcile_landed_metadata"):
+            return
+        tdb = getattr(state, "tenant_db", None)
+        if tdb is None:
+            return
+        from provisa.api.admin.db_queries import fetch_tables
+        from provisa.federation.landed_keys import (
+            LandedTable,
+            derived_registration,
+            key_plan_for,
+        )
+
+        async with tdb.acquire() as conn:
+            row = derived_registration(await fetch_tables(conn), table)
+        if row is None:
+            return  # a store table no registration describes: nothing declared to apply
+        landed = LandedTable(
+            "__derived__", row["schema_name"], row["table_name"], tuple(pk_columns or ())
+        )
+        plan = await key_plan_for(state, [landed])
+        # the MV's store address differs from its registration name (mv_<id> in the cache schema)
+        plan.store_parts = {landed.identity: (runtime.ensure_materialize_attached(), schema, table)}
+        await runtime.reconcile_landed_metadata(plan)
 
     async def persist_mv_table(
         self,

@@ -48,8 +48,6 @@ alongside REQ-1647's description text) — never as a TAG.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -70,8 +68,6 @@ if TYPE_CHECKING:
         AssetRef,
         GovernanceTag,
         MetadataSnapshot,
-        ModelTag,
-        RelationshipEdge,
         TableAsset,
     )
 
@@ -119,51 +115,6 @@ def physical_table_and_column(ref: "AssetRef") -> tuple[tuple[str, str, str], st
         source_id, schema_name, table_name, column_name = ref.parts
         return (_to_catalog_name(source_id), schema_name, table_name), column_name
     raise ValueError(f"expected a table or column ref; got {ref!r}")
-
-
-def tag_statements(tags_database: str, model_tags: list["ModelTag"]) -> list[str]:
-    """DDL creating Snowflake native TAG objects (in ``tags_database``.``_TAGS_SCHEMA``) for each
-    distinct model tag id actually present, then applying them to the tagged tables/columns via
-    ``SET TAG``. Pure — no I/O — so the shape is testable without a live Snowflake connection.
-
-    Only ``ModelTag``s publish here: a steward-assigned classification is what Snowflake's TAG
-    primitive is for. ``GovernanceTag`` facts (REQ-1071) — which rule fired, and the roles it
-    restricts/exempts — are metadata about an asset, not a classification value, so they publish
-    as COMMENT text instead (:func:`comment_statements`), never as a TAG.
-
-    A ``ModelTag``'s value is its ``reason`` when set, else its own ``tag_id``. Relationship-scoped
-    ``ModelTag``s (``relationship_id`` set, no ``asset`` — REQ-1378) have no physical asset to tag
-    in Snowflake and are skipped; they ride the governance document instead."""
-
-    def tag_fq(name: str) -> str:
-        return f'"{tags_database}"."{_TAGS_SCHEMA}"."{name}"'
-
-    def set_tag(ref: "AssetRef", tag_name: str, value: str) -> str:
-        (database, schema, table), column = physical_table_and_column(ref)
-        tag_ref = tag_fq(tag_name)
-        escaped = _escape(value)
-        if column is None:
-            return (
-                f'ALTER TABLE "{database}"."{schema}"."{table}" SET TAG {tag_ref} = \'{escaped}\';'
-            )
-        return (
-            f'ALTER TABLE "{database}"."{schema}"."{table}" MODIFY COLUMN "{column}" '
-            f"SET TAG {tag_ref} = '{escaped}';"
-        )
-
-    stmts = [f'CREATE SCHEMA IF NOT EXISTS "{tags_database}"."{_TAGS_SCHEMA}"']
-    model_tag_ids = sorted(
-        {_identifier(t.tag_id.upper()) for t in model_tags if t.asset is not None}
-    )
-    for tag_id in model_tag_ids:
-        stmts.append(f"CREATE TAG IF NOT EXISTS {tag_fq(tag_id)};")
-    for mtag in model_tags:
-        if mtag.asset is None:
-            continue
-        stmts.append(
-            set_tag(mtag.asset, _identifier(mtag.tag_id.upper()), mtag.reason or mtag.tag_id)
-        )
-    return stmts
 
 
 def _set_comment(kind: str, parts: tuple[str, str, str], column: str | None, text: str) -> str:
@@ -346,327 +297,6 @@ def listing_statements(
     ]
 
 
-# -- constraints (REQ-1652) -------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class ForeignKeySpec:
-    """One physical FOREIGN KEY a relationship publishes as: ``table(columns)`` REFERENCES
-    ``referenced(referenced_columns)``. Direction follows the cardinality -- the "many" side holds
-    the key -- and a junction-backed relationship (REQ-1586) yields one per hop."""
-
-    name: str
-    table: tuple[str, str, str]
-    columns: tuple[str, ...]
-    referenced: tuple[str, str, str]
-    referenced_columns: tuple[str, ...]
-    # The refs behind the two physical addresses: a junction table is rarely a published asset of
-    # its own, so its landed replica (REQ-1637) has to resolve from the relationship, not from the
-    # snapshot's table list.
-    table_ref: "AssetRef | None" = None
-    referenced_ref: "AssetRef | None" = None
-
-
-def _fk_name(rel_id: str, suffix: str = "") -> str:
-    return _identifier(f"provisa_fk_{rel_id}{suffix}")
-
-
-def foreign_key_specs(
-    relationships: list["RelationshipEdge"],
-) -> tuple[list[ForeignKeySpec], list[tuple[str, str]]]:
-    """The FOREIGN KEYs ``relationships`` declare, plus ``(relationship id, reason)`` for each one
-    that publishes no key: a computed relationship has no target table, and a hop with no
-    referenced column is not a key at all."""
-    from provisa.compiler.sql_types import key_list
-
-    specs: list[ForeignKeySpec] = []
-    skipped: list[tuple[str, str]] = []
-    for rel in relationships:
-        if rel.target is None:
-            skipped.append((rel.id, "computed relationship has no target table"))
-            continue
-        try:
-            source, target = physical_parts(rel.source), physical_parts(rel.target)
-            if rel.via is not None:
-                junction = physical_parts(rel.via.table)
-                specs.append(
-                    ForeignKeySpec(
-                        _fk_name(rel.id, "_source"),
-                        junction,
-                        key_list(rel.via.source_column),
-                        source,
-                        key_list(rel.source_column),
-                        table_ref=rel.via.table,
-                        referenced_ref=rel.source,
-                    )
-                )
-                specs.append(
-                    ForeignKeySpec(
-                        _fk_name(rel.id, "_target"),
-                        junction,
-                        key_list(rel.via.target_column),
-                        target,
-                        key_list(rel.target_column or ""),
-                        table_ref=rel.via.table,
-                        referenced_ref=rel.target,
-                    )
-                )
-                continue
-            if not rel.target_column:
-                skipped.append((rel.id, "relationship names no target column"))
-                continue
-            if rel.cardinality == "many-to-one":
-                holder, held, ref, ref_cols, holder_ref, ref_ref = (
-                    source,
-                    key_list(rel.source_column),
-                    target,
-                    key_list(rel.target_column),
-                    rel.source,
-                    rel.target,
-                )
-            else:  # one-to-many: the "one" side is the source, the target holds the key
-                holder, held, ref, ref_cols, holder_ref, ref_ref = (
-                    target,
-                    key_list(rel.target_column),
-                    source,
-                    key_list(rel.source_column),
-                    rel.target,
-                    rel.source,
-                )
-            specs.append(
-                ForeignKeySpec(
-                    _fk_name(rel.id),
-                    holder,
-                    held,
-                    ref,
-                    ref_cols,
-                    table_ref=holder_ref,
-                    referenced_ref=ref_ref,
-                )
-            )
-        except ValueError as exc:
-            skipped.append((rel.id, str(exc)))
-    return specs, skipped
-
-
-def landed_replica(
-    landing_database: str, store_schema: str, ref: "AssetRef"
-) -> tuple[str, str, str]:
-    """Where a non-attachable source's rows actually land (REQ-1637): the store's schema inside
-    the landing database, under the name ``landing_target`` mangles from the ref -- the object a
-    per-source SECURE VIEW at :func:`physical_parts` selects from. Constraints can only live here:
-    Snowflake accepts PRIMARY/FOREIGN KEY on tables alone, never on a view."""
-    if ref.kind is not AssetKind.TABLE or len(ref.parts) != 3:
-        raise ValueError(f"expected a table ref (source, schema, table); got {ref!r}")
-    source_id, schema_name, table_name = ref.parts
-    return landing_database, store_schema, f"{source_id}__{schema_name}__{table_name}"
-
-
-def constraint_statements(
-    tables: list["TableAsset"],
-    targets: dict[tuple[str, str, str], tuple[str, str, str]],
-    specs: list[ForeignKeySpec],
-    existing_primary_keys: dict[tuple[str, str, str], tuple[str, ...]],
-    existing_foreign_keys: dict[tuple[str, str, str], frozenset[str]],
-) -> tuple[list[str], list[tuple[str, str]]]:
-    """PRIMARY KEY and FOREIGN KEY DDL (REQ-1652) on each asset's constraint TARGET -- the physical
-    object when it is a TABLE, else the landed replica its VIEW reads (:func:`landed_replica`) --
-    and ``(what, reason)`` for every key withheld. ``targets`` holds only assets that resolved to
-    a TABLE; anything else is withheld.
-
-    Snowflake keeps both constraints as informational metadata (never enforced), which is exactly
-    what Horizon Catalog renders as the table's keys and join paths. A PRIMARY KEY that already
-    matches is left alone; one that differs is replaced (a table holds at most one). A FOREIGN KEY
-    is added only when the referenced columns ARE the referenced table's published PRIMARY KEY --
-    Snowflake refuses a reference to a non-key, and the demo's assignments.breed_name showed why a
-    relationship can name one."""
-    stmts: list[str] = []
-    withheld: list[tuple[str, str]] = []
-    declared: dict[tuple[str, str, str], tuple[str, ...]] = {}
-    for table in tables:
-        if not table.primary_key:
-            continue
-        try:
-            physical = physical_parts(table.ref)
-        except ValueError:
-            continue
-        target = targets.get(physical)
-        if target is None:
-            withheld.append((".".join(physical), "no landed TABLE to carry its PRIMARY KEY"))
-            continue
-        declared[physical] = table.primary_key
-        current = existing_primary_keys.get(target, ())
-        if current == table.primary_key:
-            continue
-        fq = f'"{target[0]}"."{target[1]}"."{target[2]}"'
-        if current:
-            stmts.append(f"ALTER TABLE {fq} DROP PRIMARY KEY;")
-        cols = ", ".join(f'"{c}"' for c in table.primary_key)
-        stmts.append(
-            f'ALTER TABLE {fq} ADD CONSTRAINT "{_identifier(f"provisa_pk_{physical[2]}")}" '
-            f"PRIMARY KEY ({cols});"
-        )
-    wanted: dict[tuple[str, str, str], set[str]] = {}
-    for spec in specs:
-        label = f"{'.'.join(spec.table)} -> {'.'.join(spec.referenced)}"
-        holder, referenced = targets.get(spec.table), targets.get(spec.referenced)
-        if holder is None or referenced is None:
-            withheld.append((spec.name, f"{label}: both ends must be landed TABLEs"))
-            continue
-        if declared.get(spec.referenced) != spec.referenced_columns:
-            withheld.append(
-                (
-                    spec.name,
-                    f"{label}: referenced columns {list(spec.referenced_columns)} are not "
-                    f"{'.'.join(spec.referenced)}'s primary key",
-                )
-            )
-            continue
-        wanted.setdefault(holder, set()).add(spec.name)
-        if spec.name in existing_foreign_keys.get(holder, frozenset()):
-            continue
-        fq = f'"{holder[0]}"."{holder[1]}"."{holder[2]}"'
-        ref = f'"{referenced[0]}"."{referenced[1]}"."{referenced[2]}"'
-        cols = ", ".join(f'"{c}"' for c in spec.columns)
-        ref_cols = ", ".join(f'"{c}"' for c in spec.referenced_columns)
-        stmts.append(
-            f'ALTER TABLE {fq} ADD CONSTRAINT "{spec.name}" FOREIGN KEY ({cols}) '
-            f"REFERENCES {ref} ({ref_cols});"
-        )
-    # A key this export wrote earlier (its ``provisa_fk_`` prefix) that no relationship declares
-    # any more -- or that now publishes under another name, as a junction's two hops do -- is
-    # withdrawn; foreign keys of any other origin are never touched.
-    for holder, names in existing_foreign_keys.items():
-        for name in sorted(names):
-            if name.startswith("provisa_fk_") and name not in wanted.get(holder, set()):
-                fq = f'"{holder[0]}"."{holder[1]}"."{holder[2]}"'
-                stmts.append(f'ALTER TABLE {fq} DROP CONSTRAINT "{name}";')
-    return stmts, withheld
-
-
-_PK_TAG = "PRIMARY_KEY"
-_FK_TAG = "FOREIGN_KEY"
-
-
-def key_tag_statements(
-    tags_database: str,
-    tables: list["TableAsset"],
-    specs: list[ForeignKeySpec],
-    views: set[tuple[str, str, str]],
-    existing_tags: dict[tuple[tuple[str, str, str], str], set[str]] | None = None,
-) -> list[str]:
-    """Key TAGs on the per-source VIEWs (REQ-1652). A view cannot carry a constraint, so the keys
-    a consumer sees on ``pet_store_sqlite.pet_store.pets`` ride the same governance TAG namespace
-    its descriptions and classifications already do: ``PRIMARY_KEY`` = the column's 1-based
-    position in the key, ``FOREIGN_KEY`` = the referenced physical ``"db"."schema"."table"."column"``
-    (several, ``; ``-joined, when one column holds more than one). Only the specs the caller
-    actually emitted (or found already present) belong here -- a withheld key is not a key."""
-    if not views:
-        return []
-
-    def tag_fq(name: str) -> str:
-        return f'"{tags_database}"."{_TAGS_SCHEMA}"."{name}"'
-
-    def set_col_tag(parts: tuple[str, str, str], column: str, tag: str, value: str) -> str:
-        return (
-            f'ALTER VIEW "{parts[0]}"."{parts[1]}"."{parts[2]}" MODIFY COLUMN "{column}" '
-            f"SET TAG {tag_fq(tag)} = '{_escape(value)}';"
-        )
-
-    stmts: list[str] = []
-    for table in tables:
-        try:
-            physical = physical_parts(table.ref)
-        except ValueError:
-            continue
-        if physical not in views:
-            continue
-        for position, column in enumerate(table.primary_key, start=1):
-            stmts.append(set_col_tag(physical, column, _PK_TAG, str(position)))
-    references: dict[tuple[tuple[str, str, str], str], list[str]] = {}
-    for spec in specs:
-        if spec.table not in views:
-            continue
-        for column, ref_column in zip(spec.columns, spec.referenced_columns, strict=True):
-            target = ".".join(f'"{part}"' for part in (*spec.referenced, ref_column))
-            references.setdefault((spec.table, column), []).append(target)
-    for (parts, column), targets in references.items():
-        stmts.append(set_col_tag(parts, column, _FK_TAG, "; ".join(targets)))
-    # A key tag set by an earlier publish that this one does not re-set is stale -- the key moved
-    # or the relationship went -- and is unset, so the view never shows a key the model lost.
-    reset: set[tuple[tuple[str, str, str], str, str]] = set()
-    for table in tables:
-        try:
-            physical = physical_parts(table.ref)
-        except ValueError:
-            continue
-        if physical in views:
-            reset.update((physical, column, _PK_TAG) for column in table.primary_key)
-    reset.update((parts, column, _FK_TAG) for (parts, column) in references)
-    for (parts, column), tags in sorted((existing_tags or {}).items()):
-        if parts not in views:
-            continue
-        for tag in sorted(tags):
-            if tag in (_PK_TAG, _FK_TAG) and (parts, column, tag) not in reset:
-                stmts.append(
-                    f'ALTER VIEW "{parts[0]}"."{parts[1]}"."{parts[2]}" MODIFY COLUMN "{column}" '
-                    f"UNSET TAG {tag_fq(tag)};"
-                )
-    if not stmts:
-        return []  # no key to mirror: no tag objects to create either
-    return [
-        f'CREATE SCHEMA IF NOT EXISTS "{tags_database}"."{_TAGS_SCHEMA}"',
-        f"CREATE TAG IF NOT EXISTS {tag_fq(_PK_TAG)};",
-        f"CREATE TAG IF NOT EXISTS {tag_fq(_FK_TAG)};",
-        *stmts,
-    ]
-
-
-def _existing_key_tags(
-    runtime: SnowflakeFederationRuntime, tags_database: str, view: tuple[str, str, str]
-) -> dict[tuple[tuple[str, str, str], str], set[str]]:
-    """The PRIMARY_KEY / FOREIGN_KEY tags currently set on ``view``'s columns, per column, so a
-    stale one can be unset (REQ-1652)."""
-    fq = ".".join(f'"{part}"' for part in view)
-    cur = runtime.connection.cursor()
-    try:
-        cur.execute(
-            f'SELECT column_name, tag_name FROM TABLE("{tags_database}".information_schema'
-            f".tag_references_all_columns('{_escape(fq)}', 'table')) "
-            f"WHERE tag_database = '{_escape(tags_database)}' AND tag_schema = '{_TAGS_SCHEMA}' "
-            f"AND tag_name IN ('{_PK_TAG}', '{_FK_TAG}')"
-        )
-        out: dict[tuple[tuple[str, str, str], str], set[str]] = {}
-        for column, tag in cur.fetchall():
-            out.setdefault((view, str(column)), set()).add(str(tag))
-        return out
-    except ProgrammingError:
-        return {}  # the view has no tag references yet (or no tag schema): nothing to unset
-    finally:
-        cur.close()
-
-
-def _existing_keys(
-    runtime: SnowflakeFederationRuntime, parts: tuple[str, str, str]
-) -> tuple[tuple[str, ...], frozenset[str]]:
-    """The table's current PRIMARY KEY columns (in key order) and the names of its FOREIGN KEYs,
-    read live so the publish is idempotent -- Snowflake refuses a second PRIMARY KEY and a
-    duplicate constraint name."""
-    fq = f'"{parts[0]}"."{parts[1]}"."{parts[2]}"'
-    cur = runtime.connection.cursor()
-    try:
-        cur.execute(f"SHOW PRIMARY KEYS IN TABLE {fq}")
-        cols = [d[0] for d in cur.description]
-        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-        pk = tuple(r["column_name"] for r in sorted(rows, key=lambda r: r["key_sequence"]))
-        cur.execute(f"SHOW IMPORTED KEYS IN TABLE {fq}")
-        cols = [d[0] for d in cur.description]
-        fks = frozenset(dict(zip(cols, r))["fk_name"] for r in cur.fetchall())
-        return pk, fks
-    finally:
-        cur.close()
-
-
 def _organization_context(runtime: SnowflakeFederationRuntime) -> tuple[str, str, str]:
     """(account, role, region) for the CURRENT session — the ``organization_targets``/``locations``
     fields an organization listing's manifest requires (REQ-1635). Read live rather than guessed:
@@ -727,9 +357,8 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
         result = PublishResult(provider_name=self.provider_name)
         products = getattr(snapshot, "data_products", None) or []
         governance_tags = getattr(snapshot, "governance_tags", None) or []
-        model_tags = getattr(snapshot, "model_tags", None) or []
         tables = getattr(snapshot, "tables", None) or []
-        if not products and not governance_tags and not model_tags and not tables:
+        if not products and not governance_tags and not tables:
             return result
         runtime = self._runtime_or_none()
         if runtime is None:
@@ -740,65 +369,12 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             )
             if published:
                 result.published["data_products"] = published
-            tagged = self._publish_tags(runtime, model_tags, result)
-            if tagged:
-                result.published["tags"] = tagged
             commented = self._publish_descriptions(runtime, tables, governance_tags, result)
             if commented:
                 result.published["descriptions"] = commented
-            relationships = getattr(snapshot, "relationships", None) or []
-            constrained = self._publish_constraints(runtime, tables, relationships, result)
-            if constrained:
-                result.published["constraints"] = constrained
         finally:
             runtime.close()
         return result
-
-    def _publish_tags(
-        self,
-        runtime: SnowflakeFederationRuntime,
-        model_tags: list["ModelTag"],
-        result: PublishResult,
-    ) -> int:
-        """Applies ``model_tags`` as native Snowflake TAG objects (a steward-assigned
-        classification), gated on the target table already existing (``_table_exists``) so a tag
-        on a not-yet-landed source is reported as an error rather than failing the whole export.
-        ``GovernanceTag`` facts (REQ-1071) publish via ``_publish_descriptions`` instead — see
-        :func:`tag_statements`'s docstring."""
-        if not model_tags:
-            return 0
-        applicable_model: list["ModelTag"] = []
-        for mtag in model_tags:
-            if mtag.asset is None:
-                continue  # relationship-scoped (REQ-1378) — no physical asset to tag
-            try:
-                parts = physical_table_and_column(mtag.asset)[0]
-            except ValueError as exc:
-                result.errors.append(AssetError(AssetRefStub(mtag.tag_id), str(exc)))
-                continue
-            if _table_exists(runtime, parts):
-                applicable_model.append(mtag)
-            else:
-                result.errors.append(
-                    AssetError(
-                        AssetRefStub(mtag.tag_id),
-                        f"Snowflake landing terminal missing for tagged asset: {'.'.join(parts)}",
-                    )
-                )
-        if not applicable_model:
-            return 0
-        tags_database = runtime.ensure_materialize_attached()
-        statements = tag_statements(tags_database, applicable_model)
-        cur = runtime.connection.cursor()
-        try:
-            for stmt in statements:
-                cur.execute(stmt)
-        except Exception as exc:  # noqa: BLE001 - runtime.connection is an opaque DBAPI cursor
-            result.errors.append(AssetError(AssetRefStub("model_tags"), str(exc)))
-            return 0
-        finally:
-            cur.close()
-        return len(applicable_model)
 
     def _publish_descriptions(
         self,
@@ -860,86 +436,6 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
                 cur.execute(stmt)
         except Exception as exc:  # noqa: BLE001 - runtime.connection is an opaque DBAPI cursor
             result.errors.append(AssetError(AssetRefStub("descriptions"), str(exc)))
-            return 0
-        finally:
-            cur.close()
-        return len(statements)
-
-    def _publish_constraints(
-        self,
-        runtime: SnowflakeFederationRuntime,
-        tables: list["TableAsset"],
-        relationships: list["RelationshipEdge"],
-        result: PublishResult,
-    ) -> int:
-        """Publishes each asset's declared key as a PRIMARY KEY and each relationship as a FOREIGN
-        KEY (REQ-1652) on the object that can carry one -- the physical TABLE when the source is
-        attachable, else the landed replica behind its per-source VIEW (REQ-1637) -- and mirrors the
-        keys onto the VIEWs as column TAGs, since a Snowflake view holds no constraint. A withheld
-        key is reported, never silently dropped."""
-        from provisa.api.org_runtime import active_env
-        from provisa.federation.store_scope import store_schema
-
-        specs, skipped = foreign_key_specs(relationships)
-        for rel_id, reason in skipped:
-            result.errors.append(AssetError(AssetRefStub(rel_id), reason))
-        refs: dict[tuple[str, str, str], "AssetRef"] = {}
-        for table in tables:
-            try:
-                refs[physical_parts(table.ref)] = table.ref
-            except ValueError as exc:
-                result.errors.append(AssetError(table.ref, str(exc)))
-        for spec in specs:
-            if spec.table_ref is not None:
-                refs.setdefault(spec.table, spec.table_ref)
-            if spec.referenced_ref is not None:
-                refs.setdefault(spec.referenced, spec.referenced_ref)
-        keyed = {physical_parts(t.ref) for t in tables if t.primary_key} | {
-            end for spec in specs for end in (spec.table, spec.referenced)
-        }
-        if not keyed:
-            return 0
-        landing_database = runtime.ensure_materialize_attached()
-        landing_schema = store_schema(configured_engine_url() or "", active_env())
-        targets: dict[tuple[str, str, str], tuple[str, str, str]] = {}
-        views: set[tuple[str, str, str]] = set()
-        for physical in sorted(keyed):
-            kind = _object_kind(runtime, physical)
-            if kind == "TABLE":
-                targets[physical] = physical
-                continue
-            # A VIEW over the landed replica (REQ-1637), or no per-source object at all (a junction
-            # table that is landed but exposed only through the relationships it joins): either way
-            # the constraint's home is the replica, and only an existing VIEW gets key tags.
-            if physical in refs:
-                replica = landed_replica(landing_database, landing_schema, refs[physical])
-                if _object_kind(runtime, replica) == "TABLE":
-                    targets[physical] = replica
-                    if kind == "VIEW":
-                        views.add(physical)
-        pks: dict[tuple[str, str, str], tuple[str, ...]] = {}
-        fks: dict[tuple[str, str, str], frozenset[str]] = {}
-        for target in set(targets.values()):
-            pks[target], fks[target] = _existing_keys(runtime, target)
-        statements, withheld = constraint_statements(tables, targets, specs, pks, fks)
-        for name, reason in withheld:
-            result.errors.append(AssetError(AssetRefStub(name), reason))
-        withheld_names = {name for name, _ in withheld}
-        emitted = [spec for spec in specs if spec.name not in withheld_names]
-        existing_tags = {
-            key: tags
-            for view in sorted(views)
-            for key, tags in _existing_key_tags(runtime, landing_database, view).items()
-        }
-        statements += key_tag_statements(landing_database, tables, emitted, views, existing_tags)
-        if not statements:
-            return 0
-        cur = runtime.connection.cursor()
-        try:
-            for stmt in statements:
-                cur.execute(stmt)
-        except Exception as exc:  # noqa: BLE001 - runtime.connection is an opaque DBAPI cursor
-            result.errors.append(AssetError(AssetRefStub("constraints"), str(exc)))
             return 0
         finally:
             cur.close()

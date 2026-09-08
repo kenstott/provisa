@@ -96,3 +96,86 @@ async def test_no_config_is_noop():
     backend = DuckDBBackend(build_duckdb_engine())
     backend._runtime = _FakeRuntime()
     assert await backend.reconcile_landed_tables(SimpleNamespace()) == []
+
+
+class _KeyedRuntime(_FakeRuntime):
+    """A store that holds informational constraints: exposes the key hook (REQ-1652)."""
+
+    def __init__(self):
+        super().__init__()
+        self.plans: list = []
+
+    async def reconcile_landed_metadata(self, plan):
+        self.plans.append(plan)
+        return len(plan.edges) + sum(1 for t in plan.tables.values() if t.primary_key)
+
+
+@pytest.mark.asyncio
+async def test_keys_converge_with_the_tables_from_registration_and_relationships(monkeypatch):
+    # REQ-1652: keys are part of the landed model's shape. The reconcile hands the runtime a plan
+    # built from the registered keys and the relationships, for every landed table -- no Data
+    # Product filter -- and withholds a key the store cannot hold.
+    backend = DuckDBBackend(build_duckdb_engine())
+    rt = _KeyedRuntime()
+    backend._runtime = rt
+    cfg = SimpleNamespace(sources=[_src("api", "openapi")], tables=[])
+    registered = [
+        {"id": 1, **_rtbl("api", "pets", [_rcol("id", "bigint", pk=True), _rcol("breed", "text")])},
+        {
+            "id": 2,
+            **_rtbl("api", "visits", [_rcol("id", "bigint", pk=True), _rcol("pet_id", "bigint")]),
+        },
+    ]
+    rels = [
+        {
+            "id": "visits-pet",
+            "source_table_id": 2,
+            "target_table_id": 1,
+            "source_column": "pet_id",
+            "target_column": "id",
+            "cardinality": "many-to-one",
+            "via_table_id": None,
+        },
+        {
+            "id": "breed-link",
+            "source_table_id": 2,
+            "target_table_id": 1,
+            "source_column": "breed",
+            "target_column": "breed",
+            "cardinality": "many-to-one",
+            "via_table_id": None,
+        },
+    ]
+
+    async def _rels(_conn):
+        return rels
+
+    registered[0]["description"] = "Pets for sale"
+    registered[0]["columns"][1]["description"] = "Breed of the pet"
+    monkeypatch.setattr("provisa.core.repositories.relationship.list_all", _rels)
+    reconciled = await backend.reconcile_landed_tables(_state(cfg, registered, monkeypatch))
+
+    assert reconciled == [("api", "pets"), ("api", "visits")]
+    plan = rt.plans[0]
+    assert set(plan.tables) == {"api.default.pets", "api.default.visits"}
+    # REQ-1654: the descriptions ride the same plan, for every landed table
+    assert plan.tables["api.default.pets"].description == "Pets for sale"
+    assert plan.tables["api.default.pets"].column_descriptions == {"breed": "Breed of the pet"}
+    assert [
+        (e.holder, e.holder_columns, e.referenced, e.referenced_columns) for e in plan.edges
+    ] == [("api.default.visits", ("pet_id",), "api.default.pets", ("id",))]
+    assert plan.withheld[0][0] == "provisa_fk_breed_link"
+    assert "not api.default.pets's primary key" in plan.withheld[0][1]
+
+
+@pytest.mark.asyncio
+async def test_a_runtime_without_the_key_hook_gets_no_key_plan(monkeypatch):
+    # An enforcing store (DuckDB/Postgres): a FOREIGN KEY would refuse every REPLACE land, so the
+    # tables reconcile and the keys stay out, by design.
+    backend = DuckDBBackend(build_duckdb_engine())
+    backend._runtime = _FakeRuntime()
+    cfg = SimpleNamespace(sources=[_src("api", "openapi")], tables=[])
+    registered = [{"id": 1, **_rtbl("api", "pets", [_rcol("id", "bigint", pk=True)])}]
+    assert await backend.reconcile_landed_tables(_state(cfg, registered, monkeypatch)) == [
+        ("api", "pets")
+    ]

@@ -545,6 +545,15 @@ def _embedded_duckdb_materialize_default() -> str | None:  # REQ-989
     return f"duckdb:///{data_dir / 'materialize.duckdb'}"
 
 
+def _own_warehouse_materialize_default() -> str | None:  # REQ-1637, REQ-1653
+    """The DECLARED default materialization store for a SELF-ONLY warehouse engine (Snowflake): the
+    warehouse itself. Its runtime is the landing terminal -- replicas live in the engine URL's
+    database, exposed to the compiler's physical names as views -- so the store DSN IS the engine
+    DSN. Never the platform database: a warehouse that cannot read it would then query names that
+    resolve nowhere (REQ-1637). Explicit ``materialize_store_url`` still overrides it."""
+    return configured_engine_url() or None
+
+
 def _platform_db_materialize_default() -> str | None:
     """The DECLARED default materialization store for an ephemeral in-process engine: the platform's
     own tenant database (``TENANT_DATABASE_URL``) — the persistent store the platform always
@@ -753,7 +762,7 @@ def build_snowflake_engine() -> FederationEngine:  # REQ-988 self-only MPP wareh
                 EngineCapability.ARROW_STREAM,  # fetch_arrow_batches (lazy) via Flight (REQ-988)
             }
         ),
-        default_materialize_store=_platform_db_materialize_default,
+        default_materialize_store=_own_warehouse_materialize_default,
     )
 
 
