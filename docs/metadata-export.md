@@ -49,7 +49,8 @@ views get the same keys as column tags in the `PROVISA_GOVERNANCE` namespace: `P
 the column's position in the key and `FOREIGN_KEY` holds the referenced physical column. Snowflake
 keeps the constraints as informational metadata, which is what Horizon Catalog renders as the
 table's keys and join paths. The publish is idempotent: a key that already matches is left alone,
-a differing primary key is replaced, and an existing foreign key of the same name is skipped. A
+a differing primary key is replaced, an existing foreign key of the same name is skipped, and a
+`provisa_fk_*` constraint or key tag that no current relationship or key declares is withdrawn. A
 foreign key whose referenced columns are not the referenced asset's primary key, or whose end has
 no landed table, is withheld and reported in the publish result rather than emitted.
 [tool-verified: provisa/api/metadata_export/snowflake_horizon.py constraint_statements, key_tag_statements]

@@ -55063,8 +55063,9 @@
     per-source VIEW reads (REQ-1637). Snowflake views hold no constraints, so every per-source VIEW
     additionally gets PRIMARY_KEY (1-based key position) and FOREIGN_KEY (referenced physical
     column) column TAGs in the PROVISA_GOVERNANCE namespace. Idempotent: a matching PRIMARY KEY is
-    left alone, a differing one is replaced, an existing FOREIGN KEY of the same name is skipped. A
-    FOREIGN KEY whose referenced columns are not the referenced asset's published PRIMARY KEY, or
+    left alone, a differing one is replaced, an existing FOREIGN KEY of the same name is skipped,
+    and a provisa_fk_* constraint or key TAG that no current relationship or key declares is
+    withdrawn. A FOREIGN KEY whose referenced columns are not the referenced asset's published PRIMARY KEY, or
     whose end has no landed TABLE, is withheld and reported, never emitted.
   use_case: >-
     Horizon Catalog renders a table's keys and join paths from Snowflake's informational
