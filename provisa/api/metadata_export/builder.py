@@ -74,7 +74,7 @@ from provisa.lineage.graph import Edge, LineageGraph, Node, build_column_graph
 
 
 def _source_assets(
-    config: ProvisaConfig, org_id: str, published_source_ids: set[str]
+    config: ProvisaConfig, org_id: str | None, published_source_ids: set[str]
 ) -> list[SourceAsset]:
     # The Data Product filter gates sources too: a source publishes only when at least one
     # of its tables does. Publishing the whole source inventory would hand the catalog
@@ -92,7 +92,7 @@ def _source_assets(
     ]
 
 
-def _domain_assets(config: ProvisaConfig, org_id: str) -> list[DomainAsset]:  # REQ-609
+def _domain_assets(config: ProvisaConfig, org_id: str | None) -> list[DomainAsset]:  # REQ-609
     assets: list[DomainAsset] = []
     for domain in config.domains:
         steward = (
@@ -112,7 +112,7 @@ def _domain_assets(config: ProvisaConfig, org_id: str) -> list[DomainAsset]:  # 
     return assets
 
 
-def _column_asset(table: Table, column, org_id: str) -> ColumnAsset:
+def _column_asset(table: Table, column, org_id: str | None) -> ColumnAsset:
     return ColumnAsset(
         ref=column_ref(table, column.name),
         name=column.name,
@@ -125,7 +125,7 @@ def _column_asset(table: Table, column, org_id: str) -> ColumnAsset:
 
 def _table_assets(
     tables: list[Table],
-    org_id: str,
+    org_id: str | None,
     technical_columns: frozenset[tuple[tuple[str, ...], str]],
     product_ids: dict[tuple[str, ...], str | None],
 ) -> list[TableAsset]:
@@ -193,7 +193,7 @@ def _effective_product_ids(
 def _data_product_assets(
     config: ProvisaConfig,
     exported: list[Table],
-    org_id: str,
+    org_id: str | None,
     product_ids: dict[tuple[str, ...], str | None],
 ) -> list[DataProductAsset]:
     # A product with no exported members does not build: publishing an empty listing would tell
@@ -228,7 +228,7 @@ def _data_product_assets(
 
 
 def _relationship_edges(
-    config: ProvisaConfig, index: TableIndex, org_id: str
+    config: ProvisaConfig, index: TableIndex, org_id: str | None
 ) -> list[RelationshipEdge]:
     edges: list[RelationshipEdge] = []
     for rel in config.relationships:
@@ -521,7 +521,7 @@ def _glossary_assets(
     glossary: dict,
     exported: list[Table],
     published_columns: set[tuple[str, ...]],
-    org_id: str,
+    org_id: str | None,
 ) -> tuple[list[GlossaryTermAsset], list[GlossaryTermEdge]]:  # REQ-1387
     """Project the term graph onto the published assets.
 
@@ -586,6 +586,7 @@ def build_snapshot(
     config: ProvisaConfig,
     *,
     org_id: str,
+    uri_org_id: str | None = None,
     dialect: str,
     glossary: dict | None = None,
     dq_outcomes: dict[tuple[str, str, str], DataQualityOutcome] | None = None,
@@ -609,7 +610,17 @@ def build_snapshot(
     receives what the admin marked for it and nothing else. REQ-1592's model report turns it off,
     because a steward reviewing the model is reviewing everything registered, and the unmarked
     tables are exactly the ones a review is meant to catch.
+
+    ``org_id`` is the real tenant identifier: it always lands on ``MetadataSnapshot.org_id``, and
+    several adapters key real lookups off that field (e.g. BigQuery Dataplex's per-tenant runtime
+    resolution) — it must never be withheld. ``uri_org_id`` (REQ-697) is the org segment embedded
+    in semantic URIs and governance ``rule_id`` strings; it is a display convenience, defaults to
+    ``org_id`` (multitenant deployments name the org in every URI), and callers pass ``None`` for a
+    single-tenant deployment, where naming the org would only expose config plumbing (see
+    :func:`~provisa.api.metadata_export.refs._org_segment`).
     """
+    if uri_org_id is None:
+        uri_org_id = org_id
     # Name resolution sees EVERY table: a bare relationship/lineage name that is ambiguous
     # across the full config stays refused, whether or not both candidates publish.
     index = TableIndex(config.tables)
@@ -631,24 +642,24 @@ def build_snapshot(
     ]
     keep = {table_ref(table).parts for table in exported}
     published_source_ids = {table.source_id for table in exported}
-    tables = _table_assets(exported, org_id, technical_columns, product_ids)
+    tables = _table_assets(exported, uri_org_id, technical_columns, product_ids)
     relationships = [
         edge
-        for edge in _relationship_edges(config, index, org_id)
+        for edge in _relationship_edges(config, index, uri_org_id)
         if edge.source.parts in keep and (edge.target is None or edge.target.parts in keep)
     ]
     published_columns = {column.ref.parts for table in tables for column in table.columns}
     glossary_terms, glossary_edges = (
-        _glossary_assets(glossary, exported, published_columns, org_id)
+        _glossary_assets(glossary, exported, published_columns, uri_org_id)
         if glossary is not None
         else ([], [])
     )
     return MetadataSnapshot(
         org_id=org_id,
-        sources=_source_assets(config, org_id, published_source_ids),
-        domains=_domain_assets(config, org_id),
+        sources=_source_assets(config, uri_org_id, published_source_ids),
+        domains=_domain_assets(config, uri_org_id),
         tables=tables,
-        data_products=_data_product_assets(config, exported, org_id, product_ids),
+        data_products=_data_product_assets(config, exported, uri_org_id, product_ids),
         relationships=relationships,
         lineage=[
             edge
@@ -659,7 +670,7 @@ def build_snapshot(
         # their governance tags is the dangerous half-truth — a consumer would read an
         # unannotated column as unrestricted.
         governance_tags=[
-            tag for tag in build_governance_tags(config, org_id) if tag.asset.parts[:3] in keep
+            tag for tag in build_governance_tags(config, uri_org_id) if tag.asset.parts[:3] in keep
         ],
         model_tags=[
             *_model_tags(

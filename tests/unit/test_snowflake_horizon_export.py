@@ -173,51 +173,6 @@ def test_physical_table_and_column_rejects_other_ref_kinds():
         physical_table_and_column(ref)
 
 
-def test_tag_statements_creates_one_tag_per_distinct_signal_and_applies_to_table():
-    tags = [
-        GovernanceTag(
-            asset=_table_ref("petstore-api", "public", "pets"),
-            signal=GovernanceSignal.RLS_RESTRICTED,
-            rule_id="rule-42",
-        )
-    ]
-    stmts = tag_statements("landing", tags, [])
-    assert 'CREATE SCHEMA IF NOT EXISTS "landing"."PROVISA_GOVERNANCE"' in stmts
-    assert 'CREATE TAG IF NOT EXISTS "landing"."PROVISA_GOVERNANCE"."RLS_RESTRICTED";' in stmts
-    assert (
-        'ALTER TABLE "petstore_api"."public"."pets" '
-        'SET TAG "landing"."PROVISA_GOVERNANCE"."RLS_RESTRICTED" = \'rule-42\';'
-    ) in stmts
-
-
-def test_tag_statements_applies_to_column_via_modify_column():
-    tags = [
-        GovernanceTag(
-            asset=_column_ref("petstore-api", "public", "pets", "owner_ssn"),
-            signal=GovernanceSignal.MASKED,
-            rule_id="rule-7",
-        )
-    ]
-    stmts = tag_statements("landing", tags, [])
-    assert (
-        'ALTER TABLE "petstore_api"."public"."pets" MODIFY COLUMN "owner_ssn" '
-        'SET TAG "landing"."PROVISA_GOVERNANCE"."MASKED" = \'rule-7\';'
-    ) in stmts
-
-
-def test_tag_statements_deduplicates_signal_tags_across_multiple_governance_tags():
-    tags = [
-        GovernanceTag(
-            asset=_table_ref("s", "p", "t1"), signal=GovernanceSignal.MASKED, rule_id="r1"
-        ),
-        GovernanceTag(
-            asset=_table_ref("s", "p", "t2"), signal=GovernanceSignal.MASKED, rule_id="r2"
-        ),
-    ]
-    stmts = tag_statements("landing", tags, [])
-    assert sum(s.startswith("CREATE TAG IF NOT EXISTS") for s in stmts) == 1
-
-
 def test_tag_statements_creates_model_tag_and_uses_reason_as_value():
     tags = [
         ModelTag(
@@ -227,7 +182,8 @@ def test_tag_statements_creates_model_tag_and_uses_reason_as_value():
             reason="contains SSN",
         )
     ]
-    stmts = tag_statements("landing", [], tags)
+    stmts = tag_statements("landing", tags)
+    assert 'CREATE SCHEMA IF NOT EXISTS "landing"."PROVISA_GOVERNANCE"' in stmts
     assert 'CREATE TAG IF NOT EXISTS "landing"."PROVISA_GOVERNANCE"."PII";' in stmts
     assert (
         'ALTER TABLE "petstore_api"."public"."pets" MODIFY COLUMN "owner_ssn" '
@@ -237,14 +193,24 @@ def test_tag_statements_creates_model_tag_and_uses_reason_as_value():
 
 def test_tag_statements_uses_tag_id_as_value_when_no_reason():
     tags = [ModelTag(tag_id="deprecated", is_system=True, asset=_table_ref("s", "p", "t"))]
-    stmts = tag_statements("landing", [], tags)
+    stmts = tag_statements("landing", tags)
     assert any(s.endswith("= 'deprecated';") for s in stmts)
 
 
 def test_tag_statements_skips_relationship_scoped_model_tags():
     tags = [ModelTag(tag_id="derived_from", is_system=True, relationship_id="rel-1")]
-    stmts = tag_statements("landing", [], tags)
+    stmts = tag_statements("landing", tags)
     assert not any("SET TAG" in s for s in stmts)
+
+
+def test_tag_statements_never_emits_governance_tag_ddl():
+    """GovernanceTag facts (REQ-1071) publish via COMMENT (comment_statements), never TAG — a
+    rule id and its restricted/exempt roles are metadata about the asset, not a classification."""
+    tags = [ModelTag(tag_id="pii", is_system=True, asset=_table_ref("s", "p", "t"))]
+    stmts = tag_statements("landing", tags)
+    assert not any(
+        "RLS_RESTRICTED" in s or "MASKED" in s or "VISIBILITY_RESTRICTED" in s for s in stmts
+    )
 
 
 def _table_asset(
@@ -267,14 +233,14 @@ def _table_asset(
 def test_comment_statements_sets_table_comment_on_a_real_table():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
     kinds = {("petstore_api", "public", "pets"): "TABLE"}
-    stmts = comment_statements([table], kinds)
+    stmts = comment_statements([table], kinds, [])
     assert stmts == ['ALTER TABLE "petstore_api"."public"."pets" SET COMMENT = \'Pets for sale\';']
 
 
 def test_comment_statements_sets_view_comment_via_alter_view():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
     kinds = {("petstore_api", "public", "pets"): "VIEW"}
-    stmts = comment_statements([table], kinds)
+    stmts = comment_statements([table], kinds, [])
     assert stmts == ['ALTER VIEW "petstore_api"."public"."pets" SET COMMENT = \'Pets for sale\';']
 
 
@@ -287,7 +253,7 @@ def test_comment_statements_sets_column_comment_via_modify_column_on_a_table():
     )
     table = _table_asset("petstore-api", "public", "pets", columns=[column])
     kinds = {("petstore_api", "public", "pets"): "TABLE"}
-    stmts = comment_statements([table], kinds)
+    stmts = comment_statements([table], kinds, [])
     assert stmts == [
         'ALTER TABLE "petstore_api"."public"."pets" MODIFY COLUMN "name" COMMENT \'Pet name\';'
     ]
@@ -302,7 +268,7 @@ def test_comment_statements_sets_column_comment_via_alter_column_on_a_view():
     )
     table = _table_asset("petstore-api", "public", "pets", columns=[column])
     kinds = {("petstore_api", "public", "pets"): "VIEW"}
-    stmts = comment_statements([table], kinds)
+    stmts = comment_statements([table], kinds, [])
     assert stmts == [
         'ALTER VIEW "petstore_api"."public"."pets" ALTER COLUMN "name" COMMENT \'Pet name\';'
     ]
@@ -310,7 +276,7 @@ def test_comment_statements_sets_column_comment_via_alter_column_on_a_view():
 
 def test_comment_statements_skips_tables_missing_from_kinds():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
-    assert comment_statements([table], {}) == []
+    assert comment_statements([table], {}, []) == []
 
 
 def test_comment_statements_skips_columns_and_tables_with_no_description():
@@ -322,7 +288,44 @@ def test_comment_statements_skips_columns_and_tables_with_no_description():
     )
     table = _table_asset("petstore-api", "public", "pets", columns=[column])
     kinds = {("petstore_api", "public", "pets"): "TABLE"}
-    assert comment_statements([table], kinds) == []
+    assert comment_statements([table], kinds, []) == []
+
+
+def test_comment_statements_appends_governance_note_to_table_comment():
+    table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
+    kinds = {("petstore_api", "public", "pets"): "TABLE"}
+    tags = [
+        GovernanceTag(
+            asset=_table_ref("petstore-api", "public", "pets"),
+            signal=GovernanceSignal.RLS_RESTRICTED,
+            rule_id="rule-42",
+            restricted_roles=("analyst",),
+            exempt_roles=("owner",),
+        )
+    ]
+    stmts = comment_statements([table], kinds, tags)
+    assert stmts == [
+        'ALTER TABLE "petstore_api"."public"."pets" SET COMMENT = '
+        "'Pets for sale\n\n"
+        "[provisa:governance rls_restricted rule=rule-42 restricted=analyst exempt=owner]';"
+    ]
+
+
+def test_comment_statements_uses_governance_note_alone_when_no_description():
+    table = _table_asset("petstore-api", "public", "pets", description="")
+    kinds = {("petstore_api", "public", "pets"): "TABLE"}
+    tags = [
+        GovernanceTag(
+            asset=_table_ref("petstore-api", "public", "pets"),
+            signal=GovernanceSignal.MASKED,
+            rule_id="rule-7",
+        )
+    ]
+    stmts = comment_statements([table], kinds, tags)
+    assert stmts == [
+        'ALTER TABLE "petstore_api"."public"."pets" SET COMMENT = '
+        "'[provisa:governance masked rule=rule-7]';"
+    ]
 
 
 class _FakeCursor:
@@ -524,8 +527,16 @@ def test_publish_applies_governance_and_model_tags_with_no_data_products(monkeyp
         lambda url: rt,
     )
     monkeypatch.setattr(rt, "close", lambda: None)
+    column = ColumnAsset(
+        ref=_column_ref("petstore-api", "public", "pets", "owner_ssn"),
+        name="owner_ssn",
+        data_type="text",
+        description="",
+    )
+    pets = _table_asset("petstore-api", "public", "pets", columns=[column])
     snapshot = SimpleNamespace(
         data_products=[],
+        tables=[pets],
         governance_tags=[
             GovernanceTag(
                 asset=_table_ref("petstore-api", "public", "pets"),
@@ -544,17 +555,18 @@ def test_publish_applies_governance_and_model_tags_with_no_data_products(monkeyp
     )
     result = asyncio.run(_exporter().publish(snapshot))
     assert result.ok
-    assert result.published["tags"] == 2
+    assert result.published["tags"] == 1
+    assert result.published["descriptions"] == 1
     joined = " | ".join(rt._conn.cursor_obj.sql)
-    assert 'CREATE TAG IF NOT EXISTS "landing"."PROVISA_GOVERNANCE"."RLS_RESTRICTED";' in joined
     assert 'CREATE TAG IF NOT EXISTS "landing"."PROVISA_GOVERNANCE"."PII";' in joined
-    assert (
-        'ALTER TABLE "petstore_api"."public"."pets" '
-        'SET TAG "landing"."PROVISA_GOVERNANCE"."RLS_RESTRICTED" = \'rule-42\';'
-    ) in joined
     assert (
         'ALTER TABLE "petstore_api"."public"."pets" MODIFY COLUMN "owner_ssn" '
         'SET TAG "landing"."PROVISA_GOVERNANCE"."PII" = \'contains SSN\';'
+    ) in joined
+    assert "RLS_RESTRICTED" not in joined
+    assert (
+        'ALTER TABLE "petstore_api"."public"."pets" SET COMMENT = '
+        "'[provisa:governance rls_restricted rule=rule-42]';"
     ) in joined
 
 
@@ -569,8 +581,10 @@ def test_publish_reports_error_when_tagged_table_not_landed(monkeypatch):
         lambda url: rt,
     )
     monkeypatch.setattr(rt, "close", lambda: None)
+    pets = _table_asset("petstore-api", "public", "pets")
     snapshot = SimpleNamespace(
         data_products=[],
+        tables=[pets],
         governance_tags=[
             GovernanceTag(
                 asset=_table_ref("petstore-api", "public", "pets"),
@@ -583,6 +597,35 @@ def test_publish_reports_error_when_tagged_table_not_landed(monkeypatch):
     result = asyncio.run(_exporter().publish(snapshot))
     assert not result.ok
     assert "landing terminal missing" in result.errors[0].message
+    assert result.total_published() == 0
+
+
+def test_publish_reports_error_when_governance_tag_has_no_matching_table_asset(monkeypatch):
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    rt = _runtime(existing_objects=True)
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+    snapshot = SimpleNamespace(
+        data_products=[],
+        tables=[],
+        governance_tags=[
+            GovernanceTag(
+                asset=_table_ref("petstore-api", "public", "pets"),
+                signal=GovernanceSignal.MASKED,
+                rule_id="rule-1",
+            )
+        ],
+        model_tags=[],
+    )
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert not result.ok
+    assert "governed asset" in result.errors[0].message
     assert result.total_published() == 0
 
 

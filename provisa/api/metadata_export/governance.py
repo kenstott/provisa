@@ -41,7 +41,7 @@ from provisa.core.models import Column, ProvisaConfig, Table
 
 
 def _mask_tags(
-    table: Table, column: Column, all_roles: tuple[str, ...], org_id: str
+    table: Table, column: Column, all_roles: tuple[str, ...], org_id: str | None
 ) -> list[GovernanceTag]:
     if column.mask_type is None:
         return []
@@ -61,7 +61,7 @@ def _mask_tags(
 
 
 def _visibility_tags(
-    table: Table, column: Column, all_roles: tuple[str, ...], org_id: str
+    table: Table, column: Column, all_roles: tuple[str, ...], org_id: str | None
 ) -> list[GovernanceTag]:
     # Membership is literal — provisa/security/visibility.py enforces ``role_id in visible_to``
     # with no wildcard for columns. The tag says exactly what the engine does.
@@ -81,7 +81,7 @@ def _visibility_tags(
 
 
 def _rls_tags(
-    config: ProvisaConfig, index: TableIndex, all_roles: tuple[str, ...], org_id: str
+    config: ProvisaConfig, index: TableIndex, all_roles: tuple[str, ...], org_id: str | None
 ) -> list[GovernanceTag]:
     """One tag per (rule, restricted table). A domain-scoped rule tags every table in the domain.
 
@@ -117,7 +117,9 @@ def _rls_tags(
     return tags
 
 
-def build_governance_tags(config: ProvisaConfig, org_id: str) -> list[GovernanceTag]:  # REQ-1071
+def build_governance_tags(
+    config: ProvisaConfig, org_id: str | None
+) -> list[GovernanceTag]:  # REQ-1071
     """Every enforcement fact in the config, as catalog tags."""
     all_roles = tuple(sorted(role.id for role in config.roles))
     index = TableIndex(config.tables)

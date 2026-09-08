@@ -17429,3 +17429,45 @@ Descriptions from the `_landing` physical table/config must propagate to the cor
 **Code:** `provisa/api/metadata_export/snowflake_horizon.py`
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-1648 · Metadata Export {#REQ-1648}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+GovernanceTag facts (signal, rule_id, restricted_roles, exempt_roles) publish via Snowflake COMMENT, not CREATE TAG/SET TAG DDL, because governance tags are automatically-computed enforcement facts not steward-assigned classifications.
+
+**Use case:** Governance metadata belongs in free-text COMMENT alongside descriptions ([REQ-1647](#REQ-1647)), and comment-based publication closes the prior defect where restricted_roles and exempt_roles were silently dropped when old tag_statements() emitted TAG DDL.
+
+**Code:** `provisa/api/metadata_export/snowflake_horizon.py`
+
+**Tests:** `tests/unit/test_snowflake_horizon_export.py`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1649 · Multi-Tenancy Design {#REQ-1649}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
+
+MetadataSnapshot.org_id must serve dual roles: (1) as a required real tenant/system identifier for runtime lookups (e.g., BigQuery Dataplex _get_runtime(snapshot.org_id)), adapter namespace URN construction, and MetadataSnapshot instantiation; and (2) as a separate, possibly-None parameter for cosmetic display values embedded in semantic URIs built by refs.py's *_uri() functions. The pending task to omit org_id from URIs when not multitenant ([REQ-697](#REQ-697)) must pass org_id separately to build_snapshot (required) and *_uri() (optional), not unify them.
+
+**Use case:** Merging org_id into a single parameter breaks BigQuery Dataplex and other adapters' runtime resolution and namespace construction if set to None. Separation preserves correctness of adapter-specific logic while allowing URI display customization per deployment topology.
+
+**Code:** `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/builder.py`, `provisa/api/metadata_export/refs.py`, `provisa/api/metadata_export/bigquery_dataplex.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/openlineage.py`, `provisa/api/metadata_export/openmetadata.py`, `provisa/api/metadata_export/workbook.py`
+
+**Tests:** `tests/unit/test_metadata_snapshot_builder.py`
+
+## 4. Source Connectors
+
+### REQ-1650 · DuckDB Connectors {#REQ-1650}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** structural
+
+A DuckDB parquet source whose path is s3:// and whose federation_hints carry access_key_id and secret_access_key must attach via an explicit DuckDB CREATE SECRET (TYPE s3), with ENDPOINT (bare host, no scheme) and URL_STYLE 'path' set whenever federation_hints.endpoint is present. Without it DuckDB's httpfs client defaults to AWS S3 and any S3-compatible store (e.g. Cloudflare R2) resolves against the wrong endpoint.
+
+**Use case:** The r2-orders source (config/provisa.yaml) is a parquet file on Cloudflare R2, addressed via an s3:// path with credentials/endpoint carried in federation_hints. DuckDBParquetConnector.details() previously built only a bare read_parquet() view_ddl and never surfaced a secret, so httpfs queried real AWS S3 (no such bucket) instead of R2, and reads returned malformed content.
+
+**Code:** `provisa/federation/connector_duckdb.py`, `provisa/federation/duckdb_runtime.py`
+
+**Tests:** `tests/unit/test_duckdb_connectors.py`

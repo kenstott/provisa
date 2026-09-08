@@ -72,62 +72,73 @@ def _domain_segments(domain_id: str | None) -> str:
     return "/".join(_segment(part) for part in domain_id.split("/")) + "/"
 
 
-def domain_uri(org_id: str, domain_id: str) -> str:  # REQ-1385
-    return f"{_URI_SCHEME}://{_segment(org_id)}/{_domain_segments(domain_id)}".rstrip("/")
+def _org_segment(org_id: str | None) -> str:
+    """The org path portion of a URI. ``org_id`` is ``None`` for a single-tenant deployment
+    (REQ-697 ``multitenancy=False``): there is only ever one org, so naming it in every URI
+    would expose config plumbing (the "default" ORG_ID fallback) rather than business identity."""
+    return f"{_segment(org_id)}/" if org_id else ""
 
 
-def source_uri(org_id: str, source_id: str) -> str:  # REQ-1385
-    return f"{_URI_SCHEME}://{_segment(org_id)}/sources/{_segment(source_id)}"
+def domain_uri(org_id: str | None, domain_id: str) -> str:  # REQ-1385
+    return f"{_URI_SCHEME}://{_org_segment(org_id)}{_domain_segments(domain_id)}".rstrip("/")
+
+
+def source_uri(org_id: str | None, source_id: str) -> str:  # REQ-1385
+    return f"{_URI_SCHEME}://{_org_segment(org_id)}sources/{_segment(source_id)}"
 
 
 def data_product_ref(product_id: str) -> AssetRef:  # REQ-1634
     return AssetRef(kind=AssetKind.DATA_PRODUCT, parts=(product_id,))
 
 
-def data_product_uri(org_id: str, domain_id: str, product_id: str) -> str:  # REQ-1385, REQ-1634
+def data_product_uri(
+    org_id: str | None, domain_id: str, product_id: str
+) -> str:  # REQ-1385, REQ-1634
     # Domain-segmented like table_uri: a data product lives under its one owning domain.
     return (
-        f"{_URI_SCHEME}://{_segment(org_id)}/"
+        f"{_URI_SCHEME}://{_org_segment(org_id)}"
         f"{_domain_segments(domain_id)}data-products/{_segment(product_id)}"
     )
 
 
-def command_uri(org_id: str, command_name: str) -> str:  # REQ-1385
+def command_uri(org_id: str | None, command_name: str) -> str:  # REQ-1385
     """A governed command (tracked function/webhook) by its registered name."""
-    return f"{_URI_SCHEME}://{_segment(org_id)}/commands/{_segment(command_name)}"
+    return f"{_URI_SCHEME}://{_org_segment(org_id)}commands/{_segment(command_name)}"
 
 
-def table_uri(org_id: str, table: Table) -> str:  # REQ-1385
+def table_uri(org_id: str | None, table: Table) -> str:  # REQ-1385
     """Business-identity address: alias when present, else table name — never the physical
     (source, schema) coordinates, which export separately as the binding."""
     business_name = table.alias or table.table_name
     return (
-        f"{_URI_SCHEME}://{_segment(org_id)}/"
+        f"{_URI_SCHEME}://{_org_segment(org_id)}"
         f"{_domain_segments(table.domain_id)}tables/{_segment(business_name)}"
     )
 
 
-def column_uri(org_id: str, table: Table, column_name: str, column_alias: str | None) -> str:
+def column_uri(org_id: str | None, table: Table, column_name: str, column_alias: str | None) -> str:
     # REQ-1385: #field:<business name> — a column is an attribute of the concept.
     return f"{table_uri(org_id, table)}#field:{_segment(column_alias or column_name)}"
 
 
-def metric_uri(org_id: str, metric_name: str) -> str:  # REQ-1385, REQ-1592
+def metric_uri(org_id: str | None, metric_name: str) -> str:  # REQ-1385, REQ-1592
     """A governed metric by its (config-unique) name.
 
     Org-level rather than domain-segmented because a metric has no grain and no domain of its own:
     its dataset binding is implicit in the semantic references inside its expression (REQ-1317), so
     there are no domain segments to place it under. ``metrics`` is already a reserved kind keyword.
     """
-    return f"{_URI_SCHEME}://{_segment(org_id)}/metrics/{_segment(metric_name)}"
+    return f"{_URI_SCHEME}://{_org_segment(org_id)}metrics/{_segment(metric_name)}"
 
 
-def term_uri(org_id: str, term_name: str) -> str:  # REQ-1385, REQ-1387
+def term_uri(org_id: str | None, term_name: str) -> str:  # REQ-1385, REQ-1387
     """A business-glossary term by its (unique) normalized name."""
-    return f"{_URI_SCHEME}://{_segment(org_id)}/terms/{_segment(term_name)}"
+    return f"{_URI_SCHEME}://{_org_segment(org_id)}terms/{_segment(term_name)}"
 
 
-def relationship_uri(org_id: str, source_table: Table, alias: str | None, rel_id: str) -> str:
+def relationship_uri(
+    org_id: str | None, source_table: Table, alias: str | None, rel_id: str
+) -> str:
     # REQ-1385: a relationship is a navigational field anchored at its source concept.
     # Its business name is the alias when the edge is named; the registry id otherwise.
     return f"{table_uri(org_id, source_table)}#rel:{_segment(alias or rel_id)}"

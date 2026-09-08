@@ -15,7 +15,8 @@
 import { useEffect, useRef, useState } from "react";
 import cytoscape, { type NodeSingular } from "cytoscape";
 import { ActionIcon, Tooltip } from "@mantine/core";
-import { Maximize2, Download, Expand, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { Download, Expand, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { FitScreenIcon } from "../graph/GraphIcons";
 import type { LineageGraphData } from "../../api/lineage";
 
 // The named `Core` export resolves to the package's own bundler-broken type (no fit/png);
@@ -377,12 +378,13 @@ export function LineageDag({
         )}
         <Tooltip label="Fit to screen">
           <ActionIcon
-            variant="default"
+            variant="subtle"
+            size="md"
             onClick={fitToScreen}
             aria-label="Fit to screen"
             data-testid="lineage-fit"
           >
-            <Maximize2 size={16} />
+            <FitScreenIcon size={15} />
           </ActionIcon>
         </Tooltip>
         <Tooltip label="Download PNG">

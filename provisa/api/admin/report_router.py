@@ -151,6 +151,7 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
         snapshot = build_snapshot(
             model,
             org_id=org_id,
+            uri_org_id=org_id if state.multitenancy else None,
             dialect=GOVERNED_DIALECT,
             glossary=glossary,
             dq_outcomes=dq_outcomes,

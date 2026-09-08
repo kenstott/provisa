@@ -233,6 +233,7 @@ async def publish_snapshot(org_id: str) -> PublishResult:
         snapshot = build_snapshot(
             model,
             org_id=org_id,
+            uri_org_id=org_id if state.multitenancy else None,
             dialect=GOVERNED_DIALECT,
             glossary=glossary,
             dq_outcomes=dq_outcomes,

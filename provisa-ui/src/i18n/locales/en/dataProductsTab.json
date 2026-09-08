@@ -54,7 +54,7 @@
     "purposeBody": "A data product groups tables published together for consumption, owned by exactly one domain. A table joins a data product only when both share the same domain. Fields follow the ODPS (Open Data Product Standard) vocabulary where Provisa already has the source of truth.",
     "purposeAria": "About data products",
     "title": "Data Products",
-    "newDataProduct": "New Data Product",
+    "newDataProduct": "Data Product",
     "createTitle": "Create Data Product",
     "save": "Save",
     "cancel": "Cancel",

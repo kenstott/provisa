@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import React, { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -41,6 +42,7 @@ import { buildTableUpdateInput } from "./tables/helpers";
 import type { DataProduct, RegisteredTable, Relationship } from "../types/admin";
 import { fetchActions, saveFunction, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
+import { FilterInput } from "../components/admin/FilterInput";
 import { DataProductDetailPanel, type InputPortRow } from "./data-products/DataProductDetailPanel";
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { useCapability } from "../hooks/useCapability";
@@ -299,6 +301,20 @@ function DataProductFormCard({
 // detail panel; Edit/Delete live inside it and edit swaps the panel for the inline form.
 export function DataProductsPage() {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
+  const updateSearch = (v: string) => {
+    setSearch(v);
+    setSearchParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        if (v) n.set("search", v);
+        else n.delete("search");
+        return n;
+      },
+      { replace: true },
+    );
+  };
   const { dataProducts, loading, error } = useDataProducts();
   const { domains } = useDomains();
   const { tables } = useTables(); // REQ-1634: member-table list + assignment
@@ -655,6 +671,11 @@ export function DataProductsPage() {
     >
       <Group justify="space-between" mb="md">
         <Title order={3}>{t("dataProductsTab.title")}</Title>
+        <FilterInput
+          value={search}
+          onChange={updateSearch}
+          placeholder={t("dataProductsTab.filterPlaceholder")}
+        />
         <Group gap="xs">
           {canEdit && (
             <Button
@@ -695,11 +716,23 @@ export function DataProductsPage() {
         </Paper>
       )}
 
-      {loading && dataProducts.length === 0 ? (
+      {(() => {
+        const q = search.trim().toLowerCase();
+        const filtered = q
+          ? dataProducts.filter(
+              (p) =>
+                p.id.toLowerCase().includes(q) ||
+                p.name.toLowerCase().includes(q) ||
+                p.domainId.toLowerCase().includes(q) ||
+                (p.ownerRole ?? "").toLowerCase().includes(q) ||
+                p.purpose.toLowerCase().includes(q),
+            )
+          : dataProducts;
+        return loading && dataProducts.length === 0 ? (
         <Text size="sm" c="var(--text-muted)">
           {t("dataProductsTab.loading")}
         </Text>
-      ) : dataProducts.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <Text size="sm" c="var(--text-muted)" data-testid="data-products-empty">
           {t("dataProductsTab.empty")}
         </Text>
@@ -716,7 +749,7 @@ export function DataProductsPage() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {dataProducts.map((p) => {
+            {filtered.map((p) => {
               const isExpanded = expanded === p.id;
               const isEditing = editingId === p.id;
               return (
@@ -809,7 +842,8 @@ export function DataProductsPage() {
             })}
           </Table.Tbody>
         </Table>
-      )}
+        );
+      })()}
 
       {/* Delete confirm */}
       <Modal

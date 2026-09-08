@@ -33,9 +33,15 @@ Each ``DataProductAsset`` (REQ-1634) exposes ``id``, ``name``, ``description`` a
 same shape :func:`provisa.api.metadata_export.refs.table_ref` produces). A snapshot with no
 DataProducts publishes nothing here, which is correct, not a fallback masking a bug.
 
-``MetadataSnapshot.governance_tags``/``model_tags`` publish independently of DataProducts, as
-native Snowflake TAG objects (``CREATE TAG`` + ``ALTER TABLE/COLUMN ... SET TAG``) applied to the
-tagged table/column's physical address — see :func:`tag_statements`.
+``MetadataSnapshot.model_tags`` publish independently of DataProducts, as native Snowflake TAG
+objects (``CREATE TAG`` + ``ALTER TABLE/COLUMN ... SET TAG``) applied to the tagged table/column's
+physical address — see :func:`tag_statements`. A ``ModelTag`` is a steward-assigned classification,
+which is what Snowflake's TAG primitive is for.
+
+``MetadataSnapshot.governance_tags`` (REQ-1071) are a different kind of fact: which enforcement
+rule fired on an asset, and the roles it restricts/exempts. That is metadata about the asset, not
+a classification value, so it publishes as appended COMMENT text instead (:func:`comment_statements`,
+alongside REQ-1647's description text) — never as a TAG.
 """
 
 # Requirements: REQ-1068, REQ-1635
@@ -112,21 +118,19 @@ def physical_table_and_column(ref: "AssetRef") -> tuple[tuple[str, str, str], st
     raise ValueError(f"expected a table or column ref; got {ref!r}")
 
 
-def tag_statements(
-    tags_database: str,
-    governance_tags: list["GovernanceTag"],
-    model_tags: list["ModelTag"],
-) -> list[str]:
+def tag_statements(tags_database: str, model_tags: list["ModelTag"]) -> list[str]:
     """DDL creating Snowflake native TAG objects (in ``tags_database``.``_TAGS_SCHEMA``) for each
-    distinct governance signal / model tag id actually present, then applying them to the governed
-    tables/columns via ``SET TAG``. Pure — no I/O — so the shape is testable without a live
-    Snowflake connection.
+    distinct model tag id actually present, then applying them to the tagged tables/columns via
+    ``SET TAG``. Pure — no I/O — so the shape is testable without a live Snowflake connection.
 
-    A ``GovernanceTag``'s value is its ``rule_id`` — WHICH rule fired, never the rule body
-    (REQ-1071, mirrors :class:`GovernanceTag`'s own docstring). A ``ModelTag``'s value is its
-    ``reason`` when set, else its own ``tag_id``. Relationship-scoped ``ModelTag``s
-    (``relationship_id`` set, no ``asset`` — REQ-1378) have no physical asset to tag in Snowflake
-    and are skipped; they ride the governance document instead."""
+    Only ``ModelTag``s publish here: a steward-assigned classification is what Snowflake's TAG
+    primitive is for. ``GovernanceTag`` facts (REQ-1071) — which rule fired, and the roles it
+    restricts/exempts — are metadata about an asset, not a classification value, so they publish
+    as COMMENT text instead (:func:`comment_statements`), never as a TAG.
+
+    A ``ModelTag``'s value is its ``reason`` when set, else its own ``tag_id``. Relationship-scoped
+    ``ModelTag``s (``relationship_id`` set, no ``asset`` — REQ-1378) have no physical asset to tag
+    in Snowflake and are skipped; they ride the governance document instead."""
 
     def tag_fq(name: str) -> str:
         return f'"{tags_database}"."{_TAGS_SCHEMA}"."{name}"'
@@ -145,15 +149,11 @@ def tag_statements(
         )
 
     stmts = [f'CREATE SCHEMA IF NOT EXISTS "{tags_database}"."{_TAGS_SCHEMA}"']
-    for signal in sorted({t.signal.value.upper() for t in governance_tags}):
-        stmts.append(f"CREATE TAG IF NOT EXISTS {tag_fq(signal)};")
     model_tag_ids = sorted(
         {_identifier(t.tag_id.upper()) for t in model_tags if t.asset is not None}
     )
     for tag_id in model_tag_ids:
         stmts.append(f"CREATE TAG IF NOT EXISTS {tag_fq(tag_id)};")
-    for gtag in governance_tags:
-        stmts.append(set_tag(gtag.asset, gtag.signal.value.upper(), gtag.rule_id))
     for mtag in model_tags:
         if mtag.asset is None:
             continue
@@ -181,27 +181,68 @@ def _set_comment(kind: str, parts: tuple[str, str, str], column: str | None, tex
     return f"{fq} MODIFY COLUMN \"{column}\" COMMENT '{escaped}';"
 
 
+def _governance_note(tags: list["GovernanceTag"]) -> str:
+    """Appended COMMENT text for the governance facts (REQ-1071) on one asset: which rule fired,
+    and the roles it restricts/exempts — never the rule body itself (mirrors :class:`GovernanceTag`'s
+    own docstring). One bracketed line per tag, signal-sorted so the DDL is deterministic."""
+    lines = []
+    for tag in sorted(tags, key=lambda t: t.signal.value):
+        facts = [f"rule={tag.rule_id}"]
+        if tag.restricted_roles:
+            facts.append(f"restricted={','.join(sorted(tag.restricted_roles))}")
+        if tag.exempt_roles:
+            facts.append(f"exempt={','.join(sorted(tag.exempt_roles))}")
+        lines.append(f"[provisa:governance {tag.signal.value} {' '.join(facts)}]")
+    return "\n".join(lines)
+
+
+def _comment_text(description: str, governance_note: str) -> str:
+    if not governance_note:
+        return description
+    if not description:
+        return governance_note
+    return f"{description}\n\n{governance_note}"
+
+
 def comment_statements(
-    tables: list["TableAsset"], kinds: dict[tuple[str, str, str], str]
+    tables: list["TableAsset"],
+    kinds: dict[tuple[str, str, str], str],
+    governance_tags: list["GovernanceTag"],
 ) -> list[str]:
-    """DDL applying table/column descriptions as native Snowflake COMMENTs on each table's governed
-    physical address (REQ-1647), the same address :func:`tag_statements` tags — so a source's
-    per-source VIEW back onto ``_landing`` (REQ-1637) carries its description alongside its tags,
-    not just an attachable source's real TABLE. Pure — no I/O — ``kinds`` (one ``_object_kind`` I/O
-    lookup per table, done by the caller) is what lets it stay testable without a live connection.
-    A table/column missing from ``kinds`` (not yet landed) is skipped, not an error here — the
-    caller already reports missing landing terminals via ``_table_exists``."""
+    """DDL applying table/column descriptions — appended with any governance facts on that same
+    asset (REQ-1071) — as native Snowflake COMMENTs on each table's governed physical address
+    (REQ-1647), the same address :func:`tag_statements` tags — so a source's per-source VIEW back
+    onto ``_landing`` (REQ-1637) carries its description alongside its tags, not just an
+    attachable source's real TABLE. Pure — no I/O — ``kinds`` (one ``_object_kind`` I/O lookup per
+    table, done by the caller) is what lets it stay testable without a live connection. A
+    table/column missing from ``kinds`` (not yet landed) is skipped, not an error here — the
+    caller already reports missing landing terminals via ``_table_exists``.
+
+    Governance facts publish here rather than as a Snowflake TAG (see :func:`tag_statements`'s
+    docstring): a rule id and its restricted/exempt roles are metadata about the asset, not a
+    classification value, and COMMENT is the channel this adapter already uses for that kind of
+    fact."""
+    governance_by_fqn: dict[str, list["GovernanceTag"]] = {}
+    for tag in governance_tags:
+        governance_by_fqn.setdefault(tag.asset.fqn(), []).append(tag)
     stmts: list[str] = []
     for table in tables:
         parts, _ = physical_table_and_column(table.ref)
         kind = kinds.get(parts)
         if kind is None:
             continue
-        if table.description:
-            stmts.append(_set_comment(kind, parts, None, table.description))
+        table_text = _comment_text(
+            table.description, _governance_note(governance_by_fqn.get(table.ref.fqn(), []))
+        )
+        if table_text:
+            stmts.append(_set_comment(kind, parts, None, table_text))
         for column in table.columns:
-            if column.description:
-                stmts.append(_set_comment(kind, parts, column.name, column.description))
+            column_text = _comment_text(
+                column.description,
+                _governance_note(governance_by_fqn.get(column.ref.fqn(), [])),
+            )
+            if column_text:
+                stmts.append(_set_comment(kind, parts, column.name, column_text))
     return stmts
 
 
@@ -375,10 +416,10 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             )
             if published:
                 result.published["data_products"] = published
-            tagged = self._publish_tags(runtime, governance_tags, model_tags, result)
+            tagged = self._publish_tags(runtime, model_tags, result)
             if tagged:
                 result.published["tags"] = tagged
-            commented = self._publish_descriptions(runtime, tables, result)
+            commented = self._publish_descriptions(runtime, tables, governance_tags, result)
             if commented:
                 result.published["descriptions"] = commented
         finally:
@@ -388,32 +429,17 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
     def _publish_tags(
         self,
         runtime: SnowflakeFederationRuntime,
-        governance_tags: list["GovernanceTag"],
         model_tags: list["ModelTag"],
         result: PublishResult,
     ) -> int:
-        """Applies ``governance_tags``/``model_tags`` as native Snowflake TAG objects, gated on the
-        target table already existing (``_table_exists``) so a tag on a not-yet-landed source is
-        reported as an error rather than failing the whole export."""
-        if not governance_tags and not model_tags:
+        """Applies ``model_tags`` as native Snowflake TAG objects (a steward-assigned
+        classification), gated on the target table already existing (``_table_exists``) so a tag
+        on a not-yet-landed source is reported as an error rather than failing the whole export.
+        ``GovernanceTag`` facts (REQ-1071) publish via ``_publish_descriptions`` instead — see
+        :func:`tag_statements`'s docstring."""
+        if not model_tags:
             return 0
-        applicable_gov: list["GovernanceTag"] = []
         applicable_model: list["ModelTag"] = []
-        for gtag in governance_tags:
-            try:
-                parts = physical_table_and_column(gtag.asset)[0]
-            except ValueError as exc:
-                result.errors.append(AssetError(AssetRefStub(gtag.rule_id), str(exc)))
-                continue
-            if _table_exists(runtime, parts):
-                applicable_gov.append(gtag)
-            else:
-                result.errors.append(
-                    AssetError(
-                        AssetRefStub(gtag.rule_id),
-                        f"Snowflake landing terminal missing for tagged asset: {'.'.join(parts)}",
-                    )
-                )
         for mtag in model_tags:
             if mtag.asset is None:
                 continue  # relationship-scoped (REQ-1378) — no physical asset to tag
@@ -431,35 +457,55 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
                         f"Snowflake landing terminal missing for tagged asset: {'.'.join(parts)}",
                     )
                 )
-        if not applicable_gov and not applicable_model:
+        if not applicable_model:
             return 0
         tags_database = runtime.ensure_materialize_attached()
-        statements = tag_statements(tags_database, applicable_gov, applicable_model)
+        statements = tag_statements(tags_database, applicable_model)
         cur = runtime.connection.cursor()
         try:
             for stmt in statements:
                 cur.execute(stmt)
         except Exception as exc:  # noqa: BLE001 - runtime.connection is an opaque DBAPI cursor
-            result.errors.append(AssetError(AssetRefStub("governance_tags"), str(exc)))
+            result.errors.append(AssetError(AssetRefStub("model_tags"), str(exc)))
             return 0
         finally:
             cur.close()
-        return len(applicable_gov) + len(applicable_model)
+        return len(applicable_model)
 
     def _publish_descriptions(
         self,
         runtime: SnowflakeFederationRuntime,
         tables: list["TableAsset"],
+        governance_tags: list["GovernanceTag"],
         result: PublishResult,
     ) -> int:
-        """Applies table/column descriptions as native Snowflake COMMENTs (REQ-1647), gated on the
-        target already existing (mirrors ``_publish_tags``'s ``_table_exists`` gate)."""
+        """Applies table/column descriptions, appended with any governance facts on that same
+        asset (REQ-1071), as native Snowflake COMMENTs (REQ-1647), gated on the target already
+        existing (mirrors ``_publish_tags``'s ``_table_exists`` gate)."""
+        known_fqns = {table.ref.fqn() for table in tables} | {
+            column.ref.fqn() for table in tables for column in table.columns
+        }
+        for tag in governance_tags:
+            if tag.asset.fqn() not in known_fqns:
+                result.errors.append(
+                    AssetError(
+                        tag.asset,
+                        f"Snowflake landing terminal missing for governed asset: {tag.asset.fqn()}",
+                    )
+                )
         if not tables:
             return 0
+        governed_fqns = {tag.asset.fqn() for tag in governance_tags}
         kinds: dict[tuple[str, str, str], str] = {}
         described: list["TableAsset"] = []
         for table in tables:
-            if not table.description and not any(c.description for c in table.columns):
+            has_content = (
+                table.description
+                or any(c.description for c in table.columns)
+                or table.ref.fqn() in governed_fqns
+                or any(c.ref.fqn() in governed_fqns for c in table.columns)
+            )
+            if not has_content:
                 continue
             try:
                 parts = physical_table_and_column(table.ref)[0]
@@ -479,7 +525,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             described.append(table)
         if not described:
             return 0
-        statements = comment_statements(described, kinds)
+        statements = comment_statements(described, kinds, governance_tags)
         cur = runtime.connection.cursor()
         try:
             for stmt in statements:

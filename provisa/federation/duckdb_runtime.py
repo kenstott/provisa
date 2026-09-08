@@ -156,6 +156,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._materialize_dsn = materialize_dsn
         self._sqlite_loaded = False
         self._pg_ext_loaded = False  # postgres DuckDB extension INSTALL/LOAD (source ATTACH)
+        self._httpfs_loaded = False  # httpfs INSTALL/LOAD for S3-compatible (e.g. R2) sources
         self._store_attached = False  # materialization-store ATTACH (distinct from source attaches)
         self._phys_catalogs: set[str] = set()  # in-memory catalogs holding the physical views
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
@@ -199,6 +200,13 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         details = entry.details
         phys = self._phys_name(source)
         if "view_ddl" in details:  # csv / parquet scanner
+            secret_ddl = details.get("secret_ddl")
+            if secret_ddl and not self._httpfs_loaded:
+                self._con.execute("INSTALL httpfs")
+                self._con.execute("LOAD httpfs")
+                self._httpfs_loaded = True
+            if secret_ddl:
+                self._con.execute(secret_ddl)
             scan = details["view_ddl"].split(" AS ", 1)[1]
             self._con.execute(f"CREATE VIEW IF NOT EXISTS {phys} AS {scan}")
         else:  # ATTACH postgres / sqlite once, then view the remote table

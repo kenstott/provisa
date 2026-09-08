@@ -18,9 +18,11 @@ import {
   Group,
   Select,
   Text,
+  Tooltip,
   useComputedColorScheme,
 } from "@mantine/core";
-import { X, Download, ChevronDown, ChevronRight, Maximize2 } from "lucide-react";
+import { X, Download, ChevronDown, ChevronRight } from "lucide-react";
+import { FitScreenIcon } from "../graph/GraphIcons";
 import cytoscape from "cytoscape";
 import elkRaw from "cytoscape-elk";
 import cytoscapeSvgRaw from "cytoscape-svg";
@@ -952,16 +954,17 @@ export function ErdPanel({
           <div style={{ flex: 1 }} />
 
           {/* exports */}
-          <ActionIcon
-            size={30}
-            variant="default"
-            aria-label={t("erdModal.fitAll")}
-            title={t("erdModal.fitAll")}
-            onClick={() => cyRef.current?.fit(undefined, 10)}
-            data-testid="erd-fit-all"
-          >
-            <Maximize2 size={13} />
-          </ActionIcon>
+          <Tooltip label={t("erdModal.fitAll")}>
+            <ActionIcon
+              variant="subtle"
+              size="md"
+              aria-label={t("erdModal.fitAll")}
+              onClick={() => cyRef.current?.fit(undefined, 10)}
+              data-testid="erd-fit-all"
+            >
+              <FitScreenIcon size={15} />
+            </ActionIcon>
+          </Tooltip>
           <Button
             size="xs"
             h={30}

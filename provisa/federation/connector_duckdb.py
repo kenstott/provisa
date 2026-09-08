@@ -155,6 +155,26 @@ class DuckDBFilesConnector(Connector):
         return {"view_ddl": f"CREATE VIEW __placeholder__ AS {scan}"}
 
 
+def _s3_secret_ddl(source: "Source") -> str | None:
+    """``CREATE SECRET`` DDL for an S3-compatible object store (e.g. Cloudflare R2), so DuckDB's
+    httpfs client targets the real endpoint/credentials instead of defaulting to AWS S3. Returns
+    ``None`` for a non-``s3://`` path or a source with no object-store credentials configured."""
+    path = getattr(source, "path", None) or ""
+    if not path.startswith("s3://"):
+        return None
+    hints = getattr(source, "federation_hints", None) or {}
+    key_id = hints.get("access_key_id")
+    secret = hints.get("secret_access_key")
+    if not (key_id and secret):
+        return None
+    clauses = [f"KEY_ID '{key_id}'", f"SECRET '{secret}'"]
+    endpoint = hints.get("endpoint")
+    if endpoint:
+        clauses.append(f"ENDPOINT '{endpoint.split('://', 1)[-1]}'")  # bare host, no scheme
+        clauses.append("URL_STYLE 'path'")  # R2/MinIO-style endpoints reject virtual-hosted URLs
+    return f'CREATE OR REPLACE SECRET "_s3_{source.id}" (TYPE s3, {", ".join(clauses)})'
+
+
 class DuckDBParquetConnector(Connector):
     engine = "duckdb"
     source_type = "parquet"
@@ -166,9 +186,13 @@ class DuckDBParquetConnector(Connector):
         )  # parquet supports predicate + projection pushdown
 
     def details(self, source: Source) -> dict:
-        return {
+        details: dict[str, str] = {
             "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM read_parquet('{source.path}')"
         }
+        secret_ddl = _s3_secret_ddl(source)
+        if secret_ddl:
+            details["secret_ddl"] = secret_ddl
+        return details
 
 
 class DuckDBSqliteConnector(Connector):
