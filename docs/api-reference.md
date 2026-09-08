@@ -1517,3 +1517,18 @@ Commands in the same domain may also be assigned as members. [tool-verified: `pr
 `build_snapshot` applies `data_products_only=True` for every catalog publish. Tables without a `product_id` are withheld from the snapshot, along with their relationship edges, lineage edges, and governance tags. Sources and domains always publish. Glossary terms publish only when at least one of their physical refs belongs to an exported (product-member) table. [tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
 
 A product with no exported members does not build a snapshot entry — a listing with no members would misrepresent the product to the catalog. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]
+
+### Data product support by catalog target
+
+`MetadataSnapshot.data_products` reaches every adapter, but only adapters whose platform has a native data-product concept publish it as a first-class entity; the rest publish the member tables (already filtered above) without a product grouping.
+
+| Target | Data product representation |
+| --- | --- |
+| Snowflake Horizon | Each product becomes a `SHARE` over its member tables' physical addresses, wrapped in an internal `CREATE ORGANIZATION LISTING` — a native Horizon Catalog Data Product. `publish=true` takes the listing live immediately; otherwise it lands as DRAFT. [tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:21-34,389-418`] |
+| BigQuery Dataplex | Each product becomes an Analytics Hub listing via `/v1/dataProducts`. [tool-verified: `provisa/api/metadata_export/bigquery_dataplex.py:100,136,159`] |
+| OpenMetadata | Each product becomes a native `DataProduct` entity (`/api/v1/dataProducts`), with domain-derived ownership. [tool-verified: `provisa/api/metadata_export/openmetadata.py:326-344,635`] |
+| DataHub | Each product becomes a native `dataProduct` entity (`urn:li:dataProduct:...`) with its own `dataProductProperties`/ownership aspects. [tool-verified: `provisa/api/metadata_export/datahub.py:133-136,443-483`] |
+| Collibra | Each product becomes an asset of a `Data Product` community type, related to its member tables via a `Data Product groups Table` relation. [tool-verified: `provisa/api/metadata_export/collibra.py:129-133,371-388`] |
+| Atlan | Published as a custom `DataProduct` typedef guess — Atlan has no documented stable type name for this concept, so the mapping is best-effort. [tool-verified: `provisa/api/metadata_export/atlan.py:60`] |
+| Apache Atlas | Published as a custom `provisa_data_product` typedef with a `provisa_data_product_members` relation — Atlas has no native data-product entity type. [tool-verified: `provisa/api/metadata_export/atlas.py:134-147,191,256-260`] |
+| OpenLineage | Not a first-class entity — member tables carry a `provisa_data_product` custom facet naming the owning product. [tool-verified: `provisa/api/metadata_export/openlineage.py:243,348`] |
