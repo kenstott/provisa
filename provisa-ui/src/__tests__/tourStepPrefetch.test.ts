@@ -78,3 +78,19 @@ describe("tour step prefetch", () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("tour step: data products", () => {
+  it("expands the first collapsed product before highlighting and collapses it on Next", () => {
+    const step = TOUR_STEPS.find((s) => s.key === "stepDataProducts")!;
+    expect(step.prep).toBe("collapseDataProducts");
+    expect(step.clickBefore).toBe(
+      '[data-testid="data-products-table"] tbody tr[aria-expanded="false"]',
+    );
+    expect(step.clickAfterNext).toBe(
+      '[data-testid="data-products-table"] tbody tr[aria-expanded="true"]',
+    );
+    // The highlight waits for the expanded detail row, so every panel is on screen.
+    expect(step.readySelector).toBe('[data-testid="data-product-detail"]');
+    expect(step.element).toBe('[data-tour="data-products-content"]');
+  });
+});

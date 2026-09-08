@@ -67,7 +67,9 @@ interface DataProductForm {
   customProperties: Record<string, string>;
 }
 
-const EXPANDED_STORAGE_KEY = "provisa.data_products.expanded";
+// Exported for the tour, which clears it so the page mounts collapsed and its click on the first
+// row deterministically EXPANDS rather than toggling whatever a prior visit left open.
+export const EXPANDED_STORAGE_KEY = "provisa.data_products.expanded";
 
 const EMPTY_FORM: DataProductForm = {
   id: "",
@@ -756,6 +758,7 @@ export function DataProductsPage() {
                 <React.Fragment key={p.id}>
                   <Table.Tr
                     data-testid={`data-products-row-${p.id}`}
+                    aria-expanded={isExpanded}
                     onClick={() => {
                       setExpanded(isExpanded ? null : p.id);
                       if (isEditing && isExpanded) closeForm();
@@ -797,7 +800,7 @@ export function DataProductsPage() {
                     </Table.Td>
                   </Table.Tr>
                   {isExpanded && (
-                    <Table.Tr key={`${p.id}-detail`}>
+                    <Table.Tr key={`${p.id}-detail`} data-testid="data-product-detail">
                       <Table.Td
                         colSpan={6}
                         style={{

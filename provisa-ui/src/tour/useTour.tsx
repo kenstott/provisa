@@ -26,6 +26,7 @@ import { driver, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./tour.css";
 import { TOUR_STEPS, stepRoute, tourItinerary, LINEAGE_DEMO_SQL, type TourStep } from "./tourSteps";
+import { EXPANDED_STORAGE_KEY as DATA_PRODUCTS_EXPANDED_KEY } from "../pages/DataProductsPage";
 import { useAuth } from "../context/AuthContext";
 import { hasCapability } from "../lib/capabilities";
 import { prefetchAllPageChunks } from "../pageChunks";
@@ -150,6 +151,16 @@ const MCP_TOUR_CHAT = [
 ];
 
 const PREP_ACTIONS: Record<string, () => void> = {
+  collapseDataProducts() {
+    // The Data Products step clicks the first row to EXPAND it; a persisted expansion from an
+    // earlier visit would make that same click collapse it instead. Nothing to restore: which
+    // row was open is a convenience, not state the visitor authored.
+    try {
+      localStorage.removeItem(DATA_PRODUCTS_EXPANDED_KEY);
+    } catch {
+      /* localStorage unavailable -- the page mounts collapsed anyway */
+    }
+  },
   seedMcp() {
     try {
       sessionStorage.setItem(MCP_TOUR_KEY, JSON.stringify(MCP_TOUR_CHAT));

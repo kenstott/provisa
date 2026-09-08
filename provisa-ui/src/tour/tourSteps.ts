@@ -119,6 +119,13 @@ export const LINEAGE_DEMO_SQL =
   'FROM "pet_store"."inquiries" JOIN "pet_store"."users" ON inquiries.user_id = users.id ' +
   "GROUP BY users.name";
 
+// The Data Products list marks each row with aria-expanded; the tour clicks the first collapsed
+// row to open it and the (single) expanded row to close it again.
+const DATA_PRODUCTS_COLLAPSED_ROW =
+  '[data-testid="data-products-table"] tbody tr[aria-expanded="false"]';
+const DATA_PRODUCTS_EXPANDED_ROW =
+  '[data-testid="data-products-table"] tbody tr[aria-expanded="true"]';
+
 export const TOUR_STEPS: TourStep[] = [
   // ─── SPINE: the five-minute core (register a source → expose tables → query it eight ways) ───
   {
@@ -315,8 +322,14 @@ export const TOUR_STEPS: TourStep[] = [
     // to warehouse-native product surfaces (Snowflake Horizon, BigQuery Dataplex).
     route: "/data-products",
     capability: "data_product_read",
-    element: '[data-tour="nav-data-products"]',
-    readySelector: '[data-tour="data-products-content"]',
+    // Expand the first product so every panel the description names -- ODPS fields, member tables,
+    // lineage, related terms -- is on screen, then collapse it on Next. `prep` clears the page's
+    // persisted expansion first, so the click lands on a collapsed row and always expands.
+    prep: "collapseDataProducts",
+    clickBefore: DATA_PRODUCTS_COLLAPSED_ROW,
+    clickAfterNext: DATA_PRODUCTS_EXPANDED_ROW,
+    element: '[data-tour="data-products-content"]',
+    readySelector: '[data-testid="data-product-detail"]',
     key: "stepDataProducts",
   },
   {
