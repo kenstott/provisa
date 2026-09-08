@@ -259,14 +259,32 @@ def land_snowflake_native(
     return fq
 
 
+def view_reads(cur: Any, view: Parts, replica: Parts) -> bool | None:
+    """Whether the view at ``view`` selects from ``replica`` -- ``None`` when there is no view."""
+    database, schema, table = view
+    cur.execute(
+        f'SELECT view_definition FROM "{database}".information_schema.views '
+        f"WHERE table_schema = '{_escape(schema)}' AND table_name = '{_escape(table)}'"
+    )
+    rows = cur.fetchall()
+    if not rows:
+        return None
+    return qualified(replica) in str(rows[0][0] or "")
+
+
 def expose_view(cur: Any, *, view: Parts, replica: Parts, replace: bool) -> None:
     """The per-source SECURE VIEW at the compiler's physical name over the replica. Created when
-    absent; REPLACED only when the replica's shape changed, because CREATE OR REPLACE drops the
-    view's column tags and comments (the key reconcile re-sets the key tags right after)."""
+    absent; REPLACED when the replica's shape changed or when the view's own body no longer selects
+    from this replica (a view left behind by an earlier layout, pointing at a database that is
+    gone, fails every statement issued against it). Left alone otherwise, because CREATE OR REPLACE
+    drops the view's column tags and comments (the metadata reconcile re-sets them right after)."""
     database, schema, _ = view
     ensure_namespace(cur, database, schema)
-    verb = "CREATE OR REPLACE SECURE VIEW" if replace else "CREATE SECURE VIEW IF NOT EXISTS"
-    cur.execute(f"{verb} {qualified(view)} AS SELECT * FROM {qualified(replica)}")
+    reads = view_reads(cur, view, replica)
+    if reads is None or replace or not reads:
+        cur.execute(
+            f"CREATE OR REPLACE SECURE VIEW {qualified(view)} AS SELECT * FROM {qualified(replica)}"
+        )
 
 
 # -- keys (REQ-1652) -----------------------------------------------------------------------------
@@ -567,6 +585,14 @@ def reconcile_metadata_native(
         + model_tag_statements(tags_database, present, tags, known_tags)
         + comment_statements(present, comments)
     )
+    applied = 0
     for stmt in statements:
-        cur.execute(stmt)
-    return len(statements)
+        try:
+            cur.execute(stmt)
+            applied += 1
+        except Exception as exc:  # noqa: BLE001 - the DBAPI's error type is the driver's, not ours
+            # One object's refusal (a view whose body Snowflake cannot expand, a column renamed
+            # under it) must not withhold every other table's keys, tags and comments. The
+            # statement and Snowflake's reason are logged verbatim; nothing is retried or hidden.
+            log.warning("landed metadata statement refused: %s -- %s", stmt, exc)
+    return applied

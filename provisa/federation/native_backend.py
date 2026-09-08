@@ -411,6 +411,15 @@ class NativeEngineBackend(EngineBackend):
             state, schema=schema, table=table, columns=columns, pk_columns=pk_columns
         )
 
+    async def reconcile_mv_metadata(
+        self, state: Any, *, schema: str, table: str, pk_columns: list[str] | None = None
+    ) -> None:
+        """The refresh's hook (REQ-1652/1654/1655): after an MV store table is created or refreshed
+        through the engine, its declared metadata converges onto it."""
+        await self._reconcile_mv_metadata(
+            state, self._runtime_for(state), schema, table, pk_columns
+        )
+
     async def _reconcile_mv_metadata(
         self, state: Any, runtime: Any, schema: str, table: str, pk_columns: list[str] | None
     ) -> None:

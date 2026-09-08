@@ -509,6 +509,14 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
                 await engine.execute_engine(f"INSERT INTO {target} {select_sql}")
             else:
                 await engine.execute_engine(f"CREATE TABLE {target} AS {select_sql}")
+            # REQ-1652/1654/1655: the MV's keys, descriptions and tags converge onto the store table
+            # it was just created in (or refreshed into) -- on a store that can hold them.
+            if hasattr(engine, "reconcile_mv_metadata"):
+                await engine.reconcile_mv_metadata(
+                    schema=mv.target_schema,
+                    table=mv.target_table,
+                    pk_columns=list(getattr(mv, "primary_key", []) or []) or None,
+                )
 
         # Get row count
         row_count = (await engine.execute_engine(f"SELECT COUNT(*) FROM {target}")).rows[0][0]
@@ -597,7 +605,9 @@ async def detect_orphans(  # REQ-234
 
     Returns list of orphan table names.
     """
-    rows = (await engine.execute_engine(f'SHOW TABLES FROM "{catalog}"."{schema_name}"')).rows
+    # Snowflake spells the schema-scoped listing ``SHOW TABLES IN SCHEMA``; DuckDB/Trino ``FROM``.
+    scope = "IN SCHEMA" if getattr(engine, "dialect", "") == "snowflake" else "FROM"
+    rows = (await engine.execute_engine(f'SHOW TABLES {scope} "{catalog}"."{schema_name}"')).rows
     actual_tables = {row[0] for row in rows}
 
     known_tables = {mv.target_table for mv in registry.all()}

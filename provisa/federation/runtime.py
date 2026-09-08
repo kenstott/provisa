@@ -352,6 +352,16 @@ class EngineRuntime:  # REQ-825, REQ-840
             self._state, schema=schema, table=table, columns=columns, pk_columns=pk_columns
         )
 
+    async def reconcile_mv_metadata(
+        self, *, schema: str, table: str, pk_columns: list[str] | None = None
+    ) -> None:
+        """REQ-1652/1654/1655: converge an MV store table's keys, descriptions and tags right after
+        the table itself is created or refreshed -- delegated to the backend; a store that holds no
+        informational constraints does nothing."""
+        await self._backend.reconcile_mv_metadata(
+            self._state, schema=schema, table=table, pk_columns=pk_columns
+        )
+
     async def persist_mv_table(
         self,
         *,

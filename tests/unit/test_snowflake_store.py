@@ -129,18 +129,27 @@ def test_land_append_does_not_delete_and_cdc_is_refused():
         store.land_snowflake_native(cur, parts=_PETS, columns=_COLS, rows=[], shape="cdc")
 
 
-def test_expose_view_creates_if_absent_and_replaces_only_after_a_recreate():
-    cur = _Cursor()
+def test_expose_view_creates_when_absent_replaces_on_recreate_or_stale_body_else_keeps():
+    body_ok = 'create or replace secure view "pets" as SELECT * FROM "_landing"."mat"."pet-store-sqlite__pet_store__pets"'
+    body_stale = 'create or replace view "pets" as SELECT * FROM "landing"."mat"."pets"'
+    # absent → create
+    cur = _Cursor({"SELECT view_definition": ([], ["view_definition"])})
     store.expose_view(cur, view=_PETS_VIEW, replica=_PETS, replace=False)
-    assert cur.sql[-1] == (
-        'CREATE SECURE VIEW IF NOT EXISTS "pet_store_sqlite"."pet_store"."pets" '
-        'AS SELECT * FROM "_landing"."mat"."pet-store-sqlite__pet_store__pets"'
-    )
-    cur = _Cursor()
-    store.expose_view(cur, view=_PETS_VIEW, replica=_PETS, replace=True)
     assert cur.sql[-1].startswith(
         'CREATE OR REPLACE SECURE VIEW "pet_store_sqlite"."pet_store"."pets"'
     )
+    # present and reading this replica → left alone (its tags and comments survive)
+    cur = _Cursor({"SELECT view_definition": ([(body_ok,)], ["view_definition"])})
+    store.expose_view(cur, view=_PETS_VIEW, replica=_PETS, replace=False)
+    assert not any(s.startswith("CREATE OR REPLACE") for s in cur.sql)
+    # present but pointing elsewhere (the Sep-6 layout's dead "landing" database) → replaced
+    cur = _Cursor({"SELECT view_definition": ([(body_stale,)], ["view_definition"])})
+    store.expose_view(cur, view=_PETS_VIEW, replica=_PETS, replace=False)
+    assert cur.sql[-1].startswith("CREATE OR REPLACE SECURE VIEW")
+    # replica recreated → replaced regardless
+    cur = _Cursor({"SELECT view_definition": ([(body_ok,)], ["view_definition"])})
+    store.expose_view(cur, view=_PETS_VIEW, replica=_PETS, replace=True)
+    assert cur.sql[-1].startswith("CREATE OR REPLACE SECURE VIEW")
 
 
 def _targets():
@@ -360,3 +369,35 @@ def test_reconcile_metadata_skips_an_object_that_does_not_exist_yet():
     )
     assert applied == 0
     assert not any(s.startswith("ALTER") for s in cur.sql)
+
+
+class _RefusingCursor(_Cursor):
+    def execute(self, sql, params=None):
+        super().execute(sql, params)
+        if "check_definition" in sql:
+            raise RuntimeError("Failure during expansion of view")
+
+
+def test_reconcile_metadata_keeps_going_past_a_refused_statement():
+    answers = {
+        "SHOW PRIMARY KEYS": ([], ["column_name", "key_sequence"]),
+        "SHOW IMPORTED KEYS": ([], ["fk_name"]),
+        "tag_references_all_columns": ([], ["level", "column_name", "tag_name", "tag_value"]),
+        "SELECT comment FROM": ([], ["comment"]),
+        "SELECT column_name, comment": ([], ["column_name", "comment"]),
+        "SELECT column_name FROM": ([("id",)], ["column_name"]),
+    }
+    cur = _RefusingCursor(answers)
+    targets = {
+        "a": store.KeyTarget(
+            ("_landing", "mat", "a"), None, ("id",), "", {"check_definition": "x"}
+        ),
+        "b": store.KeyTarget(("_landing", "mat", "b"), None, ("id",), "B table", {}),
+    }
+    applied = store.reconcile_metadata_native(
+        cur, tags_database="_landing", targets=targets, edges=[]
+    )
+    ddl = [s for s in cur.sql if s.startswith("ALTER")]
+    # 2 PRIMARY KEYs + b's comment succeed; a's refused column comment does not stop b
+    assert applied == 3 and len(ddl) == 4
+    assert any("SET COMMENT = 'B table'" in s for s in ddl)

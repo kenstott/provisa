@@ -254,6 +254,14 @@ class EngineBackend:
             pk_columns=pk_columns,
         )
 
+    async def reconcile_mv_metadata(
+        self, state: Any, *, schema: str, table: str, pk_columns: list[str] | None = None
+    ) -> None:
+        """Converge an MV store table's keys, descriptions and tags (REQ-1652/1654/1655). No-op on
+        the base engine: its stores enforce constraints, where a FOREIGN KEY would refuse every
+        REPLACE land. A native engine whose store holds informational constraints overrides this."""
+        del state, schema, table, pk_columns
+
     async def persist_mv_table(
         self,
         state: Any,
