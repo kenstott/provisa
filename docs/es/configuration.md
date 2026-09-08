@@ -535,7 +535,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-Cada tabla de resultados lleva `dq_contract` — YAML de contrato Soda o JSON de un suite de Great Expectations, textual. Las columnas, la marca de agua y las promociones se derivan de él; ver [Verificadores de calidad de datos](sources.md#verificadores-de-calidad-de-datos-req-1443) para la derivación completa.
+Cada tabla de resultados lleva `dq_contract` — YAML de contrato Soda o JSON de un suite de Great Expectations, textual. Las columnas, la marca de agua y las promociones se derivan de él; ver [Verificadores de calidad de datos](sources.md#data-quality-checkers-req-1443) para la derivación completa.
 
 **Selección en tiempo de instalación.** El verificador no se enlaza de forma estática — el escaneo se ejecuta en un intérprete hijo, y la biblioteca se instala solo cuando un operador la nombra. Cada ruta de instalador (`install.sh`, `packaging/linux/first-launch.sh` y el asistente de macOS mediante `PROVISA_DQ_CHECKER`) escribe la elección en `~/.provisa/config.yaml`:
 

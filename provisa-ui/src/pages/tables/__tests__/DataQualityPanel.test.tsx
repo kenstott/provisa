@@ -79,6 +79,8 @@ function renderPanel(onChange = vi.fn(), contractText = SODA) {
     <DataQualityPanel
       checker="soda"
       sourceId="dq"
+      schemaName="sales"
+      tableName="orders"
       contractText={contractText}
       onChange={onChange}
     />,

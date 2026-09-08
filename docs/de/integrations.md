@@ -324,7 +324,7 @@ Event-Loop. [tool-verified: `provisa/dq/runner.py` `build_command`]
 Scan-Ergebnisse landen als gewöhnliche Quellzeilen, sodass Taktung, Aktualität, Events, Lineage,
 Governance, RLS, das Grid und der Export alle ohne einen zweiten Mechanismus greifen.
 Contract-Autorisierung, der Ergebnis-Envelope und die abgeleitete Registrierung werden in
-[docs/sources.md](sources.md#data-quality-checker-req-1443) behandelt.
+[docs/sources.md](sources.md#data-quality-checkers-req-1443) behandelt.
 
 ### Einen Checker installieren
 

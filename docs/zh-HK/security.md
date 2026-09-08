@@ -215,7 +215,7 @@ NL 查詢服務（`POST /query/nl`）經 `nl.rate_limit`（每角色每分鐘請
 
 此矩陣由 `tests/unit/test_auth_surface_conformance.py` 強制執行，它驅動每個介面真正的驗證進入點，並在加入新介面卻沒有對應資料行時失敗。
 
-### 個人存取權杖
+### 個人存取權杖 {: #personal-access-tokens }
 PAT 是一份長生命週期的 bearer 密鑰，由使用者為無法完成互動式登入的用戶端鑄造——腳本、BI 工具、驅動程式。（REQ-1263）它帶有自己的組織與角色，且每個介面都經同一個驗證器解析它，因此沒有任何介面需要知道 PAT 是什麼。
 
 線路形式為 `provisa_pat_` 後接 43 個 url-safe base64 字元。該前綴決定了被呈交的密鑰路由到權杖儲存區而非身份提供者，也讓外洩的權杖在記錄與程式碼儲存庫中可被 grep 出來。

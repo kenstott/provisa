@@ -291,7 +291,7 @@ Soda Core y Great Expectations se conectan a Provisa de la misma manera que cual
 
 El análisis se ejecuta en un intérprete hijo — `python -m provisa.dq.worker` — que es el único lugar donde se importa `soda_core` o `great_expectations`. Nada se enlaza en el proceso del servidor, y un fallo del verificador derriba un subproceso en lugar del bucle de eventos. [tool-verified: `provisa/dq/runner.py` `build_command`]
 
-Los resultados del análisis llegan como filas de origen ordinarias, de modo que la cadencia, la actualidad, los eventos, el linaje, el gobierno, la RLS, la cuadrícula y la exportación se aplican todos sin un segundo mecanismo. La redacción de contratos, el sobre de resultados y el registro derivado se cubren en [docs/sources.md](sources.md#verificadores-de-calidad-de-datos-req-1443).
+Los resultados del análisis llegan como filas de origen ordinarias, de modo que la cadencia, la actualidad, los eventos, el linaje, el gobierno, la RLS, la cuadrícula y la exportación se aplican todos sin un segundo mecanismo. La redacción de contratos, el sobre de resultados y el registro derivado se cubren en [docs/sources.md](sources.md#data-quality-checkers-req-1443).
 
 ### Instalación de un verificador
 

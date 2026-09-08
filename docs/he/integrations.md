@@ -209,7 +209,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 ---
 
-## הפעלת Commands על פני פרוטוקולים
+## הפעלת Commands על פני פרוטוקולים {: #invoking-commands-across-protocols }
 
 **command** הוא פונקציה עקובה רשומה או webhook — יישות ניתנת לקריאה (callable) הרשומה בשכבה הסמנטית של Provisa עם `kind` (`query` או `mutation`) ו-`impl_kind` המתאר כיצד היא רצה. כל משטח מנתב הפעלות דרך מבצע מנוהל יחיד (`invoke_tracked_function`) שאוכף `writable_by` וממשל באופן אחיד (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 

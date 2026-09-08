@@ -82,6 +82,7 @@ function table(
     columnPresets: [],
     uniqueConstraints: [],
     graphqlFieldName: null,
+    dqDataset: null,
     apiEndpoint: null,
     viewSql: null,
     dqContract: null,

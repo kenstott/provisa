@@ -97,6 +97,8 @@ declare module "*.graphql" {
   export const DqContractParse: DocumentNode;
   export const DqContractBuild: DocumentNode;
   export const DryRunDqContract: DocumentNode;
+  // REQ-1443: run a checker table's poll job now instead of waiting for its cadence.
+  export const RunDqCheckNow: DocumentNode;
   // REQ-609/REQ-1634: resolves an owner_role/steward/visible_to ref list to individuals.
   export const ResolveOwners: DocumentNode;
   export default doc;

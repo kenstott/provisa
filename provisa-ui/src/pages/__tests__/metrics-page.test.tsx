@@ -25,6 +25,7 @@ function makeCol(columnName: string, id: number): TableColumn {
     id,
     columnName,
     computedSqlAlias: columnName,
+    computedGqlAlias: columnName,
     visibleTo: [],
     writableBy: [],
     unmaskedTo: [],

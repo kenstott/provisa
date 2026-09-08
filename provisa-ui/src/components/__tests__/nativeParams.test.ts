@@ -35,6 +35,7 @@ function col(name: string, nativeFilterType: string | null, dataType = "text"): 
     maskPrecision: null,
     alias: null,
     computedSqlAlias: name,
+    computedGqlAlias: name,
     description: null,
     dataType,
     nativeFilterType,

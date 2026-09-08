@@ -19,6 +19,7 @@ function makeCol(overrides: Partial<TableColumn> = {}): TableColumn {
     id: 1,
     columnName: "col",
     computedSqlAlias: "col",
+    computedGqlAlias: "col",
     visibleTo: [],
     writableBy: [],
     unmaskedTo: [],
@@ -91,6 +92,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     live: null,
     uniqueConstraints: [],
     graphqlFieldName: null,
+    dqDataset: null,
     ...overrides,
   };
 }

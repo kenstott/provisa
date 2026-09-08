@@ -216,7 +216,7 @@ Proto 檔案亦可為本機路徑。常見類型（`google/protobuf/timestamp.pr
 
 針對遠端資料表的即席查詢僅依使用者本身的權限予以允許——存取方式統一以權限為基礎（資料表/欄位權限加上已核准的關聯），並無按資料表而異的治理模式。（REQ-001、REQ-003）
 
-**關聯治理（V002）。** 針對遠端資料表的 JOIN 條件——當透過 SQL 或 Cypher 查詢時——必須符合一項已註冊並已核准的關聯。（REQ-604）由於 SDL 定義的關聯依設計已預先核准，GraphQL 查詢會略過 V002 檢查。詳見 [docs/security.md](security.md#v002)。
+**關聯治理（V002）。** 針對遠端資料表的 JOIN 條件——當透過 SQL 或 Cypher 查詢時——必須符合一項已註冊並已核准的關聯。（REQ-604）由於 SDL 定義的關聯依設計已預先核准，GraphQL 查詢會略過 V002 檢查。詳見 [docs/security.md](security.md#relationship-governance-v002)。
 
 **OBJECT 類型欄位。** 當欄位對應至未受治理的內嵌 GQL OBJECT 或 OpenAPI 物件類型時，其 Provisa 類型為 `jsonb`。該欄位會儲存完整的巢狀 JSON blob。當宣告了子欄位（`gql_object_fields` 或 `object_fields`）時，`gql_object_columns` 對應表會於結構描述建構時填入。當查詢選取這些子欄位時，SQL 生成器會使用此對應表發出 `->>` 擷取運算式。[tool-verified: `provisa/api/app.py:1305–1315`、`provisa/compiler/schema_gen.py:80–82`]
 

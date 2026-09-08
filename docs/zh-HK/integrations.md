@@ -209,7 +209,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 ---
 
-## 跨通訊協定呼叫 Command
+## 跨通訊協定呼叫 Command {: #invoking-commands-across-protocols }
 
 **Command** 是一個已註冊的追蹤函式或 webhook——一個在 Provisa 語義層中註冊的可呼叫項目，帶有 `kind`（`query` 或 `mutation`）及描述其運行方式的 `impl_kind`。每個介面都會透過單一受治理的執行器（`invoke_tracked_function`）路由呼叫，統一強制執行 `writable_by` 及治理規則（REQ-1156）。[tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
@@ -291,7 +291,7 @@ Soda Core 及 Great Expectations 連接 Provisa 的方式，與任何其他 post
 
 掃描運行於一個子直譯器中——`python -m provisa.dq.worker`——這是唯一匯入 `soda_core` 或 `great_expectations` 的地方。伺服器行程中不會連結任何相關程式庫，檢查工具發生崩潰時只會拖垮一個子行程，而不會影響事件迴圈。[tool-verified: `provisa/dq/runner.py` `build_command`]
 
-掃描結果會以一般來源資料列的形式落地，因此頻率 (cadence)、新鮮度、事件、數據血緣、治理、RLS、資料格線 (grid) 及匯出功能，全部無需第二套機制即可套用。合約撰寫、結果封裝格式及衍生註冊，請見 [docs/sources.md](sources.md#req-1443)。
+掃描結果會以一般來源資料列的形式落地，因此頻率 (cadence)、新鮮度、事件、數據血緣、治理、RLS、資料格線 (grid) 及匯出功能，全部無需第二套機制即可套用。合約撰寫、結果封裝格式及衍生註冊，請見 [docs/sources.md](sources.md#data-quality-checkers-req-1443)。
 
 ### 安裝檢查工具
 

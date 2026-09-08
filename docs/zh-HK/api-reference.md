@@ -1400,3 +1400,135 @@ search_terms(query, role=None, limit=25)
 | Collibra | 詞彙表類型的網域「Provisa Glossary」 | 透過 Import API 的 Business Term 資產 | 原生 Business Term 關聯類型 | 資產狀態 |
 
 繫結的依據是所有權，而非名稱：每個已發佈術語的廠商 id 都會擷取到 `catalog_bindings` 中該術語的 URN（`provisa://<org>/terms/<name>`）之下，而 Provisa 只在持有該繫結時（或該項目位於它自己建立、由 Provisa 擁有的容器內）才會修改或刪除廠商端的詞彙表項目。沒有 Provisa 繫結的詞彙表項目源自外部系統，永不被觸碰；更新採讀取合併，因此數據管家在 Provisa 自有術語上新增的欄位得以保留；當術語離開快照時，不會刪除任何東西。管家的術語對資產指派仍由外部擁有 — 沒有任何配接器寫入術語對資產的指派（由 Provisa 撰寫的指派發佈是明確的後續工作）。在 Collibra 上尤其如此：在 Import API 的 REPLACE 語意下，安全性建立在包含關係上 — 酬載只提及 Provisa 詞彙表網域內的資產，關聯實例也只存在於 Provisa 術語之間，因此管家的詞彙表及其關聯永遠不會被觸及。[tool-verified: `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/openmetadata.py`]
+
+---
+
+## 數據產品 (REQ-1634)
+
+數據產品將一起發佈供消費的資料表分組，並由單一網域擁有。在 Provisa 已是真實來源的地方，欄位沿用 ODPS（Open Data Product Standard）詞彙。管理員 UI 在 **Admin → Data Products** 下公開數據產品。[tool-verified: `provisa/core/models.py:318-342`, `provisa/api/admin/schema_mutation.py:949-1017`, `provisa/api/admin/schema_query.py:352-362`]
+
+### 能力
+
+| 能力 | 授予 |
+| --- | --- |
+| `data_product_read` | 讀取 `data_products` 查詢欄位與數據產品管理頁面的存取權。預設種子指派給 `org_admin`、`analyst`、`developer` 與 `modeler`。 |
+| `data_product_rw` | 建立與刪除變更操作。啟用 UI 中的「新增／編輯／刪除」控制項。 |
+
+[tool-verified: `provisa/api/admin/schema_mutation.py:959,1001`, `provisa/api/admin/schema_query.py:357`]
+
+### 管理員 GraphQL
+
+所有數據產品操作皆透過 `POST /admin/graphql` 進行。
+
+**查詢：**
+
+```graphql
+query {
+  data_products {
+    id
+    domain_id
+    name
+    owner_role
+    team_role
+    purpose
+    limitations
+    usage
+    version
+    status
+    sla
+    support
+    custom_properties
+  }
+}
+```
+
+需要 `data_product_read`。
+
+**建立或更新：**
+
+```graphql
+mutation {
+  create_data_product(input: {
+    id: "customer_360"
+    domain_id: "sales"
+    name: "Customer 360"
+    owner_role: "data-product-owner"
+    team_role: "sales-analytics"
+    purpose: "Single view of a customer across all touchpoints."
+    status: "active"
+    version: "1.0.0"
+  }) {
+    success
+    message
+  }
+}
+```
+
+`create_data_product` 為 upsert 操作 —— 以既有 `id` 呼叫會更新該記錄。需要 `data_product_rw`。
+
+**刪除：**
+
+```graphql
+mutation {
+  delete_data_product(id: "customer_360") {
+    success
+    message
+  }
+}
+```
+
+刪除一個產品會清除每個成員資料表的 `product_id`，移除其成員資格。需要 `data_product_rw`。[tool-verified: `provisa/api/admin/schema_mutation.py:995-1017`]
+
+### 欄位結構描述
+
+| 欄位 | 類型 | 必要 | 備註 |
+| --- | --- | --- | --- |
+| `id` | `String` | 是 | 機器可讀的穩定識別碼，例如 `customer_360` |
+| `domain_id` | `String` | 是 | 擁有網域。成員資料表必須共用此 `domain_id` — 不符者在儲存時會被拒絕 |
+| `name` | `String` | 是 | 顯示名稱 |
+| `owner_role` | `String` | 否 | 對此產品負責的角色；有別於網域管家 |
+| `team_role` | `String` | 否 | 持有者日常維護此產品的角色；解析至個人 |
+| `purpose` | `String` | 否 | 此產品發佈的內容及原因 |
+| `limitations` | `String` | 否 | 已知限制、注意事項或排除項 |
+| `usage` | `String` | 否 | 如何消費此產品 |
+| `version` | `String` | 否 | 例如 `1.2.0` |
+| `status` | `String` | 否 | 例如 `proposed`、`active`、`deprecated`、`retired` |
+| `sla` | `String` | 否 | 服務層級承諾；為文字敘述 — 產品跨越多個資料表，結構化 SLA 無法明確指出其描述的是哪個成員 |
+| `support` | `String` | 否 | 自由文字支援指引 |
+| `custom_properties` | `JSON` | 否 | 標準欄位未涵蓋的任意鍵值中繼資料 |
+
+模型上還有另外兩個欄位，但未在 Strawberry `DataProductType` / `DataProductInput` 中公開 —— 它們是 Snowflake Horizon Catalog 專屬（REQ-1635）：
+
+| 欄位 | 備註 |
+| --- | --- |
+| `support_contact` | 電郵或 URL；Horizon Catalog 組織清單資訊清單要求此項 |
+| `publish` | 設為 `true` 可立即發佈 Horizon 清單；新清單預設為 DRAFT |
+
+[tool-verified: `provisa/core/models.py:338-341`, `provisa/api/admin/types.py:104-118,538-551`]
+
+### 資料表成員資格
+
+資料表透過在資料表編輯表單設定其 `product_id` 欄位加入數據產品。挑選器的範圍限定於 `domain_id` 與該資料表自身網域相符的產品 — `marketing` 網域中的資料表永遠不會被提供 `sales` 網域的產品。[tool-verified: `provisa/api/admin/actions_router.py:244-260`, `docs/arch/requirements.yaml:54585-54586`]
+
+同一網域中的命令亦可指派為成員。[tool-verified: `provisa-ui/src/i18n/locales/en/dataProductsTab.json:commandsLabel`]
+
+### 中繼資料匯出篩選
+
+`build_snapshot` 在每次目錄發佈時套用 `data_products_only=True`。沒有 `product_id` 的資料表會連同其關係邊、血緣邊與治理標籤一併從快照中保留。數據來源與網域一律發佈。詞彙表術語只在其至少一個實體參照所屬的資料表屬於已匯出（產品成員）資料表時才會發佈。[tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
+
+沒有已匯出成員的產品不會建立快照項目 —— 沒有成員的清單會向目錄誤呈該產品。[tool-verified: `provisa/api/metadata_export/model.py:106-113`]
+
+### 依目錄目標劃分的數據產品支援
+
+`MetadataSnapshot.data_products` 會抵達每個配接器，但只有其平台具備原生數據產品概念的配接器，才會將其發佈為一級實體；其餘配接器只發佈成員資料表（已依上述篩選），不含產品分組。
+
+| 目標 | 數據產品呈現方式 |
+| --- | --- |
+| Snowflake Horizon | 每個產品成為其成員資料表實體位址之上的一個 `SHARE`，包裝在內部的 `CREATE ORGANIZATION LISTING` 中 —— 屬原生 Horizon Catalog Data Product。`publish=true` 會使清單立即上線；否則會以 DRAFT 狀態落地。[tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:21-34,389-418`] |
+| BigQuery Dataplex | 每個產品透過 `/v1/dataProducts` 成為一項 Analytics Hub 清單。[tool-verified: `provisa/api/metadata_export/bigquery_dataplex.py:100,136,159`] |
+| OpenMetadata | 每個產品成為原生 `DataProduct` 實體（`/api/v1/dataProducts`），擁有權衍生自網域。[tool-verified: `provisa/api/metadata_export/openmetadata.py:326-344,635`] |
+| DataHub | 每個產品成為原生 `dataProduct` 實體（`urn:li:dataProduct:...`），擁有自己的 `dataProductProperties`／擁有權面向。[tool-verified: `provisa/api/metadata_export/datahub.py:133-136,443-483`] |
+| Collibra | 每個產品成為 `Data Product` 社群類型的資產，透過 `Data Product groups Table` 關係連結至其成員資料表。[tool-verified: `provisa/api/metadata_export/collibra.py:129-133,371-388`] |
+| Atlan | 以自訂 `DataProduct` typedef 猜測方式發佈 —— Atlan 對此概念並無文件化的穩定類型名稱，因此此對映屬盡力而為。[tool-verified: `provisa/api/metadata_export/atlan.py:60`] |
+| Apache Atlas | 以自訂 `provisa_data_product` typedef 及 `provisa_data_product_members` 關係發佈 —— Atlas 並無原生數據產品實體類型。[tool-verified: `provisa/api/metadata_export/atlas.py:134-147,191,256-260`] |
+| OpenLineage | 並非一級實體 —— 成員資料表帶有一個指名擁有產品的 `provisa_data_product` 自訂面向。[tool-verified: `provisa/api/metadata_export/openlineage.py:243,348`] |
