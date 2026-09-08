@@ -38,7 +38,7 @@ Only catalogs with a native data-product concept publish it as a first-class ent
 
 | Catalog | Published as |
 | --- | --- |
-| Snowflake Horizon | SHARE + organization listing (native Data Product); `publish=false` keeps it DRAFT, `publish=true` takes it live |
+| Snowflake Horizon | SHARE + organization listing (native Data Product); `publish=false` keeps it DRAFT, `publish=true` takes it live. The listing's data dictionary covers every member and column; the first five members are featured and masked columns are hidden in the preview (REQ-1656) |
 | BigQuery Analytics Hub | Analytics Hub listing (native) |
 | OpenMetadata | `DataProduct` entity (native) |
 | DataHub | Native `dataProduct` URN entity with its own properties/ownership aspects |

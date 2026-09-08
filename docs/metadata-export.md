@@ -39,6 +39,17 @@ listings never surface in the account's own Horizon Catalog / Data sharing UI). 
 the Data Product keeps the listing DRAFT; `publish=true` takes it live immediately.
 [tool-verified: provisa/api/metadata_export/snowflake_horizon.py:11-27]
 
+The listing's data dictionary is Snowflake's own, generated from the share: every member the share
+grants appears with its columns and the COMMENTs the landing reconcile wrote (REQ-1654). Provisa
+keeps the grants equal to the membership on each publish, revoking a former member's `SELECT`. The
+manifest adds what the dictionary cannot infer (REQ-1656): the first five members in the share's
+primary database as `data_dictionary.featured` (Snowflake caps featured objects at five, under one
+database), each with its real object kind, and `data_preview.has_pii` plus `pii_columns` from the
+masking rules on member columns. Provisa owns the manifest. After the `CREATE`, the live manifest is
+read back and replaced with `ALTER LISTING` when it differs, so a change made in Snowsight's listing
+wizard does not survive the next publish.
+[tool-verified: provisa/api/metadata_export/snowflake_horizon.py:listing_manifest,_publish_product]
+
 Keys are not part of the catalog publish. A landed table's `PRIMARY KEY` and the `FOREIGN KEY`s its
 relationships imply belong to the landed model and converge with the tables in the landing
 reconcile, for every landed table whether or not a Data Product names it (REQ-1652). On Snowflake

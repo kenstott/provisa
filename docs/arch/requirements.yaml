@@ -55207,3 +55207,35 @@
     Given a table assignment gold (reason "Curated") on pets and a column assignment pii on pets.name
     When the landing reconcile runs against a Snowflake engine
     Then the replica and the view carry PROVISA_GOVERNANCE.GOLD = 'Curated' and pets.name carries PROVISA_GOVERNANCE.PII on both, and removing the assignment withdraws the tag on the next reconcile
+- id: REQ-1656
+  status: complete
+  since: 2026-09
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A Snowflake Horizon organization listing's data dictionary covers every member of the Data
+    Product and every column: the dictionary is generated from the share, so membership is the
+    share's SELECT grants, reconciled on each publish (a former member's grant is revoked). The
+    manifest features the first five members in the share's primary database (Snowflake's cap,
+    one database), each with its real object kind, and declares the data preview's has_pii and
+    pii_columns from the masking rules on member columns. Provisa owns the manifest: after the
+    CREATE, the live manifest is read back and replaced with ALTER LISTING when it differs, so an
+    edit made in Snowsight does not survive the next publish.
+  use_case: >-
+    The Data Product is edited in Provisa. Snowsight's listing wizard let a steward pick featured
+    objects and PII columns by hand, and CREATE ... IF NOT EXISTS left that, and every later Provisa
+    change to the product, out of sync with the model.
+  code:
+  - provisa/api/metadata_export/snowflake_horizon.py
+  tests:
+  - tests/unit/test_snowflake_horizon_export.py
+  relates_to:
+  - REQ-1635
+  - REQ-1654
+  - REQ-1071
+  scenario: |
+    Given Data Product "Pet Health" with members pets and vets, and a masking rule on pets.name
+    When the snowflake_horizon export publishes
+    Then the listing manifest features pets and vets as VIEWs under "pet_store_sqlite", data_preview.has_pii is true with pets.name as a pii_column, and a manifest changed in Snowsight is replaced on the next publish

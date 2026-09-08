@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from provisa.api.metadata_export.model import (
     AssetKind,
@@ -28,11 +29,16 @@ from provisa.api.metadata_export.registry import registered_providers
 from provisa.api.metadata_export.snowflake_horizon import (
     SnowflakeHorizonExport,
     _object_kind,
+    ListingMember,
     _table_exists,
     comment_statements,
+    listing_manifest,
     listing_statements,
+    listing_update_statement,
+    manifest_matches,
     physical_parts,
     physical_table_and_column,
+    revoke_statements,
     share_statements,
 )
 
@@ -115,44 +121,161 @@ def test_share_statements_skips_reference_usage_when_member_is_the_landing_datab
     assert not any(s.startswith("GRANT REFERENCE_USAGE") for s in stmts)
 
 
-def test_listing_statements_creates_draft_organization_listing_over_the_share():
-    stmts = listing_statements(
-        "provisa_c360_listing",
-        "provisa_c360_share",
-        "customer_360",
-        "desc",
+def _manifest(members=None, **overrides) -> str:
+    kwargs = dict(
         account="ACME1",
         role="ACCOUNTADMIN",
         region="AZURE_EASTUS2",
         support_contact="data-team@example.com",
+        members=members or [],
     )
+    kwargs.update(overrides)
+    return listing_manifest("customer_360", "desc", **kwargs)
+
+
+def test_listing_manifest_carries_the_organization_listing_fields():
+    manifest = _manifest()
+    doc = yaml.safe_load(manifest)
+    assert doc["title"] == "customer_360"
+    assert doc["organization_profile"] == "INTERNAL"
+    assert doc["organization_targets"]["discovery"] == [
+        {"account": "ACME1", "roles": ["ACCOUNTADMIN"]}
+    ]
+    assert doc["locations"]["access_regions"] == [{"name": "PUBLIC.AZURE_EASTUS2"}]
+    assert doc["support_contact"] == doc["approver_contact"] == "data-team@example.com"
+    assert "data_dictionary" not in doc and "data_preview" not in doc
+
+
+def test_listing_manifest_quotes_every_string_the_yaml_could_break_on():
+    manifest = listing_manifest(
+        'Say "hi"',
+        "line one\nline two: colon",
+        account="ACME1",
+        role="ACCOUNTADMIN",
+        region="AZURE_EASTUS2",
+        support_contact="a@b.c",
+        members=[],
+    )
+    doc = yaml.safe_load(manifest)
+    assert doc["title"] == 'Say "hi"'
+    assert doc["description"] == "line one\nline two: colon"
+
+
+def test_listing_manifest_features_members_with_snowflake_quoted_identifiers_and_kinds():
+    # REQ-1656: the manifest resolves names like SQL (unquoted -> upper-cased), so each identifier
+    # carries its own double quotes, which is the form Snowflake writes back.
+    members = [
+        ListingMember("pet_store_sqlite", "pet_store", "pets", "VIEW"),
+        ListingMember("_landing", "org_default_mv_cache", "mv_dim_pet", "TABLE"),
+    ]
+    doc = yaml.safe_load(_manifest(members))
+    assert doc["data_dictionary"]["featured"]["database"] == '"pet_store_sqlite"'
+    assert doc["data_dictionary"]["featured"]["objects"] == [
+        {"name": '"pets"', "schema": '"pet_store"', "domain": "VIEW"}
+    ]
+    assert doc["data_preview"] == {"has_pii": False}
+
+
+def test_listing_manifest_features_at_most_five_members_of_the_primary_database():
+    members = [ListingMember("db", "s", f"t{i}", "VIEW") for i in range(7)]
+    objects = yaml.safe_load(_manifest(members))["data_dictionary"]["featured"]["objects"]
+    assert [o["name"] for o in objects] == ['"t0"', '"t1"', '"t2"', '"t3"', '"t4"']
+
+
+def test_listing_manifest_hides_masked_columns_in_the_data_preview():
+    members = [
+        ListingMember("db", "s", "pets", "VIEW", pii_columns=("name",)),
+        ListingMember("db", "s", "vets", "VIEW"),
+        ListingMember("other", "s", "staff", "VIEW", pii_columns=("ssn",)),
+    ]
+    preview = yaml.safe_load(_manifest(members))["data_preview"]
+    assert preview["has_pii"] is True
+    assert preview["metadata_overrides"] == {
+        "database": '"db"',
+        "objects": [
+            {"name": '"pets"', "schema": '"s"', "domain": "VIEW", "pii_columns": ['"name"']}
+        ],
+    }
+
+
+def test_listing_statements_creates_draft_organization_listing_over_the_share():
+    stmts = listing_statements("provisa_c360_listing", "provisa_c360_share", _manifest())
     assert len(stmts) == 1
     stmt = stmts[0]
     assert stmt.startswith('CREATE ORGANIZATION LISTING IF NOT EXISTS "provisa_c360_listing"')
     assert 'SHARE "provisa_c360_share"' in stmt
-    assert "PUBLISH = FALSE;" in stmt
     assert 'organization_profile: "INTERNAL"' in stmt
-    assert 'account: "ACME1"' in stmt
-    assert 'roles:\n    - "ACCOUNTADMIN"' in stmt
-    assert 'name: "PUBLIC.AZURE_EASTUS2"' in stmt
-    assert 'support_contact: "data-team@example.com"' in stmt
-    assert 'approver_contact: "data-team@example.com"' in stmt
-    assert "PUBLISH = FALSE;" in stmt
+    assert stmt.endswith("$$\nPUBLISH = FALSE;")
 
 
 def test_listing_statements_publish_true_sets_publish_true():
     stmt = listing_statements(
-        "provisa_c360_listing",
-        "provisa_c360_share",
-        "customer_360",
-        "desc",
-        account="ACME1",
-        role="ACCOUNTADMIN",
-        region="AZURE_EASTUS2",
-        support_contact="data-team@example.com",
-        publish=True,
+        "provisa_c360_listing", "provisa_c360_share", _manifest(), publish=True
     )[0]
     assert "PUBLISH = TRUE;" in stmt
+
+
+def test_listing_update_statement_replaces_the_manifest():
+    stmt = listing_update_statement("provisa_c360_listing", _manifest(), publish=True)
+    assert stmt.startswith('ALTER LISTING "provisa_c360_listing"\nAS\n$$\n')
+    assert stmt.endswith("$$\nPUBLISH = TRUE;")
+
+
+_LIVE_MANIFEST = """title: "customer_360"
+description: "desc"
+product_types:
+- type: "SHARE"
+  is_addon: false
+data_dictionary:
+  featured:
+    database: "\\"db\\""
+    objects:
+    - schema: "\\"s\\""
+      domain: "VIEW"
+      name: "\\"pets\\""
+data_preview:
+  has_pii: false
+organization_profile: "INTERNAL"
+organization_targets:
+  discovery:
+  - account: "ACME1"
+    roles:
+    - "ACCOUNTADMIN"
+locations:
+  access_regions:
+  - name: "PUBLIC.AZURE_EASTUS2"
+approver_contact: "data-team@example.com"
+support_contact: "data-team@example.com"
+resharing:
+  enabled: true
+  only_within_organization: true
+"""
+
+
+def test_manifest_matches_ignores_snowflake_key_order_and_appended_defaults():
+    intended = _manifest([ListingMember("db", "s", "pets", "VIEW")])
+    assert manifest_matches(intended, _LIVE_MANIFEST)
+
+
+def test_manifest_matches_detects_a_new_member_or_changed_description():
+    intended = _manifest(
+        [ListingMember("db", "s", "pets", "VIEW"), ListingMember("db", "s", "vets", "VIEW")]
+    )
+    assert not manifest_matches(intended, _LIVE_MANIFEST)
+    assert not manifest_matches(_manifest([ListingMember("db", "s", "pets", "VIEW")]), "")
+
+
+def test_revoke_statements_withdraws_select_on_objects_no_longer_members():
+    granted = [
+        ("VIEW", '"db"."s"."pets"'),
+        ("VIEW", '"db"."s"."vets"'),
+        ("TABLE", '"_landing"."mat"."x__s__y"'),
+    ]
+    stmts = revoke_statements("provisa_c360_share", granted, {("db", "s", "pets")})
+    assert stmts == [
+        'REVOKE SELECT ON VIEW "db"."s"."vets" FROM SHARE "provisa_c360_share";',
+        'REVOKE SELECT ON TABLE "_landing"."mat"."x__s__y" FROM SHARE "provisa_c360_share";',
+    ]
 
 
 def test_physical_table_and_column_resolves_table_ref():
@@ -169,6 +292,15 @@ def test_physical_table_and_column_rejects_other_ref_kinds():
     ref = AssetRef(kind=AssetKind.SOURCE, parts=("petstore-api",))
     with pytest.raises(ValueError):
         physical_table_and_column(ref)
+
+
+def _column_asset(source_id: str, schema: str, table: str, column: str) -> ColumnAsset:
+    return ColumnAsset(
+        ref=_column_ref(source_id, schema, table, column),
+        name=column,
+        data_type="text",
+        description="",
+    )
 
 
 def _table_asset(
@@ -287,27 +419,53 @@ def test_comment_statements_uses_governance_note_alone_when_no_description():
 
 
 class _FakeCursor:
-    def __init__(self, existing_objects: bool = True, kind: str = "TABLE"):
+    def __init__(
+        self,
+        existing_objects: bool = True,
+        kind: str = "TABLE",
+        live_manifest: str | None = None,
+        select_grants: list[tuple[str, str]] | None = None,
+    ):
         self.sql: list[str] = []
         self._existing_objects = existing_objects
         self._kind = kind
         self._last_sql = ""
         self.description: list[tuple[str, ...]] = []
+        # What DESCRIBE LISTING reports; None -> the CREATE just ran, so the manifest is whatever
+        # the most recent CREATE/ALTER wrote (a fresh listing never drifts).
+        self.live_manifest = live_manifest
+        self.select_grants = select_grants or []
 
     def execute(self, sql, params=None):
         self.sql.append(sql)
         self._last_sql = sql
         if sql.startswith("SHOW OBJECTS"):
             self.description = [("name",), ("kind",)]
+        elif sql.startswith("SHOW GRANTS TO SHARE"):
+            self.description = [("privilege",), ("granted_on",), ("name",)]
+        elif sql.startswith("DESCRIBE LISTING"):
+            self.description = [("manifest_yaml",)]
         else:
             self.description = []
+        if self.live_manifest is None and (
+            sql.startswith("CREATE ORGANIZATION LISTING") or sql.startswith("ALTER LISTING")
+        ):
+            self._written_manifest = sql.split("$$\n")[1]
+
+    _written_manifest = ""
 
     def fetchall(self):
+        if self._last_sql.startswith("SHOW GRANTS TO SHARE"):
+            return [("SELECT", granted_on, name) for granted_on, name in self.select_grants]
         return [("x",)] if self._existing_objects else []
 
     def fetchone(self):
         if self._last_sql.startswith("SHOW OBJECTS"):
             return ("x", self._kind) if self._existing_objects else None
+        if self._last_sql.startswith("DESCRIBE LISTING"):
+            return (
+                self.live_manifest if self.live_manifest is not None else self._written_manifest,
+            )
         return ("ACME1", "ACCOUNTADMIN", "AZURE_EASTUS2")
 
     def close(self):
@@ -315,20 +473,22 @@ class _FakeCursor:
 
 
 class _FakeConn:
-    def __init__(self, existing_objects: bool = True, kind: str = "TABLE"):
-        self.cursor_obj = _FakeCursor(existing_objects, kind)
+    def __init__(self, existing_objects: bool = True, kind: str = "TABLE", **cursor_kwargs):
+        self.cursor_obj = _FakeCursor(existing_objects, kind, **cursor_kwargs)
 
     def cursor(self):
         return self.cursor_obj
 
 
-def _runtime(existing_objects: bool = True, database: str = "landing", kind: str = "TABLE"):
+def _runtime(
+    existing_objects: bool = True, database: str = "landing", kind: str = "TABLE", **cursor_kwargs
+):
     rt = object.__new__(
         __import__(
             "provisa.federation.snowflake_runtime", fromlist=["SnowflakeFederationRuntime"]
         ).SnowflakeFederationRuntime
     )
-    rt._conn = _FakeConn(existing_objects, kind)
+    rt._conn = _FakeConn(existing_objects, kind, **cursor_kwargs)
     rt._database = database
     return rt
 
@@ -501,6 +661,102 @@ def test_publish_reports_error_when_governance_tag_has_no_matching_table_asset(m
     assert not result.ok
     assert "governed asset" in result.errors[0].message
     assert result.total_published() == 0
+
+
+def _snowflake(monkeypatch, rt):
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+
+
+def test_publish_features_members_with_their_object_kind_and_masked_columns(monkeypatch):
+    rt = _runtime(existing_objects=True, kind="VIEW")
+    _snowflake(monkeypatch, rt)
+    product = _FakeDataProduct(
+        "pet_health",
+        "Pet Health",
+        "desc",
+        [_table_ref("pet-store-sqlite", "pet_store", "pets")],
+    )
+    snapshot = SimpleNamespace(
+        data_products=[product],
+        tables=[
+            _table_asset(
+                "pet-store-sqlite",
+                "pet_store",
+                "pets",
+                columns=[
+                    _column_asset("pet-store-sqlite", "pet_store", "pets", "name"),
+                    _column_asset("pet-store-sqlite", "pet_store", "pets", "id"),
+                ],
+            )
+        ],
+        governance_tags=[
+            GovernanceTag(
+                asset=_column_ref("pet-store-sqlite", "pet_store", "pets", "name"),
+                signal=GovernanceSignal.MASKED,
+                rule_id="mask-names",
+            ),
+            GovernanceTag(
+                asset=_column_ref("pet-store-sqlite", "pet_store", "pets", "id"),
+                signal=GovernanceSignal.RLS_RESTRICTED,
+                rule_id="rls",
+            ),
+        ],
+    )
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert result.ok, result.errors
+    create = next(s for s in rt._conn.cursor_obj.sql if s.startswith("CREATE ORGANIZATION"))
+    doc = yaml.safe_load(create.split("$$\n")[1])
+    assert doc["data_dictionary"]["featured"] == {
+        "database": '"pet_store_sqlite"',
+        "objects": [{"name": '"pets"', "schema": '"pet_store"', "domain": "VIEW"}],
+    }
+    assert doc["data_preview"]["has_pii"] is True
+    assert doc["data_preview"]["metadata_overrides"]["objects"][0]["pii_columns"] == ['"name"']
+    assert not any(s.startswith("ALTER LISTING") for s in rt._conn.cursor_obj.sql)
+
+
+def test_publish_alters_the_listing_when_the_live_manifest_drifted(monkeypatch):
+    rt = _runtime(existing_objects=True, kind="VIEW", live_manifest='title: "old"\n')
+    _snowflake(monkeypatch, rt)
+    product = _FakeDataProduct(
+        "c360", "customer_360", "desc", [_table_ref("petstore-api", "public", "customers")]
+    )
+    result = asyncio.run(_exporter().publish(snapshot=SimpleNamespace(data_products=[product])))
+    assert result.ok, result.errors
+    alters = [s for s in rt._conn.cursor_obj.sql if s.startswith("ALTER LISTING")]
+    assert len(alters) == 1
+    assert alters[0].startswith('ALTER LISTING "provisa_c360_listing"')
+    assert 'title: "customer_360"' in alters[0]
+    assert alters[0].endswith("PUBLISH = FALSE;")
+
+
+def test_publish_revokes_share_grants_on_former_members(monkeypatch):
+    rt = _runtime(
+        existing_objects=True,
+        kind="VIEW",
+        select_grants=[
+            ("VIEW", '"petstore_api"."public"."customers"'),
+            ("VIEW", '"petstore_api"."public"."orders"'),
+        ],
+    )
+    _snowflake(monkeypatch, rt)
+    product = _FakeDataProduct(
+        "c360", "customer_360", "desc", [_table_ref("petstore-api", "public", "customers")]
+    )
+    result = asyncio.run(_exporter().publish(snapshot=SimpleNamespace(data_products=[product])))
+    assert result.ok, result.errors
+    revokes = [s for s in rt._conn.cursor_obj.sql if s.startswith("REVOKE")]
+    assert revokes == [
+        'REVOKE SELECT ON VIEW "petstore_api"."public"."orders" FROM SHARE "provisa_c360_share";'
+    ]
 
 
 def test_object_kind_returns_table_when_object_is_a_real_table():

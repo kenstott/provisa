@@ -44,12 +44,16 @@ a classification value, so it publishes as appended COMMENT text instead (:func:
 alongside REQ-1647's description text) — never as a TAG.
 """
 
-# Requirements: REQ-1068, REQ-1635
+# Requirements: REQ-1068, REQ-1635, REQ-1656
 
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+import yaml
 
 from provisa.api.metadata_export.model import AssetKind
 from provisa.api.metadata_export.provider import (
@@ -246,9 +250,51 @@ def share_statements(
     return stmts
 
 
-def listing_statements(
-    listing_name: str,
-    share_name: str,
+#: Snowflake features at most this many objects in a listing's data dictionary (REQ-1656): "You can
+#: select up to five of the most important database objects within the listing."
+FEATURED_LIMIT = 5
+
+
+@dataclass(frozen=True)
+class ListingMember:
+    """One member of a listing as its manifest addresses it: the physical object the share grants,
+    its kind (``TABLE``/``VIEW`` -- the manifest's ``domain``), and the columns a masking rule
+    governs (published as the data preview's ``pii_columns``)."""
+
+    database: str
+    schema: str
+    name: str
+    kind: str
+    pii_columns: tuple[str, ...] = ()
+
+
+def _yaml_string(value: str) -> str:
+    """A YAML double-quoted scalar. JSON string syntax is valid YAML, so ``json.dumps`` covers every
+    embedded quote, backslash and newline the ``manifest`` block could otherwise break on."""
+    return json.dumps(value)
+
+
+def _yaml_identifier(name: str) -> str:
+    """A Snowflake object name inside the manifest. The manifest resolves names like SQL does --
+    unquoted is upper-cased ("Database 'GRAPHQL_DEMO' does not exist", confirmed live for a
+    lower-case database) -- so the identifier is wrapped in its own double quotes, which is the
+    ``"\"graphql_demo\""`` form Snowsight's own listing wizard writes back."""
+    return _yaml_string(f'"{name}"')
+
+
+def _member_entry(member: ListingMember, indent: str, *, pii: bool) -> str:
+    lines = [
+        f"{indent}- name: {_yaml_identifier(member.name)}",
+        f"{indent}  schema: {_yaml_identifier(member.schema)}",
+        f'{indent}  domain: "{member.kind}"',
+    ]
+    if pii:
+        lines.append(f"{indent}  pii_columns:")
+        lines.extend(f"{indent}  - {_yaml_identifier(c)}" for c in member.pii_columns)
+    return "\n".join(lines) + "\n"
+
+
+def listing_manifest(
     name: str,
     description: str,
     *,
@@ -256,45 +302,123 @@ def listing_statements(
     role: str,
     region: str,
     support_contact: str,
-    publish: bool = False,
+    members: list[ListingMember],
+) -> str:
+    """The organization listing's YAML manifest.
+
+    Fields are the minimal set Snowflake accepts for this account, found by iterating on live
+    ``CREATE ORGANIZATION LISTING`` errors: ``organization_targets`` and ``locations`` are mandatory
+    once ``organization_profile: INTERNAL`` is set, and ``support_contact``/``approver_contact`` are
+    mandatory once a discovery target exists.
+
+    The data dictionary itself is not declared here: Snowflake generates it from the share, listing
+    every granted object with its columns and COMMENTs -- so every member (and every column the
+    landing reconcile described, REQ-1654) is already in it. What the manifest adds (REQ-1656):
+
+    * ``data_dictionary.featured`` -- the members Snowsight shows first. Snowflake caps this at
+      :data:`FEATURED_LIMIT` objects under ONE database, so the first members in the share's
+      primary database (the first member's) are featured, in product order; a member in a second
+      database is in the dictionary but cannot be featured.
+    * ``data_preview`` -- ``has_pii`` and the masked columns, so the preview Snowflake samples hides
+      what the model's masking rules hide. Same one-database rule as ``featured``.
+    """
+    manifest = (
+        f"title: {_yaml_string(name)}\n"
+        f"description: {_yaml_string(description)}\n"
+        'organization_profile: "INTERNAL"\n'
+        "organization_targets:\n"
+        "  discovery:\n"
+        f"  - account: {_yaml_string(account)}\n"
+        "    roles:\n"
+        f"    - {_yaml_string(role)}\n"
+        "locations:\n"
+        "  access_regions:\n"
+        f"  - name: {_yaml_string(f'PUBLIC.{region}')}\n"
+        f"support_contact: {_yaml_string(support_contact)}\n"
+        f"approver_contact: {_yaml_string(support_contact)}\n"
+    )
+    if not members:
+        return manifest
+    primary = members[0].database
+    in_primary = [m for m in members if m.database == primary]
+    manifest += (
+        f"data_dictionary:\n  featured:\n    database: {_yaml_identifier(primary)}\n    objects:\n"
+    )
+    for member in in_primary[:FEATURED_LIMIT]:
+        manifest += _member_entry(member, "    ", pii=False)
+    masked = [m for m in in_primary if m.pii_columns]
+    has_pii = any(m.pii_columns for m in members)
+    manifest += f"data_preview:\n  has_pii: {'true' if has_pii else 'false'}\n"
+    if masked:
+        manifest += (
+            f"  metadata_overrides:\n    database: {_yaml_identifier(primary)}\n    objects:\n"
+        )
+        for member in masked:
+            manifest += _member_entry(member, "    ", pii=True)
+    return manifest
+
+
+def listing_statements(
+    listing_name: str, share_name: str, manifest: str, *, publish: bool = False
 ) -> list[str]:
-    """DDL registering the share as a Horizon Catalog listing — the step that makes the DataProduct
+    """DDL registering the share as a Horizon Catalog listing -- the step that makes the DataProduct
     a first-class Data Product listing, not just a share.
 
-    ``CREATE ORGANIZATION LISTING`` (not ``CREATE EXTERNAL LISTING``) — confirmed live against a
+    ``CREATE ORGANIZATION LISTING`` (not ``CREATE EXTERNAL LISTING``) -- confirmed live against a
     Snowflake account: an EXTERNAL-distribution listing is Marketplace-shaped (for other Snowflake
     organizations) and never surfaces in this account's own Horizon Catalog / Data sharing UI, no
     matter which Snowsight view is checked. An ORGANIZATION-distribution listing (``distribution:
     ORGANIZATION``, ``organization_profile_name: INTERNAL``) is what Snowsight's own "create
     listing" wizard produces, and is what actually shows up.
 
-    Manifest fields below are the minimal set Snowflake accepts for this account, found by
-    iterating on live ``CREATE ORGANIZATION LISTING`` errors: ``organization_targets`` and
-    ``locations`` are mandatory once ``organization_profile: INTERNAL`` is set, and
-    ``support_contact``/``approver_contact`` are mandatory once a discovery target exists.
     ``publish=False`` (the default) keeps it DRAFT (``PUBLISH = FALSE``); organization listings,
-    unlike external ones, have no ``REVIEW`` parameter — there is no Marketplace review step, so
+    unlike external ones, have no ``REVIEW`` parameter -- there is no Marketplace review step, so
     ``publish=True`` (``DataProductAsset.publish`` / ``DataProduct.publish``) takes it live
-    immediately."""
-    manifest = (
-        f'title: "{_escape(name)}"\n'
-        f'description: "{_escape(description)}"\n'
-        'organization_profile: "INTERNAL"\n'
-        "organization_targets:\n"
-        "  discovery:\n"
-        f'  - account: "{_escape(account)}"\n'
-        "    roles:\n"
-        f'    - "{_escape(role)}"\n'
-        "locations:\n"
-        "  access_regions:\n"
-        f'  - name: "PUBLIC.{_escape(region)}"\n'
-        f'support_contact: "{_escape(support_contact)}"\n'
-        f'approver_contact: "{_escape(support_contact)}"\n'
-    )
+    immediately. ``IF NOT EXISTS`` leaves an existing listing's manifest alone; the caller converges
+    it with :func:`listing_update_statement` when :func:`manifest_matches` says it drifted."""
     return [
         f'CREATE ORGANIZATION LISTING IF NOT EXISTS "{listing_name}"\nSHARE "{share_name}"\nAS\n$$\n'
         f"{manifest}$$\nPUBLISH = {'TRUE' if publish else 'FALSE'};",
     ]
+
+
+def listing_update_statement(listing_name: str, manifest: str, *, publish: bool = False) -> str:
+    """DDL replacing an existing listing's manifest (REQ-1656). Provisa owns the manifest: a change
+    made in Snowsight is overwritten on the next publish, by design -- the Data Product is edited
+    in Provisa."""
+    return (
+        f'ALTER LISTING "{listing_name}"\nAS\n$$\n{manifest}$$\n'
+        f"PUBLISH = {'TRUE' if publish else 'FALSE'};"
+    )
+
+
+def manifest_matches(intended: str, live: str) -> bool:
+    """Whether the listing's live manifest (``DESCRIBE LISTING ... manifest_yaml``) already says
+    what ``intended`` says. Snowflake rewrites the YAML it stores -- reorders the keys of each
+    object, appends ``product_types`` and ``resharing`` defaults -- so the two are compared as
+    parsed documents on the keys Provisa emits, not as text."""
+    wanted = yaml.safe_load(intended) or {}
+    current = yaml.safe_load(live) or {}
+    return all(current.get(key) == value for key, value in wanted.items())
+
+
+def revoke_statements(
+    share_name: str, granted: list[tuple[str, str]], wanted: set[tuple[str, str, str]]
+) -> list[str]:
+    """DDL withdrawing a share's SELECT grants on objects that are no longer members (REQ-1656), so
+    the auto-generated data dictionary tracks the product's membership. ``granted`` is
+    ``SHOW GRANTS TO SHARE``'s ``(granted_on, name)`` for its SELECT rows, ``name`` in Snowflake's
+    quoted ``"db"."schema"."object"`` form."""
+    stmts: list[str] = []
+    for granted_on, name in granted:
+        parts = tuple(p.strip('"') for p in _QUOTED_PART.findall(name))
+        if len(parts) != 3 or parts in wanted:
+            continue
+        stmts.append(f'REVOKE SELECT ON {granted_on} {name} FROM SHARE "{share_name}";')
+    return stmts
+
+
+_QUOTED_PART = re.compile(r'"(?:[^"]|"")*"|[^.]+')
 
 
 def _organization_context(runtime: SnowflakeFederationRuntime) -> tuple[str, str, str]:
@@ -338,6 +462,36 @@ def _table_exists(runtime: SnowflakeFederationRuntime, parts: tuple[str, str, st
     return _object_kind(runtime, parts) is not None
 
 
+def _masked_columns(governance_tags: list["GovernanceTag"]) -> dict[str, tuple[str, ...]]:
+    """Per table fqn, the columns a masking rule governs (REQ-1071's ``masked`` signal) -- the
+    columns the listing's data preview must hide (REQ-1656)."""
+    from provisa.api.metadata_export.model import GovernanceSignal
+
+    out: dict[str, list[str]] = {}
+    for tag in governance_tags:
+        if tag.signal is not GovernanceSignal.MASKED or tag.asset.kind is not AssetKind.COLUMN:
+            continue
+        table_fqn = ".".join(tag.asset.parts[:-1])
+        out.setdefault(table_fqn, []).append(tag.asset.parts[-1])
+    return {fqn: tuple(sorted(cols)) for fqn, cols in out.items()}
+
+
+def _select_grants(cur: Any, share_name: str) -> list[tuple[str, str]]:
+    """``(granted_on, name)`` for each SELECT the share currently holds."""
+    cur.execute(f'SHOW GRANTS TO SHARE "{share_name}"')
+    cols = [d[0] for d in cur.description]
+    rows = [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+    return [(r["granted_on"], r["name"]) for r in rows if r.get("privilege") == "SELECT"]
+
+
+def _live_manifest(cur: Any, listing_name: str) -> str:
+    cur.execute(f'DESCRIBE LISTING "{listing_name}"')
+    cols = [d[0] for d in cur.description]
+    row = cur.fetchone()
+    assert row is not None, f"DESCRIBE LISTING {listing_name} returned no row"
+    return dict(zip(cols, row, strict=True))["manifest_yaml"] or ""
+
+
 @register_provider
 class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
     """Registers each DataProduct as a Snowflake Horizon Catalog Data Product / Marketplace
@@ -365,7 +519,9 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             return result
         try:
             published = sum(
-                1 for product in products if self._publish_product(runtime, product, result)
+                1
+                for product in products
+                if self._publish_product(runtime, product, result, governance_tags)
             )
             if published:
                 result.published["data_products"] = published
@@ -442,7 +598,11 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
         return len(statements)
 
     def _publish_product(
-        self, runtime: SnowflakeFederationRuntime, product: Any, result: PublishResult
+        self,
+        runtime: SnowflakeFederationRuntime,
+        product: Any,
+        result: PublishResult,
+        governance_tags: list["GovernanceTag"] | None = None,
     ) -> bool:
         try:
             tables = [physical_parts(ref) for ref in product.members]
@@ -450,7 +610,8 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             result.errors.append(AssetError(AssetRefStub(product.name), str(exc)))
             return False
 
-        missing = [t for t in tables if not _table_exists(runtime, t)]
+        kinds = {t: _object_kind(runtime, t) for t in tables}
+        missing = [t for t, kind in kinds.items() if kind is None]
         if missing:
             joined = ", ".join(".".join(t) for t in missing)
             result.errors.append(
@@ -478,27 +639,42 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             result.errors.append(AssetError(AssetRefStub(product.name), str(exc)))
             return False
 
+        masked = _masked_columns(governance_tags or [])
+        members = [
+            ListingMember(
+                database,
+                schema,
+                table,
+                kinds[(database, schema, table)] or "TABLE",
+                pii_columns=masked.get(ref.fqn(), ()),
+            )
+            for ref, (database, schema, table) in zip(product.members, tables, strict=True)
+        ]
         account, role, region = _organization_context(runtime)
-        statements = share_statements(
-            share_name,
-            product.description,
-            tables,
-            landing_database=runtime.ensure_materialize_attached(),
-        ) + listing_statements(
-            listing_name,
-            share_name,
+        manifest = listing_manifest(
             product.name,
             product.description,
             account=account,
             role=role,
             region=region,
             support_contact=product.support_contact,
-            publish=getattr(product, "publish", False),
+            members=members,
         )
+        publish = getattr(product, "publish", False)
+        statements = share_statements(
+            share_name,
+            product.description,
+            tables,
+            landing_database=runtime.ensure_materialize_attached(),
+        ) + listing_statements(listing_name, share_name, manifest, publish=publish)
         cur = runtime.connection.cursor()
         try:
             for stmt in statements:
                 cur.execute(stmt)
+            for stmt in revoke_statements(share_name, _select_grants(cur, share_name), set(tables)):
+                cur.execute(stmt)
+            if not manifest_matches(manifest, _live_manifest(cur, listing_name)):
+                cur.execute(listing_update_statement(listing_name, manifest, publish=publish))
         except Exception as exc:  # noqa: BLE001 - runtime.connection is an opaque DBAPI cursor
             # (REQ-1635: SnowflakeFederationRuntime is the sole owner of the snowflake.connector
             # import; this adapter must not import its driver-specific exception types to
