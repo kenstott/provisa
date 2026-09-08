@@ -335,3 +335,36 @@ async def test_yaml_serialization_round_trips():
     ):
         text = await config_export.build_live_config_yaml()
     assert yaml.safe_load(text) == {"tables": [{"table": "t"}]}
+
+
+async def test_column_primary_key_flag_rides_the_projection():  # REQ-1652
+    # The key is resolved into the registration tables, never restated in YAML; the DB-truth publish
+    # path builds its snapshot through this projection, and dropping it published every table
+    # key-less -- Snowflake Horizon then withheld every FOREIGN KEY as "not the primary key".
+    base = {"server": {"port": 8000}, "sources": [{"id": "pg"}], "tables": []}
+    row = {
+        "id": 7,
+        "source_id": "pg",
+        "schema_name": "public",
+        "table_name": "pets",
+        "domain_id": "pet-store",
+        "columns": [
+            {
+                "column_name": "id",
+                "data_type": "integer",
+                "is_primary_key": True,
+                "is_foreign_key": False,
+            },
+            {
+                "column_name": "name",
+                "data_type": "text",
+                "is_primary_key": False,
+                "is_foreign_key": False,
+            },
+        ],
+    }
+    cfg = await _run(base=base, tables=[row])
+    cols = {c["name"]: c for c in cfg["tables"][0]["columns"]}
+    assert cols["id"]["is_primary_key"] is True
+    assert cols["name"]["is_primary_key"] is False
+    assert "is_foreign_key" not in cols["id"]  # derived from relationships, not part of the model

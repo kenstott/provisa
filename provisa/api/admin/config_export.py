@@ -59,8 +59,12 @@ _TABLE_KEYS = frozenset(
 )
 # data_type and alias included on purpose: the DB-truth publish path (REQ-1389) builds its
 # snapshot through this projection, and dropping them published columns with empty types,
-# descriptions, and physical-only names.
-_COLUMN_KEYS = frozenset({"name", "description", "visible_to", "data_type", "alias"})
+# descriptions, and physical-only names. is_primary_key rides for the same reason (REQ-1652): the
+# key is resolved into the registration tables, never restated in YAML, and the snapshot's
+# TableAsset.primary_key -- what Snowflake Horizon publishes as the PRIMARY KEY -- is read off it.
+_COLUMN_KEYS = frozenset(
+    {"name", "description", "visible_to", "data_type", "alias", "is_primary_key"}
+)
 _METRIC_KEYS = frozenset(  # REQ-1317, REQ-1319, REQ-1320
     {"name", "expression", "datatype", "description", "ai_context", "visible_to", "from_fact"}
 )

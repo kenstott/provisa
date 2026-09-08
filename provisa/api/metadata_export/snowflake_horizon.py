@@ -539,11 +539,7 @@ def key_tag_statements(
             f"SET TAG {tag_fq(tag)} = '{_escape(value)}';"
         )
 
-    stmts: list[str] = [
-        f'CREATE SCHEMA IF NOT EXISTS "{tags_database}"."{_TAGS_SCHEMA}"',
-        f"CREATE TAG IF NOT EXISTS {tag_fq(_PK_TAG)};",
-        f"CREATE TAG IF NOT EXISTS {tag_fq(_FK_TAG)};",
-    ]
+    stmts: list[str] = []
     for table in tables:
         try:
             physical = physical_parts(table.ref)
@@ -562,7 +558,14 @@ def key_tag_statements(
             references.setdefault((spec.table, column), []).append(target)
     for (parts, column), targets in references.items():
         stmts.append(set_col_tag(parts, column, _FK_TAG, "; ".join(targets)))
-    return stmts
+    if not stmts:
+        return []  # no key to mirror: no tag objects to create either
+    return [
+        f'CREATE SCHEMA IF NOT EXISTS "{tags_database}"."{_TAGS_SCHEMA}"',
+        f"CREATE TAG IF NOT EXISTS {tag_fq(_PK_TAG)};",
+        f"CREATE TAG IF NOT EXISTS {tag_fq(_FK_TAG)};",
+        *stmts,
+    ]
 
 
 def _existing_keys(
