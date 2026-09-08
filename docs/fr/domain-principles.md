@@ -6,68 +6,68 @@
 
 ### Principes fondamentaux
 
-1. **Toute ressource doit appartenir à un domaine.** Les tables, les vues et les relations sont toutes des actifs de domaine. Il n'existe aucune ressource flottante non gouvernée. Le domaine est l'unité de responsabilité.
-2. **Tout domaine doit avoir un data steward.** Un domaine peut exister à l'état en attente jusqu'à ce qu'un data steward lui soit affecté, mais il ne peut pas servir de données gouvernées sans lui.
-3. **L'administrateur est propriétaire des sources.** Les sources sont de l'infrastructure, pas des ressources de domaine. L'administrateur enregistre et gère les connexions aux systèmes de données externes.
-4. **Les data stewards peuvent revendiquer des tables pour un domaine.** La revendication est exclusive : une table appartient exactement à un domaine. C'est l'acte gouverné qui relie l'infrastructure à la couche sémantique.
-5. **Les data stewards peuvent créer des vues intra-domaine à partir des actifs du domaine.** Les vues expriment la logique métier — jointures, agrégations, métriques dérivées — sur des actifs que le data steward possède au sein du même domaine. Les vues créent une nouvelle signification sémantique et nécessitent l'approbation du data steward.
-6. **Les analystes peuvent créer des requêtes inter-domaines à partir de relations approuvées.** Les requêtes sont des vues inter-domaines exprimées dans n'importe quel langage de requête pris en charge. Elles ne créent pas de nouvelle sémantique — elles parcourent des chemins de relation approuvés. Aucune approbation supplémentaire n'est requise : la gouvernance est gérée en amont, aux couches Relation et visibilité des colonnes. Le catalogue est le mécanisme d'application : le compilateur rejette les parcours qui ne figurent pas dans le catalogue de relations approuvées.
-7. **Tout le monde peut demander l'accès à une ressource de domaine.** L'accès est accordé au niveau de la ressource, pas au niveau de la requête. Si vous avez accès à une ressource, vous pouvez la requêter. La gouvernance est appliquée au moment de l'exécution via le pipeline.
+1. **Chaque ressource doit appartenir à un domaine.** Les tables, vues et relations sont toutes des actifs de domaine. Il n'existe aucune ressource flottante non gouvernée. Le domaine est l'unité de responsabilité.
+2. **Chaque domaine doit avoir un steward.** Un domaine peut exister à l'état en attente jusqu'à ce qu'un steward lui soit assigné, mais il ne peut servir de données gouvernées sans en avoir un.
+3. **L'admin possède les sources.** Les sources sont de l'infrastructure, pas des ressources de domaine. L'admin enregistre et gère les connexions aux systèmes de données externes.
+4. **Les stewards peuvent revendiquer des tables pour un domaine.** La revendication est exclusive — une table appartient à exactement un domaine. C'est l'acte gouverné qui relie l'infrastructure et la couche sémantique.
+5. **Les stewards peuvent créer des vues intra-domaine à partir d'actifs de domaine.** Les vues expriment la logique métier — jointures, agrégations, métriques dérivées — sur des actifs que le steward possède au sein du même domaine. Les vues créent une nouvelle signification sémantique et requièrent l'approbation du steward.
+6. **Les analystes peuvent créer des requêtes inter-domaines à partir de relations approuvées.** Les requêtes sont des vues interdomaines exprimées dans n'importe quel langage de requête pris en charge. Elles ne créent pas de nouvelle sémantique — elles parcourent des chemins de relation approuvés. Aucune approbation supplémentaire n'est requise : la gouvernance est gérée en amont, aux couches Relation et visibilité des colonnes. Le catalogue est le mécanisme d'application : le compilateur rejette les parcours qui ne figurent pas dans le catalogue de relations approuvées.
+7. **Toute personne peut demander l'accès à une ressource de domaine.** L'accès est accordé au niveau de la ressource, pas au niveau de la requête. Si vous avez accès à une ressource, vous pouvez l'interroger. La gouvernance est appliquée à l'exécution via le pipeline.
 
-### Ressources : tables et vues en tant que pairs
+### Ressources : tables et vues comme pairs
 
-La distinction entre une table et une vue tient uniquement à l'origine — une table est revendiquée à partir d'une source, une vue est définie par un data steward. Une fois que l'une ou l'autre existe en tant qu'actif de domaine, le modèle de gouvernance les traite de manière identique :
+La distinction entre une table et une vue tient uniquement à l'origine — une table est revendiquée à partir d'une source, une vue est définie par un steward. Une fois que l'une ou l'autre existe en tant qu'actif de domaine, le modèle de gouvernance les traite de façon identique :
 
-- Les deux sont des actifs de domaine de premier ordre, visibles dans le catalogue
+- Les deux sont des actifs de domaine de premier ordre visibles dans le catalogue
 - Les deux peuvent être la cible d'une relation
-- Les deux peuvent être accordées en vertu du principe 6
+- Les deux peuvent être accordées selon le principe 6
 - Les deux sont soumises au même pipeline de gouvernance
 
-Un data steward peut revendiquer des tables de manière privée et n'exposer que des vues sélectionnées comme produits de données destinés au public.
+Un steward peut revendiquer des tables de façon privée et n'exposer que des vues sélectionnées comme produits de données destinés au public.
 
 ### Composition des vues
 
-Une vue appartient toujours à un seul domaine — il n'existe qu'un seul type de vue, toujours intra-domaine. Une vue existe pour l'un des deux objectifs suivants :
+Une vue appartient toujours à un seul domaine — il n'existe qu'un seul type de vue, toujours intra-domaine. Une vue existe pour l'une des deux finalités suivantes :
 
 - **Import inter-domaines** — la source est extérieure au domaine. Les données inter-domaines ne peuvent entrer dans un domaine que via une vue, qui agit comme un adaptateur en lecture seule nommant les données externes comme un concept métier du domaine.
-- **Dérivation locale** — la source appartient au même domaine. La vue dérive des données nouvelles ou calculées à partir des actifs de domaine existants. Les données nouvelles ou dérivées ne peuvent exister que sous forme de vue.
+- **Dérivation locale** — la source est dans le même domaine. La vue dérive des données nouvelles ou calculées à partir d'actifs de domaine existants. Les données nouvelles ou dérivées ne peuvent exister que sous forme de vue.
 
 Une vue peut référencer :
 
 - Des tables revendiquées au sein du même domaine
-- Des champs importés d'un autre domaine dans le cadre d'une concession d'accès aux champs
-- Une autre vue au sein du même domaine, lorsque la variation a un objectif précis : restriction de champs, agrégation ou enrichissement via une jointure supplémentaire
+- Des champs importés depuis un autre domaine sous un octroi d'accès aux champs
+- Une autre vue au sein du même domaine, où la variation est délibérée : restriction de champs, agrégation, ou enrichissement via une jointure supplémentaire
 
-La profondeur de composition n'est pas appliquée techniquement — le jugement du data steward pendant la revue HITL constitue le mécanisme de contrôle de la qualité.
+La profondeur de composition n'est pas techniquement contrainte — le jugement du steward lors de la revue HITL est le mécanisme de contrôle de qualité.
 
-Chaque vue porte un objectif métier déclaré, énoncé au moment de sa création :
+Chaque vue porte une finalité métier déclarée, énoncée à sa création :
 
-- Fait partie de l'artefact gouverné — les data stewards approuvent en sachant à quoi sert la vue
-- Est référencé par les demandes d'accès en vertu du principe 7, afin que le data steward puisse en évaluer la pertinence
-- Accompagne la vue depuis sa création tout au long du flux de gouvernance complet
+- Fait partie de l'artefact gouverné — les stewards approuvent en sachant à quoi sert la vue
+- Référencée par les demandes d'accès selon le principe 7 afin que le steward puisse en évaluer la pertinence
+- Accompagne la vue depuis sa création tout au long du flux de gouvernance
 
 ### Requêtes
 
-Une requête parcourt des chemins de relation approuvés sur les actifs de domaine. Contrairement aux vues, les requêtes ne créent pas de nouvelle signification sémantique — elles parcourent la structure approuvée du modèle. Les requêtes peuvent être exprimées dans n'importe quel langage de requête pris en charge (SQL, GraphQL, Cypher).
+Une requête parcourt des chemins de relation approuvés sur des actifs de domaine. Contrairement aux vues, les requêtes ne créent pas de nouvelle signification sémantique — elles parcourent la structure approuvée du modèle. Les requêtes peuvent être exprimées dans n'importe quel langage de requête pris en charge (SQL, GraphQL, Cypher).
 
 **Application structurelle :** le catalogue de relations est le mécanisme d'application. Le compilateur valide chaque parcours par rapport aux entrées approuvées du catalogue et rejette les requêtes qui référencent des chemins non approuvés. La gouvernance est structurelle, pas une vérification à l'exécution.
 
-**Aucune approbation requise :** la gouvernance a lieu en amont — aux couches Relation et visibilité des colonnes. Si un utilisateur a accès aux colonnes et que le chemin de parcours est approuvé, la requête constitue un usage valide. Aucun contrôle supplémentaire.
+**Aucune approbation requise :** la gouvernance se fait en amont — aux couches Relation et visibilité des colonnes. Si un utilisateur a accès aux colonnes et que le chemin de parcours est approuvé, la requête est un usage valide. Aucun contrôle supplémentaire.
 
-**Différence avec les vues :**
+**Distinction avec les vues :**
 
-- Vues : intra-domaine, introduisent une nouvelle signification sémantique, sélectionnées par le data steward
+- Vues : intra-domaine, introduisent une nouvelle signification sémantique, sélectionnées par le steward
 - Requêtes : parcourent des relations approuvées, aucune nouvelle sémantique, aucun contrôle d'approbation
 
 **Expression du domaine selon le langage de requête :**
 
-Chaque langage pris en charge exprime le domaine comme un espace de noms structurel natif de ce langage :
+Chaque langage pris en charge fait apparaître le domaine comme un espace de noms structurel natif à ce langage :
 
 | Langage | Expression du domaine | Exemple |
 | --- | --- | --- |
 | GraphQL | Préfixe du nom de type et de champ | `type sales__Order { ... }`, `query { sales__orders { ... } }` |
-| SQL | Nom de schéma | `SELECT * FROM sales.orders` |
-| Cypher | Étiquette de nœud supplémentaire (le domaine n'est requis que lorsque le nom de type est ambigu) | `MATCH (o:Sales:Order)` |
+| SQL | Nom du schéma | `SELECT * FROM sales.orders` |
+| Cypher | Étiquette de nœud supplémentaire (domaine requis uniquement lorsque le nom de type est ambigu) | `MATCH (o:Sales:Order)` |
 
 Le compilateur résout l'appartenance au domaine à partir de ces positions structurelles — aucune annotation ni indication n'est requise.
 
@@ -77,101 +77,101 @@ Une relation est un chemin de parcours approuvé entre deux actifs. Les frontiè
 
 **Approbation :**
 
-- L'approbation est requise de la part de chaque data steward distinct propriétaire d'un actif impliqué dans la relation
-- Si un seul data steward possède les deux actifs, une seule approbation est requise. Si deux data stewards sont impliqués, deux approbations sont requises
-- Il n'existe pas de classification intra-domaine/inter-domaines — la propriété détermine naturellement la charge d'approbation
-- L'approbation d'une relation construit le graphe de dépendances de chaque data steward, ce qui permet des notifications proactives d'évolution du schéma
+- L'approbation est requise de la part de chaque steward distinct possédant un actif impliqué dans la relation
+- Si un seul steward possède les deux actifs, une seule approbation est requise. Si deux stewards sont impliqués, deux approbations sont requises
+- Il n'existe aucune classification intra-domaine / inter-domaines — la propriété détermine naturellement la charge d'approbation
+- Approuver une relation construit le graphe de dépendances de chaque steward, permettant des notifications proactives d'évolution de schéma
 
-Les relations sont créées à la demande, pas de manière spéculative. La première équipe ayant le besoin métier effectue le travail ; les équipes suivantes héritent de l'infrastructure.
+Les relations sont créées à la demande, non de façon spéculative. La première équipe ayant le besoin métier effectue le travail ; les équipes suivantes héritent de l'infrastructure.
 
-**Conséquence en matière d'optimisation :** une déclaration de relation n'est pas seulement un artefact de gouvernance — c'est aussi une description structurelle de la forme d'une jointure. Les deux tables, les deux colonnes et le type de jointure qui définissent une relation sont exactement ce dont l'optimiseur de requêtes a besoin pour pré-matérialiser cette jointure. Les relations entre sources différentes génèrent automatiquement des tables de jointure pré-matérialisées ; les relations au sein d'une même source peuvent y adhérer via `materialize: true`. Les data stewards qui réfléchissent à des relations valides et les approuvent obtiennent une accélération des requêtes comme sous-produit direct — le travail de gouvernance et le travail d'optimisation sont un seul et même acte.
+**Conséquence sur l'optimisation :** une déclaration de relation n'est pas seulement un artefact de gouvernance — c'est aussi une description structurelle d'une forme de jointure. Les deux tables, les deux colonnes et le type de jointure qui définissent une relation sont exactement ce dont l'optimiseur de requêtes a besoin pour pré-matérialiser cette jointure. Les relations inter-sources génèrent automatiquement des tables de jointure pré-matérialisées ; les relations de même source peuvent y adhérer via `materialize: true`. Les stewards qui réfléchissent à des relations valides et les approuvent obtiennent une accélération des requêtes comme sous-produit direct — le travail de gouvernance et le travail d'optimisation sont un seul et même acte.
 
-### Concessions d'accès aux champs
+### Octrois d'accès aux champs
 
-Une concession d'accès aux champs est une autorisation de domaine à domaine — le Domaine A peut utiliser des champs spécifiques du Domaine B dans ses vues.
+Un octroi d'accès aux champs est une permission de domaine à domaine — le domaine A peut utiliser des champs spécifiques du domaine B dans ses vues.
 
-**Cycle de vie de la concession :**
+**Cycle de vie de l'octroi :**
 
-- Déclenchée par la création d'une vue lorsque des champs externes sont identifiés comme nécessaires
-- Approuvée une fois par le data steward du domaine cible
-- Appartient au domaine demandeur, pas à la vue qui l'a déclenchée
-- Toute vue ultérieure du domaine demandeur peut utiliser les champs concédés sans intervention supplémentaire inter-domaines
-- Les champs supplémentaires non concédés nécessitent une nouvelle demande
+- Déclenché par la création d'une vue lorsque des champs étrangers sont identifiés comme nécessaires
+- Approuvé une fois par le steward du domaine cible
+- Appartient au domaine demandeur, et non à la vue qui l'a déclenché
+- Toute vue ultérieure du domaine demandeur peut utiliser les champs accordés sans implication inter-domaines supplémentaire
+- Tout champ supplémentaire non accordé nécessite une nouvelle demande
 
-**Notification après usage :** lorsqu'une vue est créée en utilisant des champs concédés, le data steward source en est notifié — pas invité à approuver. La notification comprend le nom de la vue, l'objectif métier déclaré, les champs spécifiques utilisés, et quel data steward l'a approuvée. Cela donne au data steward source :
+**Notification a posteriori :** lorsqu'une vue est créée en utilisant des champs accordés, le steward source en est notifié — non pas sollicité pour approbation. La notification comprend le nom de la vue, sa finalité métier déclarée, les champs spécifiques utilisés, et quel steward l'a approuvée. Cela procure au steward source :
 
-- **Visibilité** — la connaissance de la manière dont ses données sont utilisées
+- **Visibilité** — connaissance de la façon dont ses données sont utilisées
 - **Supervision** — des motifs pour soulever une préoccupation si l'usage semble inapproprié
-- **Recours** — la capacité de révoquer la concession, invalidant les vues dépendantes
+- **Recours** — la possibilité de révoquer l'octroi, invalidant les vues dépendantes
 
-Le compromis : le domaine source approuve l'accès aux champs sans connaître chaque usage futur. L'approbation par vue est correcte en théorie et impraticable en pratique.
+Le compromis : le domaine source approuve l'accès aux champs sans connaître chaque usage futur. Une approbation par vue est correcte en théorie et inapplicable en pratique.
 
-### Flux de création de requêtes
+### Flux de création de requête
 
 Trois étapes, dans l'ordre.
 
-**Étape 1 — Mise en forme (découverte SQL, depuis la page Relations) :**
+**Étape 1 — Modelage (découverte SQL, depuis la page Relations) :**
 
-- L'analyste ouvre l'outil de mise en forme depuis la page Relations pour explorer les chemins de jointure potentiels en SQL brut
-- Le SQL est exécuté sur les données accessibles, sous réserve de la RLS et du masquage de colonnes existants
-- Les clauses JOIN du SQL sont analysées et présentées comme des propositions de relations candidates
-- Les candidats suggérés par la machine (inférence de clé étrangère, inférence sémantique) sont affichés aux côtés de l'exploration SQL de l'analyste dans la même vue
-- L'analyste sélectionne les candidats à promouvoir en demande formelle de relation
+- L'analyste ouvre l'outil de modelage depuis la page Relations pour explorer les chemins de jointure potentiels en SQL brut
+- Le SQL est exécuté sur les données accessibles, soumis à la sécurité au niveau des lignes et au masquage de colonnes existants
+- Les JOIN présents dans le SQL sont analysés et présentés comme des propositions de relation candidates
+- Les candidats suggérés par la machine (inférence par clé étrangère, inférence sémantique) sont affichés aux côtés de l'exploration SQL de l'analyste dans la même vue
+- L'analyste sélectionne les candidats à promouvoir vers une demande de relation formelle
 
-**Étape 2 — Approbation de la relation** (conséquente — structurelle et permanente) :
+**Étape 2 — Approbation de la relation** (déterminante — structurelle et permanente) :
 
-- Soumise à chaque data steward distinct propriétaire d'un actif impliqué dans la relation
+- Soumise à chaque steward distinct possédant un actif impliqué dans la relation
 - S'agit-il d'un chemin de parcours légitime ? La jointure est-elle sémantiquement valide ?
-- Tous les data stewards impliqués doivent approuver ; la relation devient une entrée permanente du catalogue
+- Tous les stewards impliqués doivent approuver ; la relation devient une entrée permanente du catalogue
 
-**Étape 3 — Création de la requête :**
+**Étape 3 — Création de requête :**
 
-- L'analyste construit la requête dans n'importe quel langage pris en charge (SQL, GraphQL, Cypher), en parcourant les chemins de relation approuvés
-- Seules les relations approuvées du catalogue sont parcourables — le compilateur l'applique de manière structurelle
-- Aucune approbation requise — la visibilité des colonnes et l'approbation de la relation sont les seuls contrôles
+- L'analyste construit la requête dans n'importe quel langage pris en charge (SQL, GraphQL, Cypher), en parcourant des chemins de relation approuvés
+- Seules les relations approuvées du catalogue sont franchissables — le compilateur l'impose de façon structurelle
+- Aucune approbation requise — la visibilité des colonnes et l'approbation des relations sont les seuls contrôles
 
 ### HITL comme contrôle principal
 
-Les règles techniques gèrent ce qui est objectif — le suivi de la provenance des champs, l'application des frontières de domaine, la validation par le compilateur. Le jugement contextuel reste entre les mains du data steward. Des contraintes telles que la profondeur de composition des vues, les exigences d'objectif par requête et les décisions d'approbation des relations relèvent du HITL, et non de règles appliquées par le compilateur.
+Les règles techniques traitent ce qui est objectif — le suivi de la provenance des champs, l'application des frontières de domaine, la validation par le compilateur. Le jugement contextuel reste du ressort du steward. Des contraintes telles que la profondeur de composition des vues, les exigences de finalité par requête, et les décisions d'approbation de relation relèvent de HITL, et non de règles imposées par le compilateur.
 
-**Neutralité du domaine source :** le data steward du domaine source approuve la relation une fois et la concession de champs une fois. Par la suite, les domaines en aval opèrent dans les limites de ces concessions :
+**Neutralité du domaine source :** le steward du domaine source approuve la relation une fois et l'octroi de champs une fois. Ensuite, les domaines en aval opèrent dans les limites de ces octrois :
 
-- **Examen approfondi** au moment de la décision de franchissement de frontière
-- **Connaissance légère** par la suite, via des notifications et l'historique des requêtes
+- **Attention élevée** au moment de la décision de franchissement de frontière
+- **Vigilance légère** par la suite, via les notifications et l'historique des requêtes
 
 ---
 
 ## 2. Découvrabilité
 
-### Niveaux de découverte
+### Paliers de découverte
 
-La découverte est structurée selon cinq niveaux de gouvernance croissante. Chaque niveau est un prérequis pour le suivant.
+La découverte est structurée en cinq paliers de gouvernance croissante. Chaque palier est un prérequis pour le suivant.
 
-| Niveau | Description | État de gouvernance |
+| Palier | Description | État de gouvernance |
 | --- | --- | --- |
-| 1 — Schéma de source enregistrée | Chaque table, colonne et type d'une source enregistrée. Visibilité au niveau administrateur. | Aucun — inventaire brut |
-| 2 — Tables non revendiquées | Tables introspectées à partir de sources enregistrées sans propriétaire de domaine. Visibles pour les data stewards ayant accès à la source. | Disponible mais non gouverné |
-| 3 — Actifs de domaine | Tables revendiquées et vues définies par le data steward. Entièrement gouvernées, possédées, visibles dans le catalogue. | Entièrement gouverné |
-| 4 — Relations | Chemins de parcours approuvés entre actifs de niveau 3. Prérequis pour la création de vues inter-domaines. | Approuvé par les deux data stewards |
-| 5 — Concessions de champs | Autorisations d'accès aux champs de domaine à domaine. L'accès gouverné le plus spécifique et le plus délibéré. | Approuvé par le data steward source |
+| 1 — Schéma de source enregistré | Chaque table, colonne et type d'une source enregistrée. Visibilité au niveau admin. | Aucune — inventaire brut |
+| 2 — Tables non revendiquées | Tables introspectées depuis des sources enregistrées sans propriétaire de domaine. Visibles aux stewards ayant accès à la source. | Disponible mais non gouverné |
+| 3 — Actifs de domaine | Tables revendiquées et vues définies par le steward. Entièrement gouvernées, possédées, visibles dans le catalogue. | Entièrement gouverné |
+| 4 — Relations | Chemins de parcours approuvés entre actifs du palier 3. Prérequis pour la création de vues inter-domaines. | Approuvé par les deux stewards |
+| 5 — Octrois de champs | Permissions d'accès aux champs de domaine à domaine. L'accès gouverné le plus spécifique et le plus délibéré. | Approuvé par le steward source |
 
-Une table non revendiquée est un signal de lacune — si les données nécessaires n'existent qu'au niveau 2, un data steward doit la revendiquer avant que la gouvernance puisse progresser. L'absence de tout candidat à tous les niveaux nécessite une escalade vers l'administrateur.
+Une table non revendiquée est un signal de lacune — si les données nécessaires n'existent qu'au palier 2, un steward doit la revendiquer avant que la gouvernance puisse progresser. L'absence de tout candidat à travers tous les paliers requiert une escalade vers l'admin.
 
 ### Contraintes de clé étrangère
 
-Les contraintes de clé étrangère sont une construction au niveau de la source — elles ne peuvent pas s'étendre sur plusieurs sources de données. Les chemins de jointure entre sources sont dérivés entièrement des relations de catalogue approuvées (niveau 4), qui sont plus solides, ayant été validées par les deux data stewards.
+Les contraintes de clé étrangère sont une construction au niveau de la source — elles ne peuvent pas s'étendre sur plusieurs sources de données. Les chemins de jointure inter-sources sont dérivés entièrement des relations approuvées du catalogue (palier 4), qui sont plus robustes, ayant été validées par les deux stewards.
 
 Au sein d'une source :
 
-- Les contraintes de clé étrangère sont présentées automatiquement comme des relations candidates lors de l'enregistrement de la source
-- Elles représentent une intention de modélisation explicite — non appliquée dans la plupart des systèmes SQL analytiques, mais déclarée délibérément
-- La validation du data steward reste requise avant qu'un candidat ne devienne une relation approuvée
+- Les contraintes de clé étrangère sont automatiquement présentées comme des relations candidates lors de l'enregistrement de la source
+- Elles représentent une intention de modélisation explicite — non appliquée dans la plupart des systèmes SQL analytiques mais délibérément déclarée
+- La validation par le steward reste requise avant qu'un candidat ne devienne une relation approuvée
 
 ### Hiérarchie de confiance des relations
 
 | Preuve | Confiance |
 | --- | --- |
-| Relation de catalogue approuvée — entre sources, validée par les deux data stewards | Maximale |
+| Relation approuvée du catalogue — inter-sources, validée par les deux stewards | La plus élevée |
 | Contrainte de clé étrangère intra-source — intention de modélisation explicite, non appliquée mais délibérée | Élevée |
 | Inférence sémantique intra-source — similarité de nom/type de colonne au sein d'un schéma cohérent | Moyenne |
 | Inférence sémantique inter-sources — les conventions de nommage divergent entre systèmes ; risque élevé de faux positifs | Faible |
@@ -180,65 +180,65 @@ Les suggestions corroborées par plusieurs types de preuves accumulent de la con
 
 ### Sondage et corrélation des données
 
-Pour les candidats inférés sémantiquement, le sondage de données offre une étape de validation :
+Pour les candidats inférés sémantiquement, le sondage des données fournit une étape de validation :
 
 - **Chevauchement de valeurs** — proportion des valeurs de la colonne source qui apparaissent dans la colonne cible
 - **Cardinalité** — si la distribution correspond au type de relation attendu
-- **Taux de valeurs nulles** — proportion de la colonne source qui est nulle, indiquant une optionnalité
+- **Taux de valeurs nulles** — proportion de la colonne source qui est nulle, indiquant l'optionalité
 
-Une corrélation élevée augmente la confiance ; une corrélation faible supprime ou rétrograde le candidat. Le sondage est une preuve corroborante, pas une preuve absolue — les plages d'entiers peuvent se chevaucher par coïncidence, et l'intégrité référentielle partielle est courante dans les systèmes analytiques. Une marge d'erreur importante subsiste. Le jugement sémantique du data steward est la seule vérification finale fiable.
+Une corrélation élevée renforce la confiance ; une corrélation faible supprime ou rétrograde le candidat. Le sondage est une preuve corroborante, pas une démonstration — des plages d'entiers peuvent se chevaucher par coïncidence et l'intégrité référentielle partielle est courante dans les systèmes analytiques. Une marge d'erreur significative subsiste. Le jugement sémantique du steward est le seul contrôle final fiable.
 
 ### Découverte assistée par LLM
 
-Le LLM opère simultanément sur les cinq niveaux, suggérant des relations, des revendications candidates et des chemins de parcours classés par confiance.
+Le LLM opère simultanément sur les cinq paliers, suggérant des relations, des revendications candidates et des chemins de parcours classés par confiance.
 
-**Ce que le LLM présente :**
+**Ce que le LLM révèle :**
 
 - Des relations candidates classées par confiance
-- Des tables non revendiquées susceptibles de répondre à un besoin de données, avec une invite à initier la revendication
-- L'absence de tout candidat — signal pour escalader vers l'administrateur
+- Des tables non revendiquées susceptibles de satisfaire un besoin de données, avec une invitation à initier la revendication
+- L'absence de tout candidat — signal d'escalade vers l'admin
 
 **Conception de vue à partir d'une description métier :**
 
-L'analyste fournit une description en langage naturel et des contraintes facultatives. Le LLM produit une structure de vue suggérée.
+L'analyste fournit une description en langage naturel et des contraintes optionnelles. Le LLM produit une structure de vue suggérée.
 
 *Entrée :*
 
 - Description métier : entités, métriques, relations, intention
-- Contraintes facultatives : filtres, fenêtres temporelles, agrégations, champs exclus, restrictions de sensibilité
+- Contraintes optionnelles : filtres, fenêtres temporelles, agrégations, champs exclus, restrictions de sensibilité
 
 *Exemple :*
-> « Volumes d'opérations quotidiens par contrepartie sur les 30 derniers jours, contreparties actives uniquement, affichant la raison sociale de la contrepartie et la notation de crédit. Aucune donnée personnelle. »
+> « Volumes d'échanges quotidiens par contrepartie sur les 30 derniers jours, contreparties actives uniquement, affichant la raison sociale de la contrepartie et sa notation de crédit. Sans DCP. »
 
 *Processus du LLM :*
 
 1. Analyse — identifier les entités, métriques, dimensions, filtres, exclusions
-2. Recherche — dans tous les niveaux du catalogue, les actifs correspondants
+2. Recherche — tous les paliers du catalogue à la recherche d'actifs correspondants
 3. Suggestion — actifs de domaine, relations, champs, structure d'agrégation
-4. Notation — confiance par composant, fondée sur les preuves de niveau
-5. Prérequis — liste ordonnée des revendications, relations et concessions de champs requises
-6. Lacunes — entités ou champs sans candidat à aucun niveau, signalés pour escalade vers l'administrateur
+4. Notation — confiance par composant selon les preuves du palier
+5. Prérequis — liste ordonnée des revendications, relations et octrois de champs requis
+6. Lacunes — entités ou champs sans candidat dans aucun palier, signalés pour escalade vers l'admin
 
 *Sortie :*
 
-- Ébauche de requête pour revue et ajustement par l'analyste
+- Requête provisoire pour revue et affinage par l'analyste
 - Scores de confiance par composant
 - Liste ordonnée des prérequis
 - Liste des lacunes
 
-La description métier devient l'objectif métier déclaré de la vue une fois que celle-ci est formellement créée.
+La description métier devient la finalité métier déclarée de la vue une fois celle-ci formellement créée.
 
-**Découverte de relations pilotée par SQL (outil de modélisation) :**
+**Découverte de relations SQL-first (outil de modelage) :**
 
 Accessible sous forme de fenêtre modale depuis la page Relations. L'intention est de construire le modèle sémantique — en identifiant les chemins de jointure structurels avant de les formaliser en relations gouvernées.
 
-1. L'analyste écrit du SQL libre sur les tables accessibles (RLS et masquage toujours appliqués)
-2. L'AST du SQL est analysé — chaque condition JOIN devient une proposition de relation candidate
-3. La liste de candidats est affichée aux côtés des candidats suggérés par la machine (inférence de clé étrangère, inférence sémantique) pour une revue unifiée
-4. L'analyste promeut les candidats sélectionnés en demandes formelles de relation
-5. Les relations approuvées sont ajoutées au catalogue et deviennent parcourables dans les requêtes
+1. L'analyste écrit du SQL libre sur les tables accessibles (la sécurité au niveau des lignes et le masquage restent appliqués)
+2. L'AST SQL est analysé — chaque condition JOIN devient une proposition de relation candidate
+3. La liste des candidats est affichée aux côtés des candidats suggérés par la machine (inférence par clé étrangère, inférence sémantique) pour une revue unifiée
+4. L'analyste promeut les candidats sélectionnés vers des demandes de relation formelles
+5. Les relations approuvées sont ajoutées au catalogue et deviennent franchissables dans les requêtes
 
-L'outil de modélisation peut afficher toutes les tables enregistrées à des fins d'exploration structurelle, même lorsque l'analyste ne peut pas voir les données sous-jacentes — l'approbation du data steward gouverne l'accès réel aux données, pas la visibilité du schéma.
+L'outil de modelage peut afficher toutes les tables enregistrées à des fins d'exploration structurelle, même lorsque l'analyste ne peut pas voir les données sous-jacentes — l'approbation du steward gouverne l'accès réel aux données, non la visibilité du schéma.
 
 ---
 
@@ -254,86 +254,13 @@ Chaque requête qui touche un actif de domaine est enregistrée dans un `query_a
 - `source`, `status_code`, `duration_ms`
 - `logged_at` — l'horodatage
 
-Le journal est en ajout seul (DELETE et UPDATE sont bloqués au niveau de la base de données) et indexé par `(tenant_id, logged_at)` et `(user_id, logged_at)`.
+Le journal est en ajout seul (DELETE et UPDATE bloqués au niveau de la base de données) et indexé par `(tenant_id, logged_at)` et `(user_id, logged_at)`.
 
-Le rapport d'historique des requêtes du data steward est une vue agrégée sur ce journal, filtrable par actif, rôle et fenêtre temporelle. Le catalogue est un instrument de gouvernance en direct — les data stewards restent conscients de la manière dont leurs actifs sont utilisés au fur et à mesure, et non après coup.
+Le rapport d'historique des requêtes du steward est une vue agrégée sur ce journal, filtrable par actif, rôle et fenêtre temporelle. Le catalogue est un instrument de gouvernance vivant — les stewards maintiennent une conscience de la façon dont leurs actifs sont utilisés en temps réel, non après coup.
 
 **Deux mécanismes de visibilité :**
 
-- **Push** — notifications après usage pour les actes structurels (une nouvelle vue a été créée en utilisant vos champs)
-- **Pull** — historique des requêtes pour les modèles d'usage à l'exécution
+- **Poussée** — notifications a posteriori pour les actes structurels (une nouvelle vue a été créée en utilisant vos champs)
+- **Extraction** — historique des requêtes pour les schémas d'usage à l'exécution
 
----
 
-## 4. Produits de données (REQ-1634)
-
-Un produit de données est un ensemble nommé et approprié de tables publiées conjointement pour la consommation. C'est l'unité que le catalogue expose aux consommateurs — non pas des tables individuelles, mais une surface organisée qu'un domaine déclare explicitement prête. Les champs suivent le vocabulaire ODPS (Open Data Product Standard) là où Provisa détient déjà la source de vérité. [tool-verified: `provisa/core/models.py:318-342`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json`]
-
-### Règle de propriété de domaine
-
-Chaque produit de données appartient à exactement un domaine (`domain_id` est un champ obligatoire). Une table ne peut rejoindre un produit que si toutes deux partagent le même `domain_id`. L'interface limite le sélecteur de tables au domaine du produit ; le backend rejette à l'enregistrement toute affectation de `product_id` dont le domaine ne correspond pas à celui du produit. [tool-verified: `provisa/core/models.py:320`, `docs/arch/requirements.yaml:54573-54574`]
-
-Un produit qui a besoin de données d'un autre domaine doit d'abord importer ces données sous forme de vue de domaine, puis inclure cette vue comme membre.
-
-### Ports de sortie
-
-Les tables et commandes affectées à un produit de données constituent ses **ports de sortie** — la surface interrogeable visible des consommateurs. Affecter une table positionne `Table.product_id` ; l'effacer supprime l'appartenance. Une table appartient à au plus un produit. Des commandes du même domaine peuvent également être affectées comme membres. [tool-verified: `provisa/core/models.py:941`, `provisa-ui/src/i18n/locales/en/dataProductsTab.json:tablesLabel,commandsLabel`]
-
-### Sections du panneau de détail
-
-L'ouverture d'un produit de données dans l'interface d'administration affiche ces panneaux :
-
-| Panneau | Contenu |
-| --- | --- |
-| Ports de sortie | Tables membres et leurs colonnes ; commandes membres ; exemples de requêtes (GraphQL, SQL, Cypher, gRPC, JSON:API, REST) |
-| Termes liés | Termes du glossaire liés aux tables membres du produit |
-| Tables liées | Tables accessibles depuis les tables membres via des relations approuvées mais ne faisant pas encore partie du produit |
-| Relations | Relations approuvées entre les tables membres de ce produit |
-| Lignage | Graphe de lignage des colonnes montrant les tables membres comme point de publication, ainsi que toutes les tables en amont. Nécessite la capacité `view_governance` |
-| Ports d'entrée | Entrées à un saut → transformation → sorties dérivées du lignage. Nécessite `view_governance` |
-| Qualité des données | Tables de contrôle dont les contrats analysent les ports de sortie de ce produit ; une ligne par vérification par exécution. Inclut une modale de règles et l'affichage des étiquettes PII |
-
-[tool-verified: `provisa-ui/src/i18n/locales/en/dataProductsTab.json:detail`]
-
-### Export de métadonnées
-
-Seules les tables affectées à un produit publient vers les catalogues externes par défaut. `build_snapshot` applique un filtre `data_products_only` : les tables non affectées sont retenues, ainsi que leurs arêtes de relation, arêtes de lignage et étiquettes de gouvernance. Les sources et domaines publient toujours, quelle que soit la configuration. [tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
-
-Un produit sans membres exportés ne publie pas — une entrée vide prétendrait qu'un produit existe sans rien derrière. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]
-
-Seuls les catalogues dotés d'un concept natif de produit de données le publient comme entité de premier rang ; les autres publient les tables membres (déjà filtrées) sans regroupement par produit :
-
-| Catalogue | Publié en tant que |
-| --- | --- |
-| Snowflake Horizon | SHARE + listing d'organisation (Data Product natif) ; `publish=false` le maintient en DRAFT, `publish=true` le met en ligne |
-| BigQuery Analytics Hub | Listing Analytics Hub (natif) |
-| OpenMetadata | Entité `DataProduct` (natif) |
-| DataHub | Entité URN `dataProduct` native avec ses propres aspects properties/ownership |
-| Collibra | Actif de type communauté `Data Product`, lié aux tables membres |
-| Apache Atlas | Au mieux, typedef personnalisé `provisa_data_product` — Atlas n'a pas de type natif pour les produits de données |
-| Atlan | Au mieux, supposition de typedef `DataProduct` personnalisé — Atlan ne dispose pas de type stable et documenté pour ce concept |
-| OpenLineage | Pas un listing — les tables membres portent une facette personnalisée `provisa_data_product` nommant le produit |
-
-[tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:389-418`, `provisa/api/metadata_export/bigquery_dataplex.py:112-136`, `provisa/api/metadata_export/openmetadata.py:326-344`, `provisa/api/metadata_export/datahub.py:133-136,443-483`, `provisa/api/metadata_export/collibra.py:129-133,371-388`, `provisa/api/metadata_export/atlas.py:134-147`, `provisa/api/metadata_export/atlan.py:60`, `provisa/api/metadata_export/openlineage.py:243,348`]
-
-### Champs
-
-| Champ | Obligatoire | Notes |
-| --- | --- | --- |
-| `id` | Oui | Identifiant stable lisible par machine, ex. `customer_360` |
-| `domain_id` | Oui | Domaine propriétaire ; règle d'appartenance appliquée en référence à ce champ |
-| `name` | Oui | Nom d'affichage |
-| `owner_role` | Non | Rôle responsable de ce produit ; distinct du data steward du domaine |
-| `team_role` | Non | Rôle dont les titulaires forment l'équipe opérationnelle quotidienne ; se résout en individus |
-| `purpose` | Non | Ce que publie ce produit et pourquoi |
-| `limitations` | Non | Contraintes, mises en garde ou exclusions connues |
-| `usage` | Non | Comment consommer ce produit |
-| `version` | Non | ex. `1.2.0` |
-| `status` | Non | ex. `proposed`, `active`, `deprecated`, `retired` |
-| `sla` | Non | Engagements de niveau de service ; prose uniquement — un produit couvre plusieurs tables membres et un SLA structuré ne peut pas désigner sans ambiguïté le membre qu'il décrit |
-| `support` | Non | Indications d'assistance en texte libre |
-| `support_contact` | Non | E-mail ou URL ; exigé par les manifestes de listing d'organisation Snowflake Horizon Catalog (REQ-1635) |
-| `publish` | Non | `true` pour publier les listings Horizon Catalog immédiatement ; les nouveaux listings sont DRAFT par défaut (REQ-1635) |
-| `custom_properties` | Non | Métadonnées clé-valeur arbitraires non couvertes par les champs standard |
-
-[tool-verified: `provisa/core/models.py:318-342`, `provisa/api/admin/types.py:104-118,538-551`]

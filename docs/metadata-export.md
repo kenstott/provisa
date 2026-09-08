@@ -20,6 +20,34 @@ matches each one's ingestion API.
 | `atlan` | Atlan | The same Atlas-shaped transport, mounted at `/api/meta` and typed by Atlan's own asset types [tool-verified: provisa/api/metadata_export/atlan.py:62-65] |
 | `datahub` | DataHub | One aspect proposal per asset facet, posted to `/aspects?action=ingestProposal` [tool-verified: provisa/api/metadata_export/datahub.py:340] |
 | `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` [tool-verified: provisa/api/metadata_export/collibra.py:229] |
+| `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` [tool-verified: provisa/api/metadata_export/snowflake_horizon.py:11-27] |
+| `bigquery_dataplex` | BigQuery Analytics Hub (Dataplex) | REST calls to `{endpoint}/v1/dataProducts...` [tool-verified: provisa/api/metadata_export/bigquery_dataplex.py:123-164] |
+
+Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** (REQ-1592,
+REQ-1634, REQ-1636) — see [Data Products](data-products.md#metadata-export) — not the general
+table/column/lineage snapshot the six adapters above publish. A snapshot with no Data Products
+publishes nothing to either.
+
+`snowflake_horizon` is engine-native, unlike every other adapter: Horizon Catalog is not a remote
+catalog reached over `endpoint`/`api_key` — it lives inside the same Snowflake account the engine
+already runs governed SQL against, so the adapter opens its own connection off the engine's
+configured DSN instead. `endpoint` and `api_key` are not settings this provider has, and the config
+validator does not require them for it (REQ-1635's validation is asserted below). Each Data Product
+becomes a Snowflake `SHARE` over its member tables' physical addresses, wrapped in an internal
+`CREATE ORGANIZATION LISTING` (`distribution: ORGANIZATION`, not `EXTERNAL` — Marketplace-shaped
+listings never surface in the account's own Horizon Catalog / Data sharing UI). `publish=false` on
+the Data Product keeps the listing DRAFT; `publish=true` takes it live immediately.
+[tool-verified: provisa/api/metadata_export/snowflake_horizon.py:11-27]
+
+`bigquery_dataplex` still speaks REST like the six vendor-neutral adapters, but — like
+`snowflake_horizon` — cannot be a pure payload builder: an Analytics Hub listing identifies a table
+by its `project.dataset.table` in the org's real BigQuery project, which `MetadataSnapshot`'s own
+`(source_id, schema_name, table_name)` asset refs don't carry, so the adapter resolves real
+identity from the org's live BigQuery federation runtime. One Data Product becomes one Analytics
+Hub listing backed by a dataset containing the product's member tables. Until the org's BigQuery
+source has a landing terminal attached (REQ-1633), `publish` finds no usable runtime and reports
+nothing published — the documented "otherwise skipped" state, not an error.
+[tool-verified: provisa/api/metadata_export/bigquery_dataplex.py:11-30]
 
 Purview needs no adapter of its own: its ingestion API *is* the Atlas API — the same routes, the
 same entity envelope, the same RDBMS type model — so it is the `atlas` provider pointed at a
@@ -70,7 +98,7 @@ credentials it publishes with, belong to that org rather than to the deployment.
 ```yaml
 metadata_export:
   enabled: true
-  provider: openlineage        # openlineage | openmetadata | atlas | atlan | datahub | collibra
+  provider: openlineage        # openlineage | openmetadata | atlas | atlan | datahub | collibra | snowflake_horizon | bigquery_dataplex
   endpoint: http://marquez:5000
   auth_mode: api_key           # api_key | bearer | basic | entra
   api_key: ${MARQUEZ_API_KEY}
@@ -84,7 +112,7 @@ metadata_export:
 | --- | --- |
 | `enabled` | Whether this org publishes at all. An enabled target with no `provider` or no `endpoint` is refused when it is saved, not at the next publish. |
 | `provider` | Which adapter backs the target. An unrecognized name is refused when the adapter is constructed. |
-| `endpoint` | Base URL of the target catalog. |
+| `endpoint` | Base URL of the target catalog. Not required for `snowflake_horizon`, which connects off the engine's own configured DSN instead. |
 | `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field, `bearer` sends the `token` field, `basic` pairs `username` with the `token` field as HTTP basic — which is stock Apache Atlas's own authentication, and it answers a bearer token with 401 — and `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`. |
 | `username` | The account name for `basic`. Unused by the other modes. |
 | `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile. Re-armed when you save, so a change takes effect without a restart — see [How the target stays current](#how-the-target-stays-current). |
@@ -154,7 +182,7 @@ A daily export at 06:00:
   junction table, its two key columns, and the discriminator that splits it into several edge types
   publish alongside as `via`. (REQ-1586)
   [tool-verified: `provisa/api/metadata_export/model.py:110-145`]
-- **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control.
+- **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra` — each publishes terms into one Provisa-owned glossary/namespace (REQ-1387). Not supported by `openlineage`, `snowflake_horizon` or `bigquery_dataplex`; glossary terms are silently omitted from their publishes. [tool-verified: provisa/api/metadata_export/openmetadata.py:51-58, provisa/api/metadata_export/atlas.py:806-811, provisa/api/metadata_export/atlan.py:26-28, provisa/api/metadata_export/datahub.py:50-54, provisa/api/metadata_export/collibra.py:61-63]
 - **Lineage** — column-level edges with the transforms applied along each one.
 
 Lineage is derived from the compiled definitions of governed views and the materialized-view DAG,

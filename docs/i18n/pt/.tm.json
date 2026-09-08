@@ -1,12 +1,12 @@
 {
   "admin.md": "545e179bbee38ec6a0e4521336a54587319e68f30f10cdc847df2d23829995fd",
-  "api-reference.md": "21cdf2ecc2df6e8aa1c443118eab401f9480114924dba1122a01e50aa463bab3",
+  "api-reference.md": "67a108b711531831a042d44e32da11710d9bc872b66c9c6660621e32dcf512c7",
   "architecture.md": "38a1c7f34831f2752af704d64566b04e06061506c1f595a85bfacd1127cc8708",
   "commands.md": "70d73254c8362a6a992ac0411d2fb3f9b270fabdb0c3c66e78ecfdb68c9047ec",
   "configuration.md": "097b18c88859a8f05e0fb0c63c3f65058699454244d122b0694b19e6ef921171",
   "cypher.md": "36e35e16d5f40c193af9e16e5ab53ac4240c59366730774ec21ec101c1e59cde",
   "deployment.md": "786a88236dd7e6f05f6fe79823c25dba9dad2278246770451be4d0a49d0f1c1f",
-  "domain-principles.md": "38311bf05ed25b55e718bf6a7df77bc0d48f03088927f3719c6b98cfe0df6d3e",
+  "domain-principles.md": "22dc202aef736f32c5a97afc39d991fd63e1cd4af5bcb53f49c8f368d752b9b5",
   "environments.md": "523782dd3fc1ece2bb7f34c226ec5ecd67fc199acd3c875656d91986ae358687",
   "glossary.md": "eabb5db20b3b1af1b33747cbb3de11aa2ea6877146622d21619fcc9b1298f64a",
   "import.md": "b441928f5e78ab87955e558b3a6519b59c12c977c3a46972f5c91469b746177d",
@@ -24,5 +24,6 @@
   "secrets.md": "b2aaac449244bba69fd476ec8e4cafafb2ff9b01a2f0161510cc0e201fe6d14f",
   "security.md": "e0cc516c75a532eb820f43a63abf11da979e5edfdac3341a48b6f26219bd7fa7",
   "sources.md": "9e54f09895edf8c49c9894df5b4eb1116af10daff520159d416b364bccfd085a",
-  "subscriptions.md": "e1ae1d7f3583954d5103b795d3e6d71aef7fc1c38ce8dba7a155c4b047ec501c"
+  "subscriptions.md": "e1ae1d7f3583954d5103b795d3e6d71aef7fc1c38ce8dba7a155c4b047ec501c",
+  "data-products.md": "e4e3f97573bc72cfc6b28c38addd323c88b4d6aa662228a78c9628be42bb7834"
 }

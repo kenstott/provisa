@@ -22,6 +22,7 @@
     "pgwire.md",
     "remote-schemas.md",
     "domain-principles.md",
+    "data-products.md",
     "migration/hasura-ddn.md",
     "migration/hasura-v2.md",
     "secrets.md",

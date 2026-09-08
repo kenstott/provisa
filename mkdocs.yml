@@ -37,6 +37,9 @@ theme:
     - search.suggest
     - toc.follow
 
+extra_javascript:
+  - assets/javascripts/search-locale-filter.js
+
 markdown_extensions:
   - admonition
   - attr_list
@@ -136,6 +139,7 @@ nav:
       - Secrets: secrets.md
       - Business Glossary: glossary.md
       - Metadata Export: metadata-export.md
+      - Data Products: data-products.md
   - Clients:
       - Python Client: python-client.md
   - Administration:

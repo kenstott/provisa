@@ -1,4 +1,4 @@
-# Prinzipien des Domänenmodells
+# Domänenmodell-Prinzipien
 
 ---
 
@@ -6,125 +6,125 @@
 
 ### Kernprinzipien
 
-1. **Jede Ressource muss einer Domäne gehören.** Tabellen, Sichten und Beziehungen sind allesamt Domänen-Assets. Es gibt keine ungovernte, frei schwebende Ressource. Die Domäne ist die Einheit der Verantwortlichkeit.
-2. **Jede Domäne muss einen Data Steward haben.** Eine Domäne kann sich in einem ausstehenden Zustand befinden, bis ein Data Steward zugewiesen ist, aber sie kann ohne ihn keine governten Daten bereitstellen.
-3. **Der Administrator besitzt die Quellen.** Quellen sind Infrastruktur, keine Domänen-Ressourcen. Der Administrator registriert und verwaltet Verbindungen zu externen Datensystemen.
-4. **Data Stewards können Tabellen für eine Domäne beanspruchen.** Die Beanspruchung ist exklusiv — eine Tabelle gehört genau einer Domäne. Dies ist der governte Akt, der Infrastruktur und semantische Schicht verbindet.
-5. **Data Stewards können domäneninterne Sichten aus Domänen-Assets erstellen.** Sichten drücken Geschäftslogik aus — Joins, Aggregationen, abgeleitete Metriken — über Assets, die der Data Steward innerhalb derselben Domäne besitzt. Sichten erzeugen neue semantische Bedeutung und erfordern die Genehmigung des Data Stewards.
-6. **Analysten können domänenübergreifende Abfragen aus genehmigten Beziehungen erstellen.** Abfragen sind domänenübergreifende Sichten, ausgedrückt in jeder unterstützten Abfragesprache. Sie erzeugen keine neue Semantik — sie durchlaufen genehmigte Beziehungspfade. Es ist keine zusätzliche Genehmigung erforderlich: Governance wird vorgelagert auf den Ebenen Beziehung und Spaltensichtbarkeit gehandhabt. Der Katalog ist der Durchsetzungsmechanismus: Der Compiler lehnt Durchläufe ab, die nicht im genehmigten Beziehungskatalog enthalten sind.
-7. **Jeder kann Zugriff auf eine Domänen-Ressource anfordern.** Zugriff wird auf Ressourcenebene gewährt, nicht auf Abfrageebene. Wenn Sie Zugriff auf eine Ressource haben, können Sie sie abfragen. Governance wird zur Laufzeit über die Pipeline durchgesetzt.
+1. **Jede Ressource muss einer Domäne gehören.** Tabellen, Sichten und Beziehungen sind alle Domänen-Assets. Es gibt keine ungovernten frei schwebenden Ressourcen. Die Domäne ist die Einheit der Rechenschaftspflicht.
+2. **Jede Domäne muss einen Steward haben.** Eine Domäne kann sich in einem ausstehenden Zustand befinden, bis ein Steward zugewiesen wird, aber sie kann ohne einen solchen keine governten Daten bereitstellen.
+3. **Der Admin besitzt die Quellen.** Quellen sind Infrastruktur, keine Domänen-Ressourcen. Der Admin registriert und verwaltet Verbindungen zu externen Datensystemen.
+4. **Stewards können Tabellen für eine Domäne beanspruchen.** Das Beanspruchen ist exklusiv — eine Tabelle gehört genau einer Domäne. Dies ist der governte Akt, der Infrastruktur und semantische Schicht verbindet.
+5. **Stewards können intradomänen Sichten aus Domänen-Assets erstellen.** Sichten drücken Geschäftslogik aus — Joins, Aggregationen, abgeleitete Kennzahlen — über Assets, die der Steward innerhalb derselben Domäne besitzt. Sichten erzeugen neue semantische Bedeutung und erfordern die Genehmigung des Stewards.
+6. **Analysten können domänenübergreifende Abfragen aus genehmigten Beziehungen erstellen.** Abfragen sind interdomäne Sichten, ausgedrückt in jeder unterstützten Abfragesprache. Sie erzeugen keine neue Semantik — sie durchlaufen genehmigte Beziehungspfade. Es ist keine zusätzliche Genehmigung erforderlich: Governance wird vorgelagert auf der Ebene der Beziehung und der Spaltensichtbarkeit gehandhabt. Der Katalog ist der Durchsetzungsmechanismus: Der Compiler weist Traversierungen zurück, die nicht im genehmigten Beziehungskatalog stehen.
+7. **Jeder kann Zugriff auf eine Domänen-Ressource anfordern.** Der Zugriff wird auf Ressourcenebene gewährt, nicht auf Abfrageebene. Wenn Sie Zugriff auf eine Ressource haben, können Sie sie abfragen. Governance wird zur Ausführungszeit über die Pipeline durchgesetzt.
 
 ### Ressourcen: Tabellen und Sichten als Gleichrangige
 
-Der Unterschied zwischen einer Tabelle und einer Sicht liegt nur im Ursprung — eine Tabelle wird von einer Quelle beansprucht, eine Sicht wird von einem Data Steward definiert. Sobald eines von beiden als Domänen-Asset existiert, behandelt das Governance-Modell sie identisch:
+Der Unterschied zwischen einer Tabelle und einer Sicht ist nur die Herkunft — eine Tabelle wird aus einer Quelle beansprucht, eine Sicht wird von einem Steward definiert. Sobald eines von beiden als Domänen-Asset existiert, behandelt das Governance-Modell sie identisch:
 
 - Beide sind erstklassige Domänen-Assets, die im Katalog sichtbar sind
 - Beide können Ziel einer Beziehung sein
-- Beide können gemäß Prinzip 6 gewährt werden
+- Beide können unter Prinzip 6 gewährt werden
 - Beide unterliegen derselben Governance-Pipeline
 
-Ein Data Steward kann Tabellen privat beanspruchen und nur kuratierte Sichten als öffentlich zugängliche Datenprodukte bereitstellen.
+Ein Steward kann Tabellen privat beanspruchen und nur kuratierte Sichten als öffentlich zugängliche Datenprodukte bereitstellen.
 
-### Zusammensetzung von Sichten
+### Sicht-Komposition
 
-Eine Sicht gehört immer zu genau einer Domäne — es gibt nur einen Sichttyp, immer domänenintern. Eine Sicht existiert für einen von zwei Zwecken:
+Eine Sicht gehört immer zu einer einzigen Domäne — es gibt nur einen Sichttyp, immer intradomän. Eine Sicht existiert für einen von zwei Zwecken:
 
-- **Domänenübergreifender Import** — die Quelle liegt außerhalb der Domäne. Domänenübergreifende Daten dürfen nur über eine Sicht in eine Domäne gelangen, die als schreibgeschützter Adapter fungiert und die externen Daten als Geschäftskonzept der Domäne benennt.
-- **Lokale Ableitung** — die Quelle liegt in derselben Domäne. Die Sicht leitet neue oder berechnete Daten aus bestehenden Domänen-Assets ab. Neue oder abgeleitete Daten dürfen nur als Sicht existieren.
+- **Domänenübergreifender Import** — die Quelle liegt außerhalb der Domäne. Domänenübergreifende Daten dürfen nur über eine Sicht in eine Domäne gelangen, die als schreibgeschützter Adapter fungiert, der die externen Daten als Domänen-Geschäftskonzept benennt.
+- **Lokale Ableitung** — die Quelle liegt in derselben Domäne. Die Sicht leitet neue oder berechnete Daten aus vorhandenen Domänen-Assets ab. Neue oder abgeleitete Daten dürfen nur als Sicht existieren.
 
 Eine Sicht kann referenzieren:
 
 - Beanspruchte Tabellen innerhalb derselben Domäne
-- Felder, die im Rahmen einer Feldzugriffsfreigabe aus einer anderen Domäne importiert wurden
-- Eine weitere Sicht innerhalb derselben Domäne, sofern die Abweichung zweckgebunden ist: Feldeinschränkung, Aggregation oder Anreicherung über einen zusätzlichen Join
+- Felder, die aus einer anderen Domäne unter einer Feldzugriffsberechtigung importiert wurden
+- Eine andere Sicht innerhalb derselben Domäne, wobei die Abweichung zweckgebunden ist: Feldeinschränkung, Aggregation oder Anreicherung über einen zusätzlichen Join
 
-Die Kompositionstiefe wird technisch nicht erzwungen — das Urteilsvermögen des Data Stewards während der HITL-Überprüfung ist der Mechanismus der Qualitätskontrolle.
+Die Kompositionstiefe wird technisch nicht erzwungen — die Beurteilung des Stewards während der HITL-Prüfung ist der Qualitätskontrollmechanismus.
 
-Jede Sicht trägt einen deklarierten Geschäftszweck, der bei der Erstellung festgelegt wird:
+Jede Sicht trägt einen deklarierten Geschäftszweck, der zum Erstellungszeitpunkt angegeben wird:
 
-- Teil des governten Artefakts — Data Stewards genehmigen in Kenntnis dessen, wofür die Sicht bestimmt ist
-- Wird bei Zugriffsanfragen gemäß Prinzip 7 referenziert, damit der Data Steward die Eignung beurteilen kann
+- Teil des governten Artefakts — Stewards genehmigen im Wissen, wofür die Sicht bestimmt ist
+- Wird bei Zugriffsanfragen unter Prinzip 7 referenziert, damit der Steward die Eignung beurteilen kann
 - Begleitet die Sicht von ihrer Erstellung durch den gesamten Governance-Workflow
 
 ### Abfragen
 
 Eine Abfrage durchläuft genehmigte Beziehungspfade über Domänen-Assets. Anders als Sichten erzeugen Abfragen keine neue semantische Bedeutung — sie durchlaufen die genehmigte Struktur des Modells. Abfragen können in jeder unterstützten Abfragesprache ausgedrückt werden (SQL, GraphQL, Cypher).
 
-**Strukturelle Durchsetzung:** Der Beziehungskatalog ist der Durchsetzungsmechanismus. Der Compiler validiert jeden Durchlauf gegen genehmigte Katalogeinträge und lehnt Abfragen ab, die auf nicht genehmigte Pfade verweisen. Governance ist strukturell, keine Laufzeitprüfung.
+**Strukturelle Durchsetzung:** Der Beziehungskatalog ist der Durchsetzungsmechanismus. Der Compiler validiert jede Traversierung gegen genehmigte Katalogeinträge und weist Abfragen zurück, die nicht genehmigte Pfade referenzieren. Governance ist strukturell, keine Laufzeitprüfung.
 
-**Keine Genehmigung erforderlich:** Governance findet vorgelagert statt — auf den Ebenen Beziehung und Spaltensichtbarkeit. Wenn ein Benutzer Zugriff auf die Spalten hat und der Durchlaufpfad genehmigt ist, ist die Abfrage eine gültige Nutzung. Kein zusätzliches Gate.
+**Keine Genehmigung erforderlich:** Governance geschieht vorgelagert — auf der Ebene der Beziehung und der Spaltensichtbarkeit. Wenn ein Benutzer Zugriff auf die Spalten hat und der Traversierungspfad genehmigt ist, ist die Abfrage eine gültige Nutzung. Kein zusätzliches Gate.
 
 **Unterschied zu Sichten:**
 
-- Sichten: domänenintern, führen neue semantische Bedeutung ein, von Data Stewards kuratiert
+- Sichten: intradomän, führen neue semantische Bedeutung ein, von Stewards kuratiert
 - Abfragen: durchlaufen genehmigte Beziehungen, keine neue Semantik, kein Genehmigungs-Gate
 
-**Domänenausdruck je Abfragesprache:**
+**Domänenausdruck nach Abfragesprache:**
 
-Jede unterstützte Sprache stellt die Domäne als strukturellen Namensraum dar, der dieser Sprache nativ entspricht:
+Jede unterstützte Sprache stellt die Domäne als strukturellen Namensraum dar, der dieser Sprache nativ ist:
 
 | Sprache | Domänenausdruck | Beispiel |
 | --- | --- | --- |
-| GraphQL | Präfix des Typ- und Feldnamens | `type sales__Order { ... }`, `query { sales__orders { ... } }` |
+| GraphQL | Typ- und Feldnamenpräfix | `type sales__Order { ... }`, `query { sales__orders { ... } }` |
 | SQL | Schemaname | `SELECT * FROM sales.orders` |
 | Cypher | Zusätzliches Knoten-Label (Domäne nur erforderlich, wenn der Typname mehrdeutig ist) | `MATCH (o:Sales:Order)` |
 
-Der Compiler löst die Domänenzugehörigkeit aus diesen strukturellen Positionen auf — es ist keine Annotation oder kein Hinweis erforderlich.
+Der Compiler löst die Domänenzugehörigkeit aus diesen strukturellen Positionen auf — keine Annotation oder Hinweis ist erforderlich.
 
 ### Beziehungen
 
-Eine Beziehung ist ein genehmigter Durchlaufpfad zwischen zwei Assets. Domänengrenzen sind für das, was eine Beziehung ist, irrelevant — sie bestimmen nur, wer sie genehmigt.
+Eine Beziehung ist ein genehmigter Traversierungspfad zwischen zwei Assets. Domänengrenzen sind irrelevant dafür, was eine Beziehung ist — sie bestimmen nur, wer sie genehmigt.
 
 **Genehmigung:**
 
-- Die Genehmigung ist von jedem einzelnen Data Steward erforderlich, dem ein an der Beziehung beteiligtes Asset gehört
-- Wenn ein Data Steward beide Assets besitzt, ist eine Genehmigung erforderlich. Sind zwei Data Stewards beteiligt, sind zwei Genehmigungen erforderlich
-- Es gibt keine Klassifizierung in domänenintern/domänenübergreifend — der Besitz bestimmt auf natürliche Weise den Genehmigungsaufwand
-- Die Genehmigung einer Beziehung baut den Abhängigkeitsgraphen jedes Data Stewards auf und ermöglicht proaktive Benachrichtigungen zur Schema-Evolution
+- Die Genehmigung ist von jedem einzelnen Steward erforderlich, der ein an der Beziehung beteiligtes Asset besitzt
+- Wenn ein Steward beide Assets besitzt, ist eine Genehmigung erforderlich. Sind zwei Stewards beteiligt, sind zwei Genehmigungen erforderlich
+- Es gibt keine Klassifizierung in intradomän/domänenübergreifend — die Eigentümerschaft bestimmt den Genehmigungsaufwand auf natürliche Weise
+- Die Genehmigung einer Beziehung baut den Abhängigkeitsgraphen jedes Stewards auf und ermöglicht proaktive Benachrichtigungen über Schemaentwicklung
 
-Beziehungen werden bedarfsgesteuert erstellt, nicht spekulativ. Das erste Team mit dem Geschäftsbedarf erledigt die Arbeit; nachfolgende Teams erben die Infrastruktur.
+Beziehungen werden bedarfsgesteuert erstellt, nicht spekulativ. Das erste Team mit dem Geschäftsbedarf leistet die Arbeit; nachfolgende Teams erben die Infrastruktur.
 
-**Optimierungskonsequenz:** Eine Beziehungsdeklaration ist nicht nur ein Governance-Artefakt — sie ist auch eine strukturelle Beschreibung der Form eines Joins. Die zwei Tabellen, zwei Spalten und der Join-Typ, die eine Beziehung definieren, sind genau das, was der Abfrageoptimierer benötigt, um diesen Join vorzumaterialisieren. Quellenübergreifende Beziehungen erzeugen automatisch vormaterialisierte Join-Tabellen; Beziehungen innerhalb derselben Quelle können dies über `materialize: true` aktivieren. Data Stewards, die gültige Beziehungen durchdenken und genehmigen, erhalten Abfragebeschleunigung als direktes Nebenprodukt — Governance-Arbeit und Optimierungsarbeit sind derselbe Akt.
+**Optimierungsfolge:** Eine Beziehungsdeklaration ist nicht nur ein Governance-Artefakt — sie ist auch eine strukturelle Beschreibung einer Join-Form. Die beiden Tabellen, die beiden Spalten und der Join-Typ, die eine Beziehung definieren, sind genau das, was der Abfrageoptimierer benötigt, um diesen Join vorab zu materialisieren. Quellenübergreifende Beziehungen erzeugen automatisch vormaterialisierte Join-Tabellen; Beziehungen innerhalb derselben Quelle können sich über `materialize: true` dafür entscheiden. Stewards, die gültige Beziehungen durchdenken und genehmigen, erhalten Abfragebeschleunigung als direktes Nebenprodukt — Governance-Arbeit und Optimierungsarbeit sind derselbe Akt.
 
-### Feldzugriffsfreigaben
+### Feldzugriffsberechtigungen
 
-Eine Feldzugriffsfreigabe ist eine Berechtigung von Domäne zu Domäne — Domäne A darf bestimmte Felder aus Domäne B in ihren Sichten verwenden.
+Eine Feldzugriffsberechtigung ist eine Domäne-zu-Domäne-Berechtigung — Domäne A darf bestimmte Felder von Domäne B in ihren Sichten verwenden.
 
-**Lebenszyklus der Freigabe:**
+**Lebenszyklus der Berechtigung:**
 
 - Wird durch die Sichterstellung ausgelöst, wenn fremde Felder als benötigt identifiziert werden
-- Wird einmalig vom Data Steward der Zieldomäne genehmigt
+- Wird einmalig vom Steward der Zieldomäne genehmigt
 - Gehört zur anfragenden Domäne, nicht zur Sicht, die sie ausgelöst hat
-- Jede nachfolgende Sicht in der anfragenden Domäne kann die freigegebenen Felder ohne weitere domänenübergreifende Beteiligung verwenden
-- Zusätzliche, nicht freigegebene Felder erfordern eine neue Anfrage
+- Jede nachfolgende Sicht in der anfragenden Domäne darf die gewährten Felder ohne weitere domänenübergreifende Beteiligung verwenden
+- Zusätzliche nicht gewährte Felder erfordern eine neue Anfrage
 
-**Benachrichtigung nach der Nutzung:** Wenn eine Sicht unter Verwendung freigegebener Felder erstellt wird, wird der Quell-Data-Steward benachrichtigt — nicht um Genehmigung gebeten. Die Benachrichtigung enthält den Namen der Sicht, den deklarierten Geschäftszweck, die spezifisch verwendeten Felder und welcher Data Steward sie genehmigt hat. Dies gibt dem Quell-Data-Steward:
+**Benachrichtigung nach Nutzung:** Wenn eine Sicht unter Verwendung gewährter Felder erstellt wird, wird der Quell-Steward benachrichtigt — nicht um Genehmigung gebeten. Die Benachrichtigung enthält den Namen der Sicht, den deklarierten Geschäftszweck, die konkret verwendeten Felder und welcher Steward sie genehmigt hat. Dies gibt dem Quell-Steward:
 
-- **Sichtbarkeit** — Bewusstsein darüber, wie seine Daten genutzt werden
+- **Sichtbarkeit** — Kenntnis darüber, wie seine Daten genutzt werden
 - **Aufsicht** — Grundlage, um Bedenken zu äußern, falls die Nutzung unangemessen erscheint
-- **Einspruchsmöglichkeit** — die Fähigkeit, die Freigabe zu widerrufen und dadurch abhängige Sichten ungültig zu machen
+- **Rückgriff** — Möglichkeit, die Berechtigung zu widerrufen, wodurch abhängige Sichten ungültig werden
 
-Der Kompromiss: Die Quelldomäne genehmigt den Feldzugriff, ohne jede zukünftige Nutzung zu kennen. Eine Genehmigung pro Sicht ist theoretisch korrekt und in der Praxis nicht umsetzbar.
+Der Kompromiss: Die Quelldomäne genehmigt den Feldzugriff, ohne jede zukünftige Nutzung zu kennen. Eine Genehmigung pro Sicht ist theoretisch korrekt und praktisch nicht umsetzbar.
 
 ### Workflow zur Abfrageerstellung
 
-Drei Stufen, in dieser Reihenfolge.
+Drei Phasen, in dieser Reihenfolge.
 
-**Stufe 1 — Shaping (SQL-Erkundung, von der Seite Beziehungen aus):**
+**Phase 1 — Shaping (SQL-Discovery, von der Beziehungen-Seite aus):**
 
-- Der Analyst öffnet das Shaping-Tool von der Seite Beziehungen aus, um potenzielle Join-Pfade in rohem SQL zu erkunden
-- Das SQL wird gegen zugängliche Daten ausgeführt, vorbehaltlich der bestehenden RLS und Spaltenmaskierung
-- JOINs im SQL werden geparst und als Kandidatenvorschläge für Beziehungen dargestellt
-- Maschinell vorgeschlagene Kandidaten (FK-Inferenz, semantische Inferenz) werden neben der SQL-Erkundung des Analysten in derselben Ansicht angezeigt
-- Der Analyst wählt Kandidaten aus, die zu einer formalen Beziehungsanfrage befördert werden sollen
+- Der Analyst öffnet das Shaping-Werkzeug von der Beziehungen-Seite aus, um potenzielle Join-Pfade in rohem SQL zu erkunden
+- SQL wird gegen zugängliche Daten ausgeführt, vorbehaltlich bestehender RLS und Spaltenmaskierung
+- JOINs im SQL werden geparst und als Kandidaten-Beziehungsvorschläge angezeigt
+- Maschinell vorgeschlagene Kandidaten (FK-Inferenz, semantische Inferenz) werden zusammen mit der SQL-Exploration des Analysten in derselben Ansicht angezeigt
+- Der Analyst wählt Kandidaten aus, um sie zu einer formalen Beziehungsanfrage zu befördern
 
-**Stufe 2 — Genehmigung der Beziehung** (folgenreich — strukturell und dauerhaft):
+**Phase 2 — Beziehungsgenehmigung** (folgenreich — strukturell und dauerhaft):
 
-- Wird jedem einzelnen Data Steward vorgelegt, dem ein an der Beziehung beteiligtes Asset gehört
-- Handelt es sich um einen legitimen Durchlaufpfad? Ist der Join semantisch gültig?
-- Alle beteiligten Data Stewards müssen genehmigen; die Beziehung wird zu einem dauerhaften Katalogeintrag
+- Wird an jeden einzelnen Steward gerichtet, der ein an der Beziehung beteiligtes Asset besitzt
+- Ist dies ein legitimer Traversierungspfad? Ist der Join semantisch gültig?
+- Alle beteiligten Stewards müssen genehmigen; die Beziehung wird zu einem dauerhaften Katalogeintrag
 
-**Stufe 3 — Abfrageerstellung:**
+**Phase 3 — Abfrageerstellung:**
 
 - Der Analyst erstellt die Abfrage in jeder unterstützten Sprache (SQL, GraphQL, Cypher) und durchläuft dabei genehmigte Beziehungspfade
 - Nur genehmigte Katalogbeziehungen sind durchlaufbar — der Compiler setzt dies strukturell durch
@@ -132,133 +132,135 @@ Drei Stufen, in dieser Reihenfolge.
 
 ### HITL als primäre Kontrolle
 
-Technische Regeln handhaben, was objektiv ist — Nachverfolgung der Feldherkunft, Durchsetzung von Domänengrenzen, Compiler-Validierung. Das kontextuelle Urteilsvermögen verbleibt beim Data Steward. Einschränkungen wie die Kompositionstiefe von Sichten, Anforderungen an den Zweck pro Abfrage und Entscheidungen zur Beziehungsgenehmigung sind HITL-Angelegenheiten, keine vom Compiler durchgesetzten Regeln.
+Technische Regeln behandeln das Objektive — Feldherkunftsverfolgung, Durchsetzung von Domänengrenzen, Compiler-Validierung. Die kontextuelle Beurteilung bleibt beim Steward. Einschränkungen wie die Kompositionstiefe von Sichten, Anforderungen an den Zweck pro Abfrage und Entscheidungen zur Beziehungsgenehmigung sind HITL-Angelegenheiten, keine vom Compiler durchgesetzten Regeln.
 
-**Neutralität der Quelldomäne:** Der Data Steward der Quelldomäne genehmigt die Beziehung einmal und die Feldfreigabe einmal. Danach operieren nachgelagerte Domänen innerhalb dieser gewährten Grenzen:
+**Neutralität der Quelldomäne:** Der Steward der Quelldomäne genehmigt die Beziehung einmalig und die Feldberechtigung einmalig. Danach operieren nachgelagerte Domänen innerhalb dieser gewährten Grenzen:
 
-- **Hohe Sorgfalt** bei der Entscheidung zur Grenzüberschreitung
-- **Leichtgewichtiges Bewusstsein** danach, über Benachrichtigungen und Abfrageverlauf
+- **Hohe Sorgfalt** bei der Entscheidung über das Überschreiten der Grenze
+- **Leichtgewichtige Wahrnehmung** danach über Benachrichtigungen und Abfrageverlauf
 
 ---
 
 ## 2. Auffindbarkeit
 
-### Erkennungsebenen
+### Discovery-Ebenen
 
-Die Erkennung ist über fünf Ebenen mit zunehmender Governance strukturiert. Jede Ebene ist eine Voraussetzung für die nächste.
+Discovery ist in fünf Ebenen mit zunehmender Governance strukturiert. Jede Ebene ist Voraussetzung für die nächste.
 
-| Ebene | Beschreibung | Governance-Status |
+| Ebene | Beschreibung | Governance-Zustand |
 | --- | --- | --- |
-| 1 — Registriertes Quellschema | Jede Tabelle, Spalte und jeder Typ aus einer registrierten Quelle. Sichtbarkeit auf Administratorebene. | Keine — rohes Inventar |
-| 2 — Nicht beanspruchte Tabellen | Aus registrierten Quellen introspektierte Tabellen ohne Domäneninhaber. Sichtbar für Data Stewards mit Quellzugriff. | Verfügbar, aber ungovernt |
-| 3 — Domänen-Assets | Beanspruchte Tabellen und vom Data Steward definierte Sichten. Vollständig governt, im Besitz, im Katalog sichtbar. | Vollständig governt |
-| 4 — Beziehungen | Genehmigte Durchlaufpfade zwischen Assets der Ebene 3. Voraussetzung für die domänenübergreifende Sichterstellung. | Von beiden Data Stewards genehmigt |
-| 5 — Feldfreigaben | Berechtigungen für den Feldzugriff von Domäne zu Domäne. Der spezifischste und bewussteste governte Zugriff. | Vom Quell-Data-Steward genehmigt |
+| 1 — Registriertes Quellschema | Jede Tabelle, Spalte und jeder Typ aus einer registrierten Quelle. Sichtbarkeit auf Admin-Ebene. | Keine — rohes Inventar |
+| 2 — Unbeanspruchte Tabellen | Tabellen, die aus registrierten Quellen introspiziert wurden und keinen Domäneneigentümer haben. Sichtbar für Stewards mit Quellzugriff. | Verfügbar, aber ungovernt |
+| 3 — Domänen-Assets | Beanspruchte Tabellen und von Stewards definierte Sichten. Vollständig governt, im Besitz, katalogsichtbar. | Vollständig governt |
+| 4 — Beziehungen | Genehmigte Traversierungspfade zwischen Assets der Ebene 3. Voraussetzung für die Erstellung domänenübergreifender Sichten. | Von beiden Stewards genehmigt |
+| 5 — Feldberechtigungen | Domäne-zu-Domäne-Feldzugriffsberechtigungen. Der spezifischste und bewussteste governte Zugriff. | Vom Quell-Steward genehmigt |
 
-Eine nicht beanspruchte Tabelle ist ein Lückensignal — wenn benötigte Daten nur auf Ebene 2 existieren, muss ein Data Steward sie beanspruchen, bevor Governance fortschreiten kann. Das Fehlen jeglichen Kandidaten über alle Ebenen hinweg erfordert eine Eskalation an den Administrator.
+Eine unbeanspruchte Tabelle ist ein Lückensignal — wenn benötigte Daten nur auf Ebene 2 existieren, muss ein Steward sie beanspruchen, bevor Governance fortschreiten kann. Das Fehlen jeglichen Kandidaten über alle Ebenen hinweg erfordert eine Eskalation an den Admin.
 
 ### FK-Constraints
 
-FK-Constraints sind eine Konstruktion auf Quellebene — sie können sich nicht über mehrere Datenquellen erstrecken. Quellenübergreifende Join-Pfade werden vollständig aus genehmigten Katalogbeziehungen (Ebene 4) abgeleitet, die stärker sind, da sie von beiden Data Stewards validiert wurden.
+FK-Constraints sind ein Konstrukt auf Quellebene — sie können sich nicht über Datenquellen hinweg erstrecken. Quellübergreifende Join-Pfade werden ausschließlich aus genehmigten Katalogbeziehungen (Ebene 4) abgeleitet, die stärker sind, da sie von beiden Stewards validiert wurden.
 
 Innerhalb einer Quelle:
 
-- FK-Constraints werden bei der Quellenregistrierung automatisch als Beziehungskandidaten dargestellt
-- Sie repräsentieren eine explizite Modellierungsabsicht — in den meisten analytischen SQL-Systemen nicht durchgesetzt, aber bewusst deklariert
-- Eine Validierung durch den Data Steward ist weiterhin erforderlich, bevor ein Kandidat zu einer genehmigten Beziehung wird
+- FK-Constraints werden bei der Quellregistrierung automatisch als Kandidatenbeziehungen angezeigt
+- Sie repräsentieren explizite Modellierungsabsicht — in den meisten analytischen SQL-Systemen nicht erzwungen, aber bewusst deklariert
+- Eine Steward-Validierung ist weiterhin erforderlich, bevor ein Kandidat zu einer genehmigten Beziehung wird
 
 ### Vertrauenshierarchie für Beziehungen
 
-| Evidenz | Vertrauen |
+| Beleg | Vertrauen |
 | --- | --- |
-| Genehmigte Katalogbeziehung — quellenübergreifend, von beiden Data Stewards validiert | Höchstes |
-| Quelleninterner FK-Constraint — explizite Modellierungsabsicht, nicht durchgesetzt, aber bewusst | Hoch |
+| Genehmigte Katalogbeziehung — quellübergreifend, von beiden Stewards validiert | Am höchsten |
+| Quelleninterner FK-Constraint — explizite Modellierungsabsicht, nicht erzwungen, aber bewusst | Hoch |
 | Quelleninterne semantische Inferenz — Ähnlichkeit von Spaltenname/-typ innerhalb eines konsistenten Schemas | Mittel |
-| Quellenübergreifende semantische Inferenz — Namenskonventionen weichen zwischen Systemen ab; hohes Risiko falsch-positiver Ergebnisse | Niedrig |
+| Quellübergreifende semantische Inferenz — Namenskonventionen weichen zwischen Systemen ab; hohes Risiko falscher Positive | Niedrig |
 
-Durch mehrere Evidenztypen bestätigte Vorschläge sammeln Vertrauen an.
+Vorschläge, die durch mehrere Belegtypen bestätigt werden, akkumulieren Vertrauen.
 
-### Datensondierung und Korrelation
+### Daten-Probing und Korrelation
 
-Für semantisch abgeleitete Kandidaten bietet die Datensondierung einen Validierungsschritt:
+Für semantisch abgeleitete Kandidaten bietet Daten-Probing einen Validierungsschritt:
 
-- **Wertüberschneidung** — Anteil der Werte der Quellspalte, die in der Zielspalte erscheinen
+- **Wertüberlappung** — Anteil der Quellspaltenwerte, die in der Zielspalte vorkommen
 - **Kardinalität** — ob die Verteilung dem erwarteten Beziehungstyp entspricht
-- **Nullrate** — Anteil der Quellspalte, der null ist, was auf Optionalität hinweist
+- **Null-Rate** — Anteil der Quellspalte, der null ist, was auf Optionalität hinweist
 
-Hohe Korrelation erhöht das Vertrauen; niedrige Korrelation unterdrückt oder degradiert den Kandidaten. Sondierung ist unterstützende Evidenz, kein Beweis — Ganzzahlbereiche können sich zufällig überschneiden, und teilweise referenzielle Integrität ist in analytischen Systemen üblich. Ein erheblicher Fehlerspielraum bleibt bestehen. Das semantische Urteilsvermögen des Data Stewards ist die einzige zuverlässige abschließende Prüfung.
+Hohe Korrelation erhöht das Vertrauen; niedrige Korrelation unterdrückt oder degradiert den Kandidaten. Probing ist bestätigendes Indiz, kein Beweis — Ganzzahlbereiche können zufällig überlappen, und partielle referenzielle Integrität ist in analytischen Systemen üblich. Ein erheblicher Fehlerspielraum bleibt bestehen. Die semantische Beurteilung des Stewards ist die einzige verlässliche Endkontrolle.
 
-### LLM-gestützte Erkennung
+### LLM-unterstützte Discovery
 
-Das LLM operiert gleichzeitig auf allen fünf Ebenen und schlägt Beziehungen, Kandidaten für Beanspruchungen und Durchlaufpfade vor, geordnet nach Vertrauen.
+Das LLM operiert gleichzeitig über alle fünf Ebenen und schlägt Beziehungen, Kandidaten-Beanspruchungen und Traversierungspfade vor, geordnet nach Vertrauen.
 
-**Was das LLM präsentiert:**
+**Was das LLM aufzeigt:**
 
-- Nach Vertrauen geordnete Beziehungskandidaten
-- Nicht beanspruchte Tabellen, die einen Datenbedarf erfüllen könnten, mit einer Aufforderung, die Beanspruchung einzuleiten
-- Fehlen jeglichen Kandidaten — Signal zur Eskalation an den Administrator
+- Kandidatenbeziehungen, geordnet nach Vertrauen
+- Unbeanspruchte Tabellen, die einen Datenbedarf erfüllen könnten, mit einer Aufforderung zur Einleitung der Beanspruchung
+- Fehlen jeglichen Kandidaten — Signal zur Eskalation an den Admin
 
-**Sichtdesign aus einer Geschäftsbeschreibung:**
+**Sicht-Design aus Geschäftsbeschreibung:**
 
-Der Analyst liefert eine Beschreibung in natürlicher Sprache und optionale Einschränkungen. Das LLM erzeugt eine vorgeschlagene Sichtstruktur.
+Der Analyst liefert eine natürlichsprachliche Beschreibung und optionale Einschränkungen. Das LLM erzeugt eine vorgeschlagene Sichtstruktur.
 
 *Eingabe:*
 
-- Geschäftsbeschreibung: Entitäten, Metriken, Beziehungen, Absicht
-- Optionale Einschränkungen: Filter, Zeitfenster, Aggregationen, ausgeschlossene Felder, Sensibilitätseinschränkungen
+- Geschäftsbeschreibung: Entitäten, Kennzahlen, Beziehungen, Absicht
+- Optionale Einschränkungen: Filter, Zeitfenster, Aggregationen, ausgeschlossene Felder, Sensibilitätsbeschränkungen
 
 *Beispiel:*
-> „Tägliche Handelsvolumina nach Kontrahent für die letzten 30 Tage, nur aktive Kontrahenten, mit Anzeige des rechtlichen Namens des Kontrahenten und der Bonitätseinstufung. Keine personenbezogenen Daten."
+> "Tägliche Handelsvolumen nach Gegenpartei für die letzten 30 Tage, nur aktive Gegenparteien, mit Anzeige des rechtlichen Namens und der Bonität der Gegenpartei. Keine PII."
 
 *LLM-Prozess:*
 
-1. Parsen — Entitäten, Metriken, Dimensionen, Filter, Ausschlüsse identifizieren
-2. Suchen — alle Katalogebenen nach passenden Assets
+1. Parsen — Entitäten, Kennzahlen, Dimensionen, Filter, Ausschlüsse identifizieren
+2. Suchen — alle Katalogebenen nach passenden Assets durchsuchen
 3. Vorschlagen — Domänen-Assets, Beziehungen, Felder, Aggregationsstruktur
-4. Bewerten — Vertrauen pro Komponente basierend auf Ebenen-Evidenz
-5. Voraussetzungen — geordnete Liste erforderlicher Beanspruchungen, Beziehungen und Feldfreigaben
-6. Lücken — Entitäten oder Felder ohne Kandidaten auf jeglicher Ebene, zur Eskalation an den Administrator markiert
+4. Bewerten — Vertrauen pro Komponente basierend auf Ebenen-Belegen
+5. Voraussetzungen — geordnete Liste von Beanspruchungen, Beziehungen und Feldberechtigungen, die erforderlich sind
+6. Lücken — Entitäten oder Felder ohne Kandidaten auf irgendeiner Ebene, markiert zur Eskalation an den Admin
 
 *Ausgabe:*
 
-- Abfrageentwurf zur Überprüfung und Verfeinerung durch den Analysten
+- Entwurfsabfrage zur Prüfung und Verfeinerung durch den Analysten
 - Vertrauenswerte pro Komponente
-- Geordnete Liste der Voraussetzungen
+- Geordnete Voraussetzungsliste
 - Lückenliste
 
-Die Geschäftsbeschreibung wird zum deklarierten Geschäftszweck der Sicht, sobald diese formal erstellt wird.
+Die Geschäftsbeschreibung wird zum deklarierten Geschäftszweck der Sicht, sobald die Sicht formal erstellt wird.
 
-**SQL-first Beziehungserkennung (Modeling-Tool):**
+**SQL-first Beziehungs-Discovery (Modeling-Werkzeug):**
 
-Zugänglich als modaler Dialog von der Seite Beziehungen aus. Die Absicht besteht darin, das semantische Modell aufzubauen — strukturelle Join-Pfade zu identifizieren, bevor sie als governte Beziehungen formalisiert werden.
+Zugänglich als Modal von der Beziehungen-Seite aus. Die Absicht ist der Aufbau des semantischen Modells — die Identifizierung struktureller Join-Pfade, bevor sie als governte Beziehungen formalisiert werden.
 
-1. Der Analyst schreibt freies SQL gegen zugängliche Tabellen (RLS und Maskierung weiterhin angewendet)
-2. Der SQL-AST wird geparst — jede JOIN-Bedingung wird zu einem Kandidatenvorschlag für eine Beziehung
-3. Die Kandidatenliste wird zusammen mit maschinell vorgeschlagenen Kandidaten (FK-Inferenz, semantische Inferenz) für eine einheitliche Überprüfung angezeigt
+1. Der Analyst schreibt freies SQL gegen zugängliche Tabellen (RLS und Maskierung gelten weiterhin)
+2. Der SQL-AST wird geparst — jede JOIN-Bedingung wird zu einem Kandidaten-Beziehungsvorschlag
+3. Die Kandidatenliste wird zusammen mit maschinell vorgeschlagenen Kandidaten (FK-Inferenz, semantische Inferenz) für eine einheitliche Prüfung angezeigt
 4. Der Analyst befördert ausgewählte Kandidaten zu formalen Beziehungsanfragen
 5. Genehmigte Beziehungen werden dem Katalog hinzugefügt und in Abfragen durchlaufbar
 
-Das Modeling-Tool kann alle registrierten Tabellen für die strukturelle Erkundung anzeigen, selbst wenn der Analyst die zugrunde liegenden Daten nicht sehen kann — die Genehmigung des Data Stewards regelt den tatsächlichen Datenzugriff, nicht die Schemasichtbarkeit.
+Das Modeling-Werkzeug kann alle registrierten Tabellen zur strukturellen Exploration anzeigen, selbst dort, wo der Analyst die zugrunde liegenden Daten nicht sehen kann — die Steward-Genehmigung regelt den tatsächlichen Datenzugriff, nicht die Schemasichtbarkeit.
 
 ---
 
 ## 3. Nutzung
 
-### Prüfpfad für Abfragen
+### Abfrage-Audit-Trail
 
-Jede Abfrage, die ein Domänen-Asset berührt, wird in einem nur anfügbaren `query_audit_log` erfasst. Jeder Eintrag enthält:
+Jede Abfrage, die ein Domänen-Asset berührt, wird in einem nur anfügbaren `query_audit_log` erfasst. Jeder Eintrag erfasst:
 
 - `tenant_id`, `user_id`, `role_id` — den Identitätskontext
-- Einen SHA-256-Hash der Abfrage — der wortgetreue Abfragetext wird nie gespeichert
+- Einen SHA-256-Hash der Abfrage — der wörtliche Abfragetext wird nie gespeichert
 - `table_ids` — die von der Abfrage berührten Domänen-Assets
 - `source`, `status_code`, `duration_ms`
 - `logged_at` — den Zeitstempel
 
-Das Protokoll ist nur anfügbar (DELETE und UPDATE sind auf Datenbankebene blockiert) und indexiert nach `(tenant_id, logged_at)` und `(user_id, logged_at)`.
+Das Log ist nur anfügbar (DELETE und UPDATE werden auf Datenbankebene blockiert) und indiziert nach `(tenant_id, logged_at)` und `(user_id, logged_at)`.
 
-Der Abfrageverlaufsbericht des Data Stewards ist eine aggregierte Sicht auf dieses Protokoll, filterbar nach Asset, Rolle und Zeitfenster. Der Katalog ist ein lebendiges Governance-Instrument — Data Stewards behalten das Bewusstsein darüber, wie ihre Assets genutzt werden, in Echtzeit und nicht im Nachhinein.
+Der Abfrageverlaufsbericht des Stewards ist eine aggregierte Sicht über dieses Log, filterbar nach Asset, Rolle und Zeitfenster. Der Katalog ist ein lebendiges Governance-Instrument — Stewards behalten in Echtzeit den Überblick darüber, wie ihre Assets genutzt werden, nicht erst im Nachhinein.
 
 **Zwei Sichtbarkeitsmechanismen:**
 
-- **Push** — Benachrichtigungen nach der Nutzung für strukturelle Akte (eine neue Sicht wurde unter Verwendung Ihrer Felder erstellt)
+- **Push** — Benachrichtigungen nach Nutzung für strukturelle Akte (eine neue Sicht wurde unter Verwendung Ihrer Felder erstellt)
 - **Pull** — Abfrageverlauf für Laufzeit-Nutzungsmuster
+
+
