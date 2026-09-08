@@ -78,6 +78,15 @@ _REL_KEYS = frozenset(
         "target_table_id",
         "source_column",
         "target_column",
+        # REQ-1586/REQ-1652: a junction-backed relationship IS its via declaration. Dropping it
+        # projected every junction edge as a direct column pair, and the Snowflake Horizon export
+        # then published pets.id -> pets.id as a FOREIGN KEY instead of the junction's two hops.
+        "via_table",
+        "via_source_column",
+        "via_target_column",
+        "via_type_column",
+        "via_type_value",
+        "via_label_source",
     }
 )
 _ROLE_KEYS = frozenset({"id", "capabilities", "domain_access"})
@@ -119,6 +128,14 @@ def _project(row: dict, allowed: frozenset[str], *, id_to_name: dict[int, str]) 
                 pass
         out[key] = v
     return out
+
+
+def _rel_row(row: dict, id_to_name: dict[int, str]) -> dict:
+    """The DB keys a junction by ``via_table_id``; the config names it ``via_table``."""
+    via_id = row.get("via_table_id")
+    if via_id is None:
+        return row
+    return {**row, "via_table": id_to_name.get(int(via_id), via_id)}
 
 
 def _table_to_config(row: dict, id_to_name: dict[int, str]) -> dict:
@@ -222,7 +239,9 @@ async def build_live_config() -> dict:
 
     base["tables"] = [_table_to_config(t, id_to_name) for t in tables if not _is_internal_table(t)]
     base["relationships"] = [
-        _project(r, _REL_KEYS, id_to_name=id_to_name) for r in rels if not _refs_internal(r)
+        _project(_rel_row(r, id_to_name), _REL_KEYS, id_to_name=id_to_name)
+        for r in rels
+        if not _refs_internal(r)
     ]
     base["roles"] = [_project(r, _ROLE_KEYS, id_to_name=id_to_name) for r in roles]
     base["rls_rules"] = [

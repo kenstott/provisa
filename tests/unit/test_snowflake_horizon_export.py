@@ -959,6 +959,8 @@ class _LayoutCursor(_FakeCursor):
     def fetchall(self):
         if self._last_sql.startswith(("SHOW PRIMARY KEYS", "SHOW IMPORTED KEYS")):
             return []
+        if "tag_references_all_columns" in self._last_sql:
+            return []  # no key tags set yet
         return super().fetchall()
 
     def fetchone(self):
@@ -1010,3 +1012,40 @@ def test_publish_adds_keys_on_the_replicas_and_tags_the_views(monkeypatch):
     )
     # 3 constraint DDL + schema + 2 CREATE TAG + 2 PRIMARY_KEY column tags + 1 FOREIGN_KEY tag
     assert result.published["constraints"] == 9
+
+
+def test_constraint_statements_withdraw_owned_foreign_keys_no_longer_declared():
+    # A junction relationship that once published as a direct pets.id -> pets.id key (before the
+    # via declaration reached the snapshot) now publishes as two hops under other names; the old
+    # provisa_fk_* key goes, and a key of any other origin is untouched.
+    tables = [_keyed_table("shop", "public", "customers", ("id",))]
+    stmts, withheld = constraint_statements(
+        tables,
+        {_CUSTOMERS: _CUSTOMERS},
+        [],
+        {_CUSTOMERS: ("id",)},
+        {_CUSTOMERS: frozenset({"provisa_fk_customers_self", "dba_added_fk"})},
+    )
+    assert withheld == []
+    assert stmts == [
+        'ALTER TABLE "shop"."public"."customers" DROP CONSTRAINT "provisa_fk_customers_self";'
+    ]
+
+
+def test_key_tag_statements_unset_stale_key_tags_on_views():
+    pets = ("pet_store_sqlite", "pet_store", "pets")
+    tables = [_keyed_table("pet-store-sqlite", "pet_store", "pets", ("id",))]
+    existing = {
+        (pets, "id"): {"PRIMARY_KEY", "FOREIGN_KEY"},  # FOREIGN_KEY on id is the stale self-key
+        (pets, "name"): {"VISIBILITY_RESTRICTED"},  # not a key tag: never touched
+    }
+    stmts = key_tag_statements("_landing", tables, [], {pets}, existing)
+    assert (
+        'ALTER VIEW "pet_store_sqlite"."pet_store"."pets" MODIFY COLUMN "id" '
+        'SET TAG "_landing"."PROVISA_GOVERNANCE"."PRIMARY_KEY" = \'1\';'
+    ) in stmts
+    assert (
+        'ALTER VIEW "pet_store_sqlite"."pet_store"."pets" MODIFY COLUMN "id" '
+        'UNSET TAG "_landing"."PROVISA_GOVERNANCE"."FOREIGN_KEY";'
+    ) in stmts
+    assert not any("VISIBILITY_RESTRICTED" in s for s in stmts)

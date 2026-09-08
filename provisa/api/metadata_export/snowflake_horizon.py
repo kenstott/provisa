@@ -483,6 +483,7 @@ def constraint_statements(
             f'ALTER TABLE {fq} ADD CONSTRAINT "{_identifier(f"provisa_pk_{physical[2]}")}" '
             f"PRIMARY KEY ({cols});"
         )
+    wanted: dict[tuple[str, str, str], set[str]] = {}
     for spec in specs:
         label = f"{'.'.join(spec.table)} -> {'.'.join(spec.referenced)}"
         holder, referenced = targets.get(spec.table), targets.get(spec.referenced)
@@ -498,6 +499,7 @@ def constraint_statements(
                 )
             )
             continue
+        wanted.setdefault(holder, set()).add(spec.name)
         if spec.name in existing_foreign_keys.get(holder, frozenset()):
             continue
         fq = f'"{holder[0]}"."{holder[1]}"."{holder[2]}"'
@@ -508,6 +510,14 @@ def constraint_statements(
             f'ALTER TABLE {fq} ADD CONSTRAINT "{spec.name}" FOREIGN KEY ({cols}) '
             f"REFERENCES {ref} ({ref_cols});"
         )
+    # A key this export wrote earlier (its ``provisa_fk_`` prefix) that no relationship declares
+    # any more -- or that now publishes under another name, as a junction's two hops do -- is
+    # withdrawn; foreign keys of any other origin are never touched.
+    for holder, names in existing_foreign_keys.items():
+        for name in sorted(names):
+            if name.startswith("provisa_fk_") and name not in wanted.get(holder, set()):
+                fq = f'"{holder[0]}"."{holder[1]}"."{holder[2]}"'
+                stmts.append(f'ALTER TABLE {fq} DROP CONSTRAINT "{name}";')
     return stmts, withheld
 
 
@@ -520,6 +530,7 @@ def key_tag_statements(
     tables: list["TableAsset"],
     specs: list[ForeignKeySpec],
     views: set[tuple[str, str, str]],
+    existing_tags: dict[tuple[tuple[str, str, str], str], set[str]] | None = None,
 ) -> list[str]:
     """Key TAGs on the per-source VIEWs (REQ-1652). A view cannot carry a constraint, so the keys
     a consumer sees on ``pet_store_sqlite.pet_store.pets`` ride the same governance TAG namespace
@@ -558,6 +569,26 @@ def key_tag_statements(
             references.setdefault((spec.table, column), []).append(target)
     for (parts, column), targets in references.items():
         stmts.append(set_col_tag(parts, column, _FK_TAG, "; ".join(targets)))
+    # A key tag set by an earlier publish that this one does not re-set is stale -- the key moved
+    # or the relationship went -- and is unset, so the view never shows a key the model lost.
+    reset: set[tuple[tuple[str, str, str], str, str]] = set()
+    for table in tables:
+        try:
+            physical = physical_parts(table.ref)
+        except ValueError:
+            continue
+        if physical in views:
+            reset.update((physical, column, _PK_TAG) for column in table.primary_key)
+    reset.update((parts, column, _FK_TAG) for (parts, column) in references)
+    for (parts, column), tags in sorted((existing_tags or {}).items()):
+        if parts not in views:
+            continue
+        for tag in sorted(tags):
+            if tag in (_PK_TAG, _FK_TAG) and (parts, column, tag) not in reset:
+                stmts.append(
+                    f'ALTER VIEW "{parts[0]}"."{parts[1]}"."{parts[2]}" MODIFY COLUMN "{column}" '
+                    f"UNSET TAG {tag_fq(tag)};"
+                )
     if not stmts:
         return []  # no key to mirror: no tag objects to create either
     return [
@@ -566,6 +597,30 @@ def key_tag_statements(
         f"CREATE TAG IF NOT EXISTS {tag_fq(_FK_TAG)};",
         *stmts,
     ]
+
+
+def _existing_key_tags(
+    runtime: SnowflakeFederationRuntime, tags_database: str, view: tuple[str, str, str]
+) -> dict[tuple[tuple[str, str, str], str], set[str]]:
+    """The PRIMARY_KEY / FOREIGN_KEY tags currently set on ``view``'s columns, per column, so a
+    stale one can be unset (REQ-1652)."""
+    fq = ".".join(f'"{part}"' for part in view)
+    cur = runtime.connection.cursor()
+    try:
+        cur.execute(
+            f'SELECT column_name, tag_name FROM TABLE("{tags_database}".information_schema'
+            f".tag_references_all_columns('{_escape(fq)}', 'table')) "
+            f"WHERE tag_database = '{_escape(tags_database)}' AND tag_schema = '{_TAGS_SCHEMA}' "
+            f"AND tag_name IN ('{_PK_TAG}', '{_FK_TAG}')"
+        )
+        out: dict[tuple[tuple[str, str, str], str], set[str]] = {}
+        for column, tag in cur.fetchall():
+            out.setdefault((view, str(column)), set()).add(str(tag))
+        return out
+    except ProgrammingError:
+        return {}  # the view has no tag references yet (or no tag schema): nothing to unset
+    finally:
+        cur.close()
 
 
 def _existing_keys(
@@ -838,7 +893,12 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             result.errors.append(AssetError(AssetRefStub(name), reason))
         withheld_names = {name for name, _ in withheld}
         emitted = [spec for spec in specs if spec.name not in withheld_names]
-        statements += key_tag_statements(landing_database, tables, emitted, views)
+        existing_tags = {
+            key: tags
+            for view in sorted(views)
+            for key, tags in _existing_key_tags(runtime, landing_database, view).items()
+        }
+        statements += key_tag_statements(landing_database, tables, emitted, views, existing_tags)
         if not statements:
             return 0
         cur = runtime.connection.cursor()

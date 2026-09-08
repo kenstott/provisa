@@ -368,3 +368,48 @@ async def test_column_primary_key_flag_rides_the_projection():  # REQ-1652
     assert cols["id"]["is_primary_key"] is True
     assert cols["name"]["is_primary_key"] is False
     assert "is_foreign_key" not in cols["id"]  # derived from relationships, not part of the model
+
+
+async def test_junction_relationship_projects_its_via_declaration():  # REQ-1586, REQ-1652
+    tables = [
+        {
+            "id": 35,
+            "source_id": "pg",
+            "schema_name": "public",
+            "table_name": "pets",
+            "domain_id": "d",
+        },
+        {
+            "id": 36,
+            "source_id": "pg",
+            "schema_name": "public",
+            "table_name": "pet_companions",
+            "domain_id": "d",
+        },
+    ]
+    rels = [
+        {
+            "id": "pets-littermate",
+            "cardinality": "one-to-many",
+            "source_table_id": 35,
+            "target_table_id": 35,
+            "source_column": "id",
+            "target_column": "id",
+            "via_table_id": 36,  # int in DB → the config names the junction
+            "via_source_column": "pet_id",
+            "via_target_column": "companion_pet_id",
+            "via_type_column": "relation_type",
+            "via_type_value": "littermate",
+            "via_label_source": "column",
+        }
+    ]
+    cfg = await _run(base={"tables": []}, tables=tables, rels=rels)
+    r = cfg["relationships"][0]
+    assert r["via_table"] == "pet_companions"
+    assert (r["via_source_column"], r["via_target_column"]) == ("pet_id", "companion_pet_id")
+    assert (r["via_type_column"], r["via_type_value"], r["via_label_source"]) == (
+        "relation_type",
+        "littermate",
+        "column",
+    )
+    assert "via_table_id" not in r
