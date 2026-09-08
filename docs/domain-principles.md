@@ -301,19 +301,20 @@ Only tables assigned to a product publish to external catalogs by default. `buil
 
 A product with no exported members does not publish — an empty listing would claim a product exists with nothing behind it. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]
 
-Each product publishes as a first-class listing in every connected catalog:
+Only catalogs with a native data-product concept publish it as a first-class entity; the rest publish the (already-filtered) member tables without a product grouping:
 
 | Catalog | Published as |
 | --- | --- |
-| Snowflake Horizon | SHARE + organization listing; `publish=false` keeps it DRAFT, `publish=true` takes it live |
-| BigQuery Analytics Hub | Analytics Hub listing |
-| OpenMetadata | DataProduct entity |
-| DataHub | URN-addressed listing |
-| Apache Atlas | `provisa_data_product` asset |
-| Atlan | DataProduct asset |
-| OpenLineage | Members mapped per `DataProductAsset` |
+| Snowflake Horizon | SHARE + organization listing (native Data Product); `publish=false` keeps it DRAFT, `publish=true` takes it live |
+| BigQuery Analytics Hub | Analytics Hub listing (native) |
+| OpenMetadata | `DataProduct` entity (native) |
+| DataHub | Native `dataProduct` URN entity with its own properties/ownership aspects |
+| Collibra | Asset of a `Data Product` community type, related to member tables |
+| Apache Atlas | Best-effort custom `provisa_data_product` typedef — Atlas has no native data-product type |
+| Atlan | Best-effort custom `DataProduct` typedef guess — Atlan has no documented stable type for this |
+| OpenLineage | Not a listing — member tables carry a `provisa_data_product` custom facet naming the product |
 
-[tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:389-418`, `provisa/api/metadata_export/bigquery_dataplex.py:112-136`, `provisa/api/metadata_export/openmetadata.py:326-331`, `provisa/api/metadata_export/openlineage.py:348`]
+[tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:389-418`, `provisa/api/metadata_export/bigquery_dataplex.py:112-136`, `provisa/api/metadata_export/openmetadata.py:326-344`, `provisa/api/metadata_export/datahub.py:133-136,443-483`, `provisa/api/metadata_export/collibra.py:129-133,371-388`, `provisa/api/metadata_export/atlas.py:134-147`, `provisa/api/metadata_export/atlan.py:60`, `provisa/api/metadata_export/openlineage.py:243,348`]
 
 ### Fields
 
