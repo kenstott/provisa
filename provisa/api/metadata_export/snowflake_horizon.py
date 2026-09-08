@@ -44,14 +44,16 @@ a classification value, so it publishes as appended COMMENT text instead (:func:
 alongside REQ-1647's description text) — never as a TAG.
 """
 
-# Requirements: REQ-1068, REQ-1635, REQ-1656
+# Requirements: REQ-1068, REQ-1635, REQ-1656, REQ-1659
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -294,6 +296,24 @@ def _member_entry(member: ListingMember, indent: str, *, pii: bool) -> str:
     return "\n".join(lines) + "\n"
 
 
+def documentation_link(url: str | None) -> str | None:
+    """``url`` as the manifest's ``resources.documentation``, or the reason it cannot be one.
+    Snowflake accepts any http(s) link with a hostname (``localhost`` included) and refuses one
+    whose host is an IP literal -- "Invalid documentation link", confirmed live -- and a refused
+    link fails the whole listing, so it is withheld and reported instead."""
+    if not url:
+        return None
+    host = urlsplit(url).hostname or ""
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return url
+    raise ValueError(
+        f"documentation link withheld: Snowflake refuses a listing link whose host is an IP "
+        f"address ({url}); set mail.base_url to a hostname"
+    )
+
+
 def listing_manifest(
     name: str,
     description: str,
@@ -303,6 +323,7 @@ def listing_manifest(
     region: str,
     support_contact: str,
     members: list[ListingMember],
+    documentation: str | None = None,
 ) -> str:
     """The organization listing's YAML manifest.
 
@@ -337,6 +358,10 @@ def listing_manifest(
         f"support_contact: {_yaml_string(support_contact)}\n"
         f"approver_contact: {_yaml_string(support_contact)}\n"
     )
+    if documentation:
+        # REQ-1659: Snowsight's "Documentation" box; a fully qualified http(s) link back to the
+        # product's page in Provisa, where the product is edited.
+        manifest += f"resources:\n  documentation: {_yaml_string(documentation)}\n"
     if not members:
         return manifest
     primary = members[0].database
@@ -640,6 +665,11 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             return False
 
         masked = _masked_columns(governance_tags or [])
+        try:
+            documentation = documentation_link(getattr(product, "documentation_url", None))
+        except ValueError as exc:
+            result.errors.append(AssetError(AssetRefStub(product.name), str(exc)))
+            documentation = None
         members = [
             ListingMember(
                 database,
@@ -659,6 +689,7 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             region=region,
             support_contact=product.support_contact,
             members=members,
+            documentation=documentation,
         )
         publish = getattr(product, "publish", False)
         statements = share_statements(

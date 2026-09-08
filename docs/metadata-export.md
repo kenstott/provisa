@@ -50,6 +50,12 @@ read back and replaced with `ALTER LISTING` when it differs, so a change made in
 wizard does not survive the next publish.
 [tool-verified: provisa/api/metadata_export/snowflake_horizon.py:listing_manifest,_publish_product]
 
+The listing's documentation link is the product's own page in Provisa, at the org's public origin
+(`mail.base_url`, by the invitation's host rule) plus `/data-products?product=<id>`; the Analytics
+Hub listing carries the same link as its documentation (REQ-1659). The Data Products page opens
+the product that parameter names. A loopback origin, the install default, links to the hosted
+Provisa front door at `cloud.provisa.dev` instead.
+
 Keys are not part of the catalog publish. A landed table's `PRIMARY KEY` and the `FOREIGN KEY`s its
 relationships imply belong to the landed model and converge with the tables in the landing
 reconcile, for every landed table whether or not a Data Product names it (REQ-1652). On Snowflake

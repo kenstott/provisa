@@ -339,7 +339,12 @@ export function DataProductsPage() {
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [selectedFunctionNames, setSelectedFunctionNames] = useState<string[]>([]);
+  // REQ-1659: `?product=<id>` is the deep link a catalog listing (Snowflake Horizon's
+  // documentation box, Analytics Hub) carries back to this page; it names the product to open and
+  // wins over the last-expanded row remembered in localStorage.
   const [expanded, setExpandedState] = useState<string | null>(() => {
+    const linked = searchParams.get("product");
+    if (linked) return linked;
     try {
       return localStorage.getItem(EXPANDED_STORAGE_KEY);
     } catch {
@@ -348,6 +353,15 @@ export function DataProductsPage() {
   });
   const setExpanded = (id: string | null) => {
     setExpandedState(id);
+    setSearchParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        if (id) n.set("product", id);
+        else n.delete("product");
+        return n;
+      },
+      { replace: true },
+    );
     try {
       if (id) localStorage.setItem(EXPANDED_STORAGE_KEY, id);
       else localStorage.removeItem(EXPANDED_STORAGE_KEY);

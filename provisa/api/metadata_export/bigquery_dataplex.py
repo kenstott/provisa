@@ -87,12 +87,14 @@ class ListingSpec:  # REQ-1636
     description: str
     owner_id: str | None
     dataset_tables: list[str]
+    documentation: str | None = None  # REQ-1659: the product's page in Provisa
 
     def as_payload(self) -> dict[str, Any]:
         return {
             "displayName": self.name,
             "description": self.description,
             **({"owner": self.owner_id} if self.owner_id is not None else {}),
+            **({"documentation": self.documentation} if self.documentation else {}),
             "bigQueryDataset": {"tables": self.dataset_tables},
         }
 
@@ -104,6 +106,7 @@ def _build_listing(product: "DataProductAsset", runtime: Any) -> ListingSpec:
         description=product.description,
         owner_id=product.owner.id if product.owner is not None else None,
         dataset_tables=[_resolve_member(runtime, member) for member in product.members],
+        documentation=getattr(product, "documentation_url", None),
     )
 
 

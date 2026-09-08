@@ -51,6 +51,7 @@ class _FakeDataProduct:
     members: list[AssetRef] = field(default_factory=list)
     support_contact: str | None = "data-team@example.com"
     publish: bool = False
+    documentation_url: str | None = None
 
 
 def _table_ref(source_id: str, schema: str, table: str) -> AssetRef:
@@ -144,6 +145,17 @@ def test_listing_manifest_carries_the_organization_listing_fields():
     assert doc["locations"]["access_regions"] == [{"name": "PUBLIC.AZURE_EASTUS2"}]
     assert doc["support_contact"] == doc["approver_contact"] == "data-team@example.com"
     assert "data_dictionary" not in doc and "data_preview" not in doc
+
+
+def test_listing_manifest_links_the_documentation_box_back_to_the_product_page():
+    # REQ-1659: Snowsight's "Documentation" box takes one fully qualified http(s) URL.
+    doc = yaml.safe_load(
+        _manifest(documentation="https://acme.example.test/data-products?product=c360")
+    )
+    assert doc["resources"] == {
+        "documentation": "https://acme.example.test/data-products?product=c360"
+    }
+    assert "resources" not in yaml.safe_load(_manifest())
 
 
 def test_listing_manifest_quotes_every_string_the_yaml_could_break_on():
@@ -721,6 +733,50 @@ def test_publish_features_members_with_their_object_kind_and_masked_columns(monk
     assert doc["data_preview"]["has_pii"] is True
     assert doc["data_preview"]["metadata_overrides"]["objects"][0]["pii_columns"] == ['"name"']
     assert not any(s.startswith("ALTER LISTING") for s in rt._conn.cursor_obj.sql)
+
+
+def test_documentation_link_withholds_an_ip_literal_host():
+    from provisa.api.metadata_export.snowflake_horizon import documentation_link
+
+    assert documentation_link(None) is None
+    assert documentation_link("http://localhost:3200/data-products?product=x") == (
+        "http://localhost:3200/data-products?product=x"
+    )
+    with pytest.raises(ValueError, match="IP address"):
+        documentation_link("http://127.0.0.1:3200/data-products?product=x")
+
+
+def test_publish_reports_and_withholds_an_ip_literal_documentation_link(monkeypatch):
+    rt = _runtime(existing_objects=True, kind="VIEW")
+    _snowflake(monkeypatch, rt)
+    product = _FakeDataProduct(
+        "c360",
+        "customer_360",
+        "desc",
+        [_table_ref("petstore-api", "public", "customers")],
+        documentation_url="http://10.0.0.5/data-products?product=c360",
+    )
+    result = asyncio.run(_exporter().publish(snapshot=SimpleNamespace(data_products=[product])))
+    assert result.published["data_products"] == 1
+    assert [e.message for e in result.errors] and "IP address" in result.errors[0].message
+    create = next(s for s in rt._conn.cursor_obj.sql if s.startswith("CREATE ORGANIZATION"))
+    assert "resources:" not in create
+
+
+def test_publish_puts_the_product_page_url_in_the_manifest(monkeypatch):
+    rt = _runtime(existing_objects=True, kind="VIEW")
+    _snowflake(monkeypatch, rt)
+    product = _FakeDataProduct(
+        "c360",
+        "customer_360",
+        "desc",
+        [_table_ref("petstore-api", "public", "customers")],
+        documentation_url="https://acme.example.test/data-products?product=c360",
+    )
+    result = asyncio.run(_exporter().publish(snapshot=SimpleNamespace(data_products=[product])))
+    assert result.ok, result.errors
+    create = next(s for s in rt._conn.cursor_obj.sql if s.startswith("CREATE ORGANIZATION"))
+    assert 'documentation: "https://acme.example.test/data-products?product=c360"' in create
 
 
 def test_publish_alters_the_listing_when_the_live_manifest_drifted(monkeypatch):

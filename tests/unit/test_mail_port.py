@@ -411,3 +411,27 @@ def test_a_host_that_names_no_org_keeps_the_configured_address():
     assert invite_redemption_url("http://localhost:5173", "tok", "acme") == (
         "http://localhost:5173/?invite=tok"
     )
+
+
+def test_a_data_product_page_url_addresses_the_org_host_and_names_the_product():
+    """REQ-1659: the link a catalog listing carries back to the product's page -- the org's public
+    origin (the invitation's rule) plus the Data Products page opened on that product."""
+    from provisa.core.mail import data_product_page_url
+
+    assert data_product_page_url("https://cloud.example.test/", "acme", "pet_health") == (
+        "https://acme.example.test/data-products?product=pet_health"
+    )
+    assert data_product_page_url("https://acme.example.test", "acme", "a/b c") == (
+        "https://acme.example.test/data-products?product=a%2Fb%20c"
+    )
+
+
+def test_a_loopback_base_url_links_the_listing_to_the_hosted_provisa():
+    """REQ-1659: the install default (localhost) is reachable from nowhere a catalog consumer
+    reads the listing, so the link goes to the hosted front door as-is."""
+    from provisa.core.mail import data_product_page_url
+
+    for base in ("http://localhost:5173", "http://127.0.0.1:3200", "http://[::1]:8000/"):
+        assert data_product_page_url(base, "acme", "pet_health") == (
+            "https://cloud.provisa.dev/data-products?product=pet_health"
+        ), base

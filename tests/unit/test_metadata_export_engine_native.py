@@ -126,3 +126,20 @@ async def test_bigquery_dataplex_publishes_a_listing_backed_by_the_resolved_memb
         "wh_db.public.customers",
         "wh_db.public.order_totals",
     ]
+
+
+def test_bigquery_dataplex_listing_carries_the_product_page_as_documentation():
+    """REQ-1659: the Analytics Hub listing's documentation is the product's page in Provisa."""
+    from provisa.api.metadata_export.bigquery_dataplex import ListingSpec
+
+    with_link = ListingSpec(
+        product_id="prod",
+        name="Sales 360",
+        description="Unified",
+        owner_id=None,
+        dataset_tables=["wh_db.public.orders"],
+        documentation="https://acme.example.test/data-products?product=prod",
+    ).as_payload()
+    assert with_link["documentation"] == "https://acme.example.test/data-products?product=prod"
+    bare = ListingSpec("prod", "Sales 360", "Unified", None, ["wh_db.public.orders"]).as_payload()
+    assert "documentation" not in bare

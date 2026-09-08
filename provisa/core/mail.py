@@ -37,7 +37,8 @@ from email.message import EmailMessage
 from email.utils import formataddr
 from html import escape
 from typing import Protocol
-from urllib.parse import urlsplit, urlunsplit
+import ipaddress
+from urllib.parse import quote, urlsplit, urlunsplit
 
 log = logging.getLogger(__name__)
 
@@ -443,15 +444,49 @@ def invite_redemption_url(base_url: str, token: str, org_id: str) -> str:
             "mail.base_url is empty, so the invitation link would be a relative path no mail "
             "client can open. Set PROVISA_MAIL_BASE_URL to the public origin of the UI."
         )
+    return f"{public_org_origin(base_url, org_id)}/?invite={token}"
+
+
+def public_org_origin(base_url: str, org_id: str) -> str:
+    """The org's own public origin (REQ-1276): ``base_url`` with its leftmost host label replaced
+    by the org id, the rule the UI's ``orgOrigin`` applies. A host with no label to strip
+    (``localhost``, a bare hostname) addresses no org by name, and the deployment's one address is
+    the configured one."""
     parsed = urlsplit(base_url.strip().rstrip("/"))
     labels = parsed.hostname.split(".") if parsed.hostname else []
     if len(labels) >= 2:
         host = f"{org_id}.{'.'.join(labels[1:])}"
         netloc = f"{host}:{parsed.port}" if parsed.port else host
-        origin = urlunsplit((parsed.scheme, netloc, "", "", ""))
-    else:
-        origin = base_url.strip().rstrip("/")
-    return f"{origin}/?invite={token}"
+        return urlunsplit((parsed.scheme, netloc, "", "", ""))
+    return base_url.strip().rstrip("/")
+
+
+#: REQ-1659: the origin a catalog listing links to when the deployment's own public origin is a
+#: loopback address. A link to ``localhost`` is reachable from nowhere but the publisher's machine,
+#: and a catalog consumer reads the listing elsewhere; the hosted Provisa is where the product can
+#: be reached. Deliberate by design, documented here, never a silent default.
+LISTING_LINK_ORIGIN = "https://cloud.provisa.dev"
+
+
+def _is_loopback(base_url: str) -> bool:
+    host = (urlsplit(base_url.strip()).hostname or "").lower()
+    if host in ("localhost", "") or host.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def data_product_page_url(base_url: str, org_id: str, product_id: str) -> str:
+    """The deep link to a Data Product's page in the org's UI (REQ-1659): the Data Products page
+    opens the product named by ``?product=``. A catalog listing carries it as its documentation
+    link, so the listing points back at the place the product is edited. A loopback ``base_url``
+    (the install default) links to :data:`LISTING_LINK_ORIGIN` instead."""
+    # The hosted front door is linked as-is: this deployment's org id names no host there, and
+    # the front door routes a signed-in reader to their own org.
+    origin = LISTING_LINK_ORIGIN if _is_loopback(base_url) else public_org_origin(base_url, org_id)
+    return f"{origin}/data-products?product={quote(product_id, safe='')}"
 
 
 def compose_invite_message(

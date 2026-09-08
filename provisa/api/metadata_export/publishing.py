@@ -238,6 +238,10 @@ async def publish_snapshot(org_id: str) -> PublishResult:
             glossary=glossary,
             dq_outcomes=dq_outcomes,
             contexts=state.contexts,
+            # REQ-1659: the listing's documentation link points back at the product's page, at
+            # the org's public origin -- the one mail.base_url names, for the same reason an
+            # invitation cannot derive it from the request that created it.
+            documentation_base_url=state.config.mail.base_url if state.config else None,
         )
         exporter = metadata_export(config)
         async with tenant_db.acquire() as conn:

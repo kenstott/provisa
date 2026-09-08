@@ -451,3 +451,26 @@ def test_fk_relationship_publishes_as_direct_with_no_junction():
     edge = snapshot.relationships[0]
     assert edge.kind == "direct"
     assert edge.via is None
+
+
+def test_data_product_carries_its_page_url_when_a_public_origin_is_configured():
+    """REQ-1659: the listing's documentation link is the product's own page, at the org's public
+    origin; without a configured origin there is no link rather than a guessed one."""
+    config = _config(
+        tables=[_table(table_name="orders", product_id="customer_360")],
+        data_products=[
+            DataProduct(id="customer_360", domain_id="sales", name="Customer 360", purpose="x")
+        ],
+    )
+    linked = build_snapshot(
+        config,
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        documentation_base_url="https://cloud.example.test",
+    )
+    assert linked.data_products[0].documentation_url == (
+        "https://acme.example.test/data-products?product=customer_360"
+    )
+    bare = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    assert bare.data_products[0].documentation_url is None

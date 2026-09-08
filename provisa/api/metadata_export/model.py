@@ -125,6 +125,8 @@ class DataProductAsset:  # REQ-1634
     semantic_uri: str = ""
     support_contact: str | None = None  # REQ-1635: Horizon Catalog org-listing manifest requirement
     publish: bool = False  # REQ-1635: PUBLISH = TRUE on the organization listing instead of DRAFT
+    # REQ-1659: the product's page in the org's UI, published as the listing's documentation link.
+    documentation_url: str | None = None
 
 
 @dataclass

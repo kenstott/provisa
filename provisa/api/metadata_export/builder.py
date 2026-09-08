@@ -198,7 +198,11 @@ def _data_product_assets(
     exported: list[Table],
     org_id: str | None,
     product_ids: dict[tuple[str, ...], str | None],
+    documentation_base_url: str | None = None,
+    page_org_id: str = "",
 ) -> list[DataProductAsset]:
+    from provisa.core.mail import data_product_page_url
+
     # A product with no exported members does not build: publishing an empty listing would tell
     # the catalog about a product with nothing behind it.
     members_by_product: dict[str, list[Table]] = {}
@@ -225,6 +229,11 @@ def _data_product_assets(
                 semantic_uri=data_product_uri(org_id, product.domain_id, product.id),
                 support_contact=product.support_contact,
                 publish=product.publish,
+                documentation_url=(
+                    data_product_page_url(documentation_base_url, page_org_id, product.id)
+                    if documentation_base_url
+                    else None
+                ),
             )
         )
     return assets
@@ -595,6 +604,7 @@ def build_snapshot(
     dq_outcomes: dict[tuple[str, str, str], DataQualityOutcome] | None = None,
     contexts: dict,
     data_products_only: bool = True,
+    documentation_base_url: str | None = None,
 ) -> MetadataSnapshot:  # REQ-1070
     """Project the governed config into the vendor-neutral snapshot every adapter publishes.
 
@@ -662,7 +672,14 @@ def build_snapshot(
         sources=_source_assets(config, uri_org_id, published_source_ids),
         domains=_domain_assets(config, uri_org_id),
         tables=tables,
-        data_products=_data_product_assets(config, exported, uri_org_id, product_ids),
+        data_products=_data_product_assets(
+            config,
+            exported,
+            uri_org_id,
+            product_ids,
+            documentation_base_url=documentation_base_url,
+            page_org_id=org_id,
+        ),
         relationships=relationships,
         lineage=[
             edge

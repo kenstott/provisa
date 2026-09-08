@@ -55307,3 +55307,45 @@
     Given pets and pet_visits registered as materialized on a BigQuery engine
     When the server boots
     Then both tables exist in their per-source datasets with PRIMARY KEY NOT ENFORCED, pet_visits holds provisa_fk_<relationship>, pets carries its description and provisa_governance_gold label, and a second reconcile applies nothing
+- id: REQ-1659
+  status: complete
+  since: 2026-09
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A Data Product's catalog listing links back to the product's page in Provisa, where the product
+    is edited: the Snowflake Horizon organization listing carries it as resources.documentation
+    (Snowsight's Documentation box, which takes one fully qualified http(s) URL) and the Analytics
+    Hub listing as its documentation. The link is the org's public origin, derived from
+    mail.base_url by the invitation's rule, plus /data-products?product=<id>. The Data Products page
+    opens the product a ?product= parameter names, ahead of the row remembered in localStorage, and
+    writes the parameter when a row is expanded so the address bar is itself a link to the open
+    product. A loopback base_url (the install default, localhost) links to https://cloud.provisa.dev
+    as-is, since a catalog consumer reads the listing elsewhere and this org names no host there.
+  use_case: >-
+    A consumer reading the listing in Snowsight or the Analytics Hub console can reach the product's
+    owner, members, lineage and terms in one click instead of searching for it in Provisa.
+  code:
+  - provisa/core/mail.py
+  - provisa/api/metadata_export/builder.py
+  - provisa/api/metadata_export/publishing.py
+  - provisa/api/metadata_export/snowflake_horizon.py
+  - provisa/api/metadata_export/bigquery_dataplex.py
+  - provisa-ui/src/pages/DataProductsPage.tsx
+  tests:
+  - tests/unit/test_mail_port.py
+  - tests/unit/test_metadata_snapshot_builder.py
+  - tests/unit/test_snowflake_horizon_export.py
+  - tests/unit/test_metadata_export_engine_native.py
+  - provisa-ui/src/pages/__tests__/data-products-deep-link.test.tsx
+  relates_to:
+  - REQ-1635
+  - REQ-1636
+  - REQ-1656
+  - REQ-1276
+  scenario: |
+    Given mail.base_url is https://cloud.example.test and Data Product pet_health in org acme
+    When the snowflake_horizon export publishes
+    Then the listing manifest carries resources.documentation https://acme.example.test/data-products?product=pet_health, and opening that link shows pet_health expanded on the Data Products page
