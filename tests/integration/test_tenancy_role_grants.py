@@ -280,3 +280,34 @@ async def test_an_underived_role_keeps_the_tenancy_answer(tenant_db):
     caps = await _caps(tenant_db)
     assert "environment_management" in caps["org_admin"]
     assert "environment_management" not in caps["sandbox"]
+
+
+@pytest.mark.parametrize("multitenancy", [True, False])
+async def test_a_pre_existing_sandbox_row_is_rederived_from_org_admin(tenant_db, multitenancy):
+    """REQ-1597: sandbox is org_admin minus a denylist -- and stays so on a row the seed cannot
+    reach. The sandbox org on cloud was seeded before REQ-1634 added the data-product rights; the
+    seed's ON CONFLICT DO NOTHING left its sandbox row without them, the seam re-asserted them onto
+    org_admin alone, and every visitor (whose org_admin is derived FROM sandbox) lost the Data
+    Products nav entry."""
+    async with tenant_db.acquire() as conn:
+        await conn.execute(
+            "UPDATE roles SET capabilities = COALESCE("
+            "  (SELECT jsonb_agg(v) FROM jsonb_array_elements(capabilities) v"
+            "   WHERE v NOT IN ('\"data_product_read\"'::jsonb, '\"data_product_rw\"'::jsonb)),"
+            "  '[]'::jsonb) WHERE id = 'sandbox'"
+        )
+        await conn.execute("UPDATE roles SET defined_from = 'sandbox' WHERE id = 'org_admin'")
+
+    await apply_tenancy_role_grants(tenant_db, _ORG_ID, multitenancy=multitenancy)
+
+    caps = await _caps(tenant_db)
+    assert {"data_product_read", "data_product_rw"} <= caps["sandbox"]
+    assert caps["org_admin"] == caps["sandbox"]
+    for withheld in (
+        "environment_management",
+        "environment_switch",
+        "user_management",
+        "org_glossary_rw",
+        "platform_settings",
+    ):
+        assert withheld not in caps["sandbox"], withheld

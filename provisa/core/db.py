@@ -130,6 +130,12 @@ _SANDBOX_DENIED: frozenset[str] = frozenset(
     }
 )
 
+# What the reconcile seam subtracts when it re-derives ``sandbox`` from the org_admin row it has
+# just re-asserted: REQ-1597's denylist, plus ``platform_settings``, which is not an org_admin
+# right but the tenancy answer the seam writes onto org_admin afterwards (single-tenant only) and
+# which a visitor never holds.
+_SANDBOX_REDERIVE_DENIED: frozenset[str] = _SANDBOX_DENIED | {"platform_settings"}
+
 _SEED_ROLES: tuple[tuple[str, list[str]], ...] = (
     ("org_admin", _ORG_ADMIN_CAPABILITIES),
     (
@@ -370,6 +376,19 @@ async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy:
                 await conn.execute_core(
                     update(roles).where(roles.c.id == role_id).values(capabilities=sorted(caps))
                 )
+        # REQ-1597: sandbox is org_admin minus a denylist, and the seed cannot reach a sandbox row an
+        # earlier release created -- so a right added to org_admin above (data_product_read among
+        # them) never reached an existing sandbox row, and the visitor's derived org_admin below
+        # then re-read the stale list. Re-derived here, from the org_admin row as re-asserted above.
+        admin_row = (
+            await conn.execute_core(select(roles.c.capabilities).where(roles.c.id == "org_admin"))
+        ).fetchone()
+        if admin_row is not None:
+            await conn.execute_core(
+                update(roles)
+                .where(roles.c.id == "sandbox")
+                .values(capabilities=sorted(set(admin_row[0] or []) - _SANDBOX_REDERIVE_DENIED))
+            )
         # REQ-1624: the derived roles are re-read LAST, exactly as on PostgreSQL -- see the comment
         # at the end of apply_tenancy_role_grants for what re-asserting over a subtraction did.
         derived = (
@@ -487,6 +506,18 @@ async def apply_tenancy_role_grants(  # REQ-1337
                 "UPDATE roles SET capabilities = capabilities || '[\"platform_settings\"]'::jsonb"
                 " WHERE id = 'org_admin' AND NOT capabilities ? 'platform_settings'"
             )
+        # REQ-1597: sandbox is org_admin minus a denylist, and the seed's ON CONFLICT DO NOTHING
+        # cannot reach a sandbox row an earlier release created -- so every right the blocks above
+        # add to org_admin (data_product_read among them) was missing from an existing sandbox row,
+        # and the visitor's derived org_admin (re-read below) inherited the stale list. Re-derived
+        # here, from org_admin as just re-asserted, so the subtraction stays the only author.
+        denied = ", ".join(f"'\"{r}\"'::jsonb" for r in sorted(_SANDBOX_REDERIVE_DENIED))
+        await conn.execute(
+            "UPDATE roles t SET capabilities = COALESCE("
+            "  (SELECT jsonb_agg(v ORDER BY v) FROM jsonb_array_elements(s.capabilities) v"
+            f"   WHERE v NOT IN ({denied})), '[]'::jsonb)"
+            " FROM roles s WHERE s.id = 'org_admin' AND t.id = 'sandbox'"
+        )
         # REQ-1624: LAST, and after every re-assertion above. A role whose `defined_from` names
         # another is DERIVED from it in this schema -- the sandbox visitor's `org_admin`, which
         # REQ-1597 defines by subtraction from org_admin and env_copy.adopt_role_definition applies
