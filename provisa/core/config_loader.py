@@ -484,33 +484,21 @@ def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668
 
 async def _handle_neo4j_table(conn: "Connection", tbl: Table, src: Source) -> None:  # REQ-1668
     """Persist the config table's Cypher as an api_endpoints row (plus its api_sources row)."""
-    from provisa.neo4j.persist import (
-        api_columns_from_config,
-        persist_neo4j_endpoint,
-        persist_neo4j_source,
-    )
-    from provisa.neo4j.source import Neo4jSourceConfig, build_api_source, build_endpoint
+    from provisa.neo4j.persist import persist_neo4j_table
 
-    cfg = Neo4jSourceConfig(
+    assert tbl.query_template is not None  # _validate_neo4j_sources
+    await persist_neo4j_table(
+        conn,
         source_id=src.id,
         host=src.host,
         port=src.port,
         database=src.database,
-        use_https=(src.base_url or "").startswith("https://"),
+        base_url=resolve_secrets(src.base_url) if src.base_url else None,
+        table_name=tbl.table_name,
+        query_template=tbl.query_template,
+        columns=tbl.columns,
+        ttl=tbl.cache_ttl or src.cache_ttl or 300,
     )
-    api_source = build_api_source(cfg)
-    if src.base_url:
-        api_source = api_source.model_copy(update={"base_url": resolve_secrets(src.base_url)})
-    assert tbl.query_template is not None  # _validate_neo4j_sources
-    endpoint = build_endpoint(
-        cfg,
-        tbl.table_name,
-        tbl.query_template,
-        api_columns_from_config(tbl.columns),
-        tbl.cache_ttl or src.cache_ttl or 300,
-    )
-    await persist_neo4j_source(conn, api_source)
-    await persist_neo4j_endpoint(conn, endpoint)
 
 
 async def _upsert_single_table(

@@ -10,6 +10,7 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 
 import { removeNeo4jContainer } from "./neo4j-container";
+import { removeDemoSources } from "./demo-source-containers";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.resolve(__dirname, "../../config/provisa-install.yaml");
@@ -21,6 +22,7 @@ export default async function globalTeardown() {
   // the window where browsers are running. Unconditional: a lane that never started one just
   // removes nothing.
   removeNeo4jContainer();
+  removeDemoSources();
 
   if (fs.existsSync(SNAPSHOT_PATH)) {
     fs.copyFileSync(SNAPSHOT_PATH, CONFIG_PATH);

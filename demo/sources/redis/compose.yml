@@ -1,0 +1,28 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Redis (start-ui-install.sh --demo --source=redis).
+# Own compose project (provisa-demo-redis) on port 26379 (dev/core stack 6379, tests ephemeral).
+# Read natively by every engine without a live Redis connector (REQ-1675); Trino keeps its connector.
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_DEMO_REDIS_PORT:-26379}:6379"
+    volumes:
+      - redis_demo_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+volumes:
+  redis_demo_data:

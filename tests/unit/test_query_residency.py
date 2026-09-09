@@ -129,6 +129,17 @@ def wiring(monkeypatch):
         "provisa.events.source_loader.SourceRowLoader", lambda engine, adapter_loaders: object()
     )
     monkeypatch.setattr("provisa.events.land_lock._locks", {})
+    # REQ-1674: ensure_resident reads the registry view; here the config IS the registry
+    # (these tests are about residency, not about where the rows come from).
+
+    async def _sources(state, conn=None):
+        return list(state.config.sources)
+
+    async def _tables(state, conn=None):
+        return list(state.config.tables)
+
+    monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _sources)
+    monkeypatch.setattr("provisa.federation.registry_view.registered_tables", _tables)
 
 
 @pytest.mark.asyncio

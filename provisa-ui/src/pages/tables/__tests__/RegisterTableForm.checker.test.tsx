@@ -21,8 +21,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
 
-const useAvailableSchemas = vi.fn(() => ({ schemas: [] as string[], loading: false }));
-const useAvailableTables = vi.fn(() => ({ tables: [] as { name: string }[], loading: false }));
+const useAvailableSchemas = vi.fn((_sourceId: string | null) => ({
+  schemas: [] as string[],
+  loading: false,
+}));
+const useAvailableTables = vi.fn((_sourceId: string | null, _schema: string | null) => ({
+  tables: [] as { name: string }[],
+  loading: false,
+}));
 const parseContract = vi.fn();
 const buildContract = vi.fn();
 const checkCatalog = vi.fn();

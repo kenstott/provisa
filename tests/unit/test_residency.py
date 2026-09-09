@@ -228,6 +228,19 @@ class _FakeBackend:
 
 
 @pytest.mark.asyncio
+def _registry_is_config(monkeypatch):
+    """REQ-1674: the landing path reads the registry view; in these tests the config IS the registry."""
+
+    async def _sources(state, conn=None):
+        return list(state.config.sources)
+
+    async def _tables(state, conn=None):
+        return list(state.config.tables)
+
+    monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _sources)
+    monkeypatch.setattr("provisa.federation.registry_view.registered_tables", _tables)
+
+
 async def test_materialize_pending_lands_each_stale_source_table(monkeypatch):
     """REQ-1661: the base backend lands every table of a stale MATERIALIZED source at the engine's
     landing address through its store write face -- the event loop's own path."""
@@ -240,6 +253,7 @@ async def test_materialize_pending_lands_each_stale_source_table(monkeypatch):
     src = _source("s1", change_signal="ttl")
     tbl = _table("s1", watermark_column="updated_at")
     state = SimpleNamespace(config=SimpleNamespace(sources=[src], tables=[tbl]))
+    _registry_is_config(monkeypatch)
     backend = _FakeBackend()
     loader = _FakeLoader({"events": [{"id": 1, "status": "new"}]})
 
@@ -262,6 +276,7 @@ async def test_materialize_pending_is_a_noop_when_nothing_is_stale_or_named(monk
     )
     src = _source("s1")
     state = SimpleNamespace(config=SimpleNamespace(sources=[src], tables=[_table("s1")]))
+    _registry_is_config(monkeypatch)
     backend = _FakeBackend()
     loader = _FakeLoader({})
     assert await backend.materialize_pending(state, loader=loader, is_stale=lambda s: False) == []

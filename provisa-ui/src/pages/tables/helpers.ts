@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
-// Canary: 7c2e5d83-4a1f-4b6e-9d0c-2f8a3e7b1c94
+// Canary: b9c58944-862c-4c3c-9aaa-f1bcc80776b8
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -31,6 +31,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     probeType: t.probeType || null,
     viewSql: t.viewSql || undefined,
     dqContract: t.dqContract || null, // REQ-1443
+    queryTemplate: t.queryTemplate || null, // REQ-1670
     materialize: t.materialize,
     mvRefreshInterval: t.mvRefreshInterval,
     mvDebounceQuiet: t.mvDebounceQuiet,

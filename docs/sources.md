@@ -89,7 +89,7 @@ Wire-compatible databases reuse a base wire's JDBC driver, native async driver, 
 | `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | Federated | Reads via clickhouse-connect (HTTP); `secure: "true"` in `federation_hints` for TLS (REQ-986) |
 | `druid` | — | druid | druid | No | — |
 | `exasol` | — | exasol | exasol | No | — |
-| `elasticsearch` | — | elasticsearch | — | No | Connector properties come from the type's mapping DSL [tool-verified: `trino_connectors.py:309`] |
+| `elasticsearch` | HTTP (native engines) | elasticsearch (Trino) | — | No | On Trino the connector reads it, its properties from the type's mapping DSL [tool-verified: `trino_connectors.py:309`]; on every other engine Provisa reads the index over HTTP (indices and mapping for Register Table, a scroll read for landing) and lands the rows [tool-verified: `provisa/elasticsearch/fetch.py`, `provisa/events/source_loader.py` `make_elasticsearch_loader`] (REQ-1672) |
 | `pinot` | — | pinot | — | No | Trino `pinot` connector; `pinot.controller-urls` = host:port of the Pinot controller [tool-verified: `trino_connectors.py:199`] |
 
 ### Data Lake / Open Table Formats
@@ -111,8 +111,8 @@ These source types are federation-only — no direct driver, no dialect. [tool-v
 | Source Type | Connector Name | Mutations |
 | ------------ | ----------------- | ----------- |
 | `mongodb` | mongodb | No |
-| `cassandra` | cassandra | No |
-| `redis` | redis | No |
+| `cassandra` | cassandra (Trino); CQL read over cassandra-driver on every other engine | No | Keyspaces are schemas; Register Table lists a keyspace's tables and types columns from the cluster's schema metadata (partition keys as primary keys); the `cassandra` extra installs the driver [tool-verified: `provisa/cassandra/fetch.py`] (REQ-1676) |
+| `redis` | redis (Trino); HTTP-free redis-py read on every other engine | No | A key prefix `<table>:*` is a table and a hash is a row; Register Table lists the prefixes present and types a prefix's columns from its hashes (a `mapping.tables` entry overrides pattern, key column, value type and columns) [tool-verified: `provisa/redis/fetch.py`] (REQ-1675) |
 
 ### Streaming
 
@@ -860,6 +860,17 @@ tables:
       - name: years
         data_type: integer
 ```
+
+#### Register Table in the UI (REQ-1670)
+
+A neo4j source has no tables to list, so the Register Table form asks for the table instead of offering one. [tool-verified: `provisa-ui/src/pages/tables/RegisterTableForm.tsx` (`isNeo4j`)]
+
+1. Pick the neo4j source and a domain. The schema and table pickers, the discover checkbox and the watermark picker do not appear; the source is never introspected.
+2. Type a table name and the Cypher. The Cypher must project scalars (`RETURN a.name AS name`); a projection that returns a node or a list is reported as an error.
+3. Press Preview. The form runs the Cypher with `LIMIT 5` through the `neo4jPreview` GraphQL query and fills the column list from the rows that come back, typed as `text`, `integer`, `double`, `boolean` or `json`. [tool-verified: `provisa/api/admin/_neo4j_registration.py` `preview_neo4j`] A failed preview keeps the Cypher in the editor and shows the message.
+4. Adjust visibility, aliases or masking as for any table, then register. The form refuses to submit until a preview has typed the columns, and the server refuses a neo4j table that carries no Cypher (`schema.neo4j_query_required`). [tool-verified: `provisa/api/admin/schema_mutation_ops.py` `persist_neo4j_registration`]
+
+The Cypher is stored with the table as `queryTemplate`, shows on the table's read view, and persists exactly as a config-file registration does: an `api_sources` row and an `api_endpoints` row the next start hydrates. Editing the table re-persists an edited Cypher.
 
 #### Admin REST registration
 

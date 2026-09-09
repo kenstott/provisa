@@ -550,9 +550,16 @@ class Connection:
                 # the caught IntegrityError leaves the connection usable without a nested scope.
                 await self._ac.execute(insert_stmt)
         except IntegrityError:
-            # Lost an insert race with a concurrent writer — fall back to the update.
+            # Lost an insert race with a concurrent writer — fall back to the update. Only a race
+            # leaves a row to update: when the update matches nothing, the INSERT was refused by a
+            # constraint (a CHECK, a NOT NULL, a foreign key), and swallowing that turned a schema
+            # defect into a silently missing row (REQ-1668: api_sources.type refused 'neo4j').
             if set_map:
-                await self.execute_core(_update(table).where(where).values(**set_map))
+                res = await self.execute_core(_update(table).where(where).values(**set_map))
+                if (res.rowcount or 0) > 0:
+                    await self._commit_if_autocommit()
+                    return
+            raise
         await self._commit_if_autocommit()
 
     async def upsert_returning(

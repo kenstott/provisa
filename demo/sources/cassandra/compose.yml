@@ -1,0 +1,35 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Cassandra (start-ui-install.sh --demo --source=cassandra).
+# Own compose project (provisa-demo-cassandra) on port 29042 (dev/test stacks use 9042/ephemeral).
+# Read natively over CQL by every engine without a live Cassandra connector (REQ-1676; the
+# `cassandra` extra); Trino keeps its connector. Heap is capped: a demo node, not a cluster.
+services:
+  cassandra:
+    image: cassandra:5
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_DEMO_CASSANDRA_PORT:-29042}:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: provisa-demo
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      HEAP_NEWSIZE: 128M
+      MAX_HEAP_SIZE: 512M
+    volumes:
+      - cassandra_demo_data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe keyspaces' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 90s
+volumes:
+  cassandra_demo_data:

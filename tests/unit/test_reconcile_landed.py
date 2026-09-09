@@ -65,6 +65,11 @@ def _state(cfg, registered, monkeypatch):
         return registered
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
+
+    async def _no_ui_sources(_conn):  # REQ-1674: the registry view also lists UI-created sources
+        return []
+
+    monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_ui_sources)
     return SimpleNamespace(config=cfg, tenant_db=_fake_tenant_db())
 
 

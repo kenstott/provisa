@@ -1,0 +1,19 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Config fragment for the optional Redis demo source (REQ-1669). Registers the SOURCE only: its
+# key prefixes list as tables in Register Table (support_agent, agent_status), typed from the
+# hashes prime.py writes. Under a Docker start the coordinator reaches the container at redis:6379
+# (start-ui-install.sh sets PROVISA_DEMO_REDIS_SOURCE_*).
+sources:
+- id: redis-demo
+  type: redis
+  host: ${env:PROVISA_DEMO_REDIS_SOURCE_HOST:-localhost}
+  port: ${env:PROVISA_DEMO_REDIS_SOURCE_PORT:-26379}
+  description: "Support desk operational state — agents and their live status (Redis)"

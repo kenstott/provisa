@@ -10,10 +10,11 @@
 
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Checkbox, Select, Stack, Table, Text, TextInput } from "@mantine/core";
+import { Button, Checkbox, Select, Stack, Table, Text, TextInput, Textarea } from "@mantine/core";
 import { toSnakeCase } from "../../naming";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
+import { useNeo4jPreview } from "../../hooks/useNeo4jPreview";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
 import { fetchIrTypes, fetchTableUniqueConstraints } from "../../api/admin";
 import { DQ_CHECKERS } from "../../types/admin";
@@ -29,6 +30,7 @@ import { DataQualityPanel } from "./DataQualityPanel";
 // (config/provisa-install.yaml `schema: quality`). It is the schema of record only when domains are
 // off — with a domain picked, the domain names the schema exactly as for any other registration.
 const DQ_RESULTS_SCHEMA = "quality";
+const NEO4J_SCHEMA = "neo4j"; // REQ-1670: the one schema a neo4j source lists
 // REQ-1443: the results envelope replaces whatever columns are declared; the one declared column
 // exists to carry visible_to, exactly as the YAML demo registers it.
 const DQ_PLACEHOLDER_COLUMN = { name: "scan_id", dataType: "varchar" };
@@ -92,9 +94,16 @@ export function RegisterTableForm({
   const [dqContract, setDqContract] = useState("");
   const [dqScanned, setDqScanned] = useState<{ schema: string; table: string } | null>(null);
   const [dqVisibleTo, setDqVisibleTo] = useState<string[]>([]);
+  // REQ-1670: a neo4j source has no tables to list — its table IS a Cypher projection. The form
+  // takes the Cypher, previews it (rows + inferred column types), and registers the named table.
+  const [cypher, setCypher] = useState("");
+  const [previewRows, setPreviewRows] = useState<Record<string, unknown>[]>([]);
+  const [previewing, setPreviewing] = useState(false);
+  const { preview: previewNeo4j } = useNeo4jPreview();
 
   const sourceType = sources.find((s) => s.id === sourceId)?.type?.toLowerCase() ?? "";
   const isChecker = (DQ_CHECKERS as readonly string[]).includes(sourceType);
+  const isNeo4j = sourceType === "neo4j";
 
   // REQ-846/REQ-1426: the canonical IR type vocabulary a steward picks from. Registration is the
   // last point at which a type can be assigned — nothing infers one afterwards — so the list comes
@@ -111,11 +120,11 @@ export function RegisterTableForm({
   // A checker source is never introspected: nothing exists upstream until a scan runs, so the
   // schema/table lookups are not made for it (REQ-1663).
   const { schemas: availableSchemas, loading: loadingSchemas } = useAvailableSchemas(
-    sourceId && !isChecker ? sourceId : null,
+    sourceId && !isChecker && !isNeo4j ? sourceId : null,
   );
   const isFixedSchema = availableSchemas.length === 1;
   const { tables: availableTables, loading: loadingTables } = useAvailableTables(
-    sourceId && schemaName && !isChecker ? sourceId : null,
+    sourceId && schemaName && !isChecker && !isNeo4j ? sourceId : null,
     schemaName || null,
   );
 
@@ -128,6 +137,8 @@ export function RegisterTableForm({
     setDqContract("");
     setDqScanned(null);
     setDqVisibleTo(roles.map((r) => r.id));
+    setCypher("");
+    setPreviewRows([]);
   }, [sourceId, roles]);
 
   // REQ-1663: declared after the cascade reset so it lands on the same commit and wins — the schema
@@ -135,7 +146,9 @@ export function RegisterTableForm({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the results schema is a constant of the checker registration, set once the source is known to be a checker
     if (isChecker) setSchemaName(DQ_RESULTS_SCHEMA);
-  }, [isChecker, sourceId]);
+    // REQ-1670: a neo4j table registers under the source's one schema, "neo4j".
+    if (isNeo4j) setSchemaName(NEO4J_SCHEMA);
+  }, [isChecker, isNeo4j, sourceId]);
 
   useEffect(() => {
     if (availableSchemas.length === 1) {
@@ -204,7 +217,7 @@ export function RegisterTableForm({
     setColumns([]);
     setUniqueConstraints([]);
     setWatermarkColumn("");
-    if (!sourceId || !schemaName || !tableName || isChecker) return;
+    if (!sourceId || !schemaName || !tableName || isChecker || isNeo4j) return;
     // REQ-1093: seed the Uniques panel from the source's declared UNIQUE constraints.
     fetchTableUniqueConstraints(sourceId, schemaName, tableName)
       .then(setUniqueConstraints)
@@ -249,6 +262,57 @@ export function RegisterTableForm({
        refetch columns only when the table selection changes; roles/sources are read for default seeding and must not retrigger a column fetch */
   }, [sourceId, schemaName, tableName]);
 
+  // REQ-1670: run the Cypher (LIMIT 5); the columns and their types come from what it returns.
+  const handleNeo4jPreview = async () => {
+    setError(null);
+    if (!sourceId || !cypher.trim()) {
+      setError(t("registerTableForm.errorNeo4jCypher"));
+      return;
+    }
+    setPreviewing(true);
+    try {
+      const res = await previewNeo4j({ sourceId, cypher: cypher.trim() });
+      if (res.error) {
+        setError(res.error);
+        setPreviewRows([]);
+        setColumns([]);
+        return;
+      }
+      if (res.columns.length === 0) {
+        setError(t("registerTableForm.neo4jPreviewNoRows"));
+        setPreviewRows([]);
+        setColumns([]);
+        return;
+      }
+      setPreviewRows(res.rows);
+      setColumns(
+        res.columns.map((c) => {
+          const snake = toSnakeCase(c.name);
+          return {
+            name: c.name,
+            visibleTo: roles.map((r) => r.id),
+            writableBy: [],
+            unmaskedTo: "",
+            maskType: "",
+            maskPattern: "",
+            maskReplace: "",
+            maskValue: "",
+            maskPrecision: "",
+            alias: snake !== c.name ? snake : "",
+            description: "",
+            selected: true,
+            nativeFilterType: null,
+            dataType: c.dataType,
+            isPrimaryKey: false,
+            scope: "domain",
+          };
+        }),
+      );
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   const updateCol = (i: number, key: keyof ColumnForm, value: string | boolean | string[]) => {
     const next = [...columns];
     next[i] = { ...next[i], [key]: value };
@@ -284,6 +348,16 @@ export function RegisterTableForm({
       setError(t("registerTableForm.errorRequiredFields"));
       return;
     }
+    if (isNeo4j) {
+      if (!cypher.trim()) {
+        setError(t("registerTableForm.errorNeo4jCypher"));
+        return;
+      }
+      if (columns.length === 0) {
+        setError(t("registerTableForm.errorNeo4jPreviewFirst"));
+        return;
+      }
+    }
     // REQ-252: with discover on, columns are inferred from the live source, so none need be selected.
     if (!discover && selectedCols.length === 0) {
       setError(t("registerTableForm.errorNoColumnsSelected"));
@@ -301,12 +375,18 @@ export function RegisterTableForm({
       const result = await registerTable({
         sourceId,
         domainId,
-        schemaName: domainId ? normalizeDomain(domainId) : schemaName,
+        // REQ-1673: the PHYSICAL schema the table was picked from (or the source's fixed schema),
+        // never the domain. The domain is `domainId`; registering the domain as the schema lost
+        // the physical location of every source whose schema is not named after the domain —
+        // the engine then attached "pet_store"."product_reviews" on a Mongo database called
+        // "provisa" and every query failed with "schema does not exist".
+        schemaName,
         tableName,
         alias: tableAlias || undefined,
         description: tableDescription || undefined,
-        watermarkColumn: watermarkColumn || null,
-        discover, // REQ-252
+        watermarkColumn: isNeo4j ? null : watermarkColumn || null,
+        discover: isNeo4j ? false : discover, // REQ-252
+        queryTemplate: isNeo4j ? cypher.trim() : undefined, // REQ-1670
         columns: selectedCols,
         // REQ-1093: drop empty/incomplete rows — a constraint needs a name and >=1 column.
         uniqueConstraints: uniqueConstraints
@@ -333,6 +413,8 @@ export function RegisterTableForm({
     setTableDescription("");
     setColumns([]);
     setUniqueConstraints([]);
+    setCypher("");
+    setPreviewRows([]);
     setWatermarkColumn("");
     setDiscover(false);
     setDqContract("");
@@ -480,7 +562,74 @@ export function RegisterTableForm({
           />
         </>
       )}
-      {!isChecker && (
+      {isNeo4j && (
+        <>
+          <TextInput
+            required
+            label={t("registerTableForm.neo4jTableNameLabel")}
+            value={tableName}
+            onChange={(e) => setTableName(e.currentTarget.value)}
+            placeholder={t("registerTableForm.neo4jTableNamePlaceholder")}
+            data-testid="register-table-neo4j-table-name"
+          />
+          <Textarea
+            required
+            style={{ gridColumn: "1 / -1" }}
+            autosize
+            minRows={3}
+            label={
+              <>
+                {t("registerTableForm.neo4jCypherLabel")}{" "}
+                <Text span fw="normal" c="dimmed" fz="xs">
+                  {t("registerTableForm.neo4jCypherHint")}
+                </Text>
+              </>
+            }
+            value={cypher}
+            onChange={(e) => setCypher(e.currentTarget.value)}
+            placeholder={t("registerTableForm.neo4jCypherPlaceholder")}
+            data-testid="register-table-neo4j-cypher"
+          />
+          <Button
+            variant="default"
+            onClick={handleNeo4jPreview}
+            disabled={!sourceId || !cypher.trim() || previewing}
+            data-testid="register-table-neo4j-preview"
+          >
+            {previewing
+              ? t("registerTableForm.neo4jPreviewing")
+              : t("registerTableForm.neo4jPreviewButton")}
+          </Button>
+          {previewRows.length > 0 && (
+            <Stack gap="xs" style={{ gridColumn: "1 / -1" }}>
+              <Text fw={600} fz="sm">
+                {t("registerTableForm.neo4jPreviewRows", { count: previewRows.length })}
+              </Text>
+              <Table.ScrollContainer minWidth={400}>
+                <Table striped withTableBorder verticalSpacing="xs" fz="xs">
+                  <Table.Thead>
+                    <Table.Tr>
+                      {columns.map((c) => (
+                        <Table.Th key={c.name}>{c.name}</Table.Th>
+                      ))}
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody data-testid="register-table-neo4j-preview-rows">
+                    {previewRows.map((row, i) => (
+                      <Table.Tr key={i}>
+                        {columns.map((c) => (
+                          <Table.Td key={c.name}>{String(row[c.name] ?? "")}</Table.Td>
+                        ))}
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            </Stack>
+          )}
+        </>
+      )}
+      {!isChecker && !isNeo4j && (
         <>
           <label>
             {t("registerTableForm.schemaLabel")}
@@ -552,7 +701,7 @@ export function RegisterTableForm({
         onChange={(e) => setTableDescription(e.currentTarget.value)}
         placeholder={t("registerTableForm.descriptionPlaceholder")}
       />
-      {!isChecker && (
+      {!isChecker && !isNeo4j && (
         <Checkbox
           checked={discover}
           onChange={(e) => setDiscover(e.currentTarget.checked)}
@@ -567,7 +716,7 @@ export function RegisterTableForm({
           }
         />
       )}
-      {sourceId && !isChecker && (
+      {sourceId && !isChecker && !isNeo4j && (
         <Select
           label={
             <>

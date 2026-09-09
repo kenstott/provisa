@@ -214,6 +214,21 @@ type DqContractTextType {
   error: String
 }
 
+type Neo4jPreviewColumnType {
+  name: String!
+  dataType: String!
+}
+
+"""
+``error`` is non-null when the source is unreachable, the Cypher fails, or a column returns
+a node/list instead of a scalar; the form keeps the operator's text and shows the message.
+"""
+type Neo4jPreviewType {
+  rows: [JSON!]!
+  columns: [Neo4jPreviewColumnType!]!
+  error: String
+}
+
 type DqContractType {
   dataset: String
   checker: String!
@@ -462,6 +477,7 @@ type Query {
   suggestTableAlias(tableName: String!, domainId: String!, sourceId: String!): String!
   mvList: [MVType!]!
   refreshPolicyPreview(sourceId: String!, domainId: String!, schemaName: String!, tableName: String!, cacheTtl: Int = null, preferMaterialized: Boolean = null, loadProtected: Boolean = null, offPeakWindow: String = null, offPeakTz: String = null, changeSignal: String = null): RefreshPolicySummaryType
+  neo4jPreview(sourceId: String!, cypher: String!): Neo4jPreviewType!
   dqContractParse(checker: String!, contractText: String!): DqContractType!
   dqCheckCatalog(checker: String!, dataset: String!): DqCheckCatalogType!
   dqCheckDefinition(checker: String!, check: DqCheckBuildInput!): DqCheckDefinitionType!
@@ -519,6 +535,7 @@ type RegisteredTableType {
   viewSql: String
   viewMetrics: ViewMetricsType
   dqContract: String
+  queryTemplate: String
   changeSignal: String
   probeQuery: String
   probeType: String
@@ -737,6 +754,7 @@ input TableInput {
   uniqueConstraints: [UniqueConstraintInput!]! = []
   viewSql: String = null
   dqContract: String = null
+  queryTemplate: String = null
   viewMetrics: ViewMetricsInput = null
   loadProtected: Boolean = null
   offPeakWindow: String = null

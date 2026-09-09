@@ -103,30 +103,19 @@ async def preview_neo4j_query(  # REQ-296, REQ-298, REQ-299
 
     Returns sample rows or a shape validation error if node objects are returned.
     """
+    # REQ-1670: the same preview the registerTable form runs (a Source row registered through
+    # createSource resolves here too, not only one registered through this router).
+    from provisa.api.admin._neo4j_registration import preview_neo4j
+
     state = request.app.state
-    api_source = getattr(state, "api_sources", {}).get(source_id)
-    if api_source is None:
-        raise ApiError(
-            404,
-            "neo4j.source_not_found",
-            f"Neo4j source {source_id!r} not found",
-            source_id=source_id,
-        )
-
-    neo4j_cfg = getattr(state, "neo4j_configs", {}).get(source_id)
-    database = neo4j_cfg.database if neo4j_cfg else "neo4j"
-    try:
-        rows = await preview_query(
-            base_url=api_source.base_url,
-            database=database,
-            cypher=body.cypher,
-        )
-        validate_shape(rows)
-    except Neo4jNodeObjectError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    columns = infer_columns(rows)
-    return {"rows": rows, "columns": [c.model_dump() for c in columns]}
+    async with _control_plane(state).acquire() as conn:
+        result = await preview_neo4j(conn, source_id, body.cypher)
+    if result.error is not None:
+        raise HTTPException(status_code=422, detail=result.error)
+    return {
+        "rows": result.rows,
+        "columns": [{"name": c.name, "data_type": c.data_type} for c in result.columns],
+    }
 
 
 @router.post("/{source_id}/tables")

@@ -98,11 +98,14 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
     db = getattr(state, "tenant_db", None)
     if not wanted or backend is None or config is None or db is None:
         return []
-    sources = [s for s in config.sources if s.id in wanted]
+    from provisa.federation.registry_view import registered_sources, registered_tables
+
+    # REQ-1674: the registry, not the config file — see registry_view.
+    sources = [s for s in await registered_sources(state) if s.id in wanted]
     if not sources:
         return []
     tables_by_source: dict[str, list[Any]] = {}
-    for t in config.tables:
+    for t in await registered_tables(state):
         if t.source_id in wanted:
             tables_by_source.setdefault(t.source_id, []).append(t)
 

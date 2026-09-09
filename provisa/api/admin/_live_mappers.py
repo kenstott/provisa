@@ -60,6 +60,7 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
         column_presets=presets,
         view_sql=inp.view_sql or None,
         dq_contract=inp.dq_contract or None,  # REQ-1443
+        query_template=getattr(inp, "query_template", None) or None,  # REQ-1670
         view_metrics=view_metrics,  # REQ-1318
         materialize=inp.materialize,
         mv_refresh_interval=inp.mv_refresh_interval,

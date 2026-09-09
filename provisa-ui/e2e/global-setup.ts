@@ -10,6 +10,7 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 
 import { startNeo4jContainer } from "./neo4j-container";
+import { startDemoSources } from "./demo-source-containers";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.resolve(__dirname, "../../config/provisa-install.yaml");
@@ -173,6 +174,8 @@ export default async function globalSetup() {
   // engine to accept queries, and by then the container has had the whole bootstrap to boot.
   // The trino lane does not carry neo4j-docker-export.spec.ts, so it starts nothing.
   if (process.env.PROVISA_E2E_LANE !== "trino") startNeo4jContainer();
+  // REQ-1671: the live sources source-to-query.spec.ts configures through the UI (core lane).
+  if (process.env.PROVISA_E2E_LANE !== "trino") startDemoSources();
 
   const yaml = fs.readFileSync(CONFIG_PATH, "utf8");
   fs.writeFileSync(SNAPSHOT_PATH, yaml);

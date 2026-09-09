@@ -25,6 +25,7 @@ from provisa.core.schema_org import api_endpoints, api_sources
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
+    from provisa.neo4j.source import Neo4jSourceConfig
 
 # Config ``data_type`` (the engine type a steward writes on a column) → the API-column IR type
 # an ``api_endpoints.columns`` entry carries. Closed map: an unknown type is a config error.
@@ -72,6 +73,72 @@ def api_columns_from_config(columns: list) -> list[ApiColumn]:  # REQ-1668
             raise ValueError(f"column {col.name!r}: a neo4j table column requires data_type")
         out.append(ApiColumn(name=col.name, type=api_column_type(col.data_type)))
     return out
+
+
+# API-column IR type → the ``data_type`` a registered column carries when the preview infers it —
+# the IR vocabulary (provisa/core/ir_types.py) the Register Table form offers, so the preview's
+# type is one the picker already lists.
+_API_TO_DATA_TYPE: dict[ApiColumnType, str] = {
+    ApiColumnType.string: "text",
+    ApiColumnType.integer: "integer",
+    ApiColumnType.number: "double",
+    ApiColumnType.boolean: "boolean",
+    ApiColumnType.jsonb: "json",
+}
+
+
+def data_type_for_api_column(api_type: ApiColumnType) -> str:  # REQ-1670
+    """The registered-column ``data_type`` for a preview-inferred API column type."""
+    return _API_TO_DATA_TYPE[api_type]
+
+
+def neo4j_config_from_source(
+    *, source_id: str, host: str, port: int, database: str, base_url: str | None
+) -> "tuple[Neo4jSourceConfig, ApiSource]":  # REQ-1668
+    """The connection config and api_sources record for a ``neo4j`` Source row. ``base_url``
+    (when the row carries one) is the endpoint verbatim; otherwise ``http://host:port``."""
+    from provisa.neo4j.source import Neo4jSourceConfig, build_api_source
+
+    cfg = Neo4jSourceConfig(
+        source_id=source_id,
+        host=host,
+        port=port,
+        database=database,
+        use_https=(base_url or "").startswith("https://"),
+    )
+    api_source = build_api_source(cfg)
+    if base_url:
+        api_source = api_source.model_copy(update={"base_url": base_url})
+    return cfg, api_source
+
+
+async def persist_neo4j_table(  # REQ-1668
+    conn: "Connection",
+    *,
+    source_id: str,
+    host: str,
+    port: int,
+    database: str,
+    base_url: str | None,
+    table_name: str,
+    query_template: str,
+    columns: list,
+    ttl: int,
+) -> "tuple[ApiSource, ApiEndpoint]":
+    """Persist one Cypher-backed table: its source's api_sources row and its api_endpoints row.
+    The ONE write both registration surfaces (config load, the registerTable mutation) call.
+    Returns the records so the caller can mirror them into live state."""
+    from provisa.neo4j.source import build_endpoint
+
+    cfg, api_source = neo4j_config_from_source(
+        source_id=source_id, host=host, port=port, database=database, base_url=base_url
+    )
+    endpoint = build_endpoint(
+        cfg, table_name, query_template, api_columns_from_config(columns), ttl
+    )
+    await persist_neo4j_source(conn, api_source)
+    await persist_neo4j_endpoint(conn, endpoint)
+    return api_source, endpoint
 
 
 async def persist_neo4j_source(conn: "Connection", api_source: ApiSource) -> None:  # REQ-1668

@@ -9,9 +9,8 @@
 #
 # Optional demo source: Elasticsearch (start-ui-install.sh --source=elasticsearch).
 # Own compose project (provisa-demo-elasticsearch) on port 29200 (dev stack 9200, tests ephemeral).
-# Elasticsearch is read through the Trino connector only (provisa/core/trino_catalog_files.py):
-# the native DuckDB engine has no path to it, so --demo (always native) refuses this source —
-# see demo/sources/elasticsearch/engine.
+# Read over HTTP by every engine without an Elasticsearch connector (REQ-1672); Trino keeps its
+# connector. Under a Docker start the container joins the core stack's network (provision.py).
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0

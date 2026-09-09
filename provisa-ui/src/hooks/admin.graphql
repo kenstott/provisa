@@ -181,6 +181,7 @@ query TablesQuery {
     apiEndpoint
     viewSql
     dqContract
+    queryTemplate
     viewMetrics {
       metrics
       dimensions
@@ -276,6 +277,17 @@ query RefreshPolicyPreview(
 # REQ-1443: the data-quality contract builder. Parsing and serialization are server calls so the
 # soda / Great Expectations dialects have exactly one implementation, and the panel can never emit a
 # shape the checker refuses to run.
+query Neo4jPreview($sourceId: String!, $cypher: String!) {
+  neo4jPreview(sourceId: $sourceId, cypher: $cypher) {
+    rows
+    columns {
+      name
+      dataType
+    }
+    error
+  }
+}
+
 query DqContractParse($checker: String!, $contractText: String!) {
   dqContractParse(checker: $checker, contractText: $contractText) {
     dataset

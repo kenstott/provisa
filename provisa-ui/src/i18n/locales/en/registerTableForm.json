@@ -69,6 +69,17 @@
     "dqVisibleToLabel": "Results visible to",
     "dqDescription": "Quality scan results for {{table}} — one row per check per scan, with outcome, metric value and threshold",
     "errorDqContract": "Pick the table to scan in the Data Quality panel.",
-    "errorDqVisibleTo": "Results must be visible to at least one role."
+    "errorDqVisibleTo": "Results must be visible to at least one role.",
+    "neo4jTableNameLabel": "Table name",
+    "neo4jTableNamePlaceholder": "e.g. adopter",
+    "neo4jCypherLabel": "Cypher",
+    "neo4jCypherHint": "project scalar values only (RETURN n.prop AS col)",
+    "neo4jCypherPlaceholder": "MATCH (a:Adopter) RETURN a.adopter_id AS adopter_id, a.name AS name",
+    "neo4jPreviewButton": "Preview",
+    "neo4jPreviewing": "Previewing…",
+    "neo4jPreviewRows": "Preview ({{count}} rows)",
+    "neo4jPreviewNoRows": "The query returned no rows; columns cannot be inferred. Add a row to the graph or change the query.",
+    "errorNeo4jCypher": "Enter the Cypher that produces the table's rows.",
+    "errorNeo4jPreviewFirst": "Preview the Cypher first so the columns and their types are known."
   }
 }

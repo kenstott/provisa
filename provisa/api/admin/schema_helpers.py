@@ -88,6 +88,16 @@ async def _dynamic_openapi_columns(base_url: str, query) -> list[dict]:
     return [{"name": k, "type": value_type} for k in sample]
 
 
+def _query_template_for(table_name: str) -> str | None:  # REQ-1670
+    """The Cypher a neo4j table runs — read from the hydrated api_endpoints map, which is where
+    the registration persisted it (registered_tables carries no query column)."""
+    from provisa.api.app import state
+
+    endpoints = getattr(state, "api_endpoints", None) or {}
+    ep = endpoints.get(table_name) if isinstance(endpoints, dict) else None
+    return getattr(ep, "query_template", None) if ep is not None else None
+
+
 async def _ensure_openapi_spec(source_id: str) -> bool:
     """Lazy-load an OpenAPI spec into state from the DB source record if missing."""
     from provisa.api.app import state
@@ -402,6 +412,7 @@ async def _fetch_table_with_columns(
         api_endpoint=api_endpoint,
         view_sql=view_sql,
         dq_contract=row.get("dq_contract"),  # REQ-1443
+        query_template=_query_template_for(row["table_name"]),  # REQ-1670
         view_metrics=_view_metrics_type_from_row(row.get("view_metrics")),  # REQ-1318
         change_signal=row.get("change_signal"),
         probe_query=row.get("probe_query"),

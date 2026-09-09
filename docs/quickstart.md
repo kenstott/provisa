@@ -65,7 +65,11 @@ Provisa running:
 
 `--demo` — Starts additional demo data sources (PostgreSQL pet-store schema, OpenAPI petstore mock, SQLite, and a GraphQL remote). Seeds petstore users and orders automatically. [tool-verified: start-ui.sh lines 17, 55–171]
 
-`--source=<name>` (`start-ui-install.sh` only, repeatable) — Provisions an optional data source alongside `--demo`. Each name maps to `demo/sources/<name>/`: Provisa starts its `compose.yml` as a separate Docker Compose project (`provisa-demo-<name>`), runs `prime.py` if present to seed initial data, then writes a wrapper config at `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml` that includes the base config plus each source's `fragment.yaml`. [tool-verified: `start-ui-install.sh:200-226`] (REQ-1669)
+`--source=<name>` (`start-ui-install.sh` only, repeatable) — Provisions an optional data source alongside `--demo`. Each name maps to `demo/sources/<name>/`. The start calls `demo/sources/provision.py up`, which starts the source's `compose.yml` as its own Docker Compose project (`provisa-demo-<name>`), waits for its health check, and runs `prime.py` when the source has one to seed data. The start then writes a wrapper config at `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml` that includes the base config plus each source's `fragment.yaml`, and boots from it. [tool-verified: `start-ui-install.sh` (search `SOURCES`), `demo/sources/provision.py`] (REQ-1669)
+
+The same `provision.py` is what the UI end-to-end suite calls to stand up these sources (under the `provisa-e2e-<name>` project prefix on its own ports), so the seed data a demo shows and the rows the suite asserts on are defined once. [tool-verified: `provisa-ui/e2e/demo-source-containers.ts`] (REQ-1671)
+
+Under a Docker start (no `--demo`/`--native`) the coordinator is a container, so each source is joined to the core stack's network and registered at `<name>:<container port>`; under a native start it is registered at `localhost:<published port>`. A source whose `demo/sources/<name>/engine` file names an engine the start does not run is refused.
 
 Shipped sources:
 
@@ -73,7 +77,9 @@ Shipped sources:
 |------|---------|-------|
 | `neo4j` | HTTP 27474, Bolt 27687 | Two Cypher tables (`adopter`, `adopter_referral`); graph seeded by `seed.cypher`; tables registered from the fragment |
 | `mongodb` | 27117 | Source registered; `product_reviews` collection seeded by `db/mongo-init.js`; register tables by hand through Register Table |
-| `elasticsearch` | 29200 | Source and index mapping registered; **Trino engine only** — refused under `--demo` (which runs the native DuckDB engine) |
+| `redis` | 26379 | Source registered; `support_agent:*` and `agent_status:*` hashes seeded by `prime.py`; each prefix registers as a table through Register Table (REQ-1675) |
+| `cassandra` | 29042 | Source registered; `shelter_ops.intake_events` seeded by `prime.py` (needs the `cassandra` extra); the keyspace registers as a schema through Register Table (REQ-1676) |
+| `elasticsearch` | 29200 | Source and index mapping registered; `support_tickets` index seeded by `prime.py`; read over HTTP by the native engine (REQ-1672), through the connector on Trino |
 
 `--idp=basic|firebase` — Enables an identity provider for auth. Without this flag, the backend runs with no auth provider and all requests are treated as `admin`. [tool-verified: start-ui.sh line 18; provisa/auth/wiring.py lines 57–60; provisa/auth/middleware.py lines 57–68] (REQ-120, REQ-124)
 

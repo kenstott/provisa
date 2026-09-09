@@ -251,6 +251,16 @@ class EngineRuntime:  # REQ-825, REQ-840
         ``{column_name: type_name}``; an engine that cannot introspect live returns ``{}``."""
         return self._backend.introspect_columns(self._state, source, schema_name, table_name)
 
+    def introspect_schemas(self, source: Any) -> list[str] | None:
+        """REQ-1673: the schemas of a source's database as the bound engine sees them, with no table
+        registered yet (a native engine attaches the raw source). ``None`` = no seam on this engine;
+        the caller lists through the engine's catalog SQL."""
+        return self._backend.introspect_schemas(self._state, source)
+
+    def introspect_tables(self, source: Any, schema_name: str) -> list[str] | None:
+        """REQ-1673: the tables of one schema of a source's database (see introspect_schemas)."""
+        return self._backend.introspect_tables(self._state, source, schema_name)
+
     # -- source lifecycle (REQ-825/840): registration/analyze through the abstraction --------
 
     def register_source(

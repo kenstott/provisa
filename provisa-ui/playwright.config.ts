@@ -75,7 +75,8 @@ const E2E_TRINO_PGWIRE_PORT = Number(process.env.PROVISA_E2E_TRINO_PGWIRE_PORT ?
 // server's env at them.
 const E2E_GRAPHQL_DEMO_PORT = Number(process.env.PROVISA_E2E_GRAPHQL_DEMO_PORT ?? 8907);
 const E2E_PETSTORE_PORT = Number(process.env.PROVISA_E2E_PETSTORE_PORT ?? 8908);
-const E2E_DATA_DIR = process.env.PROVISA_E2E_DATA_DIR ?? path.resolve(__dirname, "../.playwright-data");
+const E2E_DATA_DIR =
+  process.env.PROVISA_E2E_DATA_DIR ?? path.resolve(__dirname, "../.playwright-data");
 // This config module is evaluated in EVERY process Playwright starts: the runner once, and then each
 // worker (and each replacement worker a retry spawns). Only the runner starts the webServers, so only
 // the runner may touch on-disk run state — a worker re-running the seed steps below would delete the
@@ -113,9 +114,7 @@ const RUNS_TRINO = LANE === "trino" || LANE === "all";
 const E2E_CONTROL_PLANE =
   process.env.PROVISA_E2E_CONTROL_PLANE ?? (LANE === "core" ? "sqlite" : "postgres");
 if (!["sqlite", "postgres"].includes(E2E_CONTROL_PLANE)) {
-  throw new Error(
-    `PROVISA_E2E_CONTROL_PLANE must be sqlite|postgres, got: ${E2E_CONTROL_PLANE}`,
-  );
+  throw new Error(`PROVISA_E2E_CONTROL_PLANE must be sqlite|postgres, got: ${E2E_CONTROL_PLANE}`);
 }
 if (RUNS_TRINO && E2E_CONTROL_PLANE === "sqlite") {
   throw new Error(
@@ -132,7 +131,8 @@ if (RUNS_TRINO && E2E_CONTROL_PLANE === "sqlite") {
 // ORG_ID isolates the e2e run to its own schema with zero new infrastructure.
 const E2E_ORG_ID = process.env.PROVISA_E2E_ORG_ID ?? "e2e";
 // Trino backend uses a separate data dir and org to avoid any state collision with the DuckDB backend.
-const E2E_TRINO_DATA_DIR = process.env.PROVISA_E2E_TRINO_DATA_DIR ?? path.resolve(__dirname, "../.playwright-trino-data");
+const E2E_TRINO_DATA_DIR =
+  process.env.PROVISA_E2E_TRINO_DATA_DIR ?? path.resolve(__dirname, "../.playwright-trino-data");
 const E2E_TRINO_ORG_ID = process.env.PROVISA_E2E_TRINO_ORG_ID ?? "e2e_trino";
 
 // The e2e backend must also boot from its own config file, not config/provisa.yaml (the
@@ -164,10 +164,7 @@ const CORE_BACKENDS = Array.from({ length: RUNS_CORE ? E2E_WORKERS : 1 }, (_, i)
 if (IS_RUNNER) {
   for (const b of CORE_BACKENDS) {
     fs.mkdirSync(path.dirname(b.configPath), { recursive: true });
-    fs.copyFileSync(
-      path.resolve(__dirname, "../config/provisa-install.yaml"),
-      b.configPath,
-    );
+    fs.copyFileSync(path.resolve(__dirname, "../config/provisa-install.yaml"), b.configPath);
   }
 }
 // Trino backend uses a minimal config (domains only, no pre-registered sources) so the
@@ -223,12 +220,21 @@ function resolveControlPlanePort(): string {
   try {
     const output = execFileSync(
       "docker",
-      ["compose", "-f", path.resolve(__dirname, "../docker-compose.core.yml"), "port", "postgres", "5432"],
+      [
+        "compose",
+        "-f",
+        path.resolve(__dirname, "../docker-compose.core.yml"),
+        "port",
+        "postgres",
+        "5432",
+      ],
       { cwd: path.resolve(__dirname, ".."), encoding: "utf8" },
     ).trim();
     const port = output.split(":").pop();
     if (!port) {
-      throw new Error(`Could not resolve control-plane postgres port from docker output: ${output}`);
+      throw new Error(
+        `Could not resolve control-plane postgres port from docker output: ${output}`,
+      );
     }
     fs.writeFileSync(portCacheFile, port, "utf8");
     return port;
@@ -352,7 +358,10 @@ export default defineConfig({
       // infra, so the slowest backend's startup grows with the worker count — that phase alone
       // measured 25s of the 30s budget on a 4-worker run. The budget scales with the fleet
       // instead of being a fixed number that a wider lane silently outgrows.
-      timeout: 30000 * CORE_BACKENDS.length,
+      // A single-worker run measured a cold boot of 18-30 s on this code (infra: flight/minio/results
+      // alone is 12-16 s), which sat on the 30 s line and timed out; the floor keeps a local
+      // one-worker run inside the budget a four-worker CI run always had.
+      timeout: Math.max(90000, 30000 * CORE_BACKENDS.length),
     })),
     // Trino-backed backend for sharepoint/splunk tests.  sharepoint/splunk require
     // TrinoBackend.register_source() to create a Trino catalog; NativeBackend (DuckDB) is a
@@ -362,63 +371,63 @@ export default defineConfig({
     //
     // Declared only when the Trino lane runs: booting a Trino-engine backend costs a cold JVM
     // and a compose stack, and the core lane's specs never address it.
-    ...(RUNS_TRINO ? [{
-      command: `bash -c 'cd .. && .venv/bin/uvicorn main:app --host 0.0.0.0 --port ${E2E_TRINO_API_PORT}'`,
-      url: `http://localhost:${E2E_TRINO_API_PORT}/health`,
-      env: {
-        GRPC_PORT: String(E2E_TRINO_GRPC_PORT),
-        FLIGHT_PORT: String(E2E_TRINO_FLIGHT_PORT),
-        PROVISA_BOLT_PORT: String(E2E_TRINO_BOLT_PORT),
-        PROVISA_MCP_PORT: String(E2E_TRINO_MCP_PORT),
-        PROVISA_PGWIRE_PORT: String(E2E_TRINO_PGWIRE_PORT),
-        PROVISA_DATA_DIR: E2E_TRINO_DATA_DIR,
-        PROVISA_CONFIG: E2E_TRINO_CONFIG_PATH,
-        ORG_ID: E2E_TRINO_ORG_ID,
-        GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
-        PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
-        PROVISA_ENGINE: "trino",
-        // Trino runs inside Docker; "localhost" in the app's control-plane URL resolves to the
-        // Trino container itself, not the host. These vars make engine_visible_address()
-        // (trino_system_catalogs.py) substitute an address Trino can actually dial. Both
-        // containers come from docker-compose.core.yml and share its default network, so the
-        // compose service name and the CONTAINER port are the address — not the host gateway and
-        // the published port. host.docker.internal does not resolve on a Linux runner at all,
-        // which is why CI failed with "Failed to connect: jdbc:postgresql://host.docker.internal".
-        // Same values tests/conftest.py and tests/integration/isolated_server.py already export.
-        PROVISA_ENGINE_CONTROL_PLANE_HOST: "postgres",
-        PROVISA_ENGINE_CONTROL_PLANE_PORT: "5432",
-        // Same split for the object store: the app dials MinIO on a host-published port, while
-        // the Iceberg `otel` catalog spec is dialed by Trino from inside the compose network.
-        // Without this, seed_ops_trino's CREATE TABLE spends ~163 s retrying
-        // s3://provisa-otel/... against a localhost:9000 that does not exist in Trino's
-        // container, then fails ICEBERG_FILESYSTEM_ERROR and blows the 300 s webServer budget.
-        PROVISA_ENGINE_OTEL_S3_ENDPOINT: "http://minio:9000",
-        // The SharePoint catalog enumerates its schemas through the Microsoft Graph REST API, and
-        // the spec budgets 240 s for that. The default query_max_execution_time is 120 s, so Trino
-        // killed every enumeration with EXCEEDED_TIME_LIMIT before it could return; catalog_cache
-        // retried on the same 120 s ceiling for the whole 600 s test, and the schema dropdown
-        // never populated.
-        PROVISA_ENGINE_QUERY_TIMEOUT: "300",
-        ...controlPlaneEnv,
-      },
-      reuseExistingServer: !process.env.CI,
-      // Trino backend startup includes register_system_catalogs() which executes
-      // DROP + CREATE CATALOG for each system catalog via Trino JDBC — each round
-      // trip can take 10-30 s on a cold Trino JVM. 300 s gives headroom for 3 catalogs
-      // × 2 ops × 30 s plus seed_ops_trino() Iceberg DDL on a cold JIT.
-      timeout: 300000,
-    }] : []),
+    ...(RUNS_TRINO
+      ? [
+          {
+            command: `bash -c 'cd .. && .venv/bin/uvicorn main:app --host 0.0.0.0 --port ${E2E_TRINO_API_PORT}'`,
+            url: `http://localhost:${E2E_TRINO_API_PORT}/health`,
+            env: {
+              GRPC_PORT: String(E2E_TRINO_GRPC_PORT),
+              FLIGHT_PORT: String(E2E_TRINO_FLIGHT_PORT),
+              PROVISA_BOLT_PORT: String(E2E_TRINO_BOLT_PORT),
+              PROVISA_MCP_PORT: String(E2E_TRINO_MCP_PORT),
+              PROVISA_PGWIRE_PORT: String(E2E_TRINO_PGWIRE_PORT),
+              PROVISA_DATA_DIR: E2E_TRINO_DATA_DIR,
+              PROVISA_CONFIG: E2E_TRINO_CONFIG_PATH,
+              ORG_ID: E2E_TRINO_ORG_ID,
+              GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
+              PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
+              PROVISA_ENGINE: "trino",
+              // Trino runs inside Docker; "localhost" in the app's control-plane URL resolves to the
+              // Trino container itself, not the host. These vars make engine_visible_address()
+              // (trino_system_catalogs.py) substitute an address Trino can actually dial. Both
+              // containers come from docker-compose.core.yml and share its default network, so the
+              // compose service name and the CONTAINER port are the address — not the host gateway and
+              // the published port. host.docker.internal does not resolve on a Linux runner at all,
+              // which is why CI failed with "Failed to connect: jdbc:postgresql://host.docker.internal".
+              // Same values tests/conftest.py and tests/integration/isolated_server.py already export.
+              PROVISA_ENGINE_CONTROL_PLANE_HOST: "postgres",
+              PROVISA_ENGINE_CONTROL_PLANE_PORT: "5432",
+              // Same split for the object store: the app dials MinIO on a host-published port, while
+              // the Iceberg `otel` catalog spec is dialed by Trino from inside the compose network.
+              // Without this, seed_ops_trino's CREATE TABLE spends ~163 s retrying
+              // s3://provisa-otel/... against a localhost:9000 that does not exist in Trino's
+              // container, then fails ICEBERG_FILESYSTEM_ERROR and blows the 300 s webServer budget.
+              PROVISA_ENGINE_OTEL_S3_ENDPOINT: "http://minio:9000",
+              // The SharePoint catalog enumerates its schemas through the Microsoft Graph REST API, and
+              // the spec budgets 240 s for that. The default query_max_execution_time is 120 s, so Trino
+              // killed every enumeration with EXCEEDED_TIME_LIMIT before it could return; catalog_cache
+              // retried on the same 120 s ceiling for the whole 600 s test, and the schema dropdown
+              // never populated.
+              PROVISA_ENGINE_QUERY_TIMEOUT: "300",
+              ...controlPlaneEnv,
+            },
+            reuseExistingServer: !process.env.CI,
+            // Trino backend startup includes register_system_catalogs() which executes
+            // DROP + CREATE CATALOG for each system catalog via Trino JDBC — each round
+            // trip can take 10-30 s on a cold Trino JVM. 300 s gives headroom for 3 catalogs
+            // × 2 ops × 30 s plus seed_ops_trino() Iceberg DDL on a cold JIT.
+            timeout: 300000,
+          },
+        ]
+      : []),
   ],
   // The lane split is expressed as projects so `--project=core` / `--project=trino` selects it
   // per-run, while PROVISA_E2E_LANE controls which servers get booted for it. TRINO_SPECS is the
   // exhaustive list of specs that address the Trino backend (they import TRINO_BACKEND_URL from
   // ./coverage); everything else runs on the DuckDB backend and belongs to core.
   projects: [
-    ...(RUNS_CORE
-      ? [{ name: "core", testIgnore: TRINO_SPECS }]
-      : []),
-    ...(RUNS_TRINO
-      ? [{ name: "trino", testMatch: TRINO_SPECS }]
-      : []),
+    ...(RUNS_CORE ? [{ name: "core", testIgnore: TRINO_SPECS }] : []),
+    ...(RUNS_TRINO ? [{ name: "trino", testMatch: TRINO_SPECS }] : []),
   ],
 });

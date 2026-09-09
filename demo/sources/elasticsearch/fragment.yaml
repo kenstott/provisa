@@ -9,12 +9,14 @@
 #
 # Config fragment for the optional Elasticsearch demo source (REQ-1669). Registers the SOURCE
 # with its index mapping; the table is for registering by hand through Register Table.
-# prime.py creates and loads the index. Trino-engine only (see compose.yml).
+# prime.py creates and loads the index.
 sources:
 - id: elasticsearch-demo
   type: elasticsearch
-  host: localhost
-  port: ${env:PROVISA_DEMO_ES_PORT:-29200}
+  # A Trino coordinator is a container: it reaches the source at its network alias and container
+  # port (start-ui-install.sh sets these), not the host-published PROVISA_DEMO_ES_PORT prime.py uses.
+  host: ${env:PROVISA_DEMO_ES_SOURCE_HOST:-localhost}
+  port: ${env:PROVISA_DEMO_ES_SOURCE_PORT:-29200}
   description: "Support ticket search index — tickets, status and priority (Elasticsearch)"
   mapping:
     tls: false

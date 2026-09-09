@@ -247,6 +247,11 @@ class DuckDBDuckdbConnector(Connector):
 
 
 class _DuckDBExtensionConnector(Connector):  # REQ-899
+    """Every ``details()`` below attaches the remote under the private ``_src_<id>`` alias and
+    reports it as ``raw_alias`` — the same convention as the postgres/sqlite connectors. Attaching
+    under the bare id collided with the physical catalog the runtime creates under that name
+    (REQ-1673: "database with name … already exists" on the first introspection or query)."""
+
     engine = "duckdb"
     mechanism = (
         Mechanism.ATTACH_RW
@@ -299,7 +304,10 @@ class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
             f"Server={source.host},{source.port};Database={source.database};"
             f"User Id={source.username};Password={source.password}"
         )
-        return {"attach": f"ATTACH '{dsn}' AS \"{source.id}\" (TYPE mssql)"}
+        return {
+            "attach": f"ATTACH '{dsn}' AS \"_src_{source.id}\" (TYPE mssql)",
+            "raw_alias": f"_src_{source.id}",
+        }
 
 
 class DuckDBMongoConnector(_DuckDBExtensionConnector):  # REQ-899
@@ -312,7 +320,10 @@ class DuckDBMongoConnector(_DuckDBExtensionConnector):  # REQ-899
 
     def details(self, source: Source) -> dict:
         dsn = f"host={source.host} port={source.port}"
-        return {"attach": f"ATTACH '{dsn}' AS \"{source.id}\" (TYPE mongo)"}
+        return {
+            "attach": f"ATTACH '{dsn}' AS \"_src_{source.id}\" (TYPE mongo)",
+            "raw_alias": f"_src_{source.id}",
+        }
 
 
 class DuckDBSnowflakeConnector(_DuckDBExtensionConnector):  # REQ-899
@@ -327,7 +338,8 @@ class DuckDBSnowflakeConnector(_DuckDBExtensionConnector):  # REQ-899
     def details(self, source: Source) -> dict:
         return {
             "secret": f"sf_{source.id}",
-            "attach": f"ATTACH '' AS \"{source.id}\" (TYPE snowflake, SECRET sf_{source.id}, READ_ONLY)",
+            "attach": f"ATTACH '' AS \"_src_{source.id}\" (TYPE snowflake, SECRET sf_{source.id}, READ_ONLY)",
+            "raw_alias": f"_src_{source.id}",
         }
 
 
@@ -343,7 +355,8 @@ class DuckDBBigQueryConnector(_DuckDBExtensionConnector):  # REQ-899
     def details(self, source: Source) -> dict:
         project = source.federation_hints["project"]
         return {
-            "attach": f"ATTACH 'project={project}' AS \"{source.id}\" (TYPE bigquery, READ_ONLY)"
+            "attach": f"ATTACH 'project={project}' AS \"_src_{source.id}\" (TYPE bigquery, READ_ONLY)",
+            "raw_alias": f"_src_{source.id}",
         }
 
 
@@ -360,7 +373,10 @@ class DuckDBFirebirdConnector(_DuckDBExtensionConnector):  # REQ-899
             f"firebird://{source.username}:{source.password}"
             f"@{source.host}:{source.port}/{source.path}"
         )
-        return {"attach": f"ATTACH '{dsn}' AS \"{source.id}\" (TYPE firebird)"}
+        return {
+            "attach": f"ATTACH '{dsn}' AS \"_src_{source.id}\" (TYPE firebird)",
+            "raw_alias": f"_src_{source.id}",
+        }
 
 
 class DuckDBGsheetsConnector(_DuckDBExtensionConnector):  # REQ-899
@@ -391,7 +407,10 @@ class DuckDBAirportConnector(_DuckDBExtensionConnector):  # REQ-899
     probe_symbol = "airport_take_flight"
 
     def details(self, source: Source) -> dict:
-        return {"attach": f"ATTACH '{source.base_url}' AS \"{source.id}\" (TYPE AIRPORT)"}
+        return {
+            "attach": f"ATTACH '{source.base_url}' AS \"_src_{source.id}\" (TYPE AIRPORT)",
+            "raw_alias": f"_src_{source.id}",
+        }
 
 
 class DuckDBIcebergConnector(_DuckDBExtensionConnector):  # REQ-899

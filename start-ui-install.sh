@@ -205,20 +205,26 @@ if [ "${#SOURCES[@]}" -gt 0 ]; then
     echo "includes:"
     echo "  - $SCRIPT_DIR/$PROVISA_CONFIG"
   } > "$_SRC_WRAPPER"
+  # demo/sources/provision.py starts, waits on and primes each source — the same entry point the
+  # source-to-query e2e uses (provisa-ui/e2e/demo-source-containers.ts), under the demo project
+  # prefix. It refuses a source the engine of this start cannot read.
+  # Under a Docker start the coordinator is a container on the core stack's network, so each
+  # source joins that network and is registered at <name>:<container port>.
+  if [ "$NATIVE" = true ]; then
+    _SRC_ENGINE=duckdb; _SRC_NET=()
+  else
+    _SRC_ENGINE=trino; _SRC_NET=(--network provisa_default)
+    export PROVISA_DEMO_ES_SOURCE_HOST=elasticsearch PROVISA_DEMO_ES_SOURCE_PORT=9200
+    export PROVISA_DEMO_REDIS_SOURCE_HOST=redis PROVISA_DEMO_REDIS_SOURCE_PORT=6379
+    export PROVISA_DEMO_CASSANDRA_SOURCE_HOST=cassandra PROVISA_DEMO_CASSANDRA_SOURCE_PORT=9042
+  fi
+  "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/demo/sources/provision.py" up \
+    --prefix provisa-demo --engine "$_SRC_ENGINE" ${_SRC_NET[@]+"${_SRC_NET[@]}"} "${SOURCES[@]}"
   for _src in "${SOURCES[@]}"; do
     _src_dir="$SCRIPT_DIR/demo/sources/$_src"
     if [ ! -f "$_src_dir/fragment.yaml" ]; then
-      echo "Unknown --source=$_src: no $_src_dir/fragment.yaml. Available: $(ls "$SCRIPT_DIR/demo/sources" | tr '\n' ' ')"
+      echo "--source=$_src has no $_src_dir/fragment.yaml to register it with"
       exit 1
-    fi
-    if [ "$NATIVE" = true ] && [ -f "$_src_dir/engine" ] && [ "$(cat "$_src_dir/engine")" != "duckdb" ]; then
-      echo "--source=$_src is served only by the $(cat "$_src_dir/engine") engine; this start runs the native DuckDB engine, which has no path to it."
-      exit 1
-    fi
-    echo "Provisioning demo source '$_src' (compose project provisa-demo-$_src)..."
-    docker compose -p "provisa-demo-$_src" -f "$_src_dir/compose.yml" up -d --wait
-    if [ -f "$_src_dir/prime.py" ]; then
-      "$SCRIPT_DIR/.venv/bin/python" "$_src_dir/prime.py"
     fi
     echo "  - $_src_dir/fragment.yaml" >> "$_SRC_WRAPPER"
   done

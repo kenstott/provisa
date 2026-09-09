@@ -1,0 +1,19 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Config fragment for the optional Cassandra demo source (REQ-1669). Registers the SOURCE only: its
+# keyspaces list as schemas and its tables as tables in Register Table, typed from the cluster's
+# schema metadata (REQ-1676). prime.py creates the shelter_ops keyspace. Under a Docker start the
+# coordinator reaches the container at cassandra:9042 (start-ui-install.sh sets the SOURCE_* vars).
+sources:
+- id: cassandra-demo
+  type: cassandra
+  host: ${env:PROVISA_DEMO_CASSANDRA_SOURCE_HOST:-localhost}
+  port: ${env:PROVISA_DEMO_CASSANDRA_SOURCE_PORT:-29042}
+  description: "Shelter operations event log — intake and visit events by animal (Cassandra)"

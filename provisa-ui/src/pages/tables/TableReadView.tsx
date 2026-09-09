@@ -209,6 +209,18 @@ export function TableReadView({
           {t("tableReadView.watermarkColumn")} <code>{table.watermarkColumn}</code>
         </Box>
       )}
+      {table.queryTemplate && (
+        <Box px="0.75rem" py="0.5rem" fz="0.85rem" data-testid="table-read-view-query-template">
+          <Text span c="dimmed" mr="0.5rem">
+            {t("tableReadView.queryTemplate")}
+          </Text>
+          <code style={{ fontSize: "0.78rem", wordBreak: "break-all" }}>
+            {table.queryTemplate.length > 120
+              ? table.queryTemplate.slice(0, 120) + "…"
+              : table.queryTemplate}
+          </code>
+        </Box>
+      )}
       {table.viewSql && (
         <Box px="0.75rem" py="0.5rem" fz="0.85rem">
           <Text span c="dimmed" mr="0.5rem">

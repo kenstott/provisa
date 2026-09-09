@@ -276,7 +276,18 @@ async def register_table(
                 index_elements=["id"],
                 update_columns=[],
             )
+        # REQ-1670: a neo4j table's Cypher is checked before the row lands and persisted after.
+        from provisa.api.admin._neo4j_registration import persist_neo4j_registration
+
+        if not model.query_template:
+            _neo_precheck = await persist_neo4j_registration(_conn, model)
+            if _neo_precheck is not None:
+                return _neo_precheck
         table_id = await table_repo.upsert(_conn, model)
+        if model.query_template:
+            _neo_err = await persist_neo4j_registration(_conn, model)
+            if _neo_err is not None:
+                return _neo_err
         _sres = await _conn.execute_core(
             select(sources.c.type, sources.c.path).where(sources.c.id == input.source_id)
         )

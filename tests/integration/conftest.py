@@ -68,7 +68,7 @@ _INTEGRATION_GROUP_PATTERNS: list[tuple[str, re.Pattern]] = [
             r"|pgwire_column_visibility_integration|pgwire_integration|jdbc_introspection_pgwire"
             r"|grpc_execution|grpc_proxy|graphql_execution"
             r"|cypher_endpoint|cypher_integration_extra|cypher_router_api"
-            r"|sparql_exec|neo4j_exec|neo4j_config_persist|rest_endpoints|sse_subscriptions"
+            r"|sparql_exec|neo4j_exec|neo4j_config_persist|neo4j_register_table|elasticsearch_native_fetch|redis_native_fetch|cassandra_native_fetch|rest_endpoints|sse_subscriptions"
             r"|websocket_rss_integration|live_sse_integration"
             r"|arrow_flight_integration|airport_service_e2e|airport_source_e2e"
             r"|apq_integration|schema_gen|compile_endpoint|nl_endpoint"
