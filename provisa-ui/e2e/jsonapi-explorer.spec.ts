@@ -109,7 +109,9 @@ test("REQ-1361: includeNodes checkbox forwards includeNodes=true on group-by que
   // networkidle is a 500 ms gap in requests, not "the page is ready": it settles in the pause
   // between the identity bootstrap and the table's own schema fetch, so the picker can still be
   // unmounted here. The wait is on the picker itself, so nothing that follows is relaxed.
-  await expect(groupByPicker).toBeVisible({ timeout: 30000 });
+  // The picker renders once the explorer has the table's schema; under four CI workers that
+  // first load has exceeded 30s.
+  await expect(groupByPicker).toBeVisible({ timeout: 90000 });
   await groupByPicker.click();
   const firstOption = page.locator(".mantine-MultiSelect-option").first();
   await expect(firstOption).toBeVisible({ timeout: 10000 });

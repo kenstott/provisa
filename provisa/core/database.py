@@ -913,11 +913,6 @@ def create_engine_from_url(
     if make_url(normalized).database not in (None, "", ":memory:"):
         kwargs["pool_size"] = pool_size
         kwargs["max_overflow"] = max_overflow
-    if normalized.startswith("sqlite"):
-        # A SQLite control plane takes one writer at a time; sqlite3's default busy wait is
-        # 5s, after which a second writer (an admin mutation while the event loop stamps a
-        # node) fails with "database is locked". Wait out a writer instead.
-        kwargs["connect_args"] = {"timeout": 30}
     engine = create_async_engine(normalized, **kwargs)
     if engine.dialect.name == "postgresql":
         event.listen(engine.sync_engine, "connect", _on_pg_connect)
@@ -951,7 +946,10 @@ def _on_sqlite_connect(dbapi_conn: Any, connection_record: Any) -> None:
     cur = dbapi_conn.cursor()
     try:
         cur.execute("PRAGMA journal_mode=WAL")
-        cur.execute("PRAGMA busy_timeout=5000")
+        # 30s, not sqlite3's 5s: a table registration holds the writer through a full schema
+        # rebuild and MV activation, and an admin mutation arriving meanwhile (the e2e lane's
+        # registerFact) failed with "database is locked" rather than waiting it out.
+        cur.execute("PRAGMA busy_timeout=30000")
     finally:
         cur.close()
 

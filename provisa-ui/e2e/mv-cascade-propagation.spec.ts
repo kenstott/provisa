@@ -93,7 +93,9 @@ async function createView(page: import("@playwright/test").Page, sql: string, al
   await page.getByRole("option", { name: /pet-store/i }).first().click();
   await page.getByTestId("save-view-button").click();
 
-  await expect(page.getByTestId("view-saved-close-button")).toBeVisible({ timeout: 30000 });
+  // The save blocks server-side on a full schema rebuild and MV activation (see the timeout
+  // note above); on the 2-core runner with four workers that has taken over 30s.
+  await expect(page.getByTestId("view-saved-close-button")).toBeVisible({ timeout: 120000 });
   await page.getByTestId("view-saved-close-button").click();
 }
 

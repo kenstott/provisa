@@ -124,7 +124,9 @@ test("REQ-1324: builder composes AGG(fact.column); delete lives inside detail", 
   await page.getByTestId("metric-name-input").fill(BUILT_METRIC);
   await page.getByTestId("metric-save-button").click();
   const newRow = page.getByTestId(`metrics-row-${BUILT_METRIC}`);
-  await expect(newRow).toBeVisible({ timeout: 15000 });
+  // Saving a metric re-registers its fact and rebuilds schemas server-side; under CI load the
+  // row has taken longer than 15s to appear.
+  await expect(newRow).toBeVisible({ timeout: 60000 });
 
   // Delete from within the detail panel (REQ-1323).
   await newRow.click();
