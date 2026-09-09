@@ -177,8 +177,16 @@ test.describe("REQ-1387 glossary curation", () => {
     await expect(edge.locator('[data-testid^="glossary-edge-out-rel-"]')).toHaveValue("Kind of");
     await expect(edge).toContainText(DERIVED_SPECIES);
 
+    // REQ-1643: a term with a relationship cannot be deleted -- the button is disabled and the
+    // hint says why. (The abstract term has no refs; the edge alone is enough to block it.)
+    await expect(page.getByTestId("glossary-delete-btn")).toBeDisabled();
+    await page.getByTestId("glossary-delete-btn").hover({ force: true });
+    await expect(page.getByText("This term has refs or relationships", { exact: false })).toBeVisible();
+
     // The inverse direction is visible from the rooted term.
     await selectTerm(page, DERIVED_SPECIES);
+    // REQ-1643: the rooted term carries physical refs (and now an incoming edge): also undeletable.
+    await expect(page.getByTestId("glossary-delete-btn")).toBeDisabled();
     // One incoming edge per run of this test survives on a deployment this suite does not own, so
     // the assertion is that THIS run's abstract term is among them, not that it is the only one.
     const incoming = page

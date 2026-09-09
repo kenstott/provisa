@@ -34,10 +34,17 @@ router = APIRouter(prefix="/admin/actions", tags=["admin", "actions"])
 
 
 async def _ensure_tables(pool: "Database") -> None:
-    """Create the tracked-function/webhook tables via portable SQLAlchemy metadata."""
+    """Create the tracked-function/webhook tables via portable SQLAlchemy metadata, in the org's
+    own schema. A raw engine connection carries no search_path, so without entering the org's
+    schema the tables landed in ``public`` -- unnoticed until tracked_functions gained its FOREIGN
+    KEY to data_products, which lives only in the org schema."""
+    from sqlalchemy import text
+
     from provisa.core.schema_org import metadata
 
     async with pool.engine.begin() as conn:
+        if pool.search_path and (sql := pool.capabilities.enter_org_sql(pool.search_path)):
+            await conn.execute(text(sql))
         await conn.run_sync(
             lambda sc: metadata.create_all(sc, tables=[tracked_functions, tracked_webhooks])
         )

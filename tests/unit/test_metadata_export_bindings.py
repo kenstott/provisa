@@ -525,14 +525,9 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(snapshot, tmp
     monkeypatch.setattr(
         publishing,
         "build_snapshot",
-        lambda model,
-        *,
-        org_id,
-        dialect,
-        contexts,
-        glossary=None,
-        dq_outcomes=None,
-        uri_org_id=None: (snapshot),
+        lambda model, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None: (
+            snapshot
+        ),
     )
     monkeypatch.setattr(publishing, "metadata_export", lambda config: exporter)
     monkeypatch.setattr(
