@@ -20,12 +20,13 @@ Table aliases (t0, t1, ...) used when JOINs are present.
 
 from __future__ import annotations
 
-import os as _os
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 from provisa.otel_compat import get_tracer as _get_tracer
 
 if TYPE_CHECKING:
+    from provisa.cache.values_cte import HotRows
+
     pass
 
 from graphql import (
@@ -71,20 +72,9 @@ from provisa.compiler.sql_selection import (
 _tracer = _get_tracer(__name__)
 
 
-# Hard cap on rows returned when the caller supplies no explicit LIMIT.
-# Resolved at query time from state.server_limits; falls back to env var then 10000.
-def _get_default_row_limit() -> int:
-    try:
-        from provisa.api.app import state
-
-        return int(
-            _os.environ.get(
-                "PROVISA_DEFAULT_ROW_LIMIT",
-                str(state.server_limits.get("default_row_limit", 100)),
-            )
-        )
-    except Exception:
-        return int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "100"))
+# Hard cap on rows returned when the caller supplies no explicit LIMIT — REQ-1678: read from
+# core.limits, which the API layer publishes at config load, never from api.app.
+from provisa.core.limits import default_row_limit as _get_default_row_limit  # noqa: E402
 
 
 # Module-level query counter for warm-table tracking (REQ-AD5)
@@ -544,11 +534,18 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
     )
 
 
+class HotTableSource(Protocol):  # REQ-1678
+    """What the hot-join rewrite needs from the cache: the manager satisfies it structurally, so
+    the compiler never imports the cache manager (which pulls the file-source and DuckDB stack)."""
+
+    def is_hot(self, table_name: str) -> bool: ...
+
+    def get_entry(self, table_name: str) -> "HotRows | None": ...
+
+
 def rewrite_hot_joins(  # REQ-230, REQ-232
-    compiled: CompiledQuery, hot_manager: object
-) -> (
-    CompiledQuery
-):  # object-ok: circular import boundary — HotTableManager imported inside function body
+    compiled: CompiledQuery, hot_manager: HotTableSource
+) -> CompiledQuery:
     """Rewrite references to hot-cached tables to use VALUES-based CTEs.
 
     When the query references a hot-cached table, replace the table reference
@@ -563,9 +560,7 @@ def rewrite_hot_joins(  # REQ-230, REQ-232
     import sqlglot
     import sqlglot.expressions as exp
 
-    from provisa.cache.hot_tables import HotTableManager, build_values_cte_sql
-
-    assert isinstance(hot_manager, HotTableManager)
+    from provisa.cache.values_cte import build_values_cte_sql
 
     tree = sqlglot.parse_one(compiled.sql, read="postgres")
     hot_names: list[str] = []

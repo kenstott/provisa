@@ -34,7 +34,7 @@ from sqlalchemy.engine import URL
 
 # The results catalog name is owned by the CTAS-redirect writer; import rather than restate it.
 from provisa.executor.trino_write import RESULTS_CATALOG
-from provisa.federation.trino_lifecycle import TrinoConnection, TrinoQueryError
+from provisa.federation.trino_types import TrinoConnection, TrinoQueryError
 
 log = logging.getLogger(__name__)
 

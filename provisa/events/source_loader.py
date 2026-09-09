@@ -186,6 +186,79 @@ def make_sqlite_loader() -> AdapterLoader:
     return _load
 
 
+def make_elasticsearch_loader() -> AdapterLoader:
+    """Build the Elasticsearch row-fetch (REQ-1672): the table's registered data columns, read from
+    the index over HTTP (scroll) and landed like any other fetched source. Wired only on an engine
+    with no Elasticsearch connector of its own; Trino keeps scanning through its connector."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.elasticsearch.fetch import ESConnection, fetch_rows, table_index_and_columns
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        mapping = getattr(source, "mapping", None) or {}
+        conn = ESConnection.build(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            int(getattr(source, "port", 0) or 9200),
+            tls=bool(mapping.get("tls", False)),
+            username=getattr(source, "username", None) or None,
+            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+
+        def _read() -> list[dict]:
+            index, columns = table_index_and_columns(conn, mapping, table.table_name, names)
+            return fetch_rows(conn, index, columns)
+
+        return await asyncio.to_thread(_read)
+
+    return _load
+
+
+def make_redis_loader() -> AdapterLoader:
+    """Build the Redis row-fetch (REQ-1675): the table's keys (its prefix, or the mapping DSL's
+    pattern) read as rows over redis-py and landed like any other fetched source. Wired only on an
+    engine with no live Redis connector of its own; Trino keeps scanning through its connector."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.redis.fetch import RedisConnection, fetch_rows
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        mapping = getattr(source, "mapping", None) or {}
+        conn = RedisConnection(
+            host=resolve_secrets(getattr(source, "host", "") or "localhost"),
+            port=int(getattr(source, "port", 0) or 6379),
+            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+        return await asyncio.to_thread(fetch_rows, conn, mapping, table.table_name, names)
+
+    return _load
+
+
+def make_cassandra_loader() -> AdapterLoader:
+    """Build the Cassandra row-fetch (REQ-1676): the table's registered data columns, SELECTed from
+    ``<keyspace>.<table>`` over CQL and landed like any other fetched source. Wired only on an engine
+    with no live Cassandra connector of its own; Trino keeps scanning through its connector."""
+    from provisa.cassandra.fetch import CassandraConnection, fetch_rows
+    from provisa.core.secrets import resolve_secrets
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        conn = CassandraConnection.build(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            int(getattr(source, "port", 0) or 9042),
+            username=getattr(source, "username", None) or None,
+            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+        return await asyncio.to_thread(fetch_rows, conn, table.schema_name, table.table_name, names)
+
+    return _load
+
+
 def make_dq_loader(app_state: Any) -> AdapterLoader:
     """Build the data-quality checker row-fetch (REQ-1443).
 

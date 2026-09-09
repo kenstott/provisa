@@ -232,3 +232,20 @@ class TestRoundTripContracts:
         rls = RLSContext.empty()
         result = inject_rls(compiled, ctx, rls)
         assert result.sql == compiled.sql
+
+
+class TestImportBoundaries:  # REQ-1678
+    """The importlinter contracts in pyproject.toml hold; CI and pre-commit run the same check."""
+
+    def test_contracts_kept(self):
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [sys.executable, "-m", "importlinter.cli", "lint"],
+            capture_output=True,
+            text=True,
+            cwd=str(__import__("pathlib").Path(__file__).resolve().parents[2]),
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        assert "BROKEN" not in proc.stdout

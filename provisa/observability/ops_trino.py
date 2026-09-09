@@ -22,7 +22,7 @@ from provisa.observability.ops_schema import OPS_TABLES
 
 # Postgres column types (ops_schema's source of truth) mapped to Trino/Iceberg types.
 from provisa.compiler.type_map import OPS_PG_TO_PHYSICAL
-from provisa.federation.trino_lifecycle import TrinoConnection, TrinoError
+from provisa.federation.trino_types import TrinoConnection, TrinoError
 
 
 def _ops_physical(pg_type: str) -> str:

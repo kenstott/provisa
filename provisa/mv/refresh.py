@@ -392,7 +392,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
         # different quantities: max_rows bounds THIS MV, the quota bounds everything the org has
         # accumulated on the operator's disk. Both refuse rather than truncate, and neither
         # applies to an org materializing into a store it owns (REQ-1048).
-        from provisa.api.org_runtime import current_org  # noqa: PLC0415
+        from provisa.core.request_context import current_org  # noqa: PLC0415
         from provisa.storage.quota import require_storage_headroom  # noqa: PLC0415
 
         org_id = current_org.get()

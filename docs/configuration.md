@@ -790,7 +790,7 @@ roles:
     parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
 
-Roles with `parent_role_id` inherit capabilities and domain access from the parent. (REQ-215) The hierarchy is flattened at startup. (REQ-215)
+Roles with `parent_role_id` inherit capabilities, domain access, column and object grants, and RLS rules from the parent, with the child's own RLS rule for a table taking precedence. (REQ-215, REQ-1677) The chain is flattened at startup. (REQ-215)
 
 ### Capabilities
 
@@ -1094,7 +1094,7 @@ Preset columns are injected during mutation compilation before SQL generation. (
 
 ## Inherited Roles
 
-Roles can inherit capabilities and domain access from a parent role via `parent_role_id`. (REQ-215) The hierarchy is flattened at startup. (REQ-215)
+Roles can inherit from one parent role via `parent_role_id`. (REQ-215) The chain is flattened at startup. (REQ-215) A child holds the union of its ancestors' capabilities and domain access; a column, metric, function or webhook granted to an ancestor is granted to the child; and an ancestor's RLS rules apply to the child per table, nearest role first, with the child's own rule for a table replacing the parent's. (REQ-1677)
 
 ```yaml
 roles:
@@ -1114,7 +1114,7 @@ roles:
     parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
 ```
 
-Multi-level inheritance is supported. (REQ-215) The child role's explicit capabilities and domain_access are merged with the parent's. (REQ-215)
+Multi-level inheritance is supported. (REQ-215) The child role's explicit capabilities and domain_access are merged with the parent's. (REQ-215) A parent must be an existing role, may not be the role itself and may not close a cycle; each is refused at save. (REQ-1677)
 
 ## Scheduled Triggers
 

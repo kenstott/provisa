@@ -178,7 +178,7 @@ class _EnvRoutingShim:
         from provisa.api.app import ensure_org_runtime
         from provisa.api.app import state as app_state
         from provisa.api.env_routing import PROD, env_header_value, resolve_selected_env
-        from provisa.api.org_runtime import (
+        from provisa.core.request_context import (
             reset_current_env,
             reset_current_org,
             set_current_env,

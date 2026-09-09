@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 
+import asyncio
 import logging
 import os
 from typing import TYPE_CHECKING, Any, Optional, cast
@@ -58,6 +59,7 @@ from provisa.api.admin.types import (
     DqCheckType,
     DqContractTextType,
     DqContractType,
+    Neo4jPreviewType,
     HotTableStatType,
     MaterializeStoreInfoType,
     MetricType,
@@ -635,6 +637,13 @@ class Query:  # REQ-021, REQ-042
         # registry (REQ-947), not a parallel map: unreachable ⇒ no engine schemas.
         if not state.federation_engine.engine.reachable(source_type):
             return []
+        # REQ-1673: a native engine attaches a source only when a table on it is registered, so
+        # its catalog does not exist yet at this point; the seam attaches the raw source and lists it.
+        src = await _source_for_introspection(source_id)
+        if src is not None:
+            seam = await asyncio.to_thread(state.federation_engine.introspect_schemas, src)
+            if seam is not None:
+                return [s for s in seam if not is_provisa_internal(s)]
         catalog = state.catalog_for(source_id)
         schemas: list[str] = []
         with discovery_fallback(f"engine schemata for {source_id!r}"):
@@ -682,8 +691,18 @@ class Query:  # REQ-021, REQ-042
         # the engine fallback
         from provisa.api.admin.introspect import PROVISA_INTERNAL_TABLES
 
-        catalog = state.catalog_for(source_id)
         skip = PROVISA_INTERNAL_TABLES if schema_name.lower() == "public" else frozenset()
+        # REQ-1673: see available_schemas — list through the attached raw source on a native engine.
+        src = await _source_for_introspection(source_id)
+        if src is not None:
+            seam = await asyncio.to_thread(
+                state.federation_engine.introspect_tables, src, schema_name
+            )
+            if seam is not None:
+                return [
+                    AvailableTableType(name=n, comment=None) for n in seam if n.lower() not in skip
+                ]
+        catalog = state.catalog_for(source_id)
         tables: list[AvailableTableType] = []
         with discovery_fallback(f"engine tables for {source_id!r}"):
             res = await state.federation_engine.execute_engine(
@@ -858,6 +877,19 @@ class Query:  # REQ-021, REQ-042
             off_peak_tz=off_peak_tz,
             change_signal=change_signal,
         )
+
+    # ── Admin: Register Table on a neo4j source (REQ-1670) ──
+
+    @strawberry.field
+    async def neo4j_preview(self, source_id: str, cypher: str) -> Neo4jPreviewType:
+        """Preview a Cypher projection on a neo4j source: up to five rows and the column types the
+        registration will carry. Failures come back as ``error`` — half-written Cypher is the normal
+        state of the field the operator is typing into."""
+        from provisa.api.admin._neo4j_registration import preview_neo4j
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            return await preview_neo4j(cast("Connection", conn), source_id, cypher)
 
     # ── Admin: Data-quality contracts (REQ-1443) ──
 
@@ -1241,6 +1273,131 @@ class Query:  # REQ-021, REQ-042
             return ""
 
 
+async def _source_for_introspection(source_id: str):
+    """REQ-1673: the Source a native engine attaches from. The live config Source when the id is
+    there (it carries the password secret reference); otherwise the control-plane row, which has
+    no password — a source that needs one and was created through the UI without the config
+    carrying it lists nothing, and the engine log says why."""
+    from provisa.api.app import state
+    from provisa.core.models import Source
+    from provisa.core.repositories import source as source_repo
+
+    for s in getattr(getattr(state, "config", None), "sources", None) or []:
+        if s.id == source_id:
+            return s
+    pool = await _get_pool()
+    async with pool.acquire() as _conn:
+        row = await source_repo.get(cast("Connection", _conn), source_id)
+    if row is None:
+        return None
+    fields = {
+        k: v
+        for k, v in row.items()
+        if k
+        in {
+            "id",
+            "type",
+            "host",
+            "port",
+            "database",
+            "username",
+            "path",
+            "mapping",
+            "federation_hints",
+        }
+        and v is not None
+    }
+    return Source.model_validate(fields)
+
+
+async def _cassandra_columns(
+    source_id: str, keyspace: str, table_name: str
+) -> list[AvailableColumnType]:
+    """REQ-1676: the table's columns from the cluster's schema metadata, typed in the IR vocabulary,
+    partition-key columns marked primary — engine-independent."""
+    import asyncio as _asyncio
+
+    from provisa.api.admin.introspect import _cassandra_connection_for, _es_source_row
+    from provisa.api.app import state
+    from provisa.cassandra.fetch import table_columns
+
+    pool = await _get_pool()
+    async with pool.acquire() as _conn:
+        row = await _es_source_row(source_id, cast("Connection", _conn))
+    if row is None:
+        return []
+    cols = await _asyncio.to_thread(
+        table_columns, _cassandra_connection_for(row, state), keyspace, table_name
+    )
+    return [
+        AvailableColumnType(
+            name=c["name"],
+            data_type=str(c["type"]).lower(),
+            comment=None,
+            is_primary_key=bool(c.get("partitionKey")),
+        )
+        for c in cols
+    ]
+
+
+async def _redis_columns(source_id: str, table_name: str) -> list[AvailableColumnType]:
+    """REQ-1675: a mapping-DSL table's declared columns, else the key column plus the fields of the
+    prefix's hashes — engine-independent."""
+    import asyncio as _asyncio
+    import json as _json
+
+    from provisa.api.admin.introspect import _es_source_row, _redis_connection_for
+    from provisa.api.app import state
+    from provisa.redis.fetch import prefix_columns
+
+    pool = await _get_pool()
+    async with pool.acquire() as _conn:
+        row = await _es_source_row(source_id, cast("Connection", _conn))
+    if row is None:
+        return []
+    mapping = row.get("mapping") or {}
+    if isinstance(mapping, str):
+        mapping = _json.loads(mapping)
+    cols = await _asyncio.to_thread(
+        prefix_columns, _redis_connection_for(row, state), mapping, table_name
+    )
+    return [AvailableColumnType(name=n, data_type=t, comment=None) for n, t in cols]
+
+
+async def _elasticsearch_columns(source_id: str, table_name: str) -> list[AvailableColumnType]:
+    """REQ-1672: a mapping-DSL table's declared columns, else the live index mapping flattened
+    (``discover_schema``), typed in the IR vocabulary — engine-independent."""
+    import asyncio as _asyncio
+    import json as _json
+
+    from provisa.api.admin.introspect import _es_connection_for, _es_source_row
+    from provisa.api.app import state
+    from provisa.elasticsearch.fetch import index_columns
+
+    pool = await _get_pool()
+    async with pool.acquire() as _conn:
+        row = await _es_source_row(source_id, cast("Connection", _conn))
+    if row is None:
+        return []
+    mapping = row.get("mapping") or {}
+    if isinstance(mapping, str):
+        mapping = _json.loads(mapping)
+    entry = next((t for t in mapping.get("tables", []) if t.get("name") == table_name), None)
+    if entry and entry.get("columns"):
+        return [
+            AvailableColumnType(
+                name=c["name"], data_type=str(c.get("data_type", "VARCHAR")).lower(), comment=None
+            )
+            for c in entry["columns"]
+        ]
+    index = entry["index"] if entry else table_name
+    cols = await _asyncio.to_thread(index_columns, _es_connection_for(row, state), index)
+    return [
+        AvailableColumnType(name=c["name"], data_type=str(c["type"]).lower(), comment=None)
+        for c in cols
+    ]
+
+
 async def resolve_available_columns_metadata(
     source_id: str, schema_name: str, table_name: str
 ) -> list[AvailableColumnType]:
@@ -1256,6 +1413,12 @@ async def resolve_available_columns_metadata(
     source_type = state.source_types.get(source_id, "")
     if source_type == "govdata":
         return await _govdata_columns(source_id, schema_name, table_name, None)
+    if source_type == "elasticsearch":
+        return await _elasticsearch_columns(source_id, table_name)
+    if source_type == "redis":
+        return await _redis_columns(source_id, table_name)
+    if source_type == "cassandra":
+        return await _cassandra_columns(source_id, schema_name, table_name)
     if source_type == "files":
         # Files sources use the engine abstraction (EngineRuntime.introspect_columns) which
         # dispatches to the bound engine's backend — DuckDB, ClickHouse, etc. — and resolves
@@ -1342,6 +1505,19 @@ async def resolve_available_columns_metadata(
         ]
     # A __derived__ virtual view has no registered source and thus no catalog_for() entry — it's
     # physically materialized in the view catalog (same pattern as table_profile_router.py:88).
+    # REQ-1673: on a native engine the source's catalog does not exist before a table is
+    # registered; the introspection seam attaches the raw source and DESCRIBEs the table.
+    if source_id != DERIVED_SOURCE_ID and state.federation_engine.engine.native_store is not None:
+        src = await _source_for_introspection(source_id)
+        if src is not None:
+            described = await asyncio.to_thread(
+                state.federation_engine.introspect_columns, src, schema_name, table_name
+            )
+            if described:
+                return [
+                    AvailableColumnType(name=name, data_type=str(dtype).lower(), comment=None)
+                    for name, dtype in described.items()
+                ]
     view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
     catalog = view_catalog if source_id == DERIVED_SOURCE_ID else state.catalog_for(source_id)
     cols_meta: list[AvailableColumnType] = []

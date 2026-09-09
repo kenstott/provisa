@@ -143,9 +143,12 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
     sharepoint and splunk on an engine with NO connector for them are landed through the
     connector's bundled Calcite pgwire server (REQ-954)."""
     from provisa.events.source_loader import (
+        make_cassandra_loader,
         make_dq_loader,
+        make_elasticsearch_loader,
         make_graphql_remote_loader,
         make_openapi_loader,
+        make_redis_loader,
         make_sqlite_loader,
     )
     from provisa.federation.pgwire_replica import (
@@ -169,6 +172,17 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
     loaders["great_expectations"] = dq_loader
     loaders["sqlite"] = make_sqlite_loader()
     bare_engine = getattr(engine, "engine", engine)
+    # REQ-1672: an engine that does not read Elasticsearch LIVE (every native engine — its
+    # completed reach carries only a land-into-store entry for the type) reads the index over HTTP;
+    # one that attaches/scans it through a connector (Trino) keeps doing so.
+    from provisa.federation.strategy import engine_attaches
+
+    if not engine_attaches(bare_engine, "elasticsearch"):
+        loaders["elasticsearch"] = make_elasticsearch_loader()
+    if not engine_attaches(bare_engine, "redis"):  # REQ-1675
+        loaders["redis"] = make_redis_loader()
+    if not engine_attaches(bare_engine, "cassandra"):  # REQ-1676
+        loaders["cassandra"] = make_cassandra_loader()
     allocator = PortAllocator()
     config = getattr(state, "config", None)
     for src in getattr(config, "sources", None) or []:
@@ -300,48 +314,17 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # Drive the loop off the design-time REGISTERED tables (semantic sql names + resolved types),
         # not the raw YAML — the landed replica name must match what the schema-currency reconcile
         # created, and the types the YAML omits are resolved in the control plane at registration.
-        # Change-signal / cadence / live block stay owned by config (matched on the semantic name).
-        from types import SimpleNamespace
-
-        from provisa.api.admin.db_queries import fetch_tables
-        from provisa.compiler.naming import apply_sql_name
+        # REQ-1674: sources likewise come from the registry (a UI-created source is one).
+        from provisa.federation.registry_view import registered_sources, registered_tables
 
         # REQ-1622: the landing schema belongs to the environment being wired, not to the store --
         # a landed table's name is derived from the source id, which every environment shares.
-        from provisa.api.org_runtime import active_env
+        from provisa.core.request_context import active_env
         from provisa.federation.store_scope import store_schema as _store_schema_for
 
         store_schema = _store_schema_for(store_dsn, active_env())
-        _cfg_by = {(t.source_id, apply_sql_name(t.table_name)): t for t in config.tables}
-        async with db.acquire() as _conn:
-            _registered = await fetch_tables(_conn)
-        registered_tables = []
-        for _rt in _registered:
-            _cfg = _cfg_by.get((_rt["source_id"], _rt["table_name"]))
-            registered_tables.append(
-                SimpleNamespace(
-                    source_id=_rt["source_id"],
-                    schema_name=_rt["schema_name"],
-                    table_name=_rt["table_name"],
-                    columns=[
-                        SimpleNamespace(
-                            name=_c["column_name"],
-                            data_type=_c["data_type"],
-                            is_primary_key=_c["is_primary_key"],
-                            native_filter_type=_c["native_filter_type"],
-                        )
-                        for _c in _rt["columns"]
-                    ],
-                    live=getattr(_cfg, "live", None),
-                    change_signal=getattr(_cfg, "change_signal", None),
-                    watermark_column=getattr(_cfg, "watermark_column", None),
-                    cache_ttl=getattr(_cfg, "cache_ttl", None),
-                    probe_type=getattr(_cfg, "probe_type", None),  # REQ-982
-                    # REQ-1443: a checker table's rows are the results of running its contract, so
-                    # the registered contract rides with the table into make_dq_loader.
-                    dq_contract=_rt["dq_contract"],
-                )
-            )
+        all_sources = await registered_sources(state)
+        registered_tables_ = await registered_tables(state)
 
         # REQ-982: the SQL scalar runner a watermark/count probe uses to read the source through the
         # engine terminal — the same read path as the row loader, returning the single scalar.
@@ -363,9 +346,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # now and fresh-through any snapshot boundary — it never lands, so its missing refresh stamp is
         # expected, not an outage. Collect those nodes so the freshness reader treats them as fresh;
         # a MATERIALIZED input with no stamp still fails loud (it was supposed to refresh).
-        _src_by_id = {s.id: s for s in config.sources}
+        _src_by_id = {s.id: s for s in all_sources}
         always_current: set[str] = set()
-        for _tbl in registered_tables:
+        for _tbl in registered_tables_:
             _src = _src_by_id.get(_tbl.source_id)
             if _src is None:
                 continue
@@ -377,8 +360,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         freshness_of = make_db_freshness_of(db, always_current)
 
         specs = specs_from_config(
-            sources=config.sources,
-            tables=registered_tables,
+            sources=all_sources,
+            tables=registered_tables_,
             mvs=mvs,
             engine=engine.engine,  # the FederationEngine (federate classification)
             engine_runtime=engine,  # the EngineRuntime write face (land/reconcile/persist)
@@ -399,7 +382,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # REQ-1266: a non-default org wires under the org bound by build_org_runtime — its job ids get
         # an org suffix and each fire binds current_org. The default org (ContextVar unset) → None →
         # bare ids, unchanged single-org behavior. db/processors already carry this org's tenant plane.
-        from provisa.api.org_runtime import current_org
+        from provisa.core.request_context import current_org
 
         register_runtime(
             scheduler,

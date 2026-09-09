@@ -256,6 +256,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     view_metrics: ViewMetricsType | None = None  # REQ-1318: metric-composed view spec
     # REQ-1443: the data-quality contract this table's rows are the scan results of, verbatim.
     dq_contract: str | None = None
+    # REQ-1670: the Cypher a neo4j table runs (from its persisted api_endpoints row).
+    query_template: str | None = None
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
     probe_query: str | None = None  # REQ-929: source-native freshness probe
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
@@ -470,6 +472,7 @@ class RoleType:  # REQ-042
     domain_access: list[str]
     demonstrated: list[str] = strawberry.field(default_factory=list)  # REQ-1602
     rate_limit: RoleRateLimitType | None = None  # REQ-1174
+    parent_role_id: str | None = None  # REQ-1677
 
 
 @strawberry.type
@@ -480,12 +483,13 @@ class UserSummaryType:  # REQ-609/REQ-1634: resolves an owner_role/steward to th
 
 
 @strawberry.type
-class RLSRuleType:  # REQ-041, REQ-402
+class RLSRuleType:  # REQ-041, REQ-402, REQ-1679
     id: int
     table_id: int | None
     domain_id: str | None
     role_id: str
     filter_expr: str
+    action_name: str | None = None  # REQ-1679
 
 
 # --- Input types for mutations ---
@@ -670,6 +674,8 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     # results of. The contract names what it scans, so the observed target is DERIVED from it
     # (REQ-939) and the results columns are replaced by the shipped schema at load.
     dq_contract: str | None = None
+    # REQ-1670: the Cypher that produces a neo4j table's rows; required under a neo4j source.
+    query_template: str | None = None
     # REQ-1318: declarative metric-composed view definition; mutually exclusive with view_sql.
     # The server generates (and regenerates on metric change) the view SELECT from this spec.
     view_metrics: ViewMetricsInput | None = None
@@ -877,6 +883,22 @@ class DqCheckDefinitionType:  # REQ-1443 clause 7
 
 
 @strawberry.type
+class Neo4jPreviewColumnType:  # REQ-1670
+    name: str
+    data_type: str
+
+
+@strawberry.type
+class Neo4jPreviewType:  # REQ-1670: a Cypher preview for Register Table on a neo4j source
+    """``error`` is non-null when the source is unreachable, the Cypher fails, or a column returns
+    a node/list instead of a scalar; the form keeps the operator's text and shows the message."""
+
+    rows: list[JsonScalar] = strawberry.field(default_factory=list)
+    columns: list[Neo4jPreviewColumnType] = strawberry.field(default_factory=list)
+    error: str | None = None
+
+
+@strawberry.type
 class DqContractType:  # REQ-1443: the parsed contract behind the builder panel
     """``error`` is non-null when the raw text does not parse or names no dataset; the panel keeps
     the operator's text and shows the message rather than replacing it with an empty builder."""
@@ -955,12 +977,14 @@ class RoleInput:  # REQ-042
     capabilities: list[str]
     domain_access: list[str]
     rate_limit: RoleRateLimitInput | None = None  # REQ-1174
+    parent_role_id: str | None = None  # REQ-1677
 
 
 @strawberry.input
 class RLSRuleInput:  # REQ-041, REQ-402
     table_id: str | None = None  # table name (resolved to ID); mutually exclusive with domain_id
     domain_id: str | None = None  # domain ID for domain-level rules
+    action_name: str | None = None  # REQ-1679: a tracked function/webhook, by name
     role_id: str = ""
     filter_expr: str = ""
 

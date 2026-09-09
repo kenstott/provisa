@@ -138,7 +138,7 @@ async def seat_platform_admins(pool) -> int:
     seated by :func:`_spawn_build` the moment its schema exists.
     """
     from provisa.api.app import ensure_org_runtime, state
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
     from provisa.core.org_membership import JOINED_VIA_ADMIN, grant_org_admin
     from provisa.core.schema_org import user_role_assignments
     from provisa.security.rights import PLATFORM_ADMIN_ROLE

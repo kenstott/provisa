@@ -17,7 +17,7 @@ import re
 import time
 from dataclasses import dataclass
 
-from provisa.federation.trino_lifecycle import TrinoConnection, TrinoQueryError, TrinoUserError
+from provisa.federation.trino_types import TrinoConnection, TrinoQueryError, TrinoUserError
 
 _SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 

@@ -739,9 +739,11 @@ async def _refresh(org_id: str, env: str, *, connectivity: bool) -> str:
     deploy just wrote, which is already the newest state.
     """
     from provisa.api.org_runtime import (
+        runtime_key,
+    )
+    from provisa.core.request_context import (
         reset_current_env,
         reset_current_org,
-        runtime_key,
         set_current_env,
         set_current_org,
     )

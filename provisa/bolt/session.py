@@ -473,7 +473,7 @@ class BoltSession:
 
         from contextlib import nullcontext
 
-        from provisa.api.org_runtime import reset_current_org, set_current_org
+        from provisa.core.request_context import reset_current_org, set_current_org
         from provisa.audit.context import audit_identity_scope
 
         _org_token = set_current_org(self.org_id) if self.org_id is not None else None

@@ -102,7 +102,7 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
     from graphql import GraphQLSchema
     from provisa.api.data.hydration import _hydrate_api_tables_before_engine
     from provisa.api.data.materialization import _materialize_api_to_engine_cache
-    from provisa.cache.hot_tables import build_values_cte_sql
+    from provisa.cache.values_cte import build_values_cte_sql
     from provisa.api_source.engine_cache import rewrite_all_from_cache
     from provisa.compiler.nf_extractor import drop_union_branches_for_table
     from provisa.compiler.parser import parse_query

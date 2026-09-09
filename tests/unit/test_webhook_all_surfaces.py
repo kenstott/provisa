@@ -39,7 +39,9 @@ def _webhook() -> dict:
         "method": "POST",
         "timeout_ms": 5000,
         "returns": None,
-        "inline_return_type": [{"name": "id", "type": "Int"}],
+        # REQ-1679: the response is governed against this contract; an undeclared column is
+        # refused, so the contract names every column the endpoint returns.
+        "inline_return_type": [{"name": "id", "type": "Int"}, {"name": "name", "type": "String"}],
         "arguments": [{"name": "name", "type": "String"}, {"name": "status", "type": "String"}],
         "visible_to": ["admin"],
         "domain_id": "pet-store",
@@ -48,11 +50,29 @@ def _webhook() -> dict:
     }
 
 
+class _Engine:
+    """REQ-1679: the response is governed on the bound engine; DuckDB in process stands in."""
+
+    def transpile_physical(self, pg_sql: str) -> str:
+        import sqlglot
+
+        return sqlglot.transpile(pg_sql, read="postgres", write="duckdb")[0]
+
+    async def execute_engine(self, sql: str, params=None, **_):
+        import duckdb
+
+        cur = duckdb.connect().execute(sql)
+        return SimpleNamespace(column_names=[d[0] for d in cur.description], rows=cur.fetchall())
+
+
 def _state() -> SimpleNamespace:
     wh = _webhook()
     return SimpleNamespace(
         tracked_functions={},
         tracked_webhooks={"add_pet": wh, "ps__addPet": wh},  # raw + gql-field-name alias
+        rls_contexts={},
+        role_chains={},
+        federation_engine=_Engine(),
         roles={
             "admin": {"id": "admin", "domain_access": ["*"], "capabilities": ["admin"]},
             "guest": {"id": "guest", "domain_access": ["*"], "capabilities": []},

@@ -24,7 +24,8 @@ from __future__ import annotations
 import pytest
 
 from provisa.api.app import state
-from provisa.api.org_runtime import OrgRuntime, reset_current_org, set_current_org
+from provisa.api.org_runtime import OrgRuntime
+from provisa.core.request_context import reset_current_org, set_current_org
 from provisa.federation.trino_lifecycle import terminal_conn_kwargs
 
 

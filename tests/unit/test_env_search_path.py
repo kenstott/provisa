@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 from sqlalchemy import make_url
 
-from provisa.api.org_runtime import reset_current_env, set_current_env
+from provisa.core.request_context import reset_current_env, set_current_env
 from provisa.core import trino_system_catalogs as tsc
 from provisa.core.environments import PROD
 from provisa.federation.trino_lifecycle import terminal_conn_kwargs

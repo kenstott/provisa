@@ -397,9 +397,7 @@ class TestRoleSelfReference:
     """Role.parent_role_id is str | None with no self-reference guard in the model.
 
     Pydantic will parse a role whose parent_role_id equals its own id without
-    error.  The flatten_roles() helper, however, will recurse infinitely on
-    such a config — we verify the parse succeeds and document the runtime
-    behaviour of flatten_roles via sys.setrecursionlimit protection.
+    error. flatten_roles() refuses the cycle by name (REQ-1677).
     """
 
     def test_self_referencing_parent_role_parses_without_error(self):
@@ -426,25 +424,16 @@ class TestRoleSelfReference:
         config = parse_config_dict(data)
         assert config.roles[0].parent_role_id == "loop-role"
 
-    def test_flatten_roles_with_self_reference_raises_recursion_error(self):
-        """flatten_roles() has no cycle guard; a self-referencing role causes
-        infinite recursion.  RecursionError (or a stack overflow) is expected.
-        """
-        import sys
-
+    def test_flatten_roles_with_self_reference_is_refused(self):  # REQ-1677
+        """flatten_roles() names the cycle instead of recursing into it."""
         role = Role(
             id="loop",
             capabilities=["read"],
             domain_access=["d1"],
             parent_role_id="loop",
         )
-        old_limit = sys.getrecursionlimit()
-        sys.setrecursionlimit(200)  # keep the test fast
-        try:
-            with pytest.raises(RecursionError):
-                flatten_roles([role])
-        finally:
-            sys.setrecursionlimit(old_limit)
+        with pytest.raises(ValueError, match="cycle at 'loop'"):
+            flatten_roles([role])
 
 
 # ---------------------------------------------------------------------------

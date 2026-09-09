@@ -129,3 +129,33 @@ describe("CommandFormFields — REQ-885 implementation kinds", () => {
     expect(screen.queryByTestId("output-columns")).not.toBeInTheDocument();
   });
 });
+
+describe("CommandFormFields — response governance (REQ-1679)", () => {
+  it("offers visibility and mask controls on each output column", () => {
+    render(
+      <Harness
+        initial={{
+          actionType: "function",
+          implKind: "python",
+          returnSchemaMode: "dataset",
+          outputColumns: [{ name: "ssn", type: "varchar" }],
+        }}
+      />,
+    );
+    expect(screen.getByTestId("output-column-governance-0-visible-to")).toBeInTheDocument();
+    expect(screen.getByTestId("output-column-governance-0-mask-type")).toBeInTheDocument();
+  });
+
+  it("offers the same controls on each inline return field of a webhook", () => {
+    render(
+      <Harness
+        initial={{
+          actionType: "webhook",
+          returns: "",
+          inlineReturnType: [{ name: "id", type: "Int" }],
+        }}
+      />,
+    );
+    expect(screen.getByTestId("inline-field-governance-0-visible-to")).toBeInTheDocument();
+  });
+});

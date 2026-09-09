@@ -39,7 +39,7 @@ async def join_org_automatically(
     membership on the control plane alone would seat someone in an org where they can do nothing.
     """
     from provisa.api.app import ensure_org_runtime
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
     from provisa.core.commerce import bind_member_to_org_trial
     from provisa.core.org_membership import JOINED_VIA_AUTO_JOIN, grant_membership, grant_org_role
 

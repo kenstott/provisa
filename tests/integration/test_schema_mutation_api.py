@@ -154,6 +154,67 @@ class TestDeleteTable:
         assert result["message"] == "Table 999999999 not found"
 
 
+class TestRoleInheritance:  # REQ-1677
+    async def test_create_child_role_persists_parent(self, client):
+        created = await _gql(
+            client,
+            """
+            mutation {
+                createRole(input: {
+                    id: "junior_analyst_1677", capabilities: [], domainAccess: [],
+                    parentRoleId: "analyst"
+                }) { success message }
+            }
+            """,
+        )
+        assert created["data"]["createRole"]["success"] is True
+        listed = await _gql(client, "{ roles { id parentRoleId } }")
+        by_id = {r["id"]: r for r in listed["data"]["roles"]}
+        assert by_id["junior_analyst_1677"]["parentRoleId"] == "analyst"
+
+    async def test_delete_parent_with_heirs_refused(self, client):
+        result = await _gql(
+            client, 'mutation { deleteRole(id: "analyst") { success message code } }'
+        )
+        res = result["data"]["deleteRole"]
+        assert res["success"] is False
+        assert res["code"] == "schema.role_has_heirs"
+        assert "junior_analyst_1677" in res["message"]
+        gone = await _gql(client, 'mutation { deleteRole(id: "junior_analyst_1677") { success } }')
+        assert gone["data"]["deleteRole"]["success"] is True
+
+    async def test_unknown_parent_refused(self, client):
+        result = await _gql(
+            client,
+            """
+            mutation {
+                createRole(input: {
+                    id: "orphan_1677", capabilities: [], domainAccess: [], parentRoleId: "ghost"
+                }) { success message code }
+            }
+            """,
+        )
+        res = result["data"]["createRole"]
+        assert res["success"] is False
+        assert res["code"] == "schema.role_parent_invalid"
+        assert res["message"] == "Parent role 'ghost' not found"
+
+    async def test_self_parent_refused(self, client):
+        result = await _gql(
+            client,
+            """
+            mutation {
+                createRole(input: {
+                    id: "analyst", capabilities: [], domainAccess: [], parentRoleId: "analyst"
+                }) { success message code }
+            }
+            """,
+        )
+        res = result["data"]["createRole"]
+        assert res["success"] is False
+        assert res["message"] == "Role 'analyst' cannot inherit from itself"
+
+
 class TestRlsRule:
     async def test_upsert_and_delete_rls_rule(self, client):
         upsert = await _gql(
@@ -176,6 +237,82 @@ class TestRlsRule:
         )
         assert delete["data"]["deleteRlsRule"]["success"] is True
         assert delete["data"]["deleteRlsRule"]["message"] == "RLS rule deleted"
+
+    async def test_upsert_rls_rule_refuses_unknown_column(self, client):  # REQ-1676
+        data = await _gql(
+            client,
+            """
+            mutation {
+                upsertRlsRule(input: {
+                    tableId: "pets",
+                    roleId: "analyst",
+                    filterExpr: "speces = current_setting('provisa.species')"
+                }) { success message code }
+            }
+            """,
+        )
+        result = data["data"]["upsertRlsRule"]
+        assert result["success"] is False
+        assert result["code"] == "schema.rls_rule_invalid"
+        assert result["message"] == "RLS predicate: column 'speces' is not a column of 'pets'"
+
+    async def test_upsert_rls_rule_refuses_parse_error(self, client):  # REQ-1676
+        data = await _gql(
+            client,
+            """
+            mutation {
+                upsertRlsRule(input: {
+                    domainId: "pet-store",
+                    roleId: "analyst",
+                    filterExpr: "species = = 'dog'"
+                }) { success message code }
+            }
+            """,
+        )
+        result = data["data"]["upsertRlsRule"]
+        assert result["success"] is False
+        assert result["code"] == "schema.rls_rule_invalid"
+        assert result["message"].startswith("RLS predicate does not parse")
+
+    async def test_upsert_rls_rule_domain_column_must_be_on_every_table(self, client):  # REQ-1676
+        data = await _gql(
+            client,
+            """
+            mutation {
+                upsertRlsRule(input: {
+                    domainId: "pet-store",
+                    roleId: "analyst",
+                    filterExpr: "species = 'dog'"
+                }) { success message code }
+            }
+            """,
+        )
+        result = data["data"]["upsertRlsRule"]
+        assert result["success"] is False
+        assert result["code"] == "schema.rls_rule_invalid"
+        assert result["message"].startswith("RLS predicate: column 'species' is not a column of")
+
+    async def test_upsert_rls_rule_saves_resolved_predicate(self, client):  # REQ-1676
+        upsert = await _gql(
+            client,
+            """
+            mutation {
+                upsertRlsRule(input: {
+                    tableId: "pets",
+                    roleId: "analyst",
+                    filterExpr: "species = current_setting('provisa.species')"
+                }) { success message }
+            }
+            """,
+        )
+        assert upsert["data"]["upsertRlsRule"]["success"] is True
+        tables = await _gql(client, "{ tables { id tableName } }")
+        pets_id = next(t["id"] for t in tables["data"]["tables"] if t["tableName"] == "pets")
+        delete = await _gql(
+            client,
+            f'mutation {{ deleteRlsRule(roleId: "analyst", tableId: {pets_id}) {{ success message }} }}',
+        )
+        assert delete["data"]["deleteRlsRule"]["success"] is True
 
     async def test_delete_rls_rule_not_found(self, client):
         data = await _gql(

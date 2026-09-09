@@ -37,13 +37,15 @@ class RLSContext:
     rules: dict[int, str]
     # domain_id → filter expression (applies to all tables in that domain)
     domain_rules: dict[str, str] = field(default_factory=dict)
+    # REQ-1679: action name → filter expression over the action's response contract
+    action_rules: dict[str, str] = field(default_factory=dict)
 
     @staticmethod
     def empty() -> RLSContext:
-        return RLSContext(rules={}, domain_rules={})
+        return RLSContext(rules={}, domain_rules={}, action_rules={})
 
     def has_rules(self) -> bool:
-        return bool(self.rules) or bool(self.domain_rules)
+        return bool(self.rules) or bool(self.domain_rules) or bool(self.action_rules)
 
 
 def build_rls_context(rls_rules: list[dict], role_id: str) -> RLSContext:  # REQ-041, REQ-402
@@ -55,14 +57,17 @@ def build_rls_context(rls_rules: list[dict], role_id: str) -> RLSContext:  # REQ
     """
     rules: dict[int, str] = {}
     domain_rules: dict[str, str] = {}
+    action_rules: dict[str, str] = {}
     for rule in rls_rules:
         if rule["role_id"] != role_id:
             continue
-        if rule.get("domain_id"):
+        if rule.get("action_name"):  # REQ-1679
+            action_rules[rule["action_name"]] = rule["filter_expr"]
+        elif rule.get("domain_id"):
             domain_rules[rule["domain_id"]] = rule["filter_expr"]
         elif rule.get("table_id") is not None:
             rules[rule["table_id"]] = rule["filter_expr"]
-    return RLSContext(rules=rules, domain_rules=domain_rules)
+    return RLSContext(rules=rules, domain_rules=domain_rules, action_rules=action_rules)
 
 
 def inject_rls(  # REQ-038, REQ-040, REQ-041, REQ-402, REQ-403

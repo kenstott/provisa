@@ -23,7 +23,7 @@ import {
 import { X } from "lucide-react";
 import type { Source, RegisteredTable, DataProduct } from "../../types/admin";
 import type { TableMetadata } from "../../api/admin";
-import type { ActionArg, InlineField } from "../../api/actions";
+import type { ActionArg, InlineField, DatasetColumn } from "../../api/actions";
 import {
   GRAPHQL_TYPES,
   IR_TYPES,
@@ -35,6 +35,7 @@ import {
   EMPTY_DATASET_COLUMN,
 } from "./types";
 import type { FormState } from "./types";
+import { ColumnGovernanceFields } from "./ColumnGovernanceFields";
 
 interface CommandFormFieldsProps {
   form: FormState;
@@ -110,6 +111,12 @@ export function CommandFormFields({
     cols[ci] = { ...cols[ci], [field]: value };
     setForm({ ...form, outputColumns: cols });
   };
+  // REQ-1679: per-column governance patch on an output column.
+  const patchOutputColumn = (ci: number, patch: Partial<DatasetColumn>) => {
+    const cols = [...form.outputColumns];
+    cols[ci] = { ...cols[ci], ...patch };
+    setForm({ ...form, outputColumns: cols });
+  };
   const removeOutputColumn = (ci: number) =>
     setForm({ ...form, outputColumns: form.outputColumns.filter((_, i) => i !== ci) });
   const bindingStr = (key: string): string => {
@@ -124,9 +131,15 @@ export function CommandFormFields({
     setForm({ ...form, inlineReturnType: [...form.inlineReturnType, { ...EMPTY_INLINE }] });
   const handleRemoveInlineField = (idx: number) =>
     setForm({ ...form, inlineReturnType: form.inlineReturnType.filter((_, i) => i !== idx) });
-  const handleInlineFieldChange = (idx: number, field: keyof InlineField, value: string) => {
+  const handleInlineFieldChange = (idx: number, field: "name" | "type", value: string) => {
     const fields = [...form.inlineReturnType];
     fields[idx] = { ...fields[idx], [field]: value };
+    setForm({ ...form, inlineReturnType: fields });
+  };
+  // REQ-1679: per-field governance patch on an inline return field.
+  const patchInlineField = (idx: number, patch: Partial<InlineField>) => {
+    const fields = [...form.inlineReturnType];
+    fields[idx] = { ...fields[idx], ...patch };
     setForm({ ...form, inlineReturnType: fields });
   };
 
@@ -360,29 +373,37 @@ export function CommandFormFields({
                 {t("commandFormFields.inlineReturnType")}
               </Title>
               {form.inlineReturnType.map((f, i) => (
-                <Group key={i} gap="xs" mb="xs" align="center" wrap="nowrap">
-                  <TextInput
-                    value={f.name}
-                    onChange={(e) => handleInlineFieldChange(i, "name", e.currentTarget.value)}
-                    placeholder={t("commandFormFields.fieldNamePlaceholder")}
-                    style={{ flex: 1, minWidth: 0 }}
+                <React.Fragment key={i}>
+                  <Group gap="xs" mb="xs" align="center" wrap="nowrap">
+                    <TextInput
+                      value={f.name}
+                      onChange={(e) => handleInlineFieldChange(i, "name", e.currentTarget.value)}
+                      placeholder={t("commandFormFields.fieldNamePlaceholder")}
+                      style={{ flex: 1, minWidth: 0 }}
+                    />
+                    <Select
+                      value={f.type}
+                      onChange={(val) => handleInlineFieldChange(i, "type", val ?? "String")}
+                      data={GRAPHQL_TYPES}
+                      allowDeselect={false}
+                      w={120}
+                    />
+                    <ActionIcon
+                      variant="subtle"
+                      color="red"
+                      aria-label={t("commandFormFields.removeField", { name: f.name || i + 1 })}
+                      onClick={() => handleRemoveInlineField(i)}
+                    >
+                      <X size={14} />
+                    </ActionIcon>
+                  </Group>
+                  {/* REQ-1679: the webhook's response is governed like a table's rows. */}
+                  <ColumnGovernanceFields
+                    col={f}
+                    onChange={(patch) => patchInlineField(i, patch)}
+                    testId={`inline-field-governance-${i}`}
                   />
-                  <Select
-                    value={f.type}
-                    onChange={(val) => handleInlineFieldChange(i, "type", val ?? "String")}
-                    data={GRAPHQL_TYPES}
-                    allowDeselect={false}
-                    w={120}
-                  />
-                  <ActionIcon
-                    variant="subtle"
-                    color="red"
-                    aria-label={t("commandFormFields.removeField", { name: f.name || i + 1 })}
-                    onClick={() => handleRemoveInlineField(i)}
-                  >
-                    <X size={14} />
-                  </ActionIcon>
-                </Group>
+                </React.Fragment>
               ))}
               <Button variant="subtle" size="xs" onClick={handleAddInlineField}>
                 {t("commandFormFields.addField")}
@@ -527,29 +548,37 @@ export function CommandFormFields({
               output dataset columns
             </Title>
             {form.outputColumns.map((col, ci) => (
-              <Group key={ci} gap="xs" mb="xs" align="center" wrap="nowrap">
-                <TextInput
-                  value={col.name}
-                  onChange={(e) => changeOutputColumn(ci, "name", e.currentTarget.value)}
-                  placeholder="column"
-                  style={{ flex: 1, minWidth: 0 }}
+              <React.Fragment key={ci}>
+                <Group gap="xs" mb="xs" align="center" wrap="nowrap">
+                  <TextInput
+                    value={col.name}
+                    onChange={(e) => changeOutputColumn(ci, "name", e.currentTarget.value)}
+                    placeholder="column"
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <Select
+                    value={col.type}
+                    onChange={(val) => changeOutputColumn(ci, "type", val ?? "text")}
+                    data={IR_TYPES}
+                    allowDeselect={false}
+                    w={130}
+                  />
+                  <ActionIcon
+                    variant="subtle"
+                    color="red"
+                    aria-label={`remove output column ${col.name || ci + 1}`}
+                    onClick={() => removeOutputColumn(ci)}
+                  >
+                    <X size={14} />
+                  </ActionIcon>
+                </Group>
+                {/* REQ-1679: the function's response is governed like a table's rows. */}
+                <ColumnGovernanceFields
+                  col={col}
+                  onChange={(patch) => patchOutputColumn(ci, patch)}
+                  testId={`output-column-governance-${ci}`}
                 />
-                <Select
-                  value={col.type}
-                  onChange={(val) => changeOutputColumn(ci, "type", val ?? "text")}
-                  data={IR_TYPES}
-                  allowDeselect={false}
-                  w={130}
-                />
-                <ActionIcon
-                  variant="subtle"
-                  color="red"
-                  aria-label={`remove output column ${col.name || ci + 1}`}
-                  onClick={() => removeOutputColumn(ci)}
-                >
-                  <X size={14} />
-                </ActionIcon>
-              </Group>
+              </React.Fragment>
             ))}
             <Button variant="subtle" size="xs" onClick={addOutputColumn}>
               add output column

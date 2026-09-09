@@ -63,7 +63,7 @@ async def _run_with_org(org_id: str | None, coro):  # REQ-1266
     bound inside it. ``None`` (single-org / default) awaits unbound → the default-org runtime."""
     if org_id is None:
         return await coro
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
 
     token = set_current_org(org_id)
     try:
@@ -333,7 +333,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # cross the run_coroutine_threadsafe boundary). None → default runtime (no bind).
         if self.org_id is None:
             return self._execute_sql_bound(sql, params)
-        from provisa.api.org_runtime import reset_current_org, set_current_org
+        from provisa.core.request_context import reset_current_org, set_current_org
 
         token = set_current_org(self.org_id)
         try:
@@ -1074,14 +1074,14 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         _org_id = ctx.session.org_id  # type: ignore[attr-defined]
         _org_token = None
         if _org_id is not None:
-            from provisa.api.org_runtime import set_current_org
+            from provisa.core.request_context import set_current_org
 
             _org_token = set_current_org(_org_id)
         try:
             self._process_query_stmts(ctx, stmts)
         finally:
             if _org_token is not None:
-                from provisa.api.org_runtime import reset_current_org
+                from provisa.core.request_context import reset_current_org
 
                 reset_current_org(_org_token)
 

@@ -48,6 +48,18 @@
     "bindingCallable": "Python callable (module:attr)",
     "materialize": "Materialize (admin/definer identity)",
     "materializeHint": "On: run as admin, govern the output. Off: run as the caller, govern the inputs.",
-    "argKind": "Argument kind"
+    "argKind": "Argument kind",
+    "colVisibleTo": "Visible to (roles, comma-separated; blank = everyone)",
+    "colVisibleToPlaceholder": "analyst, org_admin",
+    "colUnmaskedTo": "Unmasked to (roles, comma-separated)",
+    "colMask": "Mask",
+    "maskNone": "None",
+    "maskRegex": "Regex",
+    "maskConstant": "Constant",
+    "maskTruncate": "Truncate",
+    "maskPattern": "Pattern",
+    "maskReplace": "Replace",
+    "maskValue": "Value",
+    "maskPrecision": "Precision"
   }
 }

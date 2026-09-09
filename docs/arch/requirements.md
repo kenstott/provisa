@@ -17651,3 +17651,205 @@ A Great Expectations check can be extended with a Python function registered thr
 **Code:** `provisa/dq/catalog.py`, `provisa/dq/worker.py`, `provisa/executor/function_dispatch.py`, `provisa-ui/src/pages/commands/CommandFormFields.tsx`
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-1665 · Lineage {#REQ-1665}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The lineage DAG draws a relation as ONE box whose rows are its columns, the shape the SQL canvas (ERD) uses, with edges running row to row and labelled by the transform. Only the boxes are laid out (ELK layered, left to right); rows are pinned inside their box in a stable order and follow it when dragged. Intermediate computations are boxes too: a CTE or subquery keeps the relation name the lineage already gives it, and the statement's final projection lands in a "result" box, or the view/MV it defines when one is named. A collapsed relation shows its header only and its edges fold onto the box with a count. Columns no edge touches are not drawn; the box footer counts them ("+N unused"), so a wide table referenced by two columns stays two rows tall.
+
+**Use case:** One node per column with a breadthfirst layout spread a table's columns across the canvas and lost which dataset each belonged to; the Model and Lineage views were not compact enough to read.
+
+**Code:** `provisa-ui/src/components/lineage/lineage-layout.ts`, `provisa-ui/src/components/lineage/LineageDag.tsx`
+
+**Tests:** `provisa-ui/src/components/lineage/__tests__/lineage-layout.test.ts`, `provisa-ui/src/components/lineage/__tests__/LineageDag.fit.test.tsx`
+
+### REQ-1666 · Data Products {#REQ-1666}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+A data product's detail lineage is scoped to the product's member tables, their full upstream ancestry, and the tables one hop downstream of them. Data-quality results tables are not part of it even though they are members by inheritance ([REQ-1443](#REQ-1443) clause 10). Every column of a member table is an output of the graph: columns the federation lineage never mentions are added as rows of their table, and all member columns ring as outputs.
+
+**Use case:** The product's tables are what it publishes, so the reader wants the whole published surface, what it is built from, and who consumes it directly — not the checker's plumbing, and not the consumers' consumers.
+
+**Code:** `provisa-ui/src/pages/DataProductsPage.tsx`
+
+**Tests:** `provisa-ui/src/pages/__tests__/data-products-lineage-scope.test.tsx`
+
+### REQ-1667 · Data Products {#REQ-1667}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+A data product's detail lineage is drawn in swimlanes by distance from the product's member tables: "Output Ports" (the members, lane 0), "-1", "-2"… for contributors by longest upstream path (a lane exists only when a box occupies it), and "+1" for direct consumers. Lanes are ELK partitions, so boxes never cross them; dotted vertical rules and lane titles are part of the canvas and pan, zoom and export with it. A member table no edge touches still sits in lane 0. The panel shows the colour legend and a hover button opens the same graph in a 90% modal sharing the inline collapse state.
+
+**Use case:** The product graph has a fixed reading frame — what feeds it, what it publishes, who consumes it — that a free layered layout only implies.
+
+**Code:** `provisa-ui/src/components/lineage/lineage-layout.ts`, `provisa-ui/src/components/lineage/LineageDag.tsx`, `provisa-ui/src/components/lineage/LineageLegend.tsx`, `provisa-ui/src/pages/data-products/DataProductDetailPanel.tsx`
+
+**Tests:** `provisa-ui/src/components/lineage/__tests__/lineage-layout.test.ts`
+
+## 4. Source Connectors
+
+### REQ-1668 · Neo4j Source Registration {#REQ-1668}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A `neo4j` source registers as a persisted query-API source. In the config file a `neo4j` source names host, port and database; each table under it carries `query_template` (the Cypher that produces its rows) and typed columns; `query_template` is forbidden under any other source type. Config load persists the source as an `api_sources` row (type `neo4j`) and each table as an `api_endpoints` row carrying `body_encoding`, `query_template` and `response_normalizer` (new columns), keyed by table name; the admin REST router (`POST /admin/sources/neo4j`, `POST /admin/sources/neo4j/{id}/tables`) persists the same rows instead of process-lifetime dicts. The startup loader restores those three columns, and the event loop lands a neo4j table through the same fetch chain as openapi. Endpoint shape: POST of the transaction-API envelope `{"statements": [{"statement": cypher}]}` to `/db/<database>/tx/commit` (body_encoding `neo4j_tx`), flattened by the `neo4j_tabular` normalizer, which refuses a response carrying errors. The control-plane metadata (`schema_org`) admits `neo4j` in the `api_sources` type check — the SQLite control plane is built from it, and a refused insert must surface: the shared upsert re-raises an INSERT the store refused when its fallback UPDATE matches no row, instead of treating every IntegrityError as a lost insert race.
+
+**Code:** `provisa/neo4j/persist.py`, `provisa/core/config_loader.py`, `provisa/api/admin/neo4j_router.py`, `provisa/api_source/loader.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/database.py`
+
+**Tests:** `tests/unit/test_neo4j_persist.py`, `tests/integration/test_neo4j_config_persist.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1669 · Config Includes {#REQ-1669}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
+
+Config files support `includes:` — a list of fragment paths, resolved relative to the including file, spliced in at parse (recursively, cycles refused). List-valued sections append after the including file's entries; a scalar/mapping key the including file does not set is taken from the fragment; a conflicting value fails the load. `load_control_plane` reads through includes so a wrapper file that only includes the real config works. `start-ui-install.sh --source=<name>` (repeatable) provisions `demo/sources/<name>/compose.yml` as its own compose project `provisa-demo-<name>`, runs its `prime.py` seed, and writes a wrapper config under `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml` whose includes list the base config then each fragment; a source whose `demo/sources/<name>/engine` names an engine other than duckdb is refused under a native start. Shipped fragments: neo4j (source + two Cypher tables + relationships, seeded), mongodb (source only, seeded by db/mongo-init.js), elasticsearch (source + mapping, seeded). Purpose: exercising Register Table by hand against a live instance of each source type.
+
+**Use case:** Composable config files allow users to provision and test against live instances of different source types without recreating configuration or managing multiple config files.
+
+**Code:** `provisa/core/config_loader.py`, `start-ui-install.sh`, `demo/sources/`
+
+**Tests:** `tests/unit/test_config_includes.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1670 · Table Registration {#REQ-1670}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+Register Table on a neo4j source. A neo4j source has no tables to list, so the Register Table form replaces the schema/table pickers with a table name and a Cypher editor and never introspects the source (no schema, table or column lookups, no discover checkbox, no watermark). Preview runs the Cypher through the admin GraphQL query `neo4jPreview(sourceId, cypher)` — up to five rows plus the inferred column types in the IR vocabulary (text, integer, double, boolean, json); a failure returns as `error`, never as a GraphQL error — seeds the columns table from the result, and the form refuses to submit before a preview has typed the columns. Submission carries `queryTemplate` on `TableInput`. Server side, `registerTable` refuses a neo4j table without `queryTemplate` (code `schema.neo4j_query_required`) before the row lands, then persists the same api_sources/api_endpoints rows config load writes ([REQ-1668](#REQ-1668)) and mirrors them into live state; `updateTable` re-persists an edited Cypher; `TableType.queryTemplate` reports the Cypher from the hydrated endpoint map; the REST preview under `/admin/sources/neo4j/{id}/preview` resolves a Source row registered through createSource.
+
+**Use case:** Before this the UI could register a neo4j source but no table on it: introspection listed an empty schema and there was no Cypher input, so a steward had to hand-write config or call the REST router.
+
+**Code:** `provisa/api/admin/_neo4j_registration.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/api/admin/schema_query.py`, `provisa/api/admin/types.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/hooks/useNeo4jPreview.ts`
+
+**Tests:** `tests/unit/test_neo4j_registration.py`, `tests/integration/test_neo4j_register_table.py`, `provisa-ui/src/pages/tables/__tests__/RegisterTableForm.neo4j.test.tsx`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1671 · E2E Testing {#REQ-1671}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Source-to-query e2e through the UI. For each covered source type, a Playwright spec on a live instance drives three screens with no API shortcuts: the Sources form creates the source, the Register Table form registers a table on it (neo4j: table name + Cypher + Preview; mongodb and elasticsearch: the schema and table pickers with engine-introspected columns), and the SQL page runs a SELECT against the registered `<domain>.<table>` name and shows the seeded rows. The live instances are the `demo/sources/<name>` units, provisioned through the one entry point `demo/sources/provision.py` that the demo start also calls, under the compose project prefix `provisa-e2e` on e2e-only ports (neo4j 37474/37687, mongodb 37117, elasticsearch 39200), started in Playwright globalSetup and removed in globalTeardown, in the core lane: the native engine reaches all three on localhost (elasticsearch since [REQ-1672](#REQ-1672)).
+
+**Use case:** The integration harness drives createSource/registerTable as GraphQL mutations and proves the pipeline; nothing before this exercised the forms, so a source type whose form had no path to a table (neo4j before [REQ-1670](#REQ-1670)) went undetected until someone configured it by hand.
+
+**Code:** `provisa-ui/e2e/demo-source-containers.ts`, `provisa-ui/e2e/global-setup.ts`, `provisa-ui/e2e/global-teardown.ts`, `demo/sources/provision.py`
+
+**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`
+
+## 4. Source Connectors
+
+### REQ-1672 · Elasticsearch {#REQ-1672}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Elasticsearch is engine-independent. An engine with no Elasticsearch connector (every native engine: DuckDB, PostgreSQL, SQLAlchemy, the warehouses) reads the source over HTTP: Register Table lists one schema (`default`) and the live indices (or the mapping DSL's tables when the source declares any), types columns from the index mapping flattened the way discovery does (nested `a.b` becomes `a_b`, IR types), and the landing loader reads every document of the index through the scroll API, plucking each registered column by its mapping path (a declared `path` in the mapping DSL wins), and lands the rows through the write face. A registered column the index cannot supply fails the load, never a null column. Trino keeps reading through its connector: the loader is wired only when the bound engine has no `elasticsearch` connector. Basic auth comes from the source's username and the config-declared password secret; TLS from `mapping.tls`.
+
+**Use case:** Elasticsearch had a Trino-only path: on any other engine the source registered and every query failed with nothing to land it. The demo and the e2e run on the native engine, and so do most installs.
+
+**Code:** `provisa/elasticsearch/fetch.py`, `provisa/events/source_loader.py`, `provisa/events/app_wiring.py`, `provisa/api/admin/introspect.py`, `provisa/api/admin/schema_query.py`
+
+**Tests:** `tests/unit/test_elasticsearch_fetch.py`, `tests/integration/test_elasticsearch_native_fetch.py`, `provisa-ui/e2e/source-to-query.spec.ts`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1673 · Source Introspection {#REQ-1673}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Register Table introspects an ATTACH source on a native engine before any table on it is registered. The DuckDB runtime attaches the raw source (loading its connector's extension on the connection it uses) and lists the database's schemas and tables from the attached catalog's information_schema; the backend and EngineRuntime expose `introspect_schemas(source)` and `introspect_tables(source, schema)` seams (None on an engine without one, so a federator keeps its catalog SQL), and the admin `availableSchemas`/`availableTables`/`availableColumnsMetadata` resolvers use them ahead of the catalog-SQL fallback, which addressed a catalog the native engine creates only at first registration. Every DuckDB extension connector (mongo, mssql, snowflake, bigquery, firebird, airport) attaches under the private `_src_<id>` alias and reports it as `raw_alias`, as postgres and sqlite already did: attaching under the bare id collided with the physical catalog the runtime creates under that name ("database with name … already exists"). The Register Table form submits the PHYSICAL schema the table was picked from (or the source's fixed schema) as `schemaName`; it had submitted the domain, which lost the physical location of every source whose schema is not named after the domain (a Mongo database "provisa" registered under "pet_store"). The domain travels in `domainId`; the SQL-plane name of a registered table is the snake form of its alias, reported as the last segment of `dqDataset`.
+
+**Use case:** On the native engine a MongoDB source created in the UI listed no schemas, so no table could be registered on it; the same held for every other extension-attached source type. The source-to-query e2e ([REQ-1671](#REQ-1671)) surfaced it on its first run.
+
+**Code:** `provisa/federation/duckdb_runtime.py`, `provisa/federation/backend.py`, `provisa/federation/runtime.py`, `provisa/federation/connector_duckdb.py`, `provisa/api/admin/schema_query.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`
+
+**Tests:** `tests/unit/test_duckdb_source_introspection.py`, `provisa-ui/e2e/source-to-query.spec.ts`
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-1674 · Landing {#REQ-1674}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Every landing path drives off the registry, not the config file. `registry_view.registered_sources` is the config's Source where the config declares the id (it carries the password reference and the operator's settings) plus a Source built from the control-plane row for every other registered, non-built-in source; `registered_tables` is the control plane's registered tables (semantic sql name, resolved column types) with the config table's landing settings (live block, change signal, watermark, cadence, probe) laid over where declared. The event-loop wiring, the query-time residency check (`ensure_resident`), `materialize_pending` and the landed-table reconcile all read these, so a source created through the Sources page and a table registered through Register Table land exactly like config-declared ones.
+
+**Use case:** A materialize-only source created in the UI (neo4j, mongodb, elasticsearch on the native engine) registered its table, but the first query failed with "schema does not exist": the query path read `state.config`, saw no such source, landed nothing, and the SQL addressed the landed-replica name of a replica that was never written.
+
+**Code:** `provisa/federation/registry_view.py`, `provisa/federation/query_residency.py`, `provisa/federation/backend.py`, `provisa/events/app_wiring.py`
+
+**Tests:** `tests/unit/test_registry_view.py`, `provisa-ui/e2e/source-to-query.spec.ts`
+
+## 4. Source Connectors
+
+### REQ-1675 · Redis {#REQ-1675}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Redis is engine-independent. An engine that does not read Redis live (every native engine) reads the source over redis-py with the Trino connector's own key convention: a table is a key prefix (`<table>:*` in the `default` schema, `required_key_pattern`) and a row is one key's hash (or string) value. Register Table lists one schema (`default`) and the prefixes present in the keyspace (Provisa's own `provisa:*` entries excluded), types a prefix's columns as the key column plus the union of its hashes' fields (`varchar`, a hash stores strings), and the landing loader reads every key of the pattern as a row. A `mapping.tables` entry (the type's mapping DSL, [REQ-251](#REQ-251)) overrides the pattern, key column, value type and columns; a list/zset table needs declared columns and is refused natively rather than read as nothing. Trino keeps its connector: the loader is wired only when the bound engine does not read Redis in place.
+
+**Use case:** Redis had a Trino-only path; on the native engine the source registered and nothing could list or read it. The demo and the e2e run on the native engine.
+
+**Code:** `provisa/redis/fetch.py`, `provisa/events/source_loader.py`, `provisa/events/app_wiring.py`, `provisa/api/admin/introspect.py`, `provisa/api/admin/schema_query.py`
+
+**Tests:** `tests/unit/test_redis_fetch.py`, `tests/integration/test_redis_native_fetch.py`, `provisa-ui/e2e/source-to-query.spec.ts`
+
+## 1. Access Governance & Security
+
+### REQ-1676 · Security {#REQ-1676}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An RLS rule's filter_expr is parsed and validated when it is saved, not when it is first queried. upsert_rls_rule parses the predicate as semantic SQL (the compiler's canonical postgres-flavored dialect, the same `read="postgres"` the govern stage uses), qualifies bare columns to the rule's table (or, for a domain-level rule, to each table in the domain), and resolves every column and table reference against the registered model ([REQ-041](#REQ-041), [REQ-1531](#REQ-1531)). A predicate that fails to parse, names a column or semantic table the model does not have, or is not boolean-typed is refused: the mutation returns a MutationResult failure carrying the parse or resolution error and the rule is not written. Session-variable references (`current_setting('provisa.<var>')`) are valid terms and are not resolved at save time.
+
+**Use case:** The first parse of a saved predicate happens in _qualified_predicate at query time, and a parse failure there fails closed for the role. The administrator saw a successful save; every query for that role then denies with a parse error. Hasura v2 rejects a malformed permission at metadata apply because its bool-exp DSL is resolved against the schema cache before it is stored; Provisa's semantic-SQL predicate can get the same write-time check by running it through the existing validator instead of a new DSL.
+
+**Code:** `provisa/compiler/rls_validate.py`, `provisa/api/admin/schema_mutation.py`
+
+**Tests:** `tests/unit/test_rls_validate.py`, `tests/integration/test_schema_mutation_api.py`
+
+### REQ-1677 · Security {#REQ-1677}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Role inheritance is one parent per role (`parent_role_id`), resolved by walking the chain from the child up, and it covers the whole permission surface, not only capabilities and domain_access ([REQ-215](#REQ-215)). Grants are unioned up the chain: a column's visible_to, writable_by and unmasked_to, and a metric's, function's or webhook's visible_to, hold for a role when they name it or any ancestor. RLS resolves per table with the child taking precedence: the nearest role in the chain that has a rule for the table (its own table rule, else its domain rule) supplies the one predicate that runs; an ancestor's rule is never ANDed or ORed with it. A masked column is masked for a role unless the role or an ancestor is in unmasked_to. rate_limit is inherited when the child sets none. The chain is materialized once per runtime build so every lookup stays keyed by the acting role id. A parent must be an existing role in the same org, may not be the role itself, and may not close a cycle; each is refused at save with the reason. `parent_role_id` is exposed on the admin GraphQL role type and input, on the roles REST router, and on the Security page's role form as "Inherits from". Deleting a role that other roles inherit from is refused naming them.
+
+**Use case:** [REQ-215](#REQ-215) shipped `parent_role_id` on the config model with a flatten_roles() that nothing at runtime called, a repository upsert that never wrote the column, no admin API field and no UI field; docs/architecture.md described RLS, visibility and masking inheritance that did not exist. A child role therefore got none of its parent's grants or filters. Hasura v2's inherited roles OR select filters and refuse to merge mutation permissions; child-precedence over a single parent chain is the rule an administrator can predict from the form.
+
+**Code:** `provisa/security/inheritance.py`, `provisa/core/models.py`, `provisa/core/repositories/role.py`, `provisa/api/app.py`, `provisa/api/app_loaders.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/roles_router.py`, `provisa/api/admin/types.py`, `provisa-ui/src/pages/SecurityPage.tsx`
+
+**Tests:** `tests/unit/test_role_inheritance.py`, `tests/integration/test_schema_mutation_api.py`, `provisa-ui/src/pages/__tests__/SecurityPage.parentRole.test.tsx`
+
+## 0. Architecture & Design Principles
+
+### REQ-1678 · Import Boundaries {#REQ-1678}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+The import-linter contracts in pyproject.toml hold and are enforced. The compiler and core layers reach `provisa.api` today only to read the request context: the current-org and active-environment ContextVars in api.org_runtime (naming.org_catalog, core.secrets, core.environments, federation.engine) and the per-org default row cap in api.app (compiler.sql_gen). Those readings are the request-to-response chain the compiler needs, so the ContextVars, their accessors and the row-cap read move into `provisa.core`, and the API layer sets them there. Two edges are inversions and are redirected: cypher.write_translator calls the governed write pipeline instead of api.data.mutations, and compiler.sql_gen imports a pure VALUES-CTE builder split out of cache.hot_tables rather than the hot-table manager. The `cypher must not import compiler` contract is rewritten to forbid only `provisa.executor` and `provisa.api`, because Cypher lowers to semantic SQL through the compiler by design ([REQ-863](#REQ-863)). `lint-imports` runs in CI and pre-commit so the contracts cannot drift again.
+
+**Use case:** Both contracts are broken at every commit on main and nothing runs the linter, so the layering rules the contracts express are documentation only. A compiler that imports the API layer cannot be unit-tested or reused without the whole application on the path.
+
+**Code:** `pyproject.toml`, `.github/workflows/lint.yml`, `provisa/core/request_context.py`, `provisa/core/limits.py`, `provisa/federation/trino_types.py`, `provisa/cache/values_cte.py`, `provisa/security/mutation_authz.py`, `provisa/compiler/sql_gen.py`, `provisa/federation/engine.py`, `provisa/api/org_runtime.py`, `provisa/api/app.py`
+
+**Tests:** `tests/unit/test_layer_contracts.py`
+
+## 1. Access Governance & Security
+
+### REQ-1679 · Security {#REQ-1679}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A tracked function's or webhook's response is governed like a table's rows. The rows an action returns are bound, before they reach the caller, as a relation whose columns are the action's declared output contract (`output_columns` for a function, [REQ-1159](#REQ-1159); `inline_return_type` / `returns` for a webhook) and run through the one governance stage (`apply_governance`, [REQ-272](#REQ-272)) as a VALUES relation, the same way a hot-table CTE is governed ([REQ-233](#REQ-233)): the role's RLS rule for the action (table-level, keyed by the action's name, or the domain rule of the action's domain) filters the rows; per-column `visible_to` drops columns; per-column mask rules mask them; `unmasked_to` exempts; role inheritance resolves the chain ([REQ-1677](#REQ-1677)). Actions carry per-column `visible_to`, `unmasked_to` and mask settings on their output columns and accept RLS rules in upsert_rls_rule with the action name as the target, validated against the output contract ([REQ-1676](#REQ-1676)). A response whose shape does not match the declared contract is refused, not passed through ungoverned. The admin test-invoke surface reports the rules applied instead of the note that none apply, and the audit log records them as it does for a table read. The write gate ([REQ-869](#REQ-869), writable_by + capability) is unchanged.
+
+**Use case:** Remote GraphQL tables are landed as replicas and get RLS, masking and visibility like any table; a function or webhook is invoked live and its response is returned verbatim — actions_router says so in the test-invoke payload. That is the one place a governed deployment still trusts an upstream to enforce policy, and it is the same gap Hasura has for actions. Governing the response through the existing VALUES-CTE path closes it with no second pipeline.
+
+**Code:** `provisa/api/data/action_governance.py`, `provisa/api/data/action_exec.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/actions_router.py`, `provisa/compiler/rls.py`, `provisa/security/inheritance.py`, `provisa/core/repositories/rls.py`, `provisa/core/models.py`, `provisa/core/schema_org.py`, `provisa-ui/src/pages/SecurityPage.tsx`, `provisa-ui/src/pages/commands/ColumnGovernanceFields.tsx`, `provisa-ui/src/pages/commands/CommandFormFields.tsx`
+
+**Tests:** `tests/unit/test_action_governance.py`, `tests/integration/test_action_governance.py`, `provisa-ui/src/pages/__tests__/SecurityPage.actionRule.test.tsx`, `provisa-ui/src/__tests__/CommandFormFields.test.tsx`

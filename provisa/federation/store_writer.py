@@ -313,7 +313,7 @@ async def land(
     # the operator's disk exactly as a materialized view does — an org that hit its ceiling by
     # landing sources rather than by materializing has the same effect on the bill and gets the
     # same rejection. Raises before the connection is opened, so nothing is half-written.
-    from provisa.api.org_runtime import current_org
+    from provisa.core.request_context import current_org
     from provisa.storage.quota import require_storage_headroom
 
     org_id = current_org.get()

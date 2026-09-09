@@ -127,7 +127,13 @@ def surface(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "provisa.api.app.state",
         types.SimpleNamespace(
-            tenant_db=_TenantDb(tmp_path), config=object(), contexts={}, multitenancy=False
+            tenant_db=_TenantDb(tmp_path),
+            # REQ-1659: the listing links back at the org's public origin, read off config.mail.
+            config=types.SimpleNamespace(
+                mail=types.SimpleNamespace(base_url="https://provisa.test")
+            ),
+            contexts={},
+            multitenancy=False,
         ),
         raising=False,
     )
@@ -352,7 +358,7 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
     monkeypatch.setattr(
         sync_mod,
         "build_snapshot",
-        lambda config, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None: (
+        lambda config, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None: (
             object()
         ),
     )

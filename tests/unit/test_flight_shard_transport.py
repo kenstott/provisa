@@ -86,7 +86,7 @@ def connections():
 @pytest.fixture
 def set_org(request):
     """Bind the org the query is running under, and unbind it when the test ends."""
-    from provisa.api.org_runtime import current_org
+    from provisa.core.request_context import current_org
 
     def _set(org_id: str | None) -> None:
         token = current_org.set(org_id)

@@ -19,7 +19,7 @@ pip-audit:
 	pip-audit
 
 lint-imports:
-	lint-contracts
+	.venv/bin/lint-imports
 
 sync-reqs:
 	python scripts/gen_requirements_md.py

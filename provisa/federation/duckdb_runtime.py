@@ -160,6 +160,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._store_attached = False  # materialization-store ATTACH (distinct from source attaches)
         self._phys_catalogs: set[str] = set()  # in-memory catalogs holding the physical views
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
+        self._ext_loaded: set[str] = (
+            set()
+        )  # community/extension connectors LOADed on this connection
         self._control_plane_attached = False  # provisa_admin catalog (native path only)
         # SQLite control plane only: the engine attaches a private snapshot of the tenant DB, never
         # the live file (see _refresh_control_plane_snapshot). These track that snapshot.
@@ -209,26 +212,85 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 self._con.execute(secret_ddl)
             scan = details["view_ddl"].split(" AS ", 1)[1]
             self._con.execute(f"CREATE VIEW IF NOT EXISTS {phys} AS {scan}")
-        else:  # ATTACH postgres / sqlite once, then view the remote table
-            if source.type.value == "sqlite" and not self._sqlite_loaded:
-                self._con.execute("INSTALL sqlite")
-                self._con.execute("LOAD sqlite")
-                self._sqlite_loaded = True
-            elif source.type.value == "postgresql" and not self._pg_ext_loaded:
-                self._con.execute("INSTALL postgres")
-                self._con.execute("LOAD postgres")
-                self._pg_ext_loaded = True
-            # The connector attaches the raw remote under a private alias (distinct from the physical
-            # catalog) and declares WHERE it exposes the table: postgres keeps its own (registered)
-            # schema; sqlite lands everything under ``main``. The runtime composes the reference with
-            # the actual table, so no per-source-type layout is hardcoded here.
-            raw_alias = details.get("raw_alias", source.id)
-            if raw_alias not in self._raw_attached:
-                self._con.execute(details["attach"])
-                self._raw_attached.add(raw_alias)
+        else:  # ATTACH postgres / sqlite / extension source once, then view the remote table
+            raw_alias = self._attach_raw(source, details)
             remote_schema = details.get("remote_schema", source.schema_name)
             remote = f'"{raw_alias}"."{remote_schema}"."{source.table_name}"'
             self._con.execute(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {remote}")
+
+    def _attach_raw(self, source: Any, details: dict) -> str:
+        """ATTACH the source's remote database under its private alias (once), loading the DuckDB
+        extension its connector rides on first, and return the alias. The connector declares WHERE
+        it exposes tables (postgres keeps its own schema, sqlite lands everything under ``main``,
+        mongo maps databases to schemas); the runtime never hardcodes a per-type layout."""
+        if source.type.value == "sqlite" and not self._sqlite_loaded:
+            self._con.execute("INSTALL sqlite")
+            self._con.execute("LOAD sqlite")
+            self._sqlite_loaded = True
+        elif source.type.value == "postgresql" and not self._pg_ext_loaded:
+            self._con.execute("INSTALL postgres")
+            self._con.execute("LOAD postgres")
+            self._pg_ext_loaded = True
+        else:
+            # REQ-1673: a community-extension connector (mongo, mssql, firebird, …) needs its
+            # extension loaded on THIS connection — the startup probe loaded it on another one.
+            connector = self._engine.connector_for(source.type.value)
+            ext = getattr(connector, "extension", None)
+            if ext and ext not in self._ext_loaded:
+                if getattr(connector, "install_from_community", False):
+                    self._con.execute(f"INSTALL {ext} FROM community")
+                else:
+                    self._con.execute(f"INSTALL {ext}")
+                self._con.execute(f"LOAD {ext}")
+                self._ext_loaded.add(ext)
+        raw_alias = details.get("raw_alias", source.id)
+        if raw_alias not in self._raw_attached:
+            self._con.execute(details["attach"])
+            self._raw_attached.add(raw_alias)
+        return raw_alias
+
+    # -- source introspection without a registered table (REQ-1673) -------------------------------
+
+    def _attached_alias(self, source: Any) -> str | None:
+        """The raw-attached alias for an ATTACH source; None for a scanner (view_ddl) source, which
+        has no database to list schemas and tables from."""
+        details = self._engine.resolve(source).details
+        if "view_ddl" in details or "attach" not in details:
+            return None
+        return self._attach_raw(source, details)
+
+    def introspect_schemas(self, source: Any) -> list[str]:
+        """The schemas of the source's remote database, read from the attached catalog's
+        information_schema — what Register Table lists for a source with no table registered yet."""
+        alias = self._attached_alias(source)
+        if alias is None:
+            return []
+        cur = self._con.cursor()
+        try:
+            res = cur.execute(
+                "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = ? "
+                "AND schema_name NOT IN ('information_schema', 'pg_catalog') ORDER BY schema_name",
+                [alias],
+            )
+            return [r[0] for r in res.fetchall()]
+        finally:
+            cur.close()
+
+    def introspect_tables(self, source: Any, schema_name: str) -> list[str]:
+        """The tables of one schema of the source's remote database (see introspect_schemas)."""
+        alias = self._attached_alias(source)
+        if alias is None:
+            return []
+        cur = self._con.cursor()
+        try:
+            res = cur.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_catalog = ? "
+                "AND table_schema = ? ORDER BY table_name",
+                [alias, schema_name],
+            )
+            return [r[0] for r in res.fetchall()]
+        finally:
+            cur.close()
 
     def attach_control_plane(self, db_path: str, schema_name: str, dialect: str = "sqlite") -> None:
         """Attach the tenant control-plane DB as the ``provisa_admin`` catalog.
@@ -380,7 +442,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         REQ-1622: and WHICH environment's, because a landed table is named from the source id, which
         every environment shares. Prod keeps ``mat``/``main``; another environment gets its own
         namespace, or is refused when the store has none to give."""
-        from provisa.api.org_runtime import active_env
+        from provisa.core.request_context import active_env
         from provisa.federation.store_scope import store_schema
 
         return store_schema(self._store_dsn(), active_env())

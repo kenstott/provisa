@@ -24,7 +24,8 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.api.errors import ApiError
-from provisa.api.org_runtime import OrgRegistry, OrgRuntime, current_org
+from provisa.api.org_runtime import OrgRegistry, OrgRuntime
+from provisa.core.request_context import current_org
 from provisa.federation.engine import FederationEngine, MaterializeStoreUnconfigured
 from provisa.storage.byo import org_has_byo_store, org_store_dsn
 from provisa.storage.quota import (

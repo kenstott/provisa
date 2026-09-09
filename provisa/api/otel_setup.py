@@ -61,7 +61,7 @@ class SpanBuffer:  # REQ-302, REQ-303
         self._lock = Lock()
 
     def push(self, span: Any) -> None:
-        from provisa.api.org_runtime import current_org
+        from provisa.core.request_context import current_org
 
         ctx = span.get_span_context()
         entry = {

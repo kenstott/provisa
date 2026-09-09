@@ -229,14 +229,14 @@ class TableProcessor(ABC):
         async def _fire() -> None:
             tok = None
             if org_id is not None:
-                from provisa.api.org_runtime import set_current_org
+                from provisa.core.request_context import set_current_org
 
                 tok = set_current_org(org_id)
             try:
                 await self.inject(probe_factory())
             finally:
                 if tok is not None:
-                    from provisa.api.org_runtime import reset_current_org
+                    from provisa.core.request_context import reset_current_org
 
                     reset_current_org(tok)
 

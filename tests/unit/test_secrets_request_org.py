@@ -22,7 +22,7 @@ from __future__ import annotations
 import pytest
 
 from provisa.api import app as app_module
-from provisa.api.org_runtime import current_org
+from provisa.core.request_context import current_org
 from provisa.core import secrets_store
 
 

@@ -113,7 +113,7 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
     # Hot table bypass: skip REST + the engine materialization entirely
     hot_mgr = getattr(state, "hot_manager", None)
     if hot_mgr is not None and hot_mgr.is_hot(table_name):
-        from provisa.cache.hot_tables import build_values_cte_sql
+        from provisa.cache.values_cte import build_values_cte_sql
         from provisa.compiler.nf_extractor import extract_nf_args
 
         entry = hot_mgr.get_entry(table_name)
@@ -213,7 +213,7 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         for _dtn in _join_dropped:
             rewritten_sql = drop_union_branches_for_table(rewritten_sql, _dtn)
     if _join_values_ctes:
-        from provisa.cache.hot_tables import build_values_cte_sql
+        from provisa.cache.values_cte import build_values_cte_sql
 
         for _tn, _entry in _join_values_ctes.items():
             rewritten_sql = build_values_cte_sql(rewritten_sql, _tn, _entry)
@@ -247,7 +247,8 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     VALUES CTE, then applies WHERE/ORDER BY/LIMIT vithe engine (Phase 2 only).
     """
     from provisa.compiler.nf_extractor import extract_nf_args
-    from provisa.cache.hot_tables import HotTableEntry, build_values_cte_sql
+    from provisa.cache.hot_tables import HotTableEntry
+    from provisa.cache.values_cte import build_values_cte_sql
     from provisa.source_adapters import grpc_remote_adapter
 
     reg = getattr(state, "grpc_remote_sources", {}).get(source_id)
@@ -411,7 +412,7 @@ async def _execute_engine_standard(
     Returns (result, physical_sql, engine_ms, per_source_ms, dataloader_srcs, hydration_ms,
              hydration_rows, hydration_cache_hits).
     """
-    from provisa.cache.hot_tables import build_values_cte_sql
+    from provisa.cache.values_cte import build_values_cte_sql
     from provisa.api_source.engine_cache import rewrite_all_from_cache
     from provisa.compiler.hints import extract_hints
 
@@ -539,7 +540,7 @@ async def _exec_nodes_query(compiled, ctx, state, decision):
     # joining to a graphql_remote-sourced table) — it needs the same pre-engine hydrate +
     # materialize-to-cache pass as _execute_engine_standard, or those tables are empty/absent in the
     # engine and the relation resolves to null on every row.
-    from provisa.cache.hot_tables import build_values_cte_sql
+    from provisa.cache.values_cte import build_values_cte_sql
     from provisa.api_source.engine_cache import rewrite_all_from_cache
 
     await _hydrate_api_tables_before_engine(compiled, ctx, state)
@@ -786,7 +787,7 @@ async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redi
         for _dtn in _ctas_dropped:
             _ctas_exec_sql = drop_union_branches_for_table(_ctas_exec_sql, _dtn)
     if _ctas_values_ctes:
-        from provisa.cache.hot_tables import build_values_cte_sql
+        from provisa.cache.values_cte import build_values_cte_sql
 
         for _tn, _entry in _ctas_values_ctes.items():
             _ctas_exec_sql = build_values_cte_sql(_ctas_exec_sql, _tn, _entry)

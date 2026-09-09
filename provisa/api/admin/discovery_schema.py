@@ -282,17 +282,35 @@ def _call_discover(
         return adapter.discover_schema(properties)
 
     if source_type == "cassandra":
-        # REQ-252: Cassandra schema lives in system_schema and requires a live CQL session,
-        # which Provisa does not maintain. Rather than return empty columns, direct the steward
-        # to provide columns explicitly.
-        raise ApiError(
-            501,
-            "discovery.cassandra_discovery_unsupported",
-            (
-                "Cassandra schema discovery requires a live CQL session, which is not "
-                "available. Define columns manually for this source."
-            ),
-        )
+        # REQ-1676: the cluster's schema metadata over CQL (the ``cassandra`` extra). A keyspace
+        # and table hint name what to describe; a transport error raises — never empty columns.
+        from provisa.cassandra.fetch import CassandraConnection, table_metadata
+
+        keyspace, table = hints.keyspace, hints.table
+        if not keyspace or not table:
+            raise ApiError(
+                400,
+                "discovery.cassandra_hints_required",
+                "Cassandra discovery requires 'keyspace' and 'table' hints.",
+            )
+        try:
+            meta = table_metadata(
+                CassandraConnection.build(
+                    row["host"], int(row["port"]), username=row.get("username")
+                ),
+                keyspace,
+                table,
+            )
+        except Exception as e:
+            raise ApiError(
+                502,
+                "discovery.cassandra_metadata_failed",
+                f"Failed to read Cassandra metadata for {keyspace}.{table}: {e}",
+                keyspace=keyspace,
+                table=table,
+                error=str(e),
+            )
+        return adapter.discover_schema(meta)
 
     if source_type == "prometheus":
         # Prometheus discover_schema expects metric_metadata dict + metric_name.

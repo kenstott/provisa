@@ -205,7 +205,7 @@ async def _optimize_and_route(
     decision, the resolved default source, and whether optimization changed the SQL."""
     from provisa.api.data.materialization import _materialize_api_to_engine_cache
     from provisa.api_source.engine_cache import rewrite_all_from_cache
-    from provisa.cache.hot_tables import build_values_cte_sql
+    from provisa.cache.values_cte import build_values_cte_sql
     from provisa.compiler.stage2 import extract_sources, reduce_sources_for_routing
     from provisa.transpiler.router import Route, decide_route
 
@@ -355,7 +355,7 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
     """
     import sqlglot.expressions as _exp
 
-    from provisa.api.org_runtime import active_env
+    from provisa.core.request_context import active_env
     from provisa.core.environments import PROD
 
     env = active_env()
@@ -435,7 +435,7 @@ async def _attach_tier_caps(plan: _Plan, state: Any) -> _Plan:
     — resolves no caps and the plan runs as authored; the tier gate is a SaaS monetization boundary,
     not a safety limit.
     """
-    from provisa.api.org_runtime import current_org
+    from provisa.core.request_context import current_org
     from provisa.core.commerce import caps_for_org, tier_session_hints
 
     resolved = await caps_for_org(state, current_org.get() or getattr(state, "org_id", None))

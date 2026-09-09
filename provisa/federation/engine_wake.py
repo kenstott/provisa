@@ -377,7 +377,7 @@ def prewarm_engine(state: Any, org_id: str | None) -> None:
         org_id = None
 
     async def _run() -> None:
-        from provisa.api.org_runtime import reset_current_org, set_current_org
+        from provisa.core.request_context import reset_current_org, set_current_org
         from provisa.otel_compat import detached_trace_context
 
         # ensure_engine_awake reads the active org off the ContextVar, and this task does not
@@ -464,7 +464,8 @@ def active_shard(state: Any) -> str | None:
     if not k8s.provisioning_available():
         return None
 
-    from provisa.api.org_runtime import active_env, current_org, runtime_key
+    from provisa.api.org_runtime import runtime_key
+    from provisa.core.request_context import active_env, current_org
 
     org_id = current_org.get()
     if org_id is None:
@@ -584,7 +585,8 @@ async def _rebuild_env_runtime(state: Any, org_id: str, env: str, shard: str) ->
 
     Prod IS the org's runtime, already rebuilt by the caller, so it is not rebuilt twice here.
     """
-    from provisa.api.org_runtime import PROD, runtime_key
+    from provisa.api.org_runtime import runtime_key
+    from provisa.core.request_context import PROD
 
     if env == PROD:
         return
@@ -618,7 +620,8 @@ async def ensure_engine_awake(state: Any) -> None:
     if not k8s.provisioning_available():
         return
 
-    from provisa.api.org_runtime import active_env, current_org, runtime_key
+    from provisa.api.org_runtime import runtime_key
+    from provisa.core.request_context import active_env, current_org
 
     org_id = current_org.get()
     # REQ-1488/REQ-1529: which COPY of the model this query reads. It selects the runtime whose

@@ -83,7 +83,7 @@ def test_recorded_catalog_is_the_one_create_catalog_makes(state, source):
 
 def test_non_default_org_prefixes_the_source_id_derived_name(state):
     from provisa.api.app_loaders import _populate_source_catalog_names
-    from provisa.api.org_runtime import current_org
+    from provisa.core.request_context import current_org
 
     token = current_org.set("tenant-a")
     try:

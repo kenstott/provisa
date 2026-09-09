@@ -143,6 +143,7 @@ def _role_from_row(row) -> RoleType:
         # REQ-1602: the rights this role is shown but does not hold.
         demonstrated=list(row["demonstrated"]),
         rate_limit=rate_limit,
+        parent_role_id=row.get("parent_role_id"),  # REQ-1677
     )
 
 
@@ -210,6 +211,7 @@ def _rls_from_row(row) -> RLSRuleType:
         domain_id=row["domain_id"],
         role_id=row["role_id"],
         filter_expr=row["filter_expr"],
+        action_name=row.get("action_name"),  # REQ-1679
     )
 
 

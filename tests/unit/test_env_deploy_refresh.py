@@ -121,7 +121,7 @@ def registry(monkeypatch):
         org_registry = reg
 
     async def _rebuild_schemas(raw_config=None):
-        from provisa.api.org_runtime import current_env, current_org
+        from provisa.core.request_context import current_env, current_org
 
         recompiled.append((current_org.get(), current_env.get()))
 
@@ -155,7 +155,7 @@ class TestWhatTheRouterDoesWithTheAnswer:
         assert recompiled == [(ORG, "feature-x")]
 
     async def test_the_binding_is_released_afterwards(self, registry):
-        from provisa.api.org_runtime import current_env, current_org
+        from provisa.core.request_context import current_env, current_org
 
         await er._refresh(ORG, "dev", connectivity=False)
         assert current_org.get() is None and current_env.get() is None

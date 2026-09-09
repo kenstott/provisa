@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.api.org_runtime import (
+from provisa.core.request_context import (
     reset_current_env,
     reset_current_org,
     set_current_env,

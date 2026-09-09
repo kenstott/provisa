@@ -137,7 +137,9 @@ docs = ["mkdocs-material", "pymdown-extensions", "mkdocs-static-i18n"]
 mysql = ["aiomysql"]
 sqlserver = ["aioodbc"]
 oracle = ["oracledb"]
-all-drivers = ["aiomysql", "aioodbc", "oracledb"]
+# REQ-1676: Cassandra read natively over CQL (Apache-2.0). The Trino connector needs nothing here.
+cassandra = ["cassandra-driver>=3.29"]
+all-drivers = ["aiomysql", "aioodbc", "oracledb", "cassandra-driver>=3.29"]
 # REQ-1443: external data-quality checker, invoked out-of-process (never linked). Only the
 # postgres package is needed — the checker aims at Provisa's own pgwire endpoint so it scans the
 # FEDERATED view, which is why a Snowflake- or Iceberg-backed table needs no per-warehouse package.
@@ -362,11 +364,13 @@ type = "forbidden"
 source_modules = ["provisa.compiler"]
 forbidden_modules = ["provisa.executor", "provisa.api"]
 
+# REQ-1678: Cypher lowers to semantic SQL through the compiler by design (REQ-863), so the
+# compiler is allowed; the executor and the API layer are not.
 [[tool.importlinter.contracts]]
-name = "cypher must not import compiler"
+name = "cypher must not import executor"
 type = "forbidden"
 source_modules = ["provisa.cypher"]
-forbidden_modules = ["provisa.compiler", "provisa.executor", "provisa.api"]
+forbidden_modules = ["provisa.executor", "provisa.api"]
 
 [tool.ruff]
 target-version = "py312"

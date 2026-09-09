@@ -41,6 +41,7 @@ OWNERS: dict[str, set[str]] = {
         "provisa/executor/drivers/duckdb_driver.py",
     },
     "trino": {
+        "provisa/federation/trino_types.py",  # REQ-1678: the connection/exception alias leaf
         "provisa/federation/trino_lifecycle.py",
         "provisa/federation/backend.py",
         "provisa/executor/trino.py",
@@ -56,6 +57,9 @@ OWNERS: dict[str, set[str]] = {
     "snowflake.connector": {
         "provisa/federation/snowflake_runtime.py",
         "provisa/executor/drivers/snowflake.py",
+        # Horizon publishing maps the connector's own error class; the publisher IS the owner of
+        # that surface (REQ-1372), the way the runtime owns the connection.
+        "provisa/api/metadata_export/snowflake_horizon.py",
     },
     "snowflake.sqlalchemy": set(),
     "databricks.sql": set(),
@@ -88,6 +92,7 @@ OWNERS: dict[str, set[str]] = {
     "redis": {
         "provisa/cache/store.py",  # caching feature, not a federated source — see Context
         "provisa/api/admin/system_health.py",  # health-check ping, not a federated source
+        "provisa/redis/fetch.py",  # REQ-1675: the native (non-Trino) Redis source reader
     },
     "grpc": {
         "provisa/grpc_remote/executor.py",

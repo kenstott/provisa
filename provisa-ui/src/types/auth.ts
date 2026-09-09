@@ -79,6 +79,7 @@ export interface Role {
   demonstrated: Capability[];
   domain_access: string[];
   rateLimit?: RoleRateLimit | null; // REQ-1174: per-role rate + query-complexity limits
+  parentRoleId?: string | null; // REQ-1677: the role this one inherits from
 }
 
 /** A single role:domain pair from a user's identity claims or DB assignments. */

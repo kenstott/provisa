@@ -28,8 +28,8 @@ from provisa.compiler.mutation_gen import (
     compile_mutation,
     inject_rls_into_mutation,
 )
-from provisa.api.data.action_exec import invoke_tracked_function
-from provisa.security.mutation_authz import require_mutation_write
+from provisa.api.data.action_exec import invoke_tracked_function, require_mutation_write
+from provisa.security.mutation_authz import ColumnNotWritable, check_writable_by
 from provisa.transpiler.transpile import transpile
 
 
@@ -37,32 +37,17 @@ log = logging.getLogger(__name__)
 
 
 def _check_writable_by(table_meta, columns: list[str], role_id: str):
-    """Raise 403 if any column restricts write access and the role is not allowed."""
-    table_cols = (
-        {c["column_name"]: c for c in table_meta.columns} if hasattr(table_meta, "columns") else {}
-    )
-    if not table_cols:
-        # Fall back to dict-style access (from state.tables)
-        table_cols = {
-            c.get("column_name", c.get("name", "")): c for c in getattr(table_meta, "columns", [])
-        }
-    for col_name in columns:
-        col_meta = table_cols.get(col_name)
-        if not col_meta:
-            continue
-        writable_by = (
-            col_meta.get("writable_by", [])
-            if isinstance(col_meta, dict)
-            else getattr(col_meta, "writable_by", [])
-        )
-        if role_id not in writable_by:
-            raise ApiError(
-                403,
-                "data.column_not_writable",
-                f"Role {role_id!r} does not have write access to column {col_name!r}",
-                role=role_id,
-                column=col_name,
-            )
+    """Raise 403 if any column restricts write access and the role is not allowed (REQ-663)."""
+    try:
+        check_writable_by(table_meta, columns, role_id)
+    except ColumnNotWritable as exc:
+        raise ApiError(
+            403,
+            "data.column_not_writable",
+            str(exc),
+            role=exc.role_id,
+            column=exc.column,
+        ) from exc
 
 
 _ACTION_FILTER_ARGS = {"where", "order_by", "limit", "offset"}

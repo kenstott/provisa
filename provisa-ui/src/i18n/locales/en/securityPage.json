@@ -13,6 +13,10 @@
     "roleIdPlaceholder": "analyst",
     "capabilities": "Capabilities",
     "domainAccess": "Domain Access",
+    "parentRole": "Inherits from",
+    "parentRoleNone": "No parent",
+    "parentRoleHelp": "The role's grants, column visibility and RLS rules are inherited; this role's own RLS rule for a table replaces the parent's.",
+    "labelParentRole": "Inherits from:",
     "allDomains": "All Domains",
     "save": "Save",
     "cancel": "Cancel",
@@ -51,6 +55,11 @@
     "rolePurposeTitle": "What roles are for",
     "rolePurposeBody": "A role is the unit every other permission is written against. Its capabilities decide which operations it may run, and its domain access decides which parts of the model it can reach at all. Row-level rules, and the access checks on every surface, name a role rather than a person — so what someone can see and do is changed by changing the role they hold.",
     "rolePurposeAdd": "A role also carries its own ceilings: requests per second, and limits on query depth, node count, and execution time. That is how a role can be given reach without being given unbounded cost — an expensive query is refused by the role that issued it, not by the source it would have hit.",
-    "rolePurposeAria": "About roles"
+    "rolePurposeAria": "About roles",
+    "applyToAction": "Action (function or webhook)",
+    "action": "Action",
+    "actionPrefix": "action:",
+    "loadActionsFailed": "Could not load actions: {{message}}",
+    "labelAction": "Action:"
   }
 }

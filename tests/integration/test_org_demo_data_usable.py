@@ -65,7 +65,7 @@ def _headers(username: str) -> dict[str, str]:
 
 async def _drop_org_schemas(state) -> None:
     """Drop every schema derived from _ORG_ID so a rerun starts from a genuinely new org."""
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
 
     # The tenant_db shim resolves the ContextVar-selected runtime; bind the default org explicitly
     # so this never depends on whatever a previous test left bound.

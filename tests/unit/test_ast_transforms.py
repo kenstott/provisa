@@ -14,7 +14,8 @@ scope, alias binding, and WITH injection point from the parsed tree, never from 
 
 import sqlglot
 
-from provisa.cache.hot_tables import HotTableEntry, HotTableManager, build_values_cte_sql
+from provisa.cache.hot_tables import HotTableEntry, HotTableManager
+from provisa.cache.values_cte import build_values_cte_sql
 from provisa.compiler.sql_gen import CompiledQuery, rewrite_hot_joins
 
 

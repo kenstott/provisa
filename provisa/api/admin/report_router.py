@@ -137,7 +137,7 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
     from provisa.api.metadata_export.builder import build_snapshot
     from provisa.api.metadata_export.dq_outcomes import read_latest_outcomes
     from provisa.api.metadata_export.publishing import GOVERNED_DIALECT, _model_for_export
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
     from provisa.core.repositories import glossary as glossary_repo
 
     token = set_current_org(org_id)
@@ -172,7 +172,7 @@ async def model_report(
     domains: "list[str] | None" = Query(default=None),
 ) -> Response:
     """The workbook. One way only — there is deliberately no upload counterpart."""
-    from provisa.api.org_runtime import active_env
+    from provisa.core.request_context import active_env
 
     org_id = require_active_org_id(request)
     included = tuple(name for name in wb.OBJECT_SHEETS if has_right(request, SHEET_RIGHTS[name]))

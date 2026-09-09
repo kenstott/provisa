@@ -83,7 +83,7 @@ Independently assigned capabilities with optional role hierarchy via `parent_rol
 
 ### Role Inheritance
 
-Roles can inherit capabilities and domain access from a parent role via `parent_role_id`. (REQ-215) The hierarchy is flattened at startup — child roles merge their parent's capabilities and domain access with their own. (REQ-215)
+Roles can inherit from one parent role via `parent_role_id`, set in config or on the Security page as "Inherits from". (REQ-215) The chain is folded in at startup: a child holds the union of its ancestors' capabilities and domain access, every column, metric, function and webhook grant that names an ancestor, and the ancestors' RLS rules per table with the child taking precedence — the nearest role in the chain with a rule for a table supplies that table's predicate, and a rule saved for the child replaces the parent's for that table. (REQ-1677)
 
 ```yaml
 roles:
@@ -184,6 +184,18 @@ Masking is defined once per column — it is a property of the column, not the r
 | `truncate` | Date/Timestamp | `DATE_TRUNC(precision, col)` |
 
 Masking is pushed into the SQL SELECT projection — the database returns masked data. (REQ-263) Unmasked data never crosses the wire for masked roles. (REQ-263) Masked columns are also blocked from `WHERE` and `HAVING` clauses (Layer 5 predicate guard) to prevent inference of the unmasked value through filtering. (REQ-263, REQ-531)
+
+## Governing Action Responses
+
+A tracked function's or webhook's response is governed like a table's rows. (REQ-1679) The rows an action returns are bound as a relation whose columns are the action's declared output contract — `output_columns` for a function, `inline_return_type` for a webhook, or the object properties of a function's array `return_schema` — and that relation runs through the same governance stage every table read runs through, over a VALUES CTE holding the rows. (REQ-1679) Nothing about RLS, masking or visibility is reimplemented for actions.
+
+Three things apply, in the same order as for a table. (REQ-1679)
+
+- A row filter: the role's RLS rule saved against the action by name (`upsertRlsRule` with `actionName`), or, when the action has none of its own, the domain rule of the action's domain. The predicate is validated against the contract at save the way a table rule is. (REQ-1676)
+- Column visibility: a contract column that declares `visible_to` is dropped for a role the list does not name; a column that declares none is part of the action's public shape and stays.
+- Masks: a contract column may carry `mask_type`, `mask_pattern`, `mask_replace`, `mask_value`, `mask_precision` and `unmasked_to`, the same fields a table column carries.
+
+Role inheritance resolves the chain for all three. (REQ-1677) A response that returns a column outside the declared contract is refused with a 502 rather than passed through ungoverned. An action that declares no column contract returns a scalar and has nothing to bind; it is returned as is. The admin test-invoke reports the filters, exclusions and masks that applied, and the governed statement is written to the query audit log.
 
 ## Sampling
 

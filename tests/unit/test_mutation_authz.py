@@ -158,13 +158,25 @@ def test_admin_bypass_withheld_still_allows_a_listed_role():
 
 
 def test_require_mutation_write_honours_withheld_bypass():
-    from provisa.api.errors import ApiError
+    # REQ-1678: the security gate raises its own error; the API layer renders it as the 403.
+    from provisa.security.mutation_authz import MutationNotPermitted
 
     action = {"kind": "mutation", "writable_by": ["someone-else"]}
     role = _role("root", Capability.ADMIN.value)
     require_mutation_write(action, role, "editThing")  # bypass granted: allowed
-    with pytest.raises(ApiError) as excinfo:
+    with pytest.raises(MutationNotPermitted) as excinfo:
         require_mutation_write(action, role, "editThing", admin_bypass=False)
+    assert excinfo.value.field_name == "editThing"
+
+
+def test_api_renders_withheld_bypass_as_403():  # REQ-1678
+    from provisa.api.data.action_exec import require_mutation_write as api_gate
+    from provisa.api.errors import ApiError
+
+    action = {"kind": "mutation", "writable_by": ["someone-else"]}
+    role = _role("root", Capability.ADMIN.value)
+    with pytest.raises(ApiError) as excinfo:
+        api_gate(action, role, "editThing", admin_bypass=False)
     assert excinfo.value.status_code == 403
 
 

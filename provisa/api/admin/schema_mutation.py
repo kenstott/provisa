@@ -386,7 +386,7 @@ async def _refuse_over_source_limit(source_id: str) -> MutationResult | None:  #
     None on a self-hosted deployment — there is no subscription, so there is no ceiling (REQ-1513).
     """
     from provisa.api.app import state
-    from provisa.api.org_runtime import current_org
+    from provisa.core.request_context import current_org
     from provisa.core.commerce import source_limit_for_org
     from provisa.core.repositories import source as source_repo
 
@@ -460,7 +460,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         so results persist and the DQ check detail's history shows the new scan."""
         from provisa.api.app import state
         from provisa.api.admin._dq_resolvers import run_dq_check_now as _run_now
-        from provisa.api.org_runtime import current_org
+        from provisa.core.request_context import current_org
 
         # REQ-1266: the scheduler namespaces a poll job's id by org ONLY when explicitly
         # multi-org (register_poll_job/register_runtime use `current_org.get(None)`, so
@@ -647,7 +647,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # Populate the org-scoped catalog name so catalog_for() resolves this source
         # after dynamic creation (mirrors _populate_source_catalog_names in app_loaders.py).
         from provisa.api.app_loaders import fixed_catalog_for_engine
-        from provisa.api.org_runtime import active_env, current_org
+        from provisa.core.request_context import active_env, current_org
         from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
 
         # The physical catalog is derived from the source id and nothing else — create_catalog
@@ -770,7 +770,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         # Keep catalog name in sync with the (possibly renamed) source config.
         from provisa.api.app_loaders import fixed_catalog_for_engine
-        from provisa.api.org_runtime import active_env, current_org
+        from provisa.core.request_context import active_env, current_org
         from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
 
         # Source id only — see the same derivation in create_source above for why `input.database`
@@ -1411,11 +1411,26 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if rl is not None
             else None
         )
+        # REQ-1677: the parent must exist, be another role, and not close a cycle.
+        from provisa.security.inheritance import parent_map, parent_problem
+
+        parent_id = input.parent_role_id or None
+        async with pool.acquire() as conn:
+            existing = await role_repo.list_all(cast("Connection", conn))
+        problem = parent_problem(input.id, parent_id, parent_map(existing))
+        if problem is not None:
+            return MutationResult(
+                success=False,
+                message=problem,
+                code="schema.role_parent_invalid",
+                params={"role": input.id, "parent": parent_id, "reason": problem},
+            )
         model = RoleModel(
             id=input.id,
             capabilities=input.capabilities,
             domain_access=input.domain_access,
             rate_limit=rate_limit,
+            parent_role_id=parent_id,
         )
         async with pool.acquire() as conn:
             await role_repo.upsert(cast("Connection", conn), model)
@@ -1627,6 +1642,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if _owner_conflict:
                 return MutationResult(success=False, message=_owner_conflict)
             table_id = await table_repo.upsert(_conn, model)
+            if model.query_template:
+                # REQ-1670: an edited Cypher re-persists the endpoint the table serves from.
+                from provisa.api.admin._neo4j_registration import persist_neo4j_registration
+
+                _neo_err = await persist_neo4j_registration(_conn, model)
+                if _neo_err is not None:
+                    return _neo_err
             if table_id is not None:
                 await _conn.execute_core(
                     update(registered_tables)
@@ -1723,9 +1745,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import role as role_repo
 
         require_capability(info, "user_management")  # REQ-1531: see create_role
+        from provisa.security.inheritance import children_of
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
+            # REQ-1677: a role other roles inherit from cannot go; name them.
+            heirs = children_of(id, await role_repo.list_all(cast("Connection", conn)))
+            if heirs:
+                return MutationResult(
+                    success=False,
+                    message=f"Role {id!r} is inherited by {', '.join(heirs)}; reparent them first",
+                    code="schema.role_has_heirs",
+                    params={"role": id, "heirs": heirs},
+                )
             deleted = await role_repo.delete(cast("Connection", conn), id)
         if deleted:
             return MutationResult(
@@ -1744,7 +1776,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def upsert_rls_rule(
         self, info: StrawberryInfo, input: RLSRuleInput
-    ) -> MutationResult:  # REQ-041, REQ-402, REQ-1531
+    ) -> MutationResult:  # REQ-041, REQ-402, REQ-1531, REQ-1676
         # REQ-1531: an RLS rule decides who sees which rows of a domain's tables. Writing one is the
         # masking surface, and it lands in a domain — named directly for a domain-level rule, or the
         # table's own for a table-level one.
@@ -1754,6 +1786,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         require_capability(info, "masking_config")
         pool = await _get_pool()
+        if input.action_name:  # REQ-1679: the target is a tracked function or webhook
+            return await _upsert_action_rls_rule(info, input)
         if input.domain_id:
             require_domain(info, input.domain_id)
         elif input.table_id:
@@ -1767,6 +1801,26 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"table": input.table_id},
                 )
             require_domain(info, _dom)
+        # REQ-1676: the predicate is parsed and resolved against the model here, at save, so a
+        # rule the administrator cannot query with is refused with the reason instead of failing
+        # closed for the role at its first query.
+        from provisa.compiler.rls_validate import validate_rls_predicate
+        from provisa.core.repositories import table as table_repo
+
+        async with pool.acquire() as _vconn:
+            registry = await table_repo.list_all(cast("Connection", _vconn))
+        if input.domain_id:
+            targets = [t for t in registry if t["domain_id"] == input.domain_id]
+        else:
+            targets = [t for t in registry if (t.get("alias") or t["table_name"]) == input.table_id]
+        problem = validate_rls_predicate(input.filter_expr, targets, registry)
+        if problem is not None:
+            return MutationResult(
+                success=False,
+                message=problem,
+                code="schema.rls_rule_invalid",
+                params={"reason": problem},
+            )
         model = RLSRuleModel(
             table_id=input.table_id or None,
             domain_id=input.domain_id or None,
@@ -1799,19 +1853,32 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         role_id: str,
         table_id: Optional[int] = None,
         domain_id: Optional[str] = None,
-    ) -> MutationResult:  # REQ-1531
+        action_name: Optional[str] = None,
+    ) -> MutationResult:  # REQ-1531, REQ-1679
         from provisa.api.admin.capabilities import require_capability, require_domain
         from provisa.api.admin.domain_guard import table_domain
 
         require_capability(info, "masking_config")  # REQ-1531: see upsert_rls_rule
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            if domain_id:
+            if action_name:  # REQ-1679: gated on the action's domain
+                from provisa.api.app import state
+
+                action = state.tracked_functions.get(action_name) or (
+                    getattr(state, "tracked_webhooks", None) or {}
+                ).get(action_name)
+                if action is not None and action.get("domain_id"):
+                    require_domain(info, action["domain_id"])
+            elif domain_id:
                 require_domain(info, domain_id)
             elif table_id is not None:
                 require_domain(info, await table_domain(cast("Connection", conn), table_id))
             deleted = await rls_repo.delete(
-                cast("Connection", conn), role_id, table_id=table_id, domain_id=domain_id
+                cast("Connection", conn),
+                role_id,
+                table_id=table_id,
+                domain_id=domain_id,
+                action_name=action_name,
             )
         if deleted:
             return MutationResult(
@@ -2697,3 +2764,65 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def deploy_view_to_db(self, info: StrawberryInfo, table_id: int) -> MutationResult:
         """Promote a virtual Provisa view to a real database view on its underlying native source."""
         return await _ops.deploy_view_to_db(info, table_id)
+
+
+async def _upsert_action_rls_rule(
+    info: StrawberryInfo, input: RLSRuleInput
+) -> MutationResult:  # REQ-1679
+    """An RLS rule over an action's response contract: validated against the contract the way
+    a table rule is validated against the table (REQ-1676), gated on the action's domain."""
+    from provisa.api.admin.capabilities import require_domain
+    from provisa.api.app import state
+    from provisa.api.data.action_governance import contract_columns
+    from provisa.compiler.rls_validate import validate_rls_predicate
+    from provisa.core.models import RLSRule as RLSRuleModel
+
+    name = input.action_name or ""
+    action = state.tracked_functions.get(name) or (
+        getattr(state, "tracked_webhooks", None) or {}
+    ).get(name)
+    if action is None:
+        return MutationResult(
+            success=False,
+            message=f"Action not registered: {name}",
+            code="schema.action_not_found",
+            params={"action": name},
+        )
+    if action.get("domain_id"):
+        require_domain(info, action["domain_id"])
+    cols = contract_columns(action)
+    if cols is None:
+        return MutationResult(
+            success=False,
+            message=f"Action {name!r} declares no output columns; a row filter has nothing to bind to",
+            code="schema.rls_rule_invalid",
+            params={"reason": "no output contract"},
+        )
+    target = {
+        "table_name": name,
+        "alias": None,
+        "domain_id": action.get("domain_id") or "",
+        "columns": [
+            {"column_name": c["name"], "data_type": c.get("type"), "alias": None} for c in cols
+        ],
+    }
+    problem = validate_rls_predicate(input.filter_expr, [target], [target])
+    if problem is not None:
+        return MutationResult(
+            success=False,
+            message=problem,
+            code="schema.rls_rule_invalid",
+            params={"reason": problem},
+        )
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        await rls_repo.upsert(
+            cast("Connection", conn),
+            RLSRuleModel(action_name=name, role_id=input.role_id, filter=input.filter_expr),
+        )
+    return MutationResult(
+        success=True,
+        message=f"RLS rule for action {name!r} / role {input.role_id!r} saved",
+        code="schema.rls_rule_saved_action",
+        params={"action": name, "role": input.role_id},
+    )

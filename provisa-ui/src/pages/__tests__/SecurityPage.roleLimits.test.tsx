@@ -32,9 +32,12 @@ vi.mock("../../context/DomainFilterContext", () => ({
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useRoles: () => ({ roles: [], loading: false, refetch: vi.fn() }),
-  useRLSRules: () => ({ rlsRules: [], loading: false, refetch: vi.fn() }),
   useTables: () => ({ tables: [], loading: false, refetch: vi.fn() }),
   useDomains: () => ({ domains: [], loading: false, refetch: vi.fn() }),
+}));
+
+vi.mock("../../hooks/useSecurityQueries", () => ({
+  useRLSRules: () => ({ rlsRules: [], loading: false, refetch: vi.fn() }),
   useUpsertRole: () => ({ upsertRole: upsertRoleSpy, loading: false }),
   useDeleteRole: () => ({ deleteRole: vi.fn(), loading: false }),
   useUpsertRlsRule: () => ({ upsertRlsRule: vi.fn(), loading: false }),

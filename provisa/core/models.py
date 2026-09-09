@@ -1076,6 +1076,12 @@ def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
     """
     by_id = {r.id: r for r in roles}
     cache: dict[str, tuple[set[str], set[str], int | None]] = {}
+    # REQ-1677: a cycle would recurse forever; refuse it by name.
+    from provisa.security.inheritance import role_chain
+
+    parents = {r.id: r.parent_role_id for r in roles}
+    for r in roles:
+        role_chain(r.id, parents)
 
     def _resolve(role_id: str) -> tuple[set[str], set[str], int | None]:
         if role_id in cache:
@@ -1113,9 +1119,10 @@ def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
     return result
 
 
-class RLSRule(BaseModel):  # REQ-041, REQ-402
+class RLSRule(BaseModel):  # REQ-041, REQ-402, REQ-1679
     table_id: str | None = None
     domain_id: str | None = None
+    action_name: str | None = None  # REQ-1679: a tracked function/webhook, by name
     role_id: str
     filter: str
 
@@ -1140,6 +1147,15 @@ class DatasetColumn(BaseModel):  # REQ-1159
 
     name: str
     type: str  # canonical IR type name (provisa.core.ir_types)
+    # REQ-1679: per-column governance of the action's response, the shape a table column carries.
+    # None = no grant list declared = visible (the contract is the action's public shape).
+    visible_to: list[str] | None = None
+    unmasked_to: list[str] = Field(default_factory=list)
+    mask_type: str | None = None
+    mask_pattern: str | None = None
+    mask_replace: str | None = None
+    mask_value: int | float | str | None = None
+    mask_precision: str | None = None
 
 
 class FunctionArgument(BaseModel):
@@ -1164,6 +1180,14 @@ class InlineType(BaseModel):
 
     name: str
     type: str  # GraphQL scalar type name
+    # REQ-1679: per-column governance of the webhook's response — see DatasetColumn.
+    visible_to: list[str] | None = None
+    unmasked_to: list[str] = Field(default_factory=list)
+    mask_type: str | None = None
+    mask_pattern: str | None = None
+    mask_replace: str | None = None
+    mask_value: int | float | str | None = None
+    mask_precision: str | None = None
 
 
 class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208

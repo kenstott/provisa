@@ -71,7 +71,7 @@ async def _run_with_org(org_id: str | None, coro):
     main-loop coroutine, so the org must be re-bound here, on the loop, around the awaited work."""
     if org_id is None:
         return await coro
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
 
     token = set_current_org(org_id)
     try:
@@ -137,7 +137,7 @@ def _report_table(table: "pa.Table") -> None:
     ``nbytes`` is the Arrow buffer size, not the IPC frame size: pyarrow's writer exposes no Python
     byte seam, so this is an approximation missing framing metadata.
     """
-    from provisa.api.org_runtime import current_org
+    from provisa.core.request_context import current_org
     from provisa.core.egress import report
 
     report(current_org.get(), table.nbytes)
@@ -149,7 +149,7 @@ def _metered_batches(batches):
     The org is captured eagerly because pyarrow drains this generator after ``do_get`` returned and
     reset the ticket's org.
     """
-    from provisa.api.org_runtime import current_org
+    from provisa.core.request_context import current_org
     from provisa.core.egress import report
 
     org_id = current_org.get()
@@ -222,7 +222,7 @@ class ProvisaFlightServer(
 
         Reads ``current_org`` on THIS (flight worker) thread — where the caller has bound it — and
         re-binds it inside the loop coroutine, since ``run_coroutine_threadsafe`` won't carry it."""
-        from provisa.api.org_runtime import current_org
+        from provisa.core.request_context import current_org
         from provisa.audit.context import current_audit_identity, with_audit_identity
 
         org_id = current_org.get(None)
@@ -263,7 +263,7 @@ class ProvisaFlightServer(
                     "org is required under multitenancy"
                 )
         from provisa.api.app import ensure_org_runtime
-        from provisa.api.org_runtime import set_current_org
+        from provisa.core.request_context import set_current_org
 
         # Build the org runtime (idempotent) on the main loop, then bind it on this thread.
         asyncio.run_coroutine_threadsafe(ensure_org_runtime(org_id), self._main_loop).result()
@@ -506,7 +506,7 @@ class ProvisaFlightServer(
                 return self._do_get_inner(request, ticket)
         finally:
             if _org_token is not None:
-                from provisa.api.org_runtime import reset_current_org
+                from provisa.core.request_context import reset_current_org
 
                 reset_current_org(_org_token)
 

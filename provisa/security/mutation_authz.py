@@ -34,6 +34,53 @@ from enum import Enum
 from provisa.security.rights import Capability, InsufficientRightsError, has_capability
 
 
+class MutationNotPermitted(PermissionError):
+    """REQ-869: a write the role's rights and the action's ``writable_by`` do not admit. The API
+    layer renders it as a 403 ApiError (REQ-1678: the gate itself never imports the API)."""
+
+    def __init__(self, field_name: str, reason: str) -> None:
+        super().__init__(f"Mutation {field_name!r} not permitted: {reason}")
+        self.field_name = field_name
+        self.reason = reason
+
+
+class ColumnNotWritable(PermissionError):
+    """REQ-663: the role is not in a column's ``writable_by``. Carried with the role and column so
+    each surface renders it its own way (the API as a 403 ApiError, Cypher as a status tuple)."""
+
+    def __init__(self, role_id: str, column: str) -> None:
+        super().__init__(f"Role {role_id!r} does not have write access to column {column!r}")
+        self.role_id = role_id
+        self.column = column
+
+
+def check_writable_by(table_meta, columns: list[str], role_id: str) -> None:  # REQ-663, REQ-1678
+    """Raise ColumnNotWritable if any column restricts write access and the role is not allowed.
+
+    The one column-write ACL check, shared by the GraphQL/SQL mutation path and the Cypher write
+    translator; it lives here so neither the compiler nor Cypher imports the API layer.
+    """
+    table_cols = (
+        {c["column_name"]: c for c in table_meta.columns} if hasattr(table_meta, "columns") else {}
+    )
+    if not table_cols:
+        # dict-style access (from state.tables)
+        table_cols = {
+            c.get("column_name", c.get("name", "")): c for c in getattr(table_meta, "columns", [])
+        }
+    for col_name in columns:
+        col_meta = table_cols.get(col_name)
+        if not col_meta:
+            continue
+        writable_by = (
+            col_meta.get("writable_by", [])
+            if isinstance(col_meta, dict)
+            else getattr(col_meta, "writable_by", [])
+        )
+        if role_id not in writable_by:
+            raise ColumnNotWritable(role_id, col_name)
+
+
 class MutationKind(str, Enum):  # REQ-869
     READ = "read"
     WRITE = "write"
@@ -166,12 +213,4 @@ def require_mutation_write(
         role, action.get("writable_by") or [], admin_bypass=admin_bypass
     )
     if not allowed:
-        from provisa.api.errors import ApiError  # noqa: PLC0415
-
-        raise ApiError(
-            403,
-            "authz.mutation_not_permitted",
-            f"Mutation {field_name!r} not permitted: {reason}",
-            field_name=field_name,
-            reason=reason,
-        )
+        raise MutationNotPermitted(field_name, reason)

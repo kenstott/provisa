@@ -41,7 +41,7 @@ def _env_store_schema(dsn: str) -> str:
     request path and both already know their environment through the ContextVar; threading it
     through every signature between would give two callers two chances to disagree.
     """
-    from provisa.api.org_runtime import active_env
+    from provisa.core.request_context import active_env
     from provisa.federation.store_scope import store_schema
 
     return store_schema(dsn, active_env())
@@ -66,13 +66,15 @@ async def landing_worklist(
     from provisa.federation.engine import UnreachableSource
     from provisa.federation.strategy import Strategy, federate
 
+    from provisa.federation.registry_view import registered_sources
+
     config = getattr(state, "config", None)
     tdb = getattr(state, "tenant_db", None)
     if config is None or tdb is None:
         return []
     async with tdb.acquire() as conn:
         registered = await fetch_tables(conn)
-    sources = {s.id: s for s in config.sources}
+        sources = {s.id: s for s in await registered_sources(state, conn)}  # REQ-1674
     work: list[tuple[Any, str, str, list[tuple[str, str]], list[str]]] = []
     for reg in registered:
         src = sources.get(reg["source_id"])
@@ -223,14 +225,17 @@ class EngineBackend:
         from provisa.federation.plan import build_execution_plan
         from provisa.federation.residency import resolve_landing_args
 
-        config = getattr(state, "config", None)
-        if config is None:
-            return []
-        sources = [s for s in config.sources if source_ids is None or s.id in source_ids]
+        from provisa.federation.registry_view import registered_sources, registered_tables
+
+        # REQ-1674: the registry, not the config file — a source created in the UI and a table
+        # registered at runtime land exactly like config-declared ones.
+        sources = [
+            s for s in await registered_sources(state) if source_ids is None or s.id in source_ids
+        ]
         if not sources:
             return []
         tables_by_source: dict[str, list] = {}
-        for t in config.tables:
+        for t in await registered_tables(state):
             tables_by_source.setdefault(t.source_id, []).append(t)
         plan = build_execution_plan(
             sources,
@@ -495,6 +500,84 @@ class EngineBackend:
         """Native engines have no live physical-catalog information_schema to read at compile time."""
         return {}
 
+    @staticmethod
+    def _merged_source(source: Any, schema_name: str, table_name: str) -> Any:
+        """The connection-resolved view of a source the DuckDB runtime attaches from: every
+        ``${env:..}``/``${secret:..}`` in the connection fields resolved, plus the table address."""
+        from types import SimpleNamespace
+
+        from provisa.core.secrets import resolve_secrets
+
+        def _rs(v: Any) -> Any:
+            return resolve_secrets(v) if isinstance(v, str) else v
+
+        return SimpleNamespace(
+            id=source.id,
+            type=source.type,
+            host=_rs(getattr(source, "host", None)),
+            port=getattr(source, "port", None),
+            database=_rs(getattr(source, "database", None)),
+            username=_rs(getattr(source, "username", None)),
+            password=_rs(getattr(source, "password", None)),
+            path=_rs(getattr(source, "path", None)),
+            federation_hints=getattr(source, "federation_hints", {}) or {},
+            mapping=getattr(source, "mapping", {}) or {},
+            schema_name=schema_name,
+            table_name=table_name,
+        )
+
+    def _attaches_live(self, source: Any) -> bool:
+        """Whether the native engine reads this source by ATTACHing it (so its database can be
+        listed) rather than landing it from an adapter or direct driver."""
+        from provisa.federation.connector import Mechanism
+
+        if self.engine.native_store is None:
+            return False
+        return self.engine.connector_for(source.type.value).mechanism in (
+            Mechanism.ATTACH_RW,
+            Mechanism.ATTACH_R,
+        )
+
+    def introspect_schemas(self, state: Any, source: Any) -> list[str] | None:
+        """REQ-1673: the schemas of an ATTACH source's database, without a registered table — the
+        DuckDB runtime attaches the raw source and reads its information_schema. ``None`` when this
+        engine has no such seam (a federator lists through its own catalog SQL instead)."""
+        if self.engine.native_store != "duckdb" or not self._attaches_live(source):
+            return None
+        return self._duckdb_introspect(
+            source, "schemas", lambda rt, s: rt.introspect_schemas(s), schema_name="", table_name=""
+        )
+
+    def introspect_tables(self, state: Any, source: Any, schema_name: str) -> list[str] | None:
+        """REQ-1673: the tables of one schema of an ATTACH source's database (see introspect_schemas)."""
+        if self.engine.native_store != "duckdb" or not self._attaches_live(source):
+            return None
+        return self._duckdb_introspect(
+            source,
+            f"tables of {schema_name}",
+            lambda rt, s: rt.introspect_tables(s, schema_name),
+            schema_name=schema_name,
+            table_name="",
+        )
+
+    def _duckdb_introspect(
+        self, source: Any, what: str, read: Any, *, schema_name: str, table_name: str
+    ) -> list[str]:
+        import duckdb
+
+        from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
+
+        runtime = DuckDBFederationRuntime()
+        try:
+            return read(runtime, self._merged_source(source, schema_name, table_name))
+        except duckdb.Error:
+            # The engine cannot reach the source right now (extension install offline, source
+            # down): the listing is empty and the cause is in the log, never a silent [].
+            _log.warning("duckdb introspection of %s for %r failed", what, source.id, exc_info=True)
+            return []
+        finally:
+            runtime.close()
+
     def introspect_columns(
         self, state: Any, source: Any, schema_name: str, table_name: str
     ) -> dict[str, str]:
@@ -516,26 +599,9 @@ class EngineBackend:
             ):
                 return {}
         if self.engine.native_store == "duckdb":
-            from types import SimpleNamespace
-
-            from provisa.core.secrets import resolve_secrets
             from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 
-            def _rs(v: Any) -> Any:  # resolve ${env:..}/${secret:..} in connection strings
-                return resolve_secrets(v) if isinstance(v, str) else v
-
-            merged = SimpleNamespace(
-                id=source.id,
-                type=source.type,
-                host=_rs(getattr(source, "host", None)),
-                port=getattr(source, "port", None),
-                database=_rs(getattr(source, "database", None)),
-                username=_rs(getattr(source, "username", None)),
-                password=_rs(getattr(source, "password", None)),
-                path=_rs(getattr(source, "path", None)),
-                schema_name=schema_name,
-                table_name=table_name,
-            )
+            merged = self._merged_source(source, schema_name, table_name)
             import duckdb
 
             runtime = DuckDBFederationRuntime()

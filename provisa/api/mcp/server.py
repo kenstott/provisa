@@ -33,7 +33,7 @@ from typing import Any
 
 from provisa.api.mcp import tools
 from provisa.api.org_resolve import OrgResolutionError
-from provisa.api.org_runtime import reset_current_org, set_current_org
+from provisa.core.request_context import reset_current_org, set_current_org
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)

@@ -135,7 +135,7 @@ async def _execute_with_api(
     if len(api_endpoints_in_sql) == 1:
         table_name, endpoint = api_endpoints_in_sql[0]
         if hot_mgr is not None and hot_mgr.is_hot(table_name):
-            from provisa.cache.hot_tables import build_values_cte_sql
+            from provisa.cache.values_cte import build_values_cte_sql
 
             entry = hot_mgr.get_entry(table_name)
             hot_sql = build_values_cte_sql(exec_sql, table_name, entry)

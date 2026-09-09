@@ -25,7 +25,7 @@ from typing import Any
 
 import pytest
 
-from provisa.api.org_runtime import current_org
+from provisa.core.request_context import current_org
 from provisa.events import supervisor
 from provisa.events.boot import register_runtime
 from provisa.events.processor import TableProcessor

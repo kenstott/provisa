@@ -160,7 +160,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         if not org_id:
             raise ValueError("Missing x-provisa-org metadata")
         from provisa.api.app import ensure_org_runtime
-        from provisa.api.org_runtime import set_current_org
+        from provisa.core.request_context import set_current_org
 
         await ensure_org_runtime(org_id)
         return set_current_org(org_id)
@@ -224,7 +224,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         """
         if msg is None:
             return msg
-        from provisa.api.org_runtime import current_org
+        from provisa.core.request_context import current_org
         from provisa.core.egress import report
 
         report(current_org.get(), msg.ByteSize())
@@ -311,7 +311,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             )
         finally:
             if _org_token is not None:
-                from provisa.api.org_runtime import reset_current_org
+                from provisa.core.request_context import reset_current_org
 
                 reset_current_org(_org_token)
 
@@ -356,7 +356,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             )
         finally:
             if _org_token is not None:
-                from provisa.api.org_runtime import reset_current_org
+                from provisa.core.request_context import reset_current_org
 
                 reset_current_org(_org_token)
 
@@ -388,7 +388,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 yield self._meter_msg(_m)
         finally:
             if _org_token is not None:
-                from provisa.api.org_runtime import reset_current_org
+                from provisa.core.request_context import reset_current_org
 
                 reset_current_org(_org_token)
 
@@ -544,7 +544,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             )
         finally:
             if _org_token is not None:
-                from provisa.api.org_runtime import reset_current_org
+                from provisa.core.request_context import reset_current_org
 
                 reset_current_org(_org_token)
 
@@ -614,7 +614,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 yield self._meter_msg(_m)
         finally:
             if _org_token is not None:
-                from provisa.api.org_runtime import reset_current_org
+                from provisa.core.request_context import reset_current_org
 
                 reset_current_org(_org_token)
 

@@ -678,12 +678,29 @@ async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.request(method, url, json={"_test": True})
 
-        webhook_result: dict = {"status": resp.status_code, "body": resp.json()}
+        body_json = resp.json()
+        webhook_result: dict = {"status": resp.status_code, "body": body_json}
         if role_id:
-            webhook_result["enforcement"] = {
-                "role_used": role_id,
-                "note": "Webhook responses are not subject to SQL-level RLS or column masking.",
+            # REQ-1679: the response is governed like a table's rows; report what applied.
+            from provisa.api.data.action_governance import govern_action_rows
+
+            action = (getattr(state, "tracked_webhooks", None) or {}).get(body.name) or {
+                **row,
+                "inline_return_type": row.get("inline_return_type") or [],
             }
+            raw_rows = body_json if isinstance(body_json, list) else [body_json]
+            governed, enforcement = await govern_action_rows(raw_rows, action, role_id, state)
+            webhook_result["body"] = (
+                governed if isinstance(body_json, list) else governed[0] if governed else None
+            )
+            webhook_result["enforcement"] = (
+                enforcement.as_dict()
+                if enforcement is not None
+                else {
+                    "role_used": role_id,
+                    "note": "Webhook declares no output columns; nothing to govern.",
+                }
+            )
         return webhook_result
 
     raise ApiError(

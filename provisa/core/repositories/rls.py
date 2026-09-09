@@ -43,6 +43,14 @@ def _decrypt_row(row) -> dict:  # REQ-686
 async def upsert(conn: "Connection", rule: RLSRule) -> None:  # REQ-041, REQ-402, REQ-686
     """Upsert an RLS rule. Resolves table_id from table name for table-level rules."""
     filter_enc = _encrypt_filter(rule.filter)
+    if rule.action_name:  # REQ-1679
+        await conn.upsert(
+            rls_rules,
+            {"action_name": rule.action_name, "role_id": rule.role_id, "filter_expr": filter_enc},
+            index_elements=["action_name", "role_id"],
+            update_columns=["filter_expr"],
+        )
+        return
     if rule.domain_id:
         await conn.upsert(
             rls_rules,
@@ -93,8 +101,13 @@ async def delete(  # REQ-041, REQ-402
     role_id: str,
     table_id: int | None = None,
     domain_id: str | None = None,
+    action_name: str | None = None,
 ) -> bool:
-    if domain_id:
+    if action_name:  # REQ-1679
+        stmt = _delete(rls_rules).where(
+            rls_rules.c.action_name == action_name, rls_rules.c.role_id == role_id
+        )
+    elif domain_id:
         stmt = _delete(rls_rules).where(
             rls_rules.c.domain_id == domain_id, rls_rules.c.role_id == role_id
         )

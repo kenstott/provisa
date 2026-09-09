@@ -17,6 +17,14 @@ export interface DatasetColumn {
   name: string;
   // REQ-1159: canonical IR type name (provisa.core.ir_types), NOT a GraphQL scalar.
   type: string;
+  // REQ-1679: per-column governance of the response, stored on the column as posted (wire keys).
+  visible_to?: string[] | null;
+  unmasked_to?: string[];
+  mask_type?: string | null;
+  mask_pattern?: string | null;
+  mask_replace?: string | null;
+  mask_value?: string | number | null;
+  mask_precision?: string | null;
 }
 
 export interface ActionArg {
@@ -33,6 +41,14 @@ export interface ActionArg {
 export interface InlineField {
   name: string;
   type: string;
+  // REQ-1679: per-field governance of the webhook's response — see DatasetColumn.
+  visible_to?: string[] | null;
+  unmasked_to?: string[];
+  mask_type?: string | null;
+  mask_pattern?: string | null;
+  mask_replace?: string | null;
+  mask_value?: string | number | null;
+  mask_precision?: string | null;
 }
 
 export interface TrackedFunction {

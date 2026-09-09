@@ -21,11 +21,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+import json
+
 from sqlalchemy import select
 
 from provisa.core.schema_org import kafka_topics, sources
 
 if TYPE_CHECKING:
+    from provisa.cassandra.fetch import CassandraConnection
+    from provisa.elasticsearch.fetch import ESConnection
+    from provisa.redis.fetch import RedisConnection
     from provisa.api.admin.types import AvailableTableType
     from provisa.core.database import Connection
     from provisa.executor.pool import SourcePool
@@ -123,6 +128,15 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
 
     if t == "sparql":
         return ["sparql"]
+
+    if t == "elasticsearch":
+        return ["default"]  # REQ-1672: one schema; the index is the table
+
+    if t == "redis":
+        return ["default"]  # REQ-1675: one schema; a key prefix is the table
+
+    if t == "cassandra":
+        return await _native_schemas_cassandra(source_id, config_conn)  # REQ-1676: keyspaces
 
     if t == "openapi":
         return ["openapi"]
@@ -413,6 +427,166 @@ async def _native_tables_govdata(
         return None
 
 
+def _es_connection_for(row: dict, state) -> "ESConnection":  # REQ-1672
+    """The HTTP connection for an elasticsearch source row. The password is a secret reference on
+    the config Source (the sources table carries none), resolved when the config declares it."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.elasticsearch.fetch import ESConnection
+
+    mapping = row.get("mapping") or {}
+    if isinstance(mapping, str):
+        mapping = json.loads(mapping)
+    cfg_src = next(
+        (
+            s
+            for s in getattr(getattr(state, "config", None), "sources", []) or []
+            if s.id == row["id"]
+        ),
+        None,
+    )
+    password = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    return ESConnection.build(
+        resolve_secrets(row.get("host") or "localhost"),
+        int(row.get("port") or 9200),
+        tls=bool(mapping.get("tls", False)),
+        username=row.get("username") or None,
+        password=password or None,
+    )
+
+
+async def _es_source_row(source_id: str, config_conn: "Connection") -> dict | None:
+    result = await config_conn.execute_core(
+        select(
+            sources.c.id, sources.c.host, sources.c.port, sources.c.username, sources.c.mapping
+        ).where(sources.c.id == source_id)
+    )
+    row = result.fetchone()
+    return dict(row._mapping) if row is not None else None
+
+
+async def _native_tables_elasticsearch(  # REQ-1672
+    source_id: str, schema_name: str, config_conn: "Connection", state
+) -> "list[AvailableTableType] | None":
+    """The mapping DSL's tables when the source declares any, else the live indices."""
+    import asyncio as _asyncio
+
+    from provisa.api.admin.types import AvailableTableType
+    from provisa.elasticsearch.fetch import list_indices
+
+    if schema_name != "default":
+        return []
+    row = await _es_source_row(source_id, config_conn)
+    if row is None:
+        return None
+    mapping = row.get("mapping") or {}
+    if isinstance(mapping, str):
+        mapping = json.loads(mapping)
+    declared = [t["name"] for t in mapping.get("tables", []) if t.get("name")]
+    if declared:
+        return [AvailableTableType(name=n, comment=None) for n in declared]
+    conn = _es_connection_for(row, state)
+    names = await _asyncio.to_thread(list_indices, conn)
+    return [AvailableTableType(name=n, comment=None) for n in names]
+
+
+def _redis_connection_for(row: dict, state) -> "RedisConnection":  # REQ-1675
+    """The redis-py connection for a redis source row; the password is the config Source's secret
+    reference (the sources table carries none)."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.redis.fetch import RedisConnection
+
+    cfg_src = next(
+        (
+            s
+            for s in getattr(getattr(state, "config", None), "sources", []) or []
+            if s.id == row["id"]
+        ),
+        None,
+    )
+    password = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    return RedisConnection(
+        host=resolve_secrets(row.get("host") or "localhost"),
+        port=int(row.get("port") or 6379),
+        password=password or None,
+    )
+
+
+async def _native_tables_redis(  # REQ-1675
+    source_id: str, schema_name: str, config_conn: "Connection", state
+) -> "list[AvailableTableType] | None":
+    """The mapping DSL's tables when the source declares any, else the key prefixes present."""
+    import asyncio as _asyncio
+
+    from provisa.api.admin.types import AvailableTableType
+    from provisa.redis.fetch import list_prefixes
+
+    if schema_name != "default":
+        return []
+    row = await _es_source_row(source_id, config_conn)  # the same columns a redis row needs
+    if row is None:
+        return None
+    mapping = row.get("mapping") or {}
+    if isinstance(mapping, str):
+        mapping = json.loads(mapping)
+    declared = [t["name"] for t in mapping.get("tables", []) if t.get("name")]
+    if declared:
+        return [AvailableTableType(name=n, comment=None) for n in declared]
+    names = await _asyncio.to_thread(list_prefixes, _redis_connection_for(row, state))
+    return [AvailableTableType(name=n, comment=None) for n in names]
+
+
+def _cassandra_connection_for(row: dict, state) -> "CassandraConnection":  # REQ-1676
+    """The CQL connection for a cassandra source row; the password is the config Source's secret
+    reference (the sources table carries none)."""
+    from provisa.cassandra.fetch import CassandraConnection
+    from provisa.core.secrets import resolve_secrets
+
+    cfg_src = next(
+        (
+            s
+            for s in getattr(getattr(state, "config", None), "sources", []) or []
+            if s.id == row["id"]
+        ),
+        None,
+    )
+    password = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    return CassandraConnection.build(
+        resolve_secrets(row.get("host") or "localhost"),
+        int(row.get("port") or 9042),
+        username=row.get("username") or None,
+        password=password or None,
+    )
+
+
+async def _native_schemas_cassandra(source_id: str, config_conn: "Connection") -> list[str] | None:
+    import asyncio as _asyncio
+
+    from provisa.api.app import state
+    from provisa.cassandra.fetch import list_keyspaces
+
+    row = await _es_source_row(source_id, config_conn)
+    if row is None:
+        return None
+    return await _asyncio.to_thread(list_keyspaces, _cassandra_connection_for(row, state))
+
+
+async def _native_tables_cassandra(  # REQ-1676
+    source_id: str, schema_name: str, config_conn: "Connection", state
+) -> "list[AvailableTableType] | None":
+    import asyncio as _asyncio
+
+    from provisa.api.admin.types import AvailableTableType
+    from provisa.cassandra.fetch import list_tables
+
+    row = await _es_source_row(source_id, config_conn)
+    if row is None:
+        return None
+    names = await _asyncio.to_thread(
+        list_tables, _cassandra_connection_for(row, state), schema_name
+    )
+    return [AvailableTableType(name=n, comment=None) for n in names]
+
+
 async def _native_tables_rdbms(  # REQ-012, REQ-252
     source_id: str,
     source_type: str,
@@ -495,6 +669,15 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
 
     if t in ("neo4j", "sparql"):
         return []
+
+    if t == "elasticsearch":
+        return await _native_tables_elasticsearch(source_id, schema_name, config_conn, state)
+
+    if t == "redis":
+        return await _native_tables_redis(source_id, schema_name, config_conn, state)
+
+    if t == "cassandra":
+        return await _native_tables_cassandra(source_id, schema_name, config_conn, state)
 
     if t == "sqlite":
         return await _native_tables_sqlite(source_id, schema_name, config_conn)

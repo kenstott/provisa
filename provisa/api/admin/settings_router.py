@@ -172,7 +172,7 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
     """Return the settings visible to this caller: the acting org's, plus — for a caller holding
     ``platform_settings`` — the deployment-wide blocks."""
     from provisa.executor.redirect import RedirectConfig
-    from provisa.compiler.sql_gen import _get_default_row_limit
+    from provisa.core.limits import default_row_limit as _get_default_row_limit
     from provisa.api.app import state
 
     from provisa.core.models import (

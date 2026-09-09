@@ -147,7 +147,7 @@ class NativeEngineBackend(EngineBackend):
         # namespace nothing else writes to. That org runs a native kind (Databricks, Snowflake,
         # BigQuery, ClickHouse, …) of its own legitimately; ``active_isolated_org`` is exactly the
         # seam that says so.
-        from provisa.api.org_runtime import current_org
+        from provisa.core.request_context import current_org
 
         _active_org = current_org.get()
         _owns_engine = getattr(state, "active_isolated_org", None) == _active_org

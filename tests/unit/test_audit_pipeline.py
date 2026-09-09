@@ -181,7 +181,7 @@ def test_write_audit_appends_the_completed_statement(captured):
 def test_the_recorded_tenant_is_the_org_that_owns_the_row(captured):
     """The tenant IS the org (REQ-594). This read the meta-RLS ContextVar, which production sets
     nowhere, so every row landed with a NULL tenant and every ops report showed a NULL column."""
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
 
     token = set_current_org("kstott")
     try:

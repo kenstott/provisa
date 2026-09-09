@@ -361,7 +361,7 @@ class _FakeSpan:
 
 def _buffer_with(entries: list[tuple[str, str | None]]):
     """A SpanBuffer holding one span per (name, org) pair, pushed under that org's ContextVar."""
-    from provisa.api.org_runtime import current_org
+    from provisa.core.request_context import current_org
     from provisa.api.otel_setup import SpanBuffer
 
     buf = SpanBuffer()

@@ -339,7 +339,7 @@ class FederationEngine:  # REQ-840
         disk and its bill, and that decision outranks the deployment's configuration. An org that
         registered none is on the platform store by design, where the REQ-1046 quota applies.
         """
-        from provisa.api.org_runtime import current_org
+        from provisa.core.request_context import current_org
         from provisa.storage.byo import org_store_dsn
 
         org_id = current_org.get()
@@ -1314,27 +1314,24 @@ def engine_addressing(key: str) -> str:
 
 def _engine_config() -> dict:
     """The persisted platform config, for engine selection/URL fallback. Empty if unreadable
-    (e.g. very early boot before a config file exists)."""
-    try:
-        from provisa.api.admin._config_io import read_config
-    except ImportError:  # api layer not importable at very early boot (module-load ordering)
-        return {}
-    return read_config() or {}
+    (e.g. very early boot before a config file exists). REQ-1678: read through the provider the
+    API registers, so the engine layer never imports it."""
+    from provisa.core.request_context import platform_config
+
+    return platform_config() or {}
 
 
 def active_org_engine_url() -> str | None:
     """REQ-1418: the DSN of the engine the ACTIVE org operates itself, or ``None``.
 
-    Reads back off the org runtime through the same AppState shim ``terminal_conn_kwargs`` uses for
-    ``active_engine_endpoint``, so an org's own warehouse is resolved by the org routing that is
-    already bound rather than by threading a DSN through every backend. Import-guarded because the
-    engine layer is built before (and independently of) the API layer — a process with no app
-    (desktop profile, tooling) simply has no active org."""
-    try:
-        from provisa.api.app import state
-    except ImportError:
-        return None
-    return state.active_engine_url
+    Reads back off the org runtime through the provider ``api.app`` registers (REQ-1678), the same
+    routing ``terminal_conn_kwargs`` uses for ``active_engine_endpoint``, so an org's own warehouse
+    is resolved by the org routing that is already bound rather than by threading a DSN through
+    every backend. A process with no app (desktop profile, tooling) registers none and has no
+    active org."""
+    from provisa.core.request_context import active_org_engine_url as _provided
+
+    return _provided()
 
 
 def configured_engine_url() -> str | None:

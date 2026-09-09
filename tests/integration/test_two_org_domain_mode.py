@@ -23,7 +23,7 @@ import os
 
 import pytest
 
-from provisa.api.org_runtime import current_org, reset_current_org, set_current_org
+from provisa.core.request_context import current_org, reset_current_org, set_current_org
 from provisa.core import domain_policy
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import init_schema

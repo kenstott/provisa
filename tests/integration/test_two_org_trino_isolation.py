@@ -81,7 +81,7 @@ async def _drop_catalog(state, name: str) -> None:
 async def test_two_orgs_isolated_and_simultaneously_queryable(app_state):
     state = app_state
     from provisa.api.app import build_org_runtime
-    from provisa.api.org_runtime import set_current_org, reset_current_org
+    from provisa.core.request_context import set_current_org, reset_current_org
 
     assert state.federation_engine.engine.name == "trino"
     # The default/bootstrap org keeps the bare catalog name (never org-prefixed).

@@ -221,7 +221,7 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     # whatever string a client happens to pass — active_env() is the request's own resolved
     # environment (REQ-1487), so this is the same answer the inviter's own screen was showing.
     if env_policy == ENV_POLICY_PER_VISITOR:
-        from provisa.api.org_runtime import active_env
+        from provisa.core.request_context import active_env
 
         env_name = active_env()
     # REQ-1602: sandbox org invites use 1-day idle TTL if not specified (redeem_env forces PER_VISITOR policy)

@@ -693,7 +693,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     EnvironmentSelectionError,
                 )
                 from provisa.api.env_routing import resolve_selected_env as _resolve_selected_env
-                from provisa.api.org_runtime import (
+                from provisa.core.request_context import (
                     reset_current_env,
                     reset_current_org,
                     set_current_env,

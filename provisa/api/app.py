@@ -95,14 +95,16 @@ from provisa.core.secrets import resolve_secrets
 from provisa.executor.pool import SourcePool
 from provisa.api.org_runtime import (
     ActiveOrgPool,
-    active_env,
     OrgRegistry,
     OrgRuntime,
+    runtime_key,
+)
+from provisa.core.request_context import (
+    active_env,
     current_env,
     current_org,
     reset_current_env,
     reset_current_org,
-    runtime_key,
     set_current_env,
     set_current_org,
 )
@@ -577,6 +579,15 @@ class AppState:
         self._active_runtime().rls_contexts = value
 
     @property
+    def role_chains(self) -> dict[str, list[str]]:
+        # REQ-1677: each role's inheritance chain, nearest first, as folded into this build.
+        return self._active_runtime().role_chains
+
+    @role_chains.setter
+    def role_chains(self, value: dict[str, list[str]]) -> None:
+        self._active_runtime().role_chains = value
+
+    @property
     def masking_rules(self) -> MaskingRules:
         return self._active_runtime().masking_rules
 
@@ -653,6 +664,23 @@ class AppState:
 
 
 state = AppState()
+
+# REQ-1678: the engine layer asks for the active org's own engine DSN (REQ-1418) and the persisted
+# platform config through core.request_context, never by importing this module.
+from provisa.core.request_context import (  # noqa: E402
+    register_active_engine_url_provider,
+    register_platform_config_provider,
+)
+
+
+def _read_platform_config() -> dict:
+    from provisa.api.admin._config_io import read_config
+
+    return read_config() or {}
+
+
+register_active_engine_url_provider(lambda: state.active_engine_url)
+register_platform_config_provider(_read_platform_config)
 
 # REQ-1266: the domain mode is a tenant setting, so `provisa.core.domain_policy` keys its policy by
 # the org whose request is running. `core` cannot import this ContextVar, so the API layer installs
@@ -1657,10 +1685,24 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                         _roles_t.c.capabilities,
                         _roles_t.c.domain_access,
                         _roles_t.c.rate_limit,
+                        _roles_t.c.parent_role_id,  # REQ-1677
                     )
                 )
             ).fetchall()
         ]
+        # REQ-1677: fold each role's inheritance chain into the build's own copies here, once, so
+        # every role-keyed lookup below (rights, visibility, writable_by, unmasked_to, RLS) sees
+        # the inherited grants under the acting role's own id.
+        from provisa.security.inheritance import (
+            expand_column_grants,
+            flatten_role_dicts,
+            role_chains,
+        )
+
+        role_chains_by_id = role_chains(roles)
+        roles = flatten_role_dicts(roles)
+        expand_column_grants(tables, role_chains_by_id)
+        state.role_chains = role_chains_by_id
 
         # Merge PG-stored allowed_domains into state; inject source naming into table dicts.
         for src_id, src_row in sources.items():
@@ -1731,10 +1773,17 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
 
         rls_rules = await _rls_repo.list_all(conn)
 
-        await _load_masking_rules(conn, col_types_converted, roles)
+        await _load_masking_rules(conn, col_types_converted, roles, role_chains_by_id)
 
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(
             conn, raw_config
+        )
+        # REQ-1677: child-precedence RLS — the nearest role in the chain with a rule for a table
+        # (REQ-1679: or an action) supplies that predicate for the child.
+        from provisa.security.inheritance import expand_grants, materialize_rls
+
+        rls_rules = materialize_rls(
+            rls_rules, tables, role_chains_by_id, [*tracked_functions, *tracked_webhooks]
         )
 
         # REQ-1317/1319: the metric registry feeds schema generation and raw-SQL expansion.
@@ -1758,6 +1807,9 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             for r in await _metric_repo.list_all(conn)
         ]
         _metric_dicts = [m.model_dump() for m in _metric_models]
+        expand_grants(_metric_dicts, role_chains_by_id)  # REQ-1677
+        expand_grants(tracked_functions, role_chains_by_id)
+        expand_grants(tracked_webhooks, role_chains_by_id)
 
         _build_and_register_schemas(
             roles=roles,

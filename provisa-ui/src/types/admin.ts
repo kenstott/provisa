@@ -258,6 +258,7 @@ export interface RegisteredTable {
   apiEndpoint: string | null;
   viewSql: string | null;
   dqContract: string | null; // REQ-1443: the checker contract this results table lands the scans of
+  queryTemplate?: string | null; // REQ-1670: the Cypher a neo4j table runs (neo4j tables only)
   materialize: boolean;
   mvRefreshInterval: number;
   mvDebounceQuiet: number; // REQ-963: seconds of quiet before firing; 0 = real-time
@@ -397,6 +398,18 @@ export interface DqCheckDefinitionVars {
   check: DqCheckBuildInput;
 }
 
+// REQ-1670: Register Table on a neo4j source previews the Cypher before registering it.
+export interface Neo4jPreviewVars {
+  sourceId: string;
+  cypher: string;
+}
+
+export interface Neo4jPreview {
+  rows: Record<string, unknown>[];
+  columns: { name: string; dataType: string }[];
+  error: string | null;
+}
+
 export interface DqContractParseVars {
   checker: string;
   contractText: string;
@@ -474,6 +487,7 @@ export interface RLSRule {
   id: number;
   tableId: number | null;
   domainId: string | null;
+  actionName?: string | null; // REQ-1679: a tracked function/webhook target, by name
   roleId: string;
   filterExpr: string;
 }

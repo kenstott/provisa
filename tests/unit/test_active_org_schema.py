@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.api.org_runtime import reset_current_env, set_current_env
+from provisa.core.request_context import reset_current_env, set_current_env
 from provisa.core.environments import (
     PROD,
     SCHEMA_SUFFIXES,

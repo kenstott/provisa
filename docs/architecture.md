@@ -586,7 +586,7 @@ Every registered table gets an auto-generated `{table}_aggregate` root field (`c
 
 ## Inherited Roles
 
-Roles in `core/models.py` can reference a `parent_role_id`. (REQ-215) `flatten_roles()` recursively resolves the inheritance chain and merges RLS WHERE clauses (ANDed), column visibility (union, most restrictive wins), and masking policies (child overrides parent per column). This avoids duplicating permission sets across similar roles (e.g., `analyst` inheriting from `reader`). (REQ-215)
+A role names at most one parent through `parent_role_id`. (REQ-215) At runtime build, `security/inheritance.py` walks each role's chain from the child up and folds it into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. (REQ-1677) Capabilities and domain access are the union of the chain. A column's `visible_to`, `writable_by` and `unmasked_to`, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. RLS resolves per table with the child taking precedence: the nearest role in the chain that has a rule for the table, its own table rule before its domain rule, supplies the one predicate that runs; an ancestor's rule is never combined with it. A role inherits its parent's rate limit when it sets none. A parent must exist, may not be the role itself and may not close a cycle; a role other roles inherit from cannot be deleted until they are reparented. (REQ-1677)
 
 ## ABAC Approval Hook
 

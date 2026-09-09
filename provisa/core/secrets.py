@@ -86,7 +86,7 @@ class ScopeProvider(SecretsProvider):  # REQ-1622
     """
 
     def resolve(self, reference: str) -> str:
-        from provisa.api.org_runtime import active_env, current_org
+        from provisa.core.request_context import active_env, current_org
 
         if reference == "ENV":
             return active_env()

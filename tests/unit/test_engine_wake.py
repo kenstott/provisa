@@ -254,7 +254,8 @@ async def test_non_provisioning_deployment_does_nothing(monkeypatch):
 
 async def test_external_engine_org_is_not_woken(fake_k8s):
     """REQ-1412: an org running its own coordinator is not on a shard this control plane operates."""
-    from provisa.api.org_runtime import OrgRuntime, current_org
+    from provisa.api.org_runtime import OrgRuntime
+    from provisa.core.request_context import current_org
 
     rt = OrgRuntime(org_id="acme", engine_endpoint=("their-host", 8080), shard="shared_1")
     token = current_org.set("acme")
@@ -266,7 +267,8 @@ async def test_external_engine_org_is_not_woken(fake_k8s):
 
 
 async def test_shared_org_without_a_shard_raises(fake_k8s):
-    from provisa.api.org_runtime import OrgRuntime, current_org
+    from provisa.api.org_runtime import OrgRuntime
+    from provisa.core.request_context import current_org
 
     rt = OrgRuntime(org_id="acme", shard="")
     token = current_org.set("acme")
@@ -279,7 +281,8 @@ async def test_shared_org_without_a_shard_raises(fake_k8s):
 
 async def test_cold_start_rebuilds_the_org_runtime(fake_k8s, monkeypatch):
     """A resumed shard has no catalogs, so the runtime that issued them has to be rebuilt."""
-    from provisa.api.org_runtime import OrgRuntime, current_org
+    from provisa.api.org_runtime import OrgRuntime
+    from provisa.core.request_context import current_org
 
     rebuilt: list[str] = []
     built: list[str] = []
@@ -302,7 +305,8 @@ async def test_cold_start_rebuilds_the_org_runtime(fake_k8s, monkeypatch):
 
 
 async def test_warm_shard_does_not_rebuild_the_org_runtime(fake_k8s, monkeypatch):
-    from provisa.api.org_runtime import OrgRuntime, current_org
+    from provisa.api.org_runtime import OrgRuntime
+    from provisa.core.request_context import current_org
 
     fake_k8s.state = "ready"
     rebuilt: list[str] = []
@@ -327,7 +331,7 @@ async def test_warm_shard_does_not_rebuild_the_org_runtime(fake_k8s, monkeypatch
 
 
 async def test_bound_org_without_a_runtime_raises(fake_k8s):
-    from provisa.api.org_runtime import current_org
+    from provisa.core.request_context import current_org
 
     token = current_org.set("acme")
     try:
@@ -380,7 +384,8 @@ async def test_tenant_cold_start_restores_the_shared_terminal_before_reissuing_c
 ):
     """A pooled org has no engine of its own — its CREATE CATALOG statements go through the shared
     terminal, which is still connected to the pod that just went away."""
-    from provisa.api.org_runtime import OrgRuntime, current_org
+    from provisa.api.org_runtime import OrgRuntime
+    from provisa.core.request_context import current_org
 
     order: list[str] = []
     default = OrgRuntime(org_id="default", shard="shared_1", engine_generation=0)
@@ -429,7 +434,8 @@ async def test_cold_start_rebuilds_the_ENVIRONMENT_the_query_reads(fake_k8s, mon
     early, and released the query at an engine that had never heard of the environment — a
     CATALOG_NOT_FOUND naming a catalog it had been serving minutes before.
     """
-    from provisa.api.org_runtime import OrgRuntime, current_org, set_current_env
+    from provisa.api.org_runtime import OrgRuntime
+    from provisa.core.request_context import current_org, set_current_env
 
     rebuilt: list[str] = []
     built: list[tuple[str, str]] = []
@@ -467,7 +473,8 @@ async def test_cold_start_rebuilds_the_ENVIRONMENT_the_query_reads(fake_k8s, mon
 
 
 async def test_a_warm_shard_leaves_the_environment_runtime_alone(fake_k8s, monkeypatch):
-    from provisa.api.org_runtime import OrgRuntime, current_org, set_current_env
+    from provisa.api.org_runtime import OrgRuntime
+    from provisa.core.request_context import current_org, set_current_env
 
     async def _boom(oid: str, env: str | None = None):
         raise AssertionError("a warm shard still holds this environment's catalogs")
@@ -502,7 +509,8 @@ async def test_a_warm_shard_leaves_the_environment_runtime_alone(fake_k8s, monke
 async def test_the_default_orgs_environment_is_rebuilt_too(fake_k8s, monkeypatch):
     """current_org is unbound for the deployment's own org, and its environments are still its own
     schemas with their own catalogs. Restoring the shared terminal reissues prod's, not theirs."""
-    from provisa.api.org_runtime import OrgRuntime, set_current_env
+    from provisa.api.org_runtime import OrgRuntime
+    from provisa.core.request_context import set_current_env
 
     rebuilt: list[str] = []
     built: list[tuple[str, str]] = []
@@ -533,7 +541,8 @@ async def test_the_default_orgs_environment_is_rebuilt_too(fake_k8s, monkeypatch
 
 
 async def test_a_query_in_an_unbuilt_environment_raises(fake_k8s):
-    from provisa.api.org_runtime import OrgRuntime, current_org, set_current_env
+    from provisa.api.org_runtime import OrgRuntime
+    from provisa.core.request_context import current_org, set_current_env
 
     state = _state_keyed(
         {

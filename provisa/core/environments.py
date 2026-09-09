@@ -112,7 +112,7 @@ def active_org_schema(org_id: str, suffix: str = "") -> str:  # REQ-1623
     a leak. Reading the environment from the ContextVar here puts every derived store inside
     ``env_schemas``, which is what already makes retiring an environment remove it.
     """
-    from provisa.api.org_runtime import active_env  # noqa: PLC0415
+    from provisa.core.request_context import active_env  # noqa: PLC0415
 
     return org_schema(org_id, active_env(), suffix)
 

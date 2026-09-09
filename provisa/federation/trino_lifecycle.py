@@ -33,13 +33,8 @@ from provisa.core.environments import active_org_schema
 
 log = logging.getLogger(__name__)
 
-# Re-exports so callers that only need the connection type / exception classes (never
-# `trino.dbapi.connect()` itself) don't have to import `trino` directly.
-TrinoConnection = trino.dbapi.Connection
-TrinoConnectionError = trino.exceptions.TrinoConnectionError
-TrinoQueryError = trino.exceptions.TrinoQueryError
-TrinoUserError = trino.exceptions.TrinoUserError
-TrinoError = trino.exceptions.Error
+# REQ-1678: the connection type / exception classes live in the trino_types leaf; callers that
+# only need those import them there and never reach this module.
 
 
 def connect(conn_kwargs: dict) -> trino.dbapi.Connection:

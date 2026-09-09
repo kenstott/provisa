@@ -15,7 +15,7 @@ from __future__ import annotations
 import sqlglot
 import pytest
 
-from provisa.api.org_runtime import reset_current_env, set_current_env
+from provisa.core.request_context import reset_current_env, set_current_env
 from provisa.core.environments import PROD
 from provisa.pgwire._pipeline import _reject_unbound_writes
 

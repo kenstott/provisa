@@ -386,7 +386,10 @@ CREATE TABLE IF NOT EXISTS rls_rules (
     domain_id   TEXT REFERENCES domains(id) ON DELETE CASCADE,
     role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     filter_expr BYTEA NOT NULL,  -- REQ-686: encrypted at rest via EncryptionService
-    UNIQUE (table_id, role_id)
+    -- REQ-1679: a rule may target a tracked function or webhook by name instead of a table.
+    action_name TEXT,
+    UNIQUE (table_id, role_id),
+    UNIQUE (action_name, role_id)
 );
 
 -- Migration: add domain_id and make table_id nullable for domain-level RLS rules

@@ -18,7 +18,7 @@ import re
 import time
 
 from provisa.core.models import Source
-from provisa.federation.trino_lifecycle import (
+from provisa.federation.trino_types import (
     TrinoConnection,
     TrinoConnectionError,
     TrinoError,

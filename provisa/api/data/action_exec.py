@@ -21,7 +21,26 @@ import httpx
 from fastapi import HTTPException
 
 from provisa.executor.function_dispatch import dispatch_function
-from provisa.security.mutation_authz import require_mutation_write
+from provisa.security.mutation_authz import (
+    MutationNotPermitted,
+    require_mutation_write as _require_mutation_write,
+)
+
+
+def require_mutation_write(action: dict, role, field_name: str, *, admin_bypass: bool) -> None:
+    """The security gate rendered as the API's 403 (REQ-869, REQ-1678)."""
+    from provisa.api.errors import ApiError
+
+    try:
+        _require_mutation_write(action, role, field_name, admin_bypass=admin_bypass)
+    except MutationNotPermitted as exc:
+        raise ApiError(
+            403,
+            "authz.mutation_not_permitted",
+            str(exc),
+            field_name=exc.field_name,
+            reason=exc.reason,
+        ) from exc
 
 
 def list_visible_commands(state, role_id: str | None) -> list[dict]:
@@ -87,7 +106,8 @@ async def invoke_tracked_function(name: str, args: dict, state, role_id: str | N
     fn = state.tracked_functions.get(name)
     if fn:
         require_mutation_write(fn, role, name, admin_bypass=not state.ephemeral)
-        return await dispatch_function(fn, args, state, role_id)
+        rows = await dispatch_function(fn, args, state, role_id)
+        return await _governed(rows, fn, state, role_id)
     # A webhook is a governed command too (REQ-872): every surface routes here, so a webhook is
     # invocable beyond GraphQL. Kept a distinct path because a webhook is a scalar-argument HTTP
     # POST — the function dispatcher rejects scalar-only external calls (they can't batch).
@@ -125,4 +145,17 @@ async def invoke_tracked_webhook(name: str, args: dict, state, role_id: str | No
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.request(wh["method"].upper(), wh["url"], json=_webhook_body(wh, args))
     body = resp.json()
-    return body if isinstance(body, list) else [body]
+    rows = body if isinstance(body, list) else [body]
+    return await _governed(rows, wh, state, role_id)
+
+
+async def _governed(rows: list[dict], action: dict, state, role_id: str | None) -> list[dict]:
+    """REQ-1679: the response as the acting role may see it. With no acting role (an unbound
+    internal call) there is no role to govern for, the same condition under which the write
+    gate above reads no role."""
+    if role_id is None:
+        return rows
+    from provisa.api.data.action_governance import govern_action_rows
+
+    governed, _enforcement = await govern_action_rows(rows, action, role_id, state)
+    return governed

@@ -32,11 +32,11 @@ import {
   useTables,
   useRelationships,
   useSources,
-  useRLSRules,
   useRoles,
   useCreateDomain,
   useDeleteDomain,
 } from "../hooks/useAdminQueries";
+import { useRLSRules } from "../hooks/useSecurityQueries";
 import { fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";

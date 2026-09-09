@@ -30,9 +30,11 @@ from provisa.api.env_routing import (
 from provisa.api.org_runtime import (
     OrgRegistry,
     OrgRuntime,
+    runtime_key,
+)
+from provisa.core.request_context import (
     active_env,
     reset_current_env,
-    runtime_key,
     set_current_env,
 )
 from provisa.core.environments import PROD, org_schema

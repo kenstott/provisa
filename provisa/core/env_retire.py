@@ -96,7 +96,7 @@ async def _drop_store_schema(org_id: str, name: str) -> str | None:
     ``mat`` are both out of reach from here.
     """
     from provisa.api.app import state
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
     from provisa.federation.store_scope import drop_env_store
 
     token = set_current_org(org_id)

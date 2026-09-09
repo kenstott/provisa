@@ -154,7 +154,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
 
     def _store_schema(self) -> str:
         """The landing database's replica schema for the bound environment (``mat`` for prod)."""
-        from provisa.api.org_runtime import active_env
+        from provisa.core.request_context import active_env
         from provisa.federation.store_scope import store_schema
 
         return store_schema(self._url, active_env())

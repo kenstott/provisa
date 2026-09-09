@@ -33,7 +33,6 @@ once at the entrypoint (never silently here).
 from __future__ import annotations
 
 import asyncio
-from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -46,22 +45,6 @@ if TYPE_CHECKING:
     from provisa.compiler.rls import RLSContext
     from provisa.compiler.sql_gen import CompilationContext
     from provisa.core.database import Database
-
-# The org selected for the current request/task. Unset (None) at startup, on
-# background-boot paths, and in single-org tests — the AppState shims then
-# resolve the default-org runtime. A tenant-data entrypoint that sees None must
-# raise (see require_current_org); it must never silently pick an org.
-current_org: ContextVar[str | None] = ContextVar("current_org", default=None)
-
-# REQ-1487/REQ-1529: the ENVIRONMENT selected for the current request/task, alongside the org. Unset
-# (None) means prod — the environment a request naming none is served by (REQ-1487) — so every
-# pre-environment path resolves exactly the runtime it resolved before there were environments.
-#
-# It is a SECOND ContextVar rather than an env baked into ``current_org`` because the two are set by
-# different authorities at different moments: the org comes from the authenticated identity and is
-# bound by the auth middleware, the environment comes from the ``x-provisa-env`` header and is a
-# request-scoped selection within an org the caller already proved they belong to.
-current_env: ContextVar[str | None] = ContextVar("current_env", default=None)
 
 
 def runtime_key(org_id: str, env: str | None = None) -> str:
@@ -169,6 +152,8 @@ class OrgRuntime:
     schemas: dict[str, "graphql.GraphQLSchema"] = field(default_factory=dict)
     contexts: dict[str, "CompilationContext"] = field(default_factory=dict)
     rls_contexts: dict[str, "RLSContext"] = field(default_factory=dict)
+    # REQ-1677: role id → [role, parent, grandparent, …], the chain folded into the build.
+    role_chains: dict[str, list[str]] = field(default_factory=dict)
 
     # Governance / masking. (table_id, role_id) → {col: (rule, dtype)}.
     masking_rules: dict[Any, Any] = field(default_factory=dict)
@@ -286,54 +271,6 @@ class OrgRegistry:
             runtime = await builder(org_id)
             self._runtimes[org_id] = runtime
             return runtime
-
-
-def set_current_org(org_id: str) -> Token[str | None]:
-    """Bind the active org for the current context; returns a reset token."""
-    return current_org.set(org_id)
-
-
-def reset_current_org(token: Token[str | None]) -> None:
-    current_org.reset(token)
-
-
-def set_current_env(env: str | None) -> Token[str | None]:
-    """Bind the active environment for the current context; returns a reset token.
-
-    ``None`` binds prod explicitly, which is the same thing an unbound ContextVar resolves to.
-    """
-    return current_env.set(env)
-
-
-def reset_current_env(token: Token[str | None]) -> None:
-    current_env.reset(token)
-
-
-def active_env() -> str:
-    """The environment bound for this context, ``prod`` when none is (REQ-1487).
-
-    Not a fallback: REQ-1487 settles that a request naming no environment is served by prod, so
-    this is the answer the requirement gives rather than a value invented to fill a hole.
-    """
-    return current_env.get() or PROD
-
-
-def require_current_org() -> str:
-    """The active org id, or raise if none is bound.
-
-    A tenant-data path that reaches this with no org selected is a routing bug
-    (or an unauthenticated request that slipped past the org gate) — never a
-    case to paper over with a default. Callers on the default-org fast path use
-    the AppState shims instead, which fall back explicitly to the default org.
-    """
-    org_id = current_org.get()
-    if org_id is None:
-        raise RuntimeError(
-            "No active org bound (current_org unset). A tenant-data path must "
-            "set_current_org before use; this is a routing defect, not a "
-            "condition to default around."
-        )
-    return org_id
 
 
 class ActiveOrgPool:  # REQ-1266

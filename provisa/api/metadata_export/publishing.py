@@ -107,7 +107,7 @@ async def notify_model_changed(org_id: str, *, reason: str) -> int | None:
     not accumulate work items nobody will ever claim.
     """
     from provisa.api.app import state
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
 
     token = set_current_org(org_id)
     try:
@@ -212,7 +212,7 @@ async def publish_snapshot(org_id: str) -> PublishResult:
     ones after) rides every trigger for the same reason.
     """
     from provisa.api.app import state
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
     from provisa.core.repositories import catalog_binding
 
     token = set_current_org(org_id)
@@ -329,7 +329,7 @@ async def drain(conn: Any, org_id: str, *, now: datetime | None = None) -> Publi
 async def drain_org(org_id: str) -> PublishResult | None:
     """The scheduled drain for one org — what the interval job fires."""
     from provisa.api.app import state
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
 
     token = set_current_org(org_id)
     try:
@@ -363,7 +363,7 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
     may not publish has both jobs removed rather than left armed: a job that fires only to skip
     reports a reconcile cadence the org does not have.
     """
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
 
     token = set_current_org(org_id)
     try:

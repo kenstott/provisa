@@ -41,7 +41,7 @@ from typing import Any
 
 from strawberry.extensions import SchemaExtension
 
-from provisa.api.org_runtime import active_env, current_org
+from provisa.core.request_context import active_env, current_org
 from provisa.core.env_repo import write_through
 from provisa.core.environments import org_schema
 

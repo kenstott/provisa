@@ -318,7 +318,7 @@ async def _refresh_root_registry_view() -> None:  # REQ-1301
     Rebuilding it here is what keeps "who runs org acme" answerable the moment acme exists.
     """
     from provisa.api.app import state
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
     from provisa.api.startup_seed import seed_org_registry_view
 
     token = set_current_org(state.org_id)
@@ -845,7 +845,7 @@ async def export_org_config(org_id: str, request: Request):  # REQ-1304
     """
     from provisa.api.admin.config_export import build_live_config_yaml
     from provisa.api.admin.invites_router import _require_org_admin
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
 
     await _require_org_admin(request, org_id, allow_cross_org=False)  # REQ-1605
     async with _admin_pool().acquire() as conn:

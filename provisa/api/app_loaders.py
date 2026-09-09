@@ -89,6 +89,8 @@ def _apply_server_and_engine_config(raw_config: dict, connect_engine: bool = Tru
     )
 
     _limits_cfg = state.server_cfg.get("limits", {})
+    from provisa.core.limits import set_server_limits
+
     state.server_limits = {
         "default_row_limit": int(
             os.environ.get(
@@ -109,6 +111,7 @@ def _apply_server_and_engine_config(raw_config: dict, connect_engine: bool = Tru
             )
         ),
     }
+    set_server_limits(state.server_limits)  # REQ-1678: the compiler reads the cap from core
 
     # The engine terminal is only provisioned when it has one (the engine connects a cluster and seeds
     # its otel catalog). A native engine (duckdb/embedded-pg/…) has nothing to connect here —
@@ -237,7 +240,7 @@ def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, R
     # unset — the startup path). Org-scoped catalogs get an org_<id>__ prefix for non-default
     # orgs so identically-named demo sources in different orgs don't collide; the default org
     # keeps bare names. state.org_id is the bootstrap/default org (the one kept un-prefixed).
-    from provisa.api.org_runtime import active_env, current_org
+    from provisa.core.request_context import active_env, current_org
     from provisa.compiler.naming import org_prefixed_catalog
 
     _building_org = current_org.get() or state.org_id
@@ -862,14 +865,21 @@ async def _load_graphql_remote_sources_from_db() -> None:
                 )
 
 
-async def _load_masking_rules(  # REQ-040, REQ-263
+async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
     conn: Any,
     col_types_converted: dict[int, list[ColumnMetadata]],
     roles: list[dict],
+    role_chains: dict[str, list[str]] | None = None,
 ) -> None:
-    """Load masking rules from table_columns and populate state.masking_rules."""
+    """Load masking rules from table_columns and populate state.masking_rules.
+
+    REQ-1677: a role is exempt from a mask when it or an ancestor is in ``unmasked_to``.
+    """
     from provisa.api.app import state
+    from provisa.security.inheritance import holds_grant
     from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
+
+    chains = role_chains if role_chains is not None else {r["id"]: [r["id"]] for r in roles}
 
     masking_rows = [
         dict(_r._mapping)
@@ -909,7 +919,7 @@ async def _load_masking_rules(  # REQ-040, REQ-263
                 break
         validate_masking_rule(mask_rule, col_name, data_type, is_nullable)
         for role in roles:
-            if role["id"] in unmasked_to:
+            if holds_grant(role["id"], unmasked_to, chains):
                 continue
             key = (table_id, role["id"])
             if key not in state.masking_rules:

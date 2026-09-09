@@ -35,3 +35,7 @@ jobs:
 
       - name: pyright
         run: uv run pyright
+
+      # REQ-1678: the layering contracts in pyproject.toml are a gate, not documentation.
+      - name: import boundaries
+        run: uv run lint-imports

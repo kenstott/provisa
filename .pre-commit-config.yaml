@@ -23,6 +23,12 @@ repos:
         args: ["provisa"]
         pass_filenames: false
         types: [python]
+      - id: lint-imports
+        name: lint-imports
+        language: system
+        entry: .venv/bin/lint-imports
+        pass_filenames: false
+        types: [python]
       - id: eslint-ui
         name: eslint-ui
         language: system

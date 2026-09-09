@@ -67,11 +67,13 @@ class CreateRoleBody(BaseModel):
     id: str
     capabilities: list[str]
     domain_access: list[str]
+    parent_role_id: str | None = None  # REQ-1677
 
 
 class UpdateRoleBody(BaseModel):
     capabilities: list[str] | None = None
     domain_access: list[str] | None = None
+    parent_role_id: str | None = None  # REQ-1677: None leaves the parent unchanged
 
 
 @router.get("/")
@@ -88,6 +90,7 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
                 roles.c.demonstrated,
                 roles.c.domain_access,
                 roles.c.org_id,
+                roles.c.parent_role_id,  # REQ-1677
             )
             .where(or_(roles.c.org_id.is_(None), roles.c.org_id == org_id))
             .order_by(roles.c.id)
@@ -103,12 +106,14 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
     org_id = _active_org(request)
     pool = _pool(request)
     async with pool.acquire() as conn:
+        await _check_parent(conn, body.id, body.parent_role_id)  # REQ-1677
         await conn.execute_core(
             insert(roles).values(
                 id=body.id,
                 capabilities=body.capabilities,
                 domain_access=body.domain_access,
                 org_id=org_id,
+                parent_role_id=body.parent_role_id,
             )
         )
     return {
@@ -116,7 +121,21 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
         "capabilities": body.capabilities,
         "domain_access": body.domain_access,
         "org_id": org_id,
+        "parent_role_id": body.parent_role_id,
     }
+
+
+async def _check_parent(conn, role_id: str, parent_id: str | None) -> None:  # REQ-1677
+    """Refuse a parent that is missing, the role itself, or would close a cycle."""
+    from provisa.security.inheritance import parent_map, parent_problem
+
+    if parent_id is None:
+        return
+    result = await conn.execute_core(select(roles.c.id, roles.c.parent_role_id))
+    existing = [dict(r._mapping) for r in result.fetchall()]
+    problem = parent_problem(role_id, parent_id, parent_map(existing))
+    if problem is not None:
+        raise ApiError(400, "roles.parent_invalid", problem)
 
 
 @router.put("/{role_id}")
@@ -127,9 +146,13 @@ async def update_role(
     pool = _pool(request)
     async with pool.acquire() as conn:
         result = await conn.execute_core(
-            select(roles.c.id, roles.c.capabilities, roles.c.domain_access, roles.c.org_id).where(
-                roles.c.id == role_id
-            )
+            select(
+                roles.c.id,
+                roles.c.capabilities,
+                roles.c.domain_access,
+                roles.c.org_id,
+                roles.c.parent_role_id,
+            ).where(roles.c.id == role_id)
         )
         existing = result.fetchone()
         if existing is None:
@@ -145,16 +168,22 @@ async def update_role(
             body.domain_access if body.domain_access is not None else existing["domain_access"]
         )
 
+        new_parent = (
+            body.parent_role_id if body.parent_role_id is not None else existing["parent_role_id"]
+        )
+        if new_parent != existing["parent_role_id"]:
+            await _check_parent(conn, role_id, new_parent)  # REQ-1677
         await conn.execute_core(
             update(roles)
             .where(roles.c.id == role_id)
-            .values(capabilities=new_caps, domain_access=new_domains)
+            .values(capabilities=new_caps, domain_access=new_domains, parent_role_id=new_parent)
         )
     return {
         "id": role_id,
         "capabilities": new_caps,
         "domain_access": new_domains,
         "org_id": existing["org_id"],
+        "parent_role_id": new_parent,
     }
 
 

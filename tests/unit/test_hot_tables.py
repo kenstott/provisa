@@ -26,7 +26,7 @@ from provisa.compiler.sql_gen import (
     CompiledQuery,
     rewrite_hot_joins,
 )
-from provisa.cache.hot_tables import _sql_literal
+from provisa.cache.values_cte import _sql_literal
 from provisa.executor.result import QueryResult
 
 

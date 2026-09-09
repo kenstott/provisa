@@ -414,13 +414,13 @@ def register_runtime(
     def _bind():  # REQ-1266: bind this org on the scheduler thread for one fire; None → no-op
         if org_id is None:
             return None
-        from provisa.api.org_runtime import set_current_org
+        from provisa.core.request_context import set_current_org
 
         return set_current_org(org_id)
 
     def _unbind(tok) -> None:
         if tok is not None:
-            from provisa.api.org_runtime import reset_current_org
+            from provisa.core.request_context import reset_current_org
 
             reset_current_org(tok)
 

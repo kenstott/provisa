@@ -50,7 +50,7 @@ async def demo_org():
     from _pytest.monkeypatch import MonkeyPatch
 
     from provisa.api.app import build_org_runtime, create_app, state
-    from provisa.api.org_runtime import reset_current_org, set_current_org
+    from provisa.core.request_context import reset_current_org, set_current_org
 
     # Scoped to this module's fixture, never at import time: pytest imports every test module
     # before running anything, so an import-time PROVISA_CONFIG would point EVERY other in-process

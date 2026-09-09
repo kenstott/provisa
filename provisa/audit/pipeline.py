@@ -112,7 +112,7 @@ async def write_audit(pending: PendingAudit | None, status_code: int, state: Any
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
 
-    from provisa.api.org_runtime import current_org
+    from provisa.core.request_context import current_org
     from provisa.audit.query_log import log_query
     from provisa.encryption.runtime import encryption_service
 
@@ -150,7 +150,7 @@ async def _meter_active_hour(state: Any) -> None:
     ``finalize_audit``, and no new surface can be added that executes governed SQL and bills
     nothing. The bill counts hours, so N statements in an hour collapse to one row.
     """
-    from provisa.api.org_runtime import current_org
+    from provisa.core.request_context import current_org
     from provisa.core.commerce import meter_op
 
     pool = state.admin_db

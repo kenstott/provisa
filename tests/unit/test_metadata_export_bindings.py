@@ -525,14 +525,22 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(snapshot, tmp
     monkeypatch.setattr(
         publishing,
         "build_snapshot",
-        lambda model, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None: (
+        lambda model, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None: (
             snapshot
         ),
     )
     monkeypatch.setattr(publishing, "metadata_export", lambda config: exporter)
     monkeypatch.setattr(
         "provisa.api.app.state",
-        types.SimpleNamespace(tenant_db=_TenantDb(), contexts={}, multitenancy=False),
+        types.SimpleNamespace(
+            tenant_db=_TenantDb(),
+            contexts={},
+            multitenancy=False,
+            # REQ-1659: the listing links back at the org's public origin, read off config.mail.
+            config=types.SimpleNamespace(
+                mail=types.SimpleNamespace(base_url="https://provisa.test")
+            ),
+        ),
         raising=False,
     )
 

@@ -30,18 +30,17 @@ import {
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
 import { MultiSelect } from "../components/MultiSelect";
+import { useRoles, useTables, useDomains } from "../hooks/useAdminQueries";
 import {
-  useRoles,
   useRLSRules,
-  useTables,
-  useDomains,
   useUpsertRole,
   useDeleteRole,
   useUpsertRlsRule,
   useDeleteRlsRule,
-} from "../hooks/useAdminQueries";
+} from "../hooks/useSecurityQueries";
 import type { Role, Capability } from "../types/auth";
 import type { RLSRule } from "../types/admin";
+import { fetchActions } from "../api/actions";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { PageLoading } from "../components/PageLoading";
 
@@ -71,6 +70,7 @@ const EMPTY_ROLE = {
   id: "",
   capabilities: [] as Capability[],
   domainAccess: [] as string[],
+  parentRoleId: "" as string, // REQ-1677: "" = no parent
   // REQ-1174: per-role rate + query-complexity limits ("" = unlimited on that dimension).
   reqPerSec: "" as number | "",
   maxDepth: "" as number | "",
@@ -80,10 +80,12 @@ const EMPTY_ROLE = {
 const EMPTY_RULE = {
   tableId: "",
   domainId: "",
+  actionName: "", // REQ-1679: the rule's target when scope is "action"
   roleId: "",
   filterExpr: "",
   domainFilter: "",
   applyToDomain: false,
+  applyToAction: false,
 };
 
 function CapabilityGrid({
@@ -166,6 +168,7 @@ export function SecurityRolesPage() {
         capabilities: roleForm.capabilities,
         domainAccess: roleForm.domainAccess,
         rateLimit: hasLimit ? rateLimit : null,
+        parentRoleId: roleForm.parentRoleId || null, // REQ-1677
       });
       if (!res.success) {
         setError(res.message);
@@ -201,6 +204,7 @@ export function SecurityRolesPage() {
       id: role.id,
       capabilities: [...role.capabilities],
       domainAccess: [...role.domain_access],
+      parentRoleId: role.parentRoleId ?? "", // REQ-1677
       reqPerSec: role.rateLimit?.requestsPerSecond ?? "",
       maxDepth: role.rateLimit?.maxQueryDepth ?? "",
       maxNodes: role.rateLimit?.maxQueryNodes ?? "",
@@ -289,6 +293,20 @@ export function SecurityRolesPage() {
             options={domainOptions}
             value={roleForm.domainAccess}
             onChange={(selected) => setRoleForm({ ...roleForm, domainAccess: selected })}
+          />
+          {/* REQ-1677: single parent; the chain is walked child-first at build time. */}
+          <Select
+            label={t("securityPage.parentRole")}
+            description={t("securityPage.parentRoleHelp")}
+            placeholder={t("securityPage.parentRoleNone")}
+            data={roles
+              .filter((r) => r.id !== roleForm.id)
+              .map((r) => ({ value: r.id, label: r.id }))}
+            value={roleForm.parentRoleId || null}
+            onChange={(v) => setRoleForm({ ...roleForm, parentRoleId: v ?? "" })}
+            clearable
+            searchable
+            data-testid="role-parent-select"
           />
           {/* REQ-1174: per-role rate + query-complexity limits. Blank = unlimited on that dimension. */}
           <Text size="sm" fw={600}>
@@ -399,6 +417,10 @@ export function SecurityRolesPage() {
                               <strong>{t("securityPage.labelDomainAccess")}</strong>{" "}
                               {r.domain_access.join(", ") || t("securityPage.none")}
                             </Text>
+                            <Text data-testid={`role-parent-${r.id}`}>
+                              <strong>{t("securityPage.labelParentRole")}</strong>{" "}
+                              {r.parentRoleId || t("securityPage.none")}
+                            </Text>
                             <Group gap="xs">
                               <ActionIcon
                                 variant="subtle"
@@ -439,6 +461,18 @@ export function SecurityRolesPage() {
                               onChange={(selected) =>
                                 setRoleForm({ ...roleForm, domainAccess: selected })
                               }
+                            />
+                            <Select
+                              label={t("securityPage.parentRole")}
+                              placeholder={t("securityPage.parentRoleNone")}
+                              data={roles
+                                .filter((x) => x.id !== r.id)
+                                .map((x) => ({ value: x.id, label: x.id }))}
+                              value={roleForm.parentRoleId || null}
+                              onChange={(v) => setRoleForm({ ...roleForm, parentRoleId: v ?? "" })}
+                              clearable
+                              searchable
+                              data-testid={`role-parent-select-${r.id}`}
                             />
                             <Group justify="flex-end">
                               <Button
@@ -488,6 +522,8 @@ export function SecurityRlsPage() {
 
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [ruleForm, setRuleForm] = useState(EMPTY_RULE);
+  // REQ-1679: the tracked functions and webhooks a rule may target, with their domains.
+  const [actions, setActions] = useState<{ name: string; domainId: string }[]>([]);
   const [expandedRule, setExpandedRule] = useState<number | null>(null);
   const [editingRuleInRow, setEditingRuleInRow] = useState<number | null>(null);
   const [ruleSearch, setRuleSearch] = useState(
@@ -506,6 +542,23 @@ export function SecurityRlsPage() {
     setContextDomains(domains.map((x) => x.id));
   }, [domains, setContextDomains]);
 
+  useEffect(() => {
+    fetchActions()
+      .then(({ functions, webhooks }) =>
+        setActions([
+          ...functions.map((f) => ({ name: f.name, domainId: f.domainId })),
+          ...webhooks.map((w) => ({ name: w.name, domainId: w.domainId })),
+        ]),
+      )
+      .catch((e) =>
+        setError(
+          t("securityPage.loadActionsFailed", {
+            message: e instanceof Error ? e.message : String(e),
+          }),
+        ),
+      );
+  }, [t]);
+
   const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
   const tableNameById = Object.fromEntries(tables.map((t) => [t.id, t.tableName]));
   const tableLabelById = Object.fromEntries(
@@ -519,16 +572,19 @@ export function SecurityRlsPage() {
   };
 
   const handleSaveRule = async () => {
-    const valid = ruleForm.applyToDomain
-      ? ruleForm.domainFilter && ruleForm.roleId && ruleForm.filterExpr
-      : ruleForm.tableId && ruleForm.roleId && ruleForm.filterExpr;
+    const valid = ruleForm.applyToAction
+      ? ruleForm.actionName && ruleForm.roleId && ruleForm.filterExpr
+      : ruleForm.applyToDomain
+        ? ruleForm.domainFilter && ruleForm.roleId && ruleForm.filterExpr
+        : ruleForm.tableId && ruleForm.roleId && ruleForm.filterExpr;
     if (!valid) return;
     setSaving(true);
     setError("");
     try {
       const res = await upsertRlsRule({
-        tableId: ruleForm.applyToDomain ? null : ruleForm.tableId || null,
+        tableId: ruleForm.applyToDomain || ruleForm.applyToAction ? null : ruleForm.tableId || null,
         domainId: ruleForm.applyToDomain ? ruleForm.domainFilter || null : null,
+        actionName: ruleForm.applyToAction ? ruleForm.actionName || null : null, // REQ-1679
         roleId: ruleForm.roleId,
         filterExpr: ruleForm.filterExpr,
       });
@@ -551,7 +607,7 @@ export function SecurityRlsPage() {
     setSaving(true);
     setError("");
     try {
-      await deleteRlsRule(rule.roleId, rule.tableId, rule.domainId);
+      await deleteRlsRule(rule.roleId, rule.tableId, rule.domainId, rule.actionName ?? null);
       if (expandedRule === rule.id) setExpandedRule(null);
       await reload();
     } catch (e) {
@@ -562,7 +618,16 @@ export function SecurityRlsPage() {
   };
 
   const startEditingRule = (rule: RLSRule) => {
-    if (rule.domainId) {
+    if (rule.actionName) {
+      setRuleForm({
+        ...EMPTY_RULE,
+        actionName: rule.actionName,
+        roleId: rule.roleId,
+        filterExpr: rule.filterExpr,
+        domainFilter: actions.find((a) => a.name === rule.actionName)?.domainId ?? "",
+        applyToAction: true,
+      });
+    } else if (rule.domainId) {
       setRuleForm({
         tableId: "",
         domainId: rule.domainId,
@@ -600,16 +665,20 @@ export function SecurityRlsPage() {
           data={[
             { value: "table", label: t("securityPage.applyToTable") },
             { value: "domain", label: t("securityPage.applyToDomain") },
+            { value: "action", label: t("securityPage.applyToAction") },
           ]}
-          value={ruleForm.applyToDomain ? "domain" : "table"}
+          value={ruleForm.applyToAction ? "action" : ruleForm.applyToDomain ? "domain" : "table"}
           onChange={(v) =>
             setRuleForm({
               ...ruleForm,
               applyToDomain: v === "domain",
+              applyToAction: v === "action",
               tableId: "",
+              actionName: "",
             })
           }
           allowDeselect={false}
+          data-testid="rule-apply-to"
         />
         <Select
           label={t("securityPage.domain")}
@@ -618,7 +687,20 @@ export function SecurityRlsPage() {
           value={ruleForm.domainFilter || null}
           onChange={(v) => setRuleForm({ ...ruleForm, domainFilter: v ?? "", tableId: "" })}
         />
-        {!ruleForm.applyToDomain && (
+        {ruleForm.applyToAction && (
+          <Select
+            label={t("securityPage.action")}
+            placeholder={t("securityPage.selectPlaceholder")}
+            data={actions
+              .filter((a) => !ruleForm.domainFilter || a.domainId === ruleForm.domainFilter)
+              .map((a) => ({ value: a.name, label: a.name }))}
+            value={ruleForm.actionName || null}
+            onChange={(v) => setRuleForm({ ...ruleForm, actionName: v ?? "" })}
+            searchable
+            data-testid="rule-action-select"
+          />
+        )}
+        {!ruleForm.applyToDomain && !ruleForm.applyToAction && (
           <Select
             label={t("securityPage.table")}
             placeholder={t("securityPage.selectPlaceholder")}
@@ -635,6 +717,7 @@ export function SecurityRlsPage() {
           data={roles.map((r) => ({ value: r.id, label: r.id }))}
           value={ruleForm.roleId || null}
           onChange={(v) => setRuleForm({ ...ruleForm, roleId: v ?? "" })}
+          data-testid="rule-role-select"
         />
       </Group>
       <Textarea
@@ -650,14 +733,20 @@ export function SecurityRlsPage() {
 
   const filtered = rules.filter((r) => {
     if (selectedDomain !== "all") {
-      const ruleDomain = r.domainId ? r.domainId : tables.find((t) => t.id === r.tableId)?.domainId;
+      const ruleDomain = r.actionName
+        ? actions.find((a) => a.name === r.actionName)?.domainId
+        : r.domainId
+          ? r.domainId
+          : tables.find((t) => t.id === r.tableId)?.domainId;
       if (ruleDomain !== selectedDomain) return false;
     }
     if (!ruleSearch.trim()) return true;
     const q = ruleSearch.toLowerCase();
-    const scope = r.domainId
-      ? `domain:${r.domainId}`
-      : (tableLabelById[r.tableId!] ?? String(r.tableId));
+    const scope = r.actionName
+      ? `action:${r.actionName}`
+      : r.domainId
+        ? `domain:${r.domainId}`
+        : (tableLabelById[r.tableId!] ?? String(r.tableId));
     return r.roleId.toLowerCase().includes(q) || scope.toLowerCase().includes(q);
   });
 
@@ -757,7 +846,14 @@ export function SecurityRlsPage() {
                 >
                   <Table.Td>{r.id}</Table.Td>
                   <Table.Td>
-                    {r.domainId ? (
+                    {r.actionName ? (
+                      <span data-testid={`rule-scope-${r.id}`}>
+                        <Text span c="dimmed" fz="0.75em">
+                          {t("securityPage.actionPrefix")}{" "}
+                        </Text>
+                        {r.actionName}
+                      </span>
+                    ) : r.domainId ? (
                       <>
                         <Text span c="dimmed" fz="0.75em">
                           {t("securityPage.domainPrefix")}{" "}
@@ -781,7 +877,11 @@ export function SecurityRlsPage() {
                           <Text>
                             <strong>{t("securityPage.labelId")}</strong> {r.id}
                           </Text>
-                          {r.domainId ? (
+                          {r.actionName ? (
+                            <Text>
+                              <strong>{t("securityPage.labelAction")}</strong> {r.actionName}
+                            </Text>
+                          ) : r.domainId ? (
                             <Text>
                               <strong>{t("securityPage.labelDomain")}</strong> {r.domainId}
                             </Text>

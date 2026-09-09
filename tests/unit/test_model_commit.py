@@ -21,7 +21,7 @@ import pytest
 import strawberry
 
 from provisa.api.admin import model_commit
-from provisa.api.org_runtime import reset_current_org, set_current_org
+from provisa.core.request_context import reset_current_org, set_current_org
 
 
 class _FakeDb:

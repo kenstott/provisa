@@ -334,9 +334,11 @@ rls_rules = Table(
     Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE")),
     Column("role_id", Text, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False),
     Column("filter_expr", LargeBinary, nullable=False),  # REQ-686: encrypted at rest (BYTEA)
+    Column("action_name", Text),  # REQ-1679: a tracked function/webhook target, by name
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "role_id"),
     UniqueConstraint("domain_id", "role_id", name="rls_rules_domain_role_key"),
+    UniqueConstraint("action_name", "role_id", name="rls_rules_action_role_key"),
 )
 
 # REQ-1373/REQ-1375: org-level tag registry — one registry, per-tag applies_to scopes;
@@ -717,7 +719,7 @@ api_sources = Table(
     # path refuses a query naming it rather than dialling whatever is local to the node.
     Column("bound", Boolean, nullable=False, server_default=true()),
     CheckConstraint(
-        "type IN ('openapi', 'graphql_api', 'grpc_api')", name="api_sources_type_check"
+        "type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j')", name="api_sources_type_check"
     ),
 )
 
