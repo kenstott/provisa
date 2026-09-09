@@ -116,15 +116,21 @@ export function SqlPage() {
   // comma-separated X-Provisa-Role so the union of their visibility is queryable. The picker
   // offers that set as its own entry; picking a single role previews that role alone.
   const allRolesValue = useMemo(() => selectedRoles.map((r) => r.id).join(","), [selectedRoles]);
-  const roles = useMemo(() => {
-    const single = rolesData.length ? rolesData.map((r) => r.id) : ["org_admin"];
-    return allRolesValue.includes(",")
-      ? [{ value: allRolesValue, label: t("roleSelector.all") }, ...single]
-      : single;
-  }, [rolesData, allRolesValue, t]);
+  // The role ids (a new view's default visibleTo); the picker's options add the "All" entry.
+  const roles = useMemo(
+    () => (rolesData.length ? rolesData.map((r) => r.id) : ["org_admin"]),
+    [rolesData],
+  );
+  const roleOptions = useMemo(
+    () =>
+      allRolesValue.includes(",")
+        ? [{ value: allRolesValue, label: t("roleSelector.all") }, ...roles]
+        : roles,
+    [roles, allRolesValue, t],
+  );
   const roleIds = useMemo(
-    () => roles.map((r) => (typeof r === "string" ? r : r.value)),
-    [roles],
+    () => roleOptions.map((r) => (typeof r === "string" ? r : r.value)),
+    [roleOptions],
   );
   // REQ-1013: the SQL Explorer's "run as" picker is a preview tool separate from the app-wide
   // role switcher (RoleSelector / useAuth().role), which is what Cypher and GraphQL send as
@@ -153,7 +159,7 @@ export function SqlPage() {
           ? authRole.id
           : roleIds[0],
     );
-  }, [roles, roleIds, role, rolesData.length, authRole, allRolesValue]);
+  }, [roleIds, role, rolesData.length, authRole, allRolesValue]);
   /* eslint-enable react-hooks/set-state-in-effect */
   const [running, setRunning] = useState(false);
   const [sampleMode, setSampleMode] = useState<"first" | "last" | "random">("first");
@@ -864,7 +870,7 @@ export function SqlPage() {
               setSampleMode={setSampleMode}
               sampleSize={sampleSize}
               setSampleSize={setSampleSize}
-              roles={roles}
+              roles={roleOptions}
               setRole={setRole}
               viewTable={viewTable}
               viewSaving={viewSaving}
