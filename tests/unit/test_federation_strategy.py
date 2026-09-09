@@ -48,6 +48,15 @@ def test_warehouse_native_lands_is_materialized():
     assert federate(_src("pg", SourceType.postgresql), eng) is Strategy.MATERIALIZED
 
 
+def test_pgwire_connector_source_is_virtual_on_duckdb():  # REQ-1690
+    """DuckDB attaches the Calcite pgwire server live through its postgres extension; an engine
+    with no reach of its own still lands the replica."""
+    splunk = _src("splunk", SourceType.splunk, password="tok")
+    assert federate(splunk, build_duckdb_engine()) is Strategy.VIRTUAL
+    assert federate(_src("sp", SourceType.sharepoint), build_duckdb_engine()) is Strategy.VIRTUAL
+    assert federate(splunk, build_sqlalchemy_engine("mysql://h/db")) is Strategy.MATERIALIZED
+
+
 def test_api_source_with_no_connector_is_materialized():
     # OpenAPI has no live/scan representation on Trino → loaded into the store.
     assert federate(_src("api", SourceType.openapi, base_url="http://x"), build_trino_engine()) is (

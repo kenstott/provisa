@@ -246,6 +246,46 @@ class DuckDBDuckdbConnector(Connector):
 # attach time, out of scope for the probe.
 
 
+class _DuckDBPgwireConnector(Connector):  # REQ-1690
+    """A source whose only reader is its Calcite connector's bundled pgwire server (sharepoint,
+    splunk), attached LIVE: DuckDB's postgres extension speaks the wire protocol the server serves
+    (pg_catalog introspection and binary COPY out both answer), so the engine reads the connector
+    in place — filters and projections push down to Calcite, which pushes its own into the SaaS
+    API. ``details()`` starts the server once per source (REQ-955) and attaches its endpoint under
+    the private ``_src_<id>`` alias; the connector schema is the sql-normalized source id, the same
+    name the landing path uses (``pgwire_replica.schema_name``). Read-only: Calcite serves no DML.
+    """
+
+    engine = "duckdb"
+    mechanism = Mechanism.ATTACH_R
+    extension = "postgres"  # core extension — the runtime INSTALL/LOADs it before the attach
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)
+
+    def details(self, source: Source) -> dict:
+        from provisa.federation.pgwire_replica import ensure_endpoint, schema_name
+
+        ports = ensure_endpoint(source)
+        dsn = (
+            f"host={ports.calcite_child_host} port={ports.pgwire_port} user=provisa dbname=provisa"
+        )
+        alias = f"_src_{source.id}"
+        return {
+            "attach": f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres, READ_ONLY)",
+            "raw_alias": alias,
+            "remote_schema": schema_name(source),
+        }
+
+
+class DuckDBSharepointConnector(_DuckDBPgwireConnector):  # REQ-1690
+    source_type = "sharepoint"
+
+
+class DuckDBSplunkConnector(_DuckDBPgwireConnector):  # REQ-1690
+    source_type = "splunk"
+
+
 class _DuckDBExtensionConnector(Connector):  # REQ-899
     """Every ``details()`` below attaches the remote under the private ``_src_<id>`` alias and
     reports it as ``raw_alias`` — the same convention as the postgres/sqlite connectors. Attaching

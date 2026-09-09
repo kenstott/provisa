@@ -485,7 +485,9 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
         DuckDBMssqlConnector,
         DuckDBParquetConnector,
         DuckDBPostgresConnector,
+        DuckDBSharepointConnector,
         DuckDBSnowflakeConnector,
+        DuckDBSplunkConnector,
         DuckDBSqliteConnector,
     )
     from provisa.federation.custom_connectors import load_custom_connectors
@@ -509,6 +511,9 @@ def build_duckdb_engine() -> FederationEngine:  # REQ-840 partial federator
             DuckDBAirportConnector(),
             DuckDBIcebergConnector(),  # core `iceberg` extension — iceberg_scan (REQ-899)
             DuckDBDeltaConnector(),  # core `delta` extension — delta_scan (REQ-899)
+            # REQ-1690: the Calcite pgwire connectors attached live through the postgres extension.
+            DuckDBSharepointConnector(),
+            DuckDBSplunkConnector(),
             # REQ-1177: operator-declared custom ATTACH/SCAN extensions (config/custom_connectors.yaml).
             *load_custom_connectors("duckdb"),
         ],

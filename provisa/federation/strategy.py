@@ -77,7 +77,9 @@ class Strategy(str, Enum):  # REQ-826
 # starts that server from the source's backing-store config, connects as generic PostgreSQL, and
 # lands a replica. Reachable as REPLICA on ANY fed engine (the pgwire bridge is the reader, not the
 # engine's own connectors). ``files`` also SCANs live where an engine has a file connector (Trino);
-# off such engines it federates by this replica path.
+# off such engines it federates by this replica path. An engine whose own postgres reach can speak
+# to that server ATTACHes it live instead (DuckDB, REQ-1690) — such an engine has a connector for
+# the type, so it never reaches this gate.
 _CONNECTOR_PGWIRE_REPLICA = frozenset({"files", "sharepoint", "splunk"})
 
 # Sources with no live/scan representation — APIs, NoSQL, and streaming feeds. They

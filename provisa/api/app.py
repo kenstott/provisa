@@ -2045,6 +2045,10 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
                     finally:
                         reset_current_org(_tok)
     state.federation_engine.close()
+    with tolerate_shutdown_failure("pgwire connector servers stop"):
+        from provisa.federation.pgwire_replica import stop_all_servers
+
+        stop_all_servers()  # REQ-1690: the Calcite servers a native engine attached live
     if state.admin_db is not None:
         with tolerate_shutdown_failure("admin_db close"):
             await state.admin_db.close()

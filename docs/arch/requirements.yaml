@@ -56402,3 +56402,40 @@
     Given a Prometheus that scrapes itself and a Provisa on the native DuckDB engine
     When the operator registers the source and picks the `up` metric through Register Table
     Then the columns are timestamp, value and the metric's labels, and a SELECT on the registered table returns its samples with job "prometheus"
+- id: REQ-1690
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Replica Strategy
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A Calcite-pgwire connector source (sharepoint, splunk) is attached live on the DuckDB engine.
+    The connector's bundled pgwire server answers DuckDB's postgres extension in full — pg_catalog
+    introspection and binary COPY out — so the engine ATTACHes the server's endpoint read-only
+    under the source's private `_src_` alias instead of landing a replica: Register Table lists the
+    connector's tables from the attached catalog, a query reads the connector in place, and filters
+    and projections push down to Calcite (which pushes its own into the SaaS API). The server is
+    started once per source when the engine first resolves it, its listener awaited before the
+    ATTACH (a server that never answers is loud), and every started server is stopped at app
+    shutdown. Engines with no postgres reach of their own keep the landing path (REQ-954). The
+    bundle resolver fetches the release's per-OS/arch tarball (`pgwire-<connector>-<ver>-<variant>`),
+    fails closed on a platform the release does not build, and unnests the tarball so the bundle
+    root carries `bin/pgwire-<connector>`.
+  code:
+  - provisa/federation/connector_duckdb.py
+  - provisa/federation/pgwire_replica.py
+  - provisa/federation/engine.py
+  - provisa/runtime_deps/pgwire_bundles.py
+  - provisa/api/app.py
+  tests:
+  - tests/unit/test_replica_strategy.py
+  - tests/unit/test_federation_strategy.py
+  - tests/integration/test_duckdb_attach_calcite_pgwire.py
+  use_case: >-
+    Splunk presents itself as a relational endpoint through its Calcite connector, yet on DuckDB it
+    was always landed; a live attach gives current results and pushdown without a refresh cycle.
+  scenario: |
+    Given a splunk source registered on the DuckDB engine
+    When a query names one of its tables
+    Then DuckDB reads it through the attached Calcite pgwire server with the query's filters pushed down, and no replica is landed

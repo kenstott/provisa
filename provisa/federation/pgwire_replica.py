@@ -29,8 +29,11 @@ Every failure is LOUD: an unknown/creds-missing source, a port collision, or a m
 from __future__ import annotations
 
 import json
+import os
+import signal
 import socket
 import subprocess  # noqa: S404 - launches the pinned first-party pgwire bundle launcher
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -48,6 +51,10 @@ PGWIRE_DEFAULT_PORT = 5433
 CALCITE_CHILD_DEFAULT_HOST = "127.0.0.1"
 CALCITE_CHILD_DEFAULT_PORT = 5533
 _PORT_SCAN_LIMIT = 512  # how far up from a base to probe before giving up (fail loud)
+SERVER_STOP_SECONDS = 30  # SIGTERM grace before the group is killed
+SERVER_READY_SECONDS = (
+    90  # a bundled JVM + Calcite schema boot; the probe measured ~10s on a laptop
+)
 
 # The Calcite schema factory per connector — the ``model.json`` ``factory`` for the bundle's adapter.
 _SCHEMA_FACTORY: dict[str, str] = {
@@ -265,9 +272,34 @@ class PortAllocator:  # REQ-955
 # -- server lifecycle (REQ-955) ------------------------------------------------
 
 
+class _ProcessGroup:
+    """The launcher and everything it spawns (the JVM starts the Python server as its own child,
+    and that child holds the port): ``terminate`` signals the whole session so the port is freed,
+    ``wait`` blocks until the launcher has exited. A process that ignores SIGTERM is killed."""
+
+    def __init__(self, proc: subprocess.Popen) -> None:
+        self._proc = proc
+
+    def terminate(self) -> None:
+        try:
+            os.killpg(self._proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return  # already gone
+
+    def wait(self, timeout: float) -> None:
+        try:
+            self._proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            os.killpg(self._proc.pid, signal.SIGKILL)
+            self._proc.wait(timeout=timeout)
+
+
 def _spawn_process(command: list[str], cwd: Path) -> Any:
-    """Launch the pgwire bundle launcher as a child process (the real spawn)."""
-    return subprocess.Popen(command, cwd=str(cwd))  # noqa: S603 - args are code-built, not user input
+    """Launch the pgwire bundle launcher as a child process (the real spawn) in its own session,
+    so stopping it stops the server child that actually listens."""
+    return _ProcessGroup(
+        subprocess.Popen(command, cwd=str(cwd), start_new_session=True)  # noqa: S603 - args are code-built, not user input
+    )
 
 
 def _tcp_health(host: str, port: int) -> bool:
@@ -340,10 +372,12 @@ class PgwireServer:  # REQ-955
         return self._health(self._ports.calcite_child_host, self._ports.pgwire_port)
 
     def stop(self) -> None:
-        """Terminate the server (idempotent — a no-op if not running)."""
+        """Terminate the server and wait for it to exit, so its port is free for the next start
+        (idempotent — a no-op if not running)."""
         if self._proc is None:
             return
         self._proc.terminate()
+        self._proc.wait(SERVER_STOP_SECONDS)
         self._proc = None
 
 
@@ -441,18 +475,27 @@ class ConnectorReplica:  # REQ-954/955/956
         self._server = server
         return server
 
+    def endpoint(self) -> PortPair:
+        """The healthy server's endpoint: start it if needed and wait for its listener (the JVM
+        takes seconds to bind); a server that never answers is loud (REQ-955)."""
+        server = self._ensure_server()
+        deadline = time.monotonic() + SERVER_READY_SECONDS
+        while not server.health():
+            if time.monotonic() >= deadline:
+                raise ServerLifecycleError(
+                    f"pgwire server for {self._source.id!r} did not accept connections on port "
+                    f"{server.ports.pgwire_port} within {SERVER_READY_SECONDS}s"
+                )
+            time.sleep(0.25)
+        return server.ports
+
     async def load(self, table: Any) -> list[dict]:
         """Land the connector table's current rows: start the server if needed, then SELECT (REQ-954).
         ``table`` may be a registered Table (``.table_name``) or a bare table-name string."""
-        server = self._ensure_server()
-        if not server.health():
-            raise ServerLifecycleError(
-                f"pgwire server for {self._source.id!r} is not healthy on port "
-                f"{server.ports.pgwire_port}"
-            )
+        ports = self.endpoint()
         table_name = getattr(table, "table_name", table)
         return await land_via_select(
-            server.ports, schema_name(self._source), table_name, connect=self._connect
+            ports, schema_name(self._source), table_name, connect=self._connect
         )
 
     def close(self) -> None:
@@ -460,6 +503,31 @@ class ConnectorReplica:  # REQ-954/955/956
         if self._server is not None:
             self._server.stop()
             self._server = None
+
+
+# -- live endpoint for an engine that ATTACHes the pgwire server (REQ-1690) --------------------
+
+# One replica (one server) per source id, shared by every engine connection that attaches it; the
+# shared allocator keeps concurrent sources on distinct ports. Stopped by ``stop_all_servers``.
+_ENDPOINT_ALLOCATOR = PortAllocator()
+_ENDPOINTS: dict[str, ConnectorReplica] = {}
+
+
+def ensure_endpoint(source: Any) -> PortPair:
+    """Start (once) the source's Calcite pgwire server and return the endpoint the engine attaches
+    (REQ-1690). The server must be healthy before the ATTACH, so an unhealthy start is loud here."""
+    replica = _ENDPOINTS.get(source.id)
+    if replica is None:
+        replica = ConnectorReplica(source, allocator=_ENDPOINT_ALLOCATOR)
+        _ENDPOINTS[source.id] = replica
+    return replica.endpoint()
+
+
+def stop_all_servers() -> None:
+    """Stop every pgwire server started for a live attach (app shutdown)."""
+    for replica in _ENDPOINTS.values():
+        replica.close()
+    _ENDPOINTS.clear()
 
 
 def make_pgwire_loader(

@@ -183,11 +183,61 @@ def test_port_allocation_exhaustion_is_loud():
 
 def test_bundle_spec_version_pin():
     spec = rd.bundle_spec_for("files")
-    assert spec.version == "engine-v0.28.0"
+    assert spec.version == "engine-v0.81.0"
     assert spec.connector == "file"
     assert spec.artifact_name == "pgwire-file"
-    assert "engine-v0.28.0" in spec.download_url
+    assert "engine-v0.81.0" in spec.download_url
     assert spec.download_url.startswith("https://github.com/kenstott/calcite/releases/download/")
+
+
+def test_bundle_asset_is_platform_stamped():  # REQ-1690
+    spec = rd.BundleSpec("file", "engine-v0.81.0", variant="linux-x86_64")
+    assert spec.asset_stem == "pgwire-file-0.81.0-linux-x86_64"
+    assert spec.download_url.endswith("/engine-v0.81.0/pgwire-file-0.81.0-linux-x86_64.tar.gz")
+
+
+def test_bundle_variant_unbuilt_platform_is_loud(monkeypatch):  # REQ-1690
+    monkeypatch.setattr(rd.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(rd.platform, "machine", lambda: "aarch64")
+    with pytest.raises(rd.BundleUnavailable):
+        rd.bundle_variant()
+
+
+def test_download_unnests_the_tarball(tmp_path, monkeypatch):  # REQ-1690
+    """The release tarball nests the bundle under ``<asset_stem>/``; the resolver's bundle root
+    is ``dest`` itself, so the download moves that directory into place."""
+    import io
+    import tarfile
+
+    spec = rd.BundleSpec("file", "engine-v0.81.0", variant="macos-arm64")
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        launcher = tarfile.TarInfo(f"{spec.asset_stem}/bin/pgwire-file")
+        payload = b"#!/bin/sh\n"
+        launcher.size = len(payload)
+        tar.addfile(launcher, io.BytesIO(payload))
+    body = buf.getvalue()
+
+    class _Resp:
+        status_code = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def iter_bytes(self):
+            yield body[:100]
+            yield body[100:]
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "stream", lambda *_a, **_k: _Resp())
+    dest = tmp_path / "engine-v0.81.0" / "pgwire-file"
+    rd.download_release_asset(spec, dest)
+    assert (dest / "bin" / "pgwire-file").read_bytes() == payload
+    assert not (dest / spec.asset_stem).exists()
 
 
 def test_bundle_spec_maps_each_type():
@@ -211,7 +261,7 @@ def test_bundle_resolve_downloads_then_caches(tmp_path):
     spec = rd.bundle_spec_for("files")
     assert not resolver.is_cached(spec)
     path = resolver.resolve(spec)
-    assert path == tmp_path / "engine-v0.28.0" / "pgwire-file"
+    assert path == tmp_path / "engine-v0.81.0" / "pgwire-file"
     assert resolver.is_cached(spec)
     # second resolve is a cache HIT — downloader not called again
     resolver.resolve(spec)
@@ -233,9 +283,14 @@ def test_bundle_resolve_download_without_launcher_is_loud(tmp_path):
 class _FakeProc:
     def __init__(self) -> None:
         self.terminated = False
+        self.waited = False
 
     def terminate(self) -> None:
         self.terminated = True
+
+    def wait(self, timeout: float) -> None:
+        assert self.terminated, "wait() before terminate()"
+        self.waited = True
 
 
 def _server(tmp_path, *, health: bool = True):
@@ -436,3 +491,79 @@ def test_no_pgwire_replica_for_non_replica_type():
         connectors: dict = {}
 
     assert pr.needs_pgwire_replica(Source(id="pg", type=SourceType.postgresql), _Eng()) is False
+
+
+# -- REQ-1690: live endpoint for an engine that attaches the server ---------------
+
+
+def test_endpoint_waits_for_the_listener(tmp_path, monkeypatch):
+    """The JVM binds seconds after spawn: endpoint() polls health until it answers, then returns
+    the ports the engine attaches; the same replica hands back the same server."""
+    monkeypatch.setattr(pr.time, "sleep", lambda _s: None)
+    answers = iter([False, False, True, True])
+    proc = _FakeProc()
+    replica = pr.ConnectorReplica(
+        _splunk_source(),
+        resolver=rd.BundleResolver(cache_root=tmp_path, downloader=_lay_down_bundle),
+        allocator=pr.PortAllocator(is_free=lambda _p: True),
+        spawn=lambda _cmd, _cwd: proc,
+        health_check=lambda _h, _p: next(answers),
+    )
+    ports = replica.endpoint()
+    assert ports.pgwire_port == pr.PGWIRE_DEFAULT_PORT
+    assert replica.endpoint() is ports
+    replica.close()
+    assert proc.terminated is True
+
+
+def test_endpoint_never_listening_is_loud(tmp_path, monkeypatch):
+    monkeypatch.setattr(pr.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(pr, "SERVER_READY_SECONDS", 0)
+    replica = pr.ConnectorReplica(
+        _splunk_source(),
+        resolver=rd.BundleResolver(cache_root=tmp_path, downloader=_lay_down_bundle),
+        allocator=pr.PortAllocator(is_free=lambda _p: True),
+        spawn=lambda _cmd, _cwd: _FakeProc(),
+        health_check=lambda _h, _p: False,
+    )
+    with pytest.raises(pr.ServerLifecycleError):
+        replica.endpoint()
+
+
+def test_duckdb_splunk_attaches_the_pgwire_endpoint(monkeypatch):
+    """The DuckDB connector attaches the server the endpoint registry started, read-only, under the
+    private alias, and names the Calcite schema the tables live in."""
+    from provisa.federation.connector_duckdb import DuckDBSplunkConnector
+
+    started: list[str] = []
+
+    def _ensure(source):
+        started.append(source.id)
+        return pr.PortPair(5440, "127.0.0.1", 5540)
+
+    monkeypatch.setattr(pr, "ensure_endpoint", _ensure)
+    src = _splunk_source(id="ops-splunk")
+    details = DuckDBSplunkConnector().details(src)
+    assert started == ["ops-splunk"]
+    assert details["attach"] == (
+        "ATTACH 'host=127.0.0.1 port=5440 user=provisa dbname=provisa' "
+        'AS "_src_ops-splunk" (TYPE postgres, READ_ONLY)'
+    )
+    assert details["raw_alias"] == "_src_ops-splunk"
+    assert details["remote_schema"] == "ops_splunk"
+
+
+def test_stop_all_servers_closes_every_endpoint(monkeypatch):
+    closed: list[str] = []
+
+    class _Replica:
+        def __init__(self, sid):
+            self.sid = sid
+
+        def close(self):
+            closed.append(self.sid)
+
+    monkeypatch.setattr(pr, "_ENDPOINTS", {"a": _Replica("a"), "b": _Replica("b")})
+    pr.stop_all_servers()
+    assert sorted(closed) == ["a", "b"]
+    assert pr._ENDPOINTS == {}

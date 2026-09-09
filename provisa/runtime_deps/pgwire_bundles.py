@@ -24,16 +24,27 @@ launcher already present under the pinned version) never re-downloads.
 from __future__ import annotations
 
 import os
+import platform
+import shutil
 import tarfile
-import urllib.request
 from dataclasses import dataclass
+from http import HTTPStatus
 from pathlib import Path
-from typing import Callable
+from typing import IO, Callable, cast
 
 # The pinned upstream release the whole bundle set is fetched from (REQ-956). One version knob — a
 # bundle path is always namespaced by this tag, so a version bump caches side by side, never in place.
-RELEASE_TAG = "engine-v0.28.0"
+RELEASE_TAG = "engine-v0.81.0"
 GITHUB_REPO = "kenstott/calcite"
+
+# The release ships one tarball per OS/arch (REQ-1690): ``pgwire-<connector>-<ver>-<variant>.tar.gz``
+# where ``<ver>`` is the tag without its ``engine-v`` prefix. The variant names are the release
+# workflow's matrix; a platform absent here has no bundle and fails closed.
+BUNDLE_VARIANTS: dict[tuple[str, str], str] = {
+    ("Darwin", "arm64"): "macos-arm64",
+    ("Linux", "x86_64"): "linux-x86_64",
+    ("Windows", "AMD64"): "windows-x86_64",
+}
 
 # Provisa source type -> the connector's pgwire bundle base name. A type absent here has no pgwire
 # bundle and fails closed at ``bundle_spec_for`` (never guessed from the type string).
@@ -54,6 +65,7 @@ class BundleSpec:  # REQ-956 — a pinned (connector, version) coordinate in the
     connector: str  # "file" | "sharepoint" | "splunk"
     version: str = RELEASE_TAG
     repo: str = GITHUB_REPO
+    variant: str = ""  # the OS/arch tarball variant; "" ⇒ this host's (see bundle_variant)
 
     @property
     def artifact_name(self) -> str:
@@ -61,9 +73,16 @@ class BundleSpec:  # REQ-956 — a pinned (connector, version) coordinate in the
         return f"pgwire-{self.connector}"
 
     @property
+    def asset_stem(self) -> str:
+        """The tarball's top-level directory — ``pgwire-file-0.81.0-macos-arm64`` — which is also
+        the asset filename without ``.tar.gz``."""
+        ver = self.version.removeprefix("engine-v")
+        return f"{self.artifact_name}-{ver}-{self.variant or bundle_variant()}"
+
+    @property
     def asset_filename(self) -> str:
-        """The release asset filename fetched from GitHub (version-stamped tarball)."""
-        return f"{self.artifact_name}-{self.version}.tar.gz"
+        """The release asset filename fetched from GitHub (version- and platform-stamped tarball)."""
+        return f"{self.asset_stem}.tar.gz"
 
     @property
     def download_url(self) -> str:
@@ -71,6 +90,18 @@ class BundleSpec:  # REQ-956 — a pinned (connector, version) coordinate in the
         return (
             f"https://github.com/{self.repo}/releases/download/{self.version}/{self.asset_filename}"
         )
+
+
+def bundle_variant() -> str:
+    """This host's release tarball variant (REQ-1690). A platform the release does not build for
+    has no bundle — fail loud rather than fetch a tarball that cannot run here."""
+    key = (platform.system(), platform.machine())
+    variant = BUNDLE_VARIANTS.get(key)
+    if variant is None:
+        raise BundleUnavailable(
+            f"no pgwire bundle is published for {key[0]}/{key[1]} (built: {sorted(BUNDLE_VARIANTS.values())})"
+        )
+    return variant
 
 
 def bundle_spec_for(source_type: str, *, version: str = RELEASE_TAG) -> BundleSpec:
@@ -103,20 +134,64 @@ def download_release_asset(spec: BundleSpec, dest: Path) -> None:
     """Download ``spec``'s release-asset tarball and extract it into ``dest`` (REQ-956). Fails loud on
     any network / archive error — no partial or silent success. The tarball is expected to contain the
     bundle tree (``bin/pgwire-<connector>``, ``model/`` …); resolution verifies the launcher after."""
-    dest.mkdir(parents=True, exist_ok=True)
+    import httpx
+
     if not spec.download_url.startswith("https://"):
         raise BundleUnavailable(f"refusing non-https bundle URL: {spec.download_url}")
+    # The tarball nests everything under ``<asset_stem>/``; extract beside ``dest`` and move that
+    # directory into place so the bundle root is ``dest`` (``dest/bin/pgwire-<connector>``).
+    staging = dest.parent / f".{dest.name}.download"
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
     try:
-        # nosec B310 - scheme is validated to https just above (no file:/custom-scheme surface).
-        with urllib.request.urlopen(spec.download_url) as resp:  # noqa: S310  # nosec B310
-            with tarfile.open(fileobj=resp, mode="r|gz") as tar:
+        with httpx.stream("GET", spec.download_url, follow_redirects=True, timeout=120.0) as resp:
+            if resp.status_code != HTTPStatus.OK:
+                raise BundleUnavailable(
+                    f"failed to download pgwire bundle {spec.artifact_name} from "
+                    f"{spec.download_url}: HTTP {resp.status_code}"
+                )
+            with tarfile.open(
+                fileobj=cast("IO[bytes]", _StreamReader(resp.iter_bytes())), mode="r|gz"
+            ) as tar:
                 # filter="data" rejects absolute paths, ".." traversal and unsafe links/specials,
-                # so a malicious archive cannot escape dest (Python 3.12 safe-extraction filter).
-                tar.extractall(dest, filter="data")
-    except (OSError, tarfile.TarError) as exc:
+                # so a malicious archive cannot escape staging (Python 3.12 safe-extraction filter).
+                tar.extractall(staging, filter="data")
+        root = staging / spec.asset_stem
+        if not root.is_dir():
+            raise BundleUnavailable(
+                f"pgwire bundle {spec.asset_filename} does not contain a {spec.asset_stem}/ directory"
+            )
+        if dest.exists():
+            shutil.rmtree(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(root), str(dest))
+    except (OSError, httpx.HTTPError, tarfile.TarError) as exc:
         raise BundleUnavailable(
             f"failed to download pgwire bundle {spec.artifact_name} from {spec.download_url}: {exc}"
         ) from exc
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+class _StreamReader:
+    """A read()-only file object over an httpx byte iterator, for streaming tarfile extraction."""
+
+    def __init__(self, chunks) -> None:
+        self._chunks = iter(chunks)
+        self._buf = b""
+
+    def read(self, n: int = -1) -> bytes:
+        while n < 0 or len(self._buf) < n:
+            chunk = next(self._chunks, None)
+            if chunk is None:
+                break
+            self._buf += chunk
+        if n < 0:
+            out, self._buf = self._buf, b""
+        else:
+            out, self._buf = self._buf[:n], self._buf[n:]
+        return out
 
 
 class BundleResolver:  # REQ-956

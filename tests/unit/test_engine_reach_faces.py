@@ -60,17 +60,17 @@ def test_materialize_only_type_reachable_on_every_engine():
 
 def test_connector_pgwire_types_reachable_on_every_engine():
     # files/sharepoint/splunk read via their Calcite pgwire server (generic postgres) → REPLICA on any
-    # engine. On Trino they're LIVE (attach/scan); on DuckDB, "files" is also LIVE (DuckDBFilesConnector,
-    # native CSV SCAN); sharepoint/splunk remain REPLICA off Trino.
+    # engine. On Trino they're LIVE (attach/scan); on DuckDB, "files" is LIVE (DuckDBFilesConnector,
+    # native CSV SCAN) and sharepoint/splunk are LIVE too — DuckDB's postgres extension attaches the
+    # Calcite pgwire server itself (REQ-1690); they remain REPLICA on pg/clickhouse.
     for t in ("files", "sharepoint", "splunk"):
         for key in ("trino", "duckdb", "pg", "clickhouse"):
             assert t in reachable_source_types(key), f"{t} on {key}"
         assert t in live_source_types("trino"), t
-    # files: LIVE on both trino (pgwire attach) and duckdb (native CSV SCAN)
-    assert "files" in live_source_types("duckdb")
-    # sharepoint/splunk: REPLICA on duckdb (no native SCAN connector)
+        assert t in live_source_types("duckdb"), t
     for t in ("sharepoint", "splunk"):
-        assert t not in live_source_types("duckdb"), t
+        for key in ("pg", "clickhouse"):
+            assert t not in live_source_types(key), f"{t} on {key}"
 
 
 def test_duckdb_attaches_duckdb_live():
