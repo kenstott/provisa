@@ -1,0 +1,32 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Neo4j (start-ui-install.sh --demo --source=neo4j).
+# Own compose project (provisa-demo-neo4j) on ports no test or dev stack uses:
+#   dev stack 7474/7687, e2e export container 17474/17687, test stacks ephemeral.
+services:
+  neo4j:
+    image: neo4j:5.19-community
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_DEMO_NEO4J_HTTP_PORT:-27474}:7474"
+      - "${PROVISA_DEMO_NEO4J_BOLT_PORT:-27687}:7687"
+    environment:
+      NEO4J_AUTH: none
+      NEO4J_server_memory_heap_max__size: 512m
+    volumes:
+      - neo4j_demo_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:7474 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+volumes:
+  neo4j_demo_data:

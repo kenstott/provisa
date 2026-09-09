@@ -1,0 +1,17 @@
+// Seed for the optional Neo4j demo source (demo/sources/neo4j). Applied by prime.py after a
+// wipe, so re-running the demo always lands exactly this graph.
+CREATE (a1:Adopter {adopter_id: 1, name: 'Sara Kim',     city: 'Portland', adopted_species: 'dog',    adopted_on: '2024-03-02'})
+CREATE (a2:Adopter {adopter_id: 2, name: 'Tom Evans',    city: 'Portland', adopted_species: 'cat',    adopted_on: '2024-04-11'})
+CREATE (a3:Adopter {adopter_id: 3, name: 'Amy Zhao',     city: 'Seattle',  adopted_species: 'rabbit', adopted_on: '2024-05-19'})
+CREATE (a4:Adopter {adopter_id: 4, name: 'Carlos Ruiz',  city: 'Seattle',  adopted_species: 'dog',    adopted_on: '2024-06-01'})
+CREATE (a5:Adopter {adopter_id: 5, name: 'Nina Patel',   city: 'Eugene',   adopted_species: 'cat',    adopted_on: '2024-07-23'})
+CREATE (a6:Adopter {adopter_id: 6, name: 'James Park',   city: 'Eugene',   adopted_species: 'dog',    adopted_on: '2024-09-14'})
+CREATE (a7:Adopter {adopter_id: 7, name: 'Lisa Chen',    city: 'Portland', adopted_species: 'bird',   adopted_on: '2024-10-05'})
+CREATE (a8:Adopter {adopter_id: 8, name: 'Mark Torres',  city: 'Tacoma',   adopted_species: 'cat',    adopted_on: '2025-01-17'})
+CREATE (a1)-[:REFERRED {referred_on: '2024-04-01', channel: 'word of mouth'}]->(a2)
+CREATE (a1)-[:REFERRED {referred_on: '2024-05-10', channel: 'social'}]->(a3)
+CREATE (a2)-[:REFERRED {referred_on: '2024-05-28', channel: 'word of mouth'}]->(a4)
+CREATE (a3)-[:REFERRED {referred_on: '2024-07-15', channel: 'event'}]->(a5)
+CREATE (a4)-[:REFERRED {referred_on: '2024-09-02', channel: 'social'}]->(a6)
+CREATE (a4)-[:REFERRED {referred_on: '2024-09-30', channel: 'word of mouth'}]->(a7)
+CREATE (a6)-[:REFERRED {referred_on: '2025-01-09', channel: 'event'}]->(a8)

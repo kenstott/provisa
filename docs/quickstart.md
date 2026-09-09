@@ -65,6 +65,16 @@ Provisa running:
 
 `--demo` — Starts additional demo data sources (PostgreSQL pet-store schema, OpenAPI petstore mock, SQLite, and a GraphQL remote). Seeds petstore users and orders automatically. [tool-verified: start-ui.sh lines 17, 55–171]
 
+`--source=<name>` (`start-ui-install.sh` only, repeatable) — Provisions an optional data source alongside `--demo`. Each name maps to `demo/sources/<name>/`: Provisa starts its `compose.yml` as a separate Docker Compose project (`provisa-demo-<name>`), runs `prime.py` if present to seed initial data, then writes a wrapper config at `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml` that includes the base config plus each source's `fragment.yaml`. [tool-verified: `start-ui-install.sh:200-226`] (REQ-1669)
+
+Shipped sources:
+
+| Name | Port(s) | Notes |
+|------|---------|-------|
+| `neo4j` | HTTP 27474, Bolt 27687 | Two Cypher tables (`adopter`, `adopter_referral`); graph seeded by `seed.cypher`; tables registered from the fragment |
+| `mongodb` | 27117 | Source registered; `product_reviews` collection seeded by `db/mongo-init.js`; register tables by hand through Register Table |
+| `elasticsearch` | 29200 | Source and index mapping registered; **Trino engine only** — refused under `--demo` (which runs the native DuckDB engine) |
+
 `--idp=basic|firebase` — Enables an identity provider for auth. Without this flag, the backend runs with no auth provider and all requests are treated as `admin`. [tool-verified: start-ui.sh line 18; provisa/auth/wiring.py lines 57–60; provisa/auth/middleware.py lines 57–68] (REQ-120, REQ-124)
 
 ---

@@ -1,0 +1,19 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Config fragment for the optional MongoDB demo source (REQ-1669). Registers the SOURCE only:
+# its collections are for registering by hand through Register Table (the point of the demo
+# flag). db/mongo-init.js seeds the provisa.product_reviews collection the container serves.
+sources:
+- id: mongodb-demo
+  type: mongodb
+  host: localhost
+  port: ${env:PROVISA_DEMO_MONGO_PORT:-27117}
+  database: provisa
+  description: "Product reviews — customer ratings and comments on store products (MongoDB)"

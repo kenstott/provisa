@@ -91,7 +91,7 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
     ep_rows = await conn.fetch(
         "SELECT id, source_id, path, method, table_name, columns, ttl, "
         "response_root, error_path, pk_column, pagination, max_concurrency, default_params, "
-        "promotions FROM api_endpoints"
+        "promotions, body_encoding, query_template, response_normalizer FROM api_endpoints"
     )
     api_endpoints: dict[str, ApiEndpoint] = {}
     api_endpoint_list: list[ApiEndpoint] = []
@@ -138,6 +138,11 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
             max_concurrency=r.get("max_concurrency"),
             default_params=default_params,
             promotions=promotions,
+            # REQ-1668: a query-API endpoint (neo4j) is its query — without these three the
+            # hydrated endpoint would GET a query URL with no body and serve nothing.
+            body_encoding=r.get("body_encoding"),
+            query_template=r.get("query_template"),
+            response_normalizer=r.get("response_normalizer"),
         )
         api_endpoints[ep.table_name] = ep
         api_endpoint_list.append(ep)

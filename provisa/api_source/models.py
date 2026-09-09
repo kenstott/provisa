@@ -24,6 +24,7 @@ class ApiSourceType(str, Enum):  # REQ-295, REQ-297, REQ-298
     openapi = "openapi"
     graphql_api = "graphql_api"
     grpc_api = "grpc_api"
+    neo4j = "neo4j"  # REQ-1668: Cypher over the Neo4j HTTP Query API
 
 
 class PaginationType(str, Enum):  # REQ-318
@@ -107,7 +108,8 @@ class ApiEndpoint(BaseModel):  # REQ-119, REQ-295, REQ-297, REQ-298, REQ-299, RE
     # REQ-119: JSONB field promotions → PG generated columns (registered + filterable).
     promotions: list[PromotionConfig] = Field(default_factory=list)
     # Phase AO: query-API sources (Neo4j, SPARQL)
-    body_encoding: Literal["json", "form"] | None = None
+    # "neo4j_tx": the transaction API's ``{"statements": [{"statement": …}]}`` envelope (REQ-1668)
+    body_encoding: Literal["json", "form", "neo4j_tx"] | None = None
     query_template: str | None = None  # Cypher or SPARQL query
     response_normalizer: str | None = None  # e.g. "neo4j_tabular" or "sparql_bindings"
 

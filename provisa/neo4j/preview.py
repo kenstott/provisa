@@ -56,20 +56,20 @@ async def preview_query(  # REQ-296
         timeout: request timeout in seconds
 
     Returns:
-        List of row dicts produced by neo4j_tabular normalizer.
+        List of row dicts produced by the neo4j_tabular normalizer.
 
     Raises:
         httpx.HTTPError: on network or HTTP errors
     """
     preview_cypher = _ensure_limit(cypher, limit=5)
-    url = f"{base_url}/db/{database}/query/v2"
+    url = f"{base_url}/db/{database}/tx/commit"
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     auth_arg = httpx.BasicAuth(*auth) if auth else httpx.USE_CLIENT_DEFAULT
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             url,
-            json={"statement": preview_cypher},
+            json={"statements": [{"statement": preview_cypher}]},
             headers=headers,
             auth=auth_arg,
             timeout=timeout,

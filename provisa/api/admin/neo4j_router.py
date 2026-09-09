@@ -26,6 +26,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from provisa.api.errors import ApiError
+from provisa.neo4j.persist import persist_neo4j_endpoint, persist_neo4j_source
 from provisa.neo4j.preview import Neo4jNodeObjectError, preview_query, validate_shape
 from provisa.neo4j.source import (
     Neo4jSourceConfig,
@@ -36,6 +37,14 @@ from provisa.neo4j.source import (
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/sources/neo4j", tags=["admin", "neo4j"])
+
+
+def _control_plane(state):
+    """The tenant control plane the rows land in; registration without one is a 503, not a dict."""
+    db = getattr(state, "tenant_db", None)
+    if db is None:
+        raise ApiError(503, "neo4j.database_not_connected", "Database not connected")
+    return db
 
 
 class Neo4jSourceRequest(BaseModel):
@@ -71,6 +80,9 @@ async def register_neo4j_source(body: Neo4jSourceRequest, request: Request):  # 
         use_https=body.use_https,
     )
     api_source = build_api_source(cfg)
+    # REQ-1668: the source is a control-plane row, not a process-lifetime dict entry.
+    async with _control_plane(state).acquire() as conn:
+        await persist_neo4j_source(conn, api_source)
     if not hasattr(state, "api_sources"):
         state.api_sources = {}
     state.api_sources[api_source.id] = api_source
@@ -154,10 +166,12 @@ async def register_neo4j_table(  # REQ-295, REQ-296, REQ-299
     source_cfg = neo4j_cfg or Neo4jSourceConfig(source_id=source_id, host="")
     endpoint = build_endpoint(source_cfg, body.table_name, body.cypher, columns, body.ttl)
 
-    # Persist endpoint
-    if not hasattr(state, "api_endpoints"):
-        state.api_endpoints = []
-    state.api_endpoints.append(endpoint)
+    # REQ-1668: persist, then mirror into the same keyed-by-table map the startup loader fills.
+    async with _control_plane(state).acquire() as conn:
+        await persist_neo4j_endpoint(conn, endpoint)
+    if not hasattr(state, "api_endpoints") or not isinstance(state.api_endpoints, dict):
+        state.api_endpoints = {}
+    state.api_endpoints[endpoint.table_name] = endpoint
     log.info("Registered Neo4j table %s on source %s", body.table_name, source_id)
 
     return {

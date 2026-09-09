@@ -2,6 +2,30 @@
 
 Provisa is configured via a YAML file (default: `config/provisa.yaml`). (REQ-528)
 
+## Includes (REQ-1669)
+
+Split a config across multiple files with `includes:`. The including file lists fragment paths under this key; Provisa merges them before validation, producing the same result as writing everything in one file.
+
+```yaml
+# provisa-with-sources.yaml — wrapper that adds a Neo4j source to the base config
+includes:
+  - /path/to/config/provisa-install.yaml
+  - /path/to/demo/sources/neo4j/fragment.yaml
+```
+
+A wrapper file containing only `includes:` is valid. `load_control_plane` reads through includes, so the `control_plane:` section is taken from whichever included file sets it. [tool-verified: `provisa/core/config_loader.py:154-166`]
+
+**Merge rules** [tool-verified: `provisa/core/config_loader.py:104-146`]
+
+- Paths resolve relative to the including file. Absolute paths are used as-is.
+- List sections (`sources`, `tables`, `domains`, `relationships`, `roles`, …) append — fragment entries follow the including file's entries.
+- A scalar or mapping key the including file does not set is taken from the fragment.
+- A key both files set to different values is a conflict; the load fails, naming the key.
+- Identical values in both files are not a conflict.
+- Includes nest. A file that includes itself — directly or through another fragment — is refused.
+- `includes` is consumed at load time and never appears in the validated config.
+
+
 ## Sources
 
 ```yaml

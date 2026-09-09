@@ -1,0 +1,98 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Config fragment for the optional Neo4j demo source (REQ-1668, REQ-1669). Included by the
+# wrapper config start-ui-install.sh --demo --source=neo4j writes; can be listed under
+# `includes:` in any config file. The Cypher on each table is persisted as its api_endpoints
+# row, so the tables survive a restart without this file being re-read.
+#
+# The graph: shelter adopters and who referred whom (demo/sources/neo4j/seed.cypher).
+sources:
+- id: neo4j-demo
+  type: neo4j
+  host: localhost
+  port: ${env:PROVISA_DEMO_NEO4J_HTTP_PORT:-27474}
+  database: neo4j
+  cache_ttl: 60
+  description: "Adopter referral network — who adopted from the shelter and who referred them"
+
+tables:
+- source_id: neo4j-demo
+  domain_id: shelter
+  schema: neo4j
+  table: adopter
+  description: One row per adopter node in the referral graph
+  query_template: >-
+    MATCH (a:Adopter)
+    RETURN a.adopter_id AS adopter_id, a.name AS name, a.city AS city,
+           a.adopted_species AS adopted_species, a.adopted_on AS adopted_on
+    ORDER BY a.adopter_id
+  columns:
+  - name: adopter_id
+    data_type: integer
+    is_primary_key: true
+    description: Adopter identifier
+    visible_to: [org_admin, analyst]
+  - name: name
+    data_type: varchar
+    description: Adopter's name
+    visible_to: [org_admin, analyst]
+  - name: city
+    data_type: varchar
+    description: City the adopter lives in
+    visible_to: [org_admin, analyst]
+  - name: adopted_species
+    data_type: varchar
+    description: Species of the animal adopted
+    visible_to: [org_admin, analyst]
+  - name: adopted_on
+    data_type: varchar
+    description: Adoption date (ISO-8601)
+    visible_to: [org_admin, analyst]
+- source_id: neo4j-demo
+  domain_id: shelter
+  schema: neo4j
+  table: adopter_referral
+  description: One row per REFERRED edge — which adopter brought which adopter to the shelter
+  query_template: >-
+    MATCH (r:Adopter)-[e:REFERRED]->(t:Adopter)
+    RETURN r.adopter_id AS referrer_id, t.adopter_id AS referred_id,
+           e.referred_on AS referred_on, e.channel AS channel
+    ORDER BY referrer_id, referred_id
+  columns:
+  - name: referrer_id
+    data_type: integer
+    description: Adopter who made the referral
+    visible_to: [org_admin, analyst]
+  - name: referred_id
+    data_type: integer
+    description: Adopter who was referred
+    visible_to: [org_admin, analyst]
+  - name: referred_on
+    data_type: varchar
+    description: Referral date (ISO-8601)
+    visible_to: [org_admin, analyst]
+  - name: channel
+    data_type: varchar
+    description: How the referral happened (word of mouth, social, event)
+    visible_to: [org_admin, analyst]
+
+relationships:
+- id: adopter-referral-to-referrer
+  source_table_id: adopter_referral
+  source_column: referrer_id
+  target_table_id: adopter
+  target_column: adopter_id
+  cardinality: many-to-one
+- id: adopter-referral-to-referred
+  source_table_id: adopter_referral
+  source_column: referred_id
+  target_table_id: adopter
+  target_column: adopter_id
+  cardinality: many-to-one

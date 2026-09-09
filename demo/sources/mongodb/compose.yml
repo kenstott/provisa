@@ -1,0 +1,29 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: MongoDB (start-ui-install.sh --demo --source=mongodb).
+# Own compose project (provisa-demo-mongodb) on port 27117 (dev stack 27017, test stacks ephemeral).
+# db/mongo-init.js seeds provisa.product_reviews (+ the _schema collection) on first volume create.
+services:
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_DEMO_MONGO_PORT:-27117}:27017"
+    volumes:
+      - ../../../db/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+      - mongo_demo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+volumes:
+  mongo_demo_data:

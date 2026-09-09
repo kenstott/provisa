@@ -10,6 +10,7 @@ FAST=false
 DEMO=false
 NATIVE=false
 IDP=""
+SOURCES=()  # optional demo sources (demo/sources/<name>): --source=neo4j --source=mongodb ...
 for arg in "$@"; do
   case "$arg" in
     --keep-docker) KEEP_DOCKER=true ;;
@@ -17,7 +18,8 @@ for arg in "$@"; do
     --demo) DEMO=true; NATIVE=true ;;  # demo is always native: no Docker, in-process engine + SQLite control plane
     --native) NATIVE=true ;;
     --idp=*) IDP="${arg#--idp=}" ;;
-    *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--demo] [--native] [--idp=basic|firebase]"; exit 1 ;;
+    --source=*) SOURCES+=("${arg#--source=}") ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--demo] [--native] [--idp=basic|firebase] [--source=<name>]..."; echo "  --source=<name>: provision demo/sources/<name> (a Docker container, primed with data) and include its config fragment"; exit 1 ;;
   esac
 done
 if [ -n "$IDP" ] && [ "$IDP" != "basic" ] && [ "$IDP" != "firebase" ]; then
@@ -188,6 +190,40 @@ if [ "$DEMO" = true ]; then
   export PROVISA_CONFIG="config/provisa-install.yaml"
 else
   export PROVISA_CONFIG="config/provisa-install-base.yaml"
+fi
+
+# Optional sources (REQ-1669): each demo/sources/<name> is its own compose project, primed by
+# its prime.py, and its fragment.yaml is spliced into the config through a wrapper file whose
+# `includes:` lists the base config first. The wrapper lives beside the demo control plane so a
+# demo reset never touches the checked-in config. A source the native engine cannot read
+# (demo/sources/<name>/engine names another engine) is refused rather than registered dead.
+if [ "${#SOURCES[@]}" -gt 0 ]; then
+  _SRC_WRAPPER="${PROVISA_HOME:-$HOME/.provisa}/demo/provisa-with-sources.yaml"
+  mkdir -p "$(dirname "$_SRC_WRAPPER")"
+  {
+    echo "# Written by start-ui-install.sh --source=...: the base config plus one fragment per source."
+    echo "includes:"
+    echo "  - $SCRIPT_DIR/$PROVISA_CONFIG"
+  } > "$_SRC_WRAPPER"
+  for _src in "${SOURCES[@]}"; do
+    _src_dir="$SCRIPT_DIR/demo/sources/$_src"
+    if [ ! -f "$_src_dir/fragment.yaml" ]; then
+      echo "Unknown --source=$_src: no $_src_dir/fragment.yaml. Available: $(ls "$SCRIPT_DIR/demo/sources" | tr '\n' ' ')"
+      exit 1
+    fi
+    if [ "$NATIVE" = true ] && [ -f "$_src_dir/engine" ] && [ "$(cat "$_src_dir/engine")" != "duckdb" ]; then
+      echo "--source=$_src is served only by the $(cat "$_src_dir/engine") engine; this start runs the native DuckDB engine, which has no path to it."
+      exit 1
+    fi
+    echo "Provisioning demo source '$_src' (compose project provisa-demo-$_src)..."
+    docker compose -p "provisa-demo-$_src" -f "$_src_dir/compose.yml" up -d --wait
+    if [ -f "$_src_dir/prime.py" ]; then
+      "$SCRIPT_DIR/.venv/bin/python" "$_src_dir/prime.py"
+    fi
+    echo "  - $_src_dir/fragment.yaml" >> "$_SRC_WRAPPER"
+  done
+  export PROVISA_CONFIG="$_SRC_WRAPPER"
+  echo "Config with sources: $PROVISA_CONFIG"
 fi
 
 # Core + install overlay (port bindings only — no kafka/mongo/elasticsearch/observability)

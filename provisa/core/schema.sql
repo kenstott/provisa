@@ -773,7 +773,7 @@ ALTER TABLE kafka_sinks ADD COLUMN IF NOT EXISTS bound BOOLEAN NOT NULL DEFAULT 
 -- API Sources (Phase U)
 CREATE TABLE IF NOT EXISTS api_sources (
     id          TEXT PRIMARY KEY,
-    type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api')),
+    type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j')),
     base_url    TEXT NOT NULL,
     spec_url    TEXT,
     auth        BYTEA,  -- REQ-686: API auth (keys/tokens) encrypted at rest
@@ -798,6 +798,11 @@ CREATE TABLE IF NOT EXISTS api_endpoints (
     error_path      TEXT,
     pk_column       TEXT,
     pagination      JSONB,
+    -- REQ-1668: query-API endpoints (neo4j): how the request body is encoded, the query it
+    -- carries, and the normalizer that flattens the response. NULL on plain REST endpoints.
+    body_encoding       TEXT,
+    query_template      TEXT,
+    response_normalizer TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

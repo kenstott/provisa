@@ -67,7 +67,7 @@ async def _bg_hydrate_api_endpoints() -> None:
     _zero_param_eps = [
         (ep, state.api_sources[ep.source_id])
         for ep in state.api_endpoints.values()
-        if "{" not in ep.path and ep.source_id in state.api_sources
+        if "{" not in ep.path and ep.source_id in state.api_sources and ep.method == "GET"
     ]
     if not _zero_param_eps:
         return

@@ -55535,3 +55535,64 @@
   - REQ-885
   - REQ-957
   - REQ-1663
+- id: REQ-1668
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Neo4j Source Registration
+  priority: MUST
+  type: behavioral
+  description: >-
+    A `neo4j` source registers as a persisted query-API source. In the config file a `neo4j`
+    source names host, port and database; each table under it carries `query_template` (the Cypher
+    that produces its rows) and typed columns; `query_template` is forbidden under any other source
+    type. Config load persists the source as an `api_sources` row (type `neo4j`) and each table
+    as an `api_endpoints` row carrying `body_encoding`, `query_template` and `response_normalizer`
+    (new columns), keyed by table name; the admin REST router (`POST /admin/sources/neo4j`,
+    `POST /admin/sources/neo4j/{id}/tables`) persists the same rows instead of process-lifetime dicts.
+    The startup loader restores those three columns, and the event loop lands a neo4j table through
+    the same fetch chain as openapi. Endpoint shape: POST of the transaction-API envelope
+    `{"statements": [{"statement": cypher}]}` to `/db/<database>/tx/commit` (body_encoding `neo4j_tx`),
+    flattened by the `neo4j_tabular` normalizer, which refuses a response carrying errors.
+  code:
+  - provisa/neo4j/persist.py
+  - provisa/core/config_loader.py
+  - provisa/api/admin/neo4j_router.py
+  - provisa/api_source/loader.py
+  - provisa/core/schema.sql
+  tests:
+  - tests/unit/test_neo4j_persist.py
+  - tests/integration/test_neo4j_config_persist.py
+  scenario: |
+    Given a neo4j source configured with host, port, database, and a table with query_template
+    When the config is loaded
+    Then the source and tables persist to api_sources and api_endpoints with body_encoding, query_template, and response_normalizer
+    And queries to the table POST the `{"statements": [{"statement": cypher}]}` envelope to /db/{database}/tx/commit and flatten the response with the neo4j_tabular normalizer
+- id: REQ-1669
+  status: complete
+  since: 2026-09
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Config Includes
+  priority: SHOULD
+  type: infrastructure
+  description: >-
+    Config files support `includes:` — a list of fragment paths, resolved relative to the including file,
+    spliced in at parse (recursively, cycles refused). List-valued sections append after the including
+    file's entries; a scalar/mapping key the including file does not set is taken from the fragment;
+    a conflicting value fails the load. `load_control_plane` reads through includes so a wrapper file that
+    only includes the real config works. `start-ui-install.sh --source=<name>` (repeatable) provisions
+    `demo/sources/<name>/compose.yml` as its own compose project `provisa-demo-<name>`, runs its `prime.py`
+    seed, and writes a wrapper config under `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml`
+    whose includes list the base config then each fragment; a source whose `demo/sources/<name>/engine` names
+    an engine other than duckdb is refused under a native start. Shipped fragments: neo4j (source + two Cypher
+    tables + relationships, seeded), mongodb (source only, seeded by db/mongo-init.js), elasticsearch (source +
+    mapping, Trino-only). Purpose: exercising Register Table by hand against a live instance of each source type.
+  code:
+  - provisa/core/config_loader.py
+  - start-ui-install.sh
+  - demo/sources/
+  tests:
+  - tests/unit/test_config_includes.py
+  use_case: >-
+    Composable config files allow users to provision and test against live instances of different
+    source types without recreating configuration or managing multiple config files.

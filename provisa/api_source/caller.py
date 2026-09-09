@@ -341,8 +341,12 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
         json_body = {"query": endpoint.path, "variables": body}
     elif endpoint.method == "RPC":
         return await _call_grpc(endpoint, resolved_params, base_url)
+    elif endpoint.body_encoding == "neo4j_tx":
+        # REQ-1668: Neo4j HTTP transaction API (/db/{db}/tx/commit) — the endpoint every 5.x
+        # server exposes; the Query API v2 (/query/v2) is absent (404) on the community images.
+        json_body = {"statements": [{"statement": endpoint.query_template}]}
     elif endpoint.body_encoding == "json":
-        # Neo4j HTTP API: POST with JSON body containing the Cypher statement
+        # Generic query-API POST with the query as a JSON body
         json_body = {"statement": endpoint.query_template} if endpoint.query_template else body
     elif endpoint.body_encoding == "form":
         # SPARQL 1.1: POST with form-encoded query parameter

@@ -738,6 +738,10 @@ api_endpoints = Table(
     Column("max_concurrency", Integer),
     Column("default_params", JSON),
     Column("promotions", JSON, nullable=False, default=list, server_default="[]"),
+    # REQ-1668: query-API endpoint shape (neo4j) — NULL on plain REST endpoints.
+    Column("body_encoding", Text),
+    Column("query_template", Text),
+    Column("response_normalizer", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

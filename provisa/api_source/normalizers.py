@@ -59,6 +59,11 @@ def neo4j_tabular(
        "errors": []}
     """
     response_dict = _as_dict(response)
+    # REQ-1668: the transaction API answers a bad statement with HTTP 200 and an ``errors``
+    # list — that is a failed query, never an empty table.
+    errors = _as_list(response_dict.get("errors"))
+    if errors:
+        raise ValueError(f"neo4j query failed: {errors}")
     rows: list[dict] = []
     for result in _as_list(response_dict.get("results")):
         result_dict = _as_dict(result)

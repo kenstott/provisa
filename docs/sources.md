@@ -816,6 +816,53 @@ Register a Neo4j graph database as a queryable source. Stewards author Cypher qu
 
 Cypher queries must use property accessors in the `RETURN` clause (`RETURN n.id AS id, n.name AS name`) — returning node objects is rejected at registration time (REQ-296).
 
+#### Config-file registration (REQ-1668)
+
+Declare a `neo4j` source and its tables in YAML. Each table requires a `query_template` (the Cypher that produces its rows) and typed columns. The `query_template` key is invalid under any other source type. [tool-verified: `provisa/core/config_loader.py:456-511`]
+
+A source requires `host`, `port`, and `database`. [tool-verified: `provisa/core/config_loader.py:456-468`] Rows are fetched by POSTing `{"statements": [{"statement": <cypher>}]}` to `/db/<database>/tx/commit` (the Neo4j HTTP transaction API). A response with a non-empty `errors` list is treated as a failed query, not an empty result. [tool-verified: `provisa/neo4j/source.py:71-82`, `provisa/api_source/caller.py:344-347`, `provisa/api_source/normalizers.py:49-74`]
+
+Each column requires `data_type`. The loader maps config types to the API column type used at query time [tool-verified: `provisa/neo4j/persist.py:31-64`]:
+
+| Config `data_type` | API type |
+|---|---|
+| `varchar`, `text`, `string`, `char` | string |
+| `integer`, `int`, `bigint`, `smallint` | integer |
+| `float`, `double`, `real`, `decimal`, `numeric`, `number` | number |
+| `boolean`, `bool` | boolean |
+| `json`, `jsonb` | jsonb |
+
+`varchar(N)` and `decimal(10,2)` are accepted — the base type before the parenthesis is used.
+
+Registration persists an `api_sources` row and one `api_endpoints` row per table, so the tables survive a restart without re-reading the file. The admin REST endpoints under `/admin/sources/neo4j` write the same rows. [tool-verified: `provisa/neo4j/persist.py:77-120`]
+
+```yaml
+sources:
+  - id: graph
+    type: neo4j
+    host: neo4j
+    port: 7474
+    database: neo4j
+    cache_ttl: 300
+
+tables:
+  - source_id: graph
+    schema: neo4j
+    table: person_skills
+    query_template: >-
+      MATCH (p:Person)-[:HAS_SKILL]->(s:Skill)
+      RETURN p.name AS name, s.skill AS skill, p.experience AS years
+    columns:
+      - name: name
+        data_type: varchar
+      - name: skill
+        data_type: varchar
+      - name: years
+        data_type: integer
+```
+
+#### Admin REST registration
+
 ```bash
 # Register via admin API (no YAML config required)
 POST /admin/sources/neo4j

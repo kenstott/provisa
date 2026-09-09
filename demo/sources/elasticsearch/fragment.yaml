@@ -1,0 +1,40 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Config fragment for the optional Elasticsearch demo source (REQ-1669). Registers the SOURCE
+# with its index mapping; the table is for registering by hand through Register Table.
+# prime.py creates and loads the index. Trino-engine only (see compose.yml).
+sources:
+- id: elasticsearch-demo
+  type: elasticsearch
+  host: localhost
+  port: ${env:PROVISA_DEMO_ES_PORT:-29200}
+  description: "Support ticket search index — tickets, status and priority (Elasticsearch)"
+  mapping:
+    tls: false
+    tables:
+    - name: support_tickets
+      index: support_tickets
+      discover: false
+      columns:
+      - name: ticket_id
+        data_type: VARCHAR
+        path: ticket_id
+      - name: subject
+        data_type: VARCHAR
+        path: subject
+      - name: status
+        data_type: VARCHAR
+        path: status
+      - name: priority
+        data_type: INTEGER
+        path: priority
+      - name: opened_at
+        data_type: TIMESTAMP
+        path: opened_at

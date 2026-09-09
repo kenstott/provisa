@@ -877,6 +877,11 @@ class Table(
     # source's capability class (probe_capabilities) and implies the landing shape (watermark → append,
     # else replace). None → resolved per class at wiring time (ttl forces none). Validated at parse.
     probe_type: str | None = None
+    # REQ-1668: the query a query-API source (neo4j) runs to produce this table's rows — the
+    # Cypher text, verbatim as authored. Required on a table registered under a neo4j source and
+    # forbidden anywhere else; validated at config parse. Persisted on the table's api_endpoints
+    # row so the served table survives a restart without the config file.
+    query_template: str | None = None
     # REQ-930: cache_ttl is the SINGLE per-table TTL. change_signal in {ttl, ttl_probe} requires it
     # (the poll/staleness cadence); when materialized it is also the refresh cadence. One value, so
     # the change-detection interval and the materialized-copy lifetime can never diverge.
@@ -1756,6 +1761,11 @@ class ProvisaConfig(BaseModel):
     # literal default here would let active_org_id name an org whose org_<id> schema was never
     # created, and every runtime resolution for it fails.
     default_org_id: str | None = None
+    # REQ-1669: config fragments merged into this file at parse. Paths resolve relative to the
+    # including file. A fragment may carry only the list-valued sections (sources, domains,
+    # tables, relationships, roles, …); its entries are appended after the including file's.
+    # Consumed by ``parse_config`` and cleared before validation — never reaches the DB.
+    includes: list[str] = Field(default_factory=list)
     sources: list[Source]
     domains: list[Domain]
     tags: list[Tag] = Field(default_factory=list)  # REQ-1373

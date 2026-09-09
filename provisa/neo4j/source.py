@@ -48,7 +48,7 @@ def build_api_source(cfg: Neo4jSourceConfig) -> ApiSource:  # REQ-295
     base_url = f"{scheme}://{cfg.host}:{cfg.port}"
     return ApiSource(
         id=cfg.source_id,
-        type=ApiSourceType.openapi,  # treated as a generic POST API
+        type=ApiSourceType.neo4j,
         base_url=base_url,
         auth=cfg.auth,
     )
@@ -63,8 +63,10 @@ def build_endpoint(  # REQ-295, REQ-298, REQ-299
 ) -> ApiEndpoint:
     """Build an ApiEndpoint for a single Neo4j table (Cypher query).
 
-    The endpoint POSTs the Cypher to Neo4j's HTTP legacy transaction API
-    and uses the neo4j_tabular normalizer to convert the response.
+    The endpoint POSTs the transaction-API envelope ``{"statements": [{"statement": cypher}]}``
+    (``body_encoding="neo4j_tx"`` in ``call_api``) to ``/db/<database>/tx/commit`` and flattens
+    the ``results[].columns/data[].row`` response with ``neo4j_tabular`` — the same endpoint and
+    normalizer ``preview_query`` uses, so what the steward previewed is what the served table runs.
     """
     return ApiEndpoint(
         source_id=cfg.source_id,
@@ -74,7 +76,7 @@ def build_endpoint(  # REQ-295, REQ-298, REQ-299
         columns=columns,
         ttl=ttl,
         response_root=None,
-        body_encoding="json",
+        body_encoding="neo4j_tx",
         query_template=cypher,
         response_normalizer="neo4j_tabular",
     )

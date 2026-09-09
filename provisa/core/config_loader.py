@@ -101,11 +101,56 @@ def _default_params_from_spec(spec: dict, path: str) -> dict:
     return defaults
 
 
-def parse_config(path: str | Path) -> ProvisaConfig:  # REQ-250
-    """Parse and validate a YAML config file. Does NOT resolve secrets."""
-    with open(Path(path), encoding="utf-8") as f:
-        raw = yaml.safe_load(f)
-    return ProvisaConfig.model_validate(raw)
+def _merge_fragment(base: dict, fragment: dict, fragment_path: Path) -> None:  # REQ-1669
+    """Merge an included fragment into ``base`` in place.
+
+    List-valued sections (sources, tables, domains, relationships, roles, …) append — the fragment's
+    entries follow the including file's. A scalar or mapping key the including file does not set is
+    taken from the fragment; one both set to different values is a conflict and the load fails —
+    a fragment never silently overrides the file that included it.
+    """
+    for key, value in fragment.items():
+        if key not in base:
+            base[key] = value
+        elif isinstance(base[key], list) and isinstance(value, list):
+            base[key] = base[key] + value
+        elif base[key] != value:
+            raise ValueError(
+                f"config include {fragment_path}: key {key!r} conflicts with the including file; "
+                "only list sections merge"
+            )
+
+
+def read_config_with_includes(
+    path: str | Path, _seen: frozenset[Path] = frozenset()
+) -> dict:  # REQ-1669
+    """Read a YAML config and splice in its ``includes:`` fragments, recursively.
+
+    Paths resolve relative to the including file. A file that includes itself (directly or through
+    another fragment) is refused. The ``includes`` key never survives into the returned dict.
+    """
+    file_path = Path(path).resolve()
+    if file_path in _seen:
+        raise ValueError(f"config include cycle at {file_path}")
+    with open(file_path, encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"config {file_path}: top level must be a mapping")
+    includes = raw.pop("includes", None) or []
+    if not isinstance(includes, list) or not all(isinstance(i, str) for i in includes):
+        raise ValueError(f"config {file_path}: includes must be a list of paths")
+    for inc in includes:
+        inc_path = Path(inc)
+        if not inc_path.is_absolute():
+            inc_path = file_path.parent / inc_path
+        fragment = read_config_with_includes(inc_path, _seen | {file_path})
+        _merge_fragment(raw, fragment, inc_path)
+    return raw
+
+
+def parse_config(path: str | Path) -> ProvisaConfig:  # REQ-250, REQ-1669
+    """Parse and validate a YAML config file (with its ``includes:``). Does NOT resolve secrets."""
+    return ProvisaConfig.model_validate(read_config_with_includes(path))
 
 
 def load_control_plane(config_path: str | Path | None) -> ControlPlaneConfig:  # REQ-837
@@ -116,8 +161,9 @@ def load_control_plane(config_path: str | Path | None) -> ControlPlaneConfig:  #
     config file exists), so this is parsed independently of ``parse_config``. It
     is the config layer — env/secret resolution happens here, not in callers."""
     if config_path and Path(config_path).exists():
-        with open(Path(config_path), encoding="utf-8") as f:
-            raw = yaml.safe_load(f) or {}
+        # REQ-1669: a wrapper config that only ``includes:`` the real one carries its
+        # control_plane section through the same merge the full parse uses.
+        raw = read_config_with_includes(config_path)
         return ControlPlaneConfig.model_validate(raw.get("control_plane", {}))
     return ControlPlaneConfig()
 
@@ -409,6 +455,64 @@ async def _handle_openapi_table(
         )
 
 
+def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668
+    """A neo4j source names host, port and database; its tables carry the Cypher they run, and no
+    other table carries one."""
+    sources_by_id = {s.id: s for s in config.sources}
+    for src in config.sources:
+        if src.type.value != "neo4j":
+            continue
+        missing = [f for f in ("host", "port", "database") if not getattr(src, f)]
+        if missing:
+            raise ValueError(
+                f"neo4j source {src.id!r}: {', '.join(missing)} required (the HTTP Query API "
+                "endpoint is http://host:port/db/<database>/query/v2)"
+            )
+    for tbl in config.tables:
+        src = sources_by_id.get(tbl.source_id)
+        is_neo4j = src is not None and src.type.value == "neo4j"
+        if is_neo4j and not tbl.query_template:
+            raise ValueError(
+                f"table {tbl.table_name!r}: a table under neo4j source {tbl.source_id!r} requires "
+                "query_template (the Cypher that produces its rows)"
+            )
+        if tbl.query_template and not is_neo4j:
+            raise ValueError(
+                f"table {tbl.table_name!r}: query_template is only valid under a neo4j source"
+            )
+
+
+async def _handle_neo4j_table(conn: "Connection", tbl: Table, src: Source) -> None:  # REQ-1668
+    """Persist the config table's Cypher as an api_endpoints row (plus its api_sources row)."""
+    from provisa.neo4j.persist import (
+        api_columns_from_config,
+        persist_neo4j_endpoint,
+        persist_neo4j_source,
+    )
+    from provisa.neo4j.source import Neo4jSourceConfig, build_api_source, build_endpoint
+
+    cfg = Neo4jSourceConfig(
+        source_id=src.id,
+        host=src.host,
+        port=src.port,
+        database=src.database,
+        use_https=(src.base_url or "").startswith("https://"),
+    )
+    api_source = build_api_source(cfg)
+    if src.base_url:
+        api_source = api_source.model_copy(update={"base_url": resolve_secrets(src.base_url)})
+    assert tbl.query_template is not None  # _validate_neo4j_sources
+    endpoint = build_endpoint(
+        cfg,
+        tbl.table_name,
+        tbl.query_template,
+        api_columns_from_config(tbl.columns),
+        tbl.cache_ttl or src.cache_ttl or 300,
+    )
+    await persist_neo4j_source(conn, api_source)
+    await persist_neo4j_endpoint(conn, endpoint)
+
+
 async def _upsert_single_table(
     conn: "Connection",
     engine: Any,
@@ -442,6 +546,9 @@ async def _upsert_single_table(
         spec = openapi_specs.get(src.id, {})
         if spec:
             await _handle_openapi_table(conn, tbl, src, spec)
+
+    if src and src.type.value == "neo4j":
+        await _handle_neo4j_table(conn, tbl, src)
 
 
 async def _purge_removed_tables(conn: "Connection", config: ProvisaConfig) -> None:
@@ -657,6 +764,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_dq_contracts(config)
     _validate_probe_type(config)
     _validate_watermark_columns(config)
+    _validate_neo4j_sources(config)
     await _upsert_tables(conn, engine, config, openapi_specs, catalog_names=catalog_names)
 
     # 6. Relationships (tables must exist first)
