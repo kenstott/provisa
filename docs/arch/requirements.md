@@ -17220,7 +17220,7 @@ The admin GraphQL allRelationships resolver synthesizes virtual HAS_TABLE relati
 
 **Code:** `provisa/api/admin/schema_query.py`, `provisa/compiler/context.py`, `provisa-ui/src/pages/graph-drop.ts`
 
-**Tests:** —
+**Tests:** `tests/unit/test_graph_has_table_synthetic.py`, `provisa-ui/src/__tests__/GraphDropExpansion.test.ts`, `tests/integration/test_graph_has_table_synthetic_e2e.py`
 
 ## 6. Execution, Routing, Caching & Performance
 
@@ -17298,7 +17298,7 @@ For any warehouse engine, all data source types that the engine cannot natively/
 
 **Code:** `provisa/federation/materialize_exec.py`, `provisa/core/env_files.py`
 
-**Tests:** `tests/integration/test_materialization_engine_e2e.py`
+**Tests:** `tests/unit/test_snowflake_store.py`, `tests/unit/test_reconcile_landed.py`, `tests/integration/test_materialization_engine_e2e.py`
 
 ## 1. Access Governance & Security
 
@@ -17376,7 +17376,7 @@ A glossary term cannot be deleted if it has any incoming or outgoing relationshi
 
 **Code:** `provisa-ui/src/components/admin/GlossaryTab.tsx`
 
-**Tests:** `provisa-ui/src/__tests__/GlossaryTab.test.tsx`, `tests/integration/test_glossary_lifecycle.py`
+**Tests:** `provisa-ui/src/__tests__/GlossaryTab.test.tsx`, `tests/integration/test_glossary_lifecycle.py`, `provisa-ui/e2e/glossary.spec.ts`
 
 ## 10. UI & Admin Surfaces
 
@@ -17471,3 +17471,183 @@ A DuckDB parquet source whose path is s3:// and whose federation_hints carry acc
 **Code:** `provisa/federation/connector_duckdb.py`, `provisa/federation/duckdb_runtime.py`
 
 **Tests:** `tests/unit/test_duckdb_connectors.py`
+
+### REQ-1651 · Materialization Store {#REQ-1651}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A landed replica's shape includes its PRIMARY KEY. A SQLite file source's key columns are resolved from the file's own PRAGMA table_info at seed time (PRAGMA pk order), and the landing reconcile treats a difference between the store table's PRIMARY KEY and the registered key as drift, recreating the table, so a replica created before its key was known does not stay key-less for good.
+
+**Use case:** The demo's pets table (a SQLite file source) landed without a PRIMARY KEY: the seed's key resolution skipped sqlite (the comment claimed the engine rebuild resolved it, and nothing did), and the reconcile compared only the column list, so even a later-resolved key never reached the store.
+
+**Code:** `provisa/api/startup_seed.py`, `provisa/federation/connector_sqlite.py`, `provisa/federation/store_writer.py`
+
+**Tests:** `tests/unit/test_connector_sqlite_keys.py`, `tests/unit/test_store_writer.py`, `tests/unit/test_snowflake_store.py`
+
+### REQ-1652 · Materialization Store {#REQ-1652}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A landed replica carries the landed model's keys, converged by the landing reconcile with the tables themselves and for every landed table regardless of Data Product membership: its declared PRIMARY KEY, and a FOREIGN KEY for each approved relationship whose two ends are landed and whose referenced columns are the referenced table's PRIMARY KEY (many-to-one on the source, one-to-many on the target, a junction relationship as one key per hop). Applied only on stores that hold constraints as informational metadata (Snowflake; Databricks and BigQuery when their terminals implement the hook); an enforcing store gets no FOREIGN KEY, since a REPLACE land would violate it. Idempotent: a matching PRIMARY KEY is left alone, a differing one replaced, an existing FOREIGN KEY of the same name skipped, and a provisa_fk_* constraint no relationship declares is withdrawn. A key the store cannot hold is withheld and logged with its reason, never emitted. Where the compiler's physical name is a VIEW over the replica, the view mirrors the keys as PRIMARY_KEY (1-based key position) and FOREIGN_KEY (referenced physical column) column TAGs, with stale key tags unset. The metadata export publishes no constraints.
+
+**Use case:** Horizon Catalog renders a table's keys and join paths from Snowflake's informational constraints, and consumers query the per-source views. Keys are model state, not catalog state: tying them to the catalog publish left every landed table key-less until a publish ran and left every table outside a Data Product key-less for good.
+
+**Code:** `provisa/federation/landed_keys.py`, `provisa/federation/snowflake_store.py`, `provisa/federation/snowflake_runtime.py`, `provisa/federation/native_backend.py`
+
+**Tests:** `tests/unit/test_landed_keys.py`, `tests/unit/test_snowflake_store.py`, `tests/unit/test_reconcile_landed.py`
+
+### REQ-1653 · Materialization Store {#REQ-1653}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The Snowflake federation engine owns its landing terminal: a non-attachable source's rows land in the engine URL's database under the store schema (mat for prod) as "<source>__<schema>__<table>", and the compiler's physical name for the source is a SECURE VIEW over that replica. The eager reconcile converges the replica's columns and PRIMARY KEY (drift on either recreates it) and creates the view when absent, replacing it only after a recreate; the per-fire land is REPLACE (delete + insert) or APPEND, CDC being refused. An MV's own store table converges and persists through the same terminal (replace, append, or upsert by MERGE). The engine's default materialization store is the engine URL itself, never the platform database.
+
+**Use case:** Snowflake is a self-only warehouse: it reads nothing live, so every non-attachable source must be replicated into it ([REQ-1637](#REQ-1637)). The main branch had no such terminal -- the runtime lacked attach_landed_source/materialize_source and the store writer refused a snowflake:// DSN -- so a Snowflake deployment could not land sources at all, and defaulting the store to the platform database pointed the engine at tables it cannot reach.
+
+**Code:** `provisa/federation/snowflake_runtime.py`, `provisa/federation/snowflake_store.py`, `provisa/federation/engine.py`
+
+**Tests:** `tests/unit/test_snowflake_store.py`
+
+### REQ-1654 · Materialization Store {#REQ-1654}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A landed table's description and its columns' descriptions travel with the landed model: the landing reconcile writes them as COMMENTs onto the replica and onto the view that backs the compiler's physical name, for every landed table, and onto an MV's store table when that table is converged. A comment that already begins with the description is left standing (another writer may have extended it), and an empty description never erases one.
+
+**Use case:** Descriptions were reaching Snowflake only through the catalog publish, and only for Data Product tables; every other landed table and every backing view stayed undocumented.
+
+**Code:** `provisa/federation/landed_keys.py`, `provisa/federation/snowflake_store.py`, `provisa/federation/native_backend.py`
+
+**Tests:** `tests/unit/test_snowflake_store.py`, `tests/unit/test_reconcile_landed.py`
+
+### REQ-1655 · Materialization Store {#REQ-1655}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The stewards' tag assignments on tables and columns travel with the landed model as native TAGs in the PROVISA_GOVERNANCE namespace (value = the assignment's reason, else the tag id), set by the landing reconcile on every replica and its backing view and on an MV's store table when it is converged. A tag the model defines that sits on an object but is no longer assigned there is withdrawn; a tag of any other origin is never touched. The snowflake_horizon export no longer publishes model tags.
+
+**Use case:** Classifications are model state. Publishing them only with the catalog export left every table outside a Data Product untagged in the warehouse, and tied the warehouse's own governance surface to whether a publish had run.
+
+**Code:** `provisa/federation/landed_keys.py`, `provisa/federation/snowflake_store.py`, `provisa/api/metadata_export/snowflake_horizon.py`
+
+**Tests:** `tests/unit/test_snowflake_store.py`, `tests/unit/test_landed_keys.py`
+
+## 1. Access Governance & Security
+
+### REQ-1656 · Data Catalog Integration {#REQ-1656}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A Snowflake Horizon organization listing's data dictionary covers every member of the Data Product and every column: the dictionary is generated from the share, so membership is the share's SELECT grants, reconciled on each publish (a former member's grant is revoked). The manifest features the first five members in the share's primary database (Snowflake's cap, one database), each with its real object kind, and declares the data preview's has_pii and pii_columns from the masking rules on member columns. Provisa owns the manifest: after the CREATE, the live manifest is read back and replaced with ALTER LISTING when it differs, so an edit made in Snowsight does not survive the next publish.
+
+**Use case:** The Data Product is edited in Provisa. Snowsight's listing wizard let a steward pick featured objects and PII columns by hand, and CREATE ... IF NOT EXISTS left that, and every later Provisa change to the product, out of sync with the model.
+
+**Code:** `provisa/api/metadata_export/snowflake_horizon.py`
+
+**Tests:** `tests/unit/test_snowflake_horizon_export.py`
+
+## 4. Source Connectors
+
+### REQ-1657 · Materialization Store {#REQ-1657}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+On a Databricks engine the landed model's keys, descriptions and tags converge with the landed Delta tables in the landing reconcile and on MV refresh, as on Snowflake ([REQ-1652](#REQ-1652), [REQ-1654](#REQ-1654), [REQ-1655](#REQ-1655)): the registration's PRIMARY KEY is declared inline (key columns NOT NULL, which Unity Catalog requires), relationship FOREIGN KEYs are added as informational constraints, descriptions are COMMENTs, and tag assignments are Unity Catalog tags keyed provisa_governance:<tag id>. A drifted key recreates the table; a withdrawn relationship or assignment drops its constraint or tag; keys and tags of any other origin are never touched. No view layer exists on Databricks, so the landed table itself carries everything.
+
+**Use case:** Unity Catalog renders constraints, comments and tags in its own catalog and lineage views; a landed model that carried none of them there was a bare copy of the data.
+
+**Code:** `provisa/federation/databricks_store.py`, `provisa/federation/databricks_runtime.py`, `provisa/federation/landed_keys.py`
+
+**Tests:** `tests/unit/test_databricks_store.py`
+
+### REQ-1658 · Materialization Store {#REQ-1658}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+BigQuery gains the eager landing terminal the other native stores have: the landing reconcile converges each landed table (DDL only, with its PRIMARY KEY NOT ENFORCED) at boot and on registration, and materialize_source converges before it loads. The landed model's metadata then follows [REQ-1652](#REQ-1652)/1654/1655: FOREIGN KEYs as NOT ENFORCED constraints, descriptions on the table and its columns through the client API, table tag assignments as labels keyed provisa_governance_<tag id> with the value folded to the label alphabet. A column tag has no BigQuery counterpart and is reported withheld. With the terminal in place the Analytics Hub data-product export, which requires it, runs for BigQuery.
+
+**Use case:** Without an eager terminal a BigQuery deployment had no landed catalog until the first refresh, no keys or descriptions in the BigQuery console, and the Analytics Hub export never ran.
+
+**Code:** `provisa/federation/bigquery_store.py`, `provisa/federation/bigquery_runtime.py`, `provisa/api/metadata_export/bigquery_dataplex.py`
+
+**Tests:** `tests/unit/test_bigquery_store.py`
+
+## 1. Access Governance & Security
+
+### REQ-1659 · Data Catalog Integration {#REQ-1659}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A Data Product's catalog listing links back to the product's page in Provisa, where the product is edited: the Snowflake Horizon organization listing carries it as resources.documentation (Snowsight's Documentation box, which takes one fully qualified http(s) URL) and the Analytics Hub listing as its documentation. The link is the org's public origin, derived from mail.base_url by the invitation's rule, plus /data-products?product=<id>. The Data Products page opens the product a ?product= parameter names, ahead of the row remembered in localStorage, and writes the parameter when a row is expanded so the address bar is itself a link to the open product. A loopback base_url (the install default, localhost) links to https://cloud.provisa.dev as-is, since a catalog consumer reads the listing elsewhere and this org names no host there.
+
+**Use case:** A consumer reading the listing in Snowsight or the Analytics Hub console can reach the product's owner, members, lineage and terms in one click instead of searching for it in Provisa.
+
+**Code:** `provisa/core/mail.py`, `provisa/api/metadata_export/builder.py`, `provisa/api/metadata_export/publishing.py`, `provisa/api/metadata_export/snowflake_horizon.py`, `provisa/api/metadata_export/bigquery_dataplex.py`, `provisa-ui/src/pages/DataProductsPage.tsx`
+
+**Tests:** `tests/unit/test_mail_port.py`, `tests/unit/test_metadata_snapshot_builder.py`, `tests/unit/test_snowflake_horizon_export.py`, `tests/unit/test_metadata_export_engine_native.py`, `provisa-ui/src/pages/__tests__/data-products-deep-link.test.tsx`
+
+## 4. Source Connectors
+
+### REQ-1660 · Materialization Store {#REQ-1660}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A sqlite source is an adapter-fetched source like openapi or a checker: its rows are read from the file by the sqlite connector and landed in whatever materialize store the engine defines, by the event loop's boot-create and refresh and by the query path's residency prep. On Trino the landed replica is the registered address in the Postgres store, which is where Trino reads it. An engine that attaches the file in place (DuckDB) never materializes it. The registration-time migration into the control-plane Postgres, its mtime stale loop and the remigrate mutation are removed: they were the eager copy of an older design, wrote to one store regardless of the engine, and on a self-only warehouse left the landed replica empty while the event loop read the source through the engine.
+
+**Use case:** Every materialize of an unreachable source lands in the defined materialize store regardless of what it is. On Snowflake, Databricks and BigQuery the sqlite demo sources had never received a row.
+
+**Code:** `provisa/events/source_loader.py`, `provisa/events/app_wiring.py`, `provisa/core/config_loader.py`, `provisa/federation/backend.py`
+
+**Tests:** `tests/unit/test_source_loader.py`, `tests/unit/test_trino_landing_address.py`, `tests/unit/test_app_wiring.py`
+
+### REQ-1661 · Freshness Gating {#REQ-1661}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Before the execute terminal runs a plan, each MATERIALIZED source the plan reads is landed when it has never landed, its last land failed, its cache_ttl has been outrun, or its freshness gate ([REQ-860](#REQ-860)) says stale; a load_protected source lands only when never landed ([REQ-1141](#REQ-1141)). The land runs through EngineBackend.materialize_pending, now on every backend: the same loaders, landing address and store write face as the event loop, so both paths converge on one replica; it stamps the node freshness state the event loop reads. Both paths take one per-node land lock in the process, and a Snowflake REPLACE is one atomic INSERT OVERWRITE, so a boot land and a first query never interleave on one replica. A land that fails is logged, stamped not ok, and the read proceeds on the replica as it is.
+
+**Use case:** API-backed and other unreachable sources materialize lazily: a query that arrives before the event loop has landed a table, or after it went stale, is served fresh rows rather than an empty or stale replica. materialize_pending existed on the native backends with no caller since 2026-07.
+
+**Code:** `provisa/federation/query_residency.py`, `provisa/federation/backend.py`, `provisa/pgwire/_pipeline.py`, `provisa/events/land_lock.py`, `provisa/federation/snowflake_store.py`
+
+**Tests:** `tests/unit/test_query_residency.py`, `tests/unit/test_residency.py`
+
+### REQ-1662 · Live Data Events {#REQ-1662}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A source node whose produce raises for any reason (an adapter whose endpoint refuses the connection, a store that rejects the land) is that node's outage, not the event loop's: the processor logs the traceback and records it exactly as an ABORT is recorded, an error event fanned to dependents, an ok=False stamp and the claim completed, and the tick goes on to the next node. An uncaught produce error had ended the tick at that node on every fire, so every node after it in the processor order was never claimed and never landed.
+
+**Use case:** On the Snowflake demo the graphql-demo endpoint is unreachable; its first node's raise starved every pet-store table and both data-quality checkers of their land, on every boot.
+
+**Code:** `provisa/events/processor.py`
+
+**Tests:** `tests/unit/test_live_core_loop.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1663 · Data Quality Sources {#REQ-1663}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+Registering a table on a data-quality checker source (soda, great_expectations) asks for the governed table to scan, not for a schema and table of the source. A checker has no remote schema — nothing exists upstream until a scan runs — so the schema/table pickers, column discovery, the column grid and the watermark picker are not shown. The contract panel's dataset picker names the table to scan; the results table name (<table>_scan), alias (<table>_quality) and description are derived from it and stay editable; the results envelope's visibility is one role list; the rules are authored in the same form. The registration carries the contract plus the one placeholder column the server replaces ([REQ-1443](#REQ-1443)), and the source is never introspected.
+
+**Use case:** The add-table form offered "Select schema..." and a table picker stuck on "Loading..." for dq-checker, because the source's catalog is the landed results store and lists nothing before the first scan. The only real input is the table to scan; everything else is the checker's fixed envelope.
+
+**Code:** `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/pages/tables/DataQualityPanel.tsx`
+
+**Tests:** `provisa-ui/src/pages/tables/__tests__/RegisterTableForm.checker.test.tsx`, `provisa-ui/e2e/tables-register-dq.spec.ts`
+
+## 4. Source Connectors
+
+### REQ-1664 · Data Quality Sources {#REQ-1664}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+
+A Great Expectations check can be extended with a Python function registered through the Commands surface under a new implementation kind (gx_check), bound the way a python command is (module:attr callable, or inline source under the MV preprocess sandbox). The function takes the check's arguments and returns the SQL predicate selecting the UNEXPECTED rows; at scan time the worker resolves the contract's type to that function, calls it with the expectation's kwargs and emits GX's UnexpectedRowsExpectation, so results land in the shipped envelope unchanged. The check catalog derives the builder's CheckKind from the function's signature — a `column` parameter means column scope, the remaining parameters become params typed from their annotations and defaults — so the panel offers the new type and its args with no UI change. A gx_check is never exposed as a GraphQL mutation or query; function dispatch refuses it. Row-level checks only; aggregate checks (a scalar expression plus a comparator) are a later shape.
+
+**Use case:** The GX picker is a static tuple (provisa/dq/catalog.py _GX_KINDS); a custom expectation cannot be authored in the panel and nothing imports plugins in the worker subprocess. The Commands form already registers Python callables, and GX 1.x's UnexpectedRowsExpectation makes a predicate-returning function a complete expectation without a custom Expectation class or per-dialect metric providers.
+
+**Code:** `provisa/dq/catalog.py`, `provisa/dq/worker.py`, `provisa/executor/function_dispatch.py`, `provisa-ui/src/pages/commands/CommandFormFields.tsx`
+
+**Tests:** —
