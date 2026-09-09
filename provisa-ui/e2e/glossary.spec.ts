@@ -161,7 +161,9 @@ test.describe("REQ-1387 glossary curation", () => {
     await expect(page.getByTestId("glossary-name-input")).toHaveValue(abstractName);
     await expect(page.getByTestId("glossary-detail").getByText("No physical refs.")).toBeVisible();
 
-    // KIND_OF edge to the rooted "species" term.
+    // KIND_OF edge to the rooted "species" term. Relationships open read-only; the editor is
+    // behind its edit toggle.
+    await page.getByTestId("glossary-relationships-edit-toggle").click();
     await page.getByTestId("glossary-edge-rel-select").click();
     await page.getByRole("option", { name: "Kind of" }).click();
     await page.getByTestId("glossary-edge-term-select").click();
@@ -203,6 +205,8 @@ test.describe("REQ-1387 glossary curation", () => {
     // REQ-1592: the expert is PICKED from the org roster, not typed — typing into the Select's
     // search box leaves the chosen user unset and the Add button disabled. global-setup seeds this
     // person into every backend's org so there is someone to pick.
+    // Experts open read-only; the picker is behind its edit toggle.
+    await page.getByTestId("glossary-experts-edit-toggle").click();
     await page.getByTestId("glossary-expert-user-input").click();
     await page.getByRole("option", { name: "jane.doe", exact: true }).click();
     await page.getByTestId("glossary-expert-kind-select").click();

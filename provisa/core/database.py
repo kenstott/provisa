@@ -913,6 +913,11 @@ def create_engine_from_url(
     if make_url(normalized).database not in (None, "", ":memory:"):
         kwargs["pool_size"] = pool_size
         kwargs["max_overflow"] = max_overflow
+    if normalized.startswith("sqlite"):
+        # A SQLite control plane takes one writer at a time; sqlite3's default busy wait is
+        # 5s, after which a second writer (an admin mutation while the event loop stamps a
+        # node) fails with "database is locked". Wait out a writer instead.
+        kwargs["connect_args"] = {"timeout": 30}
     engine = create_async_engine(normalized, **kwargs)
     if engine.dialect.name == "postgresql":
         event.listen(engine.sync_engine, "connect", _on_pg_connect)

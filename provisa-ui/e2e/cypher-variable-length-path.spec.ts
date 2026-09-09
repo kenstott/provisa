@@ -36,7 +36,9 @@ test("variable-length cross-source path executes without FederationError", async
       nodeMap.set(`${node.label}:${node.id}`, node);
     }
   }
-  expect(nodeMap.size, `expected 51 unique nodes, got ${nodeMap.size}`).toBe(51);
+  // 59 since pets-to-shelter-assignments became one-to-many: the path from an inquiry's pet
+  // now fans out over every assignment of the pet's breed before reaching the employees.
+  expect(nodeMap.size, `expected 59 unique nodes, got ${nodeMap.size}`).toBe(59);
 });
 
 test("variable-length path RETURN a, b returns node objects not flat columns", async ({ request }) => {

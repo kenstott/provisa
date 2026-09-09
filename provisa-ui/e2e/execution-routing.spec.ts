@@ -46,7 +46,8 @@ test("single-source query transpiles via SQLGlot to target dialect", async ({
 test("cross-source query routes to Trino", async ({ request }) => {
   const resp = await request.post(`${BACKEND_URL}/data/compile`, {
     data: {
-      query: `{ ps__pets { id assignment { id } } }`,
+      // pets -> assignments is one-to-many, so the field is the plural list `assignments`.
+      query: `{ ps__pets { id assignments { id } } }`,
     },
     headers: { "Content-Type": "application/json", "X-Role": "DEV" },
   });

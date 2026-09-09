@@ -7,10 +7,12 @@
 
 import { test, expect, BACKEND_URL } from "./coverage";
 
+// pets-to-shelter-assignments is one-to-many (a breed has several keepers), so its derived
+// edge type is HAS_ASSIGNMENTS, not the many-to-one IS_ASSIGNMENT it once was.
 const QUERY = `
 MATCH (a:Inquiries)
 OPTIONAL MATCH (a:Inquiries)-[r1:HAS_PETS]->(b:Pets)
-OPTIONAL MATCH (b:Pets)-[r2:IS_ASSIGNMENT]->(c:Assignments)
+OPTIONAL MATCH (b:Pets)-[r2:HAS_ASSIGNMENTS]->(c:Assignments)
 OPTIONAL MATCH (c:Assignments)-[r3:ASSIGNMENT_EMPLOYEE]->(d:Employees)
 OPTIONAL MATCH (c:Assignments)-[r4:ASSIGNMENT_BREED]->(e:AnimalBreeds)
 OPTIONAL MATCH (a)-[rUsers:SUBMITTED_BY]-(mUsers:PetStore:Users)

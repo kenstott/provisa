@@ -9,7 +9,7 @@ import { test, expect, BACKEND_URL } from "./coverage";
 
 const QUERY = `MATCH (n)
 WHERE n.email IS NOT NULL
-RETURN DISTINCT n.email AS email
+RETURN DISTINCT "node" AS entity, n.email AS email
 LIMIT 25
 UNION ALL
 MATCH ()-[r]-()
