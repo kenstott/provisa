@@ -8,7 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
+import faulthandler
 import os
+import signal
 from pathlib import Path
 
 _env_file = Path(__file__).parent / ".env"
@@ -23,5 +25,10 @@ if _env_file.exists():
 # Imported after the .env load above, not before: create_app() reads configuration at import time,
 # so hoisting this to the top would build the app from an environment the loop had not filled yet.
 from provisa.api.app import create_app  # noqa: E402
+
+# SIGUSR1 dumps every thread's Python stack to stderr. A server whose event loop is parked on a lock
+# answers nothing over HTTP, and on macOS py-spy cannot attach to the hardened-runtime interpreter
+# even as root, so an in-process dump is the one diagnostic that always works:  kill -USR1 <pid>
+faulthandler.register(signal.SIGUSR1, all_threads=True)
 
 app = create_app()

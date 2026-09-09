@@ -62,6 +62,13 @@
     "submitButton": "+ Table",
     "errorRequiredFields": "Source, schema, and table name are required.",
     "errorNoColumnsSelected": "At least one column must be selected.",
-    "errorUntypedColumns": "Every column needs a data type. Assign one for: {{columns}}"
+    "errorUntypedColumns": "Every column needs a data type. Assign one for: {{columns}}",
+    "dqResultsTableLabel": "Results table",
+    "dqResultsTableHint": "(derived from the scanned table; one row per check per scan)",
+    "dqResultsTablePlaceholder": "Pick the table to scan above",
+    "dqVisibleToLabel": "Results visible to",
+    "dqDescription": "Quality scan results for {{table}} — one row per check per scan, with outcome, metric value and threshold",
+    "errorDqContract": "Pick the table to scan in the Data Quality panel.",
+    "errorDqVisibleTo": "Results must be visible to at least one role."
   }
 }

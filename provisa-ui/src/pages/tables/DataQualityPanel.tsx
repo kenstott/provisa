@@ -51,6 +51,8 @@ import { CollapsibleSection } from "./CollapsibleSection";
 
 /** A column-less key for the dataset-level checks, matching the server's empty `column_name`. */
 const DATASET_SCOPE = "";
+/** The platform's own domains — never a scan target. */
+const SYSTEM_DOMAIN_IDS = new Set(["meta", "ops"]);
 
 interface DataQualityPanelProps {
   /** The checker source type this results table's scans come from — soda | great_expectations. */
@@ -62,6 +64,12 @@ interface DataQualityPanelProps {
   tableName: string;
   contractText: string;
   onChange: (contractText: string) => void;
+  /** False while the table is still being registered (REQ-1663): the dry run still scans through
+   *  the source, but "run now" fires a registered poll job that does not exist yet, so it is hidden. */
+  registered?: boolean;
+  /** The dataset the contract names, whenever the parsed contract changes it (REQ-1663) — the
+   *  registration form derives the results table's own name and description from it. */
+  onDatasetChange?: (dataset: string | null) => void;
 }
 
 export function DataQualityPanel({
@@ -71,6 +79,8 @@ export function DataQualityPanel({
   tableName,
   contractText,
   onChange,
+  registered = true,
+  onDatasetChange,
 }: DataQualityPanelProps) {
   const { t } = useTranslation();
   const { parseContract, buildContract, checkCatalog, buildCheck, dryRunContract, runCheckNow } =
@@ -109,11 +119,24 @@ export function DataQualityPanel({
   // The registered contract text is what the rows are read from — including the rows that appear
   // when a contract arrives already written, pasted from a repo.
   useEffect(() => {
+    // No text yet is not a malformed contract: the dataset picker below is the prompt, and an
+    // error beside an untouched field would report a problem the operator has not made.
+    if (contractText.trim() === "") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the rows are derived from the contract text; an empty text has no rows and no dataset
+      setDataset(null);
+      setDatasetDraft("");
+      setChecks([]);
+      setArgDrafts({});
+      setParseError(null);
+      onDatasetChange?.(null);
+      return;
+    }
     let live = true;
     void parseContract({ checker, contractText }).then((parsed) => {
       if (!live || parsed === null) return;
       setDataset(parsed.dataset);
       setDatasetDraft(parsed.dataset ?? "");
+      onDatasetChange?.(parsed.dataset);
       setChecks(parsed.checks);
       setArgDrafts({});
       setParseError(parsed.error);
@@ -121,7 +144,7 @@ export function DataQualityPanel({
     return () => {
       live = false;
     };
-  }, [checker, contractText, parseContract]);
+  }, [checker, contractText, parseContract, onDatasetChange]);
 
   // The picker's vocabulary is scoped to the dataset the contract names; a contract that names none
   // yet has no columns to offer checks against.
@@ -259,7 +282,9 @@ export function DataQualityPanel({
           data-testid="dq-dataset-table-select"
           searchable
           data={governedTables
-            .filter((tbl) => tbl.dqDataset !== null)
+            // Provisa's own meta/ops tables are governed too, but a checker observes the
+            // operator's data, not the platform's bookkeeping.
+            .filter((tbl) => tbl.dqDataset !== null && !SYSTEM_DOMAIN_IDS.has(tbl.domainId))
             .map((tbl) => {
               const [, domain, table] = (tbl.dqDataset as string).split("/");
               return { value: tbl.dqDataset as string, label: `${domain}.${table}` };
@@ -490,21 +515,23 @@ export function DataQualityPanel({
         </Group>
         {/* Unlike the dry run above, this fires the table's own registered poll job — the scan lands
             and persists in its history instead of being thrown away with the response. */}
-        <Group>
-          <Button
-            variant="default"
-            leftSection={<Play size={14} />}
-            data-testid="dq-run-now"
-            loading={runningNow}
-            disabled={contractText.trim() === ""}
-            onClick={() => void runNowClick()}
-          >
-            {t("dataQualityPanel.runNow")}
-          </Button>
-          <Text size="xs" c="dimmed">
-            {t("dataQualityPanel.runNowHelp")}
-          </Text>
-        </Group>
+        {registered && (
+          <Group>
+            <Button
+              variant="default"
+              leftSection={<Play size={14} />}
+              data-testid="dq-run-now"
+              loading={runningNow}
+              disabled={contractText.trim() === ""}
+              onClick={() => void runNowClick()}
+            >
+              {t("dataQualityPanel.runNow")}
+            </Button>
+            <Text size="xs" c="dimmed">
+              {t("dataQualityPanel.runNowHelp")}
+            </Text>
+          </Group>
+        )}
         {runNowResult !== null && (
           <Alert
             color={runNowResult.success ? "green" : "red"}
