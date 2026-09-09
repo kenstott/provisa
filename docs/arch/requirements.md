@@ -17949,3 +17949,17 @@ A session-variable term in an RLS predicate takes the type of the column it is c
 **Code:** `provisa/compiler/rls.py`, `provisa/compiler/stage2.py`
 
 **Tests:** `tests/unit/test_rls.py`, `tests/integration/test_hasura_v2_live_import.py`
+
+## 12. Migration & Compatibility (Hasura)
+
+### REQ-1687 · Hasura v2 Parity: Low-Complexity Features {#REQ-1687}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** ui
+
+The import tab lets the administrator supply what the export cannot carry. The preview lists every converted SQL source with the connection the conversion guessed (host, port, database, username; never a password) as editable fields, and the next conversion sends the filled-in fields as source overrides, which is what lets the preview type every column from the source ([REQ-1683](#REQ-1683)). The domain-mapping rows list every schema, subgraph and remote schema ([REQ-1681](#REQ-1681)) the upload carries, and each row is a picker over the org's existing domains that also accepts a typed name, marked "new domain" when it matches none. Apply stays additive by default; the replace checkbox is the only path that deletes anything.
+
+**Use case:** The tab sent no source overrides, so an imported Postgres source kept the export's placeholder connection and every column stayed untyped until the administrator edited the YAML by hand; the domain field was free text, so a typo made a new domain instead of joining an existing one; and a remote schema never appeared in the mapping.
+
+**Code:** `provisa-ui/src/components/admin/ImportTab.tsx`, `provisa-ui/src/api/importer.ts`, `provisa/api/admin/import_router.py`
+
+**Tests:** `provisa-ui/src/__tests__/ImportTab.test.tsx`

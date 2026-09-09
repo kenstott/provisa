@@ -74,14 +74,33 @@ class ImportWarningOut(BaseModel):
     source_path: str = ""
 
 
+# REQ-1687: the source kinds whose connection the administrator supplies as an override.
+_CONNECTION_KINDS = {"postgresql", "mysql"}
+
+
+class DiscoveredSource(BaseModel):  # REQ-1687
+    """A converted source whose connection the export could not know: what the conversion guessed,
+    for the administrator to correct before converting again. Never carries a password."""
+
+    id: str
+    type: str
+    host: str
+    port: int
+    database: str
+    username: str
+
+
 class ImportPreviewResponse(BaseModel):
     flavor: str
     config_yaml: str
     warnings: list[ImportWarningOut]
     summary: ImportSummary
-    # The schema (v2) or subgraph (DDN) names the upload carries, so the UI can offer one mapping
-    # row per name instead of asking the administrator to type them from memory.
+    # The schema (v2) or subgraph (DDN) names the upload carries — and, for v2, the remote schema
+    # names, which map to a domain the same way (REQ-1681) — so the UI can offer one mapping row per
+    # name instead of asking the administrator to type them from memory.
     discovered_domains: list[str]
+    # REQ-1687: the SQL sources the upload carries, with the connection the conversion guessed.
+    discovered_sources: list[DiscoveredSource] = []
 
 
 class ImportApplyRequest(BaseModel):
@@ -162,7 +181,13 @@ def _convert(req: ImportPreviewRequest) -> tuple[str, ProvisaConfig, WarningColl
             source_overrides=req.source_overrides,
         )
         schemas = sorted({t.schema_name for s in v2_metadata.sources for t in s.tables})
-        return HASURA_V2, config, collector, schemas
+        # REQ-1681/REQ-1687: a remote schema's name is a domain-map key too.
+        return (
+            HASURA_V2,
+            config,
+            collector,
+            schemas + sorted(rs.name for rs in v2_metadata.remote_schemas),
+        )
 
 
 @router.post("/preview", response_model=ImportPreviewResponse)
@@ -192,6 +217,18 @@ async def preview_import(req: ImportPreviewRequest, request: Request) -> ImportP
         ],
         summary=_summarize(config),
         discovered_domains=discovered,
+        discovered_sources=[
+            DiscoveredSource(
+                id=s.id,
+                type=s.type.value,
+                host=s.host or "",
+                port=int(s.port or 0),
+                database=s.database or "",
+                username=s.username or "",
+            )
+            for s in config.sources
+            if s.type.value in _CONNECTION_KINDS
+        ],
     )
 
 

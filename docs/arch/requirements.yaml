@@ -56294,3 +56294,34 @@
     Given an RLS rule id = current_setting('provisa.user_id') on a table whose id is integer
     When the rule is applied
     Then the governed SQL reads id = CAST(current_setting('provisa.user_id') AS INT)
+- id: REQ-1687
+  status: complete
+  since: 2026-09
+  group: "12. Migration & Compatibility (Hasura)"
+  category: "Hasura v2 Parity: Low-Complexity Features"
+  priority: MUST
+  type: ui
+  description: >-
+    The import tab lets the administrator supply what the export cannot carry. The preview lists
+    every converted SQL source with the connection the conversion guessed (host, port, database,
+    username; never a password) as editable fields, and the next conversion sends the filled-in
+    fields as source overrides, which is what lets the preview type every column from the source
+    (REQ-1683). The domain-mapping rows list every schema, subgraph and remote schema (REQ-1681)
+    the upload carries, and each row is a picker over the org's existing domains that also accepts
+    a typed name, marked "new domain" when it matches none. Apply stays additive by default; the
+    replace checkbox is the only path that deletes anything.
+  code:
+  - provisa-ui/src/components/admin/ImportTab.tsx
+  - provisa-ui/src/api/importer.ts
+  - provisa/api/admin/import_router.py
+  tests:
+  - provisa-ui/src/__tests__/ImportTab.test.tsx
+  use_case: >-
+    The tab sent no source overrides, so an imported Postgres source kept the export's placeholder
+    connection and every column stayed untyped until the administrator edited the YAML by hand;
+    the domain field was free text, so a typo made a new domain instead of joining an existing
+    one; and a remote schema never appeared in the mapping.
+  scenario: |
+    Given a Hasura export with a Postgres source and a remote schema, previewed on the import tab
+    When the administrator fills the source's host, port and password, picks the existing domain music for public, and converts again
+    Then the preview shows typed columns, public lands in music, and the remote schema has its own domain row

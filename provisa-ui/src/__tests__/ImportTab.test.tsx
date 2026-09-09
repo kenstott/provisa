@@ -23,6 +23,15 @@ vi.mock("../api/importer", async () => {
   };
 });
 
+vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
+  useDomains: () => ({
+    domains: [{ id: "sales" }, { id: "music" }],
+    loading: false,
+    refetch: vi.fn(),
+  }),
+}));
+
 import { previewImport, applyImport } from "../api/importer";
 const mockPreview = vi.mocked(previewImport);
 const mockApply = vi.mocked(applyImport);
@@ -125,8 +134,8 @@ describe("ImportTab", () => {
     await waitFor(() => expect(screen.getByText("Tables")).toBeInTheDocument());
     expect(mockPreview.mock.calls[0][0].domain_map).toEqual({});
 
-    fireEvent.change(screen.getByLabelText("Domain for public"), { target: { value: "sales" } });
-    fireEvent.click(screen.getByRole("button", { name: "Convert again with these domains" }));
+    fireEvent.change(screen.getByTestId("import-domain-public"), { target: { value: "sales" } });
+    fireEvent.click(screen.getByTestId("import-reconvert"));
 
     await waitFor(() => expect(mockPreview).toHaveBeenCalledTimes(2));
     expect(mockPreview.mock.calls[1][0].domain_map).toEqual({ public: "sales" });
@@ -139,7 +148,7 @@ describe("ImportTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Convert and preview" }));
     await waitFor(() => expect(screen.getByText("Tables")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: "Convert again with these domains" }));
+    fireEvent.click(screen.getByTestId("import-reconvert"));
     await waitFor(() => expect(mockPreview).toHaveBeenCalledTimes(2));
     expect(mockPreview.mock.calls[1][0].domain_map).toEqual({});
   });
@@ -152,5 +161,70 @@ describe("ImportTab", () => {
 
     await waitFor(() => expect(screen.getByText(/Import preview failed/)).toBeInTheDocument());
     expect(screen.queryByText("Tables")).not.toBeInTheDocument();
+  });
+});
+
+// REQ-1687: the connection is the administrator's to supply, and a domain is picked from the
+// org's own or typed as a new one; both travel on the next conversion.
+describe("ImportTab — connections and domain picker (REQ-1687)", () => {
+  beforeEach(() => {
+    mockPreview.mockReset();
+    mockPreview.mockResolvedValue(
+      preview({
+        discovered_domains: ["public", "countries"],
+        discovered_sources: [
+          {
+            id: "default",
+            type: "postgresql",
+            host: "localhost",
+            port: 5432,
+            database: "d",
+            username: "postgres",
+          },
+        ],
+      }),
+    );
+  });
+
+  it("seeds a connection row per discovered source and sends what was changed", async () => {
+    render(<ImportTab />);
+    pickFile();
+    fireEvent.click(screen.getByRole("button", { name: "Convert and preview" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("import-source-host-default")).toBeInTheDocument(),
+    );
+    expect((screen.getByTestId("import-source-host-default") as HTMLInputElement).value).toBe(
+      "localhost",
+    );
+    fireEvent.change(screen.getByTestId("import-source-port-default"), {
+      target: { value: "62953" },
+    });
+    fireEvent.change(screen.getByTestId("import-source-password-default"), {
+      target: { value: "s3cret" },
+    });
+    fireEvent.click(screen.getByTestId("import-reconvert"));
+    await waitFor(() => expect(mockPreview).toHaveBeenCalledTimes(2));
+    expect(mockPreview.mock.calls[1][0].source_overrides).toEqual({
+      default: {
+        host: "localhost",
+        port: 62953,
+        database: "d",
+        username: "postgres",
+        password: "s3cret",
+      },
+    });
+  });
+
+  it("lists remote schemas in the domain map and flags a name that is not an existing domain", async () => {
+    render(<ImportTab />);
+    pickFile();
+    fireEvent.click(screen.getByRole("button", { name: "Convert and preview" }));
+    await waitFor(() => expect(screen.getByTestId("import-domain-countries")).toBeInTheDocument());
+    expect(screen.getByTestId("import-domain-new-countries")).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("import-domain-public"), { target: { value: "music" } });
+    expect(screen.queryByTestId("import-domain-new-public")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("import-reconvert"));
+    await waitFor(() => expect(mockPreview).toHaveBeenCalledTimes(2));
+    expect(mockPreview.mock.calls[1][0].domain_map).toEqual({ public: "music" });
   });
 });

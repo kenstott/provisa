@@ -39,13 +39,33 @@ export interface ImportWarning {
   source_path: string;
 }
 
+/** REQ-1687: a converted SQL source and the connection the conversion guessed (never a password). */
+export interface DiscoveredSource {
+  id: string;
+  type: string;
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+}
+
+/** REQ-1687: the connection the administrator supplies for a discovered source. */
+export interface SourceOverride {
+  host: string;
+  port: string;
+  database: string;
+  username: string;
+  password: string;
+}
+
 export interface ImportPreview {
   flavor: string;
   config_yaml: string;
   warnings: ImportWarning[];
   summary: ImportSummary;
-  /** Schema (v2) or subgraph (DDN) names carried by the upload, before any domain mapping. */
+  /** Schema (v2), subgraph (DDN) or remote schema names carried by the upload, before any mapping. */
   discovered_domains: string[];
+  discovered_sources?: DiscoveredSource[];
 }
 
 export interface ImportPreviewRequest {

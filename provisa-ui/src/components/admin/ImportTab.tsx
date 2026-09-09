@@ -12,6 +12,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
+  Autocomplete,
   Badge,
   Button,
   Checkbox,
@@ -34,7 +35,34 @@ import {
   previewImport,
   type ImportFlavor,
   type ImportPreview,
+  type SourceOverride,
 } from "../../api/importer";
+import { useDomains } from "../../hooks/useAdminQueries";
+
+const EMPTY_OVERRIDE: SourceOverride = {
+  host: "",
+  port: "",
+  database: "",
+  username: "",
+  password: "",
+};
+
+/** REQ-1687: only what the administrator filled in travels; a blank field keeps the conversion's guess. */
+function overridesToSend(
+  sources: Record<string, SourceOverride>,
+): Record<string, Record<string, string | number>> {
+  const out: Record<string, Record<string, string | number>> = {};
+  for (const [id, o] of Object.entries(sources)) {
+    const fields: Record<string, string | number> = {};
+    if (o.host.trim()) fields.host = o.host.trim();
+    if (o.port.trim()) fields.port = Number(o.port);
+    if (o.database.trim()) fields.database = o.database.trim();
+    if (o.username.trim()) fields.username = o.username.trim();
+    if (o.password) fields.password = o.password;
+    if (Object.keys(fields).length > 0) out[id] = fields;
+  }
+  return out;
+}
 
 // REQ-1483: the interactive form of the `provisa.hasura_v2` / `provisa.ddn` converters.
 //
@@ -56,6 +84,11 @@ export function ImportTab() {
   // Target domain per schema (v2) or subgraph (DDN) the upload turned out to carry. Seeded from the
   // first conversion, since the names cannot be known before the file is parsed.
   const [domains, setDomains] = useState<Record<string, string>>({});
+  // REQ-1687: connection per discovered SQL source, seeded from what the conversion guessed. The
+  // preview is design time: with a reachable connection it types every column from the source.
+  const [sources, setSources] = useState<Record<string, SourceOverride>>({});
+  const { domains: existingDomains } = useDomains();
+  const existingDomainIds = existingDomains.map((d) => d.id);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [yamlText, setYamlText] = useState("");
   const [replace, setReplace] = useState(false);
@@ -63,7 +96,10 @@ export function ImportTab() {
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
-  const runPreview = async (map: Record<string, string>) => {
+  const runPreview = async (
+    map: Record<string, string>,
+    overrides: Record<string, SourceOverride> = sources,
+  ) => {
     if (!file) return;
     setBusy("preview");
     setError("");
@@ -79,11 +115,25 @@ export function ImportTab() {
         content_b64: await fileToBase64(file),
         flavor,
         domain_map,
-        source_overrides: {},
+        source_overrides: overridesToSend(overrides),
       });
       setPreview(result);
       setYamlText(result.config_yaml);
       setDomains(Object.fromEntries(result.discovered_domains.map((d) => [d, map[d] ?? d])));
+      setSources(
+        Object.fromEntries(
+          (result.discovered_sources ?? []).map((s) => [
+            s.id,
+            overrides[s.id] ?? {
+              ...EMPTY_OVERRIDE,
+              host: s.host,
+              port: s.port ? String(s.port) : "",
+              database: s.database,
+              username: s.username,
+            },
+          ]),
+        ),
+      );
     } catch (e) {
       setError(String(e));
     } finally {
@@ -199,27 +249,105 @@ export function ImportTab() {
               <Text size="xs" c="dimmed">
                 {t("importTab.domainMapHelp")}
               </Text>
-              {preview.discovered_domains.map((from) => (
-                <Group key={from} gap="xs" align="center">
-                  <Code w={220}>{from}</Code>
-                  <TextInput
-                    w={220}
-                    aria-label={t("importTab.domainTo", { from })}
-                    value={domains[from] ?? from}
-                    onChange={(e) => setDomains({ ...domains, [from]: e.currentTarget.value })}
-                  />
-                </Group>
-              ))}
-              <Group>
-                <Button
-                  variant="light"
-                  onClick={() => runPreview(domains)}
-                  loading={busy === "preview"}
-                >
-                  {t("importTab.remap")}
-                </Button>
-              </Group>
+              {preview.discovered_domains.map((from) => {
+                const to = domains[from] ?? from;
+                const isNew = to.trim() !== "" && !existingDomainIds.includes(to.trim());
+                return (
+                  <Group key={from} gap="xs" align="center">
+                    <Code w={220}>{from}</Code>
+                    {/* Existing domains are offered; a name not among them creates a domain. */}
+                    <Autocomplete
+                      w={220}
+                      aria-label={t("importTab.domainTo", { from })}
+                      data={existingDomainIds}
+                      value={to}
+                      onChange={(v) => setDomains({ ...domains, [from]: v })}
+                      data-testid={`import-domain-${from}`}
+                    />
+                    {isNew && (
+                      <Badge variant="light" data-testid={`import-domain-new-${from}`}>
+                        {t("importTab.domainNew")}
+                      </Badge>
+                    )}
+                  </Group>
+                );
+              })}
             </Stack>
+          )}
+
+          {/* REQ-1687: the export names its databases by environment variable; the connection is
+              the administrator's to supply, and with it the preview types every column. */}
+          {(preview.discovered_sources ?? []).length > 0 && (
+            <Stack gap="xs">
+              <Text fw={500} size="sm">
+                {t("importTab.sourceConnections")}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {t("importTab.sourceConnectionsHelp")}
+              </Text>
+              {(preview.discovered_sources ?? []).map((s) => {
+                const o = sources[s.id] ?? EMPTY_OVERRIDE;
+                const set = (patch: Partial<SourceOverride>) =>
+                  setSources({ ...sources, [s.id]: { ...o, ...patch } });
+                return (
+                  <Group key={s.id} gap="xs" align="flex-end" wrap="wrap">
+                    <Code w={140}>
+                      {s.id} ({s.type})
+                    </Code>
+                    <TextInput
+                      label={t("importTab.host")}
+                      value={o.host}
+                      onChange={(e) => set({ host: e.currentTarget.value })}
+                      w={180}
+                      data-testid={`import-source-host-${s.id}`}
+                    />
+                    <TextInput
+                      label={t("importTab.port")}
+                      value={o.port}
+                      onChange={(e) => set({ port: e.currentTarget.value })}
+                      w={90}
+                      data-testid={`import-source-port-${s.id}`}
+                    />
+                    <TextInput
+                      label={t("importTab.database")}
+                      value={o.database}
+                      onChange={(e) => set({ database: e.currentTarget.value })}
+                      w={160}
+                      data-testid={`import-source-database-${s.id}`}
+                    />
+                    <TextInput
+                      label={t("importTab.username")}
+                      value={o.username}
+                      onChange={(e) => set({ username: e.currentTarget.value })}
+                      w={140}
+                      data-testid={`import-source-username-${s.id}`}
+                    />
+                    <TextInput
+                      label={t("importTab.password")}
+                      type="password"
+                      value={o.password}
+                      onChange={(e) => set({ password: e.currentTarget.value })}
+                      w={140}
+                      data-testid={`import-source-password-${s.id}`}
+                    />
+                  </Group>
+                );
+              })}
+            </Stack>
+          )}
+
+          {(preview.discovered_domains.length > 0 ||
+            (preview.discovered_sources ?? []).length > 0) && (
+            <Group>
+              <Button
+                variant="light"
+                onClick={() => runPreview(domains, sources)}
+                loading={busy === "preview"}
+                data-testid="import-reconvert"
+              >
+                {t("importTab.remap")}
+              </Button>
+            </Group>
           )}
 
           <Title order={4}>
