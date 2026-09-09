@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "../../test-utils/render";
+import { render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
 import { Fragment } from "react";
 
@@ -56,6 +56,7 @@ vi.mock("../../hooks/useCapability", () => ({
 }));
 
 const runSql = vi.fn().mockResolvedValue({ columns: ["id"], rows: [{ id: 1 }] });
+const registerTable = vi.fn().mockResolvedValue({ success: true, message: "View created (id=7)" });
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
   runSql: (...a: unknown[]) => runSql(...a),
@@ -67,10 +68,14 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
     loading: false,
     refetch: vi.fn(),
   }),
-  useDomains: () => ({ domains: [], loading: false, refetch: vi.fn() }),
+  useDomains: () => ({
+    domains: [{ id: "pet-store", description: "Pet store" }],
+    loading: false,
+    refetch: vi.fn(),
+  }),
   useTables: () => ({ tables: [], loading: false, refetch: vi.fn() }),
   useRelationships: () => ({ relationships: [], loading: false, refetch: vi.fn() }),
-  useRegisterTable: () => ({ registerTable: vi.fn(), loading: false }),
+  useRegisterTable: () => ({ registerTable: (...a: unknown[]) => registerTable(...a), loading: false }),
   useUpdateTable: () => ({ updateTable: vi.fn(), loading: false }),
 }));
 
@@ -96,5 +101,34 @@ describe("SQL Explorer under Role: All (REQ-1620)", () => {
     await userEvent.click(screen.getByTestId("sql-run"));
     await waitFor(() => expect(runSql).toHaveBeenCalled());
     expect(runSql.mock.calls[0][1]).toBe("analyst,org_admin");
+  });
+
+  it("a new view's default visibleTo is the role ids, never the picker's All entry", async () => {
+    render(
+      <MemoryRouter>
+        <SqlPage />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId("sql-role")).toHaveValue("All"));
+    const editor = screen.getByTestId("sql-editor") as HTMLTextAreaElement;
+    await userEvent.clear(editor);
+    await userEvent.type(editor, "SELECT 1 AS id");
+    await userEvent.click(screen.getByTestId("sql-run"));
+    await waitFor(() => expect(runSql).toHaveBeenCalled());
+    await userEvent.click(await screen.findByTestId("sql-open-view-modal"));
+    await userEvent.type(await screen.findByTestId("view-alias-input"), "e2e_mv_a");
+    // Mantine Select portals its listbox; jsdom applies no layout so it reads as hidden.
+    const combobox = screen.getByTestId("view-domain-select");
+    await userEvent.click(combobox);
+    const listboxId = combobox.getAttribute("aria-controls");
+    const listbox = listboxId ? document.getElementById(listboxId) : null;
+    if (!listbox) throw new Error("no listbox for the domain select");
+    await userEvent.click(
+      await within(listbox).findByRole("option", { name: /pet-store/, hidden: true }),
+    );
+    await userEvent.click(screen.getByTestId("save-view-button"));
+    await waitFor(() => expect(registerTable).toHaveBeenCalled());
+    const input = registerTable.mock.calls[0][0] as { columns: { visibleTo: unknown }[] };
+    expect(input.columns[0].visibleTo).toEqual(["analyst", "org_admin"]);
   });
 });
