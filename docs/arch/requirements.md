@@ -17960,9 +17960,9 @@ The import tab lets the administrator supply what the export cannot carry. The p
 
 **Use case:** The tab sent no source overrides, so an imported Postgres source kept the export's placeholder connection and every column stayed untyped until the administrator edited the YAML by hand; the domain field was free text, so a typo made a new domain instead of joining an existing one; and a remote schema never appeared in the mapping.
 
-**Code:** `provisa-ui/src/components/admin/ImportTab.tsx`, `provisa-ui/src/api/importer.ts`, `provisa/api/admin/import_router.py`
+**Code:** `provisa-ui/src/components/admin/ImportTab.tsx`, `provisa-ui/src/api/importer.ts`, `provisa/api/admin/import_router.py`, `demo/sources/chinook/compose.yml`, `demo/sources/chinook/prime.py`
 
-**Tests:** `provisa-ui/src/__tests__/ImportTab.test.tsx`
+**Tests:** `provisa-ui/src/__tests__/ImportTab.test.tsx`, `provisa-ui/e2e/hasura-import.spec.ts`
 
 ## 6. Execution, Routing, Caching & Performance
 
@@ -17977,3 +17977,17 @@ Planner statistics on a landed table are collected where the table lives. After 
 **Code:** `provisa/federation/backend.py`, `provisa/federation/native_backend.py`, `provisa/federation/runtime.py`, `provisa/api_source/engine_cache.py`, `provisa/api/data/materialization.py`, `provisa/api/rest/cypher_exec.py`
 
 **Tests:** `tests/unit/test_api_cache.py`
+
+## 4. Source Connectors
+
+### REQ-1689 · Prometheus {#REQ-1689}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Prometheus is engine-independent. An engine that does not read Prometheus live (every native engine) reads the server's HTTP API with the Trino connector's table shape: a metric is a table and a sample is a row of `timestamp`, `value` and one column per label. Register Table lists one schema (`default`) and the metric names (or the mapping DSL's tables), types a metric's columns from its series' labels and its metadata type (`discover_schema`: histogram adds `le`, summary adds `quantile`), and the landing loader reads `query_range` over the table's range (the mapping DSL's `default_range`, else 1h; a step that keeps the query under the server's point limit). The source URL is `mapping.url`, else a `host` that is already a URL (the Sources form stores it there), else `http://host:port`; a bearer token comes from the config Source's password secret. Schema discovery reads the same labels and metadata given a metric hint (it had passed empty metadata and failed on every metric). Trino keeps its connector: the loader is wired only when the bound engine does not read Prometheus in place.
+
+**Use case:** Prometheus had a Trino-only path; on the native engine the source registered and nothing could list or read it, and discovery failed on every metric.
+
+**Code:** `provisa/prometheus/fetch.py`, `provisa/prometheus/source.py`, `provisa/events/source_loader.py`, `provisa/events/app_wiring.py`, `provisa/api/admin/introspect.py`, `provisa/api/admin/schema_query.py`, `provisa/api/admin/discovery_schema.py`
+
+**Tests:** `tests/unit/test_prometheus_fetch.py`, `tests/integration/test_prometheus_native_fetch.py`, `provisa-ui/e2e/source-to-query.spec.ts`

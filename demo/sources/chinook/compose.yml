@@ -1,0 +1,33 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: a Postgres holding the snake_case Chinook subset Hasura's own metadata
+# sample tracks (tests/fixtures/hasura_v2_t1_seed.sql) — the source a Hasura v2 import lands on
+# (start-ui-install.sh --demo --source=chinook; the Hasura-import e2e). Own compose project
+# (provisa-demo-chinook) on port 25433 (dev/core stack 5432, tests ephemeral).
+services:
+  chinook:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: provisa
+      POSTGRES_PASSWORD: provisa
+      POSTGRES_DB: chinook
+    ports:
+      - "${PROVISA_DEMO_CHINOOK_PORT:-25433}:5432"
+    volumes:
+      - chinook_demo_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U provisa -d chinook"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+volumes:
+  chinook_demo_data:

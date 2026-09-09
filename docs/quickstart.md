@@ -82,6 +82,7 @@ Shipped sources:
 | `sparql` | 23030 | Apache Jena Fuseki; source and one query-backed table (`volunteer`) registered from the fragment, graph seeded by `prime.py`; more tables through Register Table (query + Preview) (REQ-1683) |
 | `prometheus` | 29090 | Source registered; the server scrapes itself, so `up` and the `prometheus_*` metrics register as tables through Register Table (REQ-1689) |
 | `elasticsearch` | 29200 | Source and index mapping registered; `support_tickets` index seeded by `prime.py`; read over HTTP by the native engine (REQ-1672), through the connector on Trino |
+| `chinook` | 25433 | Postgres holding the snake_case Chinook subset Hasura's metadata sample tracks, seeded by `prime.py` from `tests/fixtures/hasura_v2_t1_seed.sql`; source registered from the fragment, and the source a Hasura v2 import of `tests/fixtures/hasura_v2_t1_metadata.json` lands on (REQ-1687) |
 
 `--idp=basic|firebase` — Enables an identity provider for auth. Without this flag, the backend runs with no auth provider and all requests are treated as `admin`. [tool-verified: start-ui.sh line 18; provisa/auth/wiring.py lines 57–60; provisa/auth/middleware.py lines 57–68] (REQ-120, REQ-124)
 

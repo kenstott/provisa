@@ -30,13 +30,9 @@ from httpx import ASGITransport, AsyncClient
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
-SAMPLE = Path(
-    os.environ.get(
-        "HASURA_V2_SAMPLE",
-        "/Volumes/main/Users/kennethstott/PycharmProjects/hasura-v2/cli/internal/metadatautil/"
-        "testdata/json/t1/metadata.json",
-    )
-)
+# Hasura's own sample (graphql-engine cli/internal/metadatautil/testdata/json/t1/metadata.json),
+# copied into the fixtures so the test carries its input.
+SAMPLE = Path(__file__).resolve().parents[1] / "fixtures" / "hasura_v2_t1_metadata.json"
 SEED = Path(__file__).resolve().parents[1] / "fixtures" / "hasura_v2_t1_seed.sql"
 DB = "hasura_t1"
 COUNTRIES_URL = "https://countries.trevorblades.com/graphql"

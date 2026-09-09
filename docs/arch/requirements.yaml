@@ -56314,8 +56314,11 @@
   - provisa-ui/src/components/admin/ImportTab.tsx
   - provisa-ui/src/api/importer.ts
   - provisa/api/admin/import_router.py
+  - demo/sources/chinook/compose.yml
+  - demo/sources/chinook/prime.py
   tests:
   - provisa-ui/src/__tests__/ImportTab.test.tsx
+  - provisa-ui/e2e/hasura-import.spec.ts
   use_case: >-
     The tab sent no source overrides, so an imported Postgres source kept the export's placeholder
     connection and every column stayed untyped until the administrator edited the YAML by hand;

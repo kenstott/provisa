@@ -29,6 +29,7 @@ export const E2E_REDIS_PORT = 36379;
 export const E2E_CASSANDRA_PORT = 39042;
 export const E2E_SPARQL_PORT = 33030;
 export const E2E_PROMETHEUS_PORT = 39090;
+export const E2E_CHINOOK_PORT = 35433;
 
 export const DEMO_SOURCE_ENV: Record<string, string> = {
   PROVISA_DEMO_NEO4J_HTTP_PORT: String(E2E_NEO4J_HTTP_PORT),
@@ -39,6 +40,7 @@ export const DEMO_SOURCE_ENV: Record<string, string> = {
   PROVISA_DEMO_CASSANDRA_PORT: String(E2E_CASSANDRA_PORT),
   PROVISA_DEMO_SPARQL_PORT: String(E2E_SPARQL_PORT),
   PROVISA_DEMO_PROMETHEUS_PORT: String(E2E_PROMETHEUS_PORT),
+  PROVISA_DEMO_CHINOOK_PORT: String(E2E_CHINOOK_PORT),
 };
 
 // Every one of these is read by the native engine over localhost (REQ-1672 made Elasticsearch
@@ -50,6 +52,7 @@ export const DEMO_SOURCES = [
   "redis",
   "cassandra",
   "sparql",
+  "chinook", // a Postgres for the Hasura v2 import e2e (hasura-import.spec.ts)
 ] as const;
 export type DemoSource = (typeof DEMO_SOURCES)[number];
 
