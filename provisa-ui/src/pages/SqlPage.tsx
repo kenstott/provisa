@@ -62,7 +62,7 @@ export function SqlPage() {
   const navigate = useNavigate();
   const canCreateView = useCapability("create_view");
   const canRequestView = useCapability("query_development");
-  const { role: authRole } = useAuth();
+  const { role: authRole, selectedRoles } = useAuth();
   const { roles: rolesData } = useRoles();
   const { domains: domainsData } = useDomains();
   const { tables: tablesData, refetch: refetchTables } = useTables();
@@ -112,9 +112,19 @@ export function SqlPage() {
 
   const [sqlText, setSqlText] = useState(active0.sqlText);
   const [role, setRole] = useState("org_admin");
-  const roles = useMemo(
-    () => (rolesData.length ? rolesData.map((r) => r.id) : ["org_admin"]),
-    [rolesData],
+  // REQ-1620: under the app-wide "Role: All" the acting set is EVERY active role, sent as one
+  // comma-separated X-Provisa-Role so the union of their visibility is queryable. The picker
+  // offers that set as its own entry; picking a single role previews that role alone.
+  const allRolesValue = useMemo(() => selectedRoles.map((r) => r.id).join(","), [selectedRoles]);
+  const roles = useMemo(() => {
+    const single = rolesData.length ? rolesData.map((r) => r.id) : ["org_admin"];
+    return allRolesValue.includes(",")
+      ? [{ value: allRolesValue, label: t("roleSelector.all") }, ...single]
+      : single;
+  }, [rolesData, allRolesValue, t]);
+  const roleIds = useMemo(
+    () => roles.map((r) => (typeof r === "string" ? r : r.value)),
+    [roles],
   );
   // REQ-1013: the SQL Explorer's "run as" picker is a preview tool separate from the app-wide
   // role switcher (RoleSelector / useAuth().role), which is what Cypher and GraphQL send as
@@ -129,13 +139,21 @@ export function SqlPage() {
      (existing role removed) and, once, to the caller's own acting role once it resolves */
   useEffect(() => {
     if (roleInitialized.current) {
-      if (!roles.includes(role)) setRole(roles[0] ?? role);
+      if (!roleIds.includes(role)) setRole(roleIds[0] ?? role);
       return;
     }
     if (!rolesData.length || authRole === null) return;
     roleInitialized.current = true;
-    setRole(roles.includes(authRole.id) ? authRole.id : roles[0]);
-  }, [roles, role, rolesData.length, authRole]);
+    // "Role: All" seeds the whole set, never its first member: the first role by id (analyst
+    // in the demo) cannot see columns the union can, and the server refused the run (V003).
+    setRole(
+      allRolesValue.includes(",")
+        ? allRolesValue
+        : roleIds.includes(authRole.id)
+          ? authRole.id
+          : roleIds[0],
+    );
+  }, [roles, roleIds, role, rolesData.length, authRole, allRolesValue]);
   /* eslint-enable react-hooks/set-state-in-effect */
   const [running, setRunning] = useState(false);
   const [sampleMode, setSampleMode] = useState<"first" | "last" | "random">("first");

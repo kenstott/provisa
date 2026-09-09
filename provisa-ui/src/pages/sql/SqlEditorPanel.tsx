@@ -68,7 +68,7 @@ interface SqlEditorPanelProps {
   setSampleMode: React.Dispatch<React.SetStateAction<"first" | "last" | "random">>;
   sampleSize: number;
   setSampleSize: React.Dispatch<React.SetStateAction<number>>;
-  roles: string[];
+  roles: (string | { value: string; label: string })[];
   setRole: React.Dispatch<React.SetStateAction<string>>;
   viewTable: RegisteredTable | null;
   viewSaving: boolean;

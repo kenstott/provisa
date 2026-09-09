@@ -46,7 +46,7 @@ vi.mock("../../context/DomainFilterContext", () => ({
 }));
 
 vi.mock("../../context/AuthContext", () => ({
-  useAuth: () => ({ role: { id: "admin", capabilities: [] } }),
+  useAuth: () => ({ role: { id: "admin", capabilities: [] }, selectedRoles: [] }),
 }));
 
 vi.mock("../../hooks/useCapability", () => ({
