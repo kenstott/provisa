@@ -63,7 +63,19 @@ async function typeSql(page: import("@playwright/test").Page, sql: string) {
   await expect(editor).toHaveText(sql.replace(/\s+/g, " ").trim(), { useInnerText: true });
 }
 
+async function runAs(page: import("@playwright/test").Page, role: string) {
+  // The explorer's picker is the acting role for the run (REQ-273). Under the app-wide "Role:
+  // All" it seeds to the whole set, which the server acts on as its first role by id -- analyst
+  // here, whose visibility refuses pets.price with V003. The view is created as org_admin.
+  const picker = page.getByTestId("sql-role");
+  if ((await picker.inputValue()) === role) return;
+  await picker.click();
+  await page.getByRole("option", { name: role, exact: true }).click();
+  await expect(picker).toHaveValue(role);
+}
+
 async function createView(page: import("@playwright/test").Page, sql: string, alias: string) {
+  await runAs(page, "org_admin");
   await typeSql(page, sql);
   const runResp = page.waitForResponse((r) => r.url().includes("/data/sql") && r.request().method() === "POST");
   await page.getByTestId("sql-run").click();
