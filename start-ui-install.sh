@@ -217,6 +217,7 @@ if [ "${#SOURCES[@]}" -gt 0 ]; then
     export PROVISA_DEMO_ES_SOURCE_HOST=elasticsearch PROVISA_DEMO_ES_SOURCE_PORT=9200
     export PROVISA_DEMO_REDIS_SOURCE_HOST=redis PROVISA_DEMO_REDIS_SOURCE_PORT=6379
     export PROVISA_DEMO_CASSANDRA_SOURCE_HOST=cassandra PROVISA_DEMO_CASSANDRA_SOURCE_PORT=9042
+    export PROVISA_DEMO_SPARQL_SOURCE_URL=http://sparql:3030/provisa/query
   fi
   "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/demo/sources/provision.py" up \
     --prefix provisa-demo --engine "$_SRC_ENGINE" ${_SRC_NET[@]+"${_SRC_NET[@]}"} "${SOURCES[@]}"

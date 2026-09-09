@@ -26,6 +26,7 @@ import {
   E2E_MONGO_PORT,
   E2E_NEO4J_HTTP_PORT,
   E2E_REDIS_PORT,
+  E2E_SPARQL_PORT,
 } from "./demo-source-containers";
 import {
   openRegisterForm,
@@ -225,5 +226,50 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     expect(rows).toHaveLength(7);
     expect(rows[0]).toEqual(["1", "intake", "Buddy"]);
     expect(rows[6]).toEqual(["7", "adoption", "Mittens"]);
+  });
+
+  test("sparql: add the source, register a SELECT projection, query it on the SQL page", async ({
+    page,
+  }) => {
+    test.setTimeout(300000);
+    const stamp = Date.now();
+    const sourceId = `e2e_sparql_${stamp}`;
+    const tableName = `volunteer_${stamp}`;
+
+    // 1. Sources form — the endpoint URL is the source (REQ-1683)
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("sparql");
+    await page
+      .getByTestId("sparql-endpoint-input")
+      .fill(`http://localhost:${E2E_SPARQL_PORT}/provisa/query`);
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. Register Table form: name + SPARQL, preview, submit
+    await openRegisterForm(page, sourceId);
+    await expect(page.getByTestId("register-table-schema-select")).toHaveCount(0);
+    await page.getByTestId("register-table-sparql-table-name").fill(tableName);
+    await page
+      .getByTestId("register-table-sparql-query")
+      .fill(
+        "PREFIX s: <http://provisa.dev/shelter#> SELECT ?volunteer_id ?name ?program " +
+          "WHERE { ?v a s:Volunteer ; s:id ?volunteer_id ; s:name ?name ; s:program ?program } " +
+          "ORDER BY ?volunteer_id",
+      );
+    await page.getByTestId("register-table-sparql-preview").click();
+    await expect(page.getByTestId("register-table-sparql-preview-rows")).toBeVisible({
+      timeout: 60000,
+    });
+    await expect(page.getByTestId("register-table-col-datatype-name")).toHaveValue("text");
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    // 3. SQL page: the six volunteers demo/sources/sparql/prime.py loads
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT volunteer_id, name, program FROM pet_store.${registered} ORDER BY volunteer_id`,
+    );
+    expect(rows).toHaveLength(6);
+    expect(rows[0]).toEqual(["V-01", "Grace Hall", "adoption"]);
+    expect(rows[5]).toEqual(["V-06", "Noah Bryce", "fostering"]);
   });
 });

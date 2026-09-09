@@ -776,7 +776,7 @@ ALTER TABLE kafka_sinks ADD COLUMN IF NOT EXISTS bound BOOLEAN NOT NULL DEFAULT 
 -- API Sources (Phase U)
 CREATE TABLE IF NOT EXISTS api_sources (
     id          TEXT PRIMARY KEY,
-    type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j')),
+    type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql')),
     base_url    TEXT NOT NULL,
     spec_url    TEXT,
     auth        BYTEA,  -- REQ-686: API auth (keys/tokens) encrypted at rest

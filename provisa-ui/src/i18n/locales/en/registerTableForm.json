@@ -80,6 +80,9 @@
     "neo4jPreviewRows": "Preview ({{count}} rows)",
     "neo4jPreviewNoRows": "The query returned no rows; columns cannot be inferred. Add a row to the graph or change the query.",
     "errorNeo4jCypher": "Enter the Cypher that produces the table's rows.",
-    "errorNeo4jPreviewFirst": "Preview the Cypher first so the columns and their types are known."
+    "errorNeo4jPreviewFirst": "Preview the Cypher first so the columns and their types are known.",
+    "sparqlQueryLabel": "SPARQL query",
+    "sparqlQueryHint": "a SELECT whose variables become the columns (every binding is text)",
+    "sparqlQueryPlaceholder": "SELECT ?name ?city WHERE { ?a <urn:name> ?name ; <urn:city> ?city }"
   }
 }

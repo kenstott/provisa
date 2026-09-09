@@ -398,13 +398,15 @@ export interface DqCheckDefinitionVars {
   check: DqCheckBuildInput;
 }
 
-// REQ-1670: Register Table on a neo4j source previews the Cypher before registering it.
-export interface Neo4jPreviewVars {
+// REQ-1670/REQ-1683: Register Table on a query-API source (neo4j, sparql) previews the query
+// before registering it.
+export interface QueryPreviewVars {
+  sourceType: "neo4j" | "sparql";
   sourceId: string;
-  cypher: string;
+  query: string;
 }
 
-export interface Neo4jPreview {
+export interface QueryPreview {
   rows: Record<string, unknown>[];
   columns: { name: string; dataType: string }[];
   error: string | null;

@@ -923,6 +923,30 @@ Both connectors use the API source cache pipeline — results are stored in Post
 
 ---
 
+#### Config-file and UI registration (REQ-1683)
+
+A `sparql` source's `host` is its SPARQL endpoint URL (the Sources form stores it the same way). Each table under it carries `query_template`, a SELECT whose variables are the columns; every binding is `text`. [tool-verified: `provisa/core/config_loader.py` `_validate_neo4j_sources`, `_handle_sparql_table`]
+
+```yaml
+sources:
+- id: sparql-demo
+  type: sparql
+  host: http://localhost:23030/provisa/query
+tables:
+- source_id: sparql-demo
+  domain_id: shelter
+  schema: sparql
+  table: volunteer
+  query_template: >-
+    PREFIX s: <http://provisa.dev/shelter#>
+    SELECT ?volunteer_id ?name WHERE { ?v a s:Volunteer ; s:id ?volunteer_id ; s:name ?name }
+  columns:
+  - { name: volunteer_id, data_type: text, visible_to: [org_admin] }
+  - { name: name, data_type: text, visible_to: [org_admin] }
+```
+
+Register Table works the same way as for Neo4j: pick the source, type a table name and the SELECT, press Preview (the `sparqlPreview` query runs it with `LIMIT 5` and fills the column list), then register. The registration persists an `api_sources` row and an `api_endpoints` row (form-encoded POST to the endpoint path, `sparql_bindings` normalizer), the same rows a config-file registration writes, and the native engine lands the rows through the same fetch chain as Neo4j. [tool-verified: `provisa/api/admin/_query_api_registration.py`, `provisa/sparql/persist.py`]
+
 ## Connection Examples
 
 ### PostgreSQL

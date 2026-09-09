@@ -14,7 +14,7 @@ import { Button, Checkbox, Select, Stack, Table, Text, TextInput, Textarea } fro
 import { toSnakeCase } from "../../naming";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
-import { useNeo4jPreview } from "../../hooks/useNeo4jPreview";
+import { useQueryPreview } from "../../hooks/useQueryPreview";
 import { UniquesPanel } from "../../components/admin/UniquesPanel";
 import { fetchIrTypes, fetchTableUniqueConstraints } from "../../api/admin";
 import { DQ_CHECKERS } from "../../types/admin";
@@ -30,7 +30,8 @@ import { DataQualityPanel } from "./DataQualityPanel";
 // (config/provisa-install.yaml `schema: quality`). It is the schema of record only when domains are
 // off — with a domain picked, the domain names the schema exactly as for any other registration.
 const DQ_RESULTS_SCHEMA = "quality";
-const NEO4J_SCHEMA = "neo4j"; // REQ-1670: the one schema a neo4j source lists
+// REQ-1670/REQ-1683: a query-API source lists one schema, named after its type.
+const QUERY_API_TYPES = ["neo4j", "sparql"] as const;
 // REQ-1443: the results envelope replaces whatever columns are declared; the one declared column
 // exists to carry visible_to, exactly as the YAML demo registers it.
 const DQ_PLACEHOLDER_COLUMN = { name: "scan_id", dataType: "varchar" };
@@ -99,11 +100,13 @@ export function RegisterTableForm({
   const [cypher, setCypher] = useState("");
   const [previewRows, setPreviewRows] = useState<Record<string, unknown>[]>([]);
   const [previewing, setPreviewing] = useState(false);
-  const { preview: previewNeo4j } = useNeo4jPreview();
+  const { preview: previewQuery } = useQueryPreview();
 
   const sourceType = sources.find((s) => s.id === sourceId)?.type?.toLowerCase() ?? "";
   const isChecker = (DQ_CHECKERS as readonly string[]).includes(sourceType);
-  const isNeo4j = sourceType === "neo4j";
+  const isSparql = sourceType === "sparql";
+  // REQ-1670/REQ-1683: a query-API source has no tables to list — its table IS a query projection.
+  const isQueryApi = (QUERY_API_TYPES as readonly string[]).includes(sourceType);
 
   // REQ-846/REQ-1426: the canonical IR type vocabulary a steward picks from. Registration is the
   // last point at which a type can be assigned — nothing infers one afterwards — so the list comes
@@ -120,11 +123,11 @@ export function RegisterTableForm({
   // A checker source is never introspected: nothing exists upstream until a scan runs, so the
   // schema/table lookups are not made for it (REQ-1663).
   const { schemas: availableSchemas, loading: loadingSchemas } = useAvailableSchemas(
-    sourceId && !isChecker && !isNeo4j ? sourceId : null,
+    sourceId && !isChecker && !isQueryApi ? sourceId : null,
   );
   const isFixedSchema = availableSchemas.length === 1;
   const { tables: availableTables, loading: loadingTables } = useAvailableTables(
-    sourceId && schemaName && !isChecker && !isNeo4j ? sourceId : null,
+    sourceId && schemaName && !isChecker && !isQueryApi ? sourceId : null,
     schemaName || null,
   );
 
@@ -147,8 +150,8 @@ export function RegisterTableForm({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the results schema is a constant of the checker registration, set once the source is known to be a checker
     if (isChecker) setSchemaName(DQ_RESULTS_SCHEMA);
     // REQ-1670: a neo4j table registers under the source's one schema, "neo4j".
-    if (isNeo4j) setSchemaName(NEO4J_SCHEMA);
-  }, [isChecker, isNeo4j, sourceId]);
+    if (isQueryApi) setSchemaName(sourceType);
+  }, [isChecker, isQueryApi, sourceType, sourceId]);
 
   useEffect(() => {
     if (availableSchemas.length === 1) {
@@ -217,7 +220,7 @@ export function RegisterTableForm({
     setColumns([]);
     setUniqueConstraints([]);
     setWatermarkColumn("");
-    if (!sourceId || !schemaName || !tableName || isChecker || isNeo4j) return;
+    if (!sourceId || !schemaName || !tableName || isChecker || isQueryApi) return;
     // REQ-1093: seed the Uniques panel from the source's declared UNIQUE constraints.
     fetchTableUniqueConstraints(sourceId, schemaName, tableName)
       .then(setUniqueConstraints)
@@ -271,7 +274,11 @@ export function RegisterTableForm({
     }
     setPreviewing(true);
     try {
-      const res = await previewNeo4j({ sourceId, cypher: cypher.trim() });
+      const res = await previewQuery({
+        sourceType: isSparql ? "sparql" : "neo4j",
+        sourceId,
+        query: cypher.trim(),
+      });
       if (res.error) {
         setError(res.error);
         setPreviewRows([]);
@@ -348,7 +355,7 @@ export function RegisterTableForm({
       setError(t("registerTableForm.errorRequiredFields"));
       return;
     }
-    if (isNeo4j) {
+    if (isQueryApi) {
       if (!cypher.trim()) {
         setError(t("registerTableForm.errorNeo4jCypher"));
         return;
@@ -384,9 +391,9 @@ export function RegisterTableForm({
         tableName,
         alias: tableAlias || undefined,
         description: tableDescription || undefined,
-        watermarkColumn: isNeo4j ? null : watermarkColumn || null,
-        discover: isNeo4j ? false : discover, // REQ-252
-        queryTemplate: isNeo4j ? cypher.trim() : undefined, // REQ-1670
+        watermarkColumn: isQueryApi ? null : watermarkColumn || null,
+        discover: isQueryApi ? false : discover, // REQ-252
+        queryTemplate: isQueryApi ? cypher.trim() : undefined, // REQ-1670/REQ-1683
         columns: selectedCols,
         // REQ-1093: drop empty/incomplete rows — a constraint needs a name and >=1 column.
         uniqueConstraints: uniqueConstraints
@@ -562,7 +569,7 @@ export function RegisterTableForm({
           />
         </>
       )}
-      {isNeo4j && (
+      {isQueryApi && (
         <>
           <TextInput
             required
@@ -570,7 +577,7 @@ export function RegisterTableForm({
             value={tableName}
             onChange={(e) => setTableName(e.currentTarget.value)}
             placeholder={t("registerTableForm.neo4jTableNamePlaceholder")}
-            data-testid="register-table-neo4j-table-name"
+            data-testid={`register-table-${sourceType}-table-name`}
           />
           <Textarea
             required
@@ -579,22 +586,34 @@ export function RegisterTableForm({
             minRows={3}
             label={
               <>
-                {t("registerTableForm.neo4jCypherLabel")}{" "}
+                {t(
+                  isSparql
+                    ? "registerTableForm.sparqlQueryLabel"
+                    : "registerTableForm.neo4jCypherLabel",
+                )}{" "}
                 <Text span fw="normal" c="dimmed" fz="xs">
-                  {t("registerTableForm.neo4jCypherHint")}
+                  {t(
+                    isSparql
+                      ? "registerTableForm.sparqlQueryHint"
+                      : "registerTableForm.neo4jCypherHint",
+                  )}
                 </Text>
               </>
             }
             value={cypher}
             onChange={(e) => setCypher(e.currentTarget.value)}
-            placeholder={t("registerTableForm.neo4jCypherPlaceholder")}
-            data-testid="register-table-neo4j-cypher"
+            placeholder={t(
+              isSparql
+                ? "registerTableForm.sparqlQueryPlaceholder"
+                : "registerTableForm.neo4jCypherPlaceholder",
+            )}
+            data-testid={isSparql ? "register-table-sparql-query" : "register-table-neo4j-cypher"}
           />
           <Button
             variant="default"
             onClick={handleNeo4jPreview}
             disabled={!sourceId || !cypher.trim() || previewing}
-            data-testid="register-table-neo4j-preview"
+            data-testid={`register-table-${sourceType}-preview`}
           >
             {previewing
               ? t("registerTableForm.neo4jPreviewing")
@@ -614,7 +633,7 @@ export function RegisterTableForm({
                       ))}
                     </Table.Tr>
                   </Table.Thead>
-                  <Table.Tbody data-testid="register-table-neo4j-preview-rows">
+                  <Table.Tbody data-testid={`register-table-${sourceType}-preview-rows`}>
                     {previewRows.map((row, i) => (
                       <Table.Tr key={i}>
                         {columns.map((c) => (
@@ -629,7 +648,7 @@ export function RegisterTableForm({
           )}
         </>
       )}
-      {!isChecker && !isNeo4j && (
+      {!isChecker && !isQueryApi && (
         <>
           <label>
             {t("registerTableForm.schemaLabel")}
@@ -701,7 +720,7 @@ export function RegisterTableForm({
         onChange={(e) => setTableDescription(e.currentTarget.value)}
         placeholder={t("registerTableForm.descriptionPlaceholder")}
       />
-      {!isChecker && !isNeo4j && (
+      {!isChecker && !isQueryApi && (
         <Checkbox
           checked={discover}
           onChange={(e) => setDiscover(e.currentTarget.checked)}
@@ -716,7 +735,7 @@ export function RegisterTableForm({
           }
         />
       )}
-      {sourceId && !isChecker && !isNeo4j && (
+      {sourceId && !isChecker && !isQueryApi && (
         <Select
           label={
             <>

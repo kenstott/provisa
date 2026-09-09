@@ -56069,3 +56069,40 @@
     Given a tracked function customer_lookup with output columns id, region, ssn, a mask on ssn with unmasked_to [org_admin], and an RLS rule for role analyst region = current_setting('provisa.region')
     When analyst invokes customer_lookup and the source returns rows across several regions
     Then only the analyst's region's rows come back, ssn is masked, and the audit entry lists the RLS rule and the mask applied
+- id: REQ-1683
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: SPARQL
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    SPARQL is a persisted, engine-independent query-API source like Neo4j. A `sparql` source's `host`
+    is its endpoint URL; each table under it carries `query_template` (a SELECT whose variables are the
+    columns, every binding `text`); `query_template` is forbidden under other source types. Config load,
+    the registerTable/updateTable mutations and the admin REST router all persist the same
+    `api_sources` (type `sparql`) and `api_endpoints` rows (form-encoded POST to the endpoint path,
+    `sparql_bindings` normalizer) through the shared `provisa/api_source/persist.py`; the REST router
+    probes the endpoint URL itself (it had probed the bare base URL, dropping the dataset path).
+    Register Table on a sparql source shows a table name and a SPARQL editor, previews through the
+    `sparqlPreview` GraphQL query (`QueryPreviewType`, shared with `neo4jPreview`), and submits
+    `queryTemplate`; the native engine lands the table through the openapi fetch chain.
+  code:
+  - provisa/sparql/persist.py
+  - provisa/api_source/persist.py
+  - provisa/api/admin/_query_api_registration.py
+  - provisa/api/admin/sparql_router.py
+  - provisa/core/config_loader.py
+  - provisa-ui/src/pages/tables/RegisterTableForm.tsx
+  - provisa-ui/src/hooks/useQueryPreview.ts
+  tests:
+  - tests/unit/test_sparql_persist.py
+  - tests/integration/test_sparql_config_persist.py
+  - provisa-ui/e2e/source-to-query.spec.ts
+  use_case: >-
+    SPARQL registration lived only in process-lifetime dicts behind a REST router that probed the
+    wrong URL; no config path, no UI path, nothing survived a restart.
+  scenario: |
+    Given a Fuseki dataset with volunteer triples and a Provisa on the native DuckDB engine
+    When the operator creates the sparql source, registers a table with a SELECT through Register Table, and runs a SELECT on the SQL page
+    Then the rows are the seeded volunteers

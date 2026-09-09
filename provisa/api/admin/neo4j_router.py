@@ -26,7 +26,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from provisa.api.errors import ApiError
-from provisa.neo4j.persist import persist_neo4j_endpoint, persist_neo4j_source
+from provisa.api_source.persist import persist_api_endpoint, persist_api_source
 from provisa.neo4j.preview import Neo4jNodeObjectError, preview_query, validate_shape
 from provisa.neo4j.source import (
     Neo4jSourceConfig,
@@ -82,7 +82,7 @@ async def register_neo4j_source(body: Neo4jSourceRequest, request: Request):  # 
     api_source = build_api_source(cfg)
     # REQ-1668: the source is a control-plane row, not a process-lifetime dict entry.
     async with _control_plane(state).acquire() as conn:
-        await persist_neo4j_source(conn, api_source)
+        await persist_api_source(conn, api_source)
     if not hasattr(state, "api_sources"):
         state.api_sources = {}
     state.api_sources[api_source.id] = api_source
@@ -157,7 +157,7 @@ async def register_neo4j_table(  # REQ-295, REQ-296, REQ-299
 
     # REQ-1668: persist, then mirror into the same keyed-by-table map the startup loader fills.
     async with _control_plane(state).acquire() as conn:
-        await persist_neo4j_endpoint(conn, endpoint)
+        await persist_api_endpoint(conn, endpoint)
     if not hasattr(state, "api_endpoints") or not isinstance(state.api_endpoints, dict):
         state.api_endpoints = {}
     state.api_endpoints[endpoint.table_name] = endpoint

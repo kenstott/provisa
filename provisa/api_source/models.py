@@ -25,6 +25,7 @@ class ApiSourceType(str, Enum):  # REQ-295, REQ-297, REQ-298
     graphql_api = "graphql_api"
     grpc_api = "grpc_api"
     neo4j = "neo4j"  # REQ-1668: Cypher over the Neo4j HTTP Query API
+    sparql = "sparql"  # REQ-1683: SPARQL over the SPARQL 1.1 protocol
 
 
 class PaginationType(str, Enum):  # REQ-318

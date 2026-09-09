@@ -54,7 +54,7 @@ def build_api_source(cfg: SparqlSourceConfig) -> ApiSource:  # REQ-297
     base_url = f"{parsed.scheme}://{parsed.netloc}"
     return ApiSource(
         id=cfg.source_id,
-        type=ApiSourceType.openapi,  # treated as a generic POST API
+        type=ApiSourceType.sparql,
         base_url=base_url,
         auth=cfg.auth,
     )

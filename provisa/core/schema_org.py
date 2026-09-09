@@ -719,7 +719,7 @@ api_sources = Table(
     # path refuses a query naming it rather than dialling whatever is local to the node.
     Column("bound", Boolean, nullable=False, server_default=true()),
     CheckConstraint(
-        "type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j')", name="api_sources_type_check"
+        "type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql')", name="api_sources_type_check"
     ),
 )
 

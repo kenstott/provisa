@@ -883,18 +883,18 @@ class DqCheckDefinitionType:  # REQ-1443 clause 7
 
 
 @strawberry.type
-class Neo4jPreviewColumnType:  # REQ-1670
+class QueryPreviewColumnType:  # REQ-1670, REQ-1683
     name: str
     data_type: str
 
 
 @strawberry.type
-class Neo4jPreviewType:  # REQ-1670: a Cypher preview for Register Table on a neo4j source
-    """``error`` is non-null when the source is unreachable, the Cypher fails, or a column returns
+class QueryPreviewType:  # REQ-1670/REQ-1683: a query preview for Register Table on a query-API source
+    """``error`` is non-null when the source is unreachable, the query fails, or a column returns
     a node/list instead of a scalar; the form keeps the operator's text and shows the message."""
 
     rows: list[JsonScalar] = strawberry.field(default_factory=list)
-    columns: list[Neo4jPreviewColumnType] = strawberry.field(default_factory=list)
+    columns: list[QueryPreviewColumnType] = strawberry.field(default_factory=list)
     error: str | None = None
 
 

@@ -37,8 +37,8 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
   useAvailableTables: (sourceId: string | null, schema: string | null) =>
     useAvailableTables(sourceId, schema),
 }));
-vi.mock("../../../hooks/useNeo4jPreview", () => ({
-  useNeo4jPreview: () => ({ preview }),
+vi.mock("../../../hooks/useQueryPreview", () => ({
+  useQueryPreview: () => ({ preview }),
 }));
 
 const { RegisterTableForm } = await import("../RegisterTableForm");
@@ -118,7 +118,11 @@ describe("RegisterTableForm on a neo4j source (REQ-1670)", () => {
     await waitFor(() =>
       expect(screen.getByTestId("register-table-neo4j-preview-rows")).toBeInTheDocument(),
     );
-    expect(preview).toHaveBeenCalledWith({ sourceId: "neo4j-demo", cypher: CYPHER });
+    expect(preview).toHaveBeenCalledWith({
+      sourceType: "neo4j",
+      sourceId: "neo4j-demo",
+      query: CYPHER,
+    });
     expect(screen.getByTestId("register-table-col-selected-adopter_id")).toBeChecked();
     expect(screen.getByTestId("register-table-col-datatype-adopter_id")).toHaveValue("integer");
     expect(screen.getByTestId("register-table-col-datatype-name")).toHaveValue("text");

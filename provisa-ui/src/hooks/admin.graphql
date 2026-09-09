@@ -288,6 +288,17 @@ query Neo4jPreview($sourceId: String!, $cypher: String!) {
   }
 }
 
+query SparqlPreview($sourceId: String!, $query: String!) {
+  sparqlPreview(sourceId: $sourceId, query: $query) {
+    rows
+    columns {
+      name
+      dataType
+    }
+    error
+  }
+}
+
 query DqContractParse($checker: String!, $contractText: String!) {
   dqContractParse(checker: $checker, contractText: $contractText) {
     dataset

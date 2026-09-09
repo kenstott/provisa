@@ -1643,10 +1643,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 return MutationResult(success=False, message=_owner_conflict)
             table_id = await table_repo.upsert(_conn, model)
             if model.query_template:
-                # REQ-1670: an edited Cypher re-persists the endpoint the table serves from.
-                from provisa.api.admin._neo4j_registration import persist_neo4j_registration
+                # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table serves from.
+                from provisa.api.admin._query_api_registration import persist_query_api_registration
 
-                _neo_err = await persist_neo4j_registration(_conn, model)
+                _neo_err = await persist_query_api_registration(_conn, model)
                 if _neo_err is not None:
                     return _neo_err
             if table_id is not None:

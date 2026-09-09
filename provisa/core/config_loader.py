@@ -455,30 +455,39 @@ async def _handle_openapi_table(
         )
 
 
-def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668
-    """A neo4j source names host, port and database; its tables carry the Cypher they run, and no
-    other table carries one."""
+_QUERY_API_TYPES = frozenset({"neo4j", "sparql"})  # REQ-1668, REQ-1683
+
+
+def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668, REQ-1683
+    """A neo4j source names host, port and database; a sparql source's host is its endpoint URL;
+    a table under either carries the query it runs, and no other table carries one."""
     sources_by_id = {s.id: s for s in config.sources}
     for src in config.sources:
-        if src.type.value != "neo4j":
-            continue
-        missing = [f for f in ("host", "port", "database") if not getattr(src, f)]
-        if missing:
-            raise ValueError(
-                f"neo4j source {src.id!r}: {', '.join(missing)} required (the HTTP Query API "
-                "endpoint is http://host:port/db/<database>/query/v2)"
-            )
+        if src.type.value == "neo4j":
+            missing = [f for f in ("host", "port", "database") if not getattr(src, f)]
+            if missing:
+                raise ValueError(
+                    f"neo4j source {src.id!r}: {', '.join(missing)} required (the HTTP transaction "
+                    "endpoint is http://host:port/db/<database>/tx/commit)"
+                )
+        elif src.type.value == "sparql":
+            if not (src.host or "").startswith(("http://", "https://")):
+                raise ValueError(
+                    f"sparql source {src.id!r}: host must be the SPARQL endpoint URL "
+                    "(e.g. http://fuseki:3030/ds/query)"
+                )
     for tbl in config.tables:
         src = sources_by_id.get(tbl.source_id)
-        is_neo4j = src is not None and src.type.value == "neo4j"
-        if is_neo4j and not tbl.query_template:
+        stype = src.type.value if src is not None else None
+        is_query_api = stype in _QUERY_API_TYPES
+        if is_query_api and not tbl.query_template:
             raise ValueError(
-                f"table {tbl.table_name!r}: a table under neo4j source {tbl.source_id!r} requires "
-                "query_template (the Cypher that produces its rows)"
+                f"table {tbl.table_name!r}: a table under {stype} source {tbl.source_id!r} requires "
+                "query_template (the query that produces its rows)"
             )
-        if tbl.query_template and not is_neo4j:
+        if tbl.query_template and not is_query_api:
             raise ValueError(
-                f"table {tbl.table_name!r}: query_template is only valid under a neo4j source"
+                f"table {tbl.table_name!r}: query_template is only valid under a neo4j or sparql source"
             )
 
 
@@ -494,6 +503,22 @@ async def _handle_neo4j_table(conn: "Connection", tbl: Table, src: Source) -> No
         port=src.port,
         database=src.database,
         base_url=resolve_secrets(src.base_url) if src.base_url else None,
+        table_name=tbl.table_name,
+        query_template=tbl.query_template,
+        columns=tbl.columns,
+        ttl=tbl.cache_ttl or src.cache_ttl or 300,
+    )
+
+
+async def _handle_sparql_table(conn: "Connection", tbl: Table, src: Source) -> None:  # REQ-1683
+    """Persist the config table's SPARQL as an api_endpoints row (plus its api_sources row)."""
+    from provisa.sparql.persist import persist_sparql_table
+
+    assert tbl.query_template is not None  # _validate_neo4j_sources
+    await persist_sparql_table(
+        conn,
+        source_id=src.id,
+        endpoint_url=resolve_secrets(src.host),
         table_name=tbl.table_name,
         query_template=tbl.query_template,
         columns=tbl.columns,
@@ -537,6 +562,9 @@ async def _upsert_single_table(
 
     if src and src.type.value == "neo4j":
         await _handle_neo4j_table(conn, tbl, src)
+
+    if src and src.type.value == "sparql":
+        await _handle_sparql_table(conn, tbl, src)
 
 
 async def _purge_removed_tables(conn: "Connection", config: ProvisaConfig) -> None:

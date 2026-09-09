@@ -164,6 +164,7 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
         loaders["openapi"] = make_openapi_loader(api_endpoints, api_sources)
         # REQ-1668: a neo4j table is a persisted query-API endpoint — same fetch chain.
         loaders["neo4j"] = make_openapi_loader(api_endpoints, api_sources)
+        loaders["sparql"] = make_openapi_loader(api_endpoints, api_sources)  # REQ-1683
     gql_sources = getattr(state, "graphql_remote_sources", None)
     if gql_sources:
         loaders["graphql_remote"] = make_graphql_remote_loader(gql_sources)

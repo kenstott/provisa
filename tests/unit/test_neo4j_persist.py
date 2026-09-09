@@ -21,7 +21,7 @@ import pytest
 from provisa.api_source.models import ApiColumnType, ApiSourceType
 from provisa.core.config_loader import _validate_neo4j_sources, parse_config_dict
 from provisa.core.models import Column
-from provisa.neo4j.persist import api_column_type, api_columns_from_config
+from provisa.api_source.persist import api_column_type, api_columns_from_config
 from provisa.neo4j.source import Neo4jSourceConfig, build_api_source, build_endpoint
 
 _VIS = ["org_admin"]
@@ -75,7 +75,7 @@ class TestValidateNeo4jSources:
                 tables=[_table(schema="main")],
             )
         )
-        with pytest.raises(ValueError, match="only valid under a neo4j source"):
+        with pytest.raises(ValueError, match="only valid under a neo4j or sparql source"):
             _validate_neo4j_sources(cfg)
 
     @pytest.mark.parametrize("missing", ["host", "port", "database"])

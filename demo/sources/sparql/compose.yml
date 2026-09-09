@@ -1,0 +1,26 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: SPARQL over Apache Jena Fuseki (start-ui-install.sh --demo --source=sparql).
+# Own compose project (provisa-demo-sparql) on port 23030 (dev/test stacks use 3030/ephemeral).
+# In-memory dataset "provisa": prime.py loads the graph on every start. Read natively by every
+# engine — a SPARQL table is a query projection landed like a Neo4j one (REQ-1683).
+services:
+  sparql:
+    image: atomgraph/fuseki:latest
+    restart: unless-stopped
+    command: ["--mem", "/provisa"]
+    ports:
+      - "${PROVISA_DEMO_SPARQL_PORT:-23030}:3030"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null 'http://localhost:3030/provisa/query?query=ASK%7B%7D' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s

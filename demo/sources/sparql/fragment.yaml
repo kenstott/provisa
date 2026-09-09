@@ -1,0 +1,50 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Config fragment for the optional SPARQL demo source (REQ-1669, REQ-1683). The source's host IS
+# its SPARQL endpoint URL (the Sources form stores it the same way). One table is declared here
+# with its query; more can be registered by hand through Register Table (query + Preview).
+# Under a Docker start the coordinator reaches the container at sparql:3030
+# (start-ui-install.sh sets PROVISA_DEMO_SPARQL_SOURCE_URL).
+sources:
+- id: sparql-demo
+  type: sparql
+  host: ${env:PROVISA_DEMO_SPARQL_SOURCE_URL:-http://localhost:23030/provisa/query}
+  cache_ttl: 60
+  description: "Shelter volunteer roster as linked data — volunteers and the programs they serve (SPARQL)"
+
+tables:
+- source_id: sparql-demo
+  domain_id: shelter
+  schema: sparql
+  table: volunteer
+  description: One row per volunteer in the linked-data roster
+  query_template: >-
+    PREFIX s: <http://provisa.dev/shelter#>
+    SELECT ?volunteer_id ?name ?program ?since
+    WHERE { ?v a s:Volunteer ; s:id ?volunteer_id ; s:name ?name ; s:program ?program ; s:since ?since }
+    ORDER BY ?volunteer_id
+  columns:
+  - name: volunteer_id
+    data_type: text
+    is_primary_key: true
+    description: Volunteer identifier
+    visible_to: [org_admin, analyst]
+  - name: name
+    data_type: text
+    description: Volunteer's name
+    visible_to: [org_admin, analyst]
+  - name: program
+    data_type: text
+    description: Program the volunteer serves (adoption, fostering, transport, events)
+    visible_to: [org_admin, analyst]
+  - name: since
+    data_type: text
+    description: First day of service (ISO-8601)
+    visible_to: [org_admin, analyst]

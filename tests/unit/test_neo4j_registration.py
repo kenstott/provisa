@@ -21,6 +21,7 @@ import pytest
 import respx
 
 from provisa.api.admin import _neo4j_registration as reg
+from provisa.api.admin import _query_api_registration as qa
 from provisa.core.models import Column, Table
 
 _SRC = {"id": "graph", "type": "neo4j", "host": "h", "port": 7474, "database": "neo4j"}
@@ -123,15 +124,15 @@ def _table(query_template: str | None) -> Table:
 
 @pytest.mark.asyncio
 async def test_registration_refuses_a_neo4j_table_without_cypher(monkeypatch):
-    err = await reg.persist_neo4j_registration(_Conn(_SRC), _table(None))  # type: ignore[arg-type]
+    err = await qa.persist_query_api_registration(_Conn(_SRC), _table(None))  # type: ignore[arg-type]
     assert err is not None and err.success is False
-    assert err.code == "schema.neo4j_query_required"
+    assert err.code == "schema.query_template_required"
 
 
 @pytest.mark.asyncio
 async def test_registration_is_a_no_op_for_other_source_types():
     conn = _Conn({**_SRC, "type": "sqlite"})
-    assert await reg.persist_neo4j_registration(conn, _table(None)) is None  # type: ignore[arg-type]
+    assert await qa.persist_query_api_registration(conn, _table(None)) is None  # type: ignore[arg-type]
     assert conn.upserts == []
 
 
@@ -142,7 +143,9 @@ async def test_registration_persists_the_endpoint_and_mirrors_live_state(monkeyp
     monkeypatch.setattr(state, "api_sources", {}, raising=False)
     monkeypatch.setattr(state, "api_endpoints", {}, raising=False)
     conn = _Conn(_SRC)
-    err = await reg.persist_neo4j_registration(conn, _table("MATCH (a) RETURN a.id AS adopter_id"))  # type: ignore[arg-type]
+    err = await qa.persist_query_api_registration(
+        conn, _table("MATCH (a) RETURN a.id AS adopter_id")
+    )  # type: ignore[arg-type]
     assert err is None
     tables = [t for t, _ in conn.upserts]
     assert tables == ["api_sources", "api_endpoints"]

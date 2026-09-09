@@ -96,6 +96,7 @@ declare module "*.graphql" {
   export const DqContractParse: DocumentNode;
   // REQ-1670: the Cypher preview behind Register Table on a neo4j source.
   export const Neo4jPreview: DocumentNode;
+  export const SparqlPreview: DocumentNode;
   export const DqContractBuild: DocumentNode;
   export const DryRunDqContract: DocumentNode;
   // REQ-1443: run a checker table's poll job now instead of waiting for its cadence.
@@ -189,6 +190,7 @@ declare module "*.gql" {
   export const DqContractParse: DocumentNode;
   // REQ-1670: the Cypher preview behind Register Table on a neo4j source.
   export const Neo4jPreview: DocumentNode;
+  export const SparqlPreview: DocumentNode;
   export const DqContractBuild: DocumentNode;
   export const DryRunDqContract: DocumentNode;
   export default doc;

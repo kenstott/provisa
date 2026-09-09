@@ -79,6 +79,7 @@ Shipped sources:
 | `mongodb` | 27117 | Source registered; `product_reviews` collection seeded by `db/mongo-init.js`; register tables by hand through Register Table |
 | `redis` | 26379 | Source registered; `support_agent:*` and `agent_status:*` hashes seeded by `prime.py`; each prefix registers as a table through Register Table (REQ-1675) |
 | `cassandra` | 29042 | Source registered; `shelter_ops.intake_events` seeded by `prime.py` (needs the `cassandra` extra); the keyspace registers as a schema through Register Table (REQ-1676) |
+| `sparql` | 23030 | Apache Jena Fuseki; source and one query-backed table (`volunteer`) registered from the fragment, graph seeded by `prime.py`; more tables through Register Table (query + Preview) (REQ-1683) |
 | `elasticsearch` | 29200 | Source and index mapping registered; `support_tickets` index seeded by `prime.py`; read over HTTP by the native engine (REQ-1672), through the connector on Trino |
 
 `--idp=basic|firebase` — Enables an identity provider for auth. Without this flag, the backend runs with no auth provider and all requests are treated as `admin`. [tool-verified: start-ui.sh line 18; provisa/auth/wiring.py lines 57–60; provisa/auth/middleware.py lines 57–68] (REQ-120, REQ-124)

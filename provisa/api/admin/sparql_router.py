@@ -23,6 +23,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from provisa.api.errors import ApiError
+from provisa.api_source.persist import persist_api_source
 
 from provisa.sparql.source import (
     SparqlSourceConfig,
@@ -37,6 +38,14 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/sources/sparql", tags=["admin", "sparql"])
 
 # Requirements: REQ-297, REQ-298, REQ-299
+
+
+def _control_plane(state):
+    """The tenant control plane the rows land in; registration without one is a 503, not a dict."""
+    db = getattr(state, "tenant_db", None)
+    if db is None:
+        raise ApiError(503, "sparql.database_not_connected", "Database not connected")
+    return db
 
 
 class SparqlSourceRequest(BaseModel):
@@ -62,9 +71,15 @@ async def register_sparql_source(body: SparqlSourceRequest, request: Request):  
         default_graph_uri=body.default_graph_uri,
     )
     api_source = build_api_source(cfg)
+    # REQ-1683: the source is a control-plane row, not a process-lifetime dict entry.
+    async with _control_plane(state).acquire() as conn:
+        await persist_api_source(conn, api_source)
     if not hasattr(state, "api_sources"):
         state.api_sources = {}
     state.api_sources[api_source.id] = api_source
+    if not hasattr(state, "sparql_endpoints"):
+        state.sparql_endpoints = {}
+    state.sparql_endpoints[api_source.id] = body.endpoint_url
     log.info("Registered SPARQL source %s at %s", body.source_id, body.endpoint_url)
     return {"source_id": api_source.id, "base_url": api_source.base_url}
 
@@ -91,10 +106,9 @@ async def register_sparql_table(  # REQ-297, REQ-296, REQ-299
             source_id=source_id,
         )
 
-    cfg = SparqlSourceConfig(
-        source_id=source_id,
-        endpoint_url=str(api_source.base_url),
-    )
+    # REQ-1683: probe the endpoint itself, not the bare base URL (which dropped the dataset path).
+    endpoint_url = getattr(state, "sparql_endpoints", {}).get(source_id) or str(api_source.base_url)
+    cfg = SparqlSourceConfig(source_id=source_id, endpoint_url=endpoint_url)
 
     try:
         rows = await probe_endpoint(cfg, body.sparql_query)
