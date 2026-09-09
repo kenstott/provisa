@@ -1,0 +1,10 @@
+# Scrape config for the optional Prometheus demo source (demo/sources/prometheus). The server
+# scrapes itself, so the `up` metric (job="prometheus") and the prometheus_* metrics fill within
+# one interval and need no seeding.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

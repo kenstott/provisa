@@ -25,6 +25,7 @@ import {
   E2E_ES_PORT,
   E2E_MONGO_PORT,
   E2E_NEO4J_HTTP_PORT,
+  E2E_PROMETHEUS_PORT,
   E2E_REDIS_PORT,
   E2E_SPARQL_PORT,
 } from "./demo-source-containers";
@@ -271,5 +272,38 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     expect(rows).toHaveLength(6);
     expect(rows[0]).toEqual(["V-01", "Grace Hall", "adoption"]);
     expect(rows[5]).toEqual(["V-06", "Noah Bryce", "fostering"]);
+  });
+
+  test("prometheus: add the source, register a metric, query it on the SQL page", async ({
+    page,
+  }) => {
+    test.setTimeout(300000);
+    const stamp = Date.now();
+    const sourceId = `e2e_prometheus_${stamp}`;
+    const tableName = "up";
+
+    // 1. Sources form — the server URL is the source (REQ-1689)
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("prometheus");
+    await page.getByTestId("prometheus-url-input").fill(`http://localhost:${E2E_PROMETHEUS_PORT}`);
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. Register Table form — the metrics list under "default"; columns come from the labels
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "default", tableName);
+    await expect(page.getByTestId("register-table-col-selected-job")).toBeVisible({
+      timeout: 60000,
+    });
+    await expect(page.getByTestId("register-table-col-selected-value")).toBeVisible();
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    // 3. SQL page: the server scrapes itself, so `up` has one series, job="prometheus", value 1.
+    // Sample counts grow with time; the assertion is per series.
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT job, CAST(MAX(value) AS INTEGER) AS healthy FROM pet_store.${registered} GROUP BY job ORDER BY job`,
+    );
+    expect(rows).toEqual([["prometheus", "1"]]);
   });
 });

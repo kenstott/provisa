@@ -28,6 +28,7 @@ export const E2E_ES_PORT = 39200;
 export const E2E_REDIS_PORT = 36379;
 export const E2E_CASSANDRA_PORT = 39042;
 export const E2E_SPARQL_PORT = 33030;
+export const E2E_PROMETHEUS_PORT = 39090;
 
 export const DEMO_SOURCE_ENV: Record<string, string> = {
   PROVISA_DEMO_NEO4J_HTTP_PORT: String(E2E_NEO4J_HTTP_PORT),
@@ -37,6 +38,7 @@ export const DEMO_SOURCE_ENV: Record<string, string> = {
   PROVISA_DEMO_REDIS_PORT: String(E2E_REDIS_PORT),
   PROVISA_DEMO_CASSANDRA_PORT: String(E2E_CASSANDRA_PORT),
   PROVISA_DEMO_SPARQL_PORT: String(E2E_SPARQL_PORT),
+  PROVISA_DEMO_PROMETHEUS_PORT: String(E2E_PROMETHEUS_PORT),
 };
 
 // Every one of these is read by the native engine over localhost (REQ-1672 made Elasticsearch

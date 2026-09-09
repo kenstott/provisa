@@ -44,6 +44,19 @@ class PrometheusSourceConfig:  # REQ-250, REQ-251
     tables: list[PrometheusTableConfig] = field(default_factory=list)
 
 
+def endpoint_url(host: str | None, port: int | None, mapping: dict | None) -> str:  # REQ-1689
+    """The server URL a source row names: ``mapping.url`` wins; a ``host`` that is already a URL
+    (the Sources form stores the URL there) is taken as-is; else ``http://host:port``."""
+    m = mapping or {}
+    if m.get("url"):
+        return str(m["url"])
+    if host and host.startswith(("http://", "https://")):
+        return host
+    if host:
+        return f"http://{host}:{port or 9090}"
+    raise ValueError("Prometheus source names no URL: set host to the server URL or mapping.url")
+
+
 def generate_catalog_properties(config: PrometheusSourceConfig) -> dict[str, str]:  # REQ-250
     """Generate the engine Prometheus connector catalog properties."""
     return {

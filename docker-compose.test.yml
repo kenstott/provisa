@@ -618,12 +618,15 @@ services:
       start_period: 60s
 
   # Prometheus for the prometheus-connector integration test (requires_prometheus).
-  # Internal-only: Trino's connector reaches it at prometheus:9090 on the project
-  # network. Reuses the dev scrape config — its trino:8080 target resolves inside
+  # Trino's connector reaches it at prometheus:9090 on the project network; the test process
+  # reaches it at the host-published PROMETHEUS_PORT. Reuses the dev scrape config — its trino:8080 target resolves inside
   # this project, so the `up` metric populates and the test can query it.
   prometheus:
     restart: unless-stopped
     image: prom/prometheus:v2.51.2
+    # REQ-1689: the native reader runs in the test process, so the API is host-published too.
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     healthcheck:

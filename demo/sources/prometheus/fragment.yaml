@@ -1,0 +1,18 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Config fragment for the optional Prometheus demo source (REQ-1669, REQ-1689). Registers the
+# SOURCE only: its metrics list as tables in Register Table (`up`, `prometheus_build_info`, …),
+# typed from each metric's labels. The source's host is the server URL, as the Sources form
+# stores it. Under a Docker start the coordinator reaches the container at prometheus:9090.
+sources:
+- id: prometheus-demo
+  type: prometheus
+  host: ${env:PROVISA_DEMO_PROMETHEUS_SOURCE_URL:-http://localhost:29090}
+  description: "Prometheus self-scrape — target health and server metrics as time series"

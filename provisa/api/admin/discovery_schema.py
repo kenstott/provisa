@@ -313,9 +313,32 @@ def _call_discover(
         return adapter.discover_schema(meta)
 
     if source_type == "prometheus":
-        # Prometheus discover_schema expects metric_metadata dict + metric_name.
-        metric = hints.metric or ""
-        return adapter.discover_schema({}, metric)
+        # REQ-1689: the metric's live labels and metadata type over the HTTP API. No metric hint
+        # or a transport error raises — discovery must never silently produce empty columns.
+        from provisa.prometheus.fetch import PrometheusConnection, metric_columns
+        from provisa.prometheus.source import endpoint_url
+
+        metric = hints.metric
+        if not metric:
+            raise ApiError(
+                400,
+                "discovery.prometheus_metric_hint_required",
+                "Prometheus discovery requires a 'metric' hint.",
+            )
+        try:
+            mapping = row.get("mapping") or {}
+            conn = PrometheusConnection.build(
+                endpoint_url(row.get("host"), row.get("port"), mapping)
+            )
+            return metric_columns(conn, metric)
+        except Exception as e:
+            raise ApiError(
+                502,
+                "discovery.prometheus_metadata_failed",
+                f"Failed to read Prometheus metadata for metric {metric!r}: {e}",
+                metric=metric,
+                error=str(e),
+            )
 
     # Fallback: try calling with no args
     try:

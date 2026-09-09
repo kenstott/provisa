@@ -259,6 +259,30 @@ def make_cassandra_loader() -> AdapterLoader:
     return _load
 
 
+def make_prometheus_loader() -> AdapterLoader:
+    """Build the Prometheus row-fetch (REQ-1689): the metric's samples over the table's range, read
+    from the HTTP API and landed like any other fetched source. Wired only on an engine with no live
+    Prometheus connector of its own; Trino keeps scanning through its connector."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.prometheus.fetch import PrometheusConnection, fetch_rows
+    from provisa.prometheus.source import endpoint_url
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        mapping = getattr(source, "mapping", None) or {}
+        conn = PrometheusConnection.build(
+            resolve_secrets(
+                endpoint_url(getattr(source, "host", None), getattr(source, "port", None), mapping)
+            ),
+            token=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+        return await asyncio.to_thread(fetch_rows, conn, mapping, table.table_name, names)
+
+    return _load
+
+
 def make_dq_loader(app_state: Any) -> AdapterLoader:
     """Build the data-quality checker row-fetch (REQ-1443).
 

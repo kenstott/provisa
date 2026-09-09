@@ -30,6 +30,7 @@ from provisa.core.schema_org import kafka_topics, sources
 if TYPE_CHECKING:
     from provisa.cassandra.fetch import CassandraConnection
     from provisa.elasticsearch.fetch import ESConnection
+    from provisa.prometheus.fetch import PrometheusConnection
     from provisa.redis.fetch import RedisConnection
     from provisa.api.admin.types import AvailableTableType
     from provisa.core.database import Connection
@@ -137,6 +138,9 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
 
     if t == "cassandra":
         return await _native_schemas_cassandra(source_id, config_conn)  # REQ-1676: keyspaces
+
+    if t == "prometheus":
+        return ["default"]  # REQ-1689: the connector's fixed schema; a metric is the table
 
     if t == "openapi":
         return ["openapi"]
@@ -587,6 +591,55 @@ async def _native_tables_cassandra(  # REQ-1676
     return [AvailableTableType(name=n, comment=None) for n in names]
 
 
+def _prometheus_connection_for(row: dict, state) -> "PrometheusConnection":  # REQ-1689
+    """The HTTP connection for a prometheus source row; a bearer token is the config Source's
+    password secret reference (the sources table carries none)."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.prometheus.fetch import PrometheusConnection
+    from provisa.prometheus.source import endpoint_url
+
+    mapping = row.get("mapping") or {}
+    if isinstance(mapping, str):
+        mapping = json.loads(mapping)
+    cfg_src = next(
+        (
+            s
+            for s in getattr(getattr(state, "config", None), "sources", []) or []
+            if s.id == row["id"]
+        ),
+        None,
+    )
+    token = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    return PrometheusConnection.build(
+        resolve_secrets(endpoint_url(row.get("host"), row.get("port"), mapping)),
+        token=token or None,
+    )
+
+
+async def _native_tables_prometheus(  # REQ-1689
+    source_id: str, schema_name: str, config_conn: "Connection", state
+) -> "list[AvailableTableType] | None":
+    """The mapping DSL's tables when the source declares any, else the metric names."""
+    import asyncio as _asyncio
+
+    from provisa.api.admin.types import AvailableTableType
+    from provisa.prometheus.fetch import list_metrics
+
+    if schema_name != "default":
+        return []
+    row = await _es_source_row(source_id, config_conn)
+    if row is None:
+        return None
+    mapping = row.get("mapping") or {}
+    if isinstance(mapping, str):
+        mapping = json.loads(mapping)
+    declared = [t["name"] for t in mapping.get("tables", []) if t.get("name")]
+    if declared:
+        return [AvailableTableType(name=n, comment=None) for n in declared]
+    names = await _asyncio.to_thread(list_metrics, _prometheus_connection_for(row, state))
+    return [AvailableTableType(name=n, comment=None) for n in names]
+
+
 async def _native_tables_rdbms(  # REQ-012, REQ-252
     source_id: str,
     source_type: str,
@@ -678,6 +731,9 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
 
     if t == "cassandra":
         return await _native_tables_cassandra(source_id, schema_name, config_conn, state)
+
+    if t == "prometheus":
+        return await _native_tables_prometheus(source_id, schema_name, config_conn, state)
 
     if t == "sqlite":
         return await _native_tables_sqlite(source_id, schema_name, config_conn)

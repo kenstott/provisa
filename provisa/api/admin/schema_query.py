@@ -1350,6 +1350,40 @@ async def _cassandra_columns(
     ]
 
 
+async def _prometheus_columns(source_id: str, table_name: str) -> list[AvailableColumnType]:
+    """REQ-1689: a mapping-DSL table's declared shape (timestamp, value column, the labels kept),
+    else timestamp, value and every label the metric's series carry — engine-independent."""
+    import asyncio as _asyncio
+    import json as _json
+
+    from provisa.api.admin.introspect import _es_source_row, _prometheus_connection_for
+    from provisa.api.app import state
+    from provisa.prometheus.fetch import metric_columns, table_metric
+
+    pool = await _get_pool()
+    async with pool.acquire() as _conn:
+        row = await _es_source_row(source_id, cast("Connection", _conn))
+    if row is None:
+        return []
+    mapping = row.get("mapping") or {}
+    if isinstance(mapping, str):
+        mapping = _json.loads(mapping)
+    entry = next((t for t in mapping.get("tables", []) if t.get("name") == table_name), None)
+    if entry:
+        _metric, value_column, _range = table_metric(mapping, table_name)
+        cols = [("timestamp", "timestamp"), (value_column, "double")] + [
+            (label, "text") for label in entry.get("labels_as_columns", [])
+        ]
+        return [AvailableColumnType(name=n, data_type=t, comment=None) for n, t in cols]
+    cols = await _asyncio.to_thread(
+        metric_columns, _prometheus_connection_for(row, state), table_name
+    )
+    return [
+        AvailableColumnType(name=c["name"], data_type=str(c["type"]).lower(), comment=None)
+        for c in cols
+    ]
+
+
 async def _redis_columns(source_id: str, table_name: str) -> list[AvailableColumnType]:
     """REQ-1675: a mapping-DSL table's declared columns, else the key column plus the fields of the
     prefix's hashes — engine-independent."""
@@ -1429,6 +1463,8 @@ async def resolve_available_columns_metadata(
         return await _redis_columns(source_id, table_name)
     if source_type == "cassandra":
         return await _cassandra_columns(source_id, schema_name, table_name)
+    if source_type == "prometheus":
+        return await _prometheus_columns(source_id, table_name)
     if source_type == "files":
         # Files sources use the engine abstraction (EngineRuntime.introspect_columns) which
         # dispatches to the bound engine's backend — DuckDB, ClickHouse, etc. — and resolves

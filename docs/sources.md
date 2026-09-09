@@ -168,7 +168,7 @@ Private buckets need credentials (AWS region and keys from the environment). For
 | Source Type | Connector Name | Mutations |
 | ------------ | ----------------- | ----------- |
 | `google_sheets` | — (materialized) | No |
-| `prometheus` | prometheus | No |
+| `prometheus` | prometheus | No | A metric is a table and a sample is a row (`timestamp`, `value`, one column per label); on every engine without a live connector Provisa reads the HTTP API — metric names and labels for Register Table, `query_range` over the table's range for landing [tool-verified: `provisa/prometheus/fetch.py`] (REQ-1689)
 
 ### Enterprise SaaS Connectors
 

@@ -56360,3 +56360,42 @@
     Given the native engine with a Postgres materialization store and a landed API cache table
     When the table is landed
     Then ANALYZE runs on the store through its own connection, and no VACUUM error is logged
+- id: REQ-1689
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Prometheus
+  priority: MUST
+  type: behavioral
+  description: >-
+    Prometheus is engine-independent. An engine that does not read Prometheus live (every native
+    engine) reads the server's HTTP API with the Trino connector's table shape: a metric is a table
+    and a sample is a row of `timestamp`, `value` and one column per label. Register Table lists one
+    schema (`default`) and the metric names (or the mapping DSL's tables), types a metric's columns
+    from its series' labels and its metadata type (`discover_schema`: histogram adds `le`, summary
+    adds `quantile`), and the landing loader reads `query_range` over the table's range (the mapping
+    DSL's `default_range`, else 1h; a step that keeps the query under the server's point limit). The
+    source URL is `mapping.url`, else a `host` that is already a URL (the Sources form stores it
+    there), else `http://host:port`; a bearer token comes from the config Source's password secret.
+    Schema discovery reads the same labels and metadata given a metric hint (it had passed empty
+    metadata and failed on every metric). Trino keeps its connector: the loader is wired only when
+    the bound engine does not read Prometheus in place.
+  code:
+  - provisa/prometheus/fetch.py
+  - provisa/prometheus/source.py
+  - provisa/events/source_loader.py
+  - provisa/events/app_wiring.py
+  - provisa/api/admin/introspect.py
+  - provisa/api/admin/schema_query.py
+  - provisa/api/admin/discovery_schema.py
+  tests:
+  - tests/unit/test_prometheus_fetch.py
+  - tests/integration/test_prometheus_native_fetch.py
+  - provisa-ui/e2e/source-to-query.spec.ts
+  use_case: >-
+    Prometheus had a Trino-only path; on the native engine the source registered and nothing could
+    list or read it, and discovery failed on every metric.
+  scenario: |
+    Given a Prometheus that scrapes itself and a Provisa on the native DuckDB engine
+    When the operator registers the source and picks the `up` metric through Register Table
+    Then the columns are timestamp, value and the metric's labels, and a SELECT on the registered table returns its samples with job "prometheus"
