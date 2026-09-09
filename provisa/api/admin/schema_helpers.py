@@ -33,7 +33,6 @@ from provisa.core.schema_org import (
 if TYPE_CHECKING:
     from provisa.core.database import Database
 
-from provisa.federation.strategy import engine_attaches
 from provisa.core.config_loader import _normalize_op_id
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.api.admin.types import (
@@ -446,26 +445,6 @@ async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
     return await client.complete(
         prompt, system="You are a data catalog assistant.", max_tokens=max_tokens
     )
-
-
-async def _maybe_migrate_sqlite(
-    src_row, conn, source_id: str, table_name: str, schema_name: str, table_id: int | None = None
-) -> None:
-    if src_row and src_row["type"] == "sqlite" and src_row["path"]:
-        from provisa.api.app import state
-
-        # An ATTACH engine (DuckDB) reads the sqlite file in place — never materialize it (REQ-947).
-        if engine_attaches(getattr(state, "federation_engine", None), "sqlite"):
-            return
-        from provisa.file_source.pg_migrate import migrate_sqlite_table, record_mtime
-
-        _log = logging.getLogger(__name__)
-        try:
-            await migrate_sqlite_table(src_row["path"], table_name, conn, schema_name, table_name)
-            if table_id is not None:
-                await record_mtime(table_id, src_row["path"], conn)
-        except Exception as _e:
-            _log.warning("SQLite → PG migration failed for %s.%s: %s", source_id, table_name, _e)
 
 
 from provisa.api.admin._table_ops import (  # noqa: E402

@@ -26,8 +26,6 @@
     "ungroupLevel": "取消分組（第 {{level}} 層）",
     "invalidateCache": "使快取失效",
     "purging": "清除中...",
-    "refreshData": "重新整理數據",
-    "refreshing": "重新整理中...",
     "runNow": "立即執行",
     "runNowTitle": "立即重建此表的資料，無論有否變更",
     "runNowModalTitle": "立即執行 {{table}}",

@@ -130,7 +130,6 @@ const updateTableCache = vi.fn().mockResolvedValue(mutationOk());
 const updateTablePreferMaterialized = vi.fn().mockResolvedValue(mutationOk());
 const updateTableNaming = vi.fn().mockResolvedValue(mutationOk());
 const purgeCacheByTable = vi.fn().mockResolvedValue(mutationOk());
-const invalidateFileSource = vi.fn().mockResolvedValue(mutationOk());
 const deployViewToDb = vi.fn().mockResolvedValue(mutationOk());
 
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
@@ -140,7 +139,6 @@ const deployViewToDb = vi.fn().mockResolvedValue(mutationOk());
 vi.mock("../../hooks/useAdminOpsQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminOpsQueries")>()),
   usePurgeCacheByTable: () => ({ purgeCacheByTable, loading: false }),
-  useInvalidateFileSource: () => ({ invalidateFileSource, loading: false }),
 }));
 
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({

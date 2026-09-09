@@ -274,7 +274,6 @@ class AppState:
     # changes made SINCE startup, not derived entities that were never in the file (REQ-164).
     config_boot_snapshot: str | None = None
     otel_snapshot_retention_hours: int | None = None  # Iceberg snapshot expiry hours
-    _stale_check_task: asyncio.Task | None = None  # schema staleness background loop
 
     def __init__(self) -> None:
         # Mandatory terminal-execution binding (REQ-825, REQ-840): every AppState is born with its
@@ -1909,15 +1908,6 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     # Stop gRPC server
     if state._grpc_server:
         await state._grpc_server.stop(grace=5)
-
-    # Cancel schema staleness loop
-    if getattr(state, "_stale_check_task", None):
-        assert state._stale_check_task is not None
-        state._stale_check_task.cancel()
-        try:
-            await state._stale_check_task
-        except asyncio.CancelledError:
-            pass
 
     # Cancel warm-table task
     if state._warm_task:

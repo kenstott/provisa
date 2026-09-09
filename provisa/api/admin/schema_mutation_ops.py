@@ -28,7 +28,6 @@ from provisa.api.admin.schema_helpers import (
     _dataset_ownership_conflict,
     _domain_table_conflict,
     _get_pool,
-    _maybe_migrate_sqlite,
     _rebuild_schemas,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input
@@ -283,9 +282,6 @@ async def register_table(
         )
         _srow = _sres.fetchone()
         src_row = dict(_srow._mapping) if _srow is not None else None
-        await _maybe_migrate_sqlite(
-            src_row, _conn, input.source_id, input.table_name, input.schema_name
-        )
         if input.domain_id != "meta":
             _mres = await _conn.execute_core(
                 select(registered_tables.c.id).where(

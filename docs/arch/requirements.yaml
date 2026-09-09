@@ -55349,3 +55349,110 @@
     Given mail.base_url is https://cloud.example.test and Data Product pet_health in org acme
     When the snowflake_horizon export publishes
     Then the listing manifest carries resources.documentation https://acme.example.test/data-products?product=pet_health, and opening that link shows pet_health expanded on the Data Products page
+- id: REQ-1660
+  status: complete
+  since: 2026-09
+  group: 4. Source Connectors
+  category: Materialization Store
+  priority: MUST
+  type: behavioral
+  description: >-
+    A sqlite source is an adapter-fetched source like openapi or a checker: its rows are read from
+    the file by the sqlite connector and landed in whatever materialize store the engine defines,
+    by the event loop's boot-create and refresh and by the query path's residency prep. On Trino the
+    landed replica is the registered address in the Postgres store, which is where Trino reads it.
+    An engine that attaches the file in place (DuckDB) never materializes it. The registration-time
+    migration into the control-plane Postgres, its mtime stale loop and the remigrate mutation are
+    removed: they were the eager copy of an older design, wrote to one store regardless of the
+    engine, and on a self-only warehouse left the landed replica empty while the event loop read the
+    source through the engine.
+  use_case: >-
+    Every materialize of an unreachable source lands in the defined materialize store regardless of
+    what it is. On Snowflake, Databricks and BigQuery the sqlite demo sources had never received a
+    row.
+  code:
+  - provisa/events/source_loader.py
+  - provisa/events/app_wiring.py
+  - provisa/core/config_loader.py
+  - provisa/federation/backend.py
+  tests:
+  - tests/unit/test_source_loader.py
+  - tests/unit/test_trino_landing_address.py
+  - tests/unit/test_app_wiring.py
+  relates_to:
+  - REQ-954
+  - REQ-1443
+  - REQ-1661
+  scenario: |
+    Given pet-store-sqlite registered on a Snowflake engine
+    When the server boots and the event loop's boot-create runs
+    Then _landing.mat.pet-store-sqlite__pet_store__pets holds the file's rows and the per-source view reads them
+- id: REQ-1661
+  status: complete
+  since: 2026-09
+  group: 4. Source Connectors
+  category: Freshness Gating
+  priority: MUST
+  type: behavioral
+  description: >-
+    Before the execute terminal runs a plan, each MATERIALIZED source the plan reads is landed when
+    it has never landed, its last land failed, its cache_ttl has been outrun, or its freshness gate
+    (REQ-860) says stale; a load_protected source lands only when never landed (REQ-1141). The land
+    runs through EngineBackend.materialize_pending, now on every backend: the same loaders, landing
+    address and store write face as the event loop, so both paths converge on one replica; it stamps
+    the node freshness state the event loop reads. Both paths take one per-node land lock in the
+    process, and a Snowflake REPLACE is one atomic INSERT OVERWRITE, so a boot land and a first
+    query never interleave on one replica. A land that fails is logged, stamped not ok, and the
+    read proceeds on the replica as it is.
+  use_case: >-
+    API-backed and other unreachable sources materialize lazily: a query that arrives before the
+    event loop has landed a table, or after it went stale, is served fresh rows rather than an empty
+    or stale replica. materialize_pending existed on the native backends with no caller since
+    2026-07.
+  code:
+  - provisa/federation/query_residency.py
+  - provisa/federation/backend.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/events/land_lock.py
+  - provisa/federation/snowflake_store.py
+  tests:
+  - tests/unit/test_query_residency.py
+  - tests/unit/test_residency.py
+  relates_to:
+  - REQ-860
+  - REQ-855
+  - REQ-1141
+  - REQ-1660
+  scenario: |
+    Given a materialized source whose tables carry no refresh stamp
+    When a governed query naming one of its tables reaches the execute terminal
+    Then the source's tables are landed and stamped before the read, and a second query lands nothing
+- id: REQ-1662
+  status: complete
+  since: 2026-09
+  group: 4. Source Connectors
+  category: Live Data Events
+  priority: MUST
+  type: behavioral
+  description: >-
+    A source node whose produce raises for any reason (an adapter whose endpoint refuses the
+    connection, a store that rejects the land) is that node's outage, not the event loop's: the
+    processor logs the traceback and records it exactly as an ABORT is recorded, an error event
+    fanned to dependents, an ok=False stamp and the claim completed, and the tick goes on to the
+    next node. An uncaught produce error had ended the tick at that node on every fire, so every
+    node after it in the processor order was never claimed and never landed.
+  use_case: >-
+    On the Snowflake demo the graphql-demo endpoint is unreachable; its first node's raise starved
+    every pet-store table and both data-quality checkers of their land, on every boot.
+  code:
+  - provisa/events/processor.py
+  tests:
+  - tests/unit/test_live_core_loop.py
+  relates_to:
+  - REQ-957
+  - REQ-961
+  - REQ-959
+  scenario: |
+    Given source nodes A and B where A's fetch raises ConnectionError
+    When the tick runs
+    Then A carries an error event and an ok=False stamp, and B's pending work is claimed and landed in the same tick

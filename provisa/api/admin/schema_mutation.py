@@ -17,11 +17,10 @@ import logging
 from typing import TYPE_CHECKING, Optional, cast
 
 import strawberry
-from sqlalchemy import delete as _delete, select, update
+from sqlalchemy import select, update
 from strawberry.types.info import Info as StrawberryInfo
 
 from provisa.core.schema_org import (
-    file_source_mtimes,
     registered_tables,
     relationship_candidates,
     relationships,
@@ -34,7 +33,6 @@ if TYPE_CHECKING:
 
 from provisa.compiler.sql_types import key_list
 from provisa.core.repositories import rls as rls_repo
-from provisa.federation.strategy import engine_attaches
 from provisa.api.admin._config_io import config_path as _config_path, read_config
 from provisa.api.admin.types import (
     CalendarInput,
@@ -64,7 +62,6 @@ from provisa.api.admin.schema_helpers import (
     _dataset_ownership_conflict,
     _domain_table_conflict,
     _get_pool,
-    _maybe_migrate_sqlite,
     _rebuild_schemas,
 )
 from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input
@@ -1647,14 +1644,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 await _rel_repo.mark_relationships_for_review(
                     _conn, table_id, [c.name for c in model.columns]
                 )
-            _sres = await _conn.execute_core(
-                select(sources.c.type, sources.c.path).where(sources.c.id == input.source_id)
-            )
-            _srow = _sres.fetchone()
-            src_row = dict(_srow._mapping) if _srow is not None else None
-            await _maybe_migrate_sqlite(
-                src_row, _conn, input.source_id, input.table_name, input.schema_name
-            )
         if input.view_sql and input.materialize:
             try:
                 _sync_view_mv(
@@ -2528,73 +2517,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         except Exception as e:
             logging.getLogger(__name__).exception("purge_cache_by_table %s failed", table_id)
             return MutationResult(success=False, message=str(e))
-
-    @strawberry.mutation
-    async def invalidate_file_source(self, table_id: int) -> MutationResult:
-        """Force re-migration of a file-backed (SQLite) table into PG."""
-        pool = await _get_pool()
-        async with pool.acquire() as conn:
-            _conn = cast("Connection", conn)
-            _res = await _conn.execute_core(
-                select(
-                    registered_tables.c.table_name,
-                    registered_tables.c.schema_name,
-                    sources.c.type,
-                    sources.c.path,
-                    sources.c.id.label("source_id"),
-                )
-                .select_from(
-                    registered_tables.join(sources, sources.c.id == registered_tables.c.source_id)
-                )
-                .where(registered_tables.c.id == table_id)
-            )
-            _srow = _res.fetchone()
-            row = dict(_srow._mapping) if _srow is not None else None
-            if not row:
-                return MutationResult(
-                    success=False,
-                    message=f"Table {table_id} not found",
-                    code="schema.table_not_found",
-                    params={"table": table_id},
-                )
-            if row["type"] != "sqlite":
-                return MutationResult(
-                    success=False,
-                    message=f"Source type {row['type']!r} is not sqlite",
-                    code="schema.source_type_not_sqlite",
-                    params={"type": row["type"]},
-                )
-            from provisa.api.app import state as _state
-
-            # An ATTACH engine (DuckDB) reads the sqlite file live — no replica to re-migrate (REQ-947).
-            if engine_attaches(getattr(_state, "federation_engine", None), "sqlite"):
-                return MutationResult(
-                    success=True,
-                    message="attached live; no migration needed",
-                    code="schema.attached_live",
-                )
-            from provisa.file_source.pg_migrate import migrate_sqlite_table, record_mtime
-
-            try:
-                await _conn.execute_core(
-                    _delete(file_source_mtimes).where(file_source_mtimes.c.table_id == table_id)
-                )
-                _pg_conn = cast("Connection", _conn)  # core Connection (proxies asyncpg)
-                await migrate_sqlite_table(
-                    row["path"], row["table_name"], _pg_conn, row["schema_name"], row["table_name"]
-                )
-                await record_mtime(table_id, row["path"], _pg_conn)
-                return MutationResult(
-                    success=True,
-                    message=f"Re-migrated {row['source_id']}.{row['table_name']}",
-                    code="schema.remigrated",
-                    params={"source": row["source_id"], "table": row["table_name"]},
-                )
-            except Exception as e:
-                logging.getLogger(__name__).exception(
-                    "invalidate_file_source: re-migration of table %s failed", table_id
-                )
-                return MutationResult(success=False, message=str(e))
 
     # ── Admin: Scheduled Task Management ──
 

@@ -197,6 +197,82 @@ class EngineBackend:
         del self, source_type
         return store_schema, f"{source_id}__{schema_name}__{table_name}"
 
+    async def materialize_pending(
+        self,
+        state: Any,
+        *,
+        loader: Any,
+        is_stale: Any,
+        source_ids: Any = None,
+        prefer_materialized_of: Any = None,
+        load_protected_of: Any = None,
+        resident_of: Any = None,
+        materialization_backend: str | None = None,
+        freshness_subject_of: Any = None,
+        now: float | None = None,
+    ) -> list[tuple[str, str]]:
+        """Land every MATERIALIZED source table that is stale, before a read (REQ-825/932, REQ-1661).
+
+        Builds the residency plan over the configured sources (``build_execution_plan`` decides
+        which federate to MATERIALIZED and, via ``is_stale`` / the REQ-860 gate, which need a
+        refresh), then for each of those sources' registered tables fetches the rows with the
+        injected ``loader`` and lands them at the engine's own landing address through its store
+        write face -- the same address and face the event loop's source nodes use, so the two paths
+        converge on one replica. ``source_ids`` restricts the plan to the sources a query reads.
+        Returns the (source_id, table_name) pairs landed; a no-op when nothing is stale."""
+        from provisa.federation.plan import build_execution_plan
+        from provisa.federation.residency import resolve_landing_args
+
+        config = getattr(state, "config", None)
+        if config is None:
+            return []
+        sources = [s for s in config.sources if source_ids is None or s.id in source_ids]
+        if not sources:
+            return []
+        tables_by_source: dict[str, list] = {}
+        for t in config.tables:
+            tables_by_source.setdefault(t.source_id, []).append(t)
+        plan = build_execution_plan(
+            sources,
+            self.engine,
+            is_stale,
+            prefer_materialized_of=prefer_materialized_of,
+            load_protected_of=load_protected_of,
+            resident_of=resident_of,
+            materialization_backend=materialization_backend,
+            freshness_subject_of=freshness_subject_of,
+            now=now,
+        )
+        if not plan.prep:
+            return []
+        sources_by_id = {s.id: s for s in sources}
+        store_schema = _env_store_schema(self.engine.materialize_store())
+        landed: list[tuple[str, str]] = []
+        for step in plan.prep:
+            source = sources_by_id[step.source_id]
+            for table in tables_by_source.get(step.source_id, ()):
+                args = resolve_landing_args(source, table, platform=self.dialect)
+                rows = await loader.load(source, table)
+                schema, name = self.landing_target(
+                    store_schema=store_schema,
+                    source_id=source.id,
+                    source_type=source.type,
+                    schema_name=table.schema_name,
+                    table_name=table.table_name,
+                )
+                await self.land_source_table(
+                    state,
+                    schema=schema,
+                    table=name,
+                    columns=args.columns,
+                    rows=rows,
+                    change_signal=args.change_signal,
+                    watermark_column=args.watermark_column,
+                    pk_columns=args.pk_columns,
+                )
+                landed.append((source.id, table.table_name))
+        return landed
+
     async def land_source_table(
         self,
         state: Any,
@@ -624,8 +700,8 @@ class TrinoBackend(EngineBackend):
         checker's scan results, an API's fetched pages — the landing address IS the physical address.
 
         An engine-scannable source keeps the default internal name: its physical address already
-        holds the mirror the engine reads (a sqlite file is migrated into Postgres at registration),
-        and landing onto that same relation would make the node read and write one table.
+        holds the mirror the engine reads, and landing onto that same relation would make the node
+        read and write one table.
         """
         from provisa.events.source_loader import is_adapter_fetched
 

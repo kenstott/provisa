@@ -967,8 +967,3 @@ mutation PurgeCacheByTable($tableId: Int!) {
   }
 }
 
-mutation InvalidateFileSource($tableId: Int!) {
-  invalidateFileSource(tableId: $tableId) {
-    ...MutationResult
-  }
-}

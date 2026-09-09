@@ -26,8 +26,6 @@
     "ungroupLevel": "取消分组（级别 {{level}}）",
     "invalidateCache": "使缓存失效",
     "purging": "清除中…",
-    "refreshData": "刷新数据",
-    "refreshing": "刷新中…",
     "runNow": "立即运行",
     "runNowTitle": "立即重建此表的数据，无论是否有变更",
     "runNowModalTitle": "立即运行 {{table}}",

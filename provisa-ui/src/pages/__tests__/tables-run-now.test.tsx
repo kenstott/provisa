@@ -139,7 +139,6 @@ const forceRegen = vi.fn();
 vi.mock("../../hooks/useAdminOpsQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminOpsQueries")>()),
   usePurgeCacheByTable: () => ({ purgeCacheByTable: vi.fn(), loading: false }),
-  useInvalidateFileSource: () => ({ invalidateFileSource: vi.fn(), loading: false }),
 }));
 
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({

@@ -26,8 +26,6 @@
     "ungroupLevel": "Dégrouper (niveau {{level}})",
     "invalidateCache": "Invalider le cache",
     "purging": "Purge...",
-    "refreshData": "Actualiser les données",
-    "refreshing": "Actualisation...",
     "runNow": "Exécuter maintenant",
     "runNowTitle": "Reconstruire les données de cette table maintenant, qu'il y ait eu un changement ou non",
     "runNowModalTitle": "Exécuter {{table}} maintenant",

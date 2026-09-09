@@ -928,6 +928,12 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     from provisa.federation.engine_wake import ensure_engine_awake, readdress_lost_coordinator
 
     await ensure_engine_awake(state)
+    # REQ-1661: a MATERIALIZED source this plan reads that has never landed, or has gone stale, is
+    # landed before the read -- here, the one seam every surface reaches, so no transport can
+    # serve an empty replica the event loop has not filled yet.
+    from provisa.federation.query_residency import ensure_resident
+
+    await ensure_resident(state, plan.sources)
     _t0 = _time.perf_counter()
     # REQ-074/REQ-1386: one audit row per executed statement, with the terminal's real outcome —
     # written here rather than in each transport, so no surface can omit it.

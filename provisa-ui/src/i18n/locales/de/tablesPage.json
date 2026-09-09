@@ -26,8 +26,6 @@
     "ungroupLevel": "Gruppierung aufheben (Ebene {{level}})",
     "invalidateCache": "Cache invalidieren",
     "purging": "Wird geleert...",
-    "refreshData": "Daten aktualisieren",
-    "refreshing": "Wird aktualisiert...",
     "runNow": "Jetzt ausführen",
     "runNowTitle": "Die Daten dieser Tabelle jetzt neu aufbauen, unabhängig von Änderungen",
     "runNowModalTitle": "{{table}} jetzt ausführen",

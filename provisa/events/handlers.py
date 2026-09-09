@@ -35,6 +35,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from provisa.core.change_signal import APPEND, REPLACE
+from provisa.events.land_lock import land_lock
 from provisa.events.content_hash import content_hash
 from provisa.events.probes import WATERMARK, probe_shape
 from provisa.events.processor import NodeContext, PreflightQuarantine, PreprocessError
@@ -130,16 +131,17 @@ def make_source_land(
             digest = content_hash(rows, pk_columns)
             if not forced and digest == prior_hash:
                 return None
-        loc = await engine.land_source_table(
-            schema=schema,
-            table=table,
-            columns=columns,
-            rows=rows,
-            change_signal=change_signal,
-            watermark_column=watermark_column,
-            pk_columns=pk_columns,
-            shape=shape,  # REQ-982: authoritative shape from probe_type
-        )
+        async with land_lock(f"{schema}.{table}"):  # REQ-1661: never two lands on one replica
+            loc = await engine.land_source_table(
+                schema=schema,
+                table=table,
+                columns=columns,
+                rows=rows,
+                change_signal=change_signal,
+                watermark_column=watermark_column,
+                pk_columns=pk_columns,
+                shape=shape,  # REQ-982: authoritative shape from probe_type
+            )
         return _SHAPE_TO_EVENT.get(shape, "replace"), {"rows": len(rows), "landed": loc}, digest
 
     return land

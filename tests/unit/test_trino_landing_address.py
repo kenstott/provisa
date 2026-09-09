@@ -74,16 +74,25 @@ class TestTheLandingAddress:
             table_name="pets_scan",
         ) == ("quality", "pets_scan")
 
-    def test_an_engine_scannable_source_keeps_the_internal_name(self):
-        """sqlite is mirrored into Postgres at registration, so its physical address already holds
-        the rows the engine reads — landing there would make the node read and write one table."""
+    def test_a_sqlite_source_lands_at_its_registered_address(self):
+        """REQ-1660: a sqlite file is read by its connector and landed like any other fetched
+        source; on Trino the landed replica IS the physical address the compiler emits."""
         assert _backend().landing_target(
             store_schema="mat",
             source_id="inquiries_sqlite",
             source_type="sqlite",
             schema_name="default",
             table_name="inquiries",
-        ) == ("mat", "inquiries_sqlite__default__inquiries")
+        ) == ("default", "inquiries")
+
+    def test_an_engine_scannable_source_keeps_the_internal_name(self):
+        assert _backend().landing_target(
+            store_schema="mat",
+            source_id="warehouse_pg",
+            source_type="postgres",
+            schema_name="public",
+            table_name="orders",
+        ) == ("mat", "warehouse_pg__public__orders")
 
     def test_the_enum_member_reads_the_same_as_the_bare_string(self):
         assert _backend().landing_target(

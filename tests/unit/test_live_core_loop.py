@@ -415,6 +415,48 @@ async def test_req957_warn_emits_advisory_and_still_lands(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_req1662_a_raising_fetch_is_this_nodes_outage_not_the_loops(tmp_path):
+    """REQ-1662: a produce that raises for any reason (an adapter whose endpoint refuses the
+    connection) is recorded as an error event with an ok=False stamp and the claim completed -- it
+    does not escape process_pending, so the tick goes on to the nodes after it."""
+    dsn = _store_dsn(tmp_path)
+
+    async def refused(_pending):
+        raise ConnectionError("connection refused")
+
+    land = make_source_land(
+        DsnEngine(dsn),
+        schema="",
+        table="orders",
+        columns=_COLS,
+        change_signal="ttl",
+        watermark_column=None,
+        pk_columns=["id"],
+        fetch=refused,
+    )
+    async with _db(tmp_path) as db:
+        proc = SourceTableProcessor(
+            "s.orders",
+            change_signal="ttl",
+            watermark_column=None,
+            dependents_of=lambda n: ["down.x"],
+            db=db,
+            name="box-1",
+            land=land,
+        )
+        async with db.acquire() as conn:
+            await _fan_to(conn, "s.orders")
+        async with db.acquire() as conn:
+            ev = await proc.process_pending(conn)
+            assert ev is not None
+        async with db.acquire() as conn:
+            evs = await _events_for(conn, "s.orders")
+            assert [e["event_type"] for e in evs] == ["error"]
+            assert "connection refused" in str(evs[0]["payload"])
+            state = await queue.get_node_state(conn, "s.orders")
+            assert state is not None and state["last_refresh_ok"] is False
+
+
 async def test_req957_raise_emits_error_short_circuits_land_and_fans(tmp_path):
     dsn = _store_dsn(tmp_path)
 

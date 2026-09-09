@@ -50,7 +50,7 @@ import {
   useAllRelationships,
   useDataProducts, // REQ-1634
 } from "../hooks/useAdminQueries";
-import { usePurgeCacheByTable, useInvalidateFileSource } from "../hooks/useAdminOpsQueries";
+import { usePurgeCacheByTable } from "../hooks/useAdminOpsQueries";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -99,7 +99,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { updateTableLoadProtection } = useUpdateTableLoadProtection();
   const { updateTableNaming } = useUpdateTableNaming();
   const { purgeCacheByTable } = usePurgeCacheByTable();
-  const { invalidateFileSource } = useInvalidateFileSource();
   const { forceRegen } = useForceRegen();
   const { deployViewToDb } = useDeployViewToDb();
   const { suggestTableAlias } = useSuggestTableAlias();
@@ -155,7 +154,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     Record<number, { value: string; dirty: boolean; saving: boolean }>
   >({});
   const [purging, setPurging] = useState<Record<number, boolean>>({});
-  const [invalidating, setInvalidating] = useState<Record<number, boolean>>({});
   // REQ-968 forced run: the table the operator is rebuilding, and the reason the server records on
   // the event. The reason is asked for rather than defaulted — a forced rebuild with no why is the
   // one the estate's history cannot explain later.
@@ -263,19 +261,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setPurging((prev) => ({ ...prev, [tableId]: false }));
-    }
-  };
-
-  const handleInvalidateFileSource = async (tableId: number) => {
-    setInvalidating((prev) => ({ ...prev, [tableId]: true }));
-    setError(null);
-    try {
-      const result = await invalidateFileSource(tableId);
-      if (!result.success) throw new Error(result.message);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setInvalidating((prev) => ({ ...prev, [tableId]: false }));
     }
   };
 
@@ -1087,7 +1072,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               srcType === "graphql_remote" ||
                               srcType === "openapi" ||
                               srcType === "grpc_remote";
-                            const isFileBacked = srcType === "sqlite";
                             // REQ-968: only a table whose rows are LANDED can be rebuilt on demand.
                             // The server derives that from the same policy resolution (REQ-1143) this
                             // reads, so the button appears exactly where the mutation would accept it.
@@ -1119,18 +1103,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                     {purging[t.id]
                                       ? translate("tablesPage.purging")
                                       : translate("tablesPage.invalidateCache")}
-                                  </Button>
-                                )}
-                                {isFileBacked && (
-                                  <Button
-                                    size="compact-xs"
-                                    variant="default"
-                                    onClick={() => handleInvalidateFileSource(t.id)}
-                                    disabled={invalidating[t.id]}
-                                  >
-                                    {invalidating[t.id]
-                                      ? translate("tablesPage.refreshing")
-                                      : translate("tablesPage.refreshData")}
                                   </Button>
                                 )}
                               </>

@@ -25,6 +25,8 @@ lands nothing for that node and logs; it never fabricates an empty snapshot).
 
 from __future__ import annotations
 
+import asyncio
+
 from typing import Any
 
 # Source types whose "current rows" are fetched by calling the adapter, not by an engine SQL scan.
@@ -44,6 +46,10 @@ _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
         # running the contract, produced by the checker subprocess. See :func:`make_dq_loader`.
         "soda",
         "great_expectations",
+        # REQ-1660: a sqlite file is read by its own connector (:func:`make_sqlite_loader`) and
+        # landed in the materialize store like any other fetched source. An engine that attaches
+        # the file in place (DuckDB) never materializes it, so the loader is never asked.
+        "sqlite",
     }
 )
 
@@ -52,12 +58,11 @@ def is_adapter_fetched(source_type: Any) -> bool:
     """Whether a source type's rows are PRODUCED by its adapter rather than scanned from a relation
     the engine can already reach.
 
-    The distinction decides where a landed replica has to live. An engine-scannable source is
-    mirrored at its physical address before the event loop ever runs (a sqlite file is migrated into
-    Postgres at registration), so its landing table is an internal copy and can be named anything.
-    An adapter-fetched source has no such mirror — the landed rows ARE the only copy, so on an engine
-    that reads the store directly by physical name they must land at that name (see
-    ``TrinoBackend.landing_target``). Accepts the enum member or the bare string."""
+    The distinction decides where a landed replica has to live. An engine-scannable source has a
+    mirror at its physical address the engine reads, so its landing table is an internal copy and
+    can be named anything. An adapter-fetched source has no such mirror — the landed rows ARE the
+    only copy, so on an engine that reads the store directly by physical name they must land at that
+    name (see ``TrinoBackend.landing_target``). Accepts the enum member or the bare string."""
     stype = source_type.value if hasattr(source_type, "value") else str(source_type)
     return stype in _ADAPTER_FETCH_ONLY
 
@@ -156,6 +161,27 @@ def make_openapi_loader(
                 )
             )
         return rows
+
+    return _load
+
+
+def make_sqlite_loader() -> AdapterLoader:
+    """Build the sqlite row-fetch (REQ-1660): the table's registered data columns, read straight
+    from the file through the sqlite connector. The engine never sees the file; the rows it reads
+    are the landed replica this loader feeds."""
+    from provisa.federation import connector_sqlite
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        path = getattr(source, "path", None)
+        if not path:
+            raise ValueError(f"sqlite source {source.id!r} has no path")
+        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not columns:
+            return []
+        select = ", ".join(f'"{c}"' for c in columns)
+        return await asyncio.to_thread(
+            connector_sqlite.execute_sync, path, f'SELECT {select} FROM "{table.table_name}"'
+        )
 
     return _load
 

@@ -26,8 +26,6 @@
     "ungroupLevel": "Groepering opheffen (niveau {{level}})",
     "invalidateCache": "Cache ongeldig maken",
     "purging": "Wissen...",
-    "refreshData": "Gegevens vernieuwen",
-    "refreshing": "Vernieuwen...",
     "runNow": "Nu uitvoeren",
     "runNowTitle": "Bouw de gegevens van deze tabel nu opnieuw op, of er nu iets gewijzigd is of niet",
     "runNowModalTitle": "{{table}} nu uitvoeren",

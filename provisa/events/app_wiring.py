@@ -133,6 +133,51 @@ def _build_subscribers_of(
     return subscribers_of
 
 
+def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
+    """The per-type row fetchers for sources the engine cannot scan (REQ-1660): one dict shared by
+    the event loop's source nodes and the query path's residency prep, so both land the same rows.
+
+    openapi/graphql_remote sources have no engine table; their rows come from calling the
+    operation (their registrations live in app state). A data-quality checker's rows are the
+    results of RUNNING its contract (REQ-1443). A sqlite file is read by its own connector. Files,
+    sharepoint and splunk on an engine with NO connector for them are landed through the
+    connector's bundled Calcite pgwire server (REQ-954)."""
+    from provisa.events.source_loader import (
+        make_dq_loader,
+        make_graphql_remote_loader,
+        make_openapi_loader,
+        make_sqlite_loader,
+    )
+    from provisa.federation.pgwire_replica import (
+        PortAllocator,
+        make_pgwire_loader,
+        needs_pgwire_replica,
+    )
+
+    loaders: dict[str, Any] = {}
+    api_endpoints = getattr(state, "api_endpoints", None)
+    api_sources = getattr(state, "api_sources", None)
+    if api_endpoints and api_sources is not None:
+        loaders["openapi"] = make_openapi_loader(api_endpoints, api_sources)
+    gql_sources = getattr(state, "graphql_remote_sources", None)
+    if gql_sources:
+        loaders["graphql_remote"] = make_graphql_remote_loader(gql_sources)
+    dq_loader = make_dq_loader(state)
+    loaders["soda"] = dq_loader
+    loaders["great_expectations"] = dq_loader
+    loaders["sqlite"] = make_sqlite_loader()
+    bare_engine = getattr(engine, "engine", engine)
+    allocator = PortAllocator()
+    config = getattr(state, "config", None)
+    for src in getattr(config, "sources", None) or []:
+        stype = src.type.value if hasattr(src.type, "value") else str(src.type)
+        if stype in loaders:
+            continue
+        if needs_pgwire_replica(src, bare_engine):
+            loaders[stype] = make_pgwire_loader(allocator=allocator)
+    return loaders
+
+
 async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = True) -> int:
     """Build + register the event loop from live state. Returns the node count registered (0 if the
     prerequisites are not ready or the loop is skipped). Best-effort — never raises into boot.
@@ -169,53 +214,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             return 0
 
         _warned: set[str] = set()
-        from provisa.events.source_loader import (
-            SourceRowLoader,
-            UnsupportedSourceFetch,
-            make_dq_loader,
-            make_graphql_remote_loader,
-            make_openapi_loader,
-        )
+        from provisa.events.source_loader import SourceRowLoader, UnsupportedSourceFetch
 
-        # openapi/graphql_remote sources have no engine table; their rows come from calling the
-        # operation (their registrations live in app state). Other adapter-only types
-        # (ingest/websocket/…) still raise UnsupportedSourceFetch until their fetch is wired.
-        _adapter_loaders: dict[str, Any] = {}
-        _api_endpoints = getattr(state, "api_endpoints", None)
-        _api_sources = getattr(state, "api_sources", None)
-        if _api_endpoints and _api_sources is not None:
-            _adapter_loaders["openapi"] = make_openapi_loader(_api_endpoints, _api_sources)
-        _gql_sources = getattr(state, "graphql_remote_sources", None)
-        if _gql_sources:
-            _adapter_loaders["graphql_remote"] = make_graphql_remote_loader(_gql_sources)
-
-        # REQ-1443: a data-quality checker table's rows are the results of RUNNING its contract, so
-        # its loader runs the scan. Registered unconditionally for both checkers — the contract's
-        # dataset resolves against every role's compiled tables (the pgwire names), since a
-        # contract may observe a table under any source, not only its own.
-        _dq_loader = make_dq_loader(state)
-        _adapter_loaders["soda"] = _dq_loader
-        _adapter_loaders["great_expectations"] = _dq_loader
-
-        # files/sharepoint/splunk on an engine with NO connector for them are landed through the
-        # connector's bundled Calcite pgwire server (REQ-954): resolve+cache the bundle, start it,
-        # and SELECT as generic Postgres. Registered per pgwire-replica source; a shared allocator
-        # hands each server a unique port (REQ-955). Skipped on engines that reach them natively.
-        from provisa.federation.pgwire_replica import (
-            PortAllocator,
-            make_pgwire_loader,
-            needs_pgwire_replica,
-        )
-
-        _bare_engine = getattr(engine, "engine", engine)
-        _port_allocator = PortAllocator()
-        for _src in config.sources:
-            _stype = _src.type.value if hasattr(_src.type, "value") else str(_src.type)
-            if _stype in _adapter_loaders:
-                continue  # a type-level loader (openapi/graphql/pgwire) is already registered
-            if needs_pgwire_replica(_src, _bare_engine):
-                _adapter_loaders[_stype] = make_pgwire_loader(allocator=_port_allocator)
-
+        _adapter_loaders = build_adapter_loaders(state, engine)
         row_loader = SourceRowLoader(engine, adapter_loaders=_adapter_loaders)
 
         def source_fetch(src: Any, tbl: Any) -> Any:

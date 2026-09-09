@@ -37,7 +37,6 @@ import {
   CreateScheduledTask,
   DeleteScheduledTask,
   PurgeCacheByTable,
-  InvalidateFileSource,
 } from "./admin.graphql";
 
 export function useMVList() {
@@ -205,18 +204,3 @@ export function usePurgeCacheByTable() {
   };
 }
 
-export function useInvalidateFileSource() {
-  const [invalidateFileSource, { loading }] = useMutation<{ invalidateFileSource: MutationResult }>(
-    InvalidateFileSource,
-  );
-  return {
-    invalidateFileSource: async (tableId: number) => {
-      const result = await invalidateFileSource({ variables: { tableId } });
-      return (result.data?.invalidateFileSource ?? {
-        success: false,
-        message: "",
-      }) as MutationResult;
-    },
-    loading,
-  };
-}

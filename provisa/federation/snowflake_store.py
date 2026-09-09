@@ -213,6 +213,10 @@ def reconcile_snowflake_native(
     return "recreated"
 
 
+#: Snowflake refuses a statement with more than 16,384 bind values; a chunk stays under it.
+_BIND_CAP = 16_000
+
+
 def _bind_value(value: Any) -> Any:
     import datetime
     import decimal
@@ -247,14 +251,35 @@ def land_snowflake_native(
     if shape not in ("replace", "append"):
         raise ValueError(f"unknown landing shape {shape!r}")
     fq = qualified(parts)
-    if shape == "replace":
+    if shape == "replace" and not rows:
         cur.execute(f"DELETE FROM {fq}")
     if rows:
         names = [name for name, _ in columns]
         json_cols = {name for name, ir_type in columns if to_ir(ir_type) == "json"}
-        placeholders = ", ".join("PARSE_JSON(%s)" if name in json_cols else "%s" for name in names)
-        sql = f"INSERT INTO {fq} ({', '.join(f'"{n}"' for n in names)}) SELECT {placeholders}"
-        cur.executemany(sql, [[_bind_value(r.get(n)) for n in names] for r in rows])
+        # One multi-row statement per chunk, built here: the connector's ``executemany`` rewrites
+        # only an ``INSERT ... VALUES`` and refuses this ``INSERT ... SELECT`` ("Failed to rewrite
+        # multi-row insert", confirmed live), while a VALUES clause cannot hold PARSE_JSON -- so the
+        # rows go through ``SELECT ... FROM VALUES``, which takes both. Chunked under the bind cap.
+        # A REPLACE is one atomic ``INSERT OVERWRITE`` for its first chunk rather than a DELETE
+        # followed by an INSERT: two writers replacing the same replica at once (the event loop's
+        # boot land and a first query's residency land) interleaved DELETE, INSERT, DELETE, INSERT
+        # and left every row twice, confirmed live.
+        projection = ", ".join(
+            f"PARSE_JSON(column{i})" if name in json_cols else f"column{i}"
+            for i, name in enumerate(names, start=1)
+        )
+        collist = ", ".join(f'"{n}"' for n in names)
+        row_ph = "(" + ", ".join("%s" for _ in names) + ")"
+        per_chunk = max(1, _BIND_CAP // len(names))
+        for start in range(0, len(rows), per_chunk):
+            verb = "INSERT OVERWRITE INTO" if shape == "replace" and start == 0 else "INSERT INTO"
+            chunk = rows[start : start + per_chunk]
+            params = [_bind_value(r.get(n)) for r in chunk for n in names]
+            cur.execute(
+                f"{verb} {fq} ({collist}) SELECT {projection} FROM VALUES "
+                + ", ".join([row_ph] * len(chunk)),
+                params,
+            )
     del pk_columns  # identity is the reconcile's; a batch land needs none
     return fq
 

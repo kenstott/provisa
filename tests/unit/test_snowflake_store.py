@@ -14,6 +14,7 @@ view, and the keys the landed model carries -- driven through a scripted DBAPI c
 from __future__ import annotations
 
 import pytest
+from typing import Any
 
 from provisa.federation import snowflake_store as store
 from provisa.federation.landed_keys import ForeignKeyEdge
@@ -33,6 +34,7 @@ class _Cursor:
 
     def __init__(self, answers: dict[str, tuple[list[tuple], list[str]]] | None = None):
         self.sql: list[str] = []
+        self.params: list[Any] = []
         self.many: list[tuple[str, list]] = []
         self.description: list[tuple[str, ...]] = []
         self._rows: list[tuple] = []
@@ -40,6 +42,7 @@ class _Cursor:
 
     def execute(self, sql, params=None):
         self.sql.append(sql)
+        self.params.append(params)
         self._rows, cols = [], []
         for prefix, (rows, columns) in self._answers.items():
             if sql.startswith(prefix) or prefix in sql:
@@ -114,17 +117,30 @@ def test_land_replace_deletes_then_inserts_with_json_parsed():
     cur = _Cursor()
     rows = [{"id": 1, "name": "Rex", "meta": {"k": "v"}}, {"id": 2, "name": "Tom", "meta": None}]
     store.land_snowflake_native(cur, parts=_PETS, columns=_COLS, rows=rows, shape="replace")
+    # one atomic multi-row INSERT OVERWRITE (no separate DELETE: two concurrent replaces must not
+    # interleave), JSON parsed in the projection over VALUES (executemany's rewrite refuses
+    # INSERT ... SELECT, and VALUES cannot hold PARSE_JSON)
+    assert len(cur.sql) == 1
+    assert cur.sql[0] == (
+        'INSERT OVERWRITE INTO "_landing"."mat"."pet-store-sqlite__pet_store__pets" '
+        '("id", "name", "meta") SELECT column1, column2, PARSE_JSON(column3) FROM VALUES '
+        "(%s, %s, %s), (%s, %s, %s)"
+    )
+    assert cur.params[0] == [1, "Rex", '{"k": "v"}', 2, "Tom", None]
+    assert cur.many == []
+
+
+def test_land_replace_with_no_rows_empties_the_replica():
+    cur = _Cursor()
+    store.land_snowflake_native(cur, parts=_PETS, columns=_COLS, rows=[], shape="replace")
     assert cur.sql == ['DELETE FROM "_landing"."mat"."pet-store-sqlite__pet_store__pets"']
-    sql, params = cur.many[0]
-    assert sql.endswith('("id", "name", "meta") SELECT %s, %s, PARSE_JSON(%s)')
-    assert params == [[1, "Rex", '{"k": "v"}'], [2, "Tom", None]]
 
 
 def test_land_append_does_not_delete_and_cdc_is_refused():
     cur = _Cursor()
     store.land_snowflake_native(cur, parts=_PETS, columns=_COLS, rows=[{"id": 3}], shape="append")
-    assert cur.sql == []
-    assert len(cur.many) == 1
+    assert len(cur.sql) == 1 and cur.sql[0].startswith("INSERT INTO")
+    assert cur.many == []
     with pytest.raises(NotImplementedError):
         store.land_snowflake_native(cur, parts=_PETS, columns=_COLS, rows=[], shape="cdc")
 

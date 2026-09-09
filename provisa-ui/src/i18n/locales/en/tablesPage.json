@@ -28,8 +28,6 @@
     "ungroupLevel": "Ungroup (level {{level}})",
     "invalidateCache": "Invalidate Cache",
     "purging": "Purging...",
-    "refreshData": "Refresh Data",
-    "refreshing": "Refreshing...",
     "runNow": "Run Now",
     "runNowTitle": "Rebuild this table's data now, whether or not anything changed",
     "runNowModalTitle": "Run {{table}} now",

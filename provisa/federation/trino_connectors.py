@@ -148,10 +148,11 @@ _TRINO_JDBC_TYPES: dict[str, str] = {
 
 
 class TrinoPgBackedConnector(_TrinoConnector):
-    """sqlite/openapi/data-quality checkers: their data is LANDED into the local Postgres (sqlite
-    migrated at registration, openapi responses cached, checker scans landed by the event loop) and
-    Trino reads that PG replica. FETCH — Provisa materializes them first, then Trino reads the
-    replica — not an in-place ATTACH of the live source."""
+    """sqlite/openapi/data-quality checkers: their data is LANDED into the local Postgres by the
+    event loop and the query path's residency prep (a sqlite file read by its connector, openapi
+    responses fetched, checker scans run) and Trino reads that PG replica. FETCH — Provisa
+    materializes them first, then Trino reads the replica — not an in-place ATTACH of the live
+    source."""
 
     trino_connector = "postgresql"
     mechanism = Mechanism.FETCH  # Provisa lands the rows into PG; Trino reads the replica

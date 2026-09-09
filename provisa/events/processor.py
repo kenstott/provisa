@@ -24,6 +24,7 @@ the base. The variants supply only ``handle``:
 from __future__ import annotations
 
 import inspect
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
@@ -36,6 +37,8 @@ from provisa.events.deadlines import DeadlineSource, LiveDebounce
 from provisa.events.freshness_contract import evaluate_contract
 from provisa.freshness.subject import FreshnessSubject
 from provisa.mv.preflight import CONTINUE, Decision, Verdict
+
+log = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
@@ -370,6 +373,16 @@ class TableProcessor(ABC):
             return await self._emit_error(conn, claimed, now, {"error": str(exc)})
         except PreflightQuarantine as exc:
             return await self._emit_quarantine(conn, claimed, now, exc.reason)
+        except Exception as exc:  # noqa: BLE001 - the fetch's error type is the adapter's own
+            # REQ-1662: a produce that raises for any other reason (an adapter whose endpoint
+            # refuses the connection, a store that rejects the land) is this node's outage, not
+            # the loop's. It is logged with its traceback and recorded exactly as an ABORT is --
+            # error event fanned to dependents, ok=False stamp, claim completed -- so the tick
+            # goes on to the next node instead of dying here and starving every node after it.
+            log.exception("event loop: %s failed to produce", self.node)
+            return await self._emit_error(
+                conn, claimed, now, {"error": f"{type(exc).__name__}: {exc}"}
+            )
         # REQ-960: post + fan_out + complete run AFTER land in ONE control-plane transaction,
         # post-BEFORE-complete. A crash between land and this commit re-claims and re-runs (the
         # land is idempotent), so the downstream ripple is never lost and the claim never orphaned.

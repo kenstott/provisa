@@ -4,7 +4,7 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-825/932: residency prep — resolve landing args + run_prep lands stale MATERIALIZED tables."""
+"""REQ-825/932/1661: residency prep — resolve landing args; the base backend lands stale MATERIALIZED tables."""
 
 from __future__ import annotations
 
@@ -13,8 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.core.change_signal import APPEND, CDC, REPLACE, select_landing_shape
-from provisa.federation.plan import Plan, PrepStep
-from provisa.federation.residency import resolve_landing_args, run_prep
+from provisa.federation.residency import resolve_landing_args
 from provisa.federation.strategy import Strategy
 
 
@@ -44,7 +43,15 @@ def _table(
 
 
 def _source(source_id="s1", *, change_signal="ttl", type="openapi"):
-    return SimpleNamespace(id=source_id, type=type, change_signal=change_signal)
+    return SimpleNamespace(
+        id=source_id,
+        type=type,
+        change_signal=change_signal,
+        freshness_gate=False,
+        cache_ttl=None,
+        prefer_materialized=False,
+        load_protected=False,
+    )
 
 
 class TestResolveProbeType:  # REQ-982
@@ -181,29 +188,6 @@ class TestResolveLandingArgs:
         assert select_landing_shape(c.change_signal, c.watermark_column) == CDC
 
 
-class _FakeRuntime:
-    dialect = "trino"  # engine-normalized stored types are Trino spellings (REQ-846)
-
-    def __init__(self):
-        self.calls = []
-
-    async def materialize_source(
-        self, source, columns, rows, *, change_signal, watermark_column, pk_columns
-    ):
-        self.calls.append(
-            SimpleNamespace(
-                id=source.id,
-                schema_name=source.schema_name,
-                table_name=source.table_name,
-                columns=columns,
-                rows=rows,
-                change_signal=change_signal,
-                watermark_column=watermark_column,
-                pk_columns=pk_columns,
-            )
-        )
-
-
 class _FakeLoader:
     def __init__(self, rows_by_table):
         self.rows_by_table = rows_by_table
@@ -214,64 +198,77 @@ class _FakeLoader:
         return self.rows_by_table.get(table.table_name, [])
 
 
+class _FakeBackend:
+    """The base ``materialize_pending`` over a fake engine: records what it lands and where."""
+
+    def __init__(self):
+        from provisa.federation.backend import EngineBackend
+
+        self.engine = SimpleNamespace(
+            name="fake",
+            materialize_store=lambda: "postgresql://store/db",
+            native_store="postgresql",
+            file_native=False,
+        )
+        self.dialect = "trino"
+        self.calls = []
+        self._impl = EngineBackend.materialize_pending
+
+    def landing_target(self, *, store_schema, source_id, source_type, schema_name, table_name):
+        return store_schema, f"{source_id}__{schema_name}__{table_name}"
+
+    async def land_source_table(self, state, *, schema, table, columns, rows, **kw):
+        self.calls.append(
+            SimpleNamespace(schema=schema, table=table, columns=columns, rows=rows, **kw)
+        )
+        return f"{schema}.{table}"
+
+    async def materialize_pending(self, state, **kw):
+        return await self._impl(self, state, **kw)  # type: ignore[arg-type]
+
+
 @pytest.mark.asyncio
-async def test_run_prep_lands_each_prep_table():
+async def test_materialize_pending_lands_each_stale_source_table(monkeypatch):
+    """REQ-1661: the base backend lands every table of a stale MATERIALIZED source at the engine's
+    landing address through its store write face -- the event loop's own path."""
+    import provisa.federation.backend as backend_mod
+
+    monkeypatch.setattr(backend_mod, "_env_store_schema", lambda dsn: "mat")
+    monkeypatch.setattr(
+        "provisa.federation.plan.federate", lambda s, e, **kw: Strategy.MATERIALIZED
+    )
     src = _source("s1", change_signal="ttl")
-    tbl = _table("s1", watermark_column="updated_at")  # poll + watermark → append signal-wise
-    plan = Plan(prep=[PrepStep("s1", Strategy.MATERIALIZED)])
-    runtime = _FakeRuntime()
+    tbl = _table("s1", watermark_column="updated_at")
+    state = SimpleNamespace(config=SimpleNamespace(sources=[src], tables=[tbl]))
+    backend = _FakeBackend()
     loader = _FakeLoader({"events": [{"id": 1, "status": "new"}]})
 
-    landed = await run_prep(
-        plan,
-        sources_by_id={"s1": src},
-        tables_by_source={"s1": [tbl]},
-        runtime=runtime,
-        loader=loader,
-    )
+    landed = await backend.materialize_pending(state, loader=loader, is_stale=lambda sid: True)
     assert landed == [("s1", "events")]
     assert loader.loaded == [("s1", "events")]
-    assert len(runtime.calls) == 1
-    call = runtime.calls[0]
+    call = backend.calls[0]
+    assert (call.schema, call.table) == ("mat", "s1__public__events")
     assert call.rows == [{"id": 1, "status": "new"}]
     assert call.columns == [("id", "bigint"), ("status", "text")]
     assert call.pk_columns == ["id"]
     assert call.watermark_column == "updated_at"
     assert call.change_signal == "ttl"
-    assert call.table_name == "events"
 
 
 @pytest.mark.asyncio
-async def test_run_prep_empty_plan_is_noop():
-    runtime = _FakeRuntime()
-    landed = await run_prep(
-        Plan(prep=[]),
-        sources_by_id={},
-        tables_by_source={},
-        runtime=runtime,
-        loader=_FakeLoader({}),
+async def test_materialize_pending_is_a_noop_when_nothing_is_stale_or_named(monkeypatch):
+    monkeypatch.setattr(
+        "provisa.federation.plan.federate", lambda s, e, **kw: Strategy.MATERIALIZED
     )
-    assert landed == []
-    assert runtime.calls == []
-
-
-@pytest.mark.asyncio
-async def test_run_prep_multi_table_source_lands_all():
     src = _source("s1")
-    t1 = _table("s1")
-    t1.table_name = "a"
-    t2 = _table("s1")
-    t2.table_name = "b"
-    plan = Plan(prep=[PrepStep("s1", Strategy.MATERIALIZED)])
-    runtime = _FakeRuntime()
-    loader = _FakeLoader({"a": [{"id": 1}], "b": [{"id": 2}]})
-
-    landed = await run_prep(
-        plan,
-        sources_by_id={"s1": src},
-        tables_by_source={"s1": [t1, t2]},
-        runtime=runtime,
-        loader=loader,
+    state = SimpleNamespace(config=SimpleNamespace(sources=[src], tables=[_table("s1")]))
+    backend = _FakeBackend()
+    loader = _FakeLoader({})
+    assert await backend.materialize_pending(state, loader=loader, is_stale=lambda s: False) == []
+    assert (
+        await backend.materialize_pending(
+            state, loader=loader, is_stale=lambda s: True, source_ids={"other"}
+        )
+        == []
     )
-    assert landed == [("s1", "a"), ("s1", "b")]
-    assert {c.table_name for c in runtime.calls} == {"a", "b"}
+    assert backend.calls == [] and loader.loaded == []

@@ -251,55 +251,6 @@ class NativeEngineBackend(EngineBackend):
 
     # -- residency prep (REQ-825 stage-4b / REQ-932) ---------------------------
 
-    async def materialize_pending(
-        self,
-        state: Any,
-        *,
-        loader: Any,
-        is_stale: Any,
-        prefer_materialized_of: Any = None,
-        materialization_backend: str | None = None,
-        freshness_subject_of: Any = None,
-        now: float | None = None,
-    ) -> list[tuple[str, str]]:
-        """Land every MATERIALIZED source table that is stale, before execute (REQ-825/932).
-
-        Builds the residency plan over the configured sources (``build_execution_plan`` decides
-        which federate to MATERIALIZED and, via ``is_stale``, which need a refresh) and carries it
-        out through ``run_prep`` — fetching rows with the injected ``loader`` and landing them via
-        the runtime's store write face. The engine is only the reader; it never writes. Returns the
-        (source_id, table_name) pairs landed. A no-op when there is no config or nothing is stale."""
-        from provisa.federation.plan import build_execution_plan
-        from provisa.federation.residency import run_prep
-
-        config = getattr(state, "config", None)
-        if config is None:
-            return []
-        sources = list(config.sources)
-        sources_by_id = {s.id: s for s in sources}
-        tables_by_source: dict[str, list] = {}
-        for t in config.tables:
-            tables_by_source.setdefault(t.source_id, []).append(t)
-        plan = build_execution_plan(
-            sources,
-            self.engine,
-            is_stale,
-            prefer_materialized_of=prefer_materialized_of,
-            materialization_backend=materialization_backend,
-            freshness_subject_of=freshness_subject_of,
-            now=now,
-        )
-        if not plan.prep:
-            return []
-        runtime = self._runtime_for(state)
-        return await run_prep(
-            plan,
-            sources_by_id=sources_by_id,
-            tables_by_source=tables_by_source,
-            runtime=runtime,
-            loader=loader,
-        )
-
     async def reconcile_landed_tables(self, state: Any) -> list[tuple[str, str]]:
         """Reconcile the store's landing SCHEMA to the REGISTERED tables for every MATERIALIZED
         source, then attach the engine's read view — the schema-currency controller (REQ-846/932).
