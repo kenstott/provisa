@@ -312,6 +312,35 @@ class EngineBackend:
             shape=shape,
         )
 
+    async def analyze_landed_table(
+        self, state: Any, *, catalog: str, schema: str, table: str
+    ) -> None:  # REQ-280, REQ-1688
+        """Collect planner statistics on a table landed in the materialization store.
+
+        Base default: through the store's OWN connection, in the store's dialect — the engine's
+        attach is a read view and its ANALYZE is the engine's, not the store's (DuckDB implements
+        ANALYZE as VACUUM and refuses it on an attached Postgres table). A store dialect with no
+        statistics statement is skipped by name. ``catalog`` is the engine's attach name, which
+        the Trino backend uses because there the engine IS the analyzer.
+        """
+        del state, catalog
+        from provisa.federation import store_writer
+
+        dsn = self.engine.materialize_store()
+        async with store_writer.store_connection(dsn) as conn:
+            dialect = conn.capabilities.dialect
+            if dialect == "postgresql":
+                await conn.execute(f'ANALYZE "{schema}"."{table}"')
+            elif dialect in ("mysql", "mariadb"):
+                await conn.execute(f"ANALYZE TABLE `{schema}`.`{table}`")
+            else:
+                _log.info(
+                    "statistics for %s.%s skipped: store dialect %r collects none",
+                    schema,
+                    table,
+                    dialect,
+                )
+
     async def reconcile_mv_table(
         self,
         state: Any,
@@ -986,6 +1015,28 @@ class TrinoBackend(EngineBackend):
                 from provisa.core import catalog
 
                 catalog.analyze_source_tables(conn, source, tables, catalog_name=catalog_name)
+
+    async def analyze_landed_table(
+        self, state: Any, *, catalog: str, schema: str, table: str
+    ) -> None:  # REQ-280, REQ-1688
+        """On Trino the engine IS the analyzer of its catalogs: ANALYZE through the coordinator when
+        the catalog's connector collects statistics, else skip by name (REQ-636)."""
+        with self._provisioning_conn(state) as conn:
+            if conn is None:
+                return
+            from provisa.core import catalog as _catalog
+
+            if catalog not in _catalog.analyze_capable_catalogs(conn):
+                _log.info(
+                    "statistics for %s.%s.%s skipped: connector collects none",
+                    catalog,
+                    schema,
+                    table,
+                )
+                return
+            cur = conn.cursor()
+            cur.execute(f'ANALYZE {catalog}.{schema}."{table}"')
+            cur.fetchall()
 
     # -- connections -----------------------------------------------------------
 

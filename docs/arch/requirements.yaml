@@ -56325,3 +56325,38 @@
     Given a Hasura export with a Postgres source and a remote schema, previewed on the import tab
     When the administrator fills the source's host, port and password, picks the existing domain music for public, and converts again
     Then the preview shows typed columns, public lands in music, and the remote schema has its own domain row
+- id: REQ-1688
+  status: complete
+  since: 2026-09
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Query Planning Pipeline
+  priority: MUST
+  type: behavioral
+  description: >-
+    Planner statistics on a landed table are collected where the table lives. After an API or
+    remote-schema response is landed in the materialization store (REQ-280), the runtime's
+    `analyze_landed_table` dispatches by store: an embedded DuckDB store is a DuckDB table and
+    the engine's own ANALYZE is the store's; a server store (Postgres, MySQL) is analyzed through
+    the store's own connection in the store's dialect; a store dialect with no statistics
+    statement is skipped with an INFO line naming it; on Trino the coordinator analyzes its
+    catalog when the connector collects statistics (REQ-636). The engine's ANALYZE is never
+    issued against an attached server store: DuckDB implements ANALYZE as VACUUM and refuses it
+    on an attached table, which logged a warning with a traceback on every landing and collected
+    nothing. The step stays best-effort (REQ-275) and off the query's critical path.
+  code:
+  - provisa/federation/backend.py
+  - provisa/federation/native_backend.py
+  - provisa/federation/runtime.py
+  - provisa/api_source/engine_cache.py
+  - provisa/api/data/materialization.py
+  - provisa/api/rest/cypher_exec.py
+  tests:
+  - tests/unit/test_api_cache.py
+  use_case: >-
+    Every landing of a remote schema's table on the native engine with a Postgres store logged
+    "Not implemented Error: Vacuum is only implemented for DuckDB tables" and the landed table
+    never had statistics.
+  scenario: |
+    Given the native engine with a Postgres materialization store and a landed API cache table
+    When the table is landed
+    Then ANALYZE runs on the store through its own connection, and no VACUUM error is logged

@@ -408,7 +408,11 @@ def _mat_store_rows(
     """ALWAYS persist rows to the materialization store (the durable source of truth), then inline a
     small table as a VALUES CTE for this query — the hot cache is a rebuildable projection of the
     store, so an inlined small table survives a restart (re-promoted from the store, not re-fetched)."""
-    from provisa.api_source.engine_cache import create_and_insert, schedule_drop
+    from provisa.api_source.engine_cache import (
+        analyze_cache_table,
+        create_and_insert,
+        schedule_drop,
+    )
     from provisa.compiler.naming import apply_sql_name as _apply_sql_name
 
     # Column names must match the compiler's snake_case output.
@@ -417,6 +421,8 @@ def _mat_store_rows(
     _snake_rows = [{_name_map.get(k, k): v for k, v in r.items()} for r in rows]
     with engine.isolated_sync() as _c:
         create_and_insert(_c, _cache_loc, cache_tbl, _snake_rows, _snake_cols)
+    # REQ-1688: statistics where the table lives, off the query's critical path.
+    asyncio.create_task(analyze_cache_table(engine, _cache_loc, cache_tbl))
     asyncio.create_task(schedule_drop(engine, _cache_loc, cache_tbl, ttl, redirect_config))
     log.warning("[MAT] persisted %d rows → store %s", len(rows), cache_tbl)
 

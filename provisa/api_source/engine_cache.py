@@ -240,21 +240,8 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
         else:
             raise
 
-    # REQ-280: collect statistics on the freshly-materialized cache table so the engine cost
-    # optimizer can plan joins against it. ANALYZE support varies by connector, so a failure is
-    # logged (not raised) — matching analyze_source_tables (REQ-275).
-    try:
-        conn.execute(f'ANALYZE {loc.catalog}.{loc.schema}."{table_name}"')
-        conn.fetchall()
-    except Exception:
-        log.warning(
-            "[API CACHE] ANALYZE failed for %s.%s.%s",
-            loc.catalog,
-            loc.schema,
-            table_name,
-            exc_info=True,
-        )
-
+    # REQ-1688: statistics are collected by ``analyze_cache_table`` where the table lives — the
+    # caller awaits it after this insert; the engine's ANALYZE is not the store's.
     log.info(
         '[API CACHE] materialized %d rows → %s.%s."%s"',
         len(rows),
@@ -274,21 +261,20 @@ def _land_columns(columns: list) -> list[tuple[str, str]]:
     return out
 
 
-def _analyze_cache_table(engine, loc: CacheLocation, table_name: str) -> None:  # REQ-280
-    """Collect cost statistics on the landed cache table via the engine (a READ-side stats op, not a
-    data write — the engine analyzes its own attached view). Best-effort: ANALYZE support varies by
-    connector, so a failure is logged, not raised (matching analyze_source_tables, REQ-275)."""
+async def analyze_cache_table(engine, loc: CacheLocation, table_name: str) -> None:  # REQ-280
+    """Collect planner statistics on the landed cache table where it lives (REQ-1688): the engine
+    runtime dispatches to the store's own connection, or to the engine when the engine is the
+    store's analyzer. Best-effort by design (REQ-275): a query must not fail because statistics
+    could not be collected, so the reason is logged and the query proceeds."""
     try:
-        with engine.isolated_sync() as conn:
-            conn.execute(f'ANALYZE {loc.catalog}.{loc.schema}."{table_name}"')
-            conn.fetchall()
-    except Exception:
+        await engine.analyze_landed_table(catalog=loc.catalog, schema=loc.schema, table=table_name)
+    except Exception as exc:  # allow-blind-except: REQ-275 mandates best-effort statistics
         log.warning(
-            "[API CACHE] ANALYZE failed for %s.%s.%s",
+            "[API CACHE] statistics for %s.%s.%s not collected: %s",
             loc.catalog,
             loc.schema,
             table_name,
-            exc_info=True,
+            exc,
         )
 
 
@@ -313,7 +299,7 @@ async def land_api_cache(  # REQ-318, REQ-848, REQ-932, REQ-989
         columns=_land_columns(columns),
         rows=rows,
     )
-    _analyze_cache_table(engine, loc, table_name)
+    await analyze_cache_table(engine, loc, table_name)
     log.info(
         '[API CACHE] materialized %d rows → %s.%s."%s"',
         len(rows),

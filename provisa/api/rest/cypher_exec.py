@@ -372,6 +372,10 @@ async def _execute_with_gql_remote(
                 required_args=required_args or None,
             )
             await loop.run_in_executor(None, _check_or_create_cache, fetched_rows)
+            # REQ-1688: statistics where the table lives, off the query's critical path.
+            from provisa.api_source.engine_cache import analyze_cache_table
+
+            asyncio.create_task(analyze_cache_table(state.federation_engine, cache_loc, cache_tbl))
             asyncio.create_task(
                 schedule_drop(state.federation_engine, cache_loc, cache_tbl, info["cache_ttl"])
             )

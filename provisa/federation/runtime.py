@@ -348,6 +348,13 @@ class EngineRuntime:  # REQ-825, REQ-840
             shape=shape,
         )
 
+    async def analyze_landed_table(self, *, catalog: str, schema: str, table: str) -> None:
+        """Planner statistics on a landed table, collected where the table lives (REQ-1688) —
+        delegated to the backend."""
+        await self._backend.analyze_landed_table(
+            self._state, catalog=catalog, schema=schema, table=table
+        )
+
     async def reconcile_mv_table(
         self,
         *,

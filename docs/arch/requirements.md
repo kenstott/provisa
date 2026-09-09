@@ -17963,3 +17963,17 @@ The import tab lets the administrator supply what the export cannot carry. The p
 **Code:** `provisa-ui/src/components/admin/ImportTab.tsx`, `provisa-ui/src/api/importer.ts`, `provisa/api/admin/import_router.py`
 
 **Tests:** `provisa-ui/src/__tests__/ImportTab.test.tsx`
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-1688 · Query Planning Pipeline {#REQ-1688}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Planner statistics on a landed table are collected where the table lives. After an API or remote-schema response is landed in the materialization store ([REQ-280](#REQ-280)), the runtime's `analyze_landed_table` dispatches by store: an embedded DuckDB store is a DuckDB table and the engine's own ANALYZE is the store's; a server store (Postgres, MySQL) is analyzed through the store's own connection in the store's dialect; a store dialect with no statistics statement is skipped with an INFO line naming it; on Trino the coordinator analyzes its catalog when the connector collects statistics ([REQ-636](#REQ-636)). The engine's ANALYZE is never issued against an attached server store: DuckDB implements ANALYZE as VACUUM and refuses it on an attached table, which logged a warning with a traceback on every landing and collected nothing. The step stays best-effort ([REQ-275](#REQ-275)) and off the query's critical path.
+
+**Use case:** Every landing of a remote schema's table on the native engine with a Postgres store logged "Not implemented Error: Vacuum is only implemented for DuckDB tables" and the landed table never had statistics.
+
+**Code:** `provisa/federation/backend.py`, `provisa/federation/native_backend.py`, `provisa/federation/runtime.py`, `provisa/api_source/engine_cache.py`, `provisa/api/data/materialization.py`, `provisa/api/rest/cypher_exec.py`
+
+**Tests:** `tests/unit/test_api_cache.py`

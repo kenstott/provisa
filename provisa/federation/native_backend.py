@@ -297,6 +297,20 @@ class NativeEngineBackend(EngineBackend):
 
     # -- store write face --------------------------------------------------
 
+    async def analyze_landed_table(
+        self, state: Any, *, catalog: str, schema: str, table: str
+    ) -> None:  # REQ-280, REQ-1688
+        """An embedded DuckDB store is a DuckDB table: the engine's own ANALYZE is the store's (and
+        the single connection is the only writer). Every other store is analyzed through its own
+        connection (base), because DuckDB's ANALYZE on an attached table is a VACUUM it refuses."""
+        runtime = self._runtime_for(state)
+        if getattr(runtime, "_store_is_duckdb", lambda: False)():
+            with self.isolated_sync(state) as conn:
+                conn.execute(f'ANALYZE {catalog}.{schema}."{table}"')
+                conn.fetchall()
+            return
+        await super().analyze_landed_table(state, catalog=catalog, schema=schema, table=table)
+
     async def land_source_table(
         self,
         state: Any,
