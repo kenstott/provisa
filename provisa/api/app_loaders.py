@@ -742,6 +742,7 @@ async def _init_ingest_engines() -> None:
 async def _load_graphql_remote_sources_from_db() -> None:
     """Load persisted graphql_remote sources from DB into state.graphql_remote_sources."""
     from provisa.api.app import state
+    from provisa.core.secrets import resolve_secrets
 
     if state.tenant_db is None:
         log.warning("[GQL REMOTE] tenant_db is None — skipping DB load")
@@ -762,7 +763,9 @@ async def _load_graphql_remote_sources_from_db() -> None:
             ]
             for src in src_rows:
                 source_id = src["id"]
-                url = src["path"] or ""
+                # A config-declared path may be a secret reference (${env:...}); the loader posts
+                # to the resolved endpoint (REQ-1685).
+                url = resolve_secrets(src["path"] or "")
                 if source_id in getattr(state, "graphql_remote_sources", {}):
                     continue
                 tbl_rows = [

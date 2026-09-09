@@ -70,19 +70,19 @@ Flags:
 | Hasura concept | Provisa equivalent |
 | --------------- | ------------------- |
 | Tracked table | `tables[]` with `publish: true` |
-| Object relationship | `relationships[]` with `cardinality: many-to-one` |
+| Object relationship | `relationships[]` with `cardinality: many-to-one`. One declared by FK column alone (`foreign_key_constraint_on: artist_id`) names no target in the export; the converter resolves it through the inverse array relationship, and drops it with a `[relationships]` warning when there is none. (REQ-1680) |
 | Array relationship | `relationships[]` with `cardinality: one-to-many` |
-| Select permission | Role visibility + RLS filter |
+| Select permission | Role visibility + RLS filter. A session-variable term (`X-Hasura-User-Id`) becomes `current_setting('provisa.user_id')`, which the request binds from the identity's user id and claims at query time. (REQ-1682) |
 | Column permission | `visible_to` / `writable_by` |
 | Insert/update/delete permission | Mutation `writable_by` + RLS |
-| Remote schema | `graphql_remote` source registration |
+| Remote schema | `graphql_remote` source registration plus one landed table per Query root field the role SDLs expose; a column is visible to every role whose SDL exposes it, a non-null root argument becomes a `_nf_` native-filter column, nested fields are named in a warning. (REQ-1681) |
 | Computed field | `functions[]` entry with `kind: query` |
 
 ### Limitations
 
 - **Actions** convert automatically: HTTP-handler actions become `webhooks[]` mutations; actions with a non-HTTP (database) handler become a `functions[]` placeholder and emit a warning to review the handler
 - **Event triggers** convert to per-table `event_triggers` config (operations, webhook URL, retry policy) and emit a warning noting limited fidelity
-- **Remote schemas** convert to `graphql_remote` source entries
+- **Remote schemas** convert to `graphql_remote` source entries and are landed as tables from the role permission SDLs; a remote schema with no permissions lands nothing, since the export carries no other statement of its shape (REQ-1681)
 - **Custom SQL functions** require review — simple cases convert to `functions[]` entries, complex ones need manual work
 - **Cron triggers** convert to `scheduler` config entries, preserving the cron expression and enabled flag
 

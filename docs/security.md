@@ -173,6 +173,8 @@ rls_rules:
 
 The filter is ANDed into the query's WHERE clause. Works for both queries and mutations (UPDATE/DELETE). (REQ-035, REQ-041)
 
+A `current_setting('provisa.<name>')` term resolves against the session variables the request binds: `user_id` from the authenticated identity, `role` from the acting role, and every scalar claim of the token under its lower-cased name with a leading `x-hasura-` removed, so an imported Hasura filter on `X-Hasura-User-Id` reads `provisa.user_id`. A role's configured `session_vars` are the constants underneath; the request's bindings overlay them. In unsecured mode a `x-provisa-session-<name>` header binds `<name>`. A variable bound nowhere resolves to NULL and matches no rows. (REQ-1682)
+
 ## Column-Level Masking
 
 Masking is defined once per column — it is a property of the column, not the role. The `unmasked_to` field controls which roles bypass it. (REQ-249)

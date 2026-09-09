@@ -1051,11 +1051,11 @@ class TestConvertMetadata:
         admin = next(r for r in config.roles if r.id == "admin")
         assert "write" in admin.capabilities
 
-    def test_analyst_has_read_capability(self):
+    def test_analyst_has_query_development_capability(self):
         md = _build_full_metadata()
         config = convert_metadata(md)
         analyst = next(r for r in config.roles if r.id == "analyst")
-        assert "read" in analyst.capabilities
+        assert "query_development" in analyst.capabilities
 
     def test_rls_rules_generated_for_filtered_permissions(self):
         md = _build_full_metadata()
@@ -1098,8 +1098,9 @@ class TestConvertMetadata:
         md = _build_full_metadata()
         config = convert_metadata(md)
         customer_rel = next(r for r in config.relationships if "customer" in r.id)
-        assert "orders" in customer_rel.source_table_id
-        assert "customers" in customer_rel.target_table_id
+        # REQ-1680: references are the loader-resolvable virtual names (alias, else table name).
+        assert customer_rel.source_table_id == "allOrders"
+        assert customer_rel.target_table_id == "customers"
 
     def test_webhook_action_converted(self):
         md = _build_full_metadata()

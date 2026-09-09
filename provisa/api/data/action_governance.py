@@ -228,8 +228,9 @@ async def govern_action_rows(
     quoted = ", ".join(f'"{n}" AS "{n}"' for n in names)
     governed = apply_governance(f'SELECT {quoted} FROM "{rel}"', gov)
     sql = build_values_cte_sql(governed, rel, _Rows(names, rows))
-    role = state.roles.get(role_id) or {}
-    sql = _resolve_session_settings(sql, role.get("session_vars") or {})
+    from provisa.core.request_context import session_vars_for
+
+    sql = _resolve_session_settings(sql, session_vars_for(state.roles.get(role_id)))  # REQ-1682
 
     engine = state.federation_engine
     started = time.monotonic()

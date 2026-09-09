@@ -349,6 +349,7 @@ def parse_metadata_dir(
                 HasuraRemoteSchema(
                     name=name,
                     definition=raw_rs.get("definition", {}),
+                    permissions=list(raw_rs.get("permissions") or []),  # REQ-1681
                 )
             )
             # REQ-417: remote schemas are mapped to graphql_remote sources by the mapper.
@@ -407,6 +408,7 @@ def parse_metadata_document(
             HasuraRemoteSchema(
                 name=raw_rs.get("name", "unknown"),
                 definition=raw_rs.get("definition", {}),
+                permissions=list(raw_rs.get("permissions") or []),  # REQ-1681
             )
         )
     api_limits = doc.get("api_limits")

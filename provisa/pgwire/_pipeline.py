@@ -661,13 +661,17 @@ async def _govern_and_route_planned(
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     governed_semantic = apply_governance(normalized_sql, gov_ctx)
 
-    # REQ-1120: resolve RLS session predicates (current_setting('provisa.<var>')) to SQL
-    # literals for transports whose caller supplies session vars out-of-band (e.g. the
-    # airport Flight service, which has no SET LOCAL channel). A missing var becomes NULL,
-    # the documented deny-by-default (_resolve_session_settings). Only applied when the
-    # caller opts in by passing session_vars; None leaves native current_setting untouched.
-    if session_vars is not None:
-        governed_semantic = _resolve_session_settings(governed_semantic, session_vars)
+    # REQ-1120/REQ-1682: resolve RLS session predicates (current_setting('provisa.<var>')) to
+    # SQL literals on EVERY route. A caller that supplies session vars out-of-band (the airport
+    # Flight service) wins; otherwise the request's bindings over the role's constants. Nothing
+    # SETs the variable on a direct Postgres connection, so a native current_setting there raises
+    # "unrecognized configuration parameter"; the literal is the one mechanism every route shares.
+    # A missing var becomes NULL, the documented deny-by-default (_resolve_session_settings).
+    from provisa.core.request_context import session_vars_for
+
+    governed_semantic = _resolve_session_settings(
+        governed_semantic, session_vars if session_vars is not None else session_vars_for(role)
+    )
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     # Lower the ONE accepted reference model — the semantic domain.table the catalog
@@ -1299,6 +1303,13 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     governed_sql = apply_governance(sql, gov_ctx)
+    # REQ-1682: session-variable predicates resolve to the request's literals on every route (see
+    # the raw path above for why the direct Postgres route cannot keep native current_setting).
+    from provisa.core.request_context import session_vars_for
+
+    governed_sql = _resolve_session_settings(
+        governed_sql, session_vars_for(state.roles.get(role_id))
+    )
 
     # Post-governance optimization stage (may REMOVE sources): lower to catalog-physical, then
     # inline hot/API tables as VALUES CTEs, prune unreachable union branches, and rewrite cached
@@ -1396,7 +1407,9 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         # natively (SET LOCAL) but the federation engine has no such function.
         # Resolve it to the session's literal value here at planning so it works
         # regardless of the requesting query language.
-        _session_vars = (state.roles.get(role_id) or {}).get("session_vars", {})
+        from provisa.core.request_context import session_vars_for
+
+        _session_vars = session_vars_for(state.roles.get(role_id))  # REQ-1682
         physical_sql = _resolve_session_settings(physical_sql, _session_vars)
         # Bypass FTE for queries touching non-replayable connectors (kafka), whose
         # splits stall the fault-tolerant exchange (blocks forever, 0 drivers).

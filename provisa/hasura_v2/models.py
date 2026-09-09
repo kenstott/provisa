@@ -114,9 +114,12 @@ class HasuraInheritedRole:  # REQ-621
 
 
 @dataclass
-class HasuraRemoteSchema:  # REQ-417
+class HasuraRemoteSchema:  # REQ-417, REQ-1681
     name: str
     definition: dict[str, Any] = field(default_factory=dict)
+    # REQ-1681: the per-role SDL subsets Hasura governs the remote with — the only statement of
+    # the remote's shape the export carries, so the mapper lands tables from them.
+    permissions: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass

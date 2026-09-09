@@ -102,6 +102,32 @@ def require_current_org() -> str:
     return org_id
 
 
+# REQ-1682: the RLS session variables bound for the current request/task — what
+# ``current_setting('provisa.<var>')`` resolves to on engines that lack the function. Bound by the
+# HTTP chokepoint from the acting identity; unbound (empty) on background paths, where every such
+# predicate resolves to NULL, the documented deny-by-default.
+current_session_vars: ContextVar[dict[str, str]] = ContextVar("current_session_vars", default={})
+
+
+def set_session_vars(values: dict[str, str]) -> Token[dict[str, str]]:
+    return current_session_vars.set(dict(values))
+
+
+def reset_session_vars(token: Token[dict[str, str]]) -> None:
+    current_session_vars.reset(token)
+
+
+def session_vars_for(role: dict | None) -> dict[str, str]:
+    """The session variables a predicate resolves against: the role's configured constants
+    overlaid by what the request bound (REQ-1682). The request wins because it is the more
+    specific statement."""
+    out: dict[str, str] = {}
+    for k, v in ((role or {}).get("session_vars") or {}).items():
+        out[str(k)] = str(v)
+    out.update(current_session_vars.get())
+    return out
+
+
 # --- providers the API layer registers so lower layers never import it (REQ-1678) ---
 
 _active_engine_url_provider: Callable[[], str | None] | None = None

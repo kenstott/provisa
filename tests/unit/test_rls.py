@@ -289,3 +289,41 @@ class TestQualifyFilter:
         result = _qualify_filter("\"t0\".region = 'us'", "t0")
         # Should not add another t0 prefix
         assert result.count('"t0"') == 1
+
+
+class TestSessionTermCast:  # REQ-1686
+    def test_session_term_takes_the_columns_type(self):
+        from provisa.compiler.rls import _qualify_filter
+
+        sql = _qualify_filter("id = current_setting('provisa.user_id')", "t0", {"id": "integer"})
+        # sqlglot renders the function name upper-case; the pipeline's resolver is case-insensitive.
+        assert sql.lower() == '"t0"."id" = cast(current_setting(\'provisa.user_id\') as int)'
+
+    def test_reversed_operands_and_in_lists(self):
+        from provisa.compiler.rls import _qualify_filter
+
+        sql = _qualify_filter(
+            "current_setting('provisa.region') = region AND id IN (current_setting('provisa.a'), 3)",
+            "t0",
+            {"id": "integer", "region": "varchar"},
+        )
+        low = sql.lower()
+        assert 'cast(current_setting(\'provisa.region\') as varchar) = "t0"."region"' in low
+        assert "cast(current_setting('provisa.a') as int)" in low and ", 3)" in low
+
+    def test_untyped_column_leaves_the_term_alone(self):
+        from provisa.compiler.rls import _qualify_filter
+
+        sql = _qualify_filter("id = current_setting('provisa.user_id')", "t0", {"other": "integer"})
+        assert "CAST" not in sql
+
+    def test_governance_stage_applies_the_cast(self):
+        from provisa.compiler.stage2 import GovernanceContext, apply_governance
+
+        gov = GovernanceContext()
+        gov.table_map["albums"] = 7
+        gov.all_columns[7] = [("id", "integer"), ("title", "varchar")]
+        gov.visible_columns[7] = None
+        gov.rls_rules[7] = "id = current_setting('provisa.user_id')"
+        out = apply_governance('SELECT "title" FROM "albums"', gov)
+        assert "cast(current_setting('provisa.user_id') as int)" in out.lower()

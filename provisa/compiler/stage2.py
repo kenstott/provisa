@@ -367,7 +367,9 @@ def _govern_select(
             continue
         filter_expr = gov_ctx.rls_rules[tid]
         tbl_alias = _alias_for(tbl)
-        filter_expr = _qualify_filter(filter_expr, tbl_alias)
+        # REQ-1686: a session-variable term takes the compared column's type.
+        column_types = {name: dtype for name, dtype in gov_ctx.all_columns.get(tid, [])}
+        filter_expr = _qualify_filter(filter_expr, tbl_alias, column_types)
         rls_filters.append(f"({filter_expr})")
 
     if rls_filters:

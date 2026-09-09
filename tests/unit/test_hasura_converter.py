@@ -179,7 +179,7 @@ class TestHasuraConverter:
 
         # analyst should have read capability
         analyst = next(r for r in config.roles if r.id == "analyst")
-        assert "read" in analyst.capabilities
+        assert "query_development" in analyst.capabilities  # REQ-1684
 
         # admin (has insert_permissions) should have write capability
         admin = next(r for r in config.roles if r.id == "admin")

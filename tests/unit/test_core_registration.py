@@ -623,7 +623,7 @@ class TestReq417HasuraRemoteSchemaMigration:
             definition={"url": url, "headers": []},
         )
         source = _map_remote_schema(rs)
-        assert source.base_url == url
+        assert source.path == url
 
     def test_map_remote_schema_preserves_headers(self):
         # REQ-417
@@ -651,7 +651,7 @@ class TestReq417HasuraRemoteSchemaMigration:
             definition={"url_from_env": "REMOTE_URL", "headers": []},
         )
         source = _map_remote_schema(rs)
-        assert source.base_url is not None and "${env:REMOTE_URL}" in source.base_url
+        assert source.path is not None and "${env:REMOTE_URL}" in source.path
 
 
 # ---------------------------------------------------------------------------

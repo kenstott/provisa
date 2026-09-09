@@ -577,8 +577,9 @@ class TestMapper:
         config = convert_metadata(metadata)
         user_rls = [r for r in config.rls_rules if r.role_id == "user"]
         assert len(user_rls) >= 1
-        # Users table has filter for user role
-        users_rls = [r for r in user_rls if r.table_id is not None and "users" in r.table_id]
+        # Users table has filter for user role; the rule names the table by the virtual name the
+        # config loader resolves — its exposed alias here (REQ-1680).
+        users_rls = [r for r in user_rls if r.table_id == "allUsers"]
         assert len(users_rls) == 1
 
     def test_object_relationship_many_to_one(self):
@@ -785,3 +786,58 @@ class TestCLI:
 
         ret = main([str(tmp_path / "nonexistent")])
         assert ret == 1
+
+
+# --- REQ-1680: object relationships declared by FK column resolve through the inverse ---
+
+
+class TestFkTargetResolution:
+    def _md(self, with_inverse: bool):
+        from provisa.hasura_v2.models import (
+            HasuraMetadata,
+            HasuraRelationship,
+            HasuraSource,
+            HasuraTable,
+        )
+
+        albums = HasuraTable(name="albums", schema_name="public")
+        albums.object_relationships.append(
+            HasuraRelationship(
+                name="artist",
+                rel_type="object",
+                remote_table="",
+                remote_schema="public",
+                column_mapping={"artist_id": "id"},
+            )
+        )
+        artists = HasuraTable(name="artists", schema_name="public")
+        if with_inverse:
+            artists.array_relationships.append(
+                HasuraRelationship(
+                    name="albums",
+                    rel_type="array",
+                    remote_table="albums",
+                    remote_schema="public",
+                    column_mapping={"id": "artist_id"},
+                )
+            )
+        src = HasuraSource(name="default", tables=[albums, artists])
+        return HasuraMetadata(sources=[src])
+
+    def test_inverse_array_relationship_names_the_target(self):
+        from provisa.hasura_v2.mapper import convert_metadata
+
+        cfg = convert_metadata(self._md(with_inverse=True))
+        rel = next(r for r in cfg.relationships if r.id == "albums.artist")
+        assert rel.target_table_id == "artists"
+        assert (rel.source_column, rel.target_column) == ("artist_id", "id")
+
+    def test_no_inverse_drops_the_relationship_with_a_warning(self):
+        from provisa.hasura_v2.mapper import convert_metadata
+        from provisa.import_shared.warnings import WarningCollector
+
+        col = WarningCollector()
+        cfg = convert_metadata(self._md(with_inverse=False), collector=col)
+        assert not any(r.id == "albums.artist" for r in cfg.relationships)
+        assert not any(r.target_table_id.endswith(".") for r in cfg.relationships)
+        assert any(w.category == "relationships" and "artist_id" in w.message for w in col.warnings)

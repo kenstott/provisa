@@ -17853,3 +17853,99 @@ A tracked function's or webhook's response is governed like a table's rows. The 
 **Code:** `provisa/api/data/action_governance.py`, `provisa/api/data/action_exec.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/actions_router.py`, `provisa/compiler/rls.py`, `provisa/security/inheritance.py`, `provisa/core/repositories/rls.py`, `provisa/core/models.py`, `provisa/core/schema_org.py`, `provisa-ui/src/pages/SecurityPage.tsx`, `provisa-ui/src/pages/commands/ColumnGovernanceFields.tsx`, `provisa-ui/src/pages/commands/CommandFormFields.tsx`
 
 **Tests:** `tests/unit/test_action_governance.py`, `tests/integration/test_action_governance.py`, `provisa-ui/src/pages/__tests__/SecurityPage.actionRule.test.tsx`, `provisa-ui/src/__tests__/CommandFormFields.test.tsx`
+
+## 12. Migration & Compatibility (Hasura)
+
+### REQ-1680 · Hasura v2 Parity: Low-Complexity Features {#REQ-1680}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A Hasura v2 object relationship declared as `foreign_key_constraint_on: <column>` names no target table, because Hasura infers it from the database FK constraint. The importer resolves the target from the export itself: the inverse array relationship on the target table names both the table and the FK column (`foreign_key_constraint_on: {table, column}`), and a pair whose column matches binds the object relationship to that table. An object relationship with no inverse in the export is dropped with a `[relationships]` warning naming the table, the relationship and the column, never emitted with an empty target id that can bind to nothing. Every table reference the converter emits (an RLS rule's table_id, a relationship's source and target, an event trigger's table) is the table's virtual name — its exposed alias when the export sets one, else the table name — which is the reference the config loader resolves; the former `source.schema.table` composite bound to nothing at load.
+
+**Use case:** On Hasura's own metadatautil sample (7 Chinook tables) six of twelve relationships imported with target `default.public.` and could never join.
+
+**Code:** `provisa/hasura_v2/mapper.py`
+
+**Tests:** `tests/unit/test_hasura_v2.py`
+
+### REQ-1681 · Hasura v2 Parity: Low-Complexity Features {#REQ-1681}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A Hasura v2 remote schema is landed, not proxied. The importer maps it to a graphql_remote source ([REQ-417](#REQ-417)) AND registers one table per Query root field found in the remote schema's role permissions SDL: the table is the root field, its columns are the returned object type's scalar and enum fields typed by GraphQL scalar (Int -> integer, Float -> double, String/ID -> varchar, Boolean -> boolean, enum -> varchar), a column's visible_to is every role whose SDL exposes that field, and each non-null root-field argument becomes a `_nf_<arg>` native-filter column (query_param) so the argument is passed through at query time. Nested object and list fields are not landed and are named in one `[remote_schemas]` warning per table. A remote schema with no role permissions yields no tables and a warning that says so, since without introspection the importer cannot know the schema. The tables take the domain the domain map assigns to the remote schema's name, else the import default.
+
+**Use case:** A remote schema mapped to a source with no tables is unqueryable after import, and the per-role SDL Hasura used for permissions was dropped without a warning. Landing the root fields as tables puts the remote data on the replica path, where Provisa's RLS, masking and visibility apply; Hasura offered only SDL subsetting.
+
+**Code:** `provisa/hasura_v2/remote_schema.py`, `provisa/hasura_v2/mapper.py`, `provisa/hasura_v2/parser.py`, `provisa/hasura_v2/models.py`
+
+**Tests:** `tests/unit/test_hasura_remote_schema.py`
+
+## 1. Access Governance & Security
+
+### REQ-1682 · Security {#REQ-1682}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+RLS session variables are bound per request from the acting identity, not read off the role definition. The HTTP chokepoint binds `current_session_vars` (core.request_context) for the request: `user_id` from the identity, `role` from the acting role, and every scalar claim of the identity's raw claims under its lower-cased name with any `x-hasura-` prefix stripped (so an imported Hasura predicate `X-Hasura-User-Id` reads `provisa.user_id`); in unsecured mode a `x-provisa-session-<name>` header binds `<name>`. Every place that resolves `current_setting('provisa.<var>')` — the SQL pipeline, the data endpoint's approval request, action-response governance — reads `session_vars_for(role)`, which is the role's configured constants overlaid by the request's bindings. A variable bound nowhere stays NULL, the documented deny-by-default.
+
+**Use case:** Nothing populated `session_vars`, so every session-variable RLS predicate resolved to NULL on the federation engine and matched no rows for any user. Every Hasura permission filter is written against session variables, so an imported model could not be validated end to end.
+
+**Code:** `provisa/core/request_context.py`, `provisa/auth/middleware.py`, `provisa/pgwire/_pipeline.py`, `provisa/api/data/endpoint.py`, `provisa/api/data/action_governance.py`
+
+**Tests:** `tests/unit/test_request_session_vars.py`, `tests/integration/test_hasura_v2_live_import.py`
+
+## 12. Migration & Compatibility (Hasura)
+
+### REQ-1684 · Hasura v2 Parity: Low-Complexity Features {#REQ-1684}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Imported Hasura roles carry the Provisa rights their permissions imply, in Provisa's own vocabulary. A role with any select permission (or an action permission, or membership in an inherited role) holds `query_development`, the right the data surfaces gate reads on; a role with an insert, update or delete permission also holds `write` ([REQ-868](#REQ-868)). The former `read` pseudo-capability, which no gate reads, is not emitted. Hasura's admin holds every permission implicitly and is Provisa's `org_admin`, whose grants are literal lists, so `org_admin` is named in `visible_to` and `writable_by` of every imported column — a tracked table's, a landed remote schema's, and a column-less table's columns typed at preview ([REQ-1683](#REQ-1683)), which are visible to org_admin alone.
+
+**Use case:** An imported `user` role was refused by the data GraphQL endpoint ("lacks required capability: query_development") and org_admin's schema had no columns of the imported tables, because Hasura's implicit admin had no counterpart in the literal grant lists.
+
+**Code:** `provisa/hasura_v2/mapper.py`, `provisa/hasura_v2/remote_schema.py`, `provisa/api/admin/import_typing.py`
+
+**Tests:** `tests/unit/test_hasura_v2.py`, `tests/integration/test_hasura_v2_live_import.py`
+
+## 4. Source Connectors
+
+### REQ-1683 · SPARQL {#REQ-1683}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+SPARQL is a persisted, engine-independent query-API source like Neo4j. A `sparql` source's `host` is its endpoint URL; each table under it carries `query_template` (a SELECT whose variables are the columns, every binding `text`); `query_template` is forbidden under other source types. Config load, the registerTable/updateTable mutations and the admin REST router all persist the same `api_sources` (type `sparql`) and `api_endpoints` rows (form-encoded POST to the endpoint path, `sparql_bindings` normalizer) through the shared `provisa/api_source/persist.py`; the REST router probes the endpoint URL itself (it had probed the bare base URL, dropping the dataset path). Register Table on a sparql source shows a table name and a SPARQL editor, previews through the `sparqlPreview` GraphQL query (`QueryPreviewType`, shared with `neo4jPreview`), and submits `queryTemplate`; the native engine lands the table through the openapi fetch chain.
+
+**Use case:** SPARQL registration lived only in process-lifetime dicts behind a REST router that probed the wrong URL; no config path, no UI path, nothing survived a restart.
+
+**Code:** `provisa/sparql/persist.py`, `provisa/api_source/persist.py`, `provisa/api/admin/_query_api_registration.py`, `provisa/api/admin/sparql_router.py`, `provisa/core/config_loader.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/hooks/useQueryPreview.ts`
+
+**Tests:** `tests/unit/test_sparql_persist.py`, `tests/integration/test_sparql_config_persist.py`, `provisa-ui/e2e/source-to-query.spec.ts`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1685 · Schema Registration {#REQ-1685}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A graphql_remote source registered after boot — by an applied import ([REQ-1483](#REQ-1483)) or the Sources page — is landable on its first query. The schema rebuild reloads the graphql_remote registrations from the control plane before it builds tables, so the residency loader knows the source's endpoint and tables the moment its rows are first read; the reload skips ids already registered, so it is idempotent across rebuilds. The registered endpoint may be a secret reference (`${env:...}`, the shape the demo config declares) and is resolved when the registration is loaded.
+
+**Use case:** The remote schema landed by a Hasura import was queryable only after a process restart: the rebuild an apply triggers never reloaded the registrations, so the first query reached the engine with no loader for the source.
+
+**Code:** `provisa/api/app.py`, `provisa/api/app_loaders.py`
+
+**Tests:** `tests/integration/test_hasura_v2_live_import.py`
+
+## 1. Access Governance & Security
+
+### REQ-1686 · Security {#REQ-1686}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A session-variable term in an RLS predicate takes the type of the column it is compared with. The governance stage casts every `current_setting('provisa.<var>')` compared with a column of known type (all_columns) to that column's IR type, on the AST, for every comparison operator and for IN lists; a term compared with an untyped column or used outside a comparison is left as it is. Hasura casts session variables to the column type; without it `id = current_setting(...)` on an integer column fails on Postgres with "operator does not exist: integer = text", since a session variable is text on every route.
+
+**Use case:** Every imported Hasura filter on X-Hasura-User-Id compares an integer key with a session variable; the first live query failed with the Postgres type error.
+
+**Code:** `provisa/compiler/rls.py`, `provisa/compiler/stage2.py`
+
+**Tests:** `tests/unit/test_rls.py`, `tests/integration/test_hasura_v2_live_import.py`

@@ -184,6 +184,39 @@ def _assignments_to_claims(assignments: list[RoleAssignment]) -> list[str]:
 # completion to the client for unbounded StreamingResponse bodies (SSE subscriptions, REQ-219) even
 # after the inner generator has fully finished — the connection hangs open. A pure ASGI middleware
 # calls the inner app's `send` directly, so no such relay exists.
+_SESSION_HEADER_PREFIX = "x-provisa-session-"
+
+
+def request_session_vars(identity, role_id: str | None, headers) -> dict[str, str]:  # REQ-1682
+    """The session variables a request binds: ``user_id`` and ``role`` from the acting identity,
+    every scalar raw claim under its lower-cased name with a leading ``x-hasura-`` stripped (an
+    imported Hasura filter on ``X-Hasura-User-Id`` reads ``provisa.user_id``), and — because an
+    unsecured deployment has no claims — any ``x-provisa-session-<name>`` header as ``<name>``."""
+    out: dict[str, str] = {}
+
+    def _name(key: str) -> str:
+        name = key.lower()
+        if name.startswith("x-hasura-"):
+            name = name[len("x-hasura-") :]
+        return name.replace("-", "_")
+
+    for key, val in (getattr(identity, "raw_claims", None) or {}).items():
+        if isinstance(val, bool):
+            out[_name(str(key))] = "true" if val else "false"
+        elif isinstance(val, (str, int, float)):
+            out[_name(str(key))] = str(val)
+    for key, val in headers.items():
+        lk = key.lower()
+        if lk.startswith(_SESSION_HEADER_PREFIX):
+            out[lk[len(_SESSION_HEADER_PREFIX) :].replace("-", "_")] = val
+    user_id = getattr(identity, "user_id", None)
+    if user_id and user_id != "anonymous":
+        out["user_id"] = str(user_id)
+    if role_id:
+        out["role"] = str(role_id)
+    return out
+
+
 class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
     """Extract and validate Bearer tokens, resolve identity to role."""
 
@@ -345,8 +378,17 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         if identity is None:
             await self.app(scope, receive, send)
             return
-        with audit_identity_scope(identity.user_id, "http"):
-            await self.app(scope, receive, send)
+        # REQ-1682: the RLS session variables this request's predicates resolve against.
+        from provisa.core.request_context import reset_session_vars, set_session_vars
+
+        sv_token = set_session_vars(
+            request_session_vars(identity, getattr(request.state, "role", None), request.headers)
+        )
+        try:
+            with audit_identity_scope(identity.user_id, "http"):
+                await self.app(scope, receive, send)
+        finally:
+            reset_session_vars(sv_token)
 
     async def _process(self, request: Request):  # REQ-486
         if request.url.path in _SKIP_PATHS or request.url.path.startswith("/public/invite-info/"):

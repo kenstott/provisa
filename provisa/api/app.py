@@ -1524,6 +1524,11 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     # server-lifetime HNSW index is stale; next search_catalog rebuilds it from the new catalog.
     state.mcp_catalog_index = None
 
+    # REQ-1685: a graphql_remote source registered since boot (an applied import, the Sources
+    # page) must be known to the landing loader before its tables are queryable; the loader skips
+    # ids already registered, so this is idempotent across rebuilds.
+    await _load_graphql_remote_sources_from_db()
+
     async with state.tenant_db.acquire() as conn:
         _pg = cast("Connection", conn)
         tables = await _fetch_tables(_pg)

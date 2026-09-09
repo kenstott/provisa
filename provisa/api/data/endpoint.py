@@ -496,14 +496,24 @@ async def _prepare_compiled(
         )
 
     compiled.sql = apply_governance(semantic_sql_for_validation, gov_ctx)
+    # REQ-1682: session-variable predicates resolve to the request's literals on every route —
+    # nothing SETs them on a direct Postgres connection, so a native current_setting would raise.
+    from provisa.core.request_context import session_vars_for as _session_vars_for
+    from provisa.pgwire._pipeline import _resolve_session_settings
+
+    compiled.sql = _resolve_session_settings(compiled.sql, _session_vars_for(role))
     if compiled.nodes_sql is not None:
-        compiled.nodes_sql = apply_governance(make_semantic_sql(compiled.nodes_sql, ctx), gov_ctx)
+        compiled.nodes_sql = _resolve_session_settings(
+            apply_governance(make_semantic_sql(compiled.nodes_sql, ctx), gov_ctx),
+            _session_vars_for(role),
+        )
 
     # ABAC approval hook (Phase AE, REQ-203) — evaluated AFTER RLS injection and
     # BEFORE execution. May deny the operation or return an additional filter that is
     # ANDed into the governed WHERE clause.
     if getattr(state, "approval_hook", None) is not None:
         from provisa.auth.approval_hook import ApprovalRequest, should_check
+        from provisa.core.request_context import session_vars_for
         from provisa.compiler.rls import _inject_where
 
         # Resolve the root table by its ctx.tables key. canonical_field is the pre-alias schema
@@ -524,7 +534,7 @@ async def _prepare_compiled(
                 tables=sorted(str(t) for t in table_ids),
                 columns=[c.column for c in compiled.columns],
                 operation="query",
-                session_vars=dict((role or {}).get("session_vars", {})),
+                session_vars=session_vars_for(role),  # REQ-1682
             )
             resp = await state.approval_hook.evaluate(req)
             if not resp.approved:

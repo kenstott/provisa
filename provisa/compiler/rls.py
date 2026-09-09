@@ -171,9 +171,53 @@ def _qualified_predicate(filter_expr: str, alias: str | None) -> exp.Expression:
     return pred  # pyright: ignore[reportReturnType]  # sqlglot stub types parse_one as Expr
 
 
-def _qualify_filter(filter_expr: str, alias: str) -> str:
-    """Qualify bare columns in ``filter_expr`` with ``alias`` and return the SQL text."""
-    return _qualified_predicate(filter_expr, alias).sql(dialect="postgres")
+def _qualify_filter(
+    filter_expr: str, alias: str, column_types: dict[str, str] | None = None
+) -> str:
+    """Qualify bare columns in ``filter_expr`` with ``alias`` and return the SQL text.
+
+    ``column_types`` (column name → IR type) casts every session-variable term compared with a
+    typed column to that column's type (REQ-1686).
+    """
+    pred = _qualified_predicate(filter_expr, alias)
+    if column_types:
+        cast_session_terms(pred, column_types)
+    return pred.sql(dialect="postgres")
+
+
+def _is_session_term(node: exp.Expression) -> bool:
+    return isinstance(node, exp.Anonymous) and node.name.lower() == "current_setting"
+
+
+def cast_session_terms(pred: exp.Expression, column_types: dict[str, str]) -> None:  # REQ-1686
+    """Cast ``current_setting('provisa.<var>')`` to the type of the column it is compared with.
+
+    A session variable is text (Postgres ``current_setting`` returns text; the pipeline's literal
+    substitution quotes it), so ``id = current_setting(...)`` on an integer column fails with
+    "operator does not exist: integer = text". Hasura casts a session variable to the column's
+    type; so does this, on the AST, for every comparison whose other side is a column with a
+    known type. A variable compared with an untyped column, or used outside a comparison, is left
+    as it is. Mutates ``pred`` in place.
+    """
+    for node in list(pred.find_all(exp.Binary)):
+        left, right = node.this, node.expression
+        for col, term in ((left, right), (right, left)):
+            if not isinstance(col, exp.Column) or not _is_session_term(term):
+                continue
+            col_type = column_types.get(col.name)
+            if not col_type:
+                continue
+            term.replace(exp.Cast(this=term.copy(), to=exp.DataType.build(col_type)))
+    for node in list(pred.find_all(exp.In)):
+        col = node.this
+        if not isinstance(col, exp.Column):
+            continue
+        col_type = column_types.get(col.name)
+        if not col_type:
+            continue
+        for term in list(node.expressions):
+            if _is_session_term(term):
+                term.replace(exp.Cast(this=term.copy(), to=exp.DataType.build(col_type)))
 
 
 def _inject_where(sql: str, rls_clause: str) -> str:

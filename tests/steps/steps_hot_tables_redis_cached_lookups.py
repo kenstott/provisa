@@ -19,9 +19,9 @@ from provisa.cache.hot_tables import (
     HOT_PREFIX,
     HotTableEntry,
     HotTableManager,
-    build_values_cte_sql,
     detect_hot_tables,
 )
+from provisa.cache.values_cte import build_values_cte_sql
 
 scenarios("../features/REQ-230.feature")
 scenarios("../features/REQ-231.feature")

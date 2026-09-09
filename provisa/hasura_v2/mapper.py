@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from provisa.core import domain_policy
+from provisa.security.rights import ORG_ADMIN_ROLE, Capability
 from provisa.core.models import (
     AuthConfig,
     Cardinality,
@@ -149,10 +150,18 @@ def _map_remote_schema(rs: HasuraRemoteSchema) -> Source:  # REQ-417
         mapping["forward_client_headers"] = True
     if d.get("timeout_seconds") is not None:
         mapping["timeout_seconds"] = d["timeout_seconds"]
-    return Source(id=rs.name, type=SourceType.graphql_remote, base_url=url, mapping=mapping)
+    # The runtime reads a graphql_remote source's endpoint off ``path`` (app_loaders
+    # _load_graphql_remote_sources_from_db), the same field the demo config declares (REQ-1681).
+    return Source(id=rs.name, type=SourceType.graphql_remote, path=url, mapping=mapping)
 
 
-def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ-040
+# REQ-1684: a Hasura role with any select permission may query, which in Provisa is the
+# query_development right; one with an insert/update/delete permission may also write. Hasura's
+# implicit admin is Provisa's org_admin, which is why every imported column names it.
+_READ_CAPS = [Capability.QUERY_DEVELOPMENT.value]
+
+
+def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ-040, REQ-1684
     """Collect all roles mentioned across permissions."""
     roles: dict[str, Role] = {}
 
@@ -168,7 +177,7 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
                     if p.role not in roles:
                         roles[p.role] = Role(
                             id=p.role,
-                            capabilities=["read"],
+                            capabilities=list(_READ_CAPS),
                             domain_access=["*"],
                         )
 
@@ -178,7 +187,7 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
             if role_id and role_id not in roles:
                 roles[role_id] = Role(
                     id=role_id,
-                    capabilities=["read"],
+                    capabilities=list(_READ_CAPS),
                     domain_access=["*"],
                 )
 
@@ -187,7 +196,7 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
         if ir.role_name not in roles:
             roles[ir.role_name] = Role(
                 id=ir.role_name,
-                capabilities=["read"],
+                capabilities=list(_READ_CAPS),
                 domain_access=["*"],
             )
         # Set parent to first role in set (simplified mapping)
@@ -198,7 +207,7 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
                 if child_role not in roles:
                     roles[child_role] = Role(
                         id=child_role,
-                        capabilities=["read"],
+                        capabilities=list(_READ_CAPS),
                         domain_access=["*"],
                     )
 
@@ -262,19 +271,54 @@ def _role_api_limits(api_limits: dict, role_id: str) -> RoleRateLimit | None:
     )
 
 
-def _table_id(source_name: str, schema: str, table_name: str) -> str:
-    return f"{source_name}.{schema}.{table_name}"
+def _virtual_name(ht: HasuraTable) -> str:
+    """The name the config loader resolves a table reference by (REQ-1680): the exposed alias when
+    the export sets one (custom_root_fields.select / select_by_pk / custom_name), else the table
+    name — exactly what ``Table.alias``/``table_name`` carry, so an RLS rule, relationship or event
+    trigger emitted here binds at load."""
+    return (
+        ht.custom_root_fields.get("select")
+        or ht.custom_root_fields.get("select_by_pk")
+        or ht.custom_name
+        or ht.name
+    )
+
+
+def _virtual_names(hs: HasuraSource) -> dict[tuple[str, str], str]:
+    return {(ht.schema_name, ht.name): _virtual_name(ht) for ht in hs.tables}
+
+
+def _table_id(virtual: dict[tuple[str, str], str] | None, schema: str, table_name: str) -> str:
+    """A table reference for the config: the tracked table's virtual name; for a table the export
+    does not track, its bare name, which the loader refuses loudly if it is not registered."""
+    return (virtual or {}).get((schema, table_name), table_name)
+
+
+def _fk_targets(hs: HasuraSource) -> dict[tuple[str, str, str], tuple[str, str]]:
+    """REQ-1680: (schema, table, fk_column) → (target_schema, target_table), read off every array
+    relationship in the source. An array relationship names the table that holds the FK column
+    and the column, which is exactly what an object relationship declared by column omits."""
+    out: dict[tuple[str, str, str], tuple[str, str]] = {}
+    for ht in hs.tables:
+        for rel in ht.array_relationships:
+            if not rel.remote_table or not rel.column_mapping:
+                continue
+            fk_col = next(iter(rel.column_mapping.values()))
+            out[(rel.remote_schema, rel.remote_table, fk_col)] = (ht.schema_name, ht.name)
+    return out
 
 
 def _map_table(
     ht: HasuraTable,
     source_name: str,
     collector: WarningCollector,
+    fk_targets: dict[tuple[str, str, str], tuple[str, str]] | None = None,
+    virtual: dict[tuple[str, str], str] | None = None,
 ) -> tuple[
     Table, list[RLSRule], list[Relationship], list[Function]
 ]:  # REQ-041, REQ-040, REQ-019, REQ-155, REQ-205
     """Map a Hasura table to Provisa Table + side-effects."""
-    tid = _table_id(source_name, ht.schema_name, ht.name)
+    tid = _table_id(virtual, ht.schema_name, ht.name)
 
     # Build columns from select permissions. REQ-1426: Hasura permission metadata names columns but
     # carries no types, and this converter runs offline against files — it cannot reach the database.
@@ -332,6 +376,12 @@ def _map_table(
         if orig_name in all_columns:
             all_columns[orig_name].alias = alias
 
+    # REQ-1684: Hasura's admin holds every permission implicitly; Provisa's org_admin is that
+    # role, and a column's grant lists are literal, so it is named on every imported column.
+    for col in all_columns.values():
+        col.visible_to = sorted(set(col.visible_to) | {ORG_ADMIN_ROLE})
+        col.writable_by = sorted(set(col.writable_by) | {ORG_ADMIN_ROLE})
+
     columns = list(all_columns.values())
 
     # Table alias from custom_root_fields
@@ -371,7 +421,21 @@ def _map_table(
             continue
         src_col = next(iter(rel.column_mapping.keys()))
         tgt_col = next(iter(rel.column_mapping.values()))
-        target_tid = _table_id(source_name, rel.remote_schema, rel.remote_table)
+        remote_schema, remote_table = rel.remote_schema, rel.remote_table
+        if not remote_table:
+            # REQ-1680: declared by FK column only; Hasura infers the target from the constraint.
+            found = (fk_targets or {}).get((ht.schema_name, ht.name, src_col))
+            if found is None:
+                collector.warn(
+                    "relationships",
+                    f"Object relationship {rel.name!r} on {ht.schema_name}.{ht.name} is declared "
+                    f"by FK column {src_col!r} and the export names no target table (no inverse "
+                    "array relationship); dropped — declare it with manual_configuration or add "
+                    "the relationship after import",
+                )
+                continue
+            remote_schema, remote_table = found
+        target_tid = _table_id(virtual, remote_schema, remote_table)
         relationships.append(
             Relationship(
                 id=f"{tid}.{rel.name}",
@@ -387,7 +451,7 @@ def _map_table(
             continue
         src_col = next(iter(rel.column_mapping.keys()))
         tgt_col = next(iter(rel.column_mapping.values()))
-        target_tid = _table_id(source_name, rel.remote_schema, rel.remote_table)
+        target_tid = _table_id(virtual, rel.remote_schema, rel.remote_table)
         relationships.append(
             Relationship(
                 id=f"{tid}.{rel.name}",
@@ -510,27 +574,39 @@ def convert_metadata(
                     object.__setattr__(src, k, v)
         sources.append(src)
 
-    # Remote schemas -> graphql_remote sources (REQ-417)
+    # Remote schemas -> graphql_remote sources (REQ-417), landed as tables (REQ-1681)
+    from provisa.hasura_v2.remote_schema import land_remote_schema
+
+    remote_tables: list[Table] = []
     for rs in metadata.remote_schemas:
         sources.append(_map_remote_schema(rs))
+        remote_tables.extend(
+            land_remote_schema(
+                rs, domain_map.get(rs.name) or domain_policy.import_default(), collector
+            )
+        )
 
     # Roles
     roles_dict = _collect_roles(metadata)
     roles = sorted(roles_dict.values(), key=lambda r: r.id)
 
     # Tables, RLS, Relationships, Functions
-    tables: list[Table] = []
+    tables: list[Table] = list(remote_tables)
     all_rls: list[RLSRule] = []
     all_rels: list[Relationship] = []
     all_functions: list[Function] = []
     all_event_triggers: list[EventTrigger] = []
 
     for hs in metadata.sources:
+        fk_targets = _fk_targets(hs)  # REQ-1680
+        virtual = _virtual_names(hs)
         for ht in hs.tables:
             table, rls_rules, rels, fns = _map_table(
                 ht,
                 hs.name,
                 collector,
+                fk_targets,
+                virtual,
             )
             # Apply domain mapping
             dm_key = f"{ht.schema_name}"
@@ -545,7 +621,7 @@ def convert_metadata(
             for et in ht.event_triggers:
                 all_event_triggers.append(
                     EventTrigger(
-                        table_id=_table_id(hs.name, ht.schema_name, ht.name),
+                        table_id=_table_id(virtual, ht.schema_name, ht.name),
                         operations=et.operations,
                         webhook_url=et.webhook,
                         retry_max=et.retry_conf.get("num_retries", 3),
