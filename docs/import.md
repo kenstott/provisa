@@ -78,6 +78,14 @@ Flags:
 | Remote schema | `graphql_remote` source registration plus one landed table per Query root field the role SDLs expose; a column is visible to every role whose SDL exposes it, a non-null root argument becomes a `_nf_` native-filter column, nested fields are named in a warning. (REQ-1681) |
 | Computed field | `functions[]` entry with `kind: query` |
 
+### Connections and domains on the import tab
+
+The export names its databases by environment variable, so after the first conversion the tab lists each SQL source with the connection the conversion guessed. Fill in the host, port, database, username and password, and convert again; only the fields you changed travel, as source overrides. The domain rows cover every schema, subgraph and remote schema the upload carries; each is a picker over the organization's existing domains that also accepts a typed name, marked "new domain" when it matches none. Apply merges into what the organization already has unless the replace checkbox is on. (REQ-1687)
+
+### Types come from the source at preview
+
+A Hasura export names columns without types, and a tracked table with no permission names no columns. The preview runs with the source connections you supply, so it reads each reachable SQL source's `information_schema.columns`: every untyped column gets the source's type mapped to the IR vocabulary, and a table with no columns takes every column the source has, visible to `org_admin` alone, since Hasura exposed it to no other role. A source the preview cannot reach is reported as a `[sources]` warning and its columns stay untyped for you to finish before apply. (REQ-1683, REQ-1684)
+
 ### Limitations
 
 - **Actions** convert automatically: HTTP-handler actions become `webhooks[]` mutations; actions with a non-HTTP (database) handler become a `functions[]` placeholder and emit a warning to review the handler
