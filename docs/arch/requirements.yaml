@@ -56471,3 +56471,33 @@
     Given a Hasura export tracking public.albums with a select permission on title and artist_id, and a source override that reaches the database
     When the administrator previews the import
     Then the preview's config declares title text and artist_id integer, and a tracked table with no permissions carries every column of the source table visible to org_admin alone
+- id: REQ-1692
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Replica Strategy
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A `files` source is proven end to end through the UI on the DuckDB engine (its native
+    `read_csv_auto` scanner, REQ-229) — Sources form, Register Table, and a SQL query returning the
+    fixture CSV's real rows — and its landing path on an engine with no files connector of its own
+    (REQ-954) is proven at the integration level against the real `pgwire-file` bundle:
+    `ConnectorReplica.load()` starts the bundled Calcite pgwire server against a tmp CSV directory,
+    lands rows over a real asyncpg connection, and reuses the same server across repeated loads of
+    the same source.
+  code:
+  - provisa/federation/connector_duckdb.py
+  - provisa/federation/pgwire_replica.py
+  - provisa/api/admin/introspect.py
+  tests:
+  - provisa-ui/e2e/source-to-query.spec.ts
+  - tests/integration/test_files_pgwire_replica.py
+  use_case: >-
+    DuckDBFilesConnector (native CSV scan) and pgwire_replica's landing path (REQ-954) both existed
+    with no test proving a `files` source actually works end to end through either — the same gap
+    REQ-1671 closed for the other seven source types.
+  scenario: |
+    Given a files source whose path is an absolute directory of CSVs
+    When the operator registers the source and one CSV table through the UI
+    Then a SELECT on the registered table returns the CSV's rows, and on an engine with no files connector ConnectorReplica lands the same rows through the connector's bundled pgwire server

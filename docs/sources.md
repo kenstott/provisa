@@ -161,6 +161,8 @@ Private buckets need credentials (AWS region and keys from the environment). For
   path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
 ```
 
+On the DuckDB engine, `files` is read natively — a `read_csv_auto` scanner view per `<table>.csv` under the resolved directory (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. On an engine with no `files` connector of its own, rows land through the same connector-bundled Calcite pgwire server (`pgwire-file`) that sharepoint/splunk use (REQ-954) — see [Enterprise SaaS Connectors](#enterprise-saas-connectors) below. End-to-end UI coverage (Sources form → Register Table → SQL query) and the pgwire landing path are proven in REQ-1692.
+
 ### Observability & Other
 
 `prometheus` has a Trino connector (properties built from the type's mapping DSL). `google_sheets` is a registered source type with no Trino connector and materializes through the API cache pipeline. [tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` lines 87–88]

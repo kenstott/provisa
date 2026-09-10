@@ -19,6 +19,9 @@
 // and proves the pipeline; nothing before this drove the forms. The Neo4j form had no path to a
 // table at all until REQ-1670, and no test could have said so.
 
+import path from "path";
+import { fileURLToPath } from "url";
+
 import { test, expect } from "./coverage";
 import {
   E2E_CASSANDRA_PORT,
@@ -37,6 +40,8 @@ import {
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
 } from "./source-to-query-helpers";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 test.describe("source to query through the UI (REQ-1671)", () => {
   test("neo4j: add the source, register a Cypher table, query it on the SQL page", async ({
@@ -305,5 +310,46 @@ test.describe("source to query through the UI (REQ-1671)", () => {
       `SELECT job, CAST(MAX(value) AS INTEGER) AS healthy FROM pet_store.${registered} GROUP BY job ORDER BY job`,
     );
     expect(rows).toEqual([["prometheus", "1"]]);
+  });
+
+  test("files: add the source, register a CSV table, query it on the SQL page", async ({
+    page,
+  }) => {
+    test.setTimeout(300000);
+    const stamp = Date.now();
+    const sourceId = `e2e_files_${stamp}`;
+    const tableName = "widgets";
+    const schemaName = sourceId.replace(/-/g, "_"); // pgwire_replica.schema_name() convention
+    const fixtureDir = path.resolve(ROOT, "provisa-ui/e2e/fixtures/files");
+
+    // 1. Sources form — local file:// transport (default), path is an absolute directory glob
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("files");
+    // Transport defaults to file:// (SourcesPage.tsx); the Mantine Select shows its label, not the
+    // raw value, so match the value prefix rather than an exact string.
+    await expect(page.getByTestId("files-transport-select")).toHaveValue(/^file:\/\//);
+    await page.getByTestId("files-path-input").fill(`${fixtureDir}/**`);
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. Register Table form — DuckDB's native files connector lists each <table>.csv as a table
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, schemaName, tableName);
+    await expect(page.getByTestId("register-table-col-selected-widget_name")).toBeVisible({
+      timeout: 60000,
+    });
+    await expect(page.getByTestId("register-table-col-selected-price")).toBeVisible();
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    // 3. SQL page: the fixture CSV's rows (provisa-ui/e2e/fixtures/files/widgets.csv)
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT widget_id, widget_name, price FROM pet_store.${registered} ORDER BY widget_id`,
+    );
+    expect(rows).toEqual([
+      ["1", "sprocket", "9.99"],
+      ["2", "cog", "4.5"],
+      ["3", "gear", "12.75"],
+    ]);
   });
 });
