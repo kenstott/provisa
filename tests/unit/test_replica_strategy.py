@@ -310,6 +310,7 @@ def _server(tmp_path, *, health: bool = True):
         ports=pr.PortPair(5433, "127.0.0.1", 5533),
         spawn=_spawn,
         health_check=lambda _h, _p: health,
+        port_is_free=lambda _p: True,
     )
     return server, proc, spawned
 
@@ -410,6 +411,7 @@ async def test_connector_replica_end_to_end(tmp_path):
         allocator=pr.PortAllocator(is_free=lambda _p: True),
         spawn=lambda _cmd, _cwd: proc,
         health_check=lambda _h, _p: True,
+        port_is_free=lambda _p: True,
         connect=_connect,
     )
     rows = await replica.load("reports")
@@ -435,6 +437,7 @@ async def test_connector_replica_unhealthy_is_loud(tmp_path):
         allocator=pr.PortAllocator(is_free=lambda _p: True),
         spawn=lambda _cmd, _cwd: _FakeProc(),
         health_check=lambda _h, _p: False,
+        port_is_free=lambda _p: True,
         connect=None,
     )
     with pytest.raises(pr.ServerLifecycleError):
@@ -459,6 +462,7 @@ async def test_make_pgwire_loader_dispatches_per_source(tmp_path):
         allocator=pr.PortAllocator(is_free=lambda _p: True),
         spawn=lambda _cmd, _cwd: _FakeProc(),
         health_check=lambda _h, _p: True,
+        port_is_free=lambda _p: True,
         connect=_connect,
     )
     src_a = Source(id="sp-a", type=SourceType.files, path="/a")
@@ -508,6 +512,7 @@ def test_endpoint_waits_for_the_listener(tmp_path, monkeypatch):
         allocator=pr.PortAllocator(is_free=lambda _p: True),
         spawn=lambda _cmd, _cwd: proc,
         health_check=lambda _h, _p: next(answers),
+        port_is_free=lambda _p: True,
     )
     ports = replica.endpoint()
     assert ports.pgwire_port == pr.PGWIRE_DEFAULT_PORT
@@ -525,6 +530,7 @@ def test_endpoint_never_listening_is_loud(tmp_path, monkeypatch):
         allocator=pr.PortAllocator(is_free=lambda _p: True),
         spawn=lambda _cmd, _cwd: _FakeProc(),
         health_check=lambda _h, _p: False,
+        port_is_free=lambda _p: True,
     )
     with pytest.raises(pr.ServerLifecycleError):
         replica.endpoint()

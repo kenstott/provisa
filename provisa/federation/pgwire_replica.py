@@ -326,6 +326,7 @@ class PgwireServer:  # REQ-955
         ports: PortPair,
         spawn: Callable[[list[str], Path], Any] | None = None,
         health_check: Callable[[str, int], bool] | None = None,
+        port_is_free: Callable[[int], bool] | None = None,
     ) -> None:
         self._bundle_dir = Path(bundle_dir)
         self._spec = spec
@@ -333,6 +334,9 @@ class PgwireServer:  # REQ-955
         self._ports = ports
         self._spawn = spawn if spawn is not None else _spawn_process
         self._health = health_check if health_check is not None else _tcp_health
+        # The port-release probe stop() waits on; injectable so a faked server never consults
+        # the machine's real port state (a stray JVM on 5433 failed unit tests otherwise).
+        self._port_is_free = port_is_free if port_is_free is not None else _port_is_free
         self._proc: Any = None
 
     @property
@@ -383,7 +387,7 @@ class PgwireServer:  # REQ-955
         # its listener on its own schedule. A start on this port before that would bind nothing
         # and the next attach would refuse — so stop() returns only once the port is released.
         deadline = time.monotonic() + SERVER_STOP_SECONDS
-        while not _port_is_free(self._ports.pgwire_port):
+        while not self._port_is_free(self._ports.pgwire_port):
             if time.monotonic() >= deadline:
                 raise ServerLifecycleError(
                     f"pgwire server port {self._ports.pgwire_port} still bound "
@@ -451,12 +455,14 @@ class ConnectorReplica:  # REQ-954/955/956
         health_check: Callable[[str, int], bool] | None = None,
         connect: Callable[[str, int], Any] | None = None,
         version: str | None = None,
+        port_is_free: Callable[[int], bool] | None = None,
     ) -> None:
         self._source = source
         self._resolver = resolver if resolver is not None else BundleResolver()
         self._allocator = allocator if allocator is not None else PortAllocator()
         self._spawn = spawn
         self._health = health_check
+        self._port_is_free = port_is_free
         self._connect = connect
         self._spec: BundleSpec = (
             bundle_spec_for(_source_type(source), version=version)
@@ -481,6 +487,7 @@ class ConnectorReplica:  # REQ-954/955/956
             ports=ports,
             spawn=self._spawn,
             health_check=self._health,
+            port_is_free=self._port_is_free,
         )
         server.start()  # REQ-955 (lifecycle)
         self._server = server
@@ -548,6 +555,7 @@ def make_pgwire_loader(
     spawn: Callable[[list[str], Path], Any] | None = None,
     health_check: Callable[[str, int], bool] | None = None,
     connect: Callable[[str, int], Any] | None = None,
+    port_is_free: Callable[[int], bool] | None = None,
 ) -> Callable[[Any, Any], Any]:
     """Build a TYPE-level ``adapter_loaders`` row-fetch for pgwire-replica sources (REQ-954), fitting
     the ``SourceRowLoader`` adapter seam ``async (source, table) -> list[dict]``. One
@@ -566,6 +574,7 @@ def make_pgwire_loader(
                 spawn=spawn,
                 health_check=health_check,
                 connect=connect,
+                port_is_free=port_is_free,
             )
             replicas[source.id] = replica
         return await replica.load(table)
