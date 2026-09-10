@@ -49,7 +49,14 @@ async def test_ui_created_source_joins_config_sources_and_builtins_stay_out(monk
         id="cfg_pg", type=SourceType.postgresql, host="h", port=5432, password="${env:PW}"
     )
     rows = [
-        {"id": "cfg_pg", "type": "postgresql", "host": "other", "port": 1, "bound": True},
+        {
+            "id": "cfg_pg",
+            "type": "postgresql",
+            "host": "other",
+            "port": 1,
+            "bound": True,
+            "password_ref": "",
+        },
         {
             "id": "ui_mongo",
             "type": "mongodb",
@@ -58,8 +65,11 @@ async def test_ui_created_source_joins_config_sources_and_builtins_stay_out(monk
             "database": "provisa",
             "org_id": "e2e",
             "mapping": {},
+            # REQ-1695: a source registered through the Sources form keeps its password as a
+            # reference into the org vault, in the row's own column.
+            "password_ref": "${secret:source_ui_mongo_password}",
         },
-        {"id": "provisa-admin", "type": "duckdb"},
+        {"id": "provisa-admin", "type": "duckdb", "password_ref": ""},
     ]
     state, rows, _ = _state([cfg_src], [], rows, [])
 
@@ -73,6 +83,9 @@ async def test_ui_created_source_joins_config_sources_and_builtins_stay_out(monk
         out["cfg_pg"].password == "${env:PW}"
     )  # the config's Source wins: it carries the secret ref
     assert out["ui_mongo"].type is SourceType.mongodb and out["ui_mongo"].database == "provisa"
+    # REQ-1695: the control-plane row's password_ref IS the Source's password — a UI-created
+    # source authenticates like a config-declared one instead of reaching its connector empty.
+    assert out["ui_mongo"].password == "${secret:source_ui_mongo_password}"
 
 
 @pytest.mark.asyncio

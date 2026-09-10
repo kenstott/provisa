@@ -10,7 +10,7 @@
 
 """Source repository — CRUD for data sources, via SQLAlchemy Core (dialect-portable)."""
 
-# Requirements: REQ-012, REQ-013, REQ-014, REQ-250
+# Requirements: REQ-012, REQ-013, REQ-014, REQ-250, REQ-1695
 
 from typing import TYPE_CHECKING
 
@@ -42,7 +42,24 @@ def _source_values(source: Source) -> dict:
         "load_protected": getattr(source, "load_protected", False),  # REQ-1141
         "off_peak_window": getattr(source, "off_peak_window", None),  # REQ-1141
         "off_peak_tz": getattr(source, "off_peak_tz", "UTC"),  # REQ-1141
+        # REQ-1695: the REFERENCE, never the credential. ``Source.password`` is documented as a
+        # secret reference (provisa/core/models.py) and the mutation layer has already put any
+        # literal a person typed into the org vault, so what arrives here is ``${provider:name}``
+        # or the empty string.
+        "password_ref": source.password,
     }
+
+
+def source_from_row(row: dict) -> Source:  # REQ-1695
+    """A Source from a control-plane row, with ``password_ref`` read back as ``Source.password``.
+
+    The one mapper every reader of a ``sources`` row goes through, so the column and the model
+    field cannot drift apart. The names differ deliberately: the column says what it holds (a
+    reference) and the model field says what it is used as (the password, once resolved).
+    """
+    fields = {k: v for k, v in row.items() if k in Source.model_fields and v is not None}
+    fields["password"] = row["password_ref"]
+    return Source.model_validate(fields)
 
 
 async def upsert(conn: "Connection", source: Source) -> None:  # REQ-012, REQ-250

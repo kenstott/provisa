@@ -95,6 +95,15 @@ const IS_RUNNER = process.env.TEST_WORKER_INDEX === undefined;
 // The specs that address the Trino backend (TRINO_BACKEND_URL from e2e/coverage.ts). Kept as one
 // literal so the project split and the lane's server list cannot drift apart.
 const TRINO_SPECS = ["**/sharepoint-connector.spec.ts", "**/splunk-connector.spec.ts"];
+// The vault a source's password is stored in encrypts at rest, and the key is what authorizes
+// reading it back (REQ-685/REQ-1695). This host has no OS keychain for the store to mint one in,
+// so the key is supplied explicitly — exactly as every deployment that stores secrets must, and as
+// every secrets-store suite does (tests/integration/test_secrets_store.py). A fixed value: these
+// backends are torn down with their data directories, and nothing here is a real credential.
+const E2E_ENCRYPTION_KEY = Buffer.from(
+  Array.from({ length: 32 }, (_, i) => i + 1),
+).toString("base64");
+
 const LANE = process.env.PROVISA_E2E_LANE ?? "all";
 if (!["core", "trino", "all"].includes(LANE)) {
   throw new Error(`PROVISA_E2E_LANE must be core|trino|all, got: ${LANE}`);
@@ -351,6 +360,7 @@ export default defineConfig({
         ORG_ID: b.orgId,
         GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
         PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
+        PROVISA_ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
         ...controlPlaneEnvFor(b.dataDir),
       },
       reuseExistingServer: !process.env.CI,
@@ -387,6 +397,7 @@ export default defineConfig({
               ORG_ID: E2E_TRINO_ORG_ID,
               GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
               PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
+              PROVISA_ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
               PROVISA_ENGINE: "trino",
               // Trino runs inside Docker; "localhost" in the app's control-plane URL resolves to the
               // Trino container itself, not the host. These vars make engine_visible_address()

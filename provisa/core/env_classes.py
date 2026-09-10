@@ -162,6 +162,9 @@ BINDING_COLUMNS: dict[str, frozenset[str]] = {
             "port",
             "database",
             "username",
+            # REQ-1695: a password reference names a credential in the vault of the environment
+            # that supplied it. A copy carries neither the credential nor the name of one.
+            "password_ref",
             "dialect",
             "path",
             "federation_hints",

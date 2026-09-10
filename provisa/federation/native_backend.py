@@ -177,7 +177,8 @@ class NativeEngineBackend(EngineBackend):
                     port=_rs_dict.get("port"),
                     database=_rs_dict.get("database"),
                     username=_rs_dict.get("username"),
-                    password=_rs_dict.get("password"),
+                    # REQ-1695: the row's password reference is the source's password.
+                    password=_rs_dict["password_ref"],
                     federation_hints={},
                 )
 

@@ -295,6 +295,39 @@ sources:
 | `domain_id` | Yes | — | Domain this source belongs to |
 | `description` | No | `""` | Human-readable description |
 
+### Where a source's password lives
+
+A source's password is never stored beside the rest of its connection settings. The
+control-plane `sources` row carries a `password_ref` column holding a *reference* —
+`${env:PG_PASSWORD}`, `${secret:SNOWFLAKE_KEY}` — which is resolved at the moment the source is
+dialled, inside the organization the request is running as (REQ-1695). [tool-verified:
+`provisa/core/schema_org.py`, `provisa/core/repositories/source.py`]
+
+`${env:VAR}` reads the deployment's process environment and needs nothing bound. `${secret:NAME}`
+names a secret an organization owns, so it resolves only inside that organization's own
+operations: the admin introspection seams and the query terminal every surface reaches establish
+that binding. [tool-verified: `provisa/pgwire/_pipeline.py` `_execute_plan`]
+
+Where the reference points depends on how the source was registered:
+
+- **From config.** Write the reference yourself. `${env:VAR}` reads the deployment's process
+  environment; `${secret:NAME}` reads the organization's vault (see [Secrets](secrets.md)). The
+  file is the record, and Provisa copies the reference into `password_ref` verbatim.
+- **From the Sources form.** A reference typed into the password field is likewise stored
+  verbatim. A *literal* password is written into the organization's vault under
+  `source_<id>_password` — encrypted at rest, and never readable back by name — and the row keeps
+  the `${secret:source_<id>_password}` that names it. [tool-verified:
+  `provisa/api/admin/schema_common.py` `persist_source_password`]
+
+Retyping the password on an existing source rotates that one vault entry rather than creating a
+second. Deleting the source removes the entry Provisa minted for it, and only that one: a
+reference you wrote yourself names a secret you own for your own reasons, so it is left alone.
+[tool-verified: `provisa/api/admin/schema_mutation.py` `delete_source`]
+
+`password_ref` does not travel between environments (REQ-1491). A branch or a copied environment
+supplies its own connection values, and the vault a reference names belongs to whichever
+environment supplied it. [tool-verified: `provisa/core/env_classes.py` `BINDING_COLUMNS`]
+
 ### Data Quality Checkers (REQ-1443)
 
 A data-quality checker is a source type, not a subsystem. Its scan output is data: a check result is an observation, so it lands through the ordinary source path and inherits cadence, freshness, events, lineage, governance, RLS, grid and export from every other source. [tool-verified: `provisa/core/models.py` lines 110–116 `SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py` `make_dq_loader`]
@@ -526,7 +559,7 @@ All sources share a common set of fields. [tool-verified: `provisa/core/models.p
 | `port` | No | `0` | Port number |
 | `database` | No | `""` | Database name |
 | `username` | No | `""` | Username |
-| `password` | No | `""` | Password; use `${env:VAR}` for secret resolution |
+| `password` | No | `""` | Password; use `${env:VAR}` or `${secret:NAME}` rather than a literal (see below) |
 | `path` | No | `null` | File path or cloud URI for file-based and object/lake sources |
 | `base_url` | No | `null` | Base URL for OpenAPI sources |
 | `pool_min` | No | `1` | Minimum connection pool size (REQ-052) |

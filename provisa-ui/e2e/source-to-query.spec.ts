@@ -31,6 +31,7 @@ import {
   E2E_PROMETHEUS_PORT,
   E2E_REDIS_PORT,
   E2E_SPARQL_PORT,
+  E2E_SPLUNK_PORT,
 } from "./demo-source-containers";
 import {
   openRegisterForm,
@@ -310,6 +311,60 @@ test.describe("source to query through the UI (REQ-1671)", () => {
       `SELECT job, CAST(MAX(value) AS INTEGER) AS healthy FROM pet_store.${registered} GROUP BY job ORDER BY job`,
     );
     expect(rows).toEqual([["prometheus", "1"]]);
+  });
+
+  test("splunk: add the source, register a data model, query it on the SQL page", async ({
+    page,
+  }) => {
+    // A full Splunk init under amd64 emulation, then the Calcite pgwire bundle's JVM boot on the
+    // first Register Table introspection, then Splunk's eventually-consistent data-model
+    // summaries — none of which fits the 300s the other cases use.
+    test.setTimeout(900000);
+    const stamp = Date.now();
+    const sourceId = `e2e_splunk_${stamp}`;
+    const tableName = "shelter_alerts";
+
+    // 1. Sources form — host/port and the container's own admin account (demo/sources/splunk/
+    // compose.yml fixes both values, so no fixture has to hand them over), plus SSL validation off
+    // for its self-signed certificate (REQ-724); the checkbox is what puts disable_ssl_validation
+    // in the mapping. The password typed here is persisted as a reference into the org's secret
+    // vault (REQ-1695) — the whole reason this case can drive the form at all.
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("splunk");
+    await page.getByTestId("splunk-host-input").fill("localhost");
+    await page.getByTestId("splunk-port-input").fill(String(E2E_SPLUNK_PORT));
+    await page.getByTestId("splunk-auth-mode-select").click();
+    await page.getByRole("option", { name: "Username / Password" }).click();
+    await page.getByTestId("splunk-username-input").fill("admin");
+    await page.getByTestId("splunk-password-input").fill("Provisa_2026!");
+    await page.getByTestId("splunk-disable-ssl-checkbox").check();
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. Register Table form — on the native engine the source is reached by ATTACHing the
+    // connector's bundled Calcite pgwire server (REQ-1690), so the schema is the sql-normalized
+    // source id and the tables are Splunk's Data Models.
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, sourceId, tableName);
+    await expect(page.getByTestId("register-table-col-selected-alert_id")).toBeVisible({
+      timeout: 120000,
+    });
+    await expect(page.getByTestId("register-table-col-selected-animal_name")).toBeVisible();
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    // 3. SQL page: the seven alert events demo/sources/splunk/prime.py sends over HEC, read live
+    // out of Splunk through the attached endpoint.
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT alert_type, COUNT(*) AS alerts FROM pet_store.${registered} ` +
+        `GROUP BY alert_type ORDER BY alert_type`,
+    );
+    expect(rows).toEqual([
+      ["adoption_hold", "1"],
+      ["intake", "2"],
+      ["medical", "2"],
+      ["transfer", "2"],
+    ]);
   });
 
   test("files: add the source, register a CSV table, query it on the SQL page", async ({

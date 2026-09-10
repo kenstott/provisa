@@ -262,6 +262,13 @@ async def _decrypted(admin_db: "Database", org_id: str, owner_id: str) -> dict[s
             )
         )
         rows = result.fetchall()
+    if not rows:
+        # An EMPTY vault is decrypted without a master key, because there is nothing to decrypt.
+        # The key is what authorizes a read (see _cipher), and a vault holding no secret grants no
+        # read to authorize. Demanding one here would make binding the vault -- which every source
+        # mutation and every introspection of a source now does (REQ-1695) -- fail outright on an
+        # install that has never stored a secret and has no keychain to mint a key in.
+        return {}
     cipher = _cipher()
     return {name: cipher.decrypt(blob).decode() for name, blob in rows}
 

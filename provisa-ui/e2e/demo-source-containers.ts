@@ -30,10 +30,6 @@ export const E2E_CASSANDRA_PORT = 39042;
 export const E2E_SPARQL_PORT = 33030;
 export const E2E_PROMETHEUS_PORT = 39090;
 export const E2E_CHINOOK_PORT = 35433;
-// The splunk demo unit's ports. It is provisioned by the demo start and by
-// tests/integration/test_splunk_duckdb_attach.py, not by this file — a splunk source created
-// through the Sources form cannot be introspected yet (its API token rides in `password`, which
-// the control-plane `sources` table has no column for), so no spec here drives one.
 export const E2E_SPLUNK_PORT = 38089;
 export const E2E_SPLUNK_HEC_PORT = 38088;
 
@@ -61,6 +57,10 @@ export const DEMO_SOURCES = [
   "cassandra",
   "sparql",
   "chinook", // a Postgres for the Hasura v2 import e2e (hasura-import.spec.ts)
+  // Read through the bundled Calcite pgwire server the native engine ATTACHes (REQ-1690/1694).
+  // Slowest of the set by far: a full Splunk init under amd64 emulation, ~3 minutes to a healthy
+  // container before prime.py can seed its index and Data Model.
+  "splunk",
 ] as const;
 export type DemoSource = (typeof DEMO_SOURCES)[number];
 

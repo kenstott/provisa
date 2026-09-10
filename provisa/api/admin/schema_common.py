@@ -240,7 +240,11 @@ def _register_source_on_engine(state, model, input: SourceInput) -> None:
     try:
         state.federation_engine.register_source(
             model,
-            resolve_secrets(input.password) if input.password else "",
+            # REQ-1695: the model's password is the PERSISTED reference, so the engine is handed
+            # the same credential every later reader of this source resolves. Reading it off the
+            # raw form input instead would register the literal the operator typed and leave the
+            # engine holding a value the control-plane row does not name.
+            resolve_secrets(model.password) if model.password else "",
             # REQ-1266: the physical catalog the caller just published for this source. Registering
             # under the bare name put a non-default org's source at a catalog its own queries — which
             # address the org-prefixed name — could not find.
@@ -457,3 +461,93 @@ async def activate_view_mv(table_name: str) -> None:
 
         # wire_event_loop is best-effort and never raises into its caller.
         await wire_event_loop(scheduler, state=state, log=_log, seed=False)
+
+
+# -- source password persistence (REQ-1695) ------------------------------------------------
+
+#: REQ-1695: what a source's password is stored under in the ORG vault. ``source_`` is a literal
+#: prefix rather than decoration: it makes the name valid under ``secrets_store.validate_name``
+#: (which demands a leading letter or underscore) whatever the source id starts with, and it says
+#: on the Secrets screen what the value is for.
+_SOURCE_SECRET_PREFIX = "source_"
+_SOURCE_SECRET_SUFFIX = "_password"
+
+
+def source_password_secret_name(source_id: str) -> str:  # REQ-1695
+    """The org-vault name holding ``source_id``'s password.
+
+    A source id may carry hyphens, dots and slashes; a secret name may carry none of them
+    (``secrets_store.NAME``), so every character outside the grammar becomes an underscore. The
+    mapping is not injective -- ``a-b`` and ``a.b`` normalize alike -- and does not need to be:
+    two sources with ids that differ only in punctuation cannot coexist in one control plane,
+    because ``sources.id`` is the primary key and the catalog derivation
+    (``source_to_catalog``) already collapses hyphens the same way.
+    """
+    import re
+
+    from provisa.core.secrets_store import validate_name
+
+    normalized = re.sub(r"[^A-Za-z0-9_]", "_", source_id)
+    return validate_name(f"{_SOURCE_SECRET_PREFIX}{normalized}{_SOURCE_SECRET_SUFFIX}")
+
+
+async def persist_source_password(info: StrawberryInfo, source_id: str, password: str) -> str:
+    """Store ``password`` where a credential belongs and return what ``sources.password_ref`` holds.
+
+    Three cases, and no fourth (REQ-1695):
+
+    * empty -- the source needs no password, and the empty string is what the column carries.
+    * a value written in the reference grammar (it contains ``${``) -- the operator already said
+      where the credential lives, so it is stored VERBATIM. Putting it in the vault would store the
+      reference text as if it were a credential and resolve to the reference on the way out.
+    * a literal -- the credential itself, which never lands in the control-plane row. It goes into
+      the ORG vault (``secrets_store``, encrypted at rest, values unreadable by name) and the row
+      gets the ``${secret:NAME}`` that names it.
+
+    The vault is the org's, so a rotation through this door is the same ``put`` a rotation through
+    the Secrets screen is: the name is the identity and the new value replaces the old.
+    """
+    if not password:
+        return ""
+    if "${" in password:
+        return password
+    from provisa.api.admin.capabilities import _identity_from_info
+    from provisa.api.app import state
+    from provisa.core import secrets_store
+    from provisa.core.request_context import current_org
+
+    assert state.admin_db is not None, "the platform control plane holds every org's vault"
+    identity = _identity_from_info(info)
+    name = source_password_secret_name(source_id)
+    await secrets_store.put(
+        state.admin_db,
+        current_org.get() or state.org_id,
+        name,
+        password,
+        owner_id=secrets_store.ORG_OWNER,
+        actor=getattr(identity, "user_id", None) if identity is not None else None,
+        description=f"password for source {source_id}",
+    )
+    return f"${{secret:{name}}}"
+
+
+async def forget_source_password(source_id: str, password_ref: str) -> None:
+    """Remove the vault entry a deleted source's ``password_ref`` names (REQ-1695).
+
+    Only the entry THIS module minted: a reference the operator wrote themselves names a secret
+    they own for their own reasons, and deleting a source is not permission to delete it. The
+    comparison is against the generated name, which is exactly that distinction.
+    """
+    if password_ref != f"${{secret:{source_password_secret_name(source_id)}}}":
+        return
+    from provisa.api.app import state
+    from provisa.core import secrets_store
+    from provisa.core.request_context import current_org
+
+    assert state.admin_db is not None, "the platform control plane holds every org's vault"
+    await secrets_store.remove(
+        state.admin_db,
+        current_org.get() or state.org_id,
+        source_password_secret_name(source_id),
+        owner_id=secrets_store.ORG_OWNER,
+    )

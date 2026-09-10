@@ -18,8 +18,13 @@ CREATE TABLE IF NOT EXISTS sources (
     gql_naming_convention TEXT,
     federation_hints JSONB NOT NULL DEFAULT '{}',  -- connection extras the typed columns can't carry
     path          TEXT  -- file path or URL for file-based sources (csv, parquet, sqlite)
-    -- password never stored; resolved at runtime via secrets provider
+    -- the password itself is never stored; password_ref below carries the reference that names it
 );
+
+-- REQ-1695: the source's password as a SECRET REFERENCE. A literal typed into the Sources form is
+-- put into the org vault and what lands here is the ${secret:NAME} naming it; a reference the
+-- operator wrote themselves is stored verbatim. Empty means the source needs no password.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS password_ref TEXT NOT NULL DEFAULT '';
 
 -- REQ-1491: whether this environment has supplied this source's connection values. A copy between environments carries the
 -- row and never the binding, and an empty value is not an absent one, so an unbound source is

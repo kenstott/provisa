@@ -29,15 +29,20 @@ from provisa.core.models import BUILT_IN_SOURCE_IDS, Source
 
 
 def _source_from_row(row: dict) -> Source:
-    """A Source model from a control-plane row: the row's columns that are model fields, set."""
-    fields = {k: v for k, v in row.items() if k in Source.model_fields and v is not None}
-    return Source.model_validate(fields)
+    """A Source model from a control-plane row: the row's columns that are model fields, set.
+
+    REQ-1695: including its password, which the row carries as the ``password_ref`` reference.
+    """
+    from provisa.core.repositories.source import source_from_row
+
+    return source_from_row(row)
 
 
 async def registered_sources(state: Any, conn: Any | None = None) -> list[Source]:  # REQ-1674
     """Every registered source: the config's Source where the config declares the id (it carries
-    the password reference and the operator's settings), else the control-plane row. Built-in
-    sources (provisa-admin, provisa-otel, the derived-view source) are never landed and stay out."""
+    the operator's settings), else the control-plane row -- which since REQ-1695 carries its own
+    password reference too. Built-in sources (provisa-admin, provisa-otel, the derived-view source)
+    are never landed and stay out."""
     from provisa.core.repositories import source as source_repo
 
     config = getattr(state, "config", None)

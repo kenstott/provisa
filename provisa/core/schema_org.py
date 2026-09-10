@@ -93,6 +93,12 @@ sources = Table(
     # connection builder reads it as localhost — so an unbound source is MARKED, and the query
     # path refuses a query naming it rather than dialling whatever is local to the node.
     Column("bound", Boolean, nullable=False, server_default=true()),
+    # REQ-1695: the source's password as a SECRET REFERENCE, never a credential. A literal typed
+    # into the Sources form is put into the org vault (provisa.core.secrets_store) and what lands
+    # here is the ``${secret:NAME}`` that names it; a reference the operator typed themselves is
+    # stored verbatim. Empty means the source needs no password. Resolution happens where every
+    # other connection secret's does — at the use point, inside the bound org.
+    Column("password_ref", Text, nullable=False, server_default=""),
 )
 
 domains = Table(
@@ -719,7 +725,8 @@ api_sources = Table(
     # path refuses a query naming it rather than dialling whatever is local to the node.
     Column("bound", Boolean, nullable=False, server_default=true()),
     CheckConstraint(
-        "type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql')", name="api_sources_type_check"
+        "type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql')",
+        name="api_sources_type_check",
     ),
 )
 

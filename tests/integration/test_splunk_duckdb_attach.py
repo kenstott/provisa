@@ -171,16 +171,22 @@ def prime() -> ModuleType:
 @pytest.fixture(scope="module")
 def splunk_source(prime: ModuleType) -> Source:
     """The splunk Source that addresses the seeded container, exactly as the Sources form stores
-    one: host/port, the minted API token in ``password``, and SSL validation disabled for the
-    container's self-signed certificate."""
+    one: host/port, the container's own admin account in ``username``/``password``, and SSL
+    validation disabled for its self-signed certificate.
+
+    Username/password rather than an API token because Splunk generates a token's value: it cannot
+    be known before the container starts, while this account is fixed by the unit's compose.yml
+    (REQ-1694). What the form persists is the same either way -- a password reference on the
+    control-plane row (REQ-1695)."""
     return Source(
         id="splunk-duckdb-itest",
         type=SourceType.splunk,
         host="localhost",
         port=prime.MGMT_PORT_FOR_TEST,
-        password=prime.TOKEN_FILE.read_text().strip(),
+        username=prime.USER,
+        password=prime.PASSWORD,
         mapping={
-            "use_token": True,
+            "use_token": False,
             "disable_ssl_validation": True,
             "datamodel_filter": prime.MODEL,
         },
@@ -215,7 +221,11 @@ def test_attach_details_name_the_live_endpoint_and_schema(splunk_source: Source,
     operand = pr.build_model_json(splunk_source)["schemas"][0]["operand"]
     assert operand["disableSslValidation"] is True
     assert operand["datamodelFilter"] == prime.MODEL
-    assert operand["token"] == splunk_source.password
+    # mapping.use_token is false, so the credential reaches Calcite as a username/password pair
+    # rather than a token — the same branch the Sources form's "Username / Password" mode drives.
+    assert "token" not in operand
+    assert operand["username"] == splunk_source.username
+    assert operand["password"] == splunk_source.password
 
 
 def test_duckdb_lists_the_seeded_data_model_as_a_table(prime, attached):

@@ -224,17 +224,11 @@ if [ "${#SOURCES[@]}" -gt 0 ]; then
   "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/demo/sources/provision.py" up \
     --prefix provisa-demo --engine "$_SRC_ENGINE" ${_SRC_NET[@]+"${_SRC_NET[@]}"} "${SOURCES[@]}"
   for _src in "${SOURCES[@]}"; do
-    # Splunk generates its own API token value, so prime.py mints one and writes it beside the
-    # unit; the fragment reads it as ${env:PROVISA_DEMO_SPLUNK_TOKEN} (REQ-1694). A missing file
-    # means priming did not finish — fail here rather than start with an unauthenticated source.
+    # The splunk fragment authenticates as the demo container's own admin account, whose password
+    # is fixed by demo/sources/splunk/compose.yml (SPLUNK_PASSWORD) and repeated in prime.py. The
+    # fragment reads it as ${env:PROVISA_DEMO_SPLUNK_PASSWORD} (REQ-1694).
     if [ "$_src" = splunk ]; then
-      _splunk_token_file="$SCRIPT_DIR/demo/sources/splunk/.splunk-demo-token"
-      if [ ! -s "$_splunk_token_file" ]; then
-        echo "--source=splunk: prime.py wrote no API token at $_splunk_token_file"
-        exit 1
-      fi
-      PROVISA_DEMO_SPLUNK_TOKEN="$(cat "$_splunk_token_file")"
-      export PROVISA_DEMO_SPLUNK_TOKEN
+      export PROVISA_DEMO_SPLUNK_PASSWORD='Provisa_2026!'
     fi
     _src_dir="$SCRIPT_DIR/demo/sources/$_src"
     if [ ! -f "$_src_dir/fragment.yaml" ]; then

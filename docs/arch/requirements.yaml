@@ -24171,6 +24171,7 @@
   - provisa/freshness/source_gate.py
   - provisa/federation/plan.py
   - provisa/federation/native_backend.py
+  - provisa/pgwire/_pipeline.py
   tests:
   - tests/unit/test_source_freshness_gate.py
   scenario: Given a source S with freshness_gate=true declaring change_signal=ttl and cache_ttl When a
@@ -31919,6 +31920,7 @@
   code:
   - provisa/federation/duckdb_runtime.py
   - provisa/federation/native_backend.py
+  - provisa/pgwire/_pipeline.py
   tests:
   - tests/unit/test_duckdb_control_plane_attach.py
   relates_to:
@@ -55118,6 +55120,7 @@
   - provisa/federation/snowflake_store.py
   - provisa/federation/snowflake_runtime.py
   - provisa/federation/native_backend.py
+  - provisa/pgwire/_pipeline.py
   tests:
   - tests/unit/test_landed_keys.py
   - tests/unit/test_snowflake_store.py
@@ -55178,6 +55181,7 @@
   - provisa/federation/landed_keys.py
   - provisa/federation/snowflake_store.py
   - provisa/federation/native_backend.py
+  - provisa/pgwire/_pipeline.py
   tests:
   - tests/unit/test_snowflake_store.py
   - tests/unit/test_reconcile_landed.py
@@ -56554,10 +56558,11 @@
     "true". Without the first, an instance that serves its management port with a self-signed
     certificate (REQ-724) cannot be reached at all on a non-Trino engine; without the second,
     discovery lists every Data Model the instance ships. A splunk demo source (`demo/sources/splunk`)
-    provisions an instance, seeds an index, events and the Data Model that exposes them, and mints
-    the API token the source authenticates with — Splunk generates that value, so the unit writes
-    it to `.splunk-demo-token` as the one handoff point, which the demo start exports as
-    `PROVISA_DEMO_SPLUNK_TOKEN` and the source-to-query e2e reads.
+    provisions an instance and seeds an index, events and the Data Model that exposes them. It
+    authenticates as the container's own admin account, whose password compose.yml fixes: the demo
+    start exports it as `PROVISA_DEMO_SPLUNK_PASSWORD` for the config fragment, and the
+    source-to-query e2e types it into the Sources form. A splunk source is therefore reachable
+    from the form as well as from config, which REQ-1695 is what makes true.
   code:
   - provisa/federation/pgwire_replica.py
   - demo/sources/splunk/prime.py
@@ -56567,13 +56572,12 @@
   tests:
   - tests/unit/test_replica_strategy.py
   - tests/integration/test_splunk_duckdb_attach.py
+  - provisa-ui/e2e/source-to-query.spec.ts
   notes: >-
-    Not yet reachable from the Sources form. A splunk source's API token is its `password`, and
-    the control-plane `sources` table has no password column, so a source created through the UI
-    reaches the REQ-1673 introspection seam without one and Register Table lists no schema. The
-    sharepoint case works only because its certificate rides in `mapping`, a persisted JSON
-    column. Registering the source from config (as `demo/sources/splunk/fragment.yaml` does) is
-    the working path today; a form-created one needs source secrets to be persisted first.
+    Reachable from the Sources form since REQ-1695 gave the control-plane `sources` row a
+    `password_ref` column. Before that a splunk source created through the UI reached the REQ-1673
+    introspection seam with no credential and Register Table listed no schema; the sharepoint case
+    worked only because its certificate rides in `mapping`, a persisted JSON column.
   use_case: >-
     Splunk was reachable on DuckDB in principle (REQ-1690) but not in practice: every real
     instance behind a self-signed certificate failed the attach, because the setting that turns
@@ -56582,3 +56586,64 @@
     Given a splunk source with mapping.disable_ssl_validation true and mapping.datamodel_filter naming one Data Model, on a non-Trino engine
     When the engine resolves the source and attaches its bundled Calcite pgwire server
     Then the server's model.json operand carries disableSslValidation true and datamodelFilter, the attach succeeds against the self-signed instance, and only the named Data Model is listed as a table
+- id: REQ-1695
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Source Registration
+  priority: MUST
+  type: behavioral
+  description: >-
+    A source registered through the Sources form keeps its password, and keeps it where a
+    credential belongs. The control-plane `sources` row carries a `password_ref` column holding a
+    SECRET REFERENCE and never a credential: a literal typed into the form is written to the
+    organization's own vault (REQ-1557/REQ-1558, `secrets_store`, encrypted at rest, values
+    unreadable by name) under `source_<id>_password`, and the row keeps the `${secret:NAME}` that
+    names it. A value the operator already wrote in the reference grammar — `${env:PG_PASSWORD}`,
+    `${secret:SHARED_KEY}` — is stored verbatim instead, because putting a reference into the
+    vault would store the reference text as if it were the credential. Retyping the password is a
+    rotation of the one vault entry, not a second secret. Deleting the source removes the entry it
+    minted and only that one: a reference the operator wrote names a secret they own for their own
+    reasons. Every reader that builds a `Source` from a control-plane row maps `password_ref` onto
+    `Source.password` through one mapper (`repositories.source.source_from_row`), so a form-created
+    source authenticates exactly like a config-declared one. Resolution stays where it already
+    happened — at the use point, inside the bound organization — which the admin introspection
+    seams, the source mutations and the one query terminal every surface reaches (`_execute_plan`)
+    establish with `bound_to_request_org`. The query terminal binds only when a source the plan
+    reads actually addresses its endpoint through a `${secret:...}`, decided from state already in
+    memory, so a statement with no secret to resolve buys no round trip. The reference is what the
+    admin API may expose; the credential is not, and nothing reads it back by name.
+  code:
+  - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  - provisa/core/repositories/source.py
+  - provisa/core/secrets_store.py
+  - provisa/core/env_classes.py
+  - provisa/api/admin/schema_common.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/admin/schema_query.py
+  - provisa/federation/registry_view.py
+  - provisa/federation/native_backend.py
+  - provisa/pgwire/_pipeline.py
+  tests:
+  - tests/unit/test_source_password_ref.py
+  - tests/unit/test_registry_view.py
+  - tests/integration/test_source_password_vault.py
+  - provisa-ui/e2e/source-to-query.spec.ts
+  notes: >-
+    `password_ref` is a binding column (REQ-1491): a copy between environments carries neither the
+    credential nor the name of one, because the vault it names belongs to the environment that
+    supplied it. Binding an EMPTY vault no longer demands an encryption master key — the key is
+    what authorizes a read, and a vault holding no secret grants no read to authorize — so an
+    install with no keychain can still register sources that need no password.
+  use_case: >-
+    Every connector that authenticates was unreachable from the UI. A source's password had no
+    column at all, so a source created through the Sources form arrived at its connector with an
+    empty credential and Register Table listed no schema — the splunk case (REQ-1694), where the
+    API token IS the password, and every warehouse and database source with it. Only sources whose
+    credential happened to ride in the `mapping` JSON, or which were declared in the config file,
+    worked.
+  scenario: |
+    Given an operator who types a Splunk instance's password into the Sources form
+    When the source is created
+    Then the password is stored in the organization's secret vault under source_<id>_password, the sources row holds ${secret:source_<id>_password} and not the password, Register Table lists the instance's Data Models, and deleting the source removes the vault entry

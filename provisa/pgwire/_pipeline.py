@@ -920,10 +920,57 @@ async def finalize_audit(plan: _Plan, status_code: int, state: Any | None = None
     await write_audit(plan.audit, status_code, state)
 
 
+#: REQ-1695: the reference that can only be answered by an ORG's vault. ``${env:...}`` is the
+#: deployment's process environment and needs nothing bound; this one names a secret that belongs
+#: to an organization, so a resolution outside that org's binding raises rather than guessing.
+_ORG_SECRET_REF = "${secret:"
+
+
+def _reads_an_org_secret(plan: _Plan, state: Any) -> bool:
+    """Whether any source this plan reads addresses its endpoint through an org secret (REQ-1695).
+
+    Decided from state already in memory -- the control-plane source map ``_rebuild_schemas``
+    publishes, and the config's own Sources -- so a plan that reads nothing of the kind pays a
+    dict lookup and no query. That matters because the binding it gates is a read of the org's
+    vault, and putting one on EVERY statement would buy a round trip for the overwhelming majority
+    of queries that have no secret to resolve.
+    """
+    wanted = set(getattr(plan, "sources", None) or ())
+    if not wanted:
+        return False
+    runtime = getattr(state, "runtime_sources", None) or {}
+    for source_id in wanted:
+        row = runtime.get(source_id)
+        if row is not None and any(
+            isinstance(v, str) and _ORG_SECRET_REF in v for v in row.values()
+        ):
+            return True
+    for src in getattr(getattr(state, "config", None), "sources", None) or []:
+        if src.id in wanted and _ORG_SECRET_REF in src.model_dump_json():
+            return True
+    return False
+
+
 async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  # REQ-027, REQ-028
+    """The terminal every raw-SQL surface reaches, with the acting org's secrets resolvable.
+
+    REQ-1695: a source's password reaches the engine as ``${secret:NAME}`` and is resolved at the
+    moment the source is dialled -- inside the attach the engine performs on the way to answering
+    this statement. That resolution needs the org's vault bound, and HERE is the one place every
+    surface passes through, so no transport has to establish it for itself.
+    """
     require_governed_plan(plan)  # SECURITY: refuse any plan the top of the pipeline did not mint
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
+    if _reads_an_org_secret(plan, state):
+        from provisa.core.secrets_store import bound_to_request_org
+
+        async with bound_to_request_org():
+            return await _execute_plan_in_org(plan, state)
+    return await _execute_plan_in_org(plan, state)
+
+
+async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-027, REQ-028
     # REQ-1448: the shard this org queries may have had its node released while idle. Waking it HERE
     # — before the terminal, not inside the executor's retry loop — is what makes a cold start
     # survivable: a node is ~2-4min to provision and the retry budget is 30s, so a query that

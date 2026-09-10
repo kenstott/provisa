@@ -103,6 +103,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _resolve_admin_context,
 )
 from provisa.core.models import DERIVED_SOURCE_ID  # noqa: E402
+from provisa.core.secrets_store import bound_to_request_org as _bound_to_request_org  # noqa: E402
 
 
 def _safe_store_ref(engine: Any) -> str | None:
@@ -641,7 +642,11 @@ class Query:  # REQ-021, REQ-042
         # its catalog does not exist yet at this point; the seam attaches the raw source and lists it.
         src = await _source_for_introspection(source_id)
         if src is not None:
-            seam = await asyncio.to_thread(state.federation_engine.introspect_schemas, src)
+            # REQ-1695: the source's password is a reference into the ORG's vault, so the seam runs
+            # inside that vault's binding. ``to_thread`` copies the context, so the resolution that
+            # happens on the worker thread reads the same binding established here.
+            async with _bound_to_request_org():
+                seam = await asyncio.to_thread(state.federation_engine.introspect_schemas, src)
             if seam is not None:
                 return [s for s in seam if not is_provisa_internal(s)]
         catalog = state.catalog_for(source_id)
@@ -695,9 +700,11 @@ class Query:  # REQ-021, REQ-042
         # REQ-1673: see available_schemas — list through the attached raw source on a native engine.
         src = await _source_for_introspection(source_id)
         if src is not None:
-            seam = await asyncio.to_thread(
-                state.federation_engine.introspect_tables, src, schema_name
-            )
+            # REQ-1695: inside the org's vault — see available_schemas.
+            async with _bound_to_request_org():
+                seam = await asyncio.to_thread(
+                    state.federation_engine.introspect_tables, src, schema_name
+                )
             if seam is not None:
                 return [
                     AvailableTableType(name=n, comment=None) for n in seam if n.lower() not in skip
@@ -1285,12 +1292,12 @@ class Query:  # REQ-021, REQ-042
 
 async def _source_for_introspection(source_id: str):
     """REQ-1673: the Source a native engine attaches from. The live config Source when the id is
-    there (it carries the password secret reference); otherwise the control-plane row, which has
-    no password — a source that needs one and was created through the UI without the config
-    carrying it lists nothing, and the engine log says why."""
+    there; otherwise the control-plane row, whose ``password_ref`` carries the source's credential
+    reference since REQ-1695 -- so a source created through the Sources form authenticates exactly
+    like a config-declared one."""
     from provisa.api.app import state
-    from provisa.core.models import Source
     from provisa.core.repositories import source as source_repo
+    from provisa.core.repositories.source import source_from_row
 
     for s in getattr(getattr(state, "config", None), "sources", None) or []:
         if s.id == source_id:
@@ -1300,24 +1307,7 @@ async def _source_for_introspection(source_id: str):
         row = await source_repo.get(cast("Connection", _conn), source_id)
     if row is None:
         return None
-    fields = {
-        k: v
-        for k, v in row.items()
-        if k
-        in {
-            "id",
-            "type",
-            "host",
-            "port",
-            "database",
-            "username",
-            "path",
-            "mapping",
-            "federation_hints",
-        }
-        and v is not None
-    }
-    return Source.model_validate(fields)
+    return source_from_row(row)
 
 
 async def _cassandra_columns(
@@ -1556,9 +1546,11 @@ async def resolve_available_columns_metadata(
     if source_id != DERIVED_SOURCE_ID and state.federation_engine.engine.native_store is not None:
         src = await _source_for_introspection(source_id)
         if src is not None:
-            described = await asyncio.to_thread(
-                state.federation_engine.introspect_columns, src, schema_name, table_name
-            )
+            # REQ-1695: inside the org's vault — see available_schemas.
+            async with _bound_to_request_org():
+                described = await asyncio.to_thread(
+                    state.federation_engine.introspect_columns, src, schema_name, table_name
+                )
             if described:
                 return [
                     AvailableColumnType(name=name, data_type=str(dtype).lower(), comment=None)

@@ -88,6 +88,8 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _sync_view_mv,
     _upsert_source_with_domains,
     _validate_govdata_api_key,
+    forget_source_password,
+    persist_source_password,
 )
 
 
@@ -594,30 +596,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 return _err
 
         pool = await _get_pool()
-        model = SourceModel(
-            id=input.id,
-            type=SourceTypeEnum(input.type),
-            host=input.host,
-            port=input.port,
-            database=input.database,
-            username=input.username,
-            password=input.password,
-            path=input.path,
-            description=input.description,
-            mapping=_parse_mapping_json(input.mapping_json),
-            federation_hints=_federation_hints_from_input(input),
-            change_signal=input.change_signal,
-            load_protected=input.load_protected,  # REQ-1141
-            off_peak_window=input.off_peak_window,  # REQ-1141
-            off_peak_tz=input.off_peak_tz,  # REQ-1141
-            cdc=_cdc_model_from_input(input),
-        )
         from provisa.api.app import state
+        from provisa.core.secrets_store import bound_to_request_org
 
         # REQ-012: validate the direct connection before persisting; reject on failure
         # rather than leaving a half-registered source behind a swallowed error.
+        # REQ-1695: inside the org's vault, because the form may carry a ``${secret:NAME}`` the
+        # operator wrote rather than a literal, and the pool resolves what it was given.
         try:
-            await _add_source_pool(state, input)
+            async with bound_to_request_org():
+                await _add_source_pool(state, input)
         except Exception as _conn_err:
             logging.getLogger(__name__).exception(
                 "create_source: connection validation failed for %r", input.id
@@ -628,6 +616,29 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 code="schema.source_connection_failed",
                 params={"source": input.id, "error": str(_conn_err)},
             )
+
+        # REQ-1695: the connection answered, so this credential is worth keeping. A literal goes
+        # into the org vault and the row keeps the reference that names it; the row never holds a
+        # credential. Done after the validation so a rejected source leaves no vault entry behind.
+        password_ref = await persist_source_password(info, input.id, input.password)
+        model = SourceModel(
+            id=input.id,
+            type=SourceTypeEnum(input.type),
+            host=input.host,
+            port=input.port,
+            database=input.database,
+            username=input.username,
+            password=password_ref,
+            path=input.path,
+            description=input.description,
+            mapping=_parse_mapping_json(input.mapping_json),
+            federation_hints=_federation_hints_from_input(input),
+            change_signal=input.change_signal,
+            load_protected=input.load_protected,  # REQ-1141
+            off_peak_window=input.off_peak_window,  # REQ-1141
+            off_peak_tz=input.off_peak_tz,  # REQ-1141
+            cdc=_cdc_model_from_input(input),
+        )
 
         await _upsert_source_with_domains(pool, model, input)
 
@@ -670,7 +681,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
         # Provision on the bound engine (the engine makes a catalog; native engines no-op / attach lazily).
-        _register_source_on_engine(state, model, input)
+        # REQ-1695: under the org's vault -- the password it registers is now a reference into it.
+        async with bound_to_request_org():
+            _register_source_on_engine(state, model, input)
         await _analyze_source_on_engine(state, pool, model, input)
 
         if input.type == "govdata" and input.database and input.username:
@@ -706,6 +719,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.source_not_found",
                     params={"source": input.id},
                 )
+            # REQ-1695: the literal a person retyped into the form replaces the vault entry under
+            # the same name -- a rotation, not a second secret -- and the row keeps the reference.
+            password_ref = await persist_source_password(info, input.id, input.password)
             model = SourceModel(
                 id=input.id,
                 type=SourceTypeEnum(input.type),
@@ -713,7 +729,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 port=input.port,
                 database=input.database,
                 username=input.username,
-                password=input.password,
+                password=password_ref,
                 path=input.path,
                 description=input.description,
                 mapping=_parse_mapping_json(input.mapping_json),
@@ -745,19 +761,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.app import state
         from provisa.executor.drivers.registry import has_driver
         from provisa.core.secrets import resolve_secrets
+        from provisa.core.secrets_store import bound_to_request_org
 
         if has_driver(input.type):
             await state.source_pools.remove(input.id)
             try:
-                await state.source_pools.add(
-                    source_id=input.id,
-                    source_type=input.type,
-                    host=resolve_secrets(input.host) if input.host else "localhost",
-                    port=input.port,
-                    database=input.database,
-                    user=input.username,
-                    password=resolve_secrets(input.password),
-                )
+                # REQ-1695: the password the pool dials with is the persisted REFERENCE, resolved
+                # inside the org's vault -- the same value every other reader of this source gets.
+                async with bound_to_request_org():
+                    await state.source_pools.add(
+                        source_id=input.id,
+                        source_type=input.type,
+                        host=resolve_secrets(input.host) if input.host else "localhost",
+                        port=input.port,
+                        database=input.database,
+                        user=input.username,
+                        password=resolve_secrets(password_ref),
+                    )
             except Exception:
                 logging.getLogger(__name__).exception(
                     "Direct pool for %r failed — the engine-routed queries still work.",
@@ -844,8 +864,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await source_repo.delete(cast("Connection", conn), id)
+            _conn = cast("Connection", conn)
+            # REQ-1695: read the reference before the row goes, so the vault entry it names can be
+            # removed with it. A source whose credential outlived it is a credential nothing owns.
+            _existing = await source_repo.get(_conn, id)
+            deleted = await source_repo.delete(_conn, id)
         if deleted:
+            assert _existing is not None  # delete reported a row, so get found one
+            await forget_source_password(id, _existing["password_ref"])
             state.graphql_remote_sources.pop(id, None)
             await _rebuild_schemas()
             return MutationResult(

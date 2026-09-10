@@ -168,5 +168,3 @@ None
 .playwright*
 
 
-# The Splunk demo source's API token, minted by demo/sources/splunk/prime.py (REQ-1692).
-demo/sources/splunk/.splunk-demo-token
