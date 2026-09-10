@@ -18024,10 +18024,34 @@ The import preview types the imported design from its sources. A Hasura export n
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-A splunk source carries its two optional connector settings onto the Calcite-pgwire path, not the Trino path alone. `mapping.disable_ssl_validation` becomes the `disableSslValidation` operand and `mapping.datamodel_filter` becomes `datamodelFilter`, each written as the type `SplunkSchemaFactory` casts it to — a boolean and a string, never the property-file string "true". Without the first, an instance that serves its management port with a self-signed certificate ([REQ-724](#REQ-724)) cannot be reached at all on a non-Trino engine; without the second, discovery lists every Data Model the instance ships. A splunk demo source (`demo/sources/splunk`) provisions an instance, seeds an index, events and the Data Model that exposes them, and mints the API token the source authenticates with — Splunk generates that value, so the unit writes it to `.splunk-demo-token` as the one handoff point, which the demo start exports as `PROVISA_DEMO_SPLUNK_TOKEN` and the source-to-query e2e reads.
+A `files` source is proven end to end through the UI on the DuckDB engine (its native `read_csv_auto` scanner, [REQ-229](#REQ-229)) — Sources form, Register Table, and a SQL query returning the fixture CSV's real rows — and its landing path on an engine with no files connector of its own ([REQ-954](#REQ-954)) is proven at the integration level against the real `pgwire-file` bundle: `ConnectorReplica.load()` starts the bundled Calcite pgwire server against a tmp CSV directory, lands rows over a real asyncpg connection, and reuses the same server across repeated loads of the same source.
+
+**Use case:** DuckDBFilesConnector (native CSV scan) and pgwire_replica's landing path ([REQ-954](#REQ-954)) both existed with no test proving a `files` source actually works end to end through either — the same gap [REQ-1671](#REQ-1671) closed for the other seven source types.
+
+**Code:** `provisa/federation/connector_duckdb.py`, `provisa/federation/pgwire_replica.py`, `provisa/api/admin/introspect.py`
+
+**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`, `tests/integration/test_files_pgwire_replica.py`
+
+### REQ-1693 · Replica Strategy {#REQ-1693}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A sharepoint source authenticating with a certificate reaches the real site on the non-Trino engines. The Calcite pgwire model operand names the adapter's schema factory exactly (`SharePointListSchemaFactory`), declares `authType: CERTIFICATE` — without it the adapter defaults to CLIENT_CREDENTIALS and fails on the absent secret — and carries an ABSOLUTE `certificatePath`, because the server runs with its bundle directory as its working directory. `certificatePassword` is always emitted, the empty string for a password-less PFX, since the adapter rejects a null password; a `mapping` with no `certificate_password` key, or a relative `certificate_path`, raises `MissingConnectorConfig` naming the field rather than being defaulted. The connection-resolved source view a native engine introspects from carries `base_url`, which the endpoint-style connectors (sharepoint's siteUrl, splunk's url) read before falling back to `host`; omitting it raised AttributeError inside the connector and surfaced as an empty Register Table schema list. The Sources form carries auth_type, certificate_path and certificate_password into the source's mapping, so a site configured through the UI registers its `documents` library and serves a query against it.
+
+**Use case:** A SharePoint site registered with certificate auth returned "CLIENT_CREDENTIALS auth requires clientId, clientSecret, and tenantId" on every query, because the operand named neither the auth type nor the adapter's real schema factory.
+
+**Code:** `provisa/federation/pgwire_replica.py`, `provisa/federation/backend.py`, `provisa-ui/src/pages/SourcesPage.tsx`, `provisa-ui/src/pages/sources/SourceFormFieldsExtended.tsx`
+
+**Tests:** `tests/integration/test_sharepoint_duckdb_attach.py`, `provisa-ui/e2e/source-to-query.spec.ts`
+
+### REQ-1694 · Replica Strategy {#REQ-1694}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A splunk source carries its two optional connector settings onto the Calcite-pgwire path, not the Trino path alone. `mapping.disable_ssl_validation` becomes the `disableSslValidation` operand and `mapping.datamodel_filter` becomes `datamodelFilter`, each written as the type `SplunkSchemaFactory` casts it to — a boolean and a string, never the property-file string "true". Without the first, an instance that serves its management port with a self-signed certificate ([REQ-724](#REQ-724)) cannot be reached at all on a non-Trino engine; without the second, discovery lists every Data Model the instance ships. The engine's introspection seam ([REQ-1673](#REQ-1673)) carries `base_url` onto the source it builds, without which every connector that derives a URL from it — splunk, sharepoint, airport — raised inside the seam and showed an empty schema list instead of the config error. A splunk demo source (`demo/sources/splunk`) provisions an instance, seeds an index, events and the Data Model that exposes them, and mints the API token the source authenticates with — Splunk generates that value, so the unit writes it to `.splunk-demo-token` as the one handoff point, which the demo start exports as `PROVISA_DEMO_SPLUNK_TOKEN` and the source-to-query e2e reads.
 
 **Use case:** Splunk was reachable on DuckDB in principle ([REQ-1690](#REQ-1690)) but not in practice: every real instance behind a self-signed certificate failed the attach, because the setting that turns that off reached the Trino connector and nothing else.
 
-**Code:** `provisa/federation/pgwire_replica.py`, `demo/sources/splunk/prime.py`, `demo/sources/splunk/fragment.yaml`, `demo/sources/splunk/compose.yml`, `start-ui-install.sh`
+**Code:** `provisa/federation/pgwire_replica.py`, `provisa/federation/backend.py`, `demo/sources/splunk/prime.py`, `demo/sources/splunk/fragment.yaml`, `demo/sources/splunk/compose.yml`, `start-ui-install.sh`
 
-**Tests:** `tests/unit/test_replica_strategy.py`, `tests/integration/test_splunk_duckdb_attach.py`, `provisa-ui/e2e/source-to-query.spec.ts`
+**Tests:** `tests/unit/test_replica_strategy.py`, `tests/integration/test_splunk_duckdb_attach.py`

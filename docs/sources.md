@@ -161,6 +161,8 @@ Private buckets need credentials (AWS region and keys from the environment). For
   path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
 ```
 
+On the DuckDB engine, `files` is read natively — a `read_csv_auto` scanner view per `<table>.csv` under the resolved directory (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. On an engine with no `files` connector of its own, rows land through the same connector-bundled Calcite pgwire server (`pgwire-file`) that sharepoint/splunk use (REQ-954) — see [Enterprise SaaS Connectors](#enterprise-saas-connectors) below. End-to-end UI coverage (Sources form → Register Table → SQL query) and the pgwire landing path are proven in REQ-1694.
+
 ### Observability & Other
 
 `prometheus` has a Trino connector (properties built from the type's mapping DSL). `google_sheets` is a registered source type with no Trino connector and materializes through the API cache pipeline. [tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` lines 87–88]
@@ -185,8 +187,10 @@ SharePoint lists are enumerated as schemas and exposed as queryable tables (REQ-
 | `password` | `client-secret` | Azure app client secret |
 | `database` | `tenant-id` | Azure tenant UUID |
 | `mapping.auth_type` | `auth-type` | `CLIENT_CREDENTIALS` (default) or `CERTIFICATE` |
-| `mapping.certificate_path` | `certificate-path` | PFX path when `auth_type: CERTIFICATE` |
-| `mapping.certificate_password` | `certificate-password` | PFX password |
+| `mapping.certificate_path` | `certificate-path` | PFX path when `auth_type: CERTIFICATE` — must be ABSOLUTE |
+| `mapping.certificate_password` | `certificate-password` | PFX password — the key must be present, empty string for a password-less PFX |
+
+Certificate auth on the non-Trino engines carries two extra rules, both enforced when the Calcite pgwire server's `model.json` operand is built (REQ-1693). `certificate_path` must be absolute: the server runs with its bundle directory as the working directory, so a relative path resolves inside the runtime-deps cache and the PFX is not found. `certificate_password` must be present in `mapping` even when the PFX has no password, in which case it is the empty string — the Calcite adapter rejects a null password outright, and an absent key is treated as a config error rather than silently read as an empty password. A missing or relative value raises `MissingConnectorConfig` naming the field. [tool-verified: `provisa/federation/pgwire_replica.py` `_sharepoint_operand`]
 
 When the connector does not expose `information_schema.columns`, register the table with explicit column definitions (obtained from the Microsoft Graph API) via the `registerTable` mutation (REQ-732).
 
@@ -199,6 +203,20 @@ When the connector does not expose `information_schema.columns`, register the ta
   database: ${env:SP_TENANT_ID}
   mapping:
     auth_type: CLIENT_CREDENTIALS
+```
+
+Certificate auth, with the absolute path and the always-present password:
+
+```yaml
+- id: hr-sharepoint
+  type: sharepoint
+  base_url: https://kenstott.sharepoint.com
+  username: ${env:SP_CLIENT_ID}
+  database: ${env:SP_TENANT_ID}
+  mapping:
+    auth_type: CERTIFICATE
+    certificate_path: /etc/provisa/certs/sharepoint.pfx
+    certificate_password: ${env:SP_CERT_PASSWORD}
 ```
 
 #### `splunk`
@@ -214,7 +232,7 @@ Splunk search results are queryable as tables (e.g. `internal_server`) (REQ-721)
 | `mapping.datamodel_filter` | `datamodel-filter` | filter to a data model |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | for self-signed certs (REQ-724) |
 
-On the pgwire-replica path (every engine but Trino) the same four optional settings become the Calcite `model.json` operand keys `app`, `token`/`username`+`password`, `datamodelFilter` and `disableSslValidation` — the last two as the types `SplunkSchemaFactory` casts them to, a string and a boolean (REQ-1692). [tool-verified: `provisa/federation/pgwire_replica.py` `_splunk_operand`]
+On the pgwire-replica path (every engine but Trino) the same four optional settings become the Calcite `model.json` operand keys `app`, `token`/`username`+`password`, `datamodelFilter` and `disableSslValidation` — the last two as the types `SplunkSchemaFactory` casts them to, a string and a boolean (REQ-1694). [tool-verified: `provisa/federation/pgwire_replica.py` `_splunk_operand`]
 
 ```yaml
 - id: ops-splunk

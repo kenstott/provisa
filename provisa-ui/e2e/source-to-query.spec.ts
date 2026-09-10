@@ -19,9 +19,9 @@
 // and proves the pipeline; nothing before this drove the forms. The Neo4j form had no path to a
 // table at all until REQ-1670, and no test could have said so.
 
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { test, expect } from "./coverage";
 import {
@@ -42,6 +42,8 @@ import {
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
 } from "./source-to-query-helpers";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 test.describe("source to query through the UI (REQ-1671)", () => {
   test("neo4j: add the source, register a Cypher table, query it on the SQL page", async ({
@@ -369,5 +371,111 @@ test.describe("source to query through the UI (REQ-1671)", () => {
       ["medical", "2"],
       ["transfer", "2"],
     ]);
+  });
+  test("files: add the source, register a CSV table, query it on the SQL page", async ({
+    page,
+  }) => {
+    test.setTimeout(300000);
+    const stamp = Date.now();
+    const sourceId = `e2e_files_${stamp}`;
+    const tableName = "widgets";
+    const schemaName = sourceId.replace(/-/g, "_"); // pgwire_replica.schema_name() convention
+    const fixtureDir = path.resolve(ROOT, "provisa-ui/e2e/fixtures/files");
+
+    // 1. Sources form — local file:// transport (default), path is an absolute directory glob
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("files");
+    // Transport defaults to file:// (SourcesPage.tsx); the Mantine Select shows its label, not the
+    // raw value, so match the value prefix rather than an exact string.
+    await expect(page.getByTestId("files-transport-select")).toHaveValue(/^file:\/\//);
+    await page.getByTestId("files-path-input").fill(`${fixtureDir}/**`);
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. Register Table form — DuckDB's native files connector lists each <table>.csv as a table
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, schemaName, tableName);
+    await expect(page.getByTestId("register-table-col-selected-widget_name")).toBeVisible({
+      timeout: 60000,
+    });
+    await expect(page.getByTestId("register-table-col-selected-price")).toBeVisible();
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    // 3. SQL page: the fixture CSV's rows (provisa-ui/e2e/fixtures/files/widgets.csv)
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT widget_id, widget_name, price FROM pet_store.${registered} ORDER BY widget_id`,
+    );
+    expect(rows).toEqual([
+      ["1", "sprocket", "9.99"],
+      ["2", "cog", "4.5"],
+      ["3", "gear", "12.75"],
+    ]);
+  });
+
+  // SharePoint is the one case with no container to seed: the source is a real Microsoft 365 site,
+  // reached read-only with the certificate-auth app registration in the root .env (playwright.config
+  // loads it into process.env). On this lane the engine is DuckDB, which reaches SharePoint through
+  // the connector's bundled Calcite pgwire server (REQ-1690) rather than any engine-native
+  // connector, so this case is the UI-level proof of that path.
+  //
+  // The site's built-in `Documents` library is the only list that exists on every SharePoint site,
+  // so it is what gets registered — and the test never writes to the tenant. The library may hold
+  // zero documents, so the query asserts the shape of the result, not a row count.
+  test("sharepoint: add the source, register a list, query it on the SQL page", async ({
+    page,
+  }) => {
+    test.skip(
+      !process.env.SP_SITE_URL,
+      "no live SharePoint credentials: set the SP_* block in the root .env",
+    );
+    test.setTimeout(300000);
+    const stamp = Date.now();
+    const sourceId = `e2e_sharepoint_${stamp}`;
+    const tableName = "documents";
+    // The Calcite pgwire server runs with its bundle directory as cwd, so a relative
+    // SP_CERT_PATH (.env authors it as ./sharepoint.pfx) has to be resolved here (REQ-1693).
+    const certPath = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "..",
+      process.env.SP_CERT_PATH!,
+    );
+
+    // 1. Sources form — site URL + tenant, then the certificate-auth fields
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("sharepoint");
+    await page.getByTestId("sharepoint-site-url-input").fill(process.env.SP_SITE_URL!);
+    await page.getByTestId("sharepoint-tenant-id-input").fill(process.env.SP_TENANT_ID!);
+    await page.getByTestId("sharepoint-auth-type-select").click();
+    await page.getByRole("option", { name: "Certificate", exact: true }).click();
+    await page.getByTestId("sharepoint-client-id-input").fill(process.env.SP_CLIENT_ID!);
+    await page.getByTestId("sharepoint-cert-path-input").fill(certPath);
+    await page
+      .getByTestId("sharepoint-cert-password-input")
+      .fill(process.env.SP_CERT_PASSWORD ?? "");
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. Register Table form — the connector exposes the site's lists as tables under a schema
+    // named for the sql-normalized source id (pgwire_replica.schema_name).
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, sourceId, tableName);
+    await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({
+      timeout: 120000,
+    });
+    await expect(page.getByTestId("register-table-col-selected-title")).toBeVisible();
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    // 3. SQL page — a live read of the document library. The library's contents are the tenant's
+    // and may legitimately be empty, so the aggregate's SHAPE is the assertion: one row, one cell,
+    // a non-negative integer that only a completed round trip to SharePoint can produce.
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT COUNT(*) AS document_count FROM pet_store.${registered}`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveLength(1);
+    expect(Number(rows[0][0])).toBeGreaterThanOrEqual(0);
   });
 });

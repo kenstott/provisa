@@ -18,6 +18,7 @@ Calcite jar / real Postgres.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -136,7 +137,7 @@ def test_splunk_model_json_userpass():
 
 
 def test_splunk_model_json_disable_ssl_and_datamodel_filter():
-    """REQ-724/REQ-1692: the two Splunk mapping keys the Trino connector already carries reach the
+    """REQ-724/REQ-1694: the two Splunk mapping keys the Trino connector already carries reach the
     Calcite operand — as the types SplunkSchemaFactory casts them to (Boolean / String)."""
     src = _splunk_source(
         mapping={"disable_ssl_validation": True, "datamodel_filter": "provisa_*"},
@@ -327,6 +328,7 @@ def _server(tmp_path, *, health: bool = True):
         ports=pr.PortPair(5433, "127.0.0.1", 5533),
         spawn=_spawn,
         health_check=lambda _h, _p: health,
+        port_is_free=lambda _p: True,
     )
     return server, proc, spawned
 
@@ -427,6 +429,7 @@ async def test_connector_replica_end_to_end(tmp_path):
         allocator=pr.PortAllocator(is_free=lambda _p: True),
         spawn=lambda _cmd, _cwd: proc,
         health_check=lambda _h, _p: True,
+        port_is_free=lambda _p: True,
         connect=_connect,
     )
     rows = await replica.load("reports")
@@ -452,6 +455,7 @@ async def test_connector_replica_unhealthy_is_loud(tmp_path):
         allocator=pr.PortAllocator(is_free=lambda _p: True),
         spawn=lambda _cmd, _cwd: _FakeProc(),
         health_check=lambda _h, _p: False,
+        port_is_free=lambda _p: True,
         connect=None,
     )
     with pytest.raises(pr.ServerLifecycleError):
@@ -476,6 +480,7 @@ async def test_make_pgwire_loader_dispatches_per_source(tmp_path):
         allocator=pr.PortAllocator(is_free=lambda _p: True),
         spawn=lambda _cmd, _cwd: _FakeProc(),
         health_check=lambda _h, _p: True,
+        port_is_free=lambda _p: True,
         connect=_connect,
     )
     src_a = Source(id="sp-a", type=SourceType.files, path="/a")
@@ -496,11 +501,27 @@ def test_needs_pgwire_replica_when_engine_lacks_connector():
     assert pr.needs_pgwire_replica(_files_source(), _Eng()) is True
 
 
-def test_no_pgwire_replica_when_engine_has_connector():
+def test_no_pgwire_replica_when_engine_reads_the_type_live():
+    class _Live:
+        reads_in_place = True
+
     class _Eng:
-        connectors = {"files": object()}
+        connectors = {"files": _Live()}
 
     assert pr.needs_pgwire_replica(_files_source(), _Eng()) is False
+
+
+def test_pgwire_replica_when_engine_only_has_the_land_placeholder():  # issue #114
+    """build_*_engine() gives every self-only warehouse a FETCH placeholder for the pgwire-replica
+    types; that placeholder is the landing path, so the bridge is still needed."""
+    from provisa.federation.engine import build_duckdb_engine, build_sqlalchemy_engine
+
+    assert (
+        pr.needs_pgwire_replica(_splunk_source(), build_sqlalchemy_engine("mysql://h/db")) is True
+    )
+    assert pr.needs_pgwire_replica(_files_source(), build_sqlalchemy_engine("mysql://h/db")) is True
+    assert pr.needs_pgwire_replica(_splunk_source(), build_duckdb_engine()) is False
+    assert pr.needs_pgwire_replica(_files_source(), build_duckdb_engine()) is False
 
 
 def test_no_pgwire_replica_for_non_replica_type():
@@ -525,6 +546,7 @@ def test_endpoint_waits_for_the_listener(tmp_path, monkeypatch):
         allocator=pr.PortAllocator(is_free=lambda _p: True),
         spawn=lambda _cmd, _cwd: proc,
         health_check=lambda _h, _p: next(answers),
+        port_is_free=lambda _p: True,
     )
     ports = replica.endpoint()
     assert ports.pgwire_port == pr.PGWIRE_DEFAULT_PORT
@@ -542,6 +564,7 @@ def test_endpoint_never_listening_is_loud(tmp_path, monkeypatch):
         allocator=pr.PortAllocator(is_free=lambda _p: True),
         spawn=lambda _cmd, _cwd: _FakeProc(),
         health_check=lambda _h, _p: False,
+        port_is_free=lambda _p: True,
     )
     with pytest.raises(pr.ServerLifecycleError):
         replica.endpoint()
@@ -584,3 +607,51 @@ def test_stop_all_servers_closes_every_endpoint(monkeypatch):
     pr.stop_all_servers()
     assert sorted(closed) == ["a", "b"]
     assert pr._ENDPOINTS == {}
+
+
+# -- REQ-1690: the dropdown's availability probe for a pgwire-attach connector ---------------
+
+
+async def _fetch_ok(sql):
+    # INSTALL/LOAD return nothing; the probe's duckdb_functions() count answers 1 (registered).
+    return [{"n": 1}] if "duckdb_functions" in sql else []
+
+
+def test_pgwire_connector_probe_reports_cached_bundle(tmp_path, monkeypatch):
+    from provisa.federation.connector_duckdb import DuckDBSplunkConnector
+
+    monkeypatch.setattr(rd.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(rd.platform, "machine", lambda: "x86_64")
+    monkeypatch.setenv("PROVISA_RUNTIME_DEPS_CACHE", str(tmp_path))
+    result = asyncio.run(DuckDBSplunkConnector().probe(_fetch_ok))
+    assert result.available is True
+    assert "fetched on first use" in result.reason
+    assert "pgwire-splunk-0.81.0-linux-x86_64.tar.gz" in result.reason
+    _lay_down_bundle(
+        rd.bundle_spec_for("splunk"), rd.BundleResolver().cached_path(rd.bundle_spec_for("splunk"))
+    )
+    result = asyncio.run(DuckDBSplunkConnector().probe(_fetch_ok))
+    assert result.available is True
+    assert "cached" in result.reason
+
+
+def test_pgwire_connector_probe_unavailable_on_an_unbuilt_platform(monkeypatch):
+    from provisa.federation.connector_duckdb import DuckDBSharepointConnector
+
+    monkeypatch.setattr(rd.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(rd.platform, "machine", lambda: "aarch64")
+    result = asyncio.run(DuckDBSharepointConnector().probe(_fetch_ok))
+    assert result.available is False
+    assert "Linux/aarch64" in result.reason
+    assert result.remediation is not None
+
+
+def test_pgwire_connector_probe_unavailable_without_postgres_extension():
+    from provisa.federation.connector_duckdb import DuckDBSplunkConnector
+
+    async def _fetch_fail(sql):
+        raise RuntimeError(f"cannot {sql}")
+
+    result = asyncio.run(DuckDBSplunkConnector().probe(_fetch_fail))
+    assert result.available is False
+    assert "postgres did not load" in result.reason

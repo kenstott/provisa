@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1692: DuckDB attaches a LIVE Splunk through the connector's bundled Calcite pgwire server.
+"""REQ-1694: DuckDB attaches a LIVE Splunk through the connector's bundled Calcite pgwire server.
 
 tests/integration/test_duckdb_attach_calcite_pgwire.py proves the mechanism with the ``pgwire-file``
 bundle standing in for a SaaS API, so it needs no credentials. This module runs the same mechanism
@@ -20,7 +20,7 @@ self-signed certificate, so the Calcite adapter cannot connect at all unless
 ``mapping.disable_ssl_validation`` reaches the operand as ``disableSslValidation`` (REQ-724); and
 Splunk ships its own sample Data Models, so ``mapping.datamodel_filter`` reaching
 ``datamodelFilter`` is what makes discovery return the seeded model alone. Both were missing from
-``_splunk_operand`` before REQ-1692 — a unit test pins the operand, this pins the behaviour.
+``_splunk_operand`` before REQ-1694 — a unit test pins the operand, this pins the behaviour.
 
 The Splunk this drives is the DEMO UNIT (``demo/sources/splunk``), provisioned through
 ``demo/sources/provision.py`` on freshly reserved ports under its own compose project — the same
@@ -211,7 +211,7 @@ def test_attach_details_name_the_live_endpoint_and_schema(splunk_source: Source,
     assert details["raw_alias"] == "_src_splunk-duckdb-itest"
     assert details["remote_schema"] == "splunk_duckdb_itest"
     assert details["attach"].endswith('AS "_src_splunk-duckdb-itest" (TYPE postgres, READ_ONLY)')
-    # The operand the server was configured from carries both REQ-1692 keys.
+    # The operand the server was configured from carries both REQ-1694 keys.
     operand = pr.build_model_json(splunk_source)["schemas"][0]["operand"]
     assert operand["disableSslValidation"] is True
     assert operand["datamodelFilter"] == prime.MODEL

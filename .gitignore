@@ -151,8 +151,9 @@ site/.wrangler/
 # Terraform plan binaries embed resolved variable values, including the Cloud SQL password.
 *.tfplan
 .scratch/
+# Directory in the main checkout; a symlink to it in each worktree — match both shapes,
+# so a trailing slash would leave the worktree symlink untracked.
 .splunk-cim/
-# The worktree symlink to the main checkout's vendored CIM add-on.
 .splunk-cim
 
 # Per-pytest-session Trino config directories (tests/itest_stack.py).

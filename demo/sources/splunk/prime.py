@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Prime the optional Splunk demo source (REQ-1692): an index, seven shelter-alert events, and the
+"""Prime the optional Splunk demo source (REQ-1694): an index, seven shelter-alert events, and the
 Data Model that makes them a queryable table — plus the API token the source authenticates with.
 
 Why a Data Model. Both paths into Splunk (the Trino ``splunk`` connector and, on every other

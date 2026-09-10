@@ -225,7 +225,7 @@ if [ "${#SOURCES[@]}" -gt 0 ]; then
     --prefix provisa-demo --engine "$_SRC_ENGINE" ${_SRC_NET[@]+"${_SRC_NET[@]}"} "${SOURCES[@]}"
   for _src in "${SOURCES[@]}"; do
     # Splunk generates its own API token value, so prime.py mints one and writes it beside the
-    # unit; the fragment reads it as ${env:PROVISA_DEMO_SPLUNK_TOKEN} (REQ-1692). A missing file
+    # unit; the fragment reads it as ${env:PROVISA_DEMO_SPLUNK_TOKEN} (REQ-1694). A missing file
     # means priming did not finish — fail here rather than start with an unauthenticated source.
     if [ "$_src" = splunk ]; then
       _splunk_token_file="$SCRIPT_DIR/demo/sources/splunk/.splunk-demo-token"

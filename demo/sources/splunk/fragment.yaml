@@ -7,7 +7,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 #
-# Config fragment for the optional Splunk demo source (REQ-1692). Registers the SOURCE only: its
+# Config fragment for the optional Splunk demo source (REQ-1694). Registers the SOURCE only: its
 # Data Models list as tables in Register Table — prime.py seeds the `shelter_alerts` model, which
 # is what the demo queries. On Trino this is the trino-splunk catalog; on every other engine the
 # connector's bundled Calcite pgwire server is started and attached live (REQ-1690).

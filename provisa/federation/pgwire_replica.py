@@ -35,7 +35,7 @@ import socket
 import subprocess  # noqa: S404 - launches the pinned first-party pgwire bundle launcher
 import time
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, Callable
 
 from provisa.core.secrets import resolve_secrets
@@ -59,7 +59,7 @@ SERVER_READY_SECONDS = (
 # The Calcite schema factory per connector — the ``model.json`` ``factory`` for the bundle's adapter.
 _SCHEMA_FACTORY: dict[str, str] = {
     "files": "org.apache.calcite.adapter.file.FileSchemaFactory",
-    "sharepoint": "org.apache.calcite.adapter.sharepoint.SharepointSchemaFactory",
+    "sharepoint": "org.apache.calcite.adapter.sharepoint.SharePointListSchemaFactory",
     "splunk": "org.apache.calcite.adapter.splunk.SplunkSchemaFactory",
 }
 
@@ -116,7 +116,20 @@ def _files_operand(source: Any) -> dict:
 
 def _sharepoint_operand(source: Any) -> dict:
     """sharepoint → siteUrl + tenantId + clientId + (clientSecret OR cert OR device-code). Missing
-    siteUrl, tenant/client, or every auth method is a config error (REQ-955)."""
+    siteUrl, tenant/client, or every auth method is a config error (REQ-955).
+
+    Certificate auth carries three hard contracts imposed by the Calcite adapter (REQ-1693):
+
+    * ``authType`` must be emitted as ``CERTIFICATE``. ``SharePointAuthFactory.createAuth`` reads
+      ``authType`` and falls back to ``CLIENT_CREDENTIALS`` when it is absent, so a cert operand
+      without it dies with "CLIENT_CREDENTIALS auth requires clientId, clientSecret, and tenantId".
+    * ``certificatePath`` must be ABSOLUTE. The pgwire server runs with its bundle directory as cwd,
+      so a relative path resolves against the cache dir and the PFX is not found.
+    * ``certificatePassword`` must be PRESENT, even for a password-less PFX, where it is the empty
+      string. ``createCertificateAuth`` rejects a null password and ``CertificateAuth`` calls
+      ``certificatePassword.toCharArray()``. Absence of the mapping key is a config error, not an
+      empty password — the operator must say which one they mean.
+    """
     mapping = {k: _rs(v) if isinstance(v, str) else v for k, v in (source.mapping or {}).items()}
     site_url = _rs(source.base_url) or _rs(source.host)
     if not site_url:
@@ -133,9 +146,21 @@ def _sharepoint_operand(source: Any) -> dict:
     if client_secret:
         operand["clientSecret"] = client_secret
     elif cert_path:
+        if not PurePath(cert_path).is_absolute():
+            raise MissingConnectorConfig(
+                f"sharepoint source {source.id!r}: mapping.certificate_path must be an absolute "
+                f"path (the pgwire server's cwd is its bundle directory), got {cert_path!r}"
+            )
+        cert_password = mapping.get("certificate_password")
+        if not isinstance(cert_password, str):
+            raise MissingConnectorConfig(
+                f"sharepoint source {source.id!r}: certificate auth requires "
+                f"mapping.certificate_password as a string; use an empty string for a "
+                f"password-less PFX (got {type(cert_password).__name__})"
+            )
+        operand["authType"] = "CERTIFICATE"
         operand["certificatePath"] = cert_path
-        if mapping.get("certificate_password"):
-            operand["certificatePassword"] = mapping["certificate_password"]
+        operand["certificatePassword"] = cert_password
     elif mapping.get("use_device_code"):
         operand["authType"] = "DEVICE_CODE"
     else:
@@ -336,6 +361,7 @@ class PgwireServer:  # REQ-955
         ports: PortPair,
         spawn: Callable[[list[str], Path], Any] | None = None,
         health_check: Callable[[str, int], bool] | None = None,
+        port_is_free: Callable[[int], bool] | None = None,
     ) -> None:
         self._bundle_dir = Path(bundle_dir)
         self._spec = spec
@@ -343,6 +369,9 @@ class PgwireServer:  # REQ-955
         self._ports = ports
         self._spawn = spawn if spawn is not None else _spawn_process
         self._health = health_check if health_check is not None else _tcp_health
+        # The port-release probe stop() waits on; injectable so a faked server never consults
+        # the machine's real port state (a stray JVM on 5433 failed unit tests otherwise).
+        self._port_is_free = port_is_free if port_is_free is not None else _port_is_free
         self._proc: Any = None
 
     @property
@@ -393,7 +422,7 @@ class PgwireServer:  # REQ-955
         # its listener on its own schedule. A start on this port before that would bind nothing
         # and the next attach would refuse — so stop() returns only once the port is released.
         deadline = time.monotonic() + SERVER_STOP_SECONDS
-        while not _port_is_free(self._ports.pgwire_port):
+        while not self._port_is_free(self._ports.pgwire_port):
             if time.monotonic() >= deadline:
                 raise ServerLifecycleError(
                     f"pgwire server port {self._ports.pgwire_port} still bound "
@@ -435,14 +464,16 @@ async def land_via_select(
 
 def needs_pgwire_replica(source: Any, engine: Any) -> bool:
     """Whether ``source`` must be landed through the pgwire replica on ``engine`` (REQ-954): a
-    pgwire-replica type the engine reaches through NONE of its own connectors. When the engine has a
-    connector for the type (e.g. Trino's file/sharepoint/splunk), that native path is used instead."""
+    pgwire-replica type the engine does not read LIVE through a connector of its own. Trino's
+    file/sharepoint/splunk connectors and DuckDB's pgwire attaches (REQ-1690) read in place, so
+    no replica is landed there; an engine whose only entry for the type is the land placeholder
+    ``complete_reach``/``build_*_engine`` synthesize (a FETCH ``WarehouseNativeConnector``) needs
+    the bridge — that placeholder IS the landing path, not a reader (issue #114)."""
+    from provisa.federation.strategy import engine_attaches
+
     if _source_type(source) not in PGWIRE_REPLICA_TYPES:
         return False
-    connectors = getattr(engine, "connectors", None)
-    if connectors is None:
-        return True  # a connector-less engine (native store) always needs the pgwire bridge
-    return connectors.get(_source_type(source)) is None
+    return not engine_attaches(engine, _source_type(source))
 
 
 class ConnectorReplica:  # REQ-954/955/956
@@ -461,12 +492,14 @@ class ConnectorReplica:  # REQ-954/955/956
         health_check: Callable[[str, int], bool] | None = None,
         connect: Callable[[str, int], Any] | None = None,
         version: str | None = None,
+        port_is_free: Callable[[int], bool] | None = None,
     ) -> None:
         self._source = source
         self._resolver = resolver if resolver is not None else BundleResolver()
         self._allocator = allocator if allocator is not None else PortAllocator()
         self._spawn = spawn
         self._health = health_check
+        self._port_is_free = port_is_free
         self._connect = connect
         self._spec: BundleSpec = (
             bundle_spec_for(_source_type(source), version=version)
@@ -491,6 +524,7 @@ class ConnectorReplica:  # REQ-954/955/956
             ports=ports,
             spawn=self._spawn,
             health_check=self._health,
+            port_is_free=self._port_is_free,
         )
         server.start()  # REQ-955 (lifecycle)
         self._server = server
@@ -558,6 +592,7 @@ def make_pgwire_loader(
     spawn: Callable[[list[str], Path], Any] | None = None,
     health_check: Callable[[str, int], bool] | None = None,
     connect: Callable[[str, int], Any] | None = None,
+    port_is_free: Callable[[int], bool] | None = None,
 ) -> Callable[[Any, Any], Any]:
     """Build a TYPE-level ``adapter_loaders`` row-fetch for pgwire-replica sources (REQ-954), fitting
     the ``SourceRowLoader`` adapter seam ``async (source, table) -> list[dict]``. One
@@ -576,6 +611,7 @@ def make_pgwire_loader(
                 spawn=spawn,
                 health_check=health_check,
                 connect=connect,
+                port_is_free=port_is_free,
             )
             replicas[source.id] = replica
         return await replica.load(table)
