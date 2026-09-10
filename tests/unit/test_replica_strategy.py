@@ -135,6 +135,23 @@ def test_splunk_model_json_userpass():
     assert "token" not in operand
 
 
+def test_splunk_model_json_disable_ssl_and_datamodel_filter():
+    """REQ-724/REQ-1692: the two Splunk mapping keys the Trino connector already carries reach the
+    Calcite operand — as the types SplunkSchemaFactory casts them to (Boolean / String)."""
+    src = _splunk_source(
+        mapping={"disable_ssl_validation": True, "datamodel_filter": "provisa_*"},
+    )
+    operand = pr.build_model_json(src)["schemas"][0]["operand"]
+    assert operand["disableSslValidation"] is True
+    assert operand["datamodelFilter"] == "provisa_*"
+
+
+def test_splunk_model_json_omits_unset_ssl_and_filter():
+    operand = pr.build_model_json(_splunk_source())["schemas"][0]["operand"]
+    assert "disableSslValidation" not in operand
+    assert "datamodelFilter" not in operand
+
+
 def test_splunk_missing_credentials_is_loud():
     src = _splunk_source(password="", mapping={"use_token": False})
     with pytest.raises(pr.MissingConnectorConfig):

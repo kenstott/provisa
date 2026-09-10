@@ -228,7 +228,10 @@ _HEAVY_MARKERS = frozenset(
 # Atlas JVM in one container and answers 503 on /api/atlas/v2 until all three are up — observed
 # still initialising 8 minutes in, so a 180s wait failed the service every time and took the whole
 # module's five tests down as errors.
-_SERVICE_WAIT_TIMEOUT: dict[str, int] = {"atlas": 900}
+# splunk's own healthcheck start_period is 420s (docker-compose.test.yml) precisely because a full
+# Splunk init runs ~125s natively and longer under amd64 emulation; a 180s wait would abandon the
+# container mid-boot and fail the test on a machine that was going to succeed.
+_SERVICE_WAIT_TIMEOUT: dict[str, int] = {"atlas": 900, "splunk": 600}
 _DEFAULT_WAIT_TIMEOUT = 180
 
 # Host-published services whose ephemeral port the in-process app / test clients

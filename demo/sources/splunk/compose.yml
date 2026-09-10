@@ -1,0 +1,37 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Splunk (start-ui-install.sh --demo --source=splunk).
+# Own compose project (provisa-demo-splunk). Two host-published ports: the management/REST port
+# (8089), which IS the source — every read goes through it, whether the engine is Trino (the
+# trino-splunk plugin) or a native engine (the bundled Calcite pgwire server, REQ-1690) — and the
+# HTTP Event Collector port (8088), used only by prime.py to seed the demo events.
+#
+# splunk/splunk publishes amd64 only; on arm64 the pull fails outright without this platform pin
+# (same pin as docker-compose.test.yml's splunk service). Cold start is ~2-3 minutes natively and
+# longer under emulation, hence the long start_period on the image's own readiness script.
+services:
+  splunk:
+    image: splunk/splunk:latest
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_DEMO_SPLUNK_PORT:-8089}:8089"
+      - "${PROVISA_DEMO_SPLUNK_HEC_PORT:-8088}:8088"
+    environment:
+      # Newer images refuse to start without BOTH the general terms and the license acceptance.
+      SPLUNK_GENERAL_TERMS: --accept-sgt-current-at-splunk-com
+      SPLUNK_START_ARGS: --accept-license
+      SPLUNK_PASSWORD: Provisa_2026!
+    healthcheck:
+      test: ["CMD", "/sbin/checkstate.sh"]
+      interval: 15s
+      timeout: 15s
+      retries: 40
+      start_period: 420s

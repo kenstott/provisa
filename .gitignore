@@ -152,6 +152,8 @@ site/.wrangler/
 *.tfplan
 .scratch/
 .splunk-cim/
+# The worktree symlink to the main checkout's vendored CIM add-on.
+.splunk-cim
 
 # Per-pytest-session Trino config directories (tests/itest_stack.py).
 /.itest-trino/
@@ -164,3 +166,6 @@ None
 
 .playwright*
 
+
+# The Splunk demo source's API token, minted by demo/sources/splunk/prime.py (REQ-1692).
+demo/sources/splunk/.splunk-demo-token

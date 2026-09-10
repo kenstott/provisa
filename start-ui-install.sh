@@ -219,10 +219,23 @@ if [ "${#SOURCES[@]}" -gt 0 ]; then
     export PROVISA_DEMO_CASSANDRA_SOURCE_HOST=cassandra PROVISA_DEMO_CASSANDRA_SOURCE_PORT=9042
     export PROVISA_DEMO_SPARQL_SOURCE_URL=http://sparql:3030/provisa/query
     export PROVISA_DEMO_PROMETHEUS_SOURCE_URL=http://prometheus:9090
+    export PROVISA_DEMO_SPLUNK_SOURCE_HOST=splunk PROVISA_DEMO_SPLUNK_SOURCE_PORT=8089
   fi
   "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/demo/sources/provision.py" up \
     --prefix provisa-demo --engine "$_SRC_ENGINE" ${_SRC_NET[@]+"${_SRC_NET[@]}"} "${SOURCES[@]}"
   for _src in "${SOURCES[@]}"; do
+    # Splunk generates its own API token value, so prime.py mints one and writes it beside the
+    # unit; the fragment reads it as ${env:PROVISA_DEMO_SPLUNK_TOKEN} (REQ-1692). A missing file
+    # means priming did not finish — fail here rather than start with an unauthenticated source.
+    if [ "$_src" = splunk ]; then
+      _splunk_token_file="$SCRIPT_DIR/demo/sources/splunk/.splunk-demo-token"
+      if [ ! -s "$_splunk_token_file" ]; then
+        echo "--source=splunk: prime.py wrote no API token at $_splunk_token_file"
+        exit 1
+      fi
+      PROVISA_DEMO_SPLUNK_TOKEN="$(cat "$_splunk_token_file")"
+      export PROVISA_DEMO_SPLUNK_TOKEN
+    fi
     _src_dir="$SCRIPT_DIR/demo/sources/$_src"
     if [ ! -f "$_src_dir/fragment.yaml" ]; then
       echo "--source=$_src has no $_src_dir/fragment.yaml to register it with"

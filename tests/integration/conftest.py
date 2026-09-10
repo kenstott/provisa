@@ -48,6 +48,7 @@ _INTEGRATION_GROUP_PATTERNS: list[tuple[str, re.Pattern]] = [
             r"^test_("
             r".+_federation_engine_e2e"
             r"|duckdb_runtime_e2e|duckdb_attach_pgwire.*|duckdb_attach_calcite_pgwire"
+            r"|splunk_duckdb_attach"
             r"|postgres_native_engine_e2e|pg_runtime_e2e|clickhouse_runtime_e2e"
             r"|sqlalchemy_dialect|sqlalchemy_runtime_e2e"
             r"|trino_flight_engine_e2e|trino_fte_exchange|trino_tls_flight_e2e|trino_worker_fanout"

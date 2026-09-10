@@ -30,6 +30,8 @@ export const E2E_CASSANDRA_PORT = 39042;
 export const E2E_SPARQL_PORT = 33030;
 export const E2E_PROMETHEUS_PORT = 39090;
 export const E2E_CHINOOK_PORT = 35433;
+export const E2E_SPLUNK_PORT = 38089;
+export const E2E_SPLUNK_HEC_PORT = 38088;
 
 export const DEMO_SOURCE_ENV: Record<string, string> = {
   PROVISA_DEMO_NEO4J_HTTP_PORT: String(E2E_NEO4J_HTTP_PORT),
@@ -41,6 +43,8 @@ export const DEMO_SOURCE_ENV: Record<string, string> = {
   PROVISA_DEMO_SPARQL_PORT: String(E2E_SPARQL_PORT),
   PROVISA_DEMO_PROMETHEUS_PORT: String(E2E_PROMETHEUS_PORT),
   PROVISA_DEMO_CHINOOK_PORT: String(E2E_CHINOOK_PORT),
+  PROVISA_DEMO_SPLUNK_PORT: String(E2E_SPLUNK_PORT),
+  PROVISA_DEMO_SPLUNK_HEC_PORT: String(E2E_SPLUNK_HEC_PORT),
 };
 
 // Every one of these is read by the native engine over localhost (REQ-1672 made Elasticsearch
@@ -53,6 +57,10 @@ export const DEMO_SOURCES = [
   "cassandra",
   "sparql",
   "chinook", // a Postgres for the Hasura v2 import e2e (hasura-import.spec.ts)
+  // Read through the bundled Calcite pgwire server the native engine ATTACHes (REQ-1690/1692).
+  // Slowest of the set by far: a full Splunk init under amd64 emulation, ~3 minutes to a healthy
+  // container plus KVStore start-up before prime.py can mint the API token.
+  "splunk",
 ] as const;
 export type DemoSource = (typeof DEMO_SOURCES)[number];
 

@@ -544,6 +544,10 @@ class EngineBackend:
             id=source.id,
             type=source.type,
             host=_rs(getattr(source, "host", None)),
+            # The connectors that build a URL read base_url first (splunk, sharepoint, airport);
+            # omitting it here raised AttributeError inside the introspect seam, which surfaced as
+            # an empty schema list in Register Table rather than as the config error it was.
+            base_url=_rs(getattr(source, "base_url", None)),
             port=getattr(source, "port", None),
             database=_rs(getattr(source, "database", None)),
             username=_rs(getattr(source, "username", None)),

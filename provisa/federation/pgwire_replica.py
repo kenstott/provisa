@@ -146,8 +146,9 @@ def _sharepoint_operand(source: Any) -> dict:
 
 
 def _splunk_operand(source: Any) -> dict:
-    """splunk → url (or host/port/protocol) + (token OR username/password) + optional app. A missing
-    url/host, or no token and no username/password pair, is a config error (REQ-955)."""
+    """splunk → url (or host/port/protocol) + (token OR username/password) + optional app,
+    disableSslValidation (REQ-724) and datamodelFilter. A missing url/host, or no token and no
+    username/password pair, is a config error (REQ-955)."""
     mapping = {k: _rs(v) if isinstance(v, str) else v for k, v in (source.mapping or {}).items()}
     host = _rs(source.host)
     url = _rs(source.base_url)
@@ -172,6 +173,15 @@ def _splunk_operand(source: Any) -> dict:
         operand["password"] = password
     if source.database:
         operand["app"] = source.database
+    # The same two mapping keys the Trino connector carries (trino_connectors.TrinoSplunkConnector):
+    # a self-signed Splunk cert (REQ-724) and a discovery filter. SplunkSchemaFactory casts
+    # ``disableSslValidation`` to Boolean and ``datamodelFilter`` to String, so the operand carries
+    # a real bool, never the "true" string a properties file would use.
+    if mapping.get("disable_ssl_validation"):
+        operand["disableSslValidation"] = True
+    datamodel_filter = mapping.get("datamodel_filter")
+    if datamodel_filter:
+        operand["datamodelFilter"] = datamodel_filter
     return operand
 
 

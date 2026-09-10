@@ -214,6 +214,8 @@ Splunk search results are queryable as tables (e.g. `internal_server`) (REQ-721)
 | `mapping.datamodel_filter` | `datamodel-filter` | filter to a data model |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | for self-signed certs (REQ-724) |
 
+On the pgwire-replica path (every engine but Trino) the same four optional settings become the Calcite `model.json` operand keys `app`, `token`/`username`+`password`, `datamodelFilter` and `disableSslValidation` — the last two as the types `SplunkSchemaFactory` casts them to, a string and a boolean (REQ-1692). [tool-verified: `provisa/federation/pgwire_replica.py` `_splunk_operand`]
+
 ```yaml
 - id: ops-splunk
   type: splunk
