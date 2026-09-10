@@ -87,23 +87,12 @@ def test_make_pgwire_loader_lands_via_the_same_path(source: Source):
 
 # -- REQ-954: engine routing, against REAL engine builders -----------------------------------
 #
-# needs_pgwire_replica(source, engine) gates the bridge on whether ``engine.connectors`` already
-# names a connector for the type. DuckDB's own DuckDBFilesConnector (REQ-229) is registered at
-# build_duckdb_engine() construction time, before any land-reach completion runs, so the type is
-# already reachable and the bridge is correctly skipped.
-#
-# A bare, uncompleted engine (no connectors at all — the shape the function's own unit tests use,
-# tests/unit/test_replica_strategy.py) is the case the bridge exists for: nothing else reaches the
-# type, so it is True. NOTE: every real self-only engine builder in engine.py that lands sources
-# via `_warehouse_connectors()` (build_sqlalchemy_engine, build_snowflake_engine,
-# build_databricks_engine, build_bigquery_engine, the mssql/Synapse builder, and build_pg_engine)
-# synthesizes a WarehouseNativeConnector placeholder for every _CONNECTOR_PGWIRE_REPLICA type
-# (files/sharepoint/splunk) INLINE, at construction — before `needs_pgwire_replica` ever runs. That
-# placeholder satisfies `connectors.get(type) is not None`, so needs_pgwire_replica(source,
-# build_sqlalchemy_engine(...)) is False, not True: the bridge this module implements is never
-# selected by build_adapter_loaders (events/app_wiring.py) for ANY of those engines, only for a
-# hand-built bare FederationEngine. Filed as a bug (see PR/issue description) rather than asserted
-# here as True, since that would assert something the source does not do.
+# needs_pgwire_replica(source, engine) gates the bridge on whether the engine reads the type LIVE
+# through a connector of its own (engine_attaches). DuckDB's DuckDBFilesConnector (REQ-229) is a
+# native CSV SCAN, so the bridge is skipped there. Every self-only warehouse builder in engine.py
+# (build_sqlalchemy_engine, build_pg_engine, snowflake, databricks, bigquery, mssql) synthesizes a
+# FETCH WarehouseNativeConnector placeholder for the pgwire-replica types at construction; that
+# placeholder is the landing path, not a reader, so the bridge is still needed (issue #114).
 
 
 def test_needs_pgwire_replica_true_for_an_engine_with_no_connector(source: Source):
@@ -111,6 +100,12 @@ def test_needs_pgwire_replica_true_for_an_engine_with_no_connector(source: Sourc
         connectors: dict = {}
 
     assert pr.needs_pgwire_replica(source, _BareEngine()) is True
+
+
+def test_needs_pgwire_replica_true_for_a_warehouse_engine_with_the_land_placeholder(source: Source):
+    from provisa.federation.engine import build_sqlalchemy_engine
+
+    assert pr.needs_pgwire_replica(source, build_sqlalchemy_engine("mysql://h/db")) is True
 
 
 def test_needs_pgwire_replica_false_for_duckdb_native_files_connector(source: Source):

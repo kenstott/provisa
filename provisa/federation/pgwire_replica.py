@@ -429,14 +429,16 @@ async def land_via_select(
 
 def needs_pgwire_replica(source: Any, engine: Any) -> bool:
     """Whether ``source`` must be landed through the pgwire replica on ``engine`` (REQ-954): a
-    pgwire-replica type the engine reaches through NONE of its own connectors. When the engine has a
-    connector for the type (e.g. Trino's file/sharepoint/splunk), that native path is used instead."""
+    pgwire-replica type the engine does not read LIVE through a connector of its own. Trino's
+    file/sharepoint/splunk connectors and DuckDB's pgwire attaches (REQ-1690) read in place, so
+    no replica is landed there; an engine whose only entry for the type is the land placeholder
+    ``complete_reach``/``build_*_engine`` synthesize (a FETCH ``WarehouseNativeConnector``) needs
+    the bridge — that placeholder IS the landing path, not a reader (issue #114)."""
+    from provisa.federation.strategy import engine_attaches
+
     if _source_type(source) not in PGWIRE_REPLICA_TYPES:
         return False
-    connectors = getattr(engine, "connectors", None)
-    if connectors is None:
-        return True  # a connector-less engine (native store) always needs the pgwire bridge
-    return connectors.get(_source_type(source)) is None
+    return not engine_attaches(engine, _source_type(source))
 
 
 class ConnectorReplica:  # REQ-954/955/956

@@ -246,46 +246,6 @@ class DuckDBDuckdbConnector(Connector):
 # attach time, out of scope for the probe.
 
 
-class _DuckDBPgwireConnector(Connector):  # REQ-1690
-    """A source whose only reader is its Calcite connector's bundled pgwire server (sharepoint,
-    splunk), attached LIVE: DuckDB's postgres extension speaks the wire protocol the server serves
-    (pg_catalog introspection and binary COPY out both answer), so the engine reads the connector
-    in place — filters and projections push down to Calcite, which pushes its own into the SaaS
-    API. ``details()`` starts the server once per source (REQ-955) and attaches its endpoint under
-    the private ``_src_<id>`` alias; the connector schema is the sql-normalized source id, the same
-    name the landing path uses (``pgwire_replica.schema_name``). Read-only: Calcite serves no DML.
-    """
-
-    engine = "duckdb"
-    mechanism = Mechanism.ATTACH_R
-    extension = "postgres"  # core extension — the runtime INSTALL/LOADs it before the attach
-
-    def capability(self) -> Capability:
-        return Capability(predicate_pushdown=True)
-
-    def details(self, source: Source) -> dict:
-        from provisa.federation.pgwire_replica import ensure_endpoint, schema_name
-
-        ports = ensure_endpoint(source)
-        dsn = (
-            f"host={ports.calcite_child_host} port={ports.pgwire_port} user=provisa dbname=provisa"
-        )
-        alias = f"_src_{source.id}"
-        return {
-            "attach": f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres, READ_ONLY)",
-            "raw_alias": alias,
-            "remote_schema": schema_name(source),
-        }
-
-
-class DuckDBSharepointConnector(_DuckDBPgwireConnector):  # REQ-1690
-    source_type = "sharepoint"
-
-
-class DuckDBSplunkConnector(_DuckDBPgwireConnector):  # REQ-1690
-    source_type = "splunk"
-
-
 class _DuckDBExtensionConnector(Connector):  # REQ-899
     """Every ``details()`` below attaches the remote under the private ``_src_<id>`` alias and
     reports it as ``raw_alias`` — the same convention as the postgres/sqlite connectors. Attaching
@@ -329,6 +289,73 @@ class _DuckDBExtensionConnector(Connector):  # REQ-899
             f"{self.extension} loaded but {self.probe_symbol} is not registered",
             f"verify this {self.extension} build exposes {self.probe_symbol}",
         )
+
+
+class _DuckDBPgwireConnector(_DuckDBExtensionConnector):  # REQ-1690
+    """A source whose only reader is its Calcite connector's bundled pgwire server (sharepoint,
+    splunk), attached LIVE: DuckDB's postgres extension speaks the wire protocol the server serves
+    (pg_catalog introspection and binary COPY out both answer), so the engine reads the connector
+    in place — filters and projections push down to Calcite, which pushes its own into the SaaS
+    API. ``details()`` starts the server once per source (REQ-955) and attaches its endpoint under
+    the private ``_src_<id>`` alias; the connector schema is the sql-normalized source id, the same
+    name the landing path uses (``pgwire_replica.schema_name``). Read-only: Calcite serves no DML.
+    """
+
+    mechanism = Mechanism.ATTACH_R
+    extension = "postgres"  # core extension — the runtime INSTALL/LOADs it before the attach
+    install_from_community = False
+    probe_symbol = "postgres_scan"
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)
+
+    async def probe(self, fetch) -> ProbeResult:  # REQ-904 / REQ-1690
+        """Functional truth for a pgwire attach, without starting a server: the postgres extension
+        loads on this engine, and this host has a bundle to run — already cached, or published for
+        its OS/arch and fetched on first use (a probe never downloads a ~125 MB bundle). A platform
+        the release does not build for cannot reach the type, so the dropdown shows it disabled with
+        that remediation instead of failing at the first query."""
+        from provisa.runtime_deps import BundleResolver, bundle_spec_for
+        from provisa.runtime_deps.pgwire_bundles import BundleUnavailable
+
+        loaded = await super().probe(fetch)  # the postgres extension loads and registers its scan
+        if not loaded.available:
+            return loaded
+        try:
+            spec = bundle_spec_for(self.source_type)
+            asset = spec.asset_filename  # resolves this host's variant; unbuilt platforms raise
+        except BundleUnavailable as e:
+            return ProbeResult(
+                False,
+                str(e),
+                "run Provisa on macOS arm64, Linux x86_64 or Windows x86_64, or publish a bundle "
+                "for this platform in the kenstott/calcite release",
+            )
+        if BundleResolver().is_cached(spec):
+            return ProbeResult(True, f"{spec.artifact_name} bundle cached ({spec.version})")
+        return ProbeResult(True, f"{asset} is fetched on first use from {spec.download_url}")
+
+    def details(self, source: Source) -> dict:
+        from provisa.federation.pgwire_replica import ensure_endpoint, schema_name
+
+        ports = ensure_endpoint(source)
+        dsn = (
+            f"host={ports.calcite_child_host} port={ports.pgwire_port} user=provisa dbname=provisa"
+        )
+        alias = f"_src_{source.id}"
+        return {
+            "attach": f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres, READ_ONLY)",
+            "raw_alias": alias,
+            "remote_schema": schema_name(source),
+        }
+
+
+class DuckDBSharepointConnector(_DuckDBPgwireConnector):  # REQ-1690
+    source_type = "sharepoint"
+
+
+class DuckDBSplunkConnector(_DuckDBPgwireConnector):  # REQ-1690
+    source_type = "splunk"
 
 
 class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
