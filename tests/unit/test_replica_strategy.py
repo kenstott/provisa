@@ -19,6 +19,7 @@ Calcite jar / real Postgres.
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -655,3 +656,31 @@ def test_pgwire_connector_probe_unavailable_without_postgres_extension():
     result = asyncio.run(DuckDBSplunkConnector().probe(_fetch_fail))
     assert result.available is False
     assert "postgres did not load" in result.reason
+
+
+# -- --owner-pid: a versioned launcher contract ------------------------------------------------
+
+
+def test_owner_pid_flag_is_gated_on_the_bundle_release(tmp_path):
+    assert pr.bundle_supports_owner_pid("engine-v0.82.0") is False
+    assert pr.bundle_supports_owner_pid("engine-v0.83.0") is True
+    assert pr.bundle_supports_owner_pid("engine-v1.0.0") is True
+    spawned: list[list[str]] = []
+
+    def _server_for(version: str):
+        spec = rd.BundleSpec("file", version, variant="macos-arm64")
+        _lay_down_bundle(spec, tmp_path / version)
+        return pr.PgwireServer(
+            bundle_dir=tmp_path / version,
+            spec=spec,
+            model=pr.build_model_json(_files_source()),
+            ports=pr.PortPair(5433, "127.0.0.1", 5533),
+            spawn=lambda cmd, _cwd: spawned.append(cmd) or _FakeProc(),
+            health_check=lambda _h, _p: True,
+            port_is_free=lambda _p: True,
+        )
+
+    _server_for("engine-v0.82.0").start()
+    assert "--owner-pid" not in spawned[-1]
+    _server_for("engine-v0.83.0").start()
+    assert spawned[-1][-2:] == ["--owner-pid", str(os.getpid())]

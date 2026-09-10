@@ -307,6 +307,16 @@ class PortAllocator:  # REQ-955
 # -- server lifecycle (REQ-955) ------------------------------------------------
 
 
+OWNER_PID_SINCE = (0, 83, 0)  # the first pgwire-calcite release whose launcher takes --owner-pid
+
+
+def bundle_supports_owner_pid(version: str) -> bool:
+    """Whether the bundle release ``version`` (``engine-v0.83.0``) accepts ``--owner-pid``. An
+    older launcher rejects the unknown flag outright, so the flag is a versioned contract."""
+    parts = tuple(int(p) for p in version.removeprefix("engine-v").split("."))
+    return parts >= OWNER_PID_SINCE
+
+
 class _ProcessGroup:
     """The launcher and everything it spawns (the JVM starts the Python server as its own child,
     and that child holds the port): ``terminate`` signals the whole session so the port is freed,
@@ -411,10 +421,16 @@ class PgwireServer:  # REQ-955
         return self._ports
 
     def command(self) -> list[str]:
-        """The launcher invocation — only ``--port`` and ``--calcite-child`` (REQ-955)."""
+        """The launcher invocation: ``--port`` and ``--calcite-child`` (REQ-955), plus
+        ``--owner-pid`` on a bundle that knows it (engine-v0.83.0 and later), so the server
+        stops itself when this process dies without running its shutdown — a SIGKILLed host
+        (a test runner's teardown, an OOM kill) otherwise stranded every server it started."""
         launcher = self._bundle_dir / "bin" / self._spec.artifact_name
         child = f"{self._ports.calcite_child_host}:{self._ports.calcite_child_port}"
-        return [str(launcher), "--port", str(self._ports.pgwire_port), "--calcite-child", child]
+        cmd = [str(launcher), "--port", str(self._ports.pgwire_port), "--calcite-child", child]
+        if bundle_supports_owner_pid(self._spec.version):
+            cmd += ["--owner-pid", str(os.getpid())]
+        return cmd
 
     def write_model(self) -> Path:
         """Write ``model/model.json`` into the bundle from the source config (REQ-955)."""
