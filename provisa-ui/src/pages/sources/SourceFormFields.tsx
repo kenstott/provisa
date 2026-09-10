@@ -67,6 +67,8 @@ export interface SourceFormFieldsProps {
   setSpPassword: (v: string) => void;
   splunkDisableSsl: boolean;
   setSplunkDisableSsl: (v: boolean) => void;
+  splunkAuthMode: "token" | "userpass";
+  setSplunkAuthMode: (v: "token" | "userpass") => void;
   filesTransport: string;
   setFilesTransport: (v: string) => void;
   filesAuthMode: "userpass" | "certificate";

@@ -60,6 +60,8 @@ export function SourceFormFieldsExtended({
   spPassword,
   setSpPassword,
   splunkDisableSsl,
+  splunkAuthMode,
+  setSplunkAuthMode,
   setSplunkDisableSsl,
   filesTransport,
   setFilesTransport,
@@ -645,15 +647,46 @@ export function SourceFormFieldsExtended({
             onChange={(v) => setForm({ ...form, port: Number(v) || 0 })}
             data-testid="splunk-port-input"
           />
-          <PasswordInput
-            required
-            label={t("sourceFormFieldsExtended.authToken")}
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            placeholder={t("sourceFormFieldsExtended.authToken")}
+          <Select
+            label={t("sourceFormFieldsExtended.authMethod")}
+            value={splunkAuthMode}
+            onChange={(v) => setSplunkAuthMode(v === "userpass" ? "userpass" : "token")}
+            data={[
+              { value: "token", label: t("sourceFormFieldsExtended.token") },
+              { value: "userpass", label: t("sourceFormFieldsExtended.usernamePassword") },
+            ]}
+            allowDeselect={false}
             style={{ gridColumn: "1 / -1" }}
-            data-testid="splunk-auth-token-input"
+            data-testid="splunk-auth-mode-select"
           />
+          {splunkAuthMode === "token" ? (
+            <PasswordInput
+              required
+              label={t("sourceFormFieldsExtended.authToken")}
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              placeholder={t("sourceFormFieldsExtended.authToken")}
+              style={{ gridColumn: "1 / -1" }}
+              data-testid="splunk-auth-token-input"
+            />
+          ) : (
+            <>
+              <TextInput
+                required
+                label={t("sourceFormFieldsExtended.username")}
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+                data-testid="splunk-username-input"
+              />
+              <PasswordInput
+                required
+                label={t("sourceFormFieldsExtended.password")}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                data-testid="splunk-password-input"
+              />
+            </>
+          )}
           <TextInput
             label={t("sourceFormFieldsExtended.appOptional")}
             value={form.database}
