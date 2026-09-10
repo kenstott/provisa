@@ -45,17 +45,20 @@ export interface ErdEdge {
   cardinality: string;
   label: string;
   // REQ-1588: a junction-backed relationship draws two legs through the junction table's node
-  // instead of one direct line. The legs carry cardinality in `label`; the relationship type is
-  // written once per path, at the junction end of the inbound leg, as `pathLabel`. `pathType`
-  // identifies the path so the several relationships sharing one junction stay distinct edges
-  // rather than deduplicating into a single pair of legs.
-  pathLabel: string;
+  // instead of one direct line. Each leg's `label` carries the relationship type and the
+  // cardinality, so either leg reads as the whole relationship on its own. `pathType` identifies
+  // the path so the several relationships sharing one junction stay distinct edges rather than
+  // deduplicating into a single pair of legs.
   pathType: string;
   // Which of the parallel edges between this node pair this one is. Several relationships through
   // one junction run between the same two nodes, and their labels are placed at a fixed offset from
   // the endpoint — without a per-edge step they land on the same spot, and the opaque label
   // backgrounds leave only the last one legible.
   pathIndex: number;
+  // Two rows that mirror each other — same name, same cardinality, same junction, endpoints
+  // swapped — are one relationship read from both sides, and draw as one edge with arrows at
+  // both ends instead of two overlapping lines.
+  bidirectional: boolean;
   via: boolean;
   proxy: boolean;
 }
@@ -190,6 +193,8 @@ export function buildErdElements(
 
   // Build edges, routing through domain proxy nodes when a table is collapsed.
   const seenEdges = new Set<string>();
+  // Drawn edges by direction + label, so a later edge can find the one it mirrors.
+  const drawn = new Map<string, ErdEdge>();
   const pairCounts = new Map<string, number>();
   const edges: ErdElements["edges"] = [];
 
@@ -197,7 +202,7 @@ export function buildErdElements(
     r: Relationship,
     src: string,
     tgt: string,
-    opts: { label: string; pathLabel: string; pathType: string; leg: "" | "in" | "out" },
+    opts: { label: string; pathType: string; leg: "" | "in" | "out" },
   ) => {
     if (src === tgt) return;
     const isProxy = src.startsWith("d:") || tgt.startsWith("d:");
@@ -207,6 +212,19 @@ export function buildErdElements(
     const key = `${src}→${tgt}:${opts.label}:${opts.pathType}:${opts.leg}`;
     if (seenEdges.has(key)) return;
     seenEdges.add(key);
+    // An edge whose mirror image is already drawn — same label and cardinality, endpoints swapped —
+    // is the same relationship read from the other side: a complementary row, or the two legs of a
+    // self-join through a junction. It folds into the drawn edge, which then points both ways.
+    const mirror = drawn.get(`${tgt}→${src}:${opts.label}:${opts.pathType}:${r.cardinality}`);
+    if (mirror && !mirror.bidirectional) {
+      mirror.bidirectional = true;
+      // One-to-many read from both sides is many-to-many.
+      if (r.cardinality === "one-to-many" || r.cardinality === "many-to-one") {
+        mirror.cardinality = "many-to-many";
+        mirror.label = mirror.label.replace(/(1:N|N:1)$/, cardinalityLabel("many-to-many"));
+      }
+      return;
+    }
     // Count by unordered pair: the two directions between one pair are drawn in the same band, so
     // an inbound and an outbound leg that shared an index would still overlap.
     const pairKey = src < tgt ? `${src}|${tgt}` : `${tgt}|${src}`;
@@ -215,22 +233,21 @@ export function buildErdElements(
     const classes = ["erd-rel"];
     if (isProxy) classes.push("erd-rel--proxy");
     if (opts.leg) classes.push("erd-rel--via");
-    edges.push({
-      data: {
-        type: "rel",
-        id: isProxy ? `rp:${key}` : `r:${r.id}${opts.leg ? `:${opts.leg}` : ""}`,
-        source: src,
-        target: tgt,
-        cardinality: r.cardinality,
-        label: opts.label,
-        pathLabel: opts.pathLabel,
-        pathType: opts.pathType,
-        pathIndex,
-        via: opts.leg !== "",
-        proxy: isProxy,
-      } as ErdEdge,
-      classes: classes.join(" "),
-    });
+    const data = {
+      type: "rel",
+      id: isProxy ? `rp:${key}` : `r:${r.id}${opts.leg ? `:${opts.leg}` : ""}`,
+      source: src,
+      target: tgt,
+      cardinality: r.cardinality,
+      label: opts.label,
+      pathType: opts.pathType,
+      pathIndex,
+      bidirectional: false,
+      via: opts.leg !== "",
+      proxy: isProxy,
+    } as ErdEdge;
+    drawn.set(`${src}→${tgt}:${opts.label}:${opts.pathType}:${r.cardinality}`, data);
+    edges.push({ data, classes: classes.join(" ") });
   };
 
   for (const r of relationships) {
@@ -261,12 +278,14 @@ export function buildErdElements(
       r.viaTableId == null ? null : visibleTableIds.has(r.viaTableId) ? `t:${r.viaTableId}` : null;
 
     if (junctionNode) {
-      // The type is written once per path, beside the junction. A row whose nomination names no
-      // type is a defective row (REQ-1586), and it gets no label rather than a substituted one.
+      // Both legs name the type and the cardinality. A row whose nomination names no type is a
+      // defective row (REQ-1586), and its legs show cardinality alone rather than a substituted
+      // type.
       const pathType = cypherRelType(r) ?? "";
-      const leg = cardinalityLabel(r.cardinality);
-      pushEdge(r, src, junctionNode, { label: leg, pathLabel: pathType, pathType, leg: "in" });
-      pushEdge(r, junctionNode, tgt, { label: leg, pathLabel: "", pathType, leg: "out" });
+      const card = cardinalityLabel(r.cardinality);
+      const leg = pathType ? `${pathType} ${card}` : card;
+      pushEdge(r, src, junctionNode, { label: leg, pathType, leg: "in" });
+      pushEdge(r, junctionNode, tgt, { label: leg, pathType, leg: "out" });
       continue;
     }
 
@@ -277,7 +296,7 @@ export function buildErdElements(
     const junctionLabel = r.viaTableId == null ? null : cypherRelType(r);
     const label =
       junctionLabel ?? (r.alias || r.computedCypherAlias || cardinalityLabel(r.cardinality));
-    pushEdge(r, src, tgt, { label, pathLabel: "", pathType: "", leg: "" });
+    pushEdge(r, src, tgt, { label, pathType: "", leg: "" });
   }
 
   return { nodes: [...domainNodes, ...tableNodes], edges };

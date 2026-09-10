@@ -399,8 +399,8 @@ describe("buildErdElements — junction relationships", () => {
 
   it("draws two legs through the junction node instead of one direct edge", () => {
     const { edges } = buildErdElements(
-      [pets, companions],
-      [viaRel()],
+      [pets, companions, owners],
+      [viaRel({ targetTableId: 12 })],
       domains,
       new Set(),
       NO_HIDDEN,
@@ -410,25 +410,22 @@ describe("buildErdElements — junction relationships", () => {
     const inLeg = edges.find((e) => e.data.target === "t:11");
     const outLeg = edges.find((e) => e.data.source === "t:11");
     expect(inLeg?.data.source).toBe("t:10");
-    expect(outLeg?.data.target).toBe("t:10");
+    expect(outLeg?.data.target).toBe("t:12");
     expect(edges.every((e) => e.data.via)).toBe(true);
     expect(edges.every((e) => e.classes.includes("erd-rel--via"))).toBe(true);
   });
 
-  it("legs carry cardinality; the type is written once, at the junction end", () => {
+  it("both legs carry the type and the cardinality", () => {
     const { edges } = buildErdElements(
-      [pets, companions],
-      [viaRel()],
+      [pets, companions, owners],
+      [viaRel({ targetTableId: 12 })],
       domains,
       new Set(),
       NO_HIDDEN,
       "none",
     );
-    expect(edges.map((e) => e.data.label)).toEqual(["N:M", "N:M"]);
-    const inLeg = edges.find((e) => e.data.target === "t:11");
+    expect(edges.map((e) => e.data.label)).toEqual(["BONDED_PAIR N:M", "BONDED_PAIR N:M"]);
     const outLeg = edges.find((e) => e.data.source === "t:11");
-    expect(inLeg?.data.pathLabel).toBe("BONDED_PAIR");
-    expect(outLeg?.data.pathLabel).toBe("");
     expect(outLeg?.data.pathType).toBe("BONDED_PAIR");
   });
 
@@ -447,11 +444,13 @@ describe("buildErdElements — junction relationships", () => {
       "none",
     );
     expect(nodes.filter((n) => n.classes.includes("erd-junction"))).toHaveLength(1);
-    expect(edges).toHaveLength(6);
+    // A self-join's two legs mirror each other, so each path folds into one bidirectional leg.
+    expect(edges).toHaveLength(3);
+    expect(edges.every((e) => e.data.bidirectional)).toBe(true);
     expect(new Set(edges.map((e) => e.data.pathType))).toEqual(
       new Set(["BONDED_PAIR", "LITTERMATE", "SHARES_ENCLOSURE"]),
     );
-    expect(new Set(edges.map((e) => e.data.id)).size).toBe(6);
+    expect(new Set(edges.map((e) => e.data.id)).size).toBe(3);
   });
 
   it("parallel paths get their own label row so one does not cover the rest", () => {
@@ -470,7 +469,7 @@ describe("buildErdElements — junction relationships", () => {
     );
     // The label offsets are derived from pathIndex, so every edge sharing a node pair — in either
     // direction, since both legs are drawn in the same band — needs a distinct one.
-    expect(new Set(edges.map((e) => e.data.pathIndex))).toEqual(new Set([0, 1, 2, 3, 4, 5]));
+    expect(new Set(edges.map((e) => e.data.pathIndex))).toEqual(new Set([0, 1, 2]));
   });
 
   it("a lone edge keeps the first row", () => {
@@ -482,7 +481,7 @@ describe("buildErdElements — junction relationships", () => {
       NO_HIDDEN,
       "none",
     );
-    expect(edges.map((e) => e.data.pathIndex)).toEqual([0, 1]);
+    expect(edges.map((e) => e.data.pathIndex)).toEqual([0]);
   });
 
   it("the junction node is a diamond showing its name only", () => {
@@ -545,6 +544,81 @@ describe("buildErdElements — junction relationships", () => {
       NO_HIDDEN,
       "none",
     );
+    // The two legs mirror each other, so they fold into one leg that points both ways.
+    expect(edges).toHaveLength(1);
+    expect(edges[0].data.bidirectional).toBe(true);
+  });
+});
+
+describe("buildErdElements — complementary rows", () => {
+  const t1 = makeTable({ id: 1, domainId: "sales", tableName: "orders" });
+  const t2 = makeTable({ id: 2, domainId: "sales", tableName: "customers" });
+  const tables = [t1, t2];
+  const domains = [DOMAIN_SALES];
+  const fwd = makeRel({ id: 1, sourceTableId: 1, targetTableId: 2, alias: "KNOWS" });
+  const back = makeRel({ id: 2, sourceTableId: 2, targetTableId: 1, alias: "KNOWS" });
+
+  it("folds a row and its mirror-image complement into one bidirectional edge", () => {
+    const { edges } = buildErdElements(tables, [fwd, back], domains, new Set(), NO_HIDDEN, "none");
+    expect(edges).toHaveLength(1);
+    expect(edges[0].data.id).toBe("r:1");
+    expect(edges[0].data.bidirectional).toBe(true);
+  });
+
+  it("keeps two edges when the name differs", () => {
+    const other = makeRel({ ...back, alias: "SERVES" });
+    const { edges } = buildErdElements(tables, [fwd, other], domains, new Set(), NO_HIDDEN, "none");
     expect(edges).toHaveLength(2);
+    expect(edges.every((e) => !e.data.bidirectional)).toBe(true);
+  });
+
+  it("keeps two edges when the cardinality differs", () => {
+    const other = makeRel({ ...back, cardinality: "one-to-many" });
+    const { edges } = buildErdElements(tables, [fwd, other], domains, new Set(), NO_HIDDEN, "none");
+    expect(edges).toHaveLength(2);
+  });
+
+  it("two one-to-many legs folded together read as many-to-many", () => {
+    const pets = makeTable({ id: 10, domainId: "sales", tableName: "pets" });
+    const companions = makeTable({
+      id: 11,
+      domainId: "sales",
+      tableName: "pet_companions",
+    });
+    const rel = makeRel({
+      id: 100,
+      sourceTableId: 10,
+      targetTableId: 10,
+      viaTableId: 11,
+      viaTableName: "pet_companions",
+      viaTypeValue: "bonded_pair",
+      viaLabelSource: "column",
+      cardinality: "one-to-many",
+    });
+    const { edges } = buildErdElements(
+      [pets, companions],
+      [rel],
+      [DOMAIN_SALES],
+      new Set(),
+      NO_HIDDEN,
+      "none",
+    );
+    expect(edges).toHaveLength(1);
+    expect(edges[0].data.label).toBe("BONDED_PAIR N:M");
+    expect(edges[0].data.cardinality).toBe("many-to-many");
+  });
+
+  it("a third mirror row does not unfold the pair", () => {
+    const back2 = makeRel({ ...back, id: 3, sourceColumn: "other_id" });
+    const { edges } = buildErdElements(
+      tables,
+      [fwd, back, back2],
+      domains,
+      new Set(),
+      NO_HIDDEN,
+      "none",
+    );
+    expect(edges.map((e) => e.data.id)).toEqual(["r:1"]);
+    expect(edges[0].data.bidirectional).toBe(true);
   });
 });

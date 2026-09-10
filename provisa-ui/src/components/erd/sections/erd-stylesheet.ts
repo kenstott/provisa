@@ -119,24 +119,18 @@ export function buildErdStylesheet(isDark: boolean) {
       style: { "border-color": p.accent, "border-width": 3 },
     },
     {
-      // The legs of a junction-backed path. The type is written once per path, at the junction end
-      // of the inbound leg, so the two legs are readable as one relationship.
+      // One edge standing for a row and its mirror-image complement: arrows at both ends.
+      selector: ".erd-rel[?bidirectional]",
+      style: { "source-arrow-shape": "triangle" },
+    },
+    {
+      // The legs of a junction-backed path. Each leg's label names the type and the cardinality,
+      // so the two legs are readable as one relationship.
       selector: ".erd-rel--via",
       style: {
         "line-color": p.junction,
         "target-arrow-color": p.junction,
         "source-arrow-color": p.junction,
-        "target-label": (ele: { data(k: string): unknown }) => ele.data("pathLabel") as string,
-        "target-text-offset": 46,
-        // Several paths run through one junction between the same two nodes. Their type labels sit
-        // at the same offset from the junction, and the backgrounds are opaque, so without a step
-        // per path only the last-drawn type is readable.
-        "target-text-margin-y": (ele: { data(k: string): unknown }) =>
-          -10 - ((ele.data("pathIndex") as number) ?? 0) * 14,
-        "font-size": 9,
-        "text-background-color": p.tableBg,
-        "text-background-opacity": 1,
-        "text-background-padding": "3px",
       },
     },
     {

@@ -37,6 +37,7 @@ import {
   placeIsolatedGrid,
 } from "./sections/erd-layout";
 import { buildErdStylesheet } from "./sections/erd-stylesheet";
+import { applyTaxiLanes, clearTaxiLanes } from "./sections/erd-taxi";
 import { getErdPalette } from "./sections/erd-palette";
 import type { TooltipState, ErdPanelProps } from "./sections/erd-types";
 
@@ -155,8 +156,10 @@ export function ErdPanel({
         renderedBoundingBox(opts: object): { x1: number; y1: number; w: number; h: number };
       }
     ).renderedBoundingBox({ includeLabels: false });
-    const rect = containerRef.current.getBoundingClientRect();
-    setResizeHandleBox({ x: rect.left + bb.x1, y: rect.top + bb.y1, w: bb.w, h: bb.h });
+    // Rendered coordinates are relative to the canvas, and the box is positioned inside it: a
+    // fixed-position box measured against the viewport lands offset inside the Modal, whose
+    // transformed content becomes the containing block of anything fixed within it.
+    setResizeHandleBox({ x: bb.x1, y: bb.y1, w: bb.w, h: bb.h });
   }, []);
 
   // Keep refs in sync so Cytoscape event handlers always see current values.
@@ -431,20 +434,7 @@ export function ErdPanel({
 
       // Apply current edge routing (handles rebuilds triggered by showOrphans etc.)
       cy.$(".erd-rel").style("curve-style", edgeRoutingRef.current);
-      if (edgeRoutingRef.current === "taxi") {
-        const seenPairs = new Set<string>();
-        cy.$(".erd-rel").forEach((edge) => {
-          const s = edge.data("source") as string;
-          const t = edge.data("target") as string;
-          const key = [s, t].sort().join("↔");
-          if (seenPairs.has(key)) {
-            edge.style("display", "none");
-          } else {
-            seenPairs.add(key);
-            edge.style("display", "element");
-          }
-        });
-      }
+      if (edgeRoutingRef.current === "taxi") applyTaxiLanes(cy);
     });
 
     cy.on("tap", ".erd-domain", (evt: CyEvent) => {
@@ -491,11 +481,10 @@ export function ErdPanel({
       }
       if (title) {
         const pos = evt.renderedPosition ?? evt.position;
-        const rect = containerRef.current?.getBoundingClientRect();
         setTooltip({
           visible: true,
-          x: (rect?.left ?? 0) + pos.x + 12,
-          y: (rect?.top ?? 0) + pos.y + 12,
+          x: pos.x + 12,
+          y: pos.y + 12,
           title,
           body,
         });
@@ -525,6 +514,8 @@ export function ErdPanel({
         (evt.target as { position(p: { x: number; y: number }): void }).position(pos);
       }
       pinnedNodesRef.current.set(id, pos);
+      // A move can swap an edge's dominant axis, which decides which way its lanes spread.
+      if (edgeRoutingRef.current === "taxi") applyTaxiLanes(cy);
     });
 
     // Update resize handles when cy viewport changes
@@ -648,24 +639,8 @@ export function ErdPanel({
     if (!cy) return;
     cy.batch(() => {
       cy.$(".erd-rel").style("curve-style", edgeRouting);
-
-      if (edgeRouting === "taxi") {
-        // Collapse parallel / complementary edges to a single edge per undirected pair.
-        const seenPairs = new Set<string>();
-        cy.$(".erd-rel").forEach((edge) => {
-          const src = edge.data("source") as string;
-          const tgt = edge.data("target") as string;
-          const key = [src, tgt].sort().join("↔");
-          if (seenPairs.has(key)) {
-            edge.style("display", "none");
-          } else {
-            seenPairs.add(key);
-            edge.style("display", "element");
-          }
-        });
-      } else {
-        cy.$(".erd-rel").style("display", "element");
-      }
+      if (edgeRouting === "taxi") applyTaxiLanes(cy);
+      else clearTaxiLanes(cy);
     });
   }, [edgeRouting]);
 
@@ -726,12 +701,9 @@ export function ErdPanel({
     const cy = cyRef.current;
     const zoom = (cy as { zoom(): number }).zoom();
     const pan = (cy as { pan(): { x: number; y: number } }).pan();
-    const rect = containerRef.current.getBoundingClientRect();
 
-    const screenX1 = resizeHandleBox.x - rect.left;
-    const screenY1 = resizeHandleBox.y - rect.top;
-    const modelX1 = (screenX1 - pan.x) / zoom;
-    const modelY1 = (screenY1 - pan.y) / zoom;
+    const modelX1 = (resizeHandleBox.x - pan.x) / zoom;
+    const modelY1 = (resizeHandleBox.y - pan.y) / zoom;
     const modelW = resizeHandleBox.w / zoom;
     const modelH = resizeHandleBox.h / zoom;
 
@@ -1014,65 +986,93 @@ export function ErdPanel({
           )}
         </Group>
 
-        {/* domain resize handles */}
-        {resizeHandleBox && (
-          <div
-            style={{
-              position: "fixed",
-              left: resizeHandleBox.x,
-              top: resizeHandleBox.y,
-              width: resizeHandleBox.w,
-              height: resizeHandleBox.h,
-              border: `2px dashed ${palette.accent}`,
-              borderRadius: 4,
-              pointerEvents: "none",
-              zIndex: 200,
-              boxSizing: "border-box",
-            }}
-          >
-            {(["nw", "ne", "sw", "se"] as const).map((corner) => (
-              <div
-                key={corner}
-                role="button"
-                aria-label={t("erdModal.resizeHandle", { corner })}
-                onPointerDown={(e) => onResizePointerDown(corner, e)}
-                onPointerMove={onResizePointerMove}
-                onPointerUp={onResizePointerUp}
-                onMouseEnter={() => {
-                  handleHoverRef.current = true;
-                }}
-                onMouseLeave={() => {
-                  handleHoverRef.current = false;
-                  if (!resizeDragRef.current) {
-                    setHoveredDomainId(null);
-                    setResizeHandleBox(null);
-                  }
-                }}
-                style={{
-                  position: "absolute",
-                  width: 16,
-                  height: 16,
-                  background: palette.accent,
-                  borderRadius: 2,
-                  cursor: corner === "se" || corner === "nw" ? "nwse-resize" : "nesw-resize",
-                  pointerEvents: "all",
-                  ...(corner === "nw"
-                    ? { top: -8, left: -8 }
-                    : corner === "ne"
-                      ? { top: -8, right: -8 }
-                      : corner === "sw"
-                        ? { bottom: -8, left: -8 }
-                        : { bottom: -8, right: -8 }),
-                }}
-              />
-            ))}
-          </div>
-        )}
-
         {/* ── canvas ── */}
         <div style={{ flex: 1, position: "relative", background: palette.bg }}>
           <div ref={setContainerNode} style={{ width: "100%", height: "100%" }} />
 
+          {/* domain resize handles */}
+          {resizeHandleBox && (
+            <div
+              style={{
+                position: "absolute",
+                left: resizeHandleBox.x,
+                top: resizeHandleBox.y,
+                width: resizeHandleBox.w,
+                height: resizeHandleBox.h,
+                border: `2px dashed ${palette.accent}`,
+                borderRadius: 4,
+                pointerEvents: "none",
+                zIndex: 200,
+                boxSizing: "border-box",
+              }}
+            >
+              {(["nw", "ne", "sw", "se"] as const).map((corner) => (
+                <div
+                  key={corner}
+                  role="button"
+                  aria-label={t("erdModal.resizeHandle", { corner })}
+                  onPointerDown={(e) => onResizePointerDown(corner, e)}
+                  onPointerMove={onResizePointerMove}
+                  onPointerUp={onResizePointerUp}
+                  onMouseEnter={() => {
+                    handleHoverRef.current = true;
+                  }}
+                  onMouseLeave={() => {
+                    handleHoverRef.current = false;
+                    if (!resizeDragRef.current) {
+                      setHoveredDomainId(null);
+                      setResizeHandleBox(null);
+                    }
+                  }}
+                  style={{
+                    position: "absolute",
+                    width: 16,
+                    height: 16,
+                    background: palette.accent,
+                    borderRadius: 2,
+                    cursor: corner === "se" || corner === "nw" ? "nwse-resize" : "nesw-resize",
+                    pointerEvents: "all",
+                    ...(corner === "nw"
+                      ? { top: -8, left: -8 }
+                      : corner === "ne"
+                        ? { top: -8, right: -8 }
+                        : corner === "sw"
+                          ? { bottom: -8, left: -8 }
+                          : { bottom: -8, right: -8 }),
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* ── tooltip ── */}
+          {tooltip.visible && (
+            <div
+              role="tooltip"
+              style={{
+                position: "absolute",
+                left: tooltip.x,
+                top: tooltip.y,
+                background: palette.tooltipBg,
+                border: `1px solid ${palette.tooltipBorder}`,
+                borderRadius: 6,
+                padding: "6px 10px",
+                fontSize: 11,
+                color: palette.text,
+                maxWidth: 260,
+                pointerEvents: "none",
+                zIndex: 2000,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: tooltip.body ? 4 : 0 }}>
+                {tooltip.title}
+              </div>
+              {tooltip.body && (
+                <div style={{ color: palette.textMuted, lineHeight: 1.4 }}>{tooltip.body}</div>
+              )}
+            </div>
+          )}
           {/* ── hint overlay ── */}
           {allDomainIds.length > 0 && (
             <Text
@@ -1093,35 +1093,6 @@ export function ErdPanel({
             </Text>
           )}
         </div>
-
-        {/* ── tooltip ── */}
-        {tooltip.visible && (
-          <div
-            role="tooltip"
-            style={{
-              position: "fixed",
-              left: tooltip.x,
-              top: tooltip.y,
-              background: palette.tooltipBg,
-              border: `1px solid ${palette.tooltipBorder}`,
-              borderRadius: 6,
-              padding: "6px 10px",
-              fontSize: 11,
-              color: palette.text,
-              maxWidth: 260,
-              pointerEvents: "none",
-              zIndex: 2000,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
-            }}
-          >
-            <div style={{ fontWeight: 600, marginBottom: tooltip.body ? 4 : 0 }}>
-              {tooltip.title}
-            </div>
-            {tooltip.body && (
-              <div style={{ color: palette.textMuted, lineHeight: 1.4 }}>{tooltip.body}</div>
-            )}
-          </div>
-        )}
       </>
     </div>
   );
