@@ -34,7 +34,7 @@ from typing import IO, Callable, cast
 
 # The pinned upstream release the whole bundle set is fetched from (REQ-956). One version knob — a
 # bundle path is always namespaced by this tag, so a version bump caches side by side, never in place.
-RELEASE_TAG = "engine-v0.81.0"
+RELEASE_TAG = "engine-v0.82.0"
 GITHUB_REPO = "kenstott/calcite"
 
 # The release ships one tarball per OS/arch (REQ-1690): ``pgwire-<connector>-<ver>-<variant>.tar.gz``
@@ -74,7 +74,7 @@ class BundleSpec:  # REQ-956 — a pinned (connector, version) coordinate in the
 
     @property
     def asset_stem(self) -> str:
-        """The tarball's top-level directory — ``pgwire-file-0.81.0-macos-arm64`` — which is also
+        """The tarball's top-level directory — ``pgwire-file-0.82.0-macos-arm64`` — which is also
         the asset filename without ``.tar.gz``."""
         ver = self.version.removeprefix("engine-v")
         return f"{self.artifact_name}-{ver}-{self.variant or bundle_variant()}"
