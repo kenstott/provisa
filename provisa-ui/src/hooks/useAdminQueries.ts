@@ -109,7 +109,7 @@ import {
  * prefetch had already fetched the data. An undefined `data` is the only signal that there is
  * genuinely nothing to paint; a cached empty list is an answer, not an absence.
  */
-function firstLoad(loading: boolean, data: unknown): boolean {
+export function firstLoad(loading: boolean, data: unknown): boolean {
   return loading && data === undefined;
 }
 

@@ -56471,3 +56471,41 @@
     Given a Hasura export tracking public.albums with a select permission on title and artist_id, and a source override that reaches the database
     When the administrator previews the import
     Then the preview's config declares title text and artist_id integer, and a tracked table with no permissions carries every column of the source table visible to org_admin alone
+- id: REQ-1693
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Replica Strategy
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A sharepoint source authenticating with a certificate reaches the real site on the non-Trino
+    engines. The Calcite pgwire model operand names the adapter's schema factory exactly
+    (`SharePointListSchemaFactory`), declares `authType: CERTIFICATE` — without it the adapter
+    defaults to CLIENT_CREDENTIALS and fails on the absent secret — and carries an ABSOLUTE
+    `certificatePath`, because the server runs with its bundle directory as its working directory.
+    `certificatePassword` is always emitted, the empty string for a password-less PFX, since the
+    adapter rejects a null password; a `mapping` with no `certificate_password` key, or a relative
+    `certificate_path`, raises `MissingConnectorConfig` naming the field rather than being defaulted.
+    The connection-resolved source view a native engine introspects from carries `base_url`, which
+    the endpoint-style connectors (sharepoint's siteUrl, splunk's url) read before falling back to
+    `host`; omitting it raised AttributeError inside the connector and surfaced as an empty
+    Register Table schema list. The Sources form carries auth_type, certificate_path and
+    certificate_password into the source's mapping, so a site configured through the UI registers
+    its `documents` library and serves a query against it.
+  code:
+  - provisa/federation/pgwire_replica.py
+  - provisa/federation/backend.py
+  - provisa-ui/src/pages/SourcesPage.tsx
+  - provisa-ui/src/pages/sources/SourceFormFieldsExtended.tsx
+  tests:
+  - tests/integration/test_sharepoint_duckdb_attach.py
+  - provisa-ui/e2e/source-to-query.spec.ts
+  use_case: >-
+    A SharePoint site registered with certificate auth returned "CLIENT_CREDENTIALS auth requires
+    clientId, clientSecret, and tenantId" on every query, because the operand named neither the
+    auth type nor the adapter's real schema factory.
+  scenario: |
+    Given a sharepoint source whose mapping declares certificate auth with an absolute PFX path
+    When DuckDB attaches the connector's bundled Calcite pgwire server
+    Then the site's documents library is listed as a table and its columns and rows are read live
