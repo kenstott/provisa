@@ -29,7 +29,6 @@ import type {
   DqDryRun,
   DqDryRunVars,
   Relationship,
-  RLSRule,
   MutationResult,
   ColumnDependentsResult,
   UserSummary,
@@ -37,6 +36,7 @@ import type {
 import type { CompileResult, TableMetadata, ColumnMetadata } from "../api/admin";
 import {
   RolesQuery as ROLES_QUERY,
+  RLSRulesQuery as RLS_RULES_QUERY, // useTourPrefetch warms the RLS rules page
   SourcesQuery as SOURCES_QUERY,
   DomainsQuery as DOMAINS_QUERY,
   DataProductsQuery as DATA_PRODUCTS_QUERY,
@@ -56,7 +56,6 @@ import {
   DeleteMetric as DELETE_METRIC_MUTATION,
   RelationshipsQuery as RELATIONSHIPS_QUERY,
   AllRelationshipsQuery as ALL_RELATIONSHIPS_QUERY,
-  RLSRulesQuery as RLS_RULES_QUERY,
   AvailableSchemas,
   AvailableTables,
   AvailableColumnsMetadata,
@@ -81,10 +80,6 @@ import {
   UpdateSource,
   DeleteSource,
   RenameSource,
-  UpsertRlsRule,
-  DeleteRlsRule,
-  CreateRole,
-  DeleteRole,
   PurgeCache,
   UpdateSourceCache,
   UpdateTableCache,
@@ -170,7 +165,6 @@ const NO_DOMAINS: Domain[] = [];
 const NO_DATA_PRODUCTS: DataProduct[] = []; // REQ-1634
 const NO_TABLES: RegisteredTable[] = [];
 const NO_RELATIONSHIPS: Relationship[] = [];
-const NO_RLS_RULES: RLSRule[] = [];
 
 export function useSources() {
   const { data, loading, error, refetch } = useQuery<{ sources: Source[] }>(SOURCES_QUERY, {
@@ -421,18 +415,6 @@ export function useAllRelationships() {
   );
   return {
     relationships: data?.allRelationships ?? NO_RELATIONSHIPS,
-    loading: firstLoad(loading, data),
-    error,
-    refetch,
-  };
-}
-
-export function useRLSRules() {
-  const { data, loading, error, refetch } = useQuery<{ rlsRules: RLSRule[] }>(RLS_RULES_QUERY, {
-    fetchPolicy: "cache-and-network",
-  });
-  return {
-    rlsRules: data?.rlsRules ?? NO_RLS_RULES,
     loading: firstLoad(loading, data),
     error,
     refetch,
@@ -1021,81 +1003,6 @@ export function useCompileQuery() {
     [compile],
   );
   return { compileQuery, loading };
-}
-
-export function useUpsertRlsRule() {
-  const [upsertRlsRule, { loading }] = useMutation<{ upsertRlsRule: MutationResult }>(
-    UpsertRlsRule,
-    {
-      refetchQueries: [{ query: RLS_RULES_QUERY }],
-    },
-  );
-  return {
-    upsertRlsRule: async (input: {
-      tableId?: string | null;
-      domainId?: string | null;
-      roleId: string;
-      filterExpr: string;
-    }) => {
-      const result = await upsertRlsRule({ variables: { input } });
-      return (result.data?.upsertRlsRule ?? { success: false, message: "" }) as MutationResult;
-    },
-    loading,
-  };
-}
-
-export function useDeleteRlsRule() {
-  const [deleteRlsRule, { loading }] = useMutation<{ deleteRlsRule: MutationResult }>(
-    DeleteRlsRule,
-    {
-      refetchQueries: [{ query: RLS_RULES_QUERY }],
-    },
-  );
-  return {
-    deleteRlsRule: async (roleId: string, tableId?: number | null, domainId?: string | null) => {
-      const result = await deleteRlsRule({
-        variables: { roleId, tableId: tableId ?? null, domainId: domainId ?? null },
-      });
-      return (result.data?.deleteRlsRule ?? { success: false, message: "" }) as MutationResult;
-    },
-    loading,
-  };
-}
-
-export function useUpsertRole() {
-  const [createRole, { loading }] = useMutation<{ createRole: MutationResult }>(CreateRole, {
-    refetchQueries: [{ query: ROLES_QUERY }],
-  });
-  return {
-    upsertRole: async (input: {
-      id: string;
-      capabilities: string[];
-      domainAccess: string[];
-      rateLimit?: {
-        requestsPerSecond: number | null;
-        maxQueryDepth: number | null;
-        maxQueryNodes: number | null;
-        maxQueryTimeMs: number | null;
-      } | null;
-    }) => {
-      const result = await createRole({ variables: { input } });
-      return (result.data?.createRole ?? { success: false, message: "" }) as MutationResult;
-    },
-    loading,
-  };
-}
-
-export function useDeleteRole() {
-  const [deleteRole, { loading }] = useMutation<{ deleteRole: MutationResult }>(DeleteRole, {
-    refetchQueries: [{ query: ROLES_QUERY }],
-  });
-  return {
-    deleteRole: async (id: string) => {
-      const result = await deleteRole({ variables: { id } });
-      return (result.data?.deleteRole ?? { success: false, message: "" }) as MutationResult;
-    },
-    loading,
-  };
 }
 
 export function useRenameSource() {

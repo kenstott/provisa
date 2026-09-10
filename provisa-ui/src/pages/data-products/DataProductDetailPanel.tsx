@@ -8,10 +8,20 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { ActionIcon, Collapse, Group, List, Stack, Table, Text, Tooltip } from "@mantine/core";
+import {
+  ActionIcon,
+  Collapse,
+  Group,
+  List,
+  Modal,
+  Stack,
+  Table,
+  Text,
+  Tooltip,
+} from "@mantine/core";
 import {
   Braces,
   Cable,
@@ -28,6 +38,7 @@ import {
 import type { DataProduct, RegisteredTable, Relationship, Source } from "../../types/admin";
 import { DqRulesModal } from "./DqRulesModal";
 import { LineageDag } from "../../components/lineage/LineageDag";
+import type { DescribeColumn } from "../../components/lineage/column-descriptions";
 import type { LineageGraphData } from "../../api/lineage";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
 import type { TrackedFunction } from "../../api/actions";
@@ -128,6 +139,11 @@ interface DataProductDetailPanelProps {
   // derivation chain) — rendered with the same LineageDag component the Lineage page uses, not
   // a separate table-list view.
   lineageGraph: LineageGraphData | null;
+  // REQ-1667: the member relations (domain.table) lane 0 is built around; contributors to the
+  // left, consumers to the right.
+  lineageMembers?: ReadonlySet<string>;
+  // A field's registered description for the lineage hover, over every table (not just members).
+  describeColumn?: DescribeColumn;
   // REQ-1660 (ODPS inputPorts): derived, not stored — computed by the parent page from the same
   // lineageGraph passed above.
   inputPorts: InputPortRow[];
@@ -151,6 +167,8 @@ export function DataProductDetailPanel({
   lineageLoading,
   lineageError,
   lineageGraph,
+  lineageMembers,
+  describeColumn,
   inputPorts,
   onEdit,
   onDelete,
@@ -162,6 +180,18 @@ export function DataProductDetailPanel({
   // federation-scale, so it reads better column-by-column with the real role colours than
   // collapsed to indigo dataset boxes.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // REQ-1667: the same graph at 90% of the viewport; collapse state is shared with the inline one.
+  const [lineageModalOpen, setLineageModalOpen] = useState(false);
+  // REQ-1667: lane 0 is the product's published surface; the others are named by distance.
+  const laneTitle = useCallback(
+    (lane: number) =>
+      lane === 0
+        ? t("dataProductsTab.detail.field.outputPorts")
+        : lane > 0
+          ? `+${lane}`
+          : `${lane}`,
+    [t],
+  );
   const toggleRelation = (relation: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -383,12 +413,16 @@ export function DataProductDetailPanel({
                       const source = sources.find((s) => s.id === tb.sourceId);
                       return (
                         <>
-                          <Tooltip label={t("dataProductsTab.detail.dqRulesAria", { table: tb.tableName })}>
+                          <Tooltip
+                            label={t("dataProductsTab.detail.dqRulesAria", { table: tb.tableName })}
+                          >
                             <ActionIcon
                               variant="subtle"
                               size="sm"
                               disabled={source === undefined}
-                              aria-label={t("dataProductsTab.detail.dqRulesAria", { table: tb.tableName })}
+                              aria-label={t("dataProductsTab.detail.dqRulesAria", {
+                                table: tb.tableName,
+                              })}
                               data-testid={`data-product-detail-dq-rules-${tb.id}`}
                               onClick={() => setRulesFor(tb.id)}
                             >
@@ -609,7 +643,10 @@ export function DataProductDetailPanel({
                         silently picking one, so this isn't mistaken for a column/table name.
                         alias is the stored Cypher type; computedCypherAlias is the server's
                         derived fallback when no alias was explicitly stored (mirrors _rel_from_row). */}
-                    ({joinAliasPair([r.graphqlAlias, r.alias ?? r.computedCypherAlias]) || r.cardinality})
+                    (
+                    {joinAliasPair([r.graphqlAlias, r.alias ?? r.computedCypherAlias]) ||
+                      r.cardinality}
+                    )
                   </Text>
                   {table.description ? (
                     <Text size="xs" c="var(--text-muted)">
@@ -739,7 +776,27 @@ export function DataProductDetailPanel({
                     height={320}
                     collapsedRelations={collapsed}
                     onToggleRelation={toggleRelation}
+                    lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
+                    onOpenModal={() => setLineageModalOpen(true)}
+                    describeColumn={describeColumn}
                   />
+                  <Modal
+                    opened={lineageModalOpen}
+                    onClose={() => setLineageModalOpen(false)}
+                    size="90%"
+                    title={t("dataProductsTab.detail.field.lineage")}
+                    data-testid={`data-product-detail-lineage-modal-${p.id}`}
+                    styles={{ body: { padding: "var(--mantine-spacing-xs)" } }}
+                  >
+                    <LineageDag
+                      graph={lineageGraph}
+                      height="calc(90vh - 140px)"
+                      collapsedRelations={collapsed}
+                      onToggleRelation={toggleRelation}
+                      lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
+                      describeColumn={describeColumn}
+                    />
+                  </Modal>
                 </div>
               )}
             </Collapse>

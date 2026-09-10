@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -49,6 +49,7 @@ import { useCapability } from "../hooks/useCapability";
 import { fetchFederationGraph, type LineageGraphData } from "../api/lineage";
 import { fetchRelatedGlossaryTerms, type RelatedGlossaryTerm } from "../api/glossary";
 import { domainToSqlName } from "../naming";
+import { columnDescriber } from "../components/lineage/column-descriptions";
 import { CustomPropertiesEditor } from "./data-products/CustomPropertiesEditor";
 
 interface DataProductForm {
@@ -233,7 +234,9 @@ function DataProductFormCard({
         label={t("dataProductsTab.tablesLabel")}
         description={t("dataProductsTab.tablesDesc")}
         placeholder={
-          form.domainId ? t("dataProductsTab.tablesPlaceholder") : t("dataProductsTab.tablesNoDomain")
+          form.domainId
+            ? t("dataProductsTab.tablesPlaceholder")
+            : t("dataProductsTab.tablesNoDomain")
         }
         disabled={!form.domainId}
         value={selectedTableIds}
@@ -412,6 +415,9 @@ export function DataProductsPage() {
 
   const domainOptions = domains.map((d) => d.id);
   const memberTables = (id: string) => tables.filter((tb) => tb.productId === id);
+  // Descriptions for the lineage hover come from EVERY registered table: a contributor's or a
+  // consumer's column is as hoverable as a member's.
+  const describeColumn = useMemo(() => columnDescriber(tables), [tables]);
   const memberFunctions = (id: string) => functions.filter((fn) => fn.productId === id);
 
   useEffect(() => {
@@ -441,40 +447,82 @@ export function DataProductsPage() {
   }, [expanded, tables]);
 
   // REQ-1640: subgraph of the whole federation lineage graph scoped to this product's member
-  // tables plus their full upstream ancestry — the product's tables are the published endpoint,
-  // so we walk backward (source -> target = derives-into) transitively to show everything that
-  // was used to derive them, and never walk forward into whatever consumes them downstream.
+  // tables — the published endpoint — plus their full upstream ancestry (walked backward,
+  // source -> target = derives-into, transitively) and the tables ONE hop downstream, so the
+  // reader sees what the product is built from and who consumes it directly, without the graph
+  // running on into everything those consumers feed in turn.
   // Same LineageDag component the Lineage page renders (REQ-1161/1627), not a table-list view.
   // Informational only — never stored, mirrors the Related Tables computation.
+  //
+  // A data-quality results table is a member by inheritance (REQ-1443 clause 10) but not part of
+  // the product's data flow: its rows are scan outcomes ABOUT a member table, and its lineage
+  // would pull the checker's own plumbing into the graph. Left out here, as in the member picker.
   const lineageFor = (id: string): LineageGraphData | null => {
     if (!lineageGraph) return null;
-    const memberRelations = new Set(
-      memberTables(id).map((tb) => `${domainToSqlName(tb.domainId)}.${tb.tableName}`),
+    const relationOf = (tb: { domainId: string; tableName: string }) =>
+      `${domainToSqlName(tb.domainId)}.${tb.tableName}`;
+    const members = memberTables(id).filter((tb) => tb.dqContract == null);
+    const checkerRelations = new Set(
+      tables.filter((tb) => tb.dqContract != null).map((tb) => relationOf(tb)),
     );
+    const memberRelations = new Set(members.map(relationOf));
     const nodesById = new Map(lineageGraph.nodes.map((n) => [n.id, n]));
+    const relationEdges = lineageGraph.edges
+      .map((e) => ({
+        from: nodesById.get(e.source)?.relation,
+        to: nodesById.get(e.target)?.relation,
+      }))
+      .filter((e): e is { from: string; to: string } => !!e.from && !!e.to && e.from !== e.to);
     const keepRelations = new Set(memberRelations);
     let frontier = memberRelations;
     while (frontier.size > 0) {
       const next = new Set<string>();
-      for (const edge of lineageGraph.edges) {
-        const src = nodesById.get(edge.source);
-        const tgt = nodesById.get(edge.target);
-        if (!src?.relation || !tgt?.relation || src.relation === tgt.relation) continue;
-        if (frontier.has(tgt.relation) && !keepRelations.has(src.relation)) {
-          keepRelations.add(src.relation);
-          next.add(src.relation);
+      for (const e of relationEdges) {
+        if (frontier.has(e.to) && !keepRelations.has(e.from)) {
+          keepRelations.add(e.from);
+          next.add(e.from);
         }
       }
       frontier = next;
     }
+    for (const e of relationEdges) {
+      if (memberRelations.has(e.from) && !checkerRelations.has(e.to)) keepRelations.add(e.to);
+    }
     if (keepRelations.size === 0) return { nodes: [], edges: [], outputs: [] };
     const nodes = lineageGraph.nodes.filter((n) => n.relation && keepRelations.has(n.relation));
     const keepIds = new Set(nodes.map((n) => n.id));
-    const edges = lineageGraph.edges.filter(
-      (e) => keepIds.has(e.source) && keepIds.has(e.target),
-    );
-    return { nodes, edges, outputs: [] };
+    // The product's tables are what it publishes, so EVERY column of a member table is an output
+    // of this graph — including the ones no registered view derives from, which the federation
+    // graph never mentions. Those are added as source nodes of their table (the graph's own id
+    // shape, relation.column) so the table draws complete, and all of them ring as outputs.
+    for (const tb of members) {
+      const relation = relationOf(tb);
+      for (const c of tb.columns) {
+        const nodeId = `${relation}.${c.columnName}`;
+        if (keepIds.has(nodeId)) continue;
+        keepIds.add(nodeId);
+        nodes.push({
+          id: nodeId,
+          column: c.columnName,
+          relation,
+          kind: "source",
+          materialized: false,
+        });
+      }
+    }
+    const edges = lineageGraph.edges.filter((e) => keepIds.has(e.source) && keepIds.has(e.target));
+    const outputs = nodes.filter((n) => memberRelations.has(n.relation as string)).map((n) => n.id);
+    return { nodes, edges, outputs };
   };
+
+  // REQ-1667: the relations the detail's swimlanes are built around — the same members
+  // lineageFor() publishes as outputs.
+  const lineageMembersFor = (id: string): ReadonlySet<string> =>
+    new Set(
+      memberTables(id)
+        .filter((tb) => tb.dqContract == null)
+        .map((tb) => `${domainToSqlName(tb.domainId)}.${tb.tableName}`),
+    );
 
   // REQ-1660 (ODPS inputPorts): the 1-hop input(s) -> transform -> output edges landing on this
   // product's member-table columns, grouped by target column. Unlike lineageFor() this does not
@@ -493,7 +541,10 @@ export function DataProductsPage() {
       if (!tgt?.relation || !src || !memberRelations.has(tgt.relation)) continue;
       const outputLabel = `${tgt.relation}.${tgt.column}`;
       const inputLabel = src.relation ? `${src.relation}.${src.column}` : src.column;
-      const entry = byTarget.get(outputLabel) ?? { transform: edge.transform, inputs: new Set<string>() };
+      const entry = byTarget.get(outputLabel) ?? {
+        transform: edge.transform,
+        inputs: new Set<string>(),
+      };
       entry.inputs.add(inputLabel);
       byTarget.set(outputLabel, entry);
     }
@@ -531,9 +582,7 @@ export function DataProductsPage() {
     const memberIds = new Set(memberTables(id).map((tb) => tb.id));
     return relationships.filter(
       (r) =>
-        memberIds.has(r.sourceTableId) &&
-        r.targetTableId != null &&
-        memberIds.has(r.targetTableId),
+        memberIds.has(r.sourceTableId) && r.targetTableId != null && memberIds.has(r.targetTableId),
     );
   };
 
@@ -745,120 +794,122 @@ export function DataProductsPage() {
             )
           : dataProducts;
         return loading && dataProducts.length === 0 ? (
-        <Text size="sm" c="var(--text-muted)">
-          {t("dataProductsTab.loading")}
-        </Text>
-      ) : filtered.length === 0 ? (
-        <Text size="sm" c="var(--text-muted)" data-testid="data-products-empty">
-          {t("dataProductsTab.empty")}
-        </Text>
-      ) : (
-        <Table striped highlightOnHover data-testid="data-products-table">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("dataProductsTab.colId")}</Table.Th>
-              <Table.Th>{t("dataProductsTab.colDomain")}</Table.Th>
-              <Table.Th>{t("dataProductsTab.colName")}</Table.Th>
-              <Table.Th>{t("dataProductsTab.colOwner")}</Table.Th>
-              <Table.Th>{t("dataProductsTab.colStatus")}</Table.Th>
-              <Table.Th>{t("dataProductsTab.colPurpose")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {filtered.map((p) => {
-              const isExpanded = expanded === p.id;
-              const isEditing = editingId === p.id;
-              return (
-                <React.Fragment key={p.id}>
-                  <Table.Tr
-                    data-testid={`data-products-row-${p.id}`}
-                    aria-expanded={isExpanded}
-                    onClick={() => {
-                      setExpanded(isExpanded ? null : p.id);
-                      if (isEditing && isExpanded) closeForm();
-                    }}
-                    style={{
-                      cursor: "pointer",
-                      background: isExpanded ? "var(--surface)" : undefined,
-                    }}
-                  >
-                    <Table.Td>
-                      <Text size="sm" fw={600} ff="monospace">
-                        {p.id}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="xs">{p.domainId}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="xs">{p.name}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap={4} wrap="nowrap">
-                        <Text size="xs">{p.ownerRole ?? ""}</Text>
-                        {p.ownerRole && (
-                          <OwnerResolutionIcon
-                            refs={[p.ownerRole]}
-                            ariaLabel={t("dataProductsTab.resolveOwner", { id: p.id })}
-                          />
-                        )}
-                      </Group>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="xs">{p.status ?? ""}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="xs" c="var(--text-muted)">
-                        {p.purpose}
-                      </Text>
-                    </Table.Td>
-                  </Table.Tr>
-                  {isExpanded && (
-                    <Table.Tr key={`${p.id}-detail`} data-testid="data-product-detail">
-                      <Table.Td
-                        colSpan={6}
-                        style={{
-                          padding: "0.75rem 1rem",
-                          background: "var(--bg)",
-                          borderTop: "1px solid var(--border)",
-                          // maxWidth: 0 stops this cell's flex-wrap content from ballooning the
-                          // table's auto-layout column widths to fit everything on one row — the
-                          // cell still renders at the table's actual (viewport-bound) width, which
-                          // lets the flex-wrap panels inside actually reflow on browser resize.
-                          maxWidth: 0,
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {isEditing ? (
-                          formCard
-                        ) : (
-                          <DataProductDetailPanel
-                            p={p}
-                            tables={memberTables(p.id)}
-                            sources={sources}
-                            functions={memberFunctions(p.id)}
-                            relatedTerms={relatedTerms}
-                            relatedTermsLoading={relatedTermsLoading}
-                            relatedTables={relatedTables(p.id)}
-                            internalRelationships={internalRelationships(p.id)}
-                            canEdit={canEdit}
-                            canSeeLineage={canSeeLineage}
-                            lineageLoading={lineageLoading}
-                            lineageError={lineageError}
-                            lineageGraph={lineageFor(p.id)}
-                            inputPorts={inputPortsFor(p.id)}
-                            onEdit={() => openEdit(p)}
-                            onDelete={() => setDeleteTarget(p.id)}
-                          />
-                        )}
+          <Text size="sm" c="var(--text-muted)">
+            {t("dataProductsTab.loading")}
+          </Text>
+        ) : filtered.length === 0 ? (
+          <Text size="sm" c="var(--text-muted)" data-testid="data-products-empty">
+            {t("dataProductsTab.empty")}
+          </Text>
+        ) : (
+          <Table striped highlightOnHover data-testid="data-products-table">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t("dataProductsTab.colId")}</Table.Th>
+                <Table.Th>{t("dataProductsTab.colDomain")}</Table.Th>
+                <Table.Th>{t("dataProductsTab.colName")}</Table.Th>
+                <Table.Th>{t("dataProductsTab.colOwner")}</Table.Th>
+                <Table.Th>{t("dataProductsTab.colStatus")}</Table.Th>
+                <Table.Th>{t("dataProductsTab.colPurpose")}</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {filtered.map((p) => {
+                const isExpanded = expanded === p.id;
+                const isEditing = editingId === p.id;
+                return (
+                  <React.Fragment key={p.id}>
+                    <Table.Tr
+                      data-testid={`data-products-row-${p.id}`}
+                      aria-expanded={isExpanded}
+                      onClick={() => {
+                        setExpanded(isExpanded ? null : p.id);
+                        if (isEditing && isExpanded) closeForm();
+                      }}
+                      style={{
+                        cursor: "pointer",
+                        background: isExpanded ? "var(--surface)" : undefined,
+                      }}
+                    >
+                      <Table.Td>
+                        <Text size="sm" fw={600} ff="monospace">
+                          {p.id}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="xs">{p.domainId}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="xs">{p.name}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={4} wrap="nowrap">
+                          <Text size="xs">{p.ownerRole ?? ""}</Text>
+                          {p.ownerRole && (
+                            <OwnerResolutionIcon
+                              refs={[p.ownerRole]}
+                              ariaLabel={t("dataProductsTab.resolveOwner", { id: p.id })}
+                            />
+                          )}
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="xs">{p.status ?? ""}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="xs" c="var(--text-muted)">
+                          {p.purpose}
+                        </Text>
                       </Table.Td>
                     </Table.Tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
+                    {isExpanded && (
+                      <Table.Tr key={`${p.id}-detail`} data-testid="data-product-detail">
+                        <Table.Td
+                          colSpan={6}
+                          style={{
+                            padding: "0.75rem 1rem",
+                            background: "var(--bg)",
+                            borderTop: "1px solid var(--border)",
+                            // maxWidth: 0 stops this cell's flex-wrap content from ballooning the
+                            // table's auto-layout column widths to fit everything on one row — the
+                            // cell still renders at the table's actual (viewport-bound) width, which
+                            // lets the flex-wrap panels inside actually reflow on browser resize.
+                            maxWidth: 0,
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {isEditing ? (
+                            formCard
+                          ) : (
+                            <DataProductDetailPanel
+                              p={p}
+                              tables={memberTables(p.id)}
+                              sources={sources}
+                              functions={memberFunctions(p.id)}
+                              relatedTerms={relatedTerms}
+                              relatedTermsLoading={relatedTermsLoading}
+                              relatedTables={relatedTables(p.id)}
+                              internalRelationships={internalRelationships(p.id)}
+                              canEdit={canEdit}
+                              canSeeLineage={canSeeLineage}
+                              lineageLoading={lineageLoading}
+                              lineageError={lineageError}
+                              lineageGraph={lineageFor(p.id)}
+                              lineageMembers={lineageMembersFor(p.id)}
+                              describeColumn={describeColumn}
+                              inputPorts={inputPortsFor(p.id)}
+                              onEdit={() => openEdit(p)}
+                              onDelete={() => setDeleteTarget(p.id)}
+                            />
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
         );
       })()}
 

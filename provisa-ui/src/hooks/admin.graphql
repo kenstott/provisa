@@ -46,6 +46,7 @@ query RolesQuery {
     capabilities
     demonstrated
     domainAccess
+    parentRoleId
     rateLimit {
       requestsPerSecond
       maxQueryDepth
@@ -474,6 +475,7 @@ query RLSRulesQuery {
     id
     tableId
     domainId
+    actionName
     roleId
     filterExpr
   }
@@ -914,8 +916,8 @@ mutation UpsertRlsRule($input: RLSRuleInput!) {
   }
 }
 
-mutation DeleteRlsRule($roleId: String!, $tableId: Int, $domainId: String) {
-  deleteRlsRule(roleId: $roleId, tableId: $tableId, domainId: $domainId) {
+mutation DeleteRlsRule($roleId: String!, $tableId: Int, $domainId: String, $actionName: String) {
+  deleteRlsRule(roleId: $roleId, tableId: $tableId, domainId: $domainId, actionName: $actionName) {
     ...MutationResult
   }
 }

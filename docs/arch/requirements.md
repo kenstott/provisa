@@ -8032,7 +8032,7 @@ Freshness gating is now available at the Source level (provisa/core/models.py), 
 
 **Use case:** Prevents serving stale data from pull-through sources. Stewards can enforce freshness without materializing into an MV, reducing latency and compute overhead.
 
-**Code:** `provisa/core/models.py`, `provisa/freshness/source_gate.py`, `provisa/federation/plan.py`, `provisa/federation/native_backend.py`
+**Code:** `provisa/core/models.py`, `provisa/freshness/source_gate.py`, `provisa/federation/plan.py`, `provisa/federation/native_backend.py`, `provisa/pgwire/_pipeline.py`
 
 **Tests:** `tests/unit/test_source_freshness_gate.py`
 
@@ -10886,7 +10886,7 @@ The native (DuckDB) tier exposes the tenant control-plane as the `provisa_admin`
 
 **Use case:** Provides full parity with Trino tier where provisa_admin is a real attached catalog. Allows native users to query system metadata and operational state via standard SQL, matching Trino/Presto multi-catalog semantics.
 
-**Code:** `provisa/federation/duckdb_runtime.py`, `provisa/federation/native_backend.py`
+**Code:** `provisa/federation/duckdb_runtime.py`, `provisa/federation/native_backend.py`, `provisa/pgwire/_pipeline.py`
 
 **Tests:** `tests/unit/test_duckdb_control_plane_attach.py`
 
@@ -14186,7 +14186,7 @@ Taggable objects: sources, tables/views, columns, and relationships. UI tag-pick
 
 **Code:** `provisa/api/admin/schema_mutation.py`, `provisa-ui/src/components/TagControl.tsx`
 
-**Tests:** `provisa-ui/src/__tests__/TagControl.test.tsx`, `tests/unit/test_metadata_export_model_tags.py`
+**Tests:** `provisa-ui/src/__tests__/TagControl.test.tsx`, `tests/unit/test_metadata_export_model_tags.py`, `tests/unit/test_config_loader_tag_assignment_ref.py`
 
 ### REQ-1378 · Data Governance {#REQ-1378}
 
@@ -17492,7 +17492,7 @@ A landed replica carries the landed model's keys, converged by the landing recon
 
 **Use case:** Horizon Catalog renders a table's keys and join paths from Snowflake's informational constraints, and consumers query the per-source views. Keys are model state, not catalog state: tying them to the catalog publish left every landed table key-less until a publish ran and left every table outside a Data Product key-less for good.
 
-**Code:** `provisa/federation/landed_keys.py`, `provisa/federation/snowflake_store.py`, `provisa/federation/snowflake_runtime.py`, `provisa/federation/native_backend.py`
+**Code:** `provisa/federation/landed_keys.py`, `provisa/federation/snowflake_store.py`, `provisa/federation/snowflake_runtime.py`, `provisa/federation/native_backend.py`, `provisa/pgwire/_pipeline.py`
 
 **Tests:** `tests/unit/test_landed_keys.py`, `tests/unit/test_snowflake_store.py`, `tests/unit/test_reconcile_landed.py`
 
@@ -17516,7 +17516,7 @@ A landed table's description and its columns' descriptions travel with the lande
 
 **Use case:** Descriptions were reaching Snowflake only through the catalog publish, and only for Data Product tables; every other landed table and every backing view stayed undocumented.
 
-**Code:** `provisa/federation/landed_keys.py`, `provisa/federation/snowflake_store.py`, `provisa/federation/native_backend.py`
+**Code:** `provisa/federation/landed_keys.py`, `provisa/federation/snowflake_store.py`, `provisa/federation/native_backend.py`, `provisa/pgwire/_pipeline.py`
 
 **Tests:** `tests/unit/test_snowflake_store.py`, `tests/unit/test_reconcile_landed.py`
 
@@ -18002,7 +18002,7 @@ A Calcite-pgwire connector source (sharepoint, splunk) is attached live on the D
 
 **Code:** `provisa/federation/connector_duckdb.py`, `provisa/federation/pgwire_replica.py`, `provisa/federation/engine.py`, `provisa/runtime_deps/pgwire_bundles.py`, `provisa/api/app.py`
 
-**Tests:** `tests/unit/test_replica_strategy.py`, `tests/unit/test_federation_strategy.py`, `tests/integration/test_duckdb_attach_calcite_pgwire.py`
+**Tests:** `tests/unit/test_replica_strategy.py`, `tests/unit/test_federation_strategy.py`, `tests/integration/test_duckdb_attach_calcite_pgwire.py`, `tests/integration/test_splunk_duckdb_attach.py`
 
 ## 12. Migration & Compatibility (Hasura)
 
@@ -18048,10 +18048,22 @@ A sharepoint source authenticating with a certificate reaches the real site on t
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-A splunk source carries its two optional connector settings onto the Calcite-pgwire path, not the Trino path alone. `mapping.disable_ssl_validation` becomes the `disableSslValidation` operand and `mapping.datamodel_filter` becomes `datamodelFilter`, each written as the type `SplunkSchemaFactory` casts it to — a boolean and a string, never the property-file string "true". Without the first, an instance that serves its management port with a self-signed certificate ([REQ-724](#REQ-724)) cannot be reached at all on a non-Trino engine; without the second, discovery lists every Data Model the instance ships. A splunk demo source (`demo/sources/splunk`) provisions an instance, seeds an index, events and the Data Model that exposes them, and mints the API token the source authenticates with — Splunk generates that value, so the unit writes it to `.splunk-demo-token` as the one handoff point, which the demo start exports as `PROVISA_DEMO_SPLUNK_TOKEN` and the source-to-query e2e reads.
+A splunk source carries its two optional connector settings onto the Calcite-pgwire path, not the Trino path alone. `mapping.disable_ssl_validation` becomes the `disableSslValidation` operand and `mapping.datamodel_filter` becomes `datamodelFilter`, each written as the type `SplunkSchemaFactory` casts it to — a boolean and a string, never the property-file string "true". Without the first, an instance that serves its management port with a self-signed certificate ([REQ-724](#REQ-724)) cannot be reached at all on a non-Trino engine; without the second, discovery lists every Data Model the instance ships. A splunk demo source (`demo/sources/splunk`) provisions an instance and seeds an index, events and the Data Model that exposes them. It authenticates as the container's own admin account, whose password compose.yml fixes: the demo start exports it as `PROVISA_DEMO_SPLUNK_PASSWORD` for the config fragment, and the source-to-query e2e types it into the Sources form. A splunk source is therefore reachable from the form as well as from config, which [REQ-1695](#REQ-1695) is what makes true.
 
 **Use case:** Splunk was reachable on DuckDB in principle ([REQ-1690](#REQ-1690)) but not in practice: every real instance behind a self-signed certificate failed the attach, because the setting that turns that off reached the Trino connector and nothing else.
 
 **Code:** `provisa/federation/pgwire_replica.py`, `demo/sources/splunk/prime.py`, `demo/sources/splunk/fragment.yaml`, `demo/sources/splunk/compose.yml`, `start-ui-install.sh`
 
-**Tests:** `tests/unit/test_replica_strategy.py`, `tests/integration/test_splunk_duckdb_attach.py`
+**Tests:** `tests/unit/test_replica_strategy.py`, `tests/integration/test_splunk_duckdb_attach.py`, `provisa-ui/e2e/source-to-query.spec.ts`
+
+### REQ-1695 · Source Registration {#REQ-1695}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A source registered through the Sources form keeps its password, and keeps it where a credential belongs. The control-plane `sources` row carries a `password_ref` column holding a SECRET REFERENCE and never a credential: a literal typed into the form is written to the organization's own vault ([REQ-1557](#REQ-1557)/[REQ-1558](#REQ-1558), `secrets_store`, encrypted at rest, values unreadable by name) under `source_<id>_password`, and the row keeps the `${secret:NAME}` that names it. A value the operator already wrote in the reference grammar — `${env:PG_PASSWORD}`, `${secret:SHARED_KEY}` — is stored verbatim instead, because putting a reference into the vault would store the reference text as if it were the credential. Retyping the password is a rotation of the one vault entry, not a second secret. Deleting the source removes the entry it minted and only that one: a reference the operator wrote names a secret they own for their own reasons. Every reader that builds a `Source` from a control-plane row maps `password_ref` onto `Source.password` through one mapper (`repositories.source.source_from_row`), so a form-created source authenticates exactly like a config-declared one. Resolution stays where it already happened — at the use point, inside the bound organization — which the admin introspection seams, the source mutations and the one query terminal every surface reaches (`_execute_plan`) establish with `bound_to_request_org`. The query terminal binds only when a source the plan reads actually addresses its endpoint through a `${secret:...}`, decided from state already in memory, so a statement with no secret to resolve buys no round trip. The reference is what the admin API may expose; the credential is not, and nothing reads it back by name.
+
+**Use case:** Every connector that authenticates was unreachable from the UI. A source's password had no column at all, so a source created through the Sources form arrived at its connector with an empty credential and Register Table listed no schema — the splunk case ([REQ-1694](#REQ-1694)), where the API token IS the password, and every warehouse and database source with it. Only sources whose credential happened to ride in the `mapping` JSON, or which were declared in the config file, worked.
+
+**Code:** `provisa/core/schema_org.py`, `provisa/core/schema.sql`, `provisa/core/repositories/source.py`, `provisa/core/secrets_store.py`, `provisa/core/env_classes.py`, `provisa/api/admin/schema_common.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_query.py`, `provisa/federation/registry_view.py`, `provisa/federation/native_backend.py`, `provisa/pgwire/_pipeline.py`
+
+**Tests:** `tests/unit/test_source_password_ref.py`, `tests/unit/test_registry_view.py`, `tests/integration/test_source_password_vault.py`, `provisa-ui/e2e/source-to-query.spec.ts`

@@ -413,7 +413,7 @@ type Mutation {
   deleteTable(id: Int!): MutationResult!
   deleteRole(id: String!): MutationResult!
   upsertRlsRule(input: RLSRuleInput!): MutationResult!
-  deleteRlsRule(roleId: String!, tableId: Int = null, domainId: String = null): MutationResult!
+  deleteRlsRule(roleId: String!, tableId: Int = null, domainId: String = null, actionName: String = null): MutationResult!
   executeCreationRequest(requestId: Int!): MutationResult!
   rejectCreationRequest(requestId: Int!, reason: String!): MutationResult!
   upsertRelationship(input: RelationshipInput!): MutationResult!
@@ -496,6 +496,7 @@ type Query {
 input RLSRuleInput {
   tableId: String = null
   domainId: String = null
+  actionName: String = null
   roleId: String! = ""
   filterExpr: String! = ""
 }
@@ -506,6 +507,7 @@ type RLSRuleType {
   domainId: String
   roleId: String!
   filterExpr: String!
+  actionName: String
 }
 
 type RefreshPolicySummaryType {
@@ -612,6 +614,7 @@ input RoleInput {
   capabilities: [String!]!
   domainAccess: [String!]!
   rateLimit: RoleRateLimitInput = null
+  parentRoleId: String = null
 }
 
 input RoleRateLimitInput {
@@ -634,6 +637,7 @@ type RoleType {
   domainAccess: [String!]!
   demonstrated: [String!]!
   rateLimit: RoleRateLimitType
+  parentRoleId: String
 }
 
 type ScheduledTaskType {

@@ -542,6 +542,23 @@ wheels = [
 ]
 
 [[package]]
+name = "cassandra-driver"
+version = "3.30.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "deprecated" },
+    { name = "geomet" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bb/ed/4e16210e194660f107929ee494f1cf18557252655067d9b39029c241be2d/cassandra_driver-3.30.1.tar.gz", hash = "sha256:0c6a3e1428f7c6a9aa6c944b9c47a37cd2cdbeb5b5a82d42c33afdd56f14e398", size = 289233, upload-time = "2026-07-06T20:14:31.37Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/d4/8a80155cfe1312bb5d750e5a7b0384a1346fde2ca07cbff869f6627db071/cassandra_driver-3.30.1-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:9ff317f79b09eba52a44d46d8c4773e47533dfdd8b9ba4984268dc4a1fe5206e", size = 3649965, upload-time = "2026-07-06T20:13:35.813Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/ed/d9bca63e72e8219243e75821e72ace3046da0fe9a8b22375cf0c0efff427/cassandra_driver-3.30.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:ab853bd2806899c5612c3e4ac2a355a7811084d06692e4460255e3b0a4fa556a", size = 3475640, upload-time = "2026-07-06T20:13:39.842Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/43/9bc21a9a3881c7eb9c19d0a6af8331a3fda0f18e82be83b49330f072d546/cassandra_driver-3.30.1-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:e10784b4f7d77332dc1a5c72855977a0d797160fd8ba50785414caed07fce95b", size = 3226293, upload-time = "2026-07-06T20:13:43.675Z" },
+    { url = "https://files.pythonhosted.org/packages/89/c1/d050e11c324c0d0be7213947bed7c1cb65ef50ab4f12b3e881614217fce2/cassandra_driver-3.30.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:af5c6f5d7d5a86725b908aba12d9554df60234c15bfe053a8175b15db791ada8", size = 3483718, upload-time = "2026-07-06T20:13:48.038Z" },
+    { url = "https://files.pythonhosted.org/packages/49/ee/779b732de46608018ac90613a5fe4954a4901c6efa19f38ab2213e9cf4ef/cassandra_driver-3.30.1-cp312-cp312-win_amd64.whl", hash = "sha256:e43d873de5f8dadf4c8dcc4fab87d66a8495137e844ae3c184fbc90a54c05bc0", size = 2662678, upload-time = "2026-07-06T20:13:51.566Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.5.20"
 source = { registry = "https://pypi.org/simple" }
@@ -893,6 +910,18 @@ wheels = [
 ]
 
 [[package]]
+name = "deprecated"
+version = "1.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/49/85/12f0a49a7c4ffb70572b6c2ef13c90c88fd190debda93b23f026b25f9634/deprecated-1.3.1.tar.gz", hash = "sha256:b1b50e0ff0c1fddaa5708a2c6b0a6588bb09b892825ab2b214ac9ea9d92a5223", size = 2932523, upload-time = "2025-10-30T08:19:02.757Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/84/d0/205d54408c08b13550c733c4b85429e7ead111c7f0014309637425520a9a/deprecated-1.3.1-py2.py3-none-any.whl", hash = "sha256:597bfef186b6f60181535a29fbe44865ce137a5079f295b479886c82729d5f3f", size = 11298, upload-time = "2025-10-30T08:19:00.758Z" },
+]
+
+[[package]]
 name = "distlib"
 version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1082,6 +1111,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/10/a1/ae4e3e5003468d6391d2c77b6fa1cd73bd5d13511d81c642d7b28ac90ed4/fsspec-2026.6.0.tar.gz", hash = "sha256:f5bac145310fe30e16e1471bd6840b2d990d609e872251d7e674241822abf01a", size = 313646, upload-time = "2026-06-16T01:57:28.105Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e5/22/4222d7ddf3da30f363edaa98e329c2bce6c65497c9cb2810931c8b2c0fbc/fsspec-2026.6.0-py3-none-any.whl", hash = "sha256:02e0b71817df9b2169dc30a16832045764def1191b43dcff5bb85bdee212d2a1", size = 203949, upload-time = "2026-06-16T01:57:26.358Z" },
+]
+
+[[package]]
+name = "geomet"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2a/8c/dde022aa6747b114f6b14a7392871275dea8867e2bd26cddb80cc6d66620/geomet-1.1.0.tar.gz", hash = "sha256:51e92231a0ef6aaa63ac20c443377ba78a303fd2ecd179dc3567de79f3c11605", size = 28732, upload-time = "2023-11-14T15:43:36.764Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/af/90/3bc780df088d439714af8295196a4332a26559ae66fd99865e36f92efa9e/geomet-1.1.0-py3-none-any.whl", hash = "sha256:4372fe4e286a34acc6f2e9308284850bd8c4aa5bc12065e2abbd4995900db12f", size = 31522, upload-time = "2023-11-14T15:43:35.305Z" },
 ]
 
 [[package]]
@@ -3068,10 +3109,14 @@ dependencies = [
 all-drivers = [
     { name = "aiomysql" },
     { name = "aioodbc" },
+    { name = "cassandra-driver" },
     { name = "oracledb" },
 ]
 azure = [
     { name = "azure-keyvault-keys" },
+]
+cassandra = [
+    { name = "cassandra-driver" },
 ]
 demo = [
     { name = "great-expectations", extra = ["postgresql"] },
@@ -3179,6 +3224,8 @@ requires-dist = [
     { name = "bcrypt" },
     { name = "black", marker = "extra == 'dev'" },
     { name = "boto3" },
+    { name = "cassandra-driver", marker = "extra == 'all-drivers'", specifier = ">=3.29" },
+    { name = "cassandra-driver", marker = "extra == 'cassandra'", specifier = ">=3.29" },
     { name = "chdb", marker = "sys_platform != 'win32'" },
     { name = "clickhouse-connect" },
     { name = "clickhouse-driver" },
@@ -3277,7 +3324,7 @@ requires-dist = [
     { name = "uvicorn" },
     { name = "websockets", specifier = ">=11.0" },
 ]
-provides-extras = ["embedded", "desktop", "docs", "mysql", "sqlserver", "oracle", "all-drivers", "soda", "gx", "demo", "govdata", "firebase", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
+provides-extras = ["embedded", "desktop", "docs", "mysql", "sqlserver", "oracle", "cassandra", "all-drivers", "soda", "gx", "demo", "govdata", "firebase", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
 
 [[package]]
 name = "provisa-duckdb-ext"

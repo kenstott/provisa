@@ -36,21 +36,14 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { sql as sqlLang, PostgreSQL } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
 import { LineageDag } from "../components/lineage/LineageDag";
+import { columnDescriber } from "../components/lineage/column-descriptions";
+import { useTables } from "../hooks/useAdminQueries";
 import { fetchLineageGraph, fetchFederationGraph } from "../api/lineage";
 import type { LineageGraphData } from "../api/lineage";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { CapabilityGate } from "../components/CapabilityGate";
 import { fetchOrgRoles } from "../api/admin";
-
-const LEGEND: { label: string; color: string }[] = [
-  { label: "source column", color: "#2f9e44" },
-  { label: "intermediate (in → out)", color: "#0c8599" },
-  { label: "result column", color: "#1c7ed6" },
-  { label: "command boundary", color: "#9c36b5" },
-  { label: "final output (orange ring)", color: "#f08c00" },
-  { label: "dataset (collapsed — click to expand)", color: "#5c7cfa" },
-];
 
 const DEFAULT_SQL =
   "SELECT o.id, e.embedding, upper(e.geo) AS geo_u\nFROM orders o JOIN enrich_grpc_set('main.public.orders') e ON o.id = e.id";
@@ -109,6 +102,9 @@ export function LineagePage(): React.ReactElement {
   // federation is unreadable column-by-column — and statement lineage arrives expanded, being small.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => loadStoredCollapsed());
   const [modalOpen, setModalOpen] = useState(false);
+  // Which variant the graph came from. Complete Lineage is a role's whole visible surface, so every
+  // column it lists is in use and is drawn; statement lineage draws what the statement touches.
+  const [complete, setComplete] = useState(false);
 
   const relationsOf = (g: LineageGraphData): string[] => [
     ...new Set(g.nodes.map((n) => n.relation).filter((r): r is string => !!r)),
@@ -150,6 +146,7 @@ export function LineagePage(): React.ReactElement {
     try {
       const built = await fn();
       setCollapsed(collapseAll ? new Set(relationsOf(built)) : new Set());
+      setComplete(collapseAll);
       setGraph(built);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -172,7 +169,10 @@ export function LineagePage(): React.ReactElement {
         const built = focus
           ? await fetchFederationGraph({ focus })
           : await fetchLineageGraph(sqlParam as string);
-        if (!cancelled) setGraph(built);
+        if (!cancelled) {
+          setComplete(!!focus);
+          setGraph(built);
+        }
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : String(e));
@@ -189,6 +189,10 @@ export function LineagePage(): React.ReactElement {
 
   const cycles = graph?.cycles ?? [];
   const { colorScheme } = useMantineColorScheme();
+  // Registered column descriptions, shown at the cursor over a field.
+  const { tables: registeredTables } = useTables();
+  const describeColumn = useMemo(() => columnDescriber(registeredTables), [registeredTables]);
+
   const sqlExtensions = useMemo(
     () => [sqlLang({ dialect: PostgreSQL }), EditorView.lineWrapping],
     [],
@@ -205,16 +209,39 @@ export function LineagePage(): React.ReactElement {
         "what feeds this column?" before you publish a view or command. Or choose{" "}
         <b>Complete Lineage</b> to see provenance across every registered view and dataset at once.
       </Text>
-      <Group align="flex-end" wrap="nowrap">
+      {/* The editor stretches to the height of the control column beside it, so the two read as
+          one row whatever the query's length. */}
+      <Group align="stretch" wrap="nowrap">
         <Input.Wrapper
-          label="Query to analyze"
-          description="Any SELECT that reads your registered tables, views, or commands. This query is only analyzed, never run — nothing is executed and no data is read."
-          style={{ flex: 1 }}
+          label={
+            <Group gap={4} component="span">
+              Query to analyze
+              <Tooltip
+                multiline
+                w={360}
+                label="Any SELECT that reads your registered tables, views, or commands. This query is only analyzed, never run — nothing is executed and no data is read."
+              >
+                <Text
+                  span
+                  size="xs"
+                  c="dimmed"
+                  style={{ cursor: "help" }}
+                  data-testid="lineage-sql-help"
+                >
+                  ⓘ
+                </Text>
+              </Tooltip>
+            </Group>
+          }
+          style={{ flex: 1, display: "flex", flexDirection: "column" }}
         >
           <div
             data-testid="lineage-sql"
             style={{
               position: "relative",
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
               border: "1px solid var(--mantine-color-default-border)",
               borderRadius: 4,
               marginTop: 4,
@@ -231,9 +258,10 @@ export function LineagePage(): React.ReactElement {
               // The toggle only ever writes "light"/"dark" (theme/ColorSchemeToggle.tsx:27), so
               // there is no "auto" case to resolve here.
               theme={colorScheme === "light" ? undefined : oneDark}
+              height="100%"
               minHeight="72px"
               basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: false }}
-              style={{ fontSize: "0.85rem" }}
+              style={{ fontSize: "0.85rem", flex: 1 }}
             />
             <Tooltip label={sqlCopied ? "Copied" : "Copy query"}>
               <ActionIcon
@@ -345,22 +373,15 @@ export function LineagePage(): React.ReactElement {
           p="xs"
           style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
         >
-          <Group gap="md" mb="xs">
-            {LEGEND.map((l) => (
-              <Group key={l.label} gap={4}>
-                <div style={{ width: 12, height: 12, borderRadius: 3, background: l.color }} />
-                <Text size="xs">{l.label}</Text>
-              </Group>
-            ))}
-            <Text size="xs" c="dimmed">
-              {graph.nodes.length} columns · {graph.edges.length} edges
-            </Text>
-          </Group>
           <div style={{ flex: 1, minHeight: 0 }}>
             <LineageDag
               graph={graph}
               height="100%"
+              legend
+              stats
+              describeColumn={describeColumn}
               collapsedRelations={collapsed}
+              allColumns={complete}
               onToggleRelation={toggleRelation}
               onCollapseAll={() => setCollapsed(new Set(relationsOf(graph)))}
               onExpandAll={() => setCollapsed(new Set())}
@@ -382,14 +403,20 @@ export function LineagePage(): React.ReactElement {
         styles={{ body: { padding: 0 } }}
       >
         {graph && (
-          <LineageDag
-            graph={graph}
-            height="calc(90vh - 120px)"
-            collapsedRelations={collapsed}
-            onToggleRelation={toggleRelation}
-            onCollapseAll={() => setCollapsed(new Set(relationsOf(graph)))}
-            onExpandAll={() => setCollapsed(new Set())}
-          />
+          <div style={{ padding: "var(--mantine-spacing-xs)" }}>
+            <LineageDag
+              graph={graph}
+              height="calc(90vh - 120px)"
+              legend
+              stats
+              describeColumn={describeColumn}
+              collapsedRelations={collapsed}
+              allColumns={complete}
+              onToggleRelation={toggleRelation}
+              onCollapseAll={() => setCollapsed(new Set(relationsOf(graph)))}
+              onExpandAll={() => setCollapsed(new Set())}
+            />
+          </div>
         )}
       </Modal>
     </Stack>
