@@ -138,6 +138,10 @@ export function SourcesPage() {
   const [spUsername, setSpUsername] = useState("");
   const [spPassword, setSpPassword] = useState("");
   const [splunkDisableSsl, setSplunkDisableSsl] = useState(false);
+  // Splunk authenticates with a bearer token (the connector's default, `use_token: true`) or a
+  // username/password pair; both ride in the standard username/password fields, so a secret
+  // reference (`${secret:...}`, `${env:...}`) works there like for every other source.
+  const [splunkAuthMode, setSplunkAuthMode] = useState<"token" | "userpass">("token");
   const [filesTransport, setFilesTransport] = useState("file://");
   const [filesAuthMode, setFilesAuthMode] = useState<"userpass" | "certificate">("userpass");
   const [filesCertPath, setFilesCertPath] = useState("");
@@ -466,11 +470,14 @@ export function SourcesPage() {
       try {
         const m = JSON.parse(s.mappingJson) as Record<string, unknown>;
         setSplunkDisableSsl(!!m.disable_ssl_validation);
+        setSplunkAuthMode(m.use_token === false ? "userpass" : "token");
       } catch {
         setSplunkDisableSsl(false);
+        setSplunkAuthMode("token");
       }
     } else {
       setSplunkDisableSsl(false);
+      setSplunkAuthMode("token");
     }
     if (s.type === "govdata" && s.database) {
       const storedSchemas = s.database
@@ -559,8 +566,11 @@ export function SourcesPage() {
                 ? { sp_username: spUsername, sp_password: spPassword }
                 : {}),
             })
-          : form.type === "splunk" && splunkDisableSsl
-            ? JSON.stringify({ disable_ssl_validation: true })
+          : form.type === "splunk"
+            ? JSON.stringify({
+                use_token: splunkAuthMode === "token",
+                ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
+              })
             : // The Trino gsheets catalog needs the service-account key path alongside the metadata
               // sheet id (which rides in `database`), so it travels in the mapping like the other
               // connectors' extra options.
@@ -909,6 +919,8 @@ export function SourcesPage() {
     setSpPassword,
     splunkDisableSsl,
     setSplunkDisableSsl,
+    splunkAuthMode,
+    setSplunkAuthMode,
     filesTransport,
     setFilesTransport,
     filesAuthMode,
