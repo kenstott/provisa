@@ -187,8 +187,10 @@ SharePoint lists are enumerated as schemas and exposed as queryable tables (REQ-
 | `password` | `client-secret` | Azure app client secret |
 | `database` | `tenant-id` | Azure tenant UUID |
 | `mapping.auth_type` | `auth-type` | `CLIENT_CREDENTIALS` (default) or `CERTIFICATE` |
-| `mapping.certificate_path` | `certificate-path` | PFX path when `auth_type: CERTIFICATE` |
-| `mapping.certificate_password` | `certificate-password` | PFX password |
+| `mapping.certificate_path` | `certificate-path` | PFX path when `auth_type: CERTIFICATE` — must be ABSOLUTE |
+| `mapping.certificate_password` | `certificate-password` | PFX password — the key must be present, empty string for a password-less PFX |
+
+Certificate auth on the non-Trino engines carries two extra rules, both enforced when the Calcite pgwire server's `model.json` operand is built (REQ-1693). `certificate_path` must be absolute: the server runs with its bundle directory as the working directory, so a relative path resolves inside the runtime-deps cache and the PFX is not found. `certificate_password` must be present in `mapping` even when the PFX has no password, in which case it is the empty string — the Calcite adapter rejects a null password outright, and an absent key is treated as a config error rather than silently read as an empty password. A missing or relative value raises `MissingConnectorConfig` naming the field. [tool-verified: `provisa/federation/pgwire_replica.py` `_sharepoint_operand`]
 
 When the connector does not expose `information_schema.columns`, register the table with explicit column definitions (obtained from the Microsoft Graph API) via the `registerTable` mutation (REQ-732).
 
@@ -201,6 +203,20 @@ When the connector does not expose `information_schema.columns`, register the ta
   database: ${env:SP_TENANT_ID}
   mapping:
     auth_type: CLIENT_CREDENTIALS
+```
+
+Certificate auth, with the absolute path and the always-present password:
+
+```yaml
+- id: hr-sharepoint
+  type: sharepoint
+  base_url: https://kenstott.sharepoint.com
+  username: ${env:SP_CLIENT_ID}
+  database: ${env:SP_TENANT_ID}
+  mapping:
+    auth_type: CERTIFICATE
+    certificate_path: /etc/provisa/certs/sharepoint.pfx
+    certificate_password: ${env:SP_CERT_PASSWORD}
 ```
 
 #### `splunk`

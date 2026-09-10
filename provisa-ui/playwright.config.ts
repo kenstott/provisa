@@ -326,19 +326,19 @@ export default defineConfig({
       timeout: 30000,
     },
     {
-      command: `bash -c 'cd .. && .venv/bin/uvicorn server:app --app-dir demo/graphql_server --host 0.0.0.0 --port ${E2E_GRAPHQL_DEMO_PORT}'`,
+      command: `bash -c 'cd .. && exec .venv/bin/uvicorn server:app --app-dir demo/graphql_server --host 0.0.0.0 --port ${E2E_GRAPHQL_DEMO_PORT}'`,
       url: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql?query=%7B__typename%7D`,
       reuseExistingServer: !process.env.CI,
       timeout: 15000,
     },
     {
-      command: `bash -c 'cd .. && .venv/bin/uvicorn server:app --app-dir demo/petstore_server --host 0.0.0.0 --port ${E2E_PETSTORE_PORT}'`,
+      command: `bash -c 'cd .. && exec .venv/bin/uvicorn server:app --app-dir demo/petstore_server --host 0.0.0.0 --port ${E2E_PETSTORE_PORT}'`,
       url: `http://localhost:${E2E_PETSTORE_PORT}/api/v3/pet/findByStatus?status=available`,
       reuseExistingServer: !process.env.CI,
       timeout: 15000,
     },
     ...CORE_BACKENDS.map((b) => ({
-      command: `bash -c 'cd .. && .venv/bin/uvicorn main:app --host 0.0.0.0 --port ${b.port}'`,
+      command: `bash -c 'cd .. && exec .venv/bin/uvicorn main:app --host 0.0.0.0 --port ${b.port}'`,
       url: `http://localhost:${b.port}/health`,
       env: {
         GRPC_PORT: String(b.port + 1),
@@ -374,7 +374,7 @@ export default defineConfig({
     ...(RUNS_TRINO
       ? [
           {
-            command: `bash -c 'cd .. && .venv/bin/uvicorn main:app --host 0.0.0.0 --port ${E2E_TRINO_API_PORT}'`,
+            command: `bash -c 'cd .. && exec .venv/bin/uvicorn main:app --host 0.0.0.0 --port ${E2E_TRINO_API_PORT}'`,
             url: `http://localhost:${E2E_TRINO_API_PORT}/health`,
             env: {
               GRPC_PORT: String(E2E_TRINO_GRPC_PORT),

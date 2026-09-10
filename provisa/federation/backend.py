@@ -545,6 +545,10 @@ class EngineBackend:
             type=source.type,
             host=_rs(getattr(source, "host", None)),
             port=getattr(source, "port", None),
+            # REQ-1693: the endpoint-style connectors (sharepoint's siteUrl, splunk's url) read
+            # base_url and fall back to host. Omitting it here raised AttributeError inside the
+            # connector, which surfaced as an empty Register Table schema list.
+            base_url=_rs(getattr(source, "base_url", None)),
             database=_rs(getattr(source, "database", None)),
             username=_rs(getattr(source, "username", None)),
             password=_rs(getattr(source, "password", None)),

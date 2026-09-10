@@ -35,7 +35,7 @@ import socket
 import subprocess  # noqa: S404 - launches the pinned first-party pgwire bundle launcher
 import time
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, Callable
 
 from provisa.core.secrets import resolve_secrets
@@ -59,7 +59,7 @@ SERVER_READY_SECONDS = (
 # The Calcite schema factory per connector — the ``model.json`` ``factory`` for the bundle's adapter.
 _SCHEMA_FACTORY: dict[str, str] = {
     "files": "org.apache.calcite.adapter.file.FileSchemaFactory",
-    "sharepoint": "org.apache.calcite.adapter.sharepoint.SharepointSchemaFactory",
+    "sharepoint": "org.apache.calcite.adapter.sharepoint.SharePointListSchemaFactory",
     "splunk": "org.apache.calcite.adapter.splunk.SplunkSchemaFactory",
 }
 
@@ -116,7 +116,20 @@ def _files_operand(source: Any) -> dict:
 
 def _sharepoint_operand(source: Any) -> dict:
     """sharepoint → siteUrl + tenantId + clientId + (clientSecret OR cert OR device-code). Missing
-    siteUrl, tenant/client, or every auth method is a config error (REQ-955)."""
+    siteUrl, tenant/client, or every auth method is a config error (REQ-955).
+
+    Certificate auth carries three hard contracts imposed by the Calcite adapter (REQ-1693):
+
+    * ``authType`` must be emitted as ``CERTIFICATE``. ``SharePointAuthFactory.createAuth`` reads
+      ``authType`` and falls back to ``CLIENT_CREDENTIALS`` when it is absent, so a cert operand
+      without it dies with "CLIENT_CREDENTIALS auth requires clientId, clientSecret, and tenantId".
+    * ``certificatePath`` must be ABSOLUTE. The pgwire server runs with its bundle directory as cwd,
+      so a relative path resolves against the cache dir and the PFX is not found.
+    * ``certificatePassword`` must be PRESENT, even for a password-less PFX, where it is the empty
+      string. ``createCertificateAuth`` rejects a null password and ``CertificateAuth`` calls
+      ``certificatePassword.toCharArray()``. Absence of the mapping key is a config error, not an
+      empty password — the operator must say which one they mean.
+    """
     mapping = {k: _rs(v) if isinstance(v, str) else v for k, v in (source.mapping or {}).items()}
     site_url = _rs(source.base_url) or _rs(source.host)
     if not site_url:
@@ -133,9 +146,21 @@ def _sharepoint_operand(source: Any) -> dict:
     if client_secret:
         operand["clientSecret"] = client_secret
     elif cert_path:
+        if not PurePath(cert_path).is_absolute():
+            raise MissingConnectorConfig(
+                f"sharepoint source {source.id!r}: mapping.certificate_path must be an absolute "
+                f"path (the pgwire server's cwd is its bundle directory), got {cert_path!r}"
+            )
+        cert_password = mapping.get("certificate_password")
+        if not isinstance(cert_password, str):
+            raise MissingConnectorConfig(
+                f"sharepoint source {source.id!r}: certificate auth requires "
+                f"mapping.certificate_password as a string; use an empty string for a "
+                f"password-less PFX (got {type(cert_password).__name__})"
+            )
+        operand["authType"] = "CERTIFICATE"
         operand["certificatePath"] = cert_path
-        if mapping.get("certificate_password"):
-            operand["certificatePassword"] = mapping["certificate_password"]
+        operand["certificatePassword"] = cert_password
     elif mapping.get("use_device_code"):
         operand["authType"] = "DEVICE_CODE"
     else:
