@@ -379,6 +379,17 @@ class PgwireServer:  # REQ-955
         self._proc.terminate()
         self._proc.wait(SERVER_STOP_SECONDS)
         self._proc = None
+        # The launcher exiting is not the port being free: the Python server it spawned closes
+        # its listener on its own schedule. A start on this port before that would bind nothing
+        # and the next attach would refuse — so stop() returns only once the port is released.
+        deadline = time.monotonic() + SERVER_STOP_SECONDS
+        while not _port_is_free(self._ports.pgwire_port):
+            if time.monotonic() >= deadline:
+                raise ServerLifecycleError(
+                    f"pgwire server port {self._ports.pgwire_port} still bound "
+                    f"{SERVER_STOP_SECONDS}s after the launcher exited"
+                )
+            time.sleep(0.1)
 
 
 # -- land via SELECT (REQ-954) -------------------------------------------------
