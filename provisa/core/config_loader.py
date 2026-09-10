@@ -29,6 +29,7 @@ from provisa.core.models import (
     ProvisaConfig,
     Source,
     Table,
+    TagAssignment,
 )
 from provisa.core import domain_policy
 from provisa.core.schema_org import (
@@ -712,6 +713,34 @@ async def _upsert_metrics(conn: "Connection", config: ProvisaConfig) -> None:  #
         await metric_repo.upsert(conn, m)
 
 
+async def _resolve_tag_assignment_table(
+    conn: "Connection", ta: TagAssignment
+) -> TagAssignment:  # REQ-1377, REQ-1266
+    """The assignment with ``table_id`` resolved in THIS org's registry.
+
+    ``table_ref`` ("source.schema.table") is the config-vocabulary identity and wins whenever it
+    is present: a serial ``table_id`` is local to one org's ``registered_tables``. The demo config
+    object is shared by every demo org, and the default org's runtime rewrites its assignments
+    from its own rows — serial included — so a second org honouring that serial inserts a
+    ``table_id`` its registry never issued and the FK rejects the whole org build.
+    """
+    if ta.table_ref is None:
+        return ta
+    parts = ta.table_ref.split(".")
+    if len(parts) != 3:
+        raise ValueError(
+            f"tag assignment {ta.tag_id!r}: table_ref {ta.table_ref!r} "
+            "must be 'source.schema.table'"
+        )
+    resolved = await tag_repo.resolve_table_id(conn, *parts)
+    if resolved is None:
+        raise ValueError(
+            f"tag assignment {ta.tag_id!r}: table_ref {ta.table_ref!r} "
+            "names a table that is not registered"
+        )
+    return ta.model_copy(update={"table_id": resolved})
+
+
 async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-1266
     config: ProvisaConfig,
     conn: "Connection",
@@ -804,22 +833,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
             continue
         await tag_repo.upsert(conn, tg)
     for ta in config.tag_assignments:
-        if ta.table_id is None and ta.table_ref is not None:
-            # YAML configs address tables by qualified name; the DB row needs the serial id.
-            parts = ta.table_ref.split(".")
-            if len(parts) != 3:
-                raise ValueError(
-                    f"tag assignment {ta.tag_id!r}: table_ref {ta.table_ref!r} "
-                    "must be 'source.schema.table'"
-                )
-            resolved = await tag_repo.resolve_table_id(conn, *parts)
-            if resolved is None:
-                raise ValueError(
-                    f"tag assignment {ta.tag_id!r}: table_ref {ta.table_ref!r} "
-                    "names a table that is not registered"
-                )
-            ta = ta.model_copy(update={"table_id": resolved})
-        await tag_repo.assign(conn, ta)
+        await tag_repo.assign(conn, await _resolve_tag_assignment_table(conn, ta))
 
     # 7. RLS rules (tables + roles must exist first)
     for rule in config.rls_rules:

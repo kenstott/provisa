@@ -42406,6 +42406,7 @@
   tests:
   - provisa-ui/src/__tests__/TagControl.test.tsx
   - tests/unit/test_metadata_export_model_tags.py
+  - tests/unit/test_config_loader_tag_assignment_ref.py
 - id: REQ-1378
   status: complete
   since: 2026-08
