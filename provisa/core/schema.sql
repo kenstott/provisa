@@ -822,6 +822,19 @@ DO $$ BEGIN
     ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS max_concurrency INTEGER;
     ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS default_params JSONB;
     ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS promotions JSONB NOT NULL DEFAULT '[]';
+    -- REQ-1668/REQ-1683: query-API endpoints (neo4j, sparql)
+    ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS body_encoding TEXT;
+    ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS query_template TEXT;
+    ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS response_normalizer TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- REQ-1668/REQ-1683: the query-API source kinds joined the type check after api_sources existed;
+-- an org schema created before them still carries the narrower constraint.
+DO $$ BEGIN
+    ALTER TABLE api_sources DROP CONSTRAINT IF EXISTS api_sources_type_check;
+    ALTER TABLE api_sources ADD CONSTRAINT api_sources_type_check
+        CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

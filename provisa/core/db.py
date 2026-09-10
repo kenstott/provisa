@@ -203,27 +203,33 @@ _DEMONSTRATED_ROLES: dict[str, list[str]] = {
 }
 
 
-def add_missing_columns(sync_conn, tables) -> None:
+def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
     """Additive column reconciliation: ADD COLUMN any metadata column absent from a live table.
 
     V1 ships no migrations, so the SQLAlchemy metadata IS the schema's source of truth — but
     ``create_all`` skips tables that already exist, so a column added to the metadata never reaches
-    a database created before it. This closes that gap for the metadata-driven planes (the portable
-    tenant bootstrap and the platform registry). Additive only: drops and type changes stay out of
-    scope, as they do on the PostgreSQL ``schema.sql`` path.
+    a database created before it. This closes that gap for every plane: the portable tenant
+    bootstrap, the platform registry, and — scoped by ``schema`` to one ``org_<id>`` schema — the
+    PostgreSQL tenant plane, where ``schema.sql``'s ``ADD COLUMN IF NOT EXISTS`` blocks had to be
+    hand-written for every new column and a forgotten one broke every upgrade at startup
+    (cloud-dev: ``column "body_encoding" does not exist``). Additive only: drops and type changes
+    stay out of scope.
     """
     from sqlalchemy import inspect as _inspect
 
     inspector = _inspect(sync_conn)
-    existing_tables = set(inspector.get_table_names())
+    existing_tables = set(inspector.get_table_names(schema=schema))
+    qualify = (lambda name: f'"{schema}"."{name}"') if schema else (lambda name: f'"{name}"')
     for table in tables:
         if table.name not in existing_tables:
             continue
-        live = {c["name"] for c in inspector.get_columns(table.name)}
+        live = {c["name"] for c in inspector.get_columns(table.name, schema=schema)}
         for column in table.columns:
             if column.name in live:
                 continue
             ddl_type = column.type.compile(sync_conn.dialect)
+            if sync_conn.dialect.name == "postgresql" and ddl_type.upper() == "JSON":
+                ddl_type = "JSONB"  # schema.sql declares every JSON column as JSONB
             default = ""
             if column.server_default is not None:
                 arg = getattr(column.server_default, "arg", None)
@@ -237,7 +243,7 @@ def add_missing_columns(sync_conn, tables) -> None:
                 )
                 default = f" DEFAULT {bare}" if is_sql_literal else f" DEFAULT '{bare}'"
             sync_conn.exec_driver_sql(
-                f'ALTER TABLE {table.name} ADD COLUMN "{column.name}" {ddl_type}{default}'
+                f'ALTER TABLE {qualify(table.name)} ADD COLUMN "{column.name}" {ddl_type}{default}'
             )
 
 
@@ -313,6 +319,16 @@ async def init_schema(
             # runs it natively; the control-plane Database shim auto-detects the
             # multi-statement case and routes to the raw driver.
             await conn.execute(schema_sql)
+    # Whatever schema.sql's hand-written ADD COLUMN blocks missed, the metadata supplies: a
+    # column added to schema_org reaches an org schema created before it (see add_missing_columns).
+    engine = getattr(pool, "engine", None)
+    if engine is not None:
+        from provisa.core import schema_org
+
+        async with engine.begin() as sa_conn:
+            await sa_conn.run_sync(
+                add_missing_columns, schema_org.metadata.sorted_tables, schema_name
+            )
 
 
 async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy: bool) -> None:
