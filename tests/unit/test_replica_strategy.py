@@ -202,17 +202,17 @@ def test_port_allocation_exhaustion_is_loud():
 
 def test_bundle_spec_version_pin():
     spec = rd.bundle_spec_for("files")
-    assert spec.version == "engine-v0.82.0"
+    assert spec.version == "engine-v0.82.1"
     assert spec.connector == "file"
     assert spec.artifact_name == "pgwire-file"
-    assert "engine-v0.82.0" in spec.download_url
+    assert "engine-v0.82.1" in spec.download_url
     assert spec.download_url.startswith("https://github.com/kenstott/calcite/releases/download/")
 
 
 def test_bundle_asset_is_platform_stamped():  # REQ-1690
-    spec = rd.BundleSpec("file", "engine-v0.82.0", variant="linux-x86_64")
-    assert spec.asset_stem == "pgwire-file-0.82.0-linux-x86_64"
-    assert spec.download_url.endswith("/engine-v0.82.0/pgwire-file-0.82.0-linux-x86_64.tar.gz")
+    spec = rd.BundleSpec("file", "engine-v0.82.1", variant="linux-x86_64")
+    assert spec.asset_stem == "pgwire-file-0.82.1-linux-x86_64"
+    assert spec.download_url.endswith("/engine-v0.82.1/pgwire-file-0.82.1-linux-x86_64.tar.gz")
 
 
 def test_bundle_variant_unbuilt_platform_is_loud(monkeypatch):  # REQ-1690
@@ -228,7 +228,7 @@ def test_download_unnests_the_tarball(tmp_path, monkeypatch):  # REQ-1690
     import io
     import tarfile
 
-    spec = rd.BundleSpec("file", "engine-v0.82.0", variant="macos-arm64")
+    spec = rd.BundleSpec("file", "engine-v0.82.1", variant="macos-arm64")
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         launcher = tarfile.TarInfo(f"{spec.asset_stem}/bin/pgwire-file")
@@ -253,7 +253,7 @@ def test_download_unnests_the_tarball(tmp_path, monkeypatch):  # REQ-1690
     import httpx
 
     monkeypatch.setattr(httpx, "stream", lambda *_a, **_k: _Resp())
-    dest = tmp_path / "engine-v0.82.0" / "pgwire-file"
+    dest = tmp_path / "engine-v0.82.1" / "pgwire-file"
     rd.download_release_asset(spec, dest)
     assert (dest / "bin" / "pgwire-file").read_bytes() == payload
     assert not (dest / spec.asset_stem).exists()
@@ -280,7 +280,7 @@ def test_bundle_resolve_downloads_then_caches(tmp_path):
     spec = rd.bundle_spec_for("files")
     assert not resolver.is_cached(spec)
     path = resolver.resolve(spec)
-    assert path == tmp_path / "engine-v0.82.0" / "pgwire-file"
+    assert path == tmp_path / "engine-v0.82.1" / "pgwire-file"
     assert resolver.is_cached(spec)
     # second resolve is a cache HIT — downloader not called again
     resolver.resolve(spec)
@@ -627,7 +627,7 @@ def test_pgwire_connector_probe_reports_cached_bundle(tmp_path, monkeypatch):
     result = asyncio.run(DuckDBSplunkConnector().probe(_fetch_ok))
     assert result.available is True
     assert "fetched on first use" in result.reason
-    assert "pgwire-splunk-0.82.0-linux-x86_64.tar.gz" in result.reason
+    assert "pgwire-splunk-0.82.1-linux-x86_64.tar.gz" in result.reason
     _lay_down_bundle(
         rd.bundle_spec_for("splunk"), rd.BundleResolver().cached_path(rd.bundle_spec_for("splunk"))
     )
@@ -680,7 +680,7 @@ def test_owner_pid_flag_is_gated_on_the_bundle_release(tmp_path):
             port_is_free=lambda _p: True,
         )
 
-    _server_for("engine-v0.82.0").start()
+    _server_for("engine-v0.82.1").start()
     assert "--owner-pid" not in spawned[-1]
     _server_for("engine-v0.82.1").start()
     assert spawned[-1][-2:] == ["--owner-pid", str(os.getpid())]
