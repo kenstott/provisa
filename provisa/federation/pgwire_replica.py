@@ -307,11 +307,11 @@ class PortAllocator:  # REQ-955
 # -- server lifecycle (REQ-955) ------------------------------------------------
 
 
-OWNER_PID_SINCE = (0, 83, 0)  # the first pgwire-calcite release whose launcher takes --owner-pid
+OWNER_PID_SINCE = (0, 82, 1)  # the first pgwire-calcite release whose launcher takes --owner-pid
 
 
 def bundle_supports_owner_pid(version: str) -> bool:
-    """Whether the bundle release ``version`` (``engine-v0.83.0``) accepts ``--owner-pid``. An
+    """Whether the bundle release ``version`` (``engine-v0.82.1``) accepts ``--owner-pid``. An
     older launcher rejects the unknown flag outright, so the flag is a versioned contract."""
     parts = tuple(int(p) for p in version.removeprefix("engine-v").split("."))
     return parts >= OWNER_PID_SINCE
@@ -422,7 +422,7 @@ class PgwireServer:  # REQ-955
 
     def command(self) -> list[str]:
         """The launcher invocation: ``--port`` and ``--calcite-child`` (REQ-955), plus
-        ``--owner-pid`` on a bundle that knows it (engine-v0.83.0 and later), so the server
+        ``--owner-pid`` on a bundle that knows it (engine-v0.82.1 and later), so the server
         stops itself when this process dies without running its shutdown — a SIGKILLed host
         (a test runner's teardown, an OOM kill) otherwise stranded every server it started."""
         launcher = self._bundle_dir / "bin" / self._spec.artifact_name

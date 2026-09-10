@@ -663,7 +663,7 @@ def test_pgwire_connector_probe_unavailable_without_postgres_extension():
 
 def test_owner_pid_flag_is_gated_on_the_bundle_release(tmp_path):
     assert pr.bundle_supports_owner_pid("engine-v0.82.0") is False
-    assert pr.bundle_supports_owner_pid("engine-v0.83.0") is True
+    assert pr.bundle_supports_owner_pid("engine-v0.82.1") is True
     assert pr.bundle_supports_owner_pid("engine-v1.0.0") is True
     spawned: list[list[str]] = []
 
@@ -682,5 +682,5 @@ def test_owner_pid_flag_is_gated_on_the_bundle_release(tmp_path):
 
     _server_for("engine-v0.82.0").start()
     assert "--owner-pid" not in spawned[-1]
-    _server_for("engine-v0.83.0").start()
+    _server_for("engine-v0.82.1").start()
     assert spawned[-1][-2:] == ["--owner-pid", str(os.getpid())]
