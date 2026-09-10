@@ -56,6 +56,7 @@ export const DEMO_SOURCES = [
   "redis",
   "cassandra",
   "sparql",
+  "prometheus",
   "chinook", // a Postgres for the Hasura v2 import e2e (hasura-import.spec.ts)
   // Read through the bundled Calcite pgwire server the native engine ATTACHes (REQ-1690/1694).
   // Slowest of the set by far: a full Splunk init under amd64 emulation, ~3 minutes to a healthy
