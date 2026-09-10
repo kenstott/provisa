@@ -2004,6 +2004,18 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
             pass
     from provisa.api.startup_resilience import tolerate_shutdown_failure
 
+    # REQ-1690: the Calcite pgwire servers a native engine attached live. FIRST, before the long
+    # tail of database and engine closes below: each is a JVM in its own session (it has to be, so
+    # that stopping it signals its own process group and not ours), so it does not die with this
+    # process. A supervisor that SIGKILLs us partway through shutdown -- Playwright's webServer
+    # teardown does exactly that -- would strand one holding its port and our stdout. Stopping
+    # them here costs the rest of the shutdown nothing: what closes below are this process's own
+    # handles, and a DETACH of an endpoint that has already gone is local to DuckDB.
+    with tolerate_shutdown_failure("pgwire connector servers stop"):
+        from provisa.federation.pgwire_replica import stop_all_servers
+
+        stop_all_servers()
+
     # Stop Live Query Engine (Phase AM)
     if state.live_engine is not None:
         with tolerate_shutdown_failure("live query engine stop"):
@@ -2045,10 +2057,6 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
                     finally:
                         reset_current_org(_tok)
     state.federation_engine.close()
-    with tolerate_shutdown_failure("pgwire connector servers stop"):
-        from provisa.federation.pgwire_replica import stop_all_servers
-
-        stop_all_servers()  # REQ-1690: the Calcite servers a native engine attached live
     if state.admin_db is not None:
         with tolerate_shutdown_failure("admin_db close"):
             await state.admin_db.close()

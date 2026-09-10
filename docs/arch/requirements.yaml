@@ -56436,6 +56436,18 @@
   - tests/unit/test_replica_strategy.py
   - tests/unit/test_federation_strategy.py
   - tests/integration/test_duckdb_attach_calcite_pgwire.py
+  - tests/integration/test_splunk_duckdb_attach.py
+  notes: >-
+    Server lifecycle. The spawned server is a JVM in its OWN session -- it has to be, so that
+    stopping it signals its own process group and not the spawning process's -- and the cost of
+    that detachment is that it does not die with its parent. Two consequences are handled rather
+    than tolerated: it is stopped FIRST in app shutdown (before the long tail of database and
+    engine closes, so a supervisor that loses patience and sends SIGKILL cannot strand one), and
+    an `atexit` hook registered on the first start stops it for any process that has no such
+    shutdown -- a pytest run, a CLI invocation. Its output goes to `pgwire-server.log` in its
+    bundle directory and never to the spawning process's stdout: an orphan holding an inherited
+    stream keeps a supervisor waiting on output that will never close, which hung Playwright's
+    webServer teardown indefinitely after its last test had already passed.
   use_case: >-
     Splunk presents itself as a relational endpoint through its Calcite connector, yet on DuckDB it
     was always landed; a live attach gives current results and pushdown without a refresh cycle.

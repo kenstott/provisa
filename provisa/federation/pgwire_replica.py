@@ -329,12 +329,40 @@ class _ProcessGroup:
             self._proc.wait(timeout=timeout)
 
 
+#: Where a spawned pgwire server's own output goes, inside its bundle directory. Appended to, so
+#: two servers out of one bundle interleave into one file rather than truncating each other.
+SERVER_LOG_NAME = "pgwire-server.log"
+
+
 def _spawn_process(command: list[str], cwd: Path) -> Any:
     """Launch the pgwire bundle launcher as a child process (the real spawn) in its own session,
-    so stopping it stops the server child that actually listens."""
-    return _ProcessGroup(
-        subprocess.Popen(command, cwd=str(cwd), start_new_session=True)  # noqa: S603 - args are code-built, not user input
-    )
+    so stopping it stops the server child that actually listens.
+
+    Its output goes to a FILE in the bundle directory, never to our own stdout. Two reasons, and
+    the first is a correctness one. This child is in its own session precisely so that it does not
+    die with us, which means a process that is SIGKILLed -- no shutdown hook, no ``atexit`` --
+    leaves it running while it still holds the stream it inherited. A supervisor waiting for our
+    output to close then waits forever: Playwright's webServer teardown hung exactly this way,
+    long after its last test had passed, on a JVM that had outlived the backend that spawned it.
+    Owning the handle means an orphan can hold nothing of ours open. The second reason is that the
+    server logs every statement it serves, which buried the actual test output when it did share
+    our stream -- and the log is more useful next to the bundle anyway.
+    """
+    log = open(cwd / SERVER_LOG_NAME, "a")  # noqa: SIM115 - handed to the child; closed below
+    try:
+        return _ProcessGroup(
+            subprocess.Popen(  # noqa: S603 - args are code-built, not user input
+                command,
+                cwd=str(cwd),
+                start_new_session=True,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
+        )
+    finally:
+        # The child holds its own duplicate of the descriptor; ours would otherwise keep the file
+        # open for the life of this process and, worse, be inherited by every later spawn.
+        log.close()
 
 
 def _tcp_health(host: str, port: int) -> bool:
@@ -568,6 +596,36 @@ _ENDPOINT_ALLOCATOR = PortAllocator()
 _ENDPOINTS: dict[str, ConnectorReplica] = {}
 
 
+#: Whether :func:`stop_all_servers` has been registered to run when this interpreter exits.
+#: Registered on the FIRST server start rather than at import, so a process that never attaches a
+#: replica registers nothing.
+_ATEXIT_REGISTERED = False
+
+
+def _reap_on_exit() -> None:
+    """Make this interpreter's exit stop the servers it started, however it exits.
+
+    A pgwire server is spawned into its OWN session (``start_new_session=True``) so that stopping
+    it can signal its whole process group without signalling this process's. The cost of that
+    detachment is that it does NOT die with its parent: an interpreter that exits without reaching
+    the app's shutdown hook -- a pytest run, a CLI invocation, a server whose supervisor loses
+    patience mid-shutdown and sends SIGKILL -- left a JVM running with nobody to stop it, holding
+    its port and its parent's inherited stdout. Observed as a Playwright run that never exited
+    after its last test passed: the webServer was gone and the JVM it started still held the
+    output stream open.
+
+    ``atexit`` is the backstop, not the plan: the app's own shutdown still stops these explicitly
+    (provisa/api/app.py), and neither this nor anything else can run on SIGKILL of THIS process.
+    """
+    global _ATEXIT_REGISTERED
+    if _ATEXIT_REGISTERED:
+        return
+    import atexit
+
+    atexit.register(stop_all_servers)
+    _ATEXIT_REGISTERED = True
+
+
 def ensure_endpoint(source: Any) -> PortPair:
     """Start (once) the source's Calcite pgwire server and return the endpoint the engine attaches
     (REQ-1690). The server must be healthy before the ATTACH, so an unhealthy start is loud here."""
@@ -575,6 +633,7 @@ def ensure_endpoint(source: Any) -> PortPair:
     if replica is None:
         replica = ConnectorReplica(source, allocator=_ENDPOINT_ALLOCATOR)
         _ENDPOINTS[source.id] = replica
+    _reap_on_exit()
     return replica.endpoint()
 
 
