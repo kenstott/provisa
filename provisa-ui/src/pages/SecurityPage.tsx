@@ -629,6 +629,7 @@ export function SecurityRlsPage() {
       });
     } else if (rule.domainId) {
       setRuleForm({
+        ...EMPTY_RULE,
         tableId: "",
         domainId: rule.domainId,
         roleId: rule.roleId,
@@ -641,6 +642,7 @@ export function SecurityRlsPage() {
         rule.tableId != null ? (tableNameById[rule.tableId] ?? String(rule.tableId)) : "";
       const tbl = rule.tableId != null ? tables.find((t) => t.id === rule.tableId) : undefined;
       setRuleForm({
+        ...EMPTY_RULE,
         tableId: tableName,
         domainId: "",
         roleId: rule.roleId,

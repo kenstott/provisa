@@ -14,7 +14,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../../test-utils/render";
 
-const upsertRoleSpy = vi.fn(async () => ({ success: true, message: "" }));
+const upsertRoleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
+  success: true,
+  message: "",
+}));
 const ROLES = [
   {
     id: "analyst",

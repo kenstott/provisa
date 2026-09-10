@@ -680,7 +680,7 @@ def test_owner_pid_flag_is_gated_on_the_bundle_release(tmp_path):
             port_is_free=lambda _p: True,
         )
 
-    _server_for("engine-v0.82.1").start()
+    _server_for("engine-v0.82.0").start()
     assert "--owner-pid" not in spawned[-1]
     _server_for("engine-v0.82.1").start()
     assert spawned[-1][-2:] == ["--owner-pid", str(os.getpid())]

@@ -16,7 +16,10 @@ import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
 
-const upsertRlsRuleSpy = vi.fn(async () => ({ success: true, message: "" }));
+const upsertRlsRuleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
+  success: true,
+  message: "",
+}));
 const deleteRlsRuleSpy = vi.fn(async () => ({ success: true, message: "" }));
 
 vi.mock("../../context/DomainFilterContext", () => ({
