@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Type an imported design from its sources at preview time (REQ-1683).
+"""Type an imported design from its sources at preview time (REQ-1691).
 
 A Hasura export names columns and carries no types (REQ-1426), and a tracked table with no
 permission carries no columns at all. The import preview is design time — the administrator is
@@ -20,7 +20,7 @@ preview cannot reach, or a column the source does not have, is a warning, and th
 untyped for the administrator to finish.
 """
 
-# Requirements: REQ-1426, REQ-1683
+# Requirements: REQ-1426, REQ-1691
 
 from __future__ import annotations
 

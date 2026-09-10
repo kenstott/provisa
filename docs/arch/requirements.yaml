@@ -56184,7 +56184,7 @@
     pseudo-capability, which no gate reads, is not emitted. Hasura's admin holds every permission
     implicitly and is Provisa's `org_admin`, whose grants are literal lists, so `org_admin` is
     named in `visible_to` and `writable_by` of every imported column — a tracked table's, a
-    landed remote schema's, and a column-less table's columns typed at preview (REQ-1683), which
+    landed remote schema's, and a column-less table's columns typed at preview (REQ-1691), which
     are visible to org_admin alone.
   code:
   - provisa/hasura_v2/mapper.py
@@ -56306,7 +56306,7 @@
     every converted SQL source with the connection the conversion guessed (host, port, database,
     username; never a password) as editable fields, and the next conversion sends the filled-in
     fields as source overrides, which is what lets the preview type every column from the source
-    (REQ-1683). The domain-mapping rows list every schema, subgraph and remote schema (REQ-1681)
+    (REQ-1691). The domain-mapping rows list every schema, subgraph and remote schema (REQ-1681)
     the upload carries, and each row is a picker over the org's existing domains that also accepts
     a typed name, marked "new domain" when it matches none. Apply stays additive by default; the
     replace checkbox is the only path that deletes anything.
@@ -56439,3 +56439,35 @@
     Given a splunk source registered on the DuckDB engine
     When a query names one of its tables
     Then DuckDB reads it through the attached Calcite pgwire server with the query's filters pushed down, and no replica is landed
+- id: REQ-1691
+  status: complete
+  since: 2026-09
+  group: "12. Migration & Compatibility (Hasura)"
+  category: "Hasura v2 Parity: Low-Complexity Features"
+  priority: MUST
+  type: behavioral
+  description: >-
+    The import preview types the imported design from its sources. A Hasura export names columns
+    without types (REQ-1426) and a tracked table with no permission names no columns; the preview
+    runs inside the application with the connection the administrator supplied as a source
+    override, which is design time, so it opens a private pool to every SQL source it can reach,
+    reads `information_schema.columns` for each imported table, maps native types to the IR
+    vocabulary, fills every untyped column, and gives a column-less table every discovered column
+    visible to org_admin alone (REQ-1684). A source the preview cannot reach is a `[sources]`
+    warning and its columns stay untyped for the administrator to finish; a column the source does
+    not have is a `[tables]` warning. The pool is closed before the preview returns and nothing is
+    registered until apply.
+  code:
+  - provisa/api/admin/import_typing.py
+  - provisa/api/admin/import_router.py
+  tests:
+  - tests/unit/test_import_typing.py
+  - tests/integration/test_hasura_v2_live_import.py
+  use_case: >-
+    Applying Hasura's own sample refused every table: "column albums.artist_id has no data_type;
+    resolve the type at registration". The administrator had already supplied the source
+    connection; the preview had it and did not use it.
+  scenario: |
+    Given a Hasura export tracking public.albums with a select permission on title and artist_id, and a source override that reaches the database
+    When the administrator previews the import
+    Then the preview's config declares title text and artist_id integer, and a tracked table with no permissions carries every column of the source table visible to org_admin alone

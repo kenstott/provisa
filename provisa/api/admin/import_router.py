@@ -202,7 +202,7 @@ async def preview_import(req: ImportPreviewRequest, request: Request) -> ImportP
         # A malformed metadata document is the administrator's input, not a server fault.
         raise ApiError(400, "import.conversion_failed", f"conversion failed: {exc}") from exc
 
-    # REQ-1683: preview is design time — type the columns from the sources the overrides reach.
+    # REQ-1691: preview is design time — type the columns from the sources the overrides reach.
     from provisa.api.admin.import_typing import type_imported_columns
 
     await type_imported_columns(config, collector)

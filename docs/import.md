@@ -84,7 +84,7 @@ The export names its databases by environment variable, so after the first conve
 
 ### Types come from the source at preview
 
-A Hasura export names columns without types, and a tracked table with no permission names no columns. The preview runs with the source connections you supply, so it reads each reachable SQL source's `information_schema.columns`: every untyped column gets the source's type mapped to the IR vocabulary, and a table with no columns takes every column the source has, visible to `org_admin` alone, since Hasura exposed it to no other role. A source the preview cannot reach is reported as a `[sources]` warning and its columns stay untyped for you to finish before apply. (REQ-1683, REQ-1684)
+A Hasura export names columns without types, and a tracked table with no permission names no columns. The preview runs with the source connections you supply, so it reads each reachable SQL source's `information_schema.columns`: every untyped column gets the source's type mapped to the IR vocabulary, and a table with no columns takes every column the source has, visible to `org_admin` alone, since Hasura exposed it to no other role. A source the preview cannot reach is reported as a `[sources]` warning and its columns stay untyped for you to finish before apply. (REQ-1691, REQ-1684)
 
 ### Limitations
 

@@ -17900,7 +17900,7 @@ RLS session variables are bound per request from the acting identity, not read o
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Imported Hasura roles carry the Provisa rights their permissions imply, in Provisa's own vocabulary. A role with any select permission (or an action permission, or membership in an inherited role) holds `query_development`, the right the data surfaces gate reads on; a role with an insert, update or delete permission also holds `write` ([REQ-868](#REQ-868)). The former `read` pseudo-capability, which no gate reads, is not emitted. Hasura's admin holds every permission implicitly and is Provisa's `org_admin`, whose grants are literal lists, so `org_admin` is named in `visible_to` and `writable_by` of every imported column — a tracked table's, a landed remote schema's, and a column-less table's columns typed at preview ([REQ-1683](#REQ-1683)), which are visible to org_admin alone.
+Imported Hasura roles carry the Provisa rights their permissions imply, in Provisa's own vocabulary. A role with any select permission (or an action permission, or membership in an inherited role) holds `query_development`, the right the data surfaces gate reads on; a role with an insert, update or delete permission also holds `write` ([REQ-868](#REQ-868)). The former `read` pseudo-capability, which no gate reads, is not emitted. Hasura's admin holds every permission implicitly and is Provisa's `org_admin`, whose grants are literal lists, so `org_admin` is named in `visible_to` and `writable_by` of every imported column — a tracked table's, a landed remote schema's, and a column-less table's columns typed at preview ([REQ-1691](#REQ-1691)), which are visible to org_admin alone.
 
 **Use case:** An imported `user` role was refused by the data GraphQL endpoint ("lacks required capability: query_development") and org_admin's schema had no columns of the imported tables, because Hasura's implicit admin had no counterpart in the literal grant lists.
 
@@ -17956,7 +17956,7 @@ A session-variable term in an RLS predicate takes the type of the column it is c
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** ui
 
-The import tab lets the administrator supply what the export cannot carry. The preview lists every converted SQL source with the connection the conversion guessed (host, port, database, username; never a password) as editable fields, and the next conversion sends the filled-in fields as source overrides, which is what lets the preview type every column from the source ([REQ-1683](#REQ-1683)). The domain-mapping rows list every schema, subgraph and remote schema ([REQ-1681](#REQ-1681)) the upload carries, and each row is a picker over the org's existing domains that also accepts a typed name, marked "new domain" when it matches none. Apply stays additive by default; the replace checkbox is the only path that deletes anything.
+The import tab lets the administrator supply what the export cannot carry. The preview lists every converted SQL source with the connection the conversion guessed (host, port, database, username; never a password) as editable fields, and the next conversion sends the filled-in fields as source overrides, which is what lets the preview type every column from the source ([REQ-1691](#REQ-1691)). The domain-mapping rows list every schema, subgraph and remote schema ([REQ-1681](#REQ-1681)) the upload carries, and each row is a picker over the org's existing domains that also accepts a typed name, marked "new domain" when it matches none. Apply stays additive by default; the replace checkbox is the only path that deletes anything.
 
 **Use case:** The tab sent no source overrides, so an imported Postgres source kept the export's placeholder connection and every column stayed untyped until the administrator edited the YAML by hand; the domain field was free text, so a typo made a new domain instead of joining an existing one; and a remote schema never appeared in the mapping.
 
@@ -17991,3 +17991,29 @@ Prometheus is engine-independent. An engine that does not read Prometheus live (
 **Code:** `provisa/prometheus/fetch.py`, `provisa/prometheus/source.py`, `provisa/events/source_loader.py`, `provisa/events/app_wiring.py`, `provisa/api/admin/introspect.py`, `provisa/api/admin/schema_query.py`, `provisa/api/admin/discovery_schema.py`
 
 **Tests:** `tests/unit/test_prometheus_fetch.py`, `tests/integration/test_prometheus_native_fetch.py`, `provisa-ui/e2e/source-to-query.spec.ts`
+
+### REQ-1690 · Replica Strategy {#REQ-1690}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A Calcite-pgwire connector source (sharepoint, splunk) is attached live on the DuckDB engine. The connector's bundled pgwire server answers DuckDB's postgres extension in full — pg_catalog introspection and binary COPY out — so the engine ATTACHes the server's endpoint read-only under the source's private `_src_` alias instead of landing a replica: Register Table lists the connector's tables from the attached catalog, a query reads the connector in place, and filters and projections push down to Calcite (which pushes its own into the SaaS API). The server is started once per source when the engine first resolves it, its listener awaited before the ATTACH (a server that never answers is loud), and every started server is stopped at app shutdown. Engines with no postgres reach of their own keep the landing path ([REQ-954](#REQ-954)). The bundle resolver fetches the release's per-OS/arch tarball (`pgwire-<connector>-<ver>-<variant>`), fails closed on a platform the release does not build, and unnests the tarball so the bundle root carries `bin/pgwire-<connector>`.
+
+**Use case:** Splunk presents itself as a relational endpoint through its Calcite connector, yet on DuckDB it was always landed; a live attach gives current results and pushdown without a refresh cycle.
+
+**Code:** `provisa/federation/connector_duckdb.py`, `provisa/federation/pgwire_replica.py`, `provisa/federation/engine.py`, `provisa/runtime_deps/pgwire_bundles.py`, `provisa/api/app.py`
+
+**Tests:** `tests/unit/test_replica_strategy.py`, `tests/unit/test_federation_strategy.py`, `tests/integration/test_duckdb_attach_calcite_pgwire.py`
+
+## 12. Migration & Compatibility (Hasura)
+
+### REQ-1691 · Hasura v2 Parity: Low-Complexity Features {#REQ-1691}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The import preview types the imported design from its sources. A Hasura export names columns without types ([REQ-1426](#REQ-1426)) and a tracked table with no permission names no columns; the preview runs inside the application with the connection the administrator supplied as a source override, which is design time, so it opens a private pool to every SQL source it can reach, reads `information_schema.columns` for each imported table, maps native types to the IR vocabulary, fills every untyped column, and gives a column-less table every discovered column visible to org_admin alone ([REQ-1684](#REQ-1684)). A source the preview cannot reach is a `[sources]` warning and its columns stay untyped for the administrator to finish; a column the source does not have is a `[tables]` warning. The pool is closed before the preview returns and nothing is registered until apply.
+
+**Use case:** Applying Hasura's own sample refused every table: "column albums.artist_id has no data_type; resolve the type at registration". The administrator had already supplied the source connection; the preview had it and did not use it.
+
+**Code:** `provisa/api/admin/import_typing.py`, `provisa/api/admin/import_router.py`
+
+**Tests:** `tests/unit/test_import_typing.py`, `tests/integration/test_hasura_v2_live_import.py`
