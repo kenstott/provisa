@@ -393,7 +393,12 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
               </Alert>
             )}
             <div>
-              <Button type="submit" disabled={loading} data-testid="operator-login-button">
+              <Button
+                type="submit"
+                disabled={loading}
+                loading={loading}
+                data-testid="operator-login-button"
+              >
                 {loading ? t("loginPage.signingIn") : t("loginPage.operatorSignIn")}
               </Button>
               <Button
@@ -404,6 +409,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
                   setOperatorMode(false);
                   setError(null);
                 }}
+                disabled={loading}
                 data-testid="operator-back-button"
               >
                 {t("loginPage.backToSignIn")}
@@ -425,7 +431,8 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
         icon={<Loader color="violet" size="sm" data-testid="sandbox-provisioning-spinner" />}
         data-testid="sandbox-provisioning-notice"
       >
-        Setting up a private copy of the sample data just for you — this can take a couple of minutes.
+        Setting up a private copy of the sample data just for you — this can take a couple of
+        minutes.
       </Alert>
     ) : (
       <Alert
@@ -464,6 +471,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
             data-testid="firebase-signin-button"
             onClick={() => handleFirebaseLogin("google")}
             disabled={loading}
+            loading={loading}
           >
             {loading ? t("loginPage.signingIn") : t("loginPage.signInWithGoogle")}
           </Button>
@@ -472,6 +480,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
             data-testid="firebase-signin-github-button"
             onClick={() => handleFirebaseLogin("github")}
             disabled={loading}
+            loading={loading}
           >
             {loading ? t("loginPage.signingIn") : t("loginPage.signInWithGithub")}
           </Button>
@@ -480,6 +489,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
             data-testid="firebase-signin-microsoft-button"
             onClick={() => handleFirebaseLogin("microsoft")}
             disabled={loading}
+            loading={loading}
           >
             {loading ? t("loginPage.signingIn") : t("loginPage.signInWithMicrosoft")}
           </Button>
@@ -492,6 +502,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
                 setError(null);
                 setEmailOpen(true);
               }}
+              disabled={loading}
             >
               {t("loginPage.continueWithEmail")}
             </Button>
@@ -523,7 +534,12 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
                     required
                   />
                 )}
-                <Button type="submit" data-testid="firebase-email-submit" disabled={loading}>
+                <Button
+                  type="submit"
+                  data-testid="firebase-email-submit"
+                  disabled={loading}
+                  loading={loading}
+                >
                   {loading
                     ? t("loginPage.signingIn")
                     : mode === "register"
@@ -538,6 +554,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
                     setError(null);
                     setMode(mode === "register" ? "login" : "register");
                   }}
+                  disabled={loading}
                 >
                   {mode === "register"
                     ? t("loginPage.haveAccountSignIn")
@@ -554,6 +571,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
               setError(null);
               setOperatorMode(true);
             }}
+            disabled={loading}
           >
             {t("loginPage.operatorSignIn")}
           </Button>
@@ -634,7 +652,12 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
               </Alert>
             )}
             <div>
-              <Button type="submit" disabled={loading} data-testid="create-account-button">
+              <Button
+                type="submit"
+                disabled={loading}
+                loading={loading}
+                data-testid="create-account-button"
+              >
                 {loading ? t("loginPage.creating") : t("loginPage.createAccount")}
               </Button>
               <Button
@@ -645,6 +668,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
                   setMode("login");
                   setError(null);
                 }}
+                disabled={loading}
                 data-testid="back-to-login-button"
               >
                 {t("loginPage.backToLogin")}
@@ -691,7 +715,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
             </Alert>
           )}
           <div>
-            <Button type="submit" disabled={loading} data-testid="login-button">
+            <Button type="submit" disabled={loading} loading={loading} data-testid="login-button">
               {loading ? t("loginPage.loggingIn") : t("loginPage.loginTitle")}
             </Button>
             {provider === "basic" && (
@@ -703,6 +727,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
                   setMode("register");
                   setError(null);
                 }}
+                disabled={loading}
                 data-testid="create-account-link-button"
               >
                 {t("loginPage.createAccount")}

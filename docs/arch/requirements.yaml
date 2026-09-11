@@ -56694,3 +56694,34 @@
     Then the create button is disabled
     When a client posts expires_in_days 0 or 36501
     Then the API returns 422
+- id: REQ-1721
+  status: complete
+  since: 2026-09
+  group: 12. Identity & Access
+  category: Sign-In
+  priority: MUST
+  type: behavioral
+  description: >-
+    EVERY CONTROL ON THE SIGN-IN CARD IS DISABLED FOR THE LENGTH OF A SIGN-IN, AND THE BUTTON
+    CLICKED SHOWS A SPINNER. Clicking a provider button, "Continue with email", or "Operator
+    sign-in" previously disabled only the button clicked, so a visitor mid-redirect could start a
+    second provider, open the email form, or switch into the operator form while the first attempt
+    was still resolving. Every button on the card the loading state can reach -- the three
+    provider buttons, the email disclosure, the email-form submit and its register/sign-in toggle,
+    the operator toggle, the basic-auth login button and its create-account link, the register
+    form's submit and back link, and the operator form's submit and back link -- is now disabled
+    for as long as `loading` (which spans the sandbox invite's environment provisioning too) is
+    true, and the clicked button additionally carries Mantine's `loading` spinner.
+  code:
+  - provisa-ui/src/pages/LoginPage.tsx
+  tests:
+  - provisa-ui/src/__tests__/LoginPage.test.tsx
+  use_case: >-
+    A visitor on the public sandbox link double-clicked "Sign in with Google" while the redirect
+    was loading; the other two provider buttons and "Continue with email" were still live and
+    clickable, and nothing on the card showed that a sign-in was already underway.
+  scenario: |
+    Given a visitor on the firebase sign-in card
+    When they click "Sign in with Google"
+    Then that button shows a spinner and every other button on the card -- the other providers,
+      Continue with email, and Operator sign-in -- is disabled until the sign-in resolves

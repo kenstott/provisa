@@ -200,6 +200,36 @@ describe("LoginPage", () => {
     resolveRequest({ ok: true, json: async () => ({ access_token: "tok" }) } as Response);
   });
 
+  // REQ-1721: every control on the sign-in card — not just the button that was clicked — is
+  // disabled for the length of a sign-in, so a second click (another provider, "Continue with
+  // email", "Operator sign-in") cannot start a second attempt while the first is in flight.
+  it("disables every button on the card while a provider sign-in is in flight, and shows a spinner", async () => {
+    mockFetchProviderType.mockResolvedValue("firebase");
+    let resolveSignIn!: (token: string) => void;
+    const { signInWithGoogle } = await import("../lib/firebase");
+    vi.mocked(signInWithGoogle).mockReturnValueOnce(
+      new Promise((res) => {
+        resolveSignIn = res;
+      }),
+    );
+
+    renderLogin(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />);
+
+    fireEvent.click(await screen.findByTestId("firebase-signin-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("firebase-signin-button")).toBeDisabled();
+      expect(screen.getByTestId("firebase-signin-button")).toHaveAttribute("data-loading", "true");
+      expect(screen.getByTestId("firebase-signin-github-button")).toBeDisabled();
+      expect(screen.getByTestId("firebase-signin-microsoft-button")).toBeDisabled();
+      expect(screen.getByTestId("firebase-email-disclosure")).toBeDisabled();
+      expect(screen.getByTestId("operator-signin-toggle")).toBeDisabled();
+    });
+
+    resolveSignIn("firebase-id-token");
+    await waitFor(() => expect(onLoginSuccess).toHaveBeenCalled());
+  });
+
   // ── First-login platform-admin notice (REQ-1288) ───────────────────────────
 
   it("warns that signing in first claims platform admin, and still offers the providers", async () => {
