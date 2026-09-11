@@ -122,6 +122,69 @@ def test_sharepoint_missing_tenant_is_loud():
         pr.build_model_json(src)
 
 
+# -- REQ-1693: certificate auth's three Calcite-adapter contracts --------------
+
+
+def test_sharepoint_certificate_auth_names_the_adapter_and_auth_type():
+    """Without authType, SharePointAuthFactory.createAuth defaults to CLIENT_CREDENTIALS and dies
+    on the absent secret — the operand must say CERTIFICATE, and the schema factory must be the
+    adapter's own class name."""
+    src = _sharepoint_source(
+        password="",
+        mapping={"certificate_path": "/abs/cert.pfx", "certificate_password": ""},
+    )
+    model = pr.build_model_json(src)
+    operand = model["schemas"][0]["operand"]
+    assert operand["authType"] == "CERTIFICATE"
+    assert operand["certificatePath"] == "/abs/cert.pfx"
+    assert operand["certificatePassword"] == ""
+    assert "clientSecret" not in operand
+    assert model["schemas"][0]["factory"] == pr._SCHEMA_FACTORY["sharepoint"]
+
+
+def test_sharepoint_certificate_password_is_preserved_when_non_empty():
+    src = _sharepoint_source(
+        password="",
+        mapping={"certificate_path": "/abs/cert.pfx", "certificate_password": "s3cret"},
+    )
+    operand = pr.build_model_json(src)["schemas"][0]["operand"]
+    assert operand["certificatePassword"] == "s3cret"
+
+
+def test_sharepoint_certificate_relative_path_is_loud():
+    """The pgwire server runs with its bundle directory as cwd, so a relative certificate_path
+    resolves against the wrong directory and the PFX is never found — refused up front instead."""
+    src = _sharepoint_source(
+        password="",
+        mapping={"certificate_path": "relative/cert.pfx", "certificate_password": ""},
+    )
+    with pytest.raises(pr.MissingConnectorConfig, match="absolute"):
+        pr.build_model_json(src)
+
+
+def test_sharepoint_certificate_missing_password_key_is_loud():
+    """CertificateAuth calls certificatePassword.toCharArray() and createCertificateAuth rejects a
+    null password, so an absent mapping key is a config error, never silently defaulted to ""."""
+    src = _sharepoint_source(password="", mapping={"certificate_path": "/abs/cert.pfx"})
+    with pytest.raises(pr.MissingConnectorConfig, match="certificate_password"):
+        pr.build_model_json(src)
+
+
+def test_sharepoint_certificate_non_string_password_is_loud():
+    src = _sharepoint_source(
+        password="", mapping={"certificate_path": "/abs/cert.pfx", "certificate_password": None}
+    )
+    with pytest.raises(pr.MissingConnectorConfig, match="certificate_password"):
+        pr.build_model_json(src)
+
+
+def test_sharepoint_device_code_auth_when_no_secret_or_certificate():
+    src = _sharepoint_source(password="", mapping={"use_device_code": True})
+    operand = pr.build_model_json(src)["schemas"][0]["operand"]
+    assert operand["authType"] == "DEVICE_CODE"
+    assert "certificatePath" not in operand
+
+
 def test_splunk_model_json_token():
     operand = pr.build_model_json(_splunk_source())["schemas"][0]["operand"]
     assert operand["url"] == "https://splunk.internal:8089"

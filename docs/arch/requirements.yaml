@@ -55750,6 +55750,11 @@
   - demo/sources/provision.py
   tests:
   - provisa-ui/e2e/source-to-query.spec.ts
+  unit_test: false
+  unit_test_reason: This is an e2e coverage requirement by definition — every code file is either the
+    Playwright harness itself or a thin docker-compose provisioning wrapper (demo/sources/provision.py),
+    with no application logic to isolate; the behavior it proves (three real UI screens against a live
+    instance) only exists as a live-stack round trip.
   use_case: >-
     The integration harness drives createSource/registerTable as GraphQL mutations and proves the
     pipeline; nothing before this exercised the forms, so a source type whose form had no path to a
@@ -56262,6 +56267,7 @@
   - provisa/api/app.py
   - provisa/api/app_loaders.py
   tests:
+  - tests/unit/test_graphql_remote_table_shaping.py
   - tests/integration/test_hasura_v2_live_import.py
   use_case: >-
     The remote schema landed by a Hasura import was queryable only after a process restart: the
@@ -56508,6 +56514,7 @@
   - provisa/federation/pgwire_replica.py
   - provisa/api/admin/introspect.py
   tests:
+  - tests/unit/test_replica_strategy.py
   - provisa-ui/e2e/source-to-query.spec.ts
   - tests/integration/test_files_pgwire_replica.py
   use_case: >-
@@ -56546,6 +56553,7 @@
   - provisa-ui/src/pages/SourcesPage.tsx
   - provisa-ui/src/pages/sources/SourceFormFieldsExtended.tsx
   tests:
+  - tests/unit/test_replica_strategy.py
   - tests/integration/test_sharepoint_duckdb_attach.py
   - provisa-ui/e2e/source-to-query.spec.ts
   use_case: >-

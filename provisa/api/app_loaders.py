@@ -739,6 +739,56 @@ async def _init_ingest_engines() -> None:
                         await _conn.execute(__import__("sqlalchemy").text(_ddl))
 
 
+def _graphql_remote_field_name(table_name: str) -> str:
+    """The remote-schema field name a landed table's physical name derives to (REQ-1685):
+    ``<domain>__<snake_words>`` collapses to camelCase on the words past the domain prefix."""
+    snake_field = table_name.split("__", 1)[-1]
+    parts = snake_field.split("_")
+    return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+
+def _build_graphql_remote_table(tr: dict, col_rows: list[dict], source_id: str) -> dict:
+    """One landed table's registration entry for ``state.graphql_remote_sources`` (REQ-1685), from
+    its ``registered_tables`` row and its ``table_columns`` rows. A ``query_param`` column is a
+    required call argument, not a selected field, so it is split into ``required_args`` instead of
+    ``columns``. Malformed ``object_fields`` JSON is dropped rather than raised — the column still
+    registers without its object-field shape rather than losing the whole table over one bad row.
+    """
+    columns: list[dict] = []
+    required_args: list[dict] = []
+    for cr in col_rows:
+        if cr["native_filter_type"] == "query_param":
+            required_args.append(
+                {"name": cr["column_name"], "gql_type": "String", "provisa_type": "text"}
+            )
+            continue
+        col_dict: dict = {"name": cr["column_name"], "type": cr["data_type"] or "text"}
+        if cr["gql_selection"]:
+            col_dict["gql_selection"] = cr["gql_selection"]
+        raw_of = cr["object_fields"]
+        if raw_of:
+            # Malformed optional object-field metadata is skipped; any other error is a real
+            # bug and must propagate.
+            try:
+                col_dict["gql_object_fields"] = (
+                    json.loads(raw_of) if isinstance(raw_of, str) else raw_of
+                )
+            except json.JSONDecodeError:
+                pass
+        columns.append(col_dict)
+    tname = tr["table_name"]
+    return {
+        "name": tname,
+        "sql_name": tname,
+        "field_name": _graphql_remote_field_name(tname),
+        "source_id": source_id,
+        "columns": columns,
+        "domain_id": tr["domain_id"] or "",
+        "description": tr["description"],
+        "required_args": required_args,
+    }
+
+
 async def _load_graphql_remote_sources_from_db() -> None:
     """Load persisted graphql_remote sources from DB into state.graphql_remote_sources."""
     from provisa.api.app import state
@@ -800,53 +850,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                             )
                         ).fetchall()
                     ]
-                    columns = []
-                    required_args: list[dict] = []
-                    for cr in col_rows:
-                        if cr["native_filter_type"] == "query_param":
-                            required_args.append(
-                                {
-                                    "name": cr["column_name"],
-                                    "gql_type": "String",
-                                    "provisa_type": "text",
-                                }
-                            )
-                            continue
-                        col_dict: dict = {
-                            "name": cr["column_name"],
-                            "type": cr["data_type"] or "text",
-                        }
-                        if cr["gql_selection"]:
-                            col_dict["gql_selection"] = cr["gql_selection"]
-                        raw_of = cr["object_fields"]
-                        if raw_of:
-                            # Malformed optional object-field metadata is skipped; any
-                            # other error is a real bug and must propagate.
-                            try:
-                                col_dict["gql_object_fields"] = (
-                                    json.loads(raw_of) if isinstance(raw_of, str) else raw_of
-                                )
-                            except json.JSONDecodeError:
-                                pass
-                        columns.append(col_dict)
-                    tname = tr["table_name"]
-                    _snake_field = tname.split("__", 1)[-1]
-                    _camel_parts = _snake_field.split("_")
-                    _field_name = _camel_parts[0] + "".join(
-                        p.capitalize() for p in _camel_parts[1:]
-                    )
-                    tables.append(
-                        {
-                            "name": tname,
-                            "sql_name": tname,
-                            "field_name": _field_name,
-                            "source_id": source_id,
-                            "columns": columns,
-                            "domain_id": tr["domain_id"] or "",
-                            "description": tr["description"],
-                            "required_args": required_args,
-                        }
-                    )
+                    tables.append(_build_graphql_remote_table(tr, col_rows, source_id))
                 if not tables:
                     continue
                 namespace = ""

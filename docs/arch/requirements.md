@@ -17934,7 +17934,7 @@ A graphql_remote source registered after boot — by an applied import ([REQ-148
 
 **Code:** `provisa/api/app.py`, `provisa/api/app_loaders.py`
 
-**Tests:** `tests/integration/test_hasura_v2_live_import.py`
+**Tests:** `tests/unit/test_graphql_remote_table_shaping.py`, `tests/integration/test_hasura_v2_live_import.py`
 
 ## 1. Access Governance & Security
 
@@ -18030,7 +18030,7 @@ A `files` source is proven end to end through the UI on the DuckDB engine (its n
 
 **Code:** `provisa/federation/connector_duckdb.py`, `provisa/federation/pgwire_replica.py`, `provisa/api/admin/introspect.py`
 
-**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`, `tests/integration/test_files_pgwire_replica.py`
+**Tests:** `tests/unit/test_replica_strategy.py`, `provisa-ui/e2e/source-to-query.spec.ts`, `tests/integration/test_files_pgwire_replica.py`
 
 ### REQ-1693 · Replica Strategy {#REQ-1693}
 
@@ -18042,7 +18042,7 @@ A sharepoint source authenticating with a certificate reaches the real site on t
 
 **Code:** `provisa/federation/pgwire_replica.py`, `provisa/federation/backend.py`, `provisa-ui/src/pages/SourcesPage.tsx`, `provisa-ui/src/pages/sources/SourceFormFieldsExtended.tsx`
 
-**Tests:** `tests/integration/test_sharepoint_duckdb_attach.py`, `provisa-ui/e2e/source-to-query.spec.ts`
+**Tests:** `tests/unit/test_replica_strategy.py`, `tests/integration/test_sharepoint_duckdb_attach.py`, `provisa-ui/e2e/source-to-query.spec.ts`
 
 ### REQ-1694 · Replica Strategy {#REQ-1694}
 
