@@ -47,6 +47,15 @@ declare module "cytoscape" {
     [key: string]: unknown;
   }
 
+  interface BoundingBox {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    w: number;
+    h: number;
+  }
+
   interface SingularElement {
     id(): string;
     data(key: string): unknown;
@@ -55,12 +64,21 @@ declare module "cytoscape" {
     unlock(): this;
     select(): this;
     unselect(): this;
+    style(name: string): unknown;
     style(name: string, value: unknown): this;
     style(props: Record<string, unknown>): this;
     addClass(cls: string): this;
     removeClass(cls: string): this;
     position(): Position;
+    position(dimension: "x" | "y"): number;
     position(pos: Position): this;
+    shift(delta: Position): this;
+    width(): number;
+    height(): number;
+    boundingBox(opts?: object): BoundingBox;
+    empty(): boolean;
+    nonempty(): boolean;
+    union(eles: Collection | NodeCollection | SingularElement): Collection;
     [key: string]: unknown;
   }
 
@@ -69,12 +87,15 @@ declare module "cytoscape" {
     isEdge(): false;
     connectedEdges(): Collection;
     neighborhood(): Collection;
-    children(): NodeCollection;
+    children(selector?: Selector): NodeCollection;
     parent(): NodeCollection;
     outgoers(): Collection;
     incomers(): Collection;
     ancestors(): NodeCollection;
-    descendants(): NodeCollection;
+    descendants(selector?: Selector): NodeCollection;
+    isParent(): boolean;
+    isChild(): boolean;
+    union(eles: Collection | NodeCollection | SingularElement): NodeCollection;
   }
 
   interface EdgeSingular extends SingularElement {
@@ -94,11 +115,32 @@ declare module "cytoscape" {
     map<T>(fn: (ele: SingularElementReturnValue, i: number, arr: this) => T): T[];
     includes(ele: SingularElementReturnValue): boolean;
     toArray(): SingularElementReturnValue[];
+    reduce<T>(fn: (acc: T, ele: SingularElementReturnValue, i: number) => T, initial: T): T;
+    sort(fn: (a: SingularElementReturnValue, b: SingularElementReturnValue) => number): this;
+    // Singular accessors read the first element, as cytoscape's own do.
+    id(): string;
+    data(key: string): unknown;
+    data(key: string, value: unknown): this;
+    position(): Position;
+    position(dimension: "x" | "y"): number;
+    shift(delta: Position): this;
+    boundingBox(opts?: object): BoundingBox;
+    empty(): boolean;
+    nonempty(): boolean;
+    union(eles: Collection | NodeCollection | SingularElement): this;
+    style(name: string): unknown;
+    style(name: string, value: unknown): this;
+    style(props: Record<string, unknown>): this;
   }
 
   interface NodeCollection extends Collection {
     forEach(fn: (ele: NodeSingular, i: number, arr: this) => void): this;
     map<T>(fn: (ele: NodeSingular, i: number, arr: this) => T): T[];
+    reduce<T>(fn: (acc: T, ele: NodeSingular, i: number) => T, initial: T): T;
+    sort(fn: (a: NodeSingular, b: NodeSingular) => number): this;
+    children(selector?: Selector): NodeCollection;
+    descendants(selector?: Selector): NodeCollection;
+    parent(): NodeCollection;
   }
 
   // ── Layout ────────────────────────────────────────────────────────────────
@@ -127,6 +169,8 @@ declare module "cytoscape" {
     // Selection
     $(selector: Selector): Collection;
     $id(id: string): SingularElementReturnValue;
+    getElementById(id: string): SingularElementReturnValue;
+    collection(): NodeCollection;
     nodes(selector?: Selector): NodeCollection;
     edges(selector?: Selector): Collection;
     elements(selector?: Selector): Collection;
@@ -171,7 +215,8 @@ declare module "cytoscape" {
   // ── cytoscape static / factory ────────────────────────────────────────────
   interface CytoscapeStatic {
     (options: {
-      container: Element | null;
+      // Absent for a headless instance (tests, layout measurement).
+      container?: Element | null;
       elements?: ElementDefinition[];
       style?: unknown[];
       layout?: LayoutOptions;

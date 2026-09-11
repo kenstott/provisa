@@ -27,6 +27,7 @@ export interface CyElement {
   locked(): boolean;
   select(): CyElement;
   unselect(): CyElement;
+  style(name: string): unknown;
   style(name: string, value: unknown): CyElement;
   style(props: Record<string, unknown>): CyElement;
   removeStyle(names: string): CyElement;

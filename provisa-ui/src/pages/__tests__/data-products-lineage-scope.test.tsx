@@ -13,7 +13,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, waitFor } from "../../test-utils/render";
-import type { LineageGraphData } from "../../api/lineage";
+import type { LineageGraphData, LineageNode } from "../../api/lineage";
 
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ role: { id: "admin", capabilities: [] } }),
@@ -25,7 +25,11 @@ vi.mock("../../api/actions", () => ({
 }));
 vi.mock("../../api/glossary", () => ({ fetchRelatedGlossaryTerms: () => Promise.resolve([]) }));
 
-const col = (relation: string, column: string, kind = "source") => ({
+const col = (
+  relation: string,
+  column: string,
+  kind: LineageNode["kind"] = "source",
+): LineageNode => ({
   id: `${relation}.${column}`,
   column,
   relation,
