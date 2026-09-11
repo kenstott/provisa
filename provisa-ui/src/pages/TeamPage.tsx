@@ -16,6 +16,7 @@ import {
   Button,
   Group,
   Modal,
+  NumberInput,
   Select,
   Stack,
   Switch,
@@ -70,6 +71,9 @@ export function TeamPage() {
   // which is how an org_admin hands out a look at their real model without handing over the org.
   const [envPolicy, setEnvPolicy] = useState(ENV_POLICY_NONE);
   const [envTtl, setEnvTtl] = useState("3600");
+  // REQ-1696: how long the link stays redeemable is the org_admin's call, made per invitation. A
+  // fixed week was cutting off links that were meant to outlive it.
+  const [expiresInDays, setExpiresInDays] = useState<number | string>(7);
   const [error, setError] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   // REQ-1300: deletion is unrecoverable, so it is gated behind an explicit modal in which the
@@ -204,7 +208,7 @@ export function TeamPage() {
     try {
       const invite = await createInvite(activeOrgId, {
         roleId,
-        expiresInDays: 7,
+        expiresInDays: Number(expiresInDays),
         email: email === "" ? undefined : email,
         // REQ-1594: null is unlimited, and unlimited is the only ceiling an open link can carry.
         maxUses: openLink ? null : 1,
@@ -387,7 +391,7 @@ export function TeamPage() {
                 />
                 <Button
                   onClick={handleCreate}
-                  disabled={!activeOrgId || !roleId}
+                  disabled={!activeOrgId || !roleId || !(Number(expiresInDays) >= 1)}
                   data-testid="team-invite-create"
                 >
                   {inviteEmail.trim() === ""
@@ -397,6 +401,16 @@ export function TeamPage() {
               </Group>
               {/* REQ-1594/REQ-1595: who the link admits, and what it gives them. Both sit under the
                   role because both are answered about the invitation as a whole, not per invitee. */}
+              <NumberInput
+                label={t("teamPage.expiresLabel")}
+                description={t("teamPage.expiresDesc")}
+                min={1}
+                max={36500}
+                allowDecimal={false}
+                value={expiresInDays}
+                onChange={setExpiresInDays}
+                data-testid="team-invite-expires-days"
+              />
               <Switch
                 label={t("teamPage.openLinkLabel")}
                 description={t("teamPage.openLinkDesc")}

@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import delete as _delete, select
 
 from provisa.api.errors import ApiError
@@ -96,7 +96,9 @@ async def _require_org_admin(
 class CreateInviteBody(BaseModel):
     org_id: str
     role_id: str | None = None
-    expires_in_days: int = 7
+    # REQ-1696: the org_admin sets how long the link stays redeemable, per invitation. A week is
+    # only the value the form opens on; a century is the ceiling a public "try it" link asks for.
+    expires_in_days: int = Field(default=7, ge=1, le=36500)
     # REQ-1287: address the invite to a person so GET /auth/my-invites can surface it to them on
     # first sign-in. Omit for a shareable link invite.
     email: str | None = None

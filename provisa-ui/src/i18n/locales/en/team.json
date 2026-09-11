@@ -48,6 +48,8 @@
     "inviteNotSent": "The invitation for {{email}} was created but could not be sent ({{reason}}). Share this link instead: {{url}}",
     "inviteNoMail": "This deployment does not send email, so nothing was sent to {{email}}. Share this link instead: {{url}}",
     "colEmail": "Email",
+    "expiresLabel": "Expires in (days)",
+    "expiresDesc": "The link stops admitting anyone after this many days. Revoke it below to close it sooner.",
     "openLinkLabel": "Anyone with the link may join",
     "openLinkDesc": "An open link admits unlimited people and stays usable until it expires or you revoke it. Leave it off for a single-use invitation.",
     "envPolicyLabel": "What the invitee works in",

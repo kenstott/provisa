@@ -56660,3 +56660,37 @@
     Given an operator who types a Splunk instance's password into the Sources form
     When the source is created
     Then the password is stored in the organization's secret vault under source_<id>_password, the sources row holds ${secret:source_<id>_password} and not the password, Register Table lists the instance's Data Models, and deleting the source removes the vault entry
+- id: REQ-1696
+  status: complete
+  since: 2026-09
+  group: 13. Multi-Tenancy & Organizations
+  category: Multi-Tenancy & Organizations
+  priority: MUST
+  type: behavioral
+  description: >-
+    HOW LONG AN INVITATION STAYS REDEEMABLE IS THE ORG_ADMIN'S CALL, MADE PER INVITATION. The Team
+    page asks for the span in days beside the role and the open-link switch, opening on a week, and
+    sends exactly what was typed; the API bounds it to what an invitation can mean, at least one
+    day and at most a century (36500), and a value outside that is refused rather than clamped. A
+    week remains only what an omitted value falls to, so a caller that never asked keeps the
+    invitation it always got. A span no invitation can carry disables minting on the form instead
+    of sending it.
+  code:
+  - provisa/api/admin/invites_router.py
+  - provisa-ui/src/api/admin.ts
+  - provisa-ui/src/pages/TeamPage.tsx
+  tests:
+  - tests/unit/test_invite_expiry_days.py
+  - provisa-ui/src/__tests__/TeamPageInviteExpiry.test.tsx
+  use_case: >-
+    The public "Try it on your data" link on provisa.dev was minted from the Team page, which
+    hard-coded a seven-day expiry it never showed. The link died a week later while it was still
+    on the website, and nothing on the form could have prevented it.
+  scenario: |
+    Given an org_admin on the Team page
+    When they set the expiry to 36500 days and mint a link
+    Then the invitation is created with expires_at a century out
+    When they clear the expiry field
+    Then the create button is disabled
+    When a client posts expires_in_days 0 or 36501
+    Then the API returns 422
