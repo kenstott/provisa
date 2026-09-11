@@ -18123,3 +18123,17 @@ THE EXPLORE/SQL PAGE'S METRICS/FACTS/DIMENSIONS GROUPS HONOR THE SAME CHECKED-DO
 **Code:** `provisa-ui/src/pages/SqlPage.tsx`, `provisa-ui/src/pages/sql/SchemaBrowser.tsx`
 
 **Tests:** `provisa-ui/src/pages/__tests__/sql-domain-filter.test.tsx`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1724 · Graph Explorer {#REQ-1724}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** ui
+
+THE GRAPH EXPLORER'S CANVAS TRACKS ITS CONTAINER'S SIZE, NOT JUST ITS SIZE AT MOUNT. The `.gf-canvas` element is `width/height:100%` — the CSS layout is already responsive — but Cytoscape reads its own canvas pixel dimensions once when the instance is created and never again on its own. Without something to tell it otherwise, the rendered graph keeps whatever size it was born with as the browser window resizes or the surrounding panel reflows, clipping or floating in dead space. A `ResizeObserver` on the canvas container calls `cy.resize()` on every size change, the same pattern the lineage DAG (REQ-1401 area) already used and the Graph/Cypher explorer never had.
+
+**Use case:** Browsing the site — switching tabs, resizing the browser window — left the Graph/Cypher explorer's canvas stuck at its original size, no longer tracking the window.
+
+**Code:** `provisa-ui/src/components/graph/GraphCanvas.tsx`, `provisa-ui/src/components/graph/cytoscape-types.ts`
+
+**Tests:** `provisa-ui/src/components/graph/__tests__/GraphCanvas.resize.test.tsx`

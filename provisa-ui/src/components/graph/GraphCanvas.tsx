@@ -549,6 +549,19 @@ export function GraphCanvas({
        a layout with layoutRunningRef=true before the incremental effect can call nudgeLayout) */
   }, [nodes, edges, clusterLevel, collapsedClusters]);
 
+  // Cytoscape reads its canvas size once at creation and never again on its own — .gf-canvas is
+  // width/height:100% (CSS layout is responsive), but without this the rendered graph keeps
+  // whatever pixel size it was born with, clipping or floating in dead space as the window resizes
+  // or the panel it sits in reflows. Watches the container directly rather than re-subscribing per
+  // cy instance: containerRef's DOM node outlives every rebuild the effect above performs.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => cyRef.current?.resize());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   // Incremental overlay update — adds/removes overlay nodes+edges without full re-layout
   useEffect(() => {
     if (clusterLevel !== "none") return;

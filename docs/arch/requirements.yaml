@@ -56802,3 +56802,31 @@
     When only one domain is checked
     Then the Metrics/Facts/Dimensions groups show only that domain's fact, dimension, and metric
     And a hand-authored metric with no source fact still shows regardless of which domain is checked
+- id: REQ-1724
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Graph Explorer
+  priority: MUST
+  type: ui
+  description: >-
+    THE GRAPH EXPLORER'S CANVAS TRACKS ITS CONTAINER'S SIZE, NOT JUST ITS SIZE AT MOUNT. The
+    `.gf-canvas` element is `width/height:100%` — the CSS layout is already responsive — but
+    Cytoscape reads its own canvas pixel dimensions once when the instance is created and never
+    again on its own. Without something to tell it otherwise, the rendered graph keeps whatever
+    size it was born with as the browser window resizes or the surrounding panel reflows,
+    clipping or floating in dead space. A `ResizeObserver` on the canvas container calls
+    `cy.resize()` on every size change, the same pattern the lineage DAG (REQ-1401 area) already
+    used and the Graph/Cypher explorer never had.
+  code:
+  - provisa-ui/src/components/graph/GraphCanvas.tsx
+  - provisa-ui/src/components/graph/cytoscape-types.ts
+  tests:
+  - provisa-ui/src/components/graph/__tests__/GraphCanvas.resize.test.tsx
+  use_case: >-
+    Browsing the site — switching tabs, resizing the browser window — left the Graph/Cypher
+    explorer's canvas stuck at its original size, no longer tracking the window.
+  scenario: |
+    Given the Graph Explorer is open with a rendered graph
+    When the browser window is resized, or the panel around the canvas changes size
+    Then the canvas's rendered area resizes to match, instead of keeping its size at mount

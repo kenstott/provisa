@@ -148,4 +148,5 @@ export interface CyInstance {
   container(): HTMLElement;
   getElementById(id: string): CyCollection;
   forceRender(): void;
+  resize(): void;
 }
