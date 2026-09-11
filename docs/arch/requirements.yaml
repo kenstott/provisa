@@ -56697,7 +56697,7 @@
 - id: REQ-1721
   status: complete
   since: 2026-09
-  group: 12. Identity & Access
+  group: 2. Authentication & Identity
   category: Sign-In
   priority: MUST
   type: behavioral

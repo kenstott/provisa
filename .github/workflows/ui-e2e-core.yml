@@ -61,8 +61,12 @@ jobs:
 
       # playwright.config.ts's webServer commands invoke `.venv/bin/uvicorn` by path, so the
       # environment must be a real repo-root .venv — uv sync creates exactly that.
+      # The `cassandra` extra is demo/sources/cassandra/prime.py's own dependency: this lane's
+      # global setup provisions every DEMO_SOURCES entry (demo-source-containers.ts), cassandra
+      # included, and prime.py imports cassandra-driver directly rather than through a lazy import
+      # a missing package could degrade gracefully around.
       - name: Install Python deps
-        run: uv sync --frozen --extra dev
+        run: uv sync --frozen --extra dev --extra cassandra
 
       - uses: actions/setup-node@v4
         with:

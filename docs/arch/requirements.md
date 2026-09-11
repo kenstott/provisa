@@ -18067,3 +18067,45 @@ A source registered through the Sources form keeps its password, and keeps it wh
 **Code:** `provisa/core/schema_org.py`, `provisa/core/schema.sql`, `provisa/core/repositories/source.py`, `provisa/core/secrets_store.py`, `provisa/core/env_classes.py`, `provisa/api/admin/schema_common.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_query.py`, `provisa/federation/registry_view.py`, `provisa/federation/native_backend.py`, `provisa/pgwire/_pipeline.py`
 
 **Tests:** `tests/unit/test_source_password_ref.py`, `tests/unit/test_registry_view.py`, `tests/integration/test_source_password_vault.py`, `provisa-ui/e2e/source-to-query.spec.ts`
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-1696 · Multi-Tenancy & Organizations {#REQ-1696}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+HOW LONG AN INVITATION STAYS REDEEMABLE IS THE ORG_ADMIN'S CALL, MADE PER INVITATION. The Team page asks for the span in days beside the role and the open-link switch, opening on a week, and sends exactly what was typed; the API bounds it to what an invitation can mean, at least one day and at most a century (36500), and a value outside that is refused rather than clamped. A week remains only what an omitted value falls to, so a caller that never asked keeps the invitation it always got. A span no invitation can carry disables minting on the form instead of sending it.
+
+**Use case:** The public "Try it on your data" link on provisa.dev was minted from the Team page, which hard-coded a seven-day expiry it never showed. The link died a week later while it was still on the website, and nothing on the form could have prevented it.
+
+**Code:** `provisa/api/admin/invites_router.py`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/pages/TeamPage.tsx`
+
+**Tests:** `tests/unit/test_invite_expiry_days.py`, `provisa-ui/src/__tests__/TeamPageInviteExpiry.test.tsx`
+
+## 2. Authentication & Identity
+
+### REQ-1721 · Sign-In {#REQ-1721}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+EVERY CONTROL ON THE SIGN-IN CARD IS DISABLED FOR THE LENGTH OF A SIGN-IN, AND THE BUTTON CLICKED SHOWS A SPINNER. Clicking a provider button, "Continue with email", or "Operator sign-in" previously disabled only the button clicked, so a visitor mid-redirect could start a second provider, open the email form, or switch into the operator form while the first attempt was still resolving. Every button on the card the loading state can reach -- the three provider buttons, the email disclosure, the email-form submit and its register/sign-in toggle, the operator toggle, the basic-auth login button and its create-account link, the register form's submit and back link, and the operator form's submit and back link -- is now disabled for as long as `loading` (which spans the sandbox invite's environment provisioning too) is true, and the clicked button additionally carries Mantine's `loading` spinner.
+
+**Use case:** A visitor on the public sandbox link double-clicked "Sign in with Google" while the redirect was loading; the other two provider buttons and "Continue with email" were still live and clickable, and nothing on the card showed that a sign-in was already underway.
+
+**Code:** `provisa-ui/src/pages/LoginPage.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/LoginPage.test.tsx`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-1722 · JSON:API {#REQ-1722}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+THE GROUP-BY NODES PROJECTION'S ``?include=`` RESOLVES A DOT-PATH AT ANY DEPTH, NOT JUST ONE RELATIONSHIP HOP. ``assignment.employee.id`` (a relationship, then its own relationship, then a column) previously 400'd with "Unknown field 'employee.id' on relationship 'assignment'" — the handler split only the first dot and looked the remainder up as a single column name of the immediate relation, which a nested relationship's own field never is. It now recurses through relationships exactly as far as the path goes, translating each physical segment ([REQ-1417](#REQ-1417)) to the schema's GQL spelling at that depth, mirroring the recursion gRPC's ``include`` (query_ir::_insert_include_path, [REQ-1405](#REQ-1405)/[REQ-1408](#REQ-1408)) already does — one plan drives every surface. The JSON:API Explorer's Include picker offers two levels of relationship (a table's direct relationships, plus theirs) so the common case is checkboxes rather than a hand-typed path; a path past what the picker offers is still accepted by the backend.
+
+**Use case:** A JSON:API Explorer query against ``pets`` grouped by breed asked for ``assignment.employee.id``, ``assignment.employee.last_name``, and ``assignment.breed.name`` — columns one relationship past ``assignment`` — and every one of them 400'd.
+
+**Code:** `provisa/api/jsonapi/generator.py`, `provisa-ui/src/pages/JsonApiPage.tsx`, `provisa-ui/src/pages/jsonapi/IncludeTree.tsx`
+
+**Tests:** `tests/unit/test_jsonapi_aggregates.py`, `tests/unit/test_nl_jsonapi_include_roundtrip.py`, `provisa-ui/src/__tests__/JsonApiPageIncludeTwoLevels.test.tsx`
