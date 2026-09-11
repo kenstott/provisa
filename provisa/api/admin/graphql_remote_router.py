@@ -331,6 +331,18 @@ async def register_graphql_remote_source(  # REQ-307, REQ-308, REQ-311, REQ-312,
         except Exception:
             log.warning("Schema rebuild failed after graphql-remote registration", exc_info=True)
 
+        # REQ-1729: register_table's mutation path re-enters the convergent landed-table
+        # reconcile (REQ-846/932) after registration — the pass that actually creates a
+        # MATERIALIZED source's landing schema/view in the engine catalog. graphql_remote has
+        # no live connector (not in the pgwire-replica _OPERAND_BUILDERS set), so its tables are
+        # MATERIALIZED-only; this REST router upserted registered_tables rows directly and never
+        # reconciled, so a query against a freshly graphql-remote-registered source's table
+        # failed "schema graphql does not exist" — the landing schema had never been created.
+        try:
+            await state.federation_engine.reconcile_landed_tables()
+        except Exception:
+            log.exception("landed-table reconcile after graphql-remote registration failed")
+
     log.info(
         "Registered GraphQL remote source %s (%d tables, %d functions, %d relationships)",
         body.source_id,

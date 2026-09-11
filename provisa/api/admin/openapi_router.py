@@ -140,6 +140,28 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
         "relationships": relationships or [],
     }
 
+    # REQ-1729: the upsert above wrote straight to the sources table — state.source_types and
+    # state.source_catalogs (needed by available_schemas/catalog_for) only backfill from that
+    # table inside _rebuild_schemas, mirroring graphql_remote_router's own registration.
+    try:
+        from provisa.api.app import _rebuild_schemas
+
+        await _rebuild_schemas()
+    except Exception:
+        log.warning("Schema rebuild failed after openapi registration", exc_info=True)
+
+    # REQ-1729: createSource's mutation path also provisions the source ON THE ENGINE (the
+    # ATTACH/catalog-create a later query needs); this REST endpoint never did.
+    from types import SimpleNamespace
+
+    from provisa.api.admin.schema_common import SourceInput, _register_source_on_engine
+
+    _register_source_on_engine(
+        state,
+        Source(id=source_id, type=SourceType.openapi, path=spec_path),
+        cast(SourceInput, SimpleNamespace(id=source_id)),
+    )
+
     return spec, len(queries), len(mutations)
 
 

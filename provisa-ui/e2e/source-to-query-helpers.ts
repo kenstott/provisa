@@ -77,6 +77,30 @@ export async function submitRegisterAndExpectListed(page: Page, sourceId: string
   return mine!.dqDataset!.split("/").pop()!;
 }
 
+/** The `path` (endpoint URL) a baked-in source already connects with — reused so a new
+ * registration reaches the same live mock without hardcoding a port the e2e harness may reassign. */
+export async function existingSourcePath(page: Page, sourceId: string): Promise<string> {
+  const res = await page.request.post("/admin/graphql", {
+    data: { query: "{ sources { id path } }" },
+  });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  const sources = (await res.json()).data.sources as { id: string; path: string | null }[];
+  const found = sources.find((s) => s.id === sourceId);
+  expect(found?.path, `source ${sourceId} has no path`).toBeTruthy();
+  return found!.path!;
+}
+
+/** SQL-plane names of every table a source has registered, regardless of whether they were added
+ * through the Register Table form or auto-registered by the source itself (graphql_remote). */
+export async function registeredTableNames(page: Page, sourceId: string): Promise<string[]> {
+  const res = await page.request.post("/admin/graphql", {
+    data: { query: "{ tables { sourceId tableName } }" },
+  });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  const tables = (await res.json()).data.tables as { sourceId: string; tableName: string }[];
+  return tables.filter((t) => t.sourceId === sourceId).map((t) => t.tableName);
+}
+
 async function typeSql(page: Page, sql: string) {
   const editor = page.locator(".cm-content").first();
   await editor.click();

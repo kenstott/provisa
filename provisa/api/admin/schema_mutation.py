@@ -415,6 +415,36 @@ async def _refuse_over_source_limit(source_id: str) -> MutationResult | None:  #
     )
 
 
+def _refuse_soda_on_hosted_plane(source_type: str) -> MutationResult | None:  # REQ-1725
+    """Refuse a ``soda`` source on the operator-hosted plane, or None elsewhere.
+
+    soda-core is Elastic License 2.0, which prohibits offering it to third parties as a hosted or
+    managed service (config/capabilities.yaml's ``cloud_eligible: false`` on the ``soda`` option
+    documents this, but nothing read that field — the Sources form never lists ``soda`` as an
+    option, so it was unreachable there, but ``create_source`` itself took the type from any
+    caller, API clients included, with no check at all). ``commerce.enabled()`` is the same
+    self-hosted-vs-hosted signal REQ-1469's ``/auth/me`` billing flag and REQ-1513's source-limit
+    gate both use — the commercial plugin is mounted only on the plane this license bars soda
+    from. A self-hosted or desktop install, where the plugin is absent, is unaffected.
+    """
+    if source_type != "soda":
+        return None
+    from provisa.core.commerce import enabled as commerce_enabled
+
+    if not commerce_enabled():
+        return None
+    return MutationResult(
+        success=False,
+        message=(
+            "Soda (external data quality) is not offered on this hosted platform — its "
+            "Elastic License 2.0 terms prohibit offering it as a hosted or managed service. "
+            "Great Expectations (Apache 2.0) covers the same checker pattern."
+        ),
+        code="schema.source_type_not_hosted",
+        params={"type": source_type},
+    )
+
+
 @strawberry.type
 class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
@@ -590,6 +620,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if _limit_refusal is not None:
             return _limit_refusal
 
+        _soda_refusal = _refuse_soda_on_hosted_plane(input.type)
+        if _soda_refusal is not None:
+            return _soda_refusal
+
         if input.type == "govdata":
             _err = await _validate_govdata_api_key(input)
             if _err is not None:
@@ -707,6 +741,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         require_capability(info, "source_registration")
         from provisa.core.models import Source as SourceModel, SourceType as SourceTypeEnum
         from provisa.core.repositories import source as source_repo
+
+        # REQ-1725: create_source's gate is not enough on its own — update_source takes a fresh
+        # type on every call too, so a source created as something else could retype to soda here.
+        _soda_refusal = _refuse_soda_on_hosted_plane(input.type)
+        if _soda_refusal is not None:
+            return _soda_refusal
 
         pool = await _get_pool()
         async with pool.acquire() as conn:

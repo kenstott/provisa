@@ -18137,3 +18137,69 @@ THE GRAPH EXPLORER'S CANVAS TRACKS ITS CONTAINER'S SIZE, NOT JUST ITS SIZE AT MO
 **Code:** `provisa-ui/src/components/graph/GraphCanvas.tsx`, `provisa-ui/src/components/graph/cytoscape-types.ts`
 
 **Tests:** `provisa-ui/src/components/graph/__tests__/GraphCanvas.resize.test.tsx`
+
+## 4. Source Connectors
+
+### REQ-1726 · RDBMS {#REQ-1726}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A sqlite source registered through the Sources form connects. Its file path lands in the registration input's `path` field, never `database` — the same field a directory-crawling `files` source uses — but the connection-validation pool builder only ever forwarded `database` to the driver, so `path` was silently dropped and SQLAlchemy's sqlite dialect connected as `sqlite://localhost` (a host, no file) on every attempt. `_add_source_pool` now prefers `path` when a caller set one, falling through to `database` for every other source type's ordinary host/port/database shape unchanged.
+
+**Use case:** sqlite is baked into the demo config (inquiries-sqlite, pet-store-sqlite) and queried by dozens of tests, but nothing had ever driven the Sources form to CREATE one — the form's own connection-validation path was unproven and silently broken until an e2e test tried it.
+
+**Code:** `provisa/api/admin/schema_common.py`
+
+**Tests:** `tests/unit/test_source_registration_validation.py`, `provisa-ui/e2e/source-to-query.spec.ts`
+
+## 1. Access Governance & Security
+
+### REQ-1725 · Licensing {#REQ-1725}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Soda (external data quality) is refused as a source type on the operator-hosted plane (`commerce.enabled()` true). Its Elastic License 2.0 terms prohibit offering it as a hosted or managed service; Great Expectations (Apache 2.0) covers the same checker pattern and stays available everywhere. `_refuse_soda_on_hosted_plane` gates both `createSource` (after the source-limit check) and `updateSource` (before the DB lookup, since type can change on update).
+
+**Use case:** capabilities.yaml already marks soda `cloud_eligible: false`, but nothing in the registration path ever consulted that flag — a SaaS org could register a soda source and violate its license.
+
+**Code:** `provisa/api/admin/schema_mutation.py`
+
+**Tests:** `tests/unit/test_soda_hosted_gate.py`
+
+## 4. Source Connectors
+
+### REQ-1727 · API/Streaming {#REQ-1727}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A graphql_remote source registered through the Sources form introspects, auto-registers its tables, and is immediately queryable. Its REST registration endpoint upserted the `sources` row and the auto-discovered `registered_tables` rows directly, bypassing every step the ordinary createSource/registerTable mutations perform: it never populated the in-memory `state.source_catalogs` entry catalog_for() needs, and it never re-entered the convergent landed-table reconcile ([REQ-846](#REQ-846)/932) that creates a MATERIALIZED source's landing schema/view — graphql_remote has no live connector, so every one of its tables is MATERIALIZED-only. A grant on a freshly-registered table failed "no catalog in org"; a query against one failed "schema graphql does not exist" even after the catalog fix. See [REQ-1729](#REQ-1729) for the shared backend fix.
+
+**Use case:** graphql_remote is baked into the demo config (graphql-demo) and queried by dozens of tests, but nothing had ever driven the Sources form to CREATE one and query its auto-registered tables — the REST registration endpoint's gaps were unproven and silently broken until an e2e test tried it.
+
+**Code:** `provisa/api/admin/graphql_remote_router.py`, `provisa/api/app.py`
+
+**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`
+
+### REQ-1728 · API/Streaming {#REQ-1728}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+An openapi source registered through the Sources form (`POST /admin/openapi/register`) is immediately visible to the Register Table form's schema/table pickers. The registration endpoint never populated `state.source_types`, so `available_schemas`' openapi dispatch (which branches on that map) fell through to an empty result and the schema dropdown never populated any option. `_load_and_register` now re-enters `_rebuild_schemas()` after registration, mirroring graphql_remote_router's own registration (see [REQ-1729](#REQ-1729)). The picker lists raw OpenAPI operationIds (camelCase, e.g. `getInventory`), which registration later normalizes to a snake_cased table name.
+
+**Use case:** openapi is baked into the demo config (petstore-api) and queried by dozens of tests, but nothing had ever driven the Sources form to CREATE one and then register a table through the ordinary Register Table UI — the schema-picker gap was unproven and silently broken until an e2e test tried it.
+
+**Code:** `provisa/api/admin/openapi_router.py`
+
+**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`
+
+### REQ-1729 · API/Streaming {#REQ-1729}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+`_rebuild_schemas` backfills `state.source_types` for any DB-registered source missing from the map (a REST-router registration never sets it) but never backfilled `state.source_catalogs` — the org-scoped physical catalog name `catalog_for()` requires. It now backfills both, mirroring createSource's own catalog-naming step (`fixed_catalog_for_engine` or `org_prefixed_catalog`). This alone fixes any REST-registered, engine-attached source's catalog resolution; a MATERIALIZED-only source (graphql_remote, [REQ-1727](#REQ-1727)) additionally needs its REST router to re-enter `federation_engine.reconcile_landed_tables()`, the pass that creates the landing schema/view in the engine catalog — the same reconcile `registerTable`'s mutation path already re-enters after an ordinary UI registration.
+
+**Use case:** Every source type registered through a dedicated REST router (graphql_remote, openapi) rather than the generic createSource GraphQL mutation shared this gap; the category-2 e2e sweep ([REQ-1726](#REQ-1726)/1727/1728) is what surfaced it, one router at a time.
+
+**Code:** `provisa/api/app.py`, `provisa/api/admin/graphql_remote_router.py`, `provisa/api/admin/openapi_router.py`
+
+**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`

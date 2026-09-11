@@ -221,12 +221,21 @@ async def _add_source_pool(state, input: SourceInput) -> None:
     from provisa.api.admin._row_mappers import _federation_hints_from_input
 
     hints = getattr(input, "federation_hints", None) or _federation_hints_from_input(input)
+    # REQ-1726: a file-embedded source (sqlite today) has no host of its own — the Sources form
+    # writes its file path into `path`, never `host`/`database`. SQLAlchemy's sqlite dialect takes
+    # the file path as the URL's "database" segment and must have NO host component at all
+    # (sqlalchemy_driver.py's URL.create renders a bare host as an extra path segment before the
+    # file path, e.g. "sqlite://localhost/./demo/files/x.sqlite"), so the "localhost" default below
+    # — sensible for every network-addressed type — actively breaks a file-embedded one. `path` is
+    # never set for a source type that already carries host/database, so branching on it changes
+    # nothing for them.
+    file_path = getattr(input, "path", None)
     await state.source_pools.add(
         source_id=input.id,
         source_type=input.type,
-        host=resolve_secrets(input.host) if input.host else "localhost",
+        host="" if file_path else (resolve_secrets(input.host) if input.host else "localhost"),
         port=input.port,
-        database=input.database,
+        database=file_path or input.database,
         user=input.username,
         password=resolve_secrets(input.password),
         extra={k: resolve_secrets(v) for k, v in hints.items()},

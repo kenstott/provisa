@@ -34,9 +34,11 @@ import {
   E2E_SPLUNK_PORT,
 } from "./demo-source-containers";
 import {
+  existingSourcePath,
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
+  registeredTableNames,
   runSqlOnPage,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
@@ -472,5 +474,154 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveLength(1);
     expect(Number(rows[0][0])).toBeGreaterThanOrEqual(0);
+  });
+
+  // REQ-1726: sqlite is baked into the demo config (inquiries-sqlite, pet-store-sqlite) and queried
+  // by dozens of other specs, but nothing had ever driven the Sources form to CREATE one — the form
+  // itself was unproven. Points at the same physical file the baked-in inquiries-sqlite source
+  // already reads, under a fresh source_id, so this is a genuine second live registration of the
+  // same file rather than a rename of the existing one.
+  test("sqlite: add the source, register a table, query it on the SQL page", async ({ page }) => {
+    test.setTimeout(180000);
+    const stamp = Date.now();
+    const sourceId = `e2e_sqlite_${stamp}`;
+
+    // 1. Sources form — a file path, not host/port
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("sqlite");
+    await page.getByLabel(/SQLite File Path/).fill("./demo/files/inquiries.sqlite");
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. Register Table form — sqlite's one physical schema is "main"
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "main", "users");
+    await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+      timeout: 60000,
+    });
+    await expect(page.getByTestId("register-table-col-selected-email")).toBeVisible();
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    // 3. SQL page — the 10 users demo/files/inquiries.sqlite seeds
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT id, name, email FROM pet_store.${registered} ORDER BY id`,
+    );
+    expect(rows).toHaveLength(10);
+    expect(rows[0]).toEqual(["1", "Alice Nguyen", "alice@example.com"]);
+    expect(rows[9]).toEqual(["10", "Jay Singh", "jay@example.com"]);
+  });
+
+  // REQ-1727: graphql_remote is baked in (graphql-demo) and queried everywhere, but the Sources
+  // form's own combined create+introspect+auto-register flow (POST /admin/sources/graphql-remote)
+  // had never been driven. Points at the same live graphql-demo mock the baked-in source reads
+  // (fetched from it rather than hardcoded, so this survives the e2e harness reassigning ports). A
+  // distinct namespace keeps the auto-registered tables from colliding with graphql-demo's own —
+  // registration qualifies every table name as `namespace__field` (graphql_remote/mapper.py).
+  test("graphql_remote: add the source, auto-register its tables, query one on the SQL page", async ({
+    page,
+  }) => {
+    test.setTimeout(180000);
+    const stamp = Date.now();
+    const sourceId = `e2e_gql_${stamp}`;
+    const namespace = `e2e_gql_${stamp}`;
+    const endpoint = await existingSourcePath(page, "graphql-demo");
+
+    // 1. Sources form — this type registers the source AND every table in one submit; there is no
+    // separate Register Table step (graphql_remote_router.py: introspect + auto-register).
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("graphql");
+    await page.getByTestId("graphql-endpoint-input").fill(endpoint);
+    await page.getByTestId("graphql-namespace-input").fill(namespace);
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. The breed catalog table registered itself under this source — no Register Table screen.
+    // Auto-registered columns start with visible_to: [] (graphql_remote_router.py preserves an
+    // EXISTING grant across a refresh; on first registration there is none to preserve) — the
+    // manual Register Table form's own sensible default never runs for this one-shot path, so a
+    // grant is the missing step here, not a bug: it's the same zero-trust default every new
+    // column starts behind, everywhere else closed by a human on the Tables page.
+    const tableNames = await registeredTableNames(page, sourceId);
+    const breedTable = tableNames.find((n) => n.includes("animal_breed"));
+    expect(breedTable, `no animal_breeds table registered for ${sourceId}`).toBeTruthy();
+    const grant = await page.request.post("/admin/graphql", {
+      data: {
+        query: `mutation($t: TableInput!) { updateTable(input: $t) { success message } }`,
+        variables: {
+          t: {
+            sourceId,
+            domainId: "",
+            schemaName: "graphql",
+            tableName: breedTable,
+            columns: [
+              { name: "name", visibleTo: ["*"] },
+              { name: "species", visibleTo: ["*"] },
+              { name: "care_level", visibleTo: ["*"] },
+              { name: "avg_lifespan_years", visibleTo: ["*"] },
+              { name: "typical_habitat", visibleTo: ["*"] },
+              { name: "description", visibleTo: ["*"] },
+            ],
+          },
+        },
+      },
+    });
+    expect(grant.ok(), await grant.text()).toBeTruthy();
+    const grantJson = await grant.json();
+    expect(grantJson.errors, JSON.stringify(grantJson.errors)).toBeUndefined();
+    const grantBody = grantJson.data.updateTable;
+    expect(grantBody.success, grantBody.message).toBeTruthy();
+
+    // 3. SQL page — the 6 breeds demo/graphql_server/server.py seeds (schema is always "graphql",
+    // regardless of the SQL-plane domain — graphql_remote_router.py hardcodes it).
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT name, species FROM graphql.${breedTable} ORDER BY name`,
+    );
+    expect(rows).toHaveLength(6);
+    expect(rows.map((r) => r[0])).toEqual([
+      "African Lion",
+      "Barbary Lion",
+      "Golden Retriever",
+      "Holland Lop",
+      "Maine Coon",
+      "Siamese",
+    ]);
+  });
+
+  // REQ-1728: openapi is baked in (petstore-api) and queried everywhere, but the Sources form's own
+  // spec-driven create step (POST /admin/openapi/register) had never been driven. Unlike
+  // graphql_remote, openapi source creation does NOT auto-register tables ("Users register them
+  // individually via the Register Table... UI" — openapi_router.py) — so this still exercises the
+  // ordinary Register Table form afterward, the same as sqlite/mongodb above.
+  test("openapi: add the source, register an operation, query it on the SQL page", async ({
+    page,
+  }) => {
+    test.setTimeout(180000);
+    const stamp = Date.now();
+    const sourceId = `e2e_openapi_${stamp}`;
+    // petstore-api's own `path` already IS the full spec URL (…/openapi.json); base_url is that
+    // minus the spec filename (config/provisa-install.yaml: path = base_url + "/openapi.json").
+    const specUrl = await existingSourcePath(page, "petstore-api");
+    const baseUrl = specUrl.replace(/\/openapi\.json$/, "");
+
+    // 1. Sources form — spec path/URL + base URL, no separate table step at this point
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("openapi");
+    await page.getByTestId("openapi-spec-path-input").fill(specUrl);
+    await page.getByTestId("openapi-base-url-input").fill(baseUrl);
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. Register Table form — pick one operation as a table, same picker every other type uses
+    await openRegisterForm(page, sourceId);
+    // REQ-1729: the picker lists raw OpenAPI operationIds (camelCase), not the snake_cased
+    // table name registration later normalizes them to.
+    await pickSchemaAndTable(page, "openapi", "getInventory");
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    // 3. SQL page — the mock's inventory endpoint returns a real, non-empty status/count mapping
+    const rows = await runSqlOnPage(page, `SELECT * FROM pet_store.${registered}`);
+    expect(rows.length).toBeGreaterThan(0);
   });
 });
