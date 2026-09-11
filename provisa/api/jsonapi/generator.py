@@ -39,6 +39,7 @@ from provisa.api.jsonapi.pagination import (
     parse_page_params,
 )
 from provisa.api.jsonapi.naming import (
+    physical_rel_name,
     relationship_name_maps,
     relationship_scalar_maps,
     rename_row_keys,
@@ -247,48 +248,151 @@ def _relationship_scalars(schema: GraphQLSchema, table: str, rel_field: str) -> 
     return scalars
 
 
+def _split_scalar_and_relationship_fields(
+    obj_type: GraphQLObjectType,
+) -> tuple[list[str], dict[str, GraphQLObjectType]]:
+    """A type's GQL scalar field names, and its object-typed (relationship) fields mapped to the
+    related type. Shared by every depth of ``_insert_jsonapi_include_path`` — the base table's
+    fields are read the same way as a relationship's target's fields."""
+    scalars: list[str] = []
+    rels: dict[str, GraphQLObjectType] = {}
+    for name, f in obj_type.fields.items():
+        if name.startswith("_") and name.endswith("_"):
+            continue
+        related = _unwrap_type(f.type)
+        if isinstance(related, GraphQLObjectType):
+            rels[name] = related
+        else:
+            scalars.append(name)
+    return scalars, rels
+
+
+def _insert_jsonapi_include_path(  # REQ-1408, REQ-1721
+    ctx: Any,
+    gql_type_name: str,
+    obj_type: GraphQLObjectType,
+    table_id: int,
+    tree: dict[str, Any],
+    segments: list[str],
+    rel_physical: str | None = None,
+) -> str | None:
+    """Insert one physical dot-path's segments into a nested selection tree, recursing through
+    relationships at any depth — the JSON:API counterpart of gRPC's
+    ``query_ir._insert_include_path`` (REQ-1405/REQ-1408). That one already walks ``ctx.joins`` to
+    any depth; this one only additionally translates each segment from the physical spelling
+    JSON:API takes (REQ-1417) to the GQL name gRPC's version is handed directly, using
+    ``physical_rel_name`` for the relationship segments and this type's own
+    ``exposed_to_physical`` record (via ``scalar_name_maps``) for a leaf column. ``obj_type`` is
+    threaded through recursion directly (the target of a relationship field, read straight off
+    the schema) rather than re-resolved by name each level, so a mismatch between a join's
+    recorded type name and the schema's own type map cannot silently drop a level.
+
+    ``gql_type_name`` is only ``ctx.joins``' own key for this type — the same name the compiler
+    registered the join under (``TableMeta.type_name`` at the base, ``JoinMeta.target.type_name``
+    for every relationship reached from it). ``rel_physical`` is the physical relationship-field
+    name of the hop that reached this type — ``None`` at the base table, which a dot-path entry
+    can never itself name — kept only to put the same relationship name the caller wrote into an
+    "unknown field" error, rather than the type's own (differently-cased, differently-pluralized)
+    GQL name.
+
+    A leaf ``None`` value marks a selected scalar; a ``dict`` value marks a relationship with its
+    own nested selection, keyed by GQL name (the selection this builds is GraphQL text).
+
+    Returns an error message when a segment names neither a relationship nor a column reachable
+    from the type at that point in the path, else ``None``.
+    """
+    scalar_gql, rel_types = _split_scalar_and_relationship_fields(obj_type)
+    _, scalar_physical_to_gql = scalar_name_maps(ctx, table_id, scalar_gql)
+    rel_physical_to_gql_here = {physical_rel_name(r): r for r in rel_types}
+
+    head, *rest = segments
+    if head in rel_physical_to_gql_here:
+        gql_rel = rel_physical_to_gql_here[head]
+        join_meta = ctx.joins.get((gql_type_name, gql_rel))
+        if join_meta is None:
+            return f"Unknown relationship {head!r}"
+        child = tree.setdefault(gql_rel, {})
+        target_type = rel_types[gql_rel]
+        if rest:
+            err = _insert_jsonapi_include_path(
+                ctx,
+                join_meta.target.type_name,
+                target_type,
+                join_meta.target.table_id,
+                child,
+                rest,
+                rel_physical=head,
+            )
+            if err is not None:
+                return err
+        else:
+            target_scalars, _ = _split_scalar_and_relationship_fields(target_type)
+            for s in target_scalars:
+                child.setdefault(s, None)
+        if not child:
+            tree.pop(gql_rel, None)
+        return None
+    if rest or rel_physical is None:
+        return f"Unknown relationship {head!r}"
+    if head in scalar_physical_to_gql:
+        tree.setdefault(scalar_physical_to_gql[head], None)
+        return None
+    return f"Unknown field {head!r} on relationship {rel_physical!r}"
+
+
+def _render_jsonapi_include_tree(tree: dict[str, Any]) -> list[str]:
+    fields = []
+    for name, sub in tree.items():
+        if sub is None:
+            fields.append(name)
+        else:
+            fields.append(f"{name} {{ {' '.join(_render_jsonapi_include_tree(sub))} }}")
+    return fields
+
+
 def _build_group_by_node_selection(
     schema: GraphQLSchema,
+    ctx: Any,
     gql_table: str,
+    type_name: str,
+    table_id: int,
     base_scalars: list[str],
     include_param: str | None,
-    rel_physical_to_gql: dict[str, str],
-    rel_scalar_physical_to_gql: dict[str, dict[str, str]],
-) -> tuple[str, str | None]:  # REQ-1408
+) -> tuple[str, str | None]:  # REQ-1408, REQ-1721
     """The ``nodes { ... }`` selection for ``?includeNodes=true`` (REQ-1401).
 
-    Every base-table scalar, plus whatever ``?include=`` names. An entry is either a relationship
-    name (``user`` — every scalar of the related table) or a ``rel.col`` dot-path selecting one
-    column, the same projection gRPC's ``include`` (query_ir::_include_node_fields) and REST's
-    ``?includeNodes=`` dot-path list accept, so one plan drives all three surfaces.
+    Every base-table scalar, plus whatever ``?include=`` names. An entry is a relationship name
+    (``assignment`` — every scalar of the related table) or a ``rel.rel.col`` dot-path at any
+    depth (``assignment.employee.id``), recursing through relationships the same way gRPC's
+    ``include`` (query_ir::_include_node_fields) already does — one plan drives all three
+    surfaces (REQ-1405/REQ-1408).
 
-    Both segments are physical names — the spelling ``?groupBy=`` already takes — and are
-    translated to the schema's GQL-convention spelling here, at the emit boundary (REQ-1417).
-
-    Returns ``(selection, error_detail)``; ``error_detail`` is non-None when an entry names an
-    unknown relationship or column, which the caller turns into a 400.
+    Every segment is a physical name — the spelling ``?groupBy=`` already takes — translated to
+    the schema's GQL-convention spelling here, at the emit boundary (REQ-1417). ``type_name`` is
+    the base table's own ``ctx.joins`` key (``TableMeta.type_name``) — distinct from ``gql_table``,
+    the root *query field* name, which is not a key ``ctx.joins`` ever uses.
     """
-    node_fields = list(base_scalars)
     include_names = (
         [n.strip() for n in include_param.split(",") if n.strip()] if include_param else []
     )
-    rel_columns: dict[str, list[str]] = {}
-    for inc in include_names:
-        rel, _, column = inc.partition(".")
-        gql_rel = rel_physical_to_gql.get(rel)
-        if gql_rel is None:
-            return "", f"Unknown relationship {rel!r}"
-        column_map = rel_scalar_physical_to_gql[gql_rel]
-        if column and column not in column_map:
-            return "", f"Unknown field {column!r} on relationship {rel!r}"
-        rel_scalars = _relationship_scalars(schema, gql_table, gql_rel)
-        requested = rel_columns.setdefault(gql_rel, [])
-        for col in [column_map[column]] if column else rel_scalars:
-            if col not in requested:
-                requested.append(col)
-    for rel, columns in rel_columns.items():
-        if columns:
-            node_fields.append(f"{rel} {{ {' '.join(columns)} }}")
+    tree: dict[str, Any] = {}
+    if include_names:
+        query_type = schema.query_type
+        obj_type = (
+            _unwrap_type(query_type.fields[gql_table].type)
+            if query_type is not None and gql_table in query_type.fields
+            else None
+        )
+        if not isinstance(obj_type, GraphQLObjectType):
+            return "", f"Resource type {gql_table!r} has no queryable fields"
+        for inc in include_names:
+            segments = [s for s in inc.split(".") if s]
+            if not segments:
+                continue
+            err = _insert_jsonapi_include_path(ctx, type_name, obj_type, table_id, tree, segments)
+            if err is not None:
+                return "", err
+    node_fields = list(base_scalars) + _render_jsonapi_include_tree(tree)
     return " ".join(node_fields), None
 
 
@@ -537,7 +641,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         rel_scalars_by_rel = {
             rel: _relationship_scalars(schema, gql_table, rel) for rel in gql_rel_names
         }
-        rel_scalar_gql_to_physical, rel_scalar_physical_to_gql = relationship_scalar_maps(
+        rel_scalar_gql_to_physical, _ = relationship_scalar_maps(
             ctx, table_meta.type_name, rel_scalars_by_rel
         )
 
@@ -661,11 +765,12 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 if raw_params.get("includeNodes") in ("true", "1"):
                     node_selection, bad_include = _build_group_by_node_selection(
                         schema,
+                        ctx,
                         gql_table,
+                        table_meta.type_name,
+                        table_meta.table_id,
                         list(all_scalars),
                         raw_params.get("include"),
-                        rel_physical_to_gql,
-                        rel_scalar_physical_to_gql,
                     )
                     if bad_include is not None:
                         return _jsonapi_error_response(

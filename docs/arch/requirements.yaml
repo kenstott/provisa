@@ -56725,3 +56725,41 @@
     When they click "Sign in with Google"
     Then that button shows a spinner and every other button on the card -- the other providers,
       Continue with email, and Operator sign-in -- is disabled until the sign-in resolves
+- id: REQ-1722
+  status: complete
+  since: 2026-09
+  group: 5. Query Languages, Compilation & Operations
+  category: JSON:API
+  priority: MUST
+  type: behavioral
+  description: >-
+    THE GROUP-BY NODES PROJECTION'S ``?include=`` RESOLVES A DOT-PATH AT ANY DEPTH, NOT JUST ONE
+    RELATIONSHIP HOP. ``assignment.employee.id`` (a relationship, then its own relationship, then
+    a column) previously 400'd with "Unknown field 'employee.id' on relationship 'assignment'" —
+    the handler split only the first dot and looked the remainder up as a single column name of
+    the immediate relation, which a nested relationship's own field never is. It now recurses
+    through relationships exactly as far as the path goes, translating each physical segment
+    (REQ-1417) to the schema's GQL spelling at that depth, mirroring the recursion gRPC's
+    ``include`` (query_ir::_insert_include_path, REQ-1405/REQ-1408) already does — one plan drives
+    every surface. The JSON:API Explorer's Include picker offers two levels of relationship (a
+    table's direct relationships, plus theirs) so the common case is checkboxes rather than a
+    hand-typed path; a path past what the picker offers is still accepted by the backend.
+  code:
+  - provisa/api/jsonapi/generator.py
+  - provisa-ui/src/pages/JsonApiPage.tsx
+  - provisa-ui/src/pages/jsonapi/IncludeTree.tsx
+  tests:
+  - tests/unit/test_jsonapi_aggregates.py
+  - tests/unit/test_nl_jsonapi_include_roundtrip.py
+  - provisa-ui/src/__tests__/JsonApiPageIncludeTwoLevels.test.tsx
+  use_case: >-
+    A JSON:API Explorer query against ``pets`` grouped by breed asked for
+    ``assignment.employee.id``, ``assignment.employee.last_name``, and ``assignment.breed.name`` —
+    columns one relationship past ``assignment`` — and every one of them 400'd.
+  scenario: |
+    Given a group-by query on a table whose relationship (assignment) itself has a relationship
+      (employee)
+    When ?include=assignment.employee.id is requested with includeNodes=true
+    Then the nodes projection nests assignment { employee { id } } instead of a 400
+    When an unknown segment appears at the second level (assignment.nope.id)
+    Then the 400 names the unknown relationship, not the whole remaining path

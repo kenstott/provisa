@@ -21,13 +21,10 @@ from provisa.api.jsonapi.generator import (
     _build_group_by_graphql_query,
     _build_group_by_node_selection,
     _get_agg_fields_type,
-    _get_relationship_fields,
     _parse_aggregate_param,
     _parse_group_by_param,
-    _relationship_scalars,
     _resolve_query_field,
 )
-from provisa.api.jsonapi.naming import relationship_name_maps, relationship_scalar_maps
 from provisa.compiler import naming as _naming
 from provisa.compiler.context import build_context
 from provisa.compiler.introspect import ColumnMetadata
@@ -332,7 +329,8 @@ class TestDisabledTableRejected:
 
 
 def _build_schema_with_relationship():
-    """``orders`` group-by joined to a ``customers`` relationship, for include dot-path tests."""
+    """``orders`` group-by joined to ``customers``, itself joined to ``regions`` — two hops, for
+    include dot-path tests at both one level (REQ-1408) and two (REQ-1721)."""
     _naming.configure(gql="snake")
     tables = [
         {
@@ -360,6 +358,18 @@ def _build_schema_with_relationship():
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "name", "visible_to": ["admin"]},
                 {"column_name": "email", "visible_to": ["admin"]},
+                {"column_name": "region_id", "visible_to": ["admin"]},
+            ],
+        },
+        {
+            "id": 3,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "regions",
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "name", "visible_to": ["admin"]},
             ],
         },
     ]
@@ -372,6 +382,14 @@ def _build_schema_with_relationship():
             "target_column": "id",
             "cardinality": "many-to-one",
         },
+        {
+            "id": "cust-region",
+            "source_table_id": 2,
+            "target_table_id": 3,
+            "source_column": "region_id",
+            "target_column": "id",
+            "cardinality": "many-to-one",
+        },
     ]
     column_types = {
         1: [
@@ -380,7 +398,13 @@ def _build_schema_with_relationship():
             _col("amount", "decimal(10,2)"),
             _col("region", "varchar(20)"),
         ],
-        2: [_col("id", "integer"), _col("name", "varchar(100)"), _col("email", "varchar(200)")],
+        2: [
+            _col("id", "integer"),
+            _col("name", "varchar(100)"),
+            _col("email", "varchar(200)"),
+            _col("region_id", "integer"),
+        ],
+        3: [_col("id", "integer"), _col("name", "varchar(100)")],
     }
     si = SchemaInput(
         tables=tables,
@@ -394,20 +418,15 @@ def _build_schema_with_relationship():
 
 
 def _node_selection(schema, ctx, base_scalars, include_param):
-    """Call the helper the way the handler does — with the physical → GQL maps it builds first."""
-    gql_rels = list(_get_relationship_fields(schema, "orders").values())
-    _, rel_physical_to_gql = relationship_name_maps(gql_rels)
-    rel_scalars = {rel: _relationship_scalars(schema, "orders", rel) for rel in gql_rels}
-    _, rel_scalar_physical_to_gql = relationship_scalar_maps(
-        ctx, ctx.tables["orders"].type_name, rel_scalars
-    )
+    """Call the helper the way the handler does."""
     return _build_group_by_node_selection(
         schema,
+        ctx,
         "orders",
+        ctx.tables["orders"].type_name,
+        ctx.tables["orders"].table_id,
         base_scalars,
         include_param,
-        rel_physical_to_gql,
-        rel_scalar_physical_to_gql,
     )
 
 
@@ -425,7 +444,7 @@ class TestGroupByNodeSelection:
         schema, ctx = _build_schema_with_relationship()
         selection, err = _node_selection(schema, ctx, ["id"], "customer")
         assert err is None
-        assert selection == "id customer { id name email }"
+        assert selection == "id customer { id name email region_id }"
 
     def test_dot_path_selects_only_that_column(self):
         schema, ctx = _build_schema_with_relationship()
@@ -458,3 +477,50 @@ class TestGroupByNodeSelection:
         selection, err = _node_selection(schema, ctx, ["id"], "customer.nope")
         assert selection == ""
         assert err == "Unknown field 'nope' on relationship 'customer'"
+
+    # ── Multi-level dot-paths (REQ-1721) ───────────────────────────────────
+
+    def test_two_level_dot_path_selects_only_that_column(self):
+        schema, ctx = _build_schema_with_relationship()
+        selection, err = _node_selection(schema, ctx, ["id"], "customer.region.name")
+        assert err is None
+        assert selection == "id customer { region { name } }"
+
+    def test_two_level_bare_relationship_selects_every_scalar_at_that_level(self):
+        schema, ctx = _build_schema_with_relationship()
+        selection, err = _node_selection(schema, ctx, ["id"], "customer.region")
+        assert err is None
+        assert selection == "id customer { region { id name } }"
+
+    def test_sibling_paths_at_different_depths_merge_under_one_relationship(self):
+        schema, ctx = _build_schema_with_relationship()
+        selection, err = _node_selection(schema, ctx, ["id"], "customer.email,customer.region.name")
+        assert err is None
+        assert selection == "id customer { email region { name } }"
+
+    def test_two_level_selection_parses_as_graphql(self):
+        schema, ctx = _build_schema_with_relationship()
+        selection, _ = _node_selection(schema, ctx, ["id"], "customer.region.name")
+        query = _build_group_by_graphql_query(
+            "orders_group_by", ["region"], "count", {}, [], None, None, selection
+        )
+        assert not validate(schema, parse(query))
+
+    def test_unknown_relationship_at_the_second_level_is_an_error(self):
+        schema, ctx = _build_schema_with_relationship()
+        selection, err = _node_selection(schema, ctx, ["id"], "customer.nope.name")
+        assert selection == ""
+        assert err == "Unknown relationship 'nope'"
+
+    def test_unknown_column_at_the_second_level_is_an_error(self):
+        schema, ctx = _build_schema_with_relationship()
+        selection, err = _node_selection(schema, ctx, ["id"], "customer.region.nope")
+        assert selection == ""
+        assert err == "Unknown field 'nope' on relationship 'region'"
+
+    def test_a_path_through_a_scalar_column_is_an_error(self):
+        # "email" is a column, not a relationship, so it cannot carry a further segment.
+        schema, ctx = _build_schema_with_relationship()
+        selection, err = _node_selection(schema, ctx, ["id"], "customer.email.nope")
+        assert selection == ""
+        assert err == "Unknown relationship 'email'"

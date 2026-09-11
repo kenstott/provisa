@@ -28,12 +28,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from provisa.api.jsonapi.generator import (
-    _build_group_by_node_selection,
-    _get_relationship_fields,
-    _relationship_scalars,
-)
-from provisa.api.jsonapi.naming import relationship_name_maps, relationship_scalar_maps
+from provisa.api.jsonapi.generator import _build_group_by_node_selection
 from provisa.compiler import naming as _naming
 from provisa.compiler.context import build_context
 from provisa.compiler.introspect import ColumnMetadata
@@ -123,17 +118,6 @@ def petstore():
     _naming.configure()
 
 
-def _include_maps(schema, ctx, gql_table):
-    """The physical → GQL maps the handler builds for itself before validating ``?include=``."""
-    gql_rels = list(_get_relationship_fields(schema, gql_table).values())
-    _, rel_physical_to_gql = relationship_name_maps(gql_rels)
-    rel_scalars = {rel: _relationship_scalars(schema, gql_table, rel) for rel in gql_rels}
-    _, rel_scalar_physical_to_gql = relationship_scalar_maps(
-        ctx, ctx.tables[gql_table].type_name, rel_scalars
-    )
-    return rel_physical_to_gql, rel_scalar_physical_to_gql
-
-
 def test_the_schema_renames_the_multi_word_column(petstore):
     """The premise: under apollo, ``breed_name`` is exposed as ``breedName``. Without this the
     rest of the file would pass on a schema that never renamed anything."""
@@ -165,7 +149,13 @@ def test_generated_url_is_accepted_by_the_jsonapi_handler(petstore):
     assert url is not None
     include_param = url.split("&include=", 1)[1]
     selection, detail = _build_group_by_node_selection(
-        schema, "inquiries", ["userId"], include_param, *_include_maps(schema, ctx, "inquiries")
+        schema,
+        ctx,
+        "inquiries",
+        ctx.tables["inquiries"].type_name,
+        ctx.tables["inquiries"].table_id,
+        ["userId"],
+        include_param,
     )
     assert detail is None, detail
     # The handler translates to the schema's spelling at the GraphQL emit boundary.
@@ -177,6 +167,12 @@ def test_the_exposed_naming_is_the_one_the_handler_rejects(petstore):
     out of the GraphQL schema is now the one that 400s."""
     schema, ctx, _app_state = petstore
     _selection, detail = _build_group_by_node_selection(
-        schema, "inquiries", ["userId"], "pet.breedName", *_include_maps(schema, ctx, "inquiries")
+        schema,
+        ctx,
+        "inquiries",
+        ctx.tables["inquiries"].type_name,
+        ctx.tables["inquiries"].table_id,
+        ["userId"],
+        "pet.breedName",
     )
     assert detail == "Unknown field 'breedName' on relationship 'pet'"

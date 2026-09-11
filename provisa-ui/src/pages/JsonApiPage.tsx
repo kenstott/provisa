@@ -48,6 +48,7 @@ import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAllRelationships, useDomains, useTables } from "../hooks/useAdminQueries";
 import { serverMessage } from "../i18n/serverMessage";
+import { IncludeTree } from "./jsonapi/IncludeTree";
 import {
   toApiName,
   type JsonApiDocument,
@@ -353,18 +354,28 @@ export function JsonApiPage() {
     [tableObj],
   );
 
-  // Relationships of the selected table, each with the related table's columns. REQ-1417:
+  // Relationships of the selected table, each with the related table's columns and, one hop
+  // further, that table's own relationships (REQ-1722: the group-by nodes projection resolves a
+  // dot-path at any depth, but the picker offers only two levels of relationship — a table's
+  // direct relationships plus theirs — past which the checkbox tree would grow without bound for
+  // little practical use; a path the picker cannot reach is still typeable by hand). REQ-1417:
   // ?include= names a relationship as the SQL plane spells it, and physicalName is that spelling
   // as the naming authority computed it server-side (RelationshipType.physical_name) — the
   // convention is server configuration, so the client never derives it from graphqlAlias.
   const tableRelationships = useMemo(() => {
     if (!tableObj) return [];
-    return relationships
-      .filter((r) => r.sourceTableId === tableObj.id && r.physicalName)
-      .map((r) => ({
-        name: r.physicalName as string,
-        columns: (tables.find((tb) => tb.id === r.targetTableId)?.columns ?? []).map(toApiName),
-      }));
+    const relOf = (sourceTableId: number) =>
+      relationships
+        .filter((r) => r.sourceTableId === sourceTableId && r.physicalName)
+        .map((r) => ({
+          name: r.physicalName as string,
+          targetTableId: r.targetTableId,
+          columns: (tables.find((tb) => tb.id === r.targetTableId)?.columns ?? []).map(toApiName),
+        }));
+    return relOf(tableObj.id).map((rel) => ({
+      ...rel,
+      subRels: rel.targetTableId === null ? [] : relOf(rel.targetTableId),
+    }));
   }, [relationships, tables, tableObj]);
 
   const relationshipNames = useMemo(
@@ -782,38 +793,13 @@ export function JsonApiPage() {
                     </span>
                   </button>
                   <Collapse in={includeOpen}>
-                    <div className="jsonapi-field-list">
-                      {tableRelationships.map((rel) => (
-                        <div key={rel.name}>
-                          <Checkbox
-                            className="jsonapi-field-item"
-                            size="xs"
-                            checked={checkedIncludes.has(rel.name)}
-                            onChange={() => toggleInclude(rel.name)}
-                            label={<span className="jsonapi-field-name">{rel.name}</span>}
-                          />
-                          {/* Per-column dot-paths only apply to the group-by nodes projection —
-                              a plain include sideloads whole related resources. */}
-                          {includeNodes &&
-                            groupByCols.length > 0 &&
-                            rel.columns.map((col) => (
-                              <Checkbox
-                                key={`${rel.name}.${col}`}
-                                className="jsonapi-field-item jsonapi-field-item-nested"
-                                size="xs"
-                                checked={checkedIncludes.has(`${rel.name}.${col}`)}
-                                onChange={() => toggleIncludeColumn(rel.name, col)}
-                                data-testid={`jsonapi-include-${rel.name}.${col}`}
-                                label={
-                                  <span className="jsonapi-field-name">
-                                    {rel.name}.{col}
-                                  </span>
-                                }
-                              />
-                            ))}
-                        </div>
-                      ))}
-                    </div>
+                    <IncludeTree
+                      relationships={tableRelationships}
+                      checkedIncludes={checkedIncludes}
+                      showColumns={includeNodes && groupByCols.length > 0}
+                      toggleInclude={toggleInclude}
+                      toggleIncludeColumn={toggleIncludeColumn}
+                    />
                   </Collapse>
                 </div>
               )}
