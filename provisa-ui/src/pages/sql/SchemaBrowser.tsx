@@ -32,7 +32,9 @@ interface SchemaBrowserProps {
   toggleTable: (t: string) => void;
   setDomainPages: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   metrics: Metric[]; // REQ-1322
-  tables: RegisteredTable[]; // REQ-1322: full set for Facts/Dimensions groups
+  // REQ-1322: source for the Facts/Dimensions groups. REQ-1723: the caller pre-filters this (and
+  // `metrics` below) to the checked domains — the same set the SCHEMA tree below is built from.
+  tables: RegisteredTable[];
 }
 
 // REQ-1322: a compact table row inside the Facts/Dimensions modeling groups.

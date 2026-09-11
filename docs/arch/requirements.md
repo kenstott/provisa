@@ -18109,3 +18109,17 @@ THE GROUP-BY NODES PROJECTION'S ``?include=`` RESOLVES A DOT-PATH AT ANY DEPTH, 
 **Code:** `provisa/api/jsonapi/generator.py`, `provisa-ui/src/pages/JsonApiPage.tsx`, `provisa-ui/src/pages/jsonapi/IncludeTree.tsx`
 
 **Tests:** `tests/unit/test_jsonapi_aggregates.py`, `tests/unit/test_nl_jsonapi_include_roundtrip.py`, `provisa-ui/src/__tests__/JsonApiPageIncludeTwoLevels.test.tsx`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1723 · Semantic Metrics {#REQ-1723}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** ui
+
+THE EXPLORE/SQL PAGE'S METRICS/FACTS/DIMENSIONS GROUPS HONOR THE SAME CHECKED-DOMAINS FILTER THE SCHEMA TREE DOES. The SchemaBrowser sidebar's SCHEMA section already filtered its table tree by the domain checkboxes at the top of the page, but the Metrics/Facts/Dimensions groups above it read the unfiltered table and metric lists straight from the hooks — unchecking a domain hid its tables from one panel while its facts, dimensions, and derived metrics kept showing in the other. A metric attributes to the fact table it was derived from (``Metric.fromFact``); a hand-authored metric (``fromFact`` null, no ``FROM`` a fact metric reads from) has no domain to filter by and stays visible under every selection, the same way a table with no ``domainId`` does.
+
+**Use case:** An analyst scoped to one domain via the domain checkboxes still saw every other domain's fact and dimension tables, and every other domain's derived metrics, in the Explore/SQL sidebar — the checkbox narrowed the raw-SQL schema tree but nothing else on the same page.
+
+**Code:** `provisa-ui/src/pages/SqlPage.tsx`, `provisa-ui/src/pages/sql/SchemaBrowser.tsx`
+
+**Tests:** `provisa-ui/src/pages/__tests__/sql-domain-filter.test.tsx`

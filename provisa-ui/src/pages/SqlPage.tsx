@@ -15,15 +15,7 @@ import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { format as formatSql } from "sql-formatter";
 import { EditorView } from "@codemirror/view";
-import {
-  Button,
-  Drawer,
-  Group,
-  SegmentedControl,
-  Checkbox,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Button, Drawer, Group, SegmentedControl, Checkbox, Text, Title } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
@@ -336,22 +328,38 @@ export function SqlPage() {
     setExpansionLoading(false);
   }, [fetchExpansion]);
 
+  // REQ-1723: the same rule the SCHEMA tree filters by (below) has to filter the
+  // Metrics/Facts/Dimensions groups above it too, or unchecking a domain hides its tables from one
+  // panel while its facts, dimensions, and derived metrics keep showing in the other.
+  const isDomainVisible = useCallback(
+    (domainId: string) => {
+      const isImplicitDomain = domainId === "meta" || domainId === "ops";
+      return isImplicitDomain || checkedDomains.size === 0 || checkedDomains.has(domainId);
+    },
+    [checkedDomains],
+  );
+
   const domainGroups = useMemo(() => {
     const groups: Record<string, RegisteredTable[]> = {};
     for (const t of tables) {
-      const isImplicitDomain = t.domainId === "meta" || t.domainId === "ops";
-      if (
-        !isImplicitDomain &&
-        checkedDomains.size > 0 &&
-        t.domainId &&
-        !checkedDomains.has(t.domainId)
-      )
-        continue;
+      if (t.domainId && !isDomainVisible(t.domainId)) continue;
       const d = t.domainId ? normalizeDomain(t.domainId) : "(no domain)";
       (groups[d] = groups[d] || []).push(t);
     }
     return groups;
-  }, [tables, checkedDomains]);
+  }, [tables, isDomainVisible]);
+
+  // Facts/Dimensions read straight off the table list, and Metrics attribute to the fact table
+  // they were derived from — a hand-authored metric (fromFact null) has no domain to filter by, so
+  // it stays visible under every selection, the same way a table with no domain does above.
+  const domainFilteredTables = useMemo(
+    () => tables.filter((t) => !t.domainId || isDomainVisible(t.domainId)),
+    [tables, isDomainVisible],
+  );
+  const domainFilteredMetrics = useMemo(() => {
+    const visibleTableNames = new Set(domainFilteredTables.map((t) => t.tableName));
+    return metrics.filter((m) => !m.fromFact || visibleTableNames.has(m.fromFact));
+  }, [metrics, domainFilteredTables]);
 
   const insertAtCursor = useCallback((text: string) => {
     const view = editorViewRef.current;
@@ -805,8 +813,8 @@ export function SqlPage() {
           toggleDomain={toggleDomain}
           toggleTable={toggleTable}
           setDomainPages={setDomainPages}
-          metrics={metrics}
-          tables={tables}
+          metrics={domainFilteredMetrics}
+          tables={domainFilteredTables}
         />
 
         {/* Right pane */}
