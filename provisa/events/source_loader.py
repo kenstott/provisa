@@ -50,6 +50,15 @@ _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
         # landed in the materialize store like any other fetched source. An engine that attaches
         # the file in place (DuckDB) never materializes it, so the loader is never asked.
         "sqlite",
+        # REQ-1730: neo4j/sparql rows are produced by running the registered Cypher/SPARQL query
+        # against the source, not scanned from a relation Trino can reach directly — Trino has no
+        # connector for either type (trino_connectors.py has no entry). Missing from this set
+        # left TrinoBackend.landing_target mangling their landing name with no engine-side redirect
+        # view to expose it back under the registered address (see attach_landed_source's DuckDB
+        # counterpart, which DOES create that redirect) — unexercised until a source of either type
+        # was ever registered against a DuckDB backend and then queried under Trino.
+        "neo4j",
+        "sparql",
     }
 )
 

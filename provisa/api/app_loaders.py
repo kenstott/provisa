@@ -214,6 +214,42 @@ def fixed_catalog_for_engine(state: "AppState") -> str | None:
     return None
 
 
+def catalog_name_for_source(state: "AppState", source_type: str, source_id: str) -> str:  # REQ-1730
+    """The physical catalog a registered source's tables resolve to under the ACTIVE engine.
+
+    Order: (1) a fixed-catalog warehouse engine (see ``fixed_catalog_for_engine``) pins every
+    source to one name; (2) an adapter-fetched source (REQ-826 ``_MATERIALIZE_ONLY`` — its rows
+    are produced by the connector's fetch, not scanned from a relation the engine can reach) under
+    Trino lands DIRECTLY at its registered address with no engine-side redirect view
+    (``TrinoBackend.landing_target``'s own docstring: "no engine-side view layer to redirect a
+    mangled mat name back to the physical name the compiler emits") — so the catalog the compiler
+    must emit is Trino's OWN materialize-store catalog (``materialize_store_target``'s catalog,
+    ``provisa_admin`` — the same Postgres ``reconcile_landed_tables`` writes into), never a
+    per-source name: REQ-842 means no Trino catalog is ever provisioned for a type with no Trino
+    connector, so a per-source name here would resolve to a catalog that is never created. (3)
+    otherwise the per-source org-scoped name every other engine (DuckDB's own per-source ATTACH,
+    a warehouse's per-source external-table catalog) actually provisions.
+    """
+    from provisa.compiler.naming import org_prefixed_catalog
+    from provisa.core.request_context import active_env, current_org
+    from provisa.events.source_loader import is_adapter_fetched
+
+    fixed = fixed_catalog_for_engine(state)
+    if fixed:
+        return fixed
+    engine_rt = state.federation_engine
+    engine_name = getattr(getattr(engine_rt, "engine", None), "name", "")
+    if is_adapter_fetched(source_type) and engine_name == "trino":
+        org_id = current_org.get() or state.org_id
+        return engine_rt.materialize_store_target(org_id)[0]
+    return org_prefixed_catalog(
+        current_org.get() or state.org_id,
+        source_to_catalog(source_id),
+        default_org=state.org_id,
+        env=active_env(),
+    )
+
+
 def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, REQ-1266
     """Populate the org-scoped engine-catalog name map (+ source types/dialects/cache/hints).
 
@@ -234,35 +270,15 @@ def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, R
     if state.federation_engine.has_otel_catalog:
         state.source_catalogs["provisa-otel"] = "otel"
 
-    _fixed_catalog = fixed_catalog_for_engine(state)
-
-    # REQ-1266: the org currently being built (default/bootstrap org when the ContextVar is
-    # unset — the startup path). Org-scoped catalogs get an org_<id>__ prefix for non-default
-    # orgs so identically-named demo sources in different orgs don't collide; the default org
-    # keeps bare names. state.org_id is the bootstrap/default org (the one kept un-prefixed).
-    from provisa.core.request_context import active_env, current_org
-    from provisa.compiler.naming import org_prefixed_catalog
-
-    _building_org = current_org.get() or state.org_id
-    _default_org = state.org_id
-    # REQ-1529: and the environment being built, because a branch resolves its own bindings — the
-    # same source id may reach a different host there than it does in the base, and the catalog
-    # namespace is the one shared coordinator's.
-    _building_env = active_env()
-
     for src in config.sources:
         state.source_types[src.id] = src.type.value
         # Fixed-warehouse catalogs pin every source to one physical catalog (not org-scoped);
-        # otherwise namespace the org-scoped catalog for non-default orgs. The base name comes
-        # from the source id alone — that is what create_catalog physically names the catalog
-        # (provisa/core/catalog.py:116) and what native engines attach by. `src.database` is the
-        # remote database/tenant the connector talks to, not a catalog.
-        state.source_catalogs[src.id] = _fixed_catalog or org_prefixed_catalog(
-            _building_org,
-            source_to_catalog(src.id),
-            default_org=_default_org,
-            env=_building_env,
-        )
+        # an adapter-fetched source under Trino resolves through Trino's OWN materialize-store
+        # catalog (REQ-1730); otherwise namespace the org-scoped catalog for non-default orgs.
+        # The base name comes from the source id alone — that is what create_catalog physically
+        # names the catalog (provisa/core/catalog.py:116) and what native engines attach by.
+        # `src.database` is the remote database/tenant the connector talks to, not a catalog.
+        state.source_catalogs[src.id] = catalog_name_for_source(state, src.type.value, src.id)
         state.source_dialects[src.id] = src.dialect or ""
         state.source_cache[src.id] = {
             "cache_enabled": src.cache_enabled,

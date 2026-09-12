@@ -691,9 +691,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         # Populate the org-scoped catalog name so catalog_for() resolves this source
         # after dynamic creation (mirrors _populate_source_catalog_names in app_loaders.py).
-        from provisa.api.app_loaders import fixed_catalog_for_engine
-        from provisa.core.request_context import active_env, current_org
-        from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
+        from provisa.api.app_loaders import catalog_name_for_source
 
         # The physical catalog is derived from the source id and nothing else — create_catalog
         # (provisa/core/catalog.py:116) names it `_to_catalog_name(source.id)`, and native engines
@@ -701,18 +699,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # talks to, never a catalog name: a SharePoint source puts its Azure tenant GUID there, so
         # deriving the catalog from it recorded `"5d2609cc-…"` for a catalog physically created as
         # `e2e_sharepoint`, and every engine query for the source died on CATALOG_NOT_FOUND.
-        # Exception: a fixed-catalog warehouse engine (BigQuery/Fabric/Synapse) pins every source to
-        # the one warehouse catalog instead — see fixed_catalog_for_engine, mirrored from the
-        # config-load path in _populate_source_catalog_names.
-        _building_org = current_org.get() or state.org_id
-        # REQ-1529: the environment too — a branch's binding may point the same source id at a
-        # different host, and the coordinator's catalog namespace is shared across both.
-        state.source_catalogs[input.id] = fixed_catalog_for_engine(state) or org_prefixed_catalog(
-            _building_org,
-            source_to_catalog(input.id),
-            default_org=state.org_id,
-            env=active_env(),
-        )
+        # Exceptions: a fixed-catalog warehouse engine (BigQuery/Fabric/Synapse) pins every source
+        # to the one warehouse catalog instead; an adapter-fetched source under Trino resolves
+        # through Trino's own materialize-store catalog (REQ-1730) — see catalog_name_for_source.
+        state.source_catalogs[input.id] = catalog_name_for_source(state, input.type, input.id)
 
         # Provision on the bound engine (the engine makes a catalog; native engines no-op / attach lazily).
         # REQ-1695: under the org's vault -- the password it registers is now a reference into it.
@@ -829,21 +819,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             state.source_allowed_domains[input.id] = list(input.allowed_domains)
 
         # Keep catalog name in sync with the (possibly renamed) source config.
-        from provisa.api.app_loaders import fixed_catalog_for_engine
-        from provisa.core.request_context import active_env, current_org
-        from provisa.compiler.naming import org_prefixed_catalog, source_to_catalog
+        from provisa.api.app_loaders import catalog_name_for_source
 
         # Source id only — see the same derivation in create_source above for why `input.database`
-        # (the remote database/tenant) is not a catalog name, and the fixed-catalog exception.
-        _building_org = current_org.get() or state.org_id
-        # REQ-1529: the environment too — a branch's binding may point the same source id at a
-        # different host, and the coordinator's catalog namespace is shared across both.
-        state.source_catalogs[input.id] = fixed_catalog_for_engine(state) or org_prefixed_catalog(
-            _building_org,
-            source_to_catalog(input.id),
-            default_org=state.org_id,
-            env=active_env(),
-        )
+        # (the remote database/tenant) is not a catalog name, the fixed-catalog exception, and the
+        # adapter-fetched-under-Trino exception (REQ-1730).
+        state.source_catalogs[input.id] = catalog_name_for_source(state, input.type, input.id)
 
         # Invalidate and re-index catalog cache (REQ-464)
         import asyncio as _asyncio

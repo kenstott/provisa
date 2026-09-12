@@ -56980,3 +56980,61 @@
     Given a source registered through a REST router (not createSource)
     When any admin query or mutation calls catalog_for(source_id) afterward
     Then it resolves the org-scoped physical catalog instead of raising "no catalog in org"
+
+- id: REQ-1730
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: RDBMS
+  priority: MUST
+  type: behavioral
+  description: >-
+    A source registered once under DuckDB answers the same query under Trino, requiring no
+    re-registration: (1) an adapter-fetched source (its rows are produced by running a query, not
+    scanned from a relation the engine can reach — REQ-826's `_MATERIALIZE_ONLY`; extended to also
+    cover neo4j and sparql, which fit the definition but were missing from
+    `events/source_loader.py`'s `is_adapter_fetched` set) resolves its physical catalog through
+    Trino's own materialize-store catalog (`provisa_admin`) rather than a per-source name nothing
+    ever provisions for a type with no Trino connector (REQ-842) — `catalog_name_for_source`
+    (app_loaders.py) replaces three duplicated, wrong inline copies of the per-source formula
+    (`_populate_source_catalog_names`, `create_source`, `update_source`); (2) an ATTACH-strategy
+    source with a real Trino connector (mongodb/cassandra/redis/elasticsearch) needs its per-source
+    Trino catalog created on THAT engine specifically — `_register_source_on_engine` only runs
+    inside `create_source`/`update_source`, bound to whichever engine is active at the call, and
+    `update_source` never calls it at all; a caller that must reach it on a different engine than
+    the one active at original registration replays `createSource` (an upsert, not a duplicate
+    error) against that engine; (3) the API-result cache (`engine_cache.cache_location`) shared the
+    same wrong per-source catalog fallback in three call sites (cypher_exec.py,
+    api/data/endpoint_executors.py, api_source/router_integration.py) — fixed to prefer
+    `state.source_catalogs` (the same corrected resolution) ahead of the per-engine
+    `cache_catalog()` default.
+  code:
+  - provisa/api/app_loaders.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/app.py
+  - provisa/api/rest/cypher_exec.py
+  - provisa/api/data/endpoint_executors.py
+  - provisa/api/data/materialization.py
+  - provisa/api_source/router_integration.py
+  - provisa/events/source_loader.py
+  - provisa/federation/backend.py
+  - provisa/federation/runtime.py
+  tests:
+  - provisa-ui/e2e/engine-swap.spec.ts
+  use_case: >-
+    Building the cross-engine "register once, swap engine, requery" harness surfaced these —
+    nothing had ever registered a source under one engine and queried it under another before.
+  scenario: |
+    Given neo4j/mongodb/elasticsearch/redis/cassandra/sparql registered under DuckDB
+    When the Trino backend is reloaded from the SAME Postgres control-plane schema and the source
+    is replayed via createSource
+    Then querying it under Trino returns the same rows DuckDB did
+
+  # NOTE: engine-swap.spec.ts also surfaces a separate, still-open gap — Trino's provisa_admin
+  # postgresql connector refuses CREATE SCHEMA outright (its connection URL pins a currentSchema,
+  # unlike an ordinary postgres-connector catalog), which blocks the API-result cache schema for
+  # every adapter-fetched type that also flows through cypher_exec.py's "API CACHE" mechanism
+  # (sparql/prometheus/graphql_remote/openapi). A refresh_landed_views hook exists to pre-create it
+  # directly against Postgres (bypassing Trino's connector), but is not yet confirmed to fire on
+  # the Trino backend — see source-e2e-coverage-audit memory for the full trace. Left open, not
+  # part of this REQ's completed scope.

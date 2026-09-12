@@ -316,8 +316,16 @@ class EngineRuntime:  # REQ-825, REQ-840
     async def reconcile_landed_tables(self) -> list[tuple[str, str]]:
         """Converge the store's landing schema for MATERIALIZED tables and attach their read views
         (REQ-846/932) — the schema-currency controller. Driven at boot and after (re)registration;
-        convergent + idempotent. No-op on a broad federator. Returns the reconciled (source, table)."""
-        return await self._backend.reconcile_landed_tables(self._state)
+        convergent + idempotent. No-op on a broad federator. Returns the reconciled (source, table).
+
+        REQ-1730: followed by ``refresh_landed_views`` — an engine whose reconcile wrote the change
+        by dialing its store directly, bypassing the engine's own connection (Trino/store_writer),
+        may cache that connector's metadata and need an explicit nudge to see it. No-op on an
+        engine (DuckDB) whose reconcile writes through its OWN connection, which already sees its
+        own state live."""
+        reconciled = await self._backend.reconcile_landed_tables(self._state)
+        await self._backend.refresh_landed_views(self._state)
+        return reconciled
 
     async def land_source_table(
         self,

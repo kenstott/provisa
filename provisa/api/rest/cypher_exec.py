@@ -195,10 +195,21 @@ async def _execute_with_api(
             )
             continue
 
-        _cc = getattr(api_source, "cache_catalog", None) if api_source else None
+        # REQ-1730: an explicit api_source.cache_catalog wins; otherwise state.source_catalogs
+        # (catalog_name_for_source's resolution — the SAME catalog the compiler emits for this
+        # source's own table refs) beats engine.cache_catalog()'s per-ENGINE default. That default
+        # assumes "this engine's source catalogs are already durable" (true for an ATTACH-strategy
+        # source's real per-source Trino catalog), which is false for an adapter-fetched source
+        # (REQ-826 _MATERIALIZE_ONLY): REQ-842 means Trino never provisions ONE for a type with no
+        # Trino connector, so cache_location's OWN per-source fallback
+        # (source_id.replace("-", "_")) named a catalog nothing ever creates and
+        # ensure_cache_schema raised CATALOG_NOT_FOUND on every result-cache write.
+        _cc = (getattr(api_source, "cache_catalog", None) if api_source else None) or getattr(
+            state, "source_catalogs", {}
+        ).get(source_id)
         _default_cs = f"org_{getattr(state, 'org_id', 'default')}_api_cache"
         _cs = getattr(api_source, "cache_schema", _default_cs) if api_source else _default_cs
-        _cache_loc = cache_location(source_id, _cc, _cs)
+        _cache_loc = cache_location(source_id, _cc, _cs, engine=state.federation_engine)
         cache_tbl = cache_table_name(source_id, table_name, url_params)
         cache_rewrites[table_name] = (_cache_loc, cache_tbl)
 

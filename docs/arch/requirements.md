@@ -18203,3 +18203,15 @@ An openapi source registered through the Sources form (`POST /admin/openapi/regi
 **Code:** `provisa/api/app.py`, `provisa/api/admin/graphql_remote_router.py`, `provisa/api/admin/openapi_router.py`
 
 **Tests:** `provisa-ui/e2e/source-to-query.spec.ts`
+
+### REQ-1730 · RDBMS {#REQ-1730}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A source registered once under DuckDB answers the same query under Trino, requiring no re-registration: (1) an adapter-fetched source (its rows are produced by running a query, not scanned from a relation the engine can reach — [REQ-826](#REQ-826)'s `_MATERIALIZE_ONLY`; extended to also cover neo4j and sparql, which fit the definition but were missing from `events/source_loader.py`'s `is_adapter_fetched` set) resolves its physical catalog through Trino's own materialize-store catalog (`provisa_admin`) rather than a per-source name nothing ever provisions for a type with no Trino connector ([REQ-842](#REQ-842)) — `catalog_name_for_source` (app_loaders.py) replaces three duplicated, wrong inline copies of the per-source formula (`_populate_source_catalog_names`, `create_source`, `update_source`); (2) an ATTACH-strategy source with a real Trino connector (mongodb/cassandra/redis/elasticsearch) needs its per-source Trino catalog created on THAT engine specifically — `_register_source_on_engine` only runs inside `create_source`/`update_source`, bound to whichever engine is active at the call, and `update_source` never calls it at all; a caller that must reach it on a different engine than the one active at original registration replays `createSource` (an upsert, not a duplicate error) against that engine; (3) the API-result cache (`engine_cache.cache_location`) shared the same wrong per-source catalog fallback in three call sites (cypher_exec.py, api/data/endpoint_executors.py, api_source/router_integration.py) — fixed to prefer `state.source_catalogs` (the same corrected resolution) ahead of the per-engine `cache_catalog()` default.
+
+**Use case:** Building the cross-engine "register once, swap engine, requery" harness surfaced these — nothing had ever registered a source under one engine and queried it under another before.
+
+**Code:** `provisa/api/app_loaders.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/app.py`, `provisa/api/rest/cypher_exec.py`, `provisa/api/data/endpoint_executors.py`, `provisa/api/data/materialization.py`, `provisa/api_source/router_integration.py`, `provisa/events/source_loader.py`, `provisa/federation/backend.py`, `provisa/federation/runtime.py`
+
+**Tests:** `provisa-ui/e2e/engine-swap.spec.ts`

@@ -179,6 +179,17 @@ class EngineBackend:
         del state
         return []
 
+    async def refresh_landed_views(self, state: Any) -> None:  # REQ-1730
+        """Optional post-reconcile hook: pick up schema/table changes ``reconcile_landed_tables``
+        just wrote where the ENGINE's own catalog metadata is cached rather than live.
+
+        No-op on the base engine and on DuckDB (its connection sees an ATTACHed catalog's state
+        directly — nothing to refresh). Trino's ``provisa_admin`` catalog is a Postgres CONNECTOR
+        with its own metadata cache, so a schema/table ``reconcile_landed_tables`` wrote by dialing
+        Postgres directly (never through Trino) needs an explicit reload before Trino's own
+        listing — and so the compiler's resolved ``catalog.schema.table`` reference — sees it."""
+        del state
+
     def landing_target(
         self,
         *,
@@ -847,6 +858,53 @@ class TrinoBackend(EngineBackend):
             )
             reconciled.append((src.id, table_name))
         return reconciled
+
+    async def refresh_landed_views(self, state: Any) -> None:  # REQ-1730
+        """Flush Trino's ``provisa_admin`` catalog metadata cache after ``reconcile_landed_tables``
+        writes a schema/table by dialing its Postgres materialize store directly (``store_writer``,
+        never through Trino itself). ``provisa_admin``'s ``postgresql`` connector sets no
+        ``metadata.cache-ttl`` today (control_plane_spec, trino_system_catalogs.py) — the default
+        is 0 (no caching) — so this is currently a no-op in practice; it is cheap insurance against
+        that property ever being set, not a fix for an active bug. Best-effort: a coordinator that
+        cannot take the call right now will simply see the change on ITS next natural TTL refresh.
+
+        Also ensures the org's API-result cache schema exists — Trino's ``postgresql`` connector
+        raises NOT_SUPPORTED on ``CREATE SCHEMA`` (unlike DuckDB's, which allows it), so
+        ``engine_cache.ensure_cache_schema`` can never create it THROUGH Trino once an
+        adapter-fetched source's query tries to cache there. Created directly against the same
+        Postgres ``materialize_store()`` DSN provisa_admin itself reads, the same way
+        ``reconcile_landed_tables`` writes the landed tables — bypassing the connector limitation
+        entirely rather than working around it query-by-query. Done BEFORE the flush below, so
+        the flush (when the coordinator's cache-ttl is ever non-zero) picks up a schema that
+        already exists rather than caching its ABSENCE moments before it is created."""
+        try:
+            from provisa.core.environments import active_org_schema
+            from provisa.core.request_context import current_org
+            from provisa.federation.store_writer import store_connection
+            from sqlalchemy.schema import CreateSchema
+
+            org_id = current_org.get() or state.org_id
+            cache_schema = active_org_schema(org_id, "_api_cache")
+            async with store_connection(self.engine.materialize_store()) as store_conn:
+                await store_conn.execute_core(CreateSchema(cache_schema, if_not_exists=True))
+        except Exception:
+            _log.warning("ensuring the API-result cache schema failed (non-fatal)", exc_info=True)
+
+        from provisa.core.trino_system_catalogs import PROVISA_ADMIN_CATALOG
+
+        with self._provisioning_conn(state) as conn:
+            if conn is None:
+                return
+            try:
+                cur = conn.cursor()
+                cur.execute(f"CALL {PROVISA_ADMIN_CATALOG}.system.flush_metadata_cache()")
+                cur.fetchall()
+            except Exception:
+                _log.warning(
+                    "flush_metadata_cache on %s failed (non-fatal)",
+                    PROVISA_ADMIN_CATALOG,
+                    exc_info=True,
+                )
 
     # -- lifecycle -------------------------------------------------------------
 

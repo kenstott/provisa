@@ -92,7 +92,12 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         )
 
     api_source = state.api_sources.get(source_id)
-    _cc = getattr(api_source, "cache_catalog", None) if api_source else None
+    # REQ-1730: state.source_catalogs (catalog_name_for_source's resolution) beats
+    # engine.cache_catalog()'s per-ENGINE default for an adapter-fetched source under Trino —
+    # see cypher_exec.py's identical fix for why.
+    _cc = (getattr(api_source, "cache_catalog", None) if api_source else None) or (
+        getattr(state, "source_catalogs", {}).get(source_id)
+    )
     _org_id = getattr(state, "org_id", "default")
     _cs = (
         getattr(api_source, "cache_schema", f"org_{_org_id}_api_cache")

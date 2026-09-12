@@ -476,7 +476,12 @@ async def _mat_api_ep_table(
     source_id = ep.source_id
     api_source = getattr(state, "api_sources", {}).get(source_id)
 
-    _cc = getattr(api_source, "cache_catalog", None) if api_source else None
+    # REQ-1730: state.source_catalogs (catalog_name_for_source's resolution) beats
+    # engine.cache_catalog()'s per-ENGINE default for an adapter-fetched source under Trino —
+    # see cypher_exec.py's identical fix for why.
+    _cc = (getattr(api_source, "cache_catalog", None) if api_source else None) or (
+        getattr(state, "source_catalogs", {}).get(source_id)
+    )
     _org_id = getattr(state, "org_id", "default")
     _default_cs = active_org_schema(_org_id, "_api_cache")  # REQ-1623
     _cs = getattr(api_source, "cache_schema", _default_cs) if api_source else _default_cs

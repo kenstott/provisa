@@ -95,6 +95,12 @@ const IS_RUNNER = process.env.TEST_WORKER_INDEX === undefined;
 // The specs that address the Trino backend (TRINO_BACKEND_URL from e2e/coverage.ts). Kept as one
 // literal so the project split and the lane's server list cannot drift apart.
 const TRINO_SPECS = ["**/sharepoint-connector.spec.ts", "**/splunk-connector.spec.ts"];
+// The cross-engine swap harness (REQ-1730): registers against the DuckDB backend, then requeries
+// against the Trino one — it needs BOTH webServer entries up and sharing one Postgres control-plane
+// org schema (PROVISA_E2E_ORG_ID == PROVISA_E2E_TRINO_ORG_ID), which no ordinary core/trino run
+// sets up. Excluded from "core" the same way TRINO_SPECS is: a routine core-lane run has no Trino
+// backend at all and this spec would just fail on a missing PROVISA_E2E_TRINO_CONFIG.
+const SWAP_SPECS = ["**/engine-swap.spec.ts"];
 // The vault a source's password is stored in encrypts at rest, and the key is what authorizes
 // reading it back (REQ-685/REQ-1695). This host has no OS keychain for the store to mint one in,
 // so the key is supplied explicitly — exactly as every deployment that stores secrets must, and as
@@ -438,7 +444,11 @@ export default defineConfig({
   // exhaustive list of specs that address the Trino backend (they import TRINO_BACKEND_URL from
   // ./coverage); everything else runs on the DuckDB backend and belongs to core.
   projects: [
-    ...(RUNS_CORE ? [{ name: "core", testIgnore: TRINO_SPECS }] : []),
+    ...(RUNS_CORE ? [{ name: "core", testIgnore: [...TRINO_SPECS, ...SWAP_SPECS] }] : []),
     ...(RUNS_TRINO ? [{ name: "trino", testMatch: TRINO_SPECS }] : []),
+    // Requires RUNS_TRINO (the Trino webServer + its shared-org env overrides) exactly like the
+    // "trino" project does — it is a separate project only so a routine core/trino run never
+    // selects it by accident. See engine-swap.spec.ts's module doc for the invocation.
+    ...(RUNS_TRINO ? [{ name: "swap", testMatch: SWAP_SPECS }] : []),
   ],
 });

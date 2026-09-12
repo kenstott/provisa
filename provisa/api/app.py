@@ -1652,22 +1652,16 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         # router (graphql-remote, openapi) writes straight to the ``sources`` table and never
         # runs create_source's catalog-naming step, so catalog_for() raised "no catalog in org"
         # for every one of them until this mirrored that step here too.
-        from provisa.api.app_loaders import fixed_catalog_for_engine
-        from provisa.compiler.naming import org_prefixed_catalog
+        from provisa.api.app_loaders import catalog_name_for_source
 
         for _sid, _src_dict in list(sources.items()):
             if _sid not in state.source_types and _src_dict.get("type"):
                 state.source_types[_sid] = _src_dict["type"]
             if _src_dict.get("type") == "postgresql":
                 sources[_sid] = {**_src_dict, "database": source_to_catalog(_sid)}
-            if _sid not in state.source_catalogs:
-                state.source_catalogs[_sid] = fixed_catalog_for_engine(
-                    state
-                ) or org_prefixed_catalog(
-                    current_org.get() or state.org_id,
-                    source_to_catalog(_sid),
-                    default_org=state.org_id,
-                    env=active_env(),
+            if _sid not in state.source_catalogs and _src_dict.get("type"):
+                state.source_catalogs[_sid] = catalog_name_for_source(
+                    state, _src_dict["type"], _sid
                 )
         # REQ-1491: a branch's ``sources`` row carries its own bound flag and, once somebody has
         # bound it, its own connection columns — there is nothing to resolve from another
