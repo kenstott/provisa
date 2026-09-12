@@ -57136,5 +57136,25 @@
   # table compiles against whatever catalog_name it resolved to at the LAST rebuild, before this
   # replay corrected state.source_catalogs moments ago. Fixed: create_source now calls
   # _rebuild_schemas after registering, mirroring the other mutations. Confirmed working in
-  # isolation; a residual timing race under this harness's heaviest load remains open — tracked
-  # separately, not blocking this REQ's completed scope.
+  # isolation, but the residual timing race noted here previously had a real cause: _rebuild_schemas
+  # had NO concurrency guard — it runs many `await`s while mutating shared `state`, then publishes
+  # state.schema_build_cache/state.tables atomically at the end. graphql_remote_router.py calls it
+  # twice back-to-back, and create_source's own call (above) can overlap another mutation's — two
+  # concurrent calls could interleave so a call that started earlier, with an older/incomplete table
+  # snapshot, finishes later and clobbers a newer call's already-published state with stale data.
+  # Fixed: app.py's _rebuild_schemas now serializes through _rebuild_schemas_lock (asyncio.Lock),
+  # renaming the body to _rebuild_schemas_impl — every rebuild's own DB fetch now happens strictly
+  # after every prior rebuild's writes are visible, in call order.
+  #
+  # A SEPARATE, deeper bug surfaced once the harness was invoked with the env vars its own module
+  # doc requires (PROVISA_E2E_ORG_ID=e2e_swap PROVISA_E2E_TRINO_ORG_ID=e2e_swap — omitting them runs
+  # DuckDB and Trino against two different org schemas, which is its own source of confusing
+  # failures, not a product bug): a graphql_remote source's auto-registered PLURAL table (the list-
+  # query field, e.g. "..._animal_breeds") ends up with ZERO rows in table_columns, while its
+  # SINGULAR sibling ("..._animal_breed") has full column metadata from auto-registration. The
+  # test's own breedTable = tableNames.find(n => n.includes("animal_breed")) matches the plural
+  # table first (lower id, matches the substring too) and calls updateTable against it — the
+  # mutation reports success, but the columns never persist, confirmed by direct instrumentation
+  # across a full run. This is NOT the same race as above (introspect_tables's per-table skip for
+  # empty column metadata is a documented, deterministic branch, not a race) — root cause not yet
+  # found; tracked as a new, separate issue.

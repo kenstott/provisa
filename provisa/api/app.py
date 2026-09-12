@@ -1482,7 +1482,22 @@ async def build_org_runtime(
     return rt
 
 
+_rebuild_schemas_lock = asyncio.Lock()
+
+
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
+    # Serialize rebuilds: the body below fetches DB state across many `await`s and then
+    # publishes state.schema_build_cache/state.tables in one shot at the end. Two overlapping
+    # callers (e.g. graphql_remote_router's back-to-back calls, or create_source's rebuild
+    # racing another mutation's) can otherwise interleave so a call that started earlier -- and
+    # fetched an earlier, incomplete table list -- finishes later and clobbers a newer call's
+    # already-published state with stale data. Serializing guarantees each rebuild's own DB
+    # fetch happens after every prior rebuild's writes have committed and been published.
+    async with _rebuild_schemas_lock:
+        await _rebuild_schemas_impl(raw_config)
+
+
+async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
     # Rebuild per-role schemas from DB state. Column types come from the authoritative
     # table_columns store (introspect_tables does NOT query the engine), so this runs on any
     # engine; a missing the engine connection only skips the engine-catalog ops seeding below.
