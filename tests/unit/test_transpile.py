@@ -18,6 +18,7 @@ from provisa.transpiler.transpile import (
     transpile_to_trino,
     rewrite_correlated_subqueries_for_trino,
     rewrite_json_object_to_build_object,
+    rewrite_prometheus_labels_for_trino,
 )
 
 
@@ -411,3 +412,31 @@ def test_duckdb_nested_json_agg_rewritten_at_every_depth():
     physical = transpile_to_duckdb(pg_sql)
     assert "JSON_ARRAYAGG" not in physical.upper()
     assert physical.upper().count("JSON_GROUP_ARRAY") == 2
+
+
+class TestRewritePrometheusLabelsForTrino:
+    """REQ-1730: Trino's prometheus connector has a FIXED schema per metric (labels
+    MAP(VARCHAR,VARCHAR), timestamp, value) with no per-label flat columns under any
+    configuration — verified directly against a live coordinator. A registered label column must
+    become labels['col'] for exactly the (catalog, table) pairs known to be prometheus."""
+
+    def test_no_label_columns_known_leaves_sql_untouched(self):
+        sql = 'SELECT job FROM "cat1"."default"."up"'
+        assert rewrite_prometheus_labels_for_trino(sql, {}) == sql
+
+    def test_unrelated_table_is_untouched(self):
+        sql = 'SELECT job FROM "other_cat"."default"."up"'
+        out = rewrite_prometheus_labels_for_trino(sql, {("cat1", "up"): {"job"}})
+        assert "labels[" not in out
+
+    def test_label_column_rewritten_in_select_group_and_order(self):
+        sql = 'SELECT job, CAST(MAX(value) AS INTEGER) AS healthy FROM "cat1"."default"."up" GROUP BY job ORDER BY job'
+        out = rewrite_prometheus_labels_for_trino(sql, {("cat1", "up"): {"job"}})
+        assert out.count("labels['job']") == 3
+        # the value column is untouched — it is real, not a label
+        assert "labels['value']" not in out
+
+    def test_aliased_table_qualifies_the_rewrite(self):
+        sql = 'SELECT "u"."job" FROM "cat1"."default"."up" AS "u"'
+        out = rewrite_prometheus_labels_for_trino(sql, {("cat1", "up"): {"job"}})
+        assert "labels['job']" in out

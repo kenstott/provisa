@@ -198,3 +198,58 @@ def test_dynamic_source_registers_and_analyzes_at_the_recorded_catalog(state, mo
 
     assert engine.registered == [("pet-store-pg", "org_ks__pet_store_pg")]
     assert engine.analyzed == [("pet-store-pg", "org_ks__pet_store_pg")]
+
+
+class _TrinoFederationEngine:
+    """Stand-in for a Trino-bound EngineRuntime: names the live engine, and records whether
+    materialize_store_target was asked for (it must be, for a FETCH-mechanism source; must NOT be,
+    for one Trino reaches live — asking it for a type with no materialize landing would be a bug
+    in its own right, caught here by simply not providing a working implementation)."""
+
+    class _Engine:
+        name = "trino"
+
+    engine = _Engine()
+    has_otel_catalog = True
+
+    def materialize_store_target(self, org_id: str) -> tuple[str, str]:
+        return ("provisa_admin", f"org_{org_id}_mv_cache")
+
+
+def test_trino_routes_fetch_mechanism_sources_to_the_materialize_store(state, monkeypatch):
+    """openapi/graphql_remote/sqlite (Trino Mechanism.FETCH — TrinoPgBackedConnector and
+    subclasses) have no live Trino connector reach; their replica is landed into the materialize
+    store, and that IS the catalog the compiler must name (TrinoBackend.landing_target)."""
+    from provisa.api.app_loaders import catalog_name_for_source
+
+    monkeypatch.setattr(state, "federation_engine", _TrinoFederationEngine(), raising=False)
+
+    assert catalog_name_for_source(state, "openapi", "petstore-api") == "provisa_admin"
+    assert catalog_name_for_source(state, "graphql_remote", "e2e-gql") == "provisa_admin"
+    assert catalog_name_for_source(state, "sqlite", "inquiries-sqlite") == "provisa_admin"
+
+
+def test_trino_routes_live_connector_sources_to_their_own_catalog(state, monkeypatch):
+    """REQ-1730 regression: prometheus (and redis/mongodb/cassandra/elasticsearch/google_sheets)
+    have their OWN live Trino connector (ATTACH_RW/ATTACH_R) despite prometheus also being
+    "adapter-fetched" for DuckDB's own introspection — a different question entirely. Routing it
+    through the materialize store landed every query on a catalog nothing ever populates
+    ('provisa_admin.default.up' TABLE_NOT_FOUND on every run)."""
+    from provisa.api.app_loaders import catalog_name_for_source
+
+    monkeypatch.setattr(state, "federation_engine", _TrinoFederationEngine(), raising=False)
+
+    assert catalog_name_for_source(state, "prometheus", "e2e-prom") == "e2e_prom"
+    assert catalog_name_for_source(state, "redis", "e2e-redis") == "e2e_redis"
+
+
+def test_trino_routes_neo4j_and_sparql_to_the_materialize_store(state, monkeypatch):
+    """neo4j/sparql have no Trino connector at all (TRINO_CONNECTORS has no entry) — same
+    materialize-store routing as a FETCH-mechanism source, for the same underlying reason (REQ-842:
+    no Trino catalog is ever provisioned for a type with no Trino connector)."""
+    from provisa.api.app_loaders import catalog_name_for_source
+
+    monkeypatch.setattr(state, "federation_engine", _TrinoFederationEngine(), raising=False)
+
+    assert catalog_name_for_source(state, "neo4j", "e2e-neo4j") == "provisa_admin"
+    assert catalog_name_for_source(state, "sparql", "e2e-sparql") == "provisa_admin"

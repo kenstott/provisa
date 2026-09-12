@@ -114,7 +114,75 @@ def cache_table_name(  # REQ-318, REQ-309, REQ-327
     return f"r_{h}"
 
 
+# Materialize-store backends a SECOND direct connection can safely reach to create a schema,
+# alongside the engine's own connection — server processes with no single-writer constraint.
+# DuckDB/SQLite are single-writer file stores (store_writer/store_connection.py) the engine holds
+# open via its own attached connection; a second connection opening the same file races or breaks
+# it, so any backend absent here is a hard, named failure rather than a silent attempt.
+_DIRECT_WRITE_SAFE_STORE_BACKENDS = frozenset({"postgresql", "mysql", "mariadb"})
+
+
+def _create_schema_directly_against_store(loc: CacheLocation) -> None:
+    """REQ-1730: the connector for ``loc.catalog`` refuses to create schemas and ``loc.schema``
+    does not exist yet — reach the underlying materialize store directly, the same technique
+    ``TrinoBackend.refresh_landed_views`` uses to pre-create it at boot, rather than depend on that
+    boot/reload hook having already run for this specific org before this cache lookup needed it.
+
+    Only meaningful for a Postgres/MySQL/MariaDB-backed (``relational``) store — see
+    ``_DIRECT_WRITE_SAFE_STORE_BACKENDS``. An ``iceberg`` location is a namespace over an
+    external, reachable store (S3 + the Iceberg catalog) that the engine exposes via its OWN
+    connector's ``CREATE SCHEMA ... WITH (location = ...)``; a single-writer file store (DuckDB/
+    SQLite) must be written through the engine's own attached connection. Neither has a second
+    connection this fallback can safely open, so a connector refusal there is a hard failure, not
+    something this fallback can paper over."""
+    if loc.backend != "relational":
+        raise RuntimeError(
+            f"ensure_cache_schema: connector for {loc.catalog!r} refused to create "
+            f"{loc.schema!r}, and it is a {loc.backend!r} location — an external/reachable store "
+            "namespace must be created through the engine's own connector, not by writing "
+            "directly to a materialize store that does not own it"
+        )
+    from sqlalchemy import make_url
+    from sqlalchemy.schema import CreateSchema
+
+    from provisa.api.app import state
+    from provisa.core.database import sync_engine_from_url
+
+    dsn = state.federation_engine.engine.materialize_store()
+    backend = make_url(dsn).get_backend_name()
+    if backend not in _DIRECT_WRITE_SAFE_STORE_BACKENDS:
+        raise RuntimeError(
+            f"ensure_cache_schema: {loc.catalog!r}'s materialize store backend {backend!r} does "
+            f"not support a second direct connection (only "
+            f"{sorted(_DIRECT_WRITE_SAFE_STORE_BACKENDS)} do) — {loc.schema!r} must be created "
+            "through the engine's own connection instead"
+        )
+    engine = sync_engine_from_url(dsn)
+    try:
+        with engine.begin() as sa_conn:
+            sa_conn.execute(CreateSchema(loc.schema, if_not_exists=True))
+    except Exception as direct_exc:
+        raise RuntimeError(
+            f"ensure_cache_schema: connector for {loc.catalog!r} cannot create schemas, and "
+            f"direct creation of {loc.schema!r} against the materialize store also failed: "
+            f"{direct_exc}"
+        ) from direct_exc
+    finally:
+        engine.dispose()
+
+
 def ensure_cache_schema(conn, loc: CacheLocation) -> None:  # REQ-318, REQ-309, REQ-327
+    """REQ-1730: an engine's own connection should only ever READ the store — Trino's postgresql
+    connector enforces this by refusing CREATE SCHEMA outright (NOT_SUPPORTED) for a catalog whose
+    JDBC URL pins a ``currentSchema`` (e.g. ``provisa_admin``), regardless of whether the schema
+    already exists. A ``CREATE SCHEMA IF NOT EXISTS`` through such a connection therefore ALWAYS
+    fails on the very first call after a fresh process boot, even when something else (a direct
+    Postgres connection, matching how ``reconcile_landed_tables``/``store_writer`` land tables)
+    already created the schema moments earlier. On that refusal, fall back to a READ — listing
+    schemas is something every connector supports — and treat an already-existing schema as
+    success rather than a hard failure. When the read confirms the schema genuinely is missing
+    (the boot/reload hook that normally pre-creates it has not run yet for this org), create it
+    directly against the store ourselves instead of erroring out on a timing gap."""
     key = (loc.catalog, loc.schema)
     if key in _SCHEMA_EXISTS_CACHE:
         return
@@ -130,8 +198,27 @@ def ensure_cache_schema(conn, loc: CacheLocation) -> None:  # REQ-318, REQ-309, 
         conn.execute(sql)
         conn.fetchall()
         _SCHEMA_EXISTS_CACHE.add(key)
-    except Exception as exc:
-        raise RuntimeError(f"ensure_cache_schema failed for {key}: {exc}") from exc
+        return
+    except Exception as create_exc:
+        if "NOT_SUPPORTED" not in str(create_exc):
+            raise RuntimeError(
+                f"ensure_cache_schema failed for {key}: {create_exc}"
+            ) from create_exc
+
+    try:
+        conn.execute(
+            f"SELECT 1 FROM {loc.catalog}.information_schema.schemata "
+            f"WHERE schema_name = '{loc.schema}'"
+        )
+        exists = bool(conn.fetchall())
+    except Exception as read_exc:
+        raise RuntimeError(
+            f"ensure_cache_schema: connector refused to create {key} and could not verify it "
+            f"exists either: {read_exc}"
+        ) from read_exc
+    if not exists:
+        _create_schema_directly_against_store(loc)
+    _SCHEMA_EXISTS_CACHE.add(key)
 
 
 def table_known_live(loc: CacheLocation, table_name: str) -> bool:  # REQ-318, REQ-309, REQ-327
@@ -174,6 +261,77 @@ def table_exists(  # REQ-318, REQ-309, REQ-327
         return False
 
 
+_IR_TO_SQLALCHEMY: dict[str, Any] = {
+    "VARCHAR": "String",
+    "BIGINT": "BigInteger",
+    "DOUBLE": "Float",
+    "BOOLEAN": "Boolean",
+}
+
+
+def _create_and_insert_directly_against_store(
+    loc: CacheLocation, table_name: str, rows: list[dict], columns: list
+) -> None:
+    """REQ-1730: the same self-heal as ``_create_schema_directly_against_store``, one level deeper
+    — Trino's postgresql connector refuses CREATE TABLE (NOT_SUPPORTED) for a catalog whose JDBC
+    URL pins a ``currentSchema``, just as it refuses CREATE SCHEMA, and for the same reason. Build
+    and land the cache table directly against the materialize store instead of through the
+    connector that cannot write it."""
+    if loc.backend != "relational":
+        raise RuntimeError(
+            f"ensure_cache_schema: connector for {loc.catalog!r} refused to create table "
+            f"{table_name!r}, and it is a {loc.backend!r} location — an external/reachable store "
+            "table must be created through the engine's own connector, not by writing directly "
+            "to a materialize store that does not own it"
+        )
+    from sqlalchemy import Boolean, Column, MetaData, String, Table, insert, make_url
+    from sqlalchemy import BigInteger, Float
+
+    from provisa.api.app import state
+    from provisa.core.database import sync_engine_from_url
+
+    dsn = state.federation_engine.engine.materialize_store()
+    backend = make_url(dsn).get_backend_name()
+    if backend not in _DIRECT_WRITE_SAFE_STORE_BACKENDS:
+        raise RuntimeError(
+            f"ensure_cache_schema: {loc.catalog!r}'s materialize store backend {backend!r} does "
+            f"not support a second direct connection (only "
+            f"{sorted(_DIRECT_WRITE_SAFE_STORE_BACKENDS)} do) — table {table_name!r} must be "
+            "created through the engine's own connection instead"
+        )
+    sa_types = {"String": String, "BigInteger": BigInteger, "Float": Float, "Boolean": Boolean}
+
+    def _column_type(col):
+        raw = col.type.value if hasattr(col.type, "value") else str(col.type)
+        ir = _API_TYPE_TO_IR.get(raw, "VARCHAR")
+        return sa_types[_IR_TO_SQLALCHEMY[ir]]()
+
+    md = MetaData(schema=loc.schema)
+    tbl = Table(table_name, md, *[Column(c.name, _column_type(c)) for c in columns])
+    engine = sync_engine_from_url(dsn)
+    try:
+        with engine.begin() as sa_conn:
+            tbl.create(sa_conn, checkfirst=True)
+            if rows:
+                col_names = [c.name for c in columns]
+                sa_conn.execute(insert(tbl), [{k: r.get(k) for k in col_names} for r in rows])
+    except Exception as direct_exc:
+        raise RuntimeError(
+            f"ensure_cache_schema: connector for {loc.catalog!r} cannot create tables, and "
+            f"direct creation of {table_name!r} against the materialize store also failed: "
+            f"{direct_exc}"
+        ) from direct_exc
+    finally:
+        engine.dispose()
+    log.info(
+        '[API CACHE] materialized %d rows → %s.%s."%s" (direct)',
+        len(rows),
+        loc.catalog,
+        loc.schema,
+        table_name,
+    )
+
+
 def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
     conn, loc: CacheLocation, table_name: str, rows: list[dict], columns: list
 ) -> None:
@@ -196,8 +354,14 @@ def create_and_insert(  # REQ-318, REQ-309, REQ-327, REQ-280
         create_sql = (
             f'CREATE TABLE IF NOT EXISTS {loc.catalog}.{loc.schema}."{table_name}" ({col_defs})'
         )
-    conn.execute(create_sql)
-    conn.fetchall()
+    try:
+        conn.execute(create_sql)
+        conn.fetchall()
+    except Exception as create_exc:
+        if "NOT_SUPPORTED" not in str(create_exc):
+            raise
+        _create_and_insert_directly_against_store(loc, table_name, rows, columns)
+        return
 
     if not rows:
         return

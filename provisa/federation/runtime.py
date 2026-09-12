@@ -322,9 +322,15 @@ class EngineRuntime:  # REQ-825, REQ-840
         by dialing its store directly, bypassing the engine's own connection (Trino/store_writer),
         may cache that connector's metadata and need an explicit nudge to see it. No-op on an
         engine (DuckDB) whose reconcile writes through its OWN connection, which already sees its
-        own state live."""
-        reconciled = await self._backend.reconcile_landed_tables(self._state)
-        await self._backend.refresh_landed_views(self._state)
+        own state live. In a ``finally``, not sequenced after: one table's landing_worklist entry
+        raising (a stale row, a schema drift the store rejects) must not skip refresh_landed_views
+        for every OTHER table already reconciled before it — the two are independent concerns, and
+        every caller of this method already treats the whole call as best-effort (REQ-846/932's
+        own callers log-and-continue on failure here, never let it abort boot or registration)."""
+        try:
+            reconciled = await self._backend.reconcile_landed_tables(self._state)
+        finally:
+            await self._backend.refresh_landed_views(self._state)
         return reconciled
 
     async def land_source_table(

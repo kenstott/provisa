@@ -771,9 +771,18 @@ class TrinoBackend(EngineBackend):
         return True
 
     def transpile_physical(self, pg_sql: str) -> str:
-        from provisa.transpiler.transpile import transpile_to_trino
+        from provisa.transpiler.transpile import (
+            rewrite_prometheus_labels_for_trino,
+            transpile_to_trino,
+        )
 
-        return transpile_to_trino(pg_sql)
+        sql = transpile_to_trino(pg_sql)
+        from provisa.api.app import state
+
+        label_columns = getattr(state, "prometheus_label_columns", None)
+        if label_columns:
+            sql = rewrite_prometheus_labels_for_trino(sql, label_columns)
+        return sql
 
     def materialize_store_target(self, state: Any, org_id: str) -> tuple[str, str]:
         """Trino reaches its materialization store through the ``provisa_admin`` catalog.

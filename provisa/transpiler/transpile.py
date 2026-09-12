@@ -47,6 +47,53 @@ def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     return _rewrite_to_json_for_trino(result)
 
 
+def rewrite_prometheus_labels_for_trino(
+    sql: str, label_columns: dict[tuple[str, str], set[str]]
+) -> str:  # REQ-1730
+    """Rewrite a registered prometheus label column to ``labels['<name>']``.
+
+    Trino's prometheus connector has no table-description mechanism (verified directly against a
+    live coordinator: only ``prometheus.uri``/``prometheus.http.additional-headers``/
+    ``prometheus.read-timeout`` are real catalog properties) and exposes a FIXED per-metric schema
+    — ``labels MAP(VARCHAR,VARCHAR), timestamp, value`` — with no per-label flat columns under any
+    configuration. A registered label column (e.g. "job") compiles to a bare identifier everywhere
+    else (DuckDB introspects prometheus directly and already exposes it as a flat column), so only
+    Trino needs this rewrite — applied here, at the very last physical-SQL step, rather than
+    anywhere upstream in the shared governed pipeline.
+
+    ``label_columns`` maps ``(catalog, table)`` — exactly the pairs known to be prometheus,
+    populated at registration time — to that table's label column names; every other table's
+    columns pass through untouched. A single-table query need not alias its label references; a
+    multi-table query needs the label qualified by that table's alias to disambiguate."""
+    if not label_columns:
+        return sql
+    tree = sqlglot.parse_one(sql, read="trino")
+    alias_labels: dict[str | None, set[str]] = {}
+    for tbl in tree.find_all(exp.Table):
+        catalog = tbl.args.get("catalog")
+        if catalog is None:
+            continue
+        labels = label_columns.get((catalog.name, tbl.name))
+        if labels:
+            alias_labels[tbl.alias_or_name] = labels
+    if not alias_labels:
+        return sql
+    single_alias = next(iter(alias_labels)) if len(alias_labels) == 1 else None
+
+    def _rewrite(node: exp.Expression) -> exp.Expression:
+        if isinstance(node, exp.Column) and not isinstance(node.parent, exp.Bracket):
+            tbl_alias = node.table or single_alias
+            labels = alias_labels.get(tbl_alias) if tbl_alias else None
+            if labels and node.name in labels:
+                return exp.Bracket(
+                    this=exp.Column(this=exp.to_identifier("labels"), table=node.args.get("table")),
+                    expressions=[exp.Literal.string(node.name)],
+                )
+        return node
+
+    return tree.transform(_rewrite).sql(dialect="trino")
+
+
 def _rewrite_to_json_for_trino(sql: str) -> str:
     """Replace to_json(x) with CAST(x AS JSON) for Trino.
 

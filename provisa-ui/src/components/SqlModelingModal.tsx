@@ -43,6 +43,7 @@ import type {
   ColumnProfile,
 } from "./sql-modeling/types";
 import { normalizeDomain } from "./sql-modeling/types";
+import { wrapSampledSql } from "../pages/sql/sqlHelpers";
 import { loadHistory, saveHistory } from "./sql-modeling/history";
 import { JoinCanvas } from "./sql-modeling/JoinCanvas";
 import { SchemaSidebar } from "./sql-modeling/SchemaSidebar";
@@ -314,12 +315,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
     setResultError("");
     const t0 = performance.now();
     const inner = sqlText.trim().replace(/;+$/, "");
-    const sampledSql =
-      sampleMode === "first"
-        ? `SELECT * FROM (\n${inner}\n) _sample LIMIT ${sampleSize}`
-        : sampleMode === "last"
-          ? `SELECT * FROM (\n${inner}\n) _sample ORDER BY 1 DESC LIMIT ${sampleSize}`
-          : `SELECT * FROM (\n${inner}\n) _sample ORDER BY random() LIMIT ${sampleSize}`;
+    const sampledSql = wrapSampledSql(inner, sampleMode, sampleSize);
     const result = await runSql(sampledSql, role);
     const durationMs = Math.round(performance.now() - t0);
     setExecMs(durationMs);

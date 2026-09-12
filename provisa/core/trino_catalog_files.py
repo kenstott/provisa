@@ -108,9 +108,11 @@ def _prometheus_config(source: Source):
     from provisa.prometheus.source import PrometheusSourceConfig, PrometheusTableConfig
 
     m = source.mapping
-    url = m.get("url") or (
-        f"http://{source.host}:{source.port}" if source.host else "http://localhost:9090"
-    )
+    # source.host IS the server URL for prometheus (the Sources form stores it that way —
+    # demo/sources/prometheus/fragment.yaml; port is never used). Reconstructing
+    # f"http://{host}:{port}" double-prefixed an already-complete URL into a malformed one
+    # (REQ-1730: surfaced as Trino's prometheus connector failing "Error reading metrics").
+    url = m.get("url") or source.host or "http://localhost:9090"
     tables = [
         PrometheusTableConfig(
             name=t["name"],

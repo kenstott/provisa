@@ -53,6 +53,15 @@ export async function pickSchemaAndTable(page: Page, schema: string, table: stri
   const tableSelect = page.getByTestId("register-table-table-select");
   await expect(tableSelect.locator(`option[value='${table}']`)).toHaveCount(1, { timeout: 120000 });
   await tableSelect.selectOption(table);
+  // Column metadata loads asynchronously after the table selection (RegisterTableForm's own
+  // useEffect) and the submit button is never disabled while it is in flight — an openapi table
+  // additionally needs a live HTTP round-trip (dynamic column inference off the response shape)
+  // that can lose the race with the caller's next action under load, leaving submit clicked
+  // before any column has populated and "At least one column must be selected" silently blocking
+  // it forever. Wait for at least one column row before returning control to the caller.
+  await expect(
+    page.locator('[data-testid^="register-table-col-selected-"]').first(),
+  ).toBeVisible({ timeout: 30000 });
 }
 
 /**

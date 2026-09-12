@@ -218,30 +218,44 @@ def catalog_name_for_source(state: "AppState", source_type: str, source_id: str)
     """The physical catalog a registered source's tables resolve to under the ACTIVE engine.
 
     Order: (1) a fixed-catalog warehouse engine (see ``fixed_catalog_for_engine``) pins every
-    source to one name; (2) an adapter-fetched source (REQ-826 ``_MATERIALIZE_ONLY`` — its rows
-    are produced by the connector's fetch, not scanned from a relation the engine can reach) under
-    Trino lands DIRECTLY at its registered address with no engine-side redirect view
-    (``TrinoBackend.landing_target``'s own docstring: "no engine-side view layer to redirect a
-    mangled mat name back to the physical name the compiler emits") — so the catalog the compiler
-    must emit is Trino's OWN materialize-store catalog (``materialize_store_target``'s catalog,
-    ``provisa_admin`` — the same Postgres ``reconcile_landed_tables`` writes into), never a
-    per-source name: REQ-842 means no Trino catalog is ever provisioned for a type with no Trino
-    connector, so a per-source name here would resolve to a catalog that is never created. (3)
-    otherwise the per-source org-scoped name every other engine (DuckDB's own per-source ATTACH,
-    a warehouse's per-source external-table catalog) actually provisions.
+    source to one name; (2) a source whose Trino connector is ITSELF Postgres-backed (REQ-826
+    ``_MATERIALIZE_ONLY`` — its rows are produced by the connector's fetch, not scanned from a
+    relation Trino can reach live) lands DIRECTLY at its registered address with no engine-side
+    redirect view (``TrinoBackend.landing_target``'s own docstring: "no engine-side view layer to
+    redirect a mangled mat name back to the physical name the compiler emits") — so the catalog
+    the compiler must emit is Trino's OWN materialize-store catalog (``materialize_store_target``'s
+    catalog, ``provisa_admin`` — the same Postgres ``reconcile_landed_tables`` writes into), never
+    a per-source name: REQ-842 means no Trino catalog is ever provisioned for a type with no LIVE
+    Trino connector, so a per-source name here would resolve to a catalog that is never created.
+    (3) otherwise the per-source org-scoped name every other engine (DuckDB's own per-source
+    ATTACH, a warehouse's per-source external-table catalog, or Trino's OWN live connector for a
+    type that has one) actually provisions.
+
+    REQ-1730: (2) checks the Trino connector's OWN ``mechanism`` (``LIVE_IN_PLACE`` — ATTACH_RW/
+    ATTACH_R/SCAN — vs FETCH, or no Trino connector at all), never ``is_adapter_fetched`` — a
+    DIFFERENT question (does DuckDB's introspection produce rows by running a query) that a type
+    can answer True to while STILL having its own LIVE Trino connector (prometheus, whose rows
+    Trino scrapes directly — routing it through provisa_admin landed it on a catalog nothing ever
+    populated, TABLE_NOT_FOUND on every query; google_sheets is the same case, ATTACH_R). redis is
+    the inverse case, already excluded from adapter-fetched entirely since Trino reaches it live
+    too.
     """
     from provisa.compiler.naming import org_prefixed_catalog
     from provisa.core.request_context import active_env, current_org
-    from provisa.events.source_loader import is_adapter_fetched
+    from provisa.federation.connector_base import LIVE_IN_PLACE
 
     fixed = fixed_catalog_for_engine(state)
     if fixed:
         return fixed
     engine_rt = state.federation_engine
     engine_name = getattr(getattr(engine_rt, "engine", None), "name", "")
-    if is_adapter_fetched(source_type) and engine_name == "trino":
-        org_id = current_org.get() or state.org_id
-        return engine_rt.materialize_store_target(org_id)[0]
+    if engine_name == "trino":
+        from provisa.federation.trino_connectors import TRINO_CONNECTORS
+
+        connector = TRINO_CONNECTORS.get(source_type)
+        if connector is None or connector.mechanism not in LIVE_IN_PLACE:
+            org_id = current_org.get() or state.org_id
+            return engine_rt.materialize_store_target(org_id)[0]
     return org_prefixed_catalog(
         current_org.get() or state.org_id,
         source_to_catalog(source_id),

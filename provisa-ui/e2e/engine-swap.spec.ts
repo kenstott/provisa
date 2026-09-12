@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: dca902b8-1f0f-45fa-b457-00a5ec81bff9
 // Canary: placeholder
 //
 // This source code is licensed under the Business Source License 1.1
@@ -475,7 +476,11 @@ async function reprovisionSourceOnEngine(engine: EngineTarget, sourceId: string)
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      query: "{ sources { id type host port database username path description } }",
+      // mappingJson: redis/elasticsearch's per-table definitions live in Source.mapping (REQ-250/
+      // 251's write_table_definitions reads source.mapping.tables) — omitting it here recreates
+      // the source on the target engine with an empty mapping, so its table-description file
+      // comes out empty and every one of its registered tables 404s as TABLE_NOT_FOUND.
+      query: "{ sources { id type host port database username path description mappingJson } }",
     }),
   });
   const resText = await res.text();
@@ -489,9 +494,21 @@ async function reprovisionSourceOnEngine(engine: EngineTarget, sourceId: string)
     username: string;
     path: string | null;
     description: string;
+    mappingJson: string | null;
   }>;
   const src = sources.find((s) => s.id === sourceId);
   expect(src, `source ${sourceId} not found on this engine's control-plane schema`).toBeTruthy();
+  // Trino runs in its own Docker container (docker-compose.core.yml), unlike DuckDB which runs
+  // natively as this harness's own process — a host published on the HOST's localhost (every
+  // demo-source-containers.ts port) is unreachable as "localhost" from inside that container,
+  // which instead resolves to itself. host.docker.internal is Docker Desktop's address for the
+  // host machine. DuckDB's own registration is untouched (the row read above, before this
+  // rewrite); only the copy replayed against a Dockerized engine gets translated. `host` is not
+  // always a bare hostname — prometheus stores a full URL there (e.g. "http://localhost:39090",
+  // SourceFormFieldsExtended.tsx) — so replace the substring rather than requiring an exact match.
+  if (engine.name === "trino" && src!.host) {
+    src!.host = src!.host.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal");
+  }
   const mutation = await fetch(`${engine.backendUrl}/admin/graphql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

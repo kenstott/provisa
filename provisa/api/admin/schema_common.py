@@ -242,6 +242,103 @@ async def _add_source_pool(state, input: SourceInput) -> None:
     )
 
 
+async def _synthesize_mapping_dsl_tables(pool, model) -> None:  # REQ-1730
+    """Fill in ``model.mapping["tables"]`` entries a redis source's UI-registered tables never got.
+
+    REQ-250/251's Trino table-description files are written from ``source.mapping.tables`` — a
+    config-declared source populates it at provisioning, but the UI's Register Table flow never
+    writes back to it (DuckDB needs no static description file; it introspects redis directly via
+    ``redis/fetch.py``). Reprovisioning such a source on Trino (REQ-1730's cross-engine swap, or
+    any engine change that (re)provisions an existing source) then produces an EMPTY description
+    file and every one of its tables 404s as TABLE_NOT_FOUND, even though DuckDB serves it fine.
+    Synthesize the same entry ``redis/fetch.py``'s own fallback convention already assumes for an
+    undeclared table (``required_key_pattern``, key column "key", hash values) from what IS
+    already known — ``registered_tables``/``table_columns`` — for any table not already declared.
+
+    Prometheus deliberately gets none of this: its Trino connector has no table-description
+    mechanism at all (only ``prometheus.uri``/``prometheus.http.additional-headers``/
+    ``prometheus.read-timeout`` are real catalog properties — verified directly against a live
+    coordinator, which rejects a ``prometheus.table-description-dir`` property outright) and
+    exposes a FIXED per-metric schema (``labels MAP(VARCHAR,VARCHAR), timestamp, value``) with no
+    per-label flat columns under any configuration. A registered label column (e.g. "job") is only
+    reachable there as ``labels['job']`` — a physical-SQL rewrite the compiler would have to make,
+    not something a table-description entry (which ``provisa.prometheus.source.
+    generate_table_definitions`` produces but nothing ever wires to a real Trino property) can fix.
+    """
+    if model.type.value != "redis":
+        return
+    from provisa.core.schema_org import table_columns
+    from provisa.redis.fetch import KEY_COLUMN
+    from provisa.redis.source import DEFAULT_SCHEMA, ValueType, required_key_pattern
+
+    declared = {t.get("name") for t in model.mapping.get("tables", [])}
+    async with pool.acquire() as conn:
+        res = await conn.execute_core(
+            select(registered_tables.c.id, registered_tables.c.table_name).where(
+                registered_tables.c.source_id == model.id
+            )
+        )
+        rows = res.fetchall()
+        for row in rows:
+            if row.table_name in declared:
+                continue
+            cols_res = await conn.execute_core(
+                select(table_columns.c.column_name, table_columns.c.data_type).where(
+                    table_columns.c.table_id == row.id
+                )
+            )
+            cols = [
+                {"name": c.column_name, "data_type": c.data_type or "VARCHAR"}
+                for c in cols_res.fetchall()
+                if c.column_name != KEY_COLUMN
+            ]
+            model.mapping.setdefault("tables", []).append(
+                {
+                    "name": row.table_name,
+                    "key_pattern": required_key_pattern(row.table_name, DEFAULT_SCHEMA),
+                    "key_column": KEY_COLUMN,
+                    "value_type": ValueType.HASH,
+                    "columns": cols,
+                }
+            )
+
+
+async def _cache_prometheus_label_columns(pool, state, model) -> None:  # REQ-1730
+    """Record which registered columns of a prometheus table are labels, keyed by the physical
+    (catalog, table) Trino queries address it as.
+
+    Trino's prometheus connector has no table-description mechanism (see
+    ``_synthesize_mapping_dsl_tables``'s docstring) and exposes a FIXED per-metric schema —
+    ``labels MAP(VARCHAR,VARCHAR), timestamp, value`` — so a registered label column (e.g. "job")
+    is only reachable there as ``labels['job']``. ``TrinoBackend.transpile_physical`` reads this
+    cache to rewrite a bare label reference for exactly the (catalog, table) pairs known to be
+    prometheus; DuckDB needs no rewrite (it introspects prometheus directly and already exposes the
+    label as a flat column)."""
+    if model.type.value != "prometheus":
+        return
+    from provisa.core.schema_org import table_columns
+
+    catalog = state.source_catalogs.get(model.id, model.id)
+    cache: dict[tuple[str, str], set[str]] = getattr(state, "prometheus_label_columns", None) or {}
+    async with pool.acquire() as conn:
+        res = await conn.execute_core(
+            select(registered_tables.c.id, registered_tables.c.table_name).where(
+                registered_tables.c.source_id == model.id
+            )
+        )
+        for row in res.fetchall():
+            cols_res = await conn.execute_core(
+                select(table_columns.c.column_name).where(table_columns.c.table_id == row.id)
+            )
+            labels = {
+                c.column_name
+                for c in cols_res.fetchall()
+                if c.column_name not in ("timestamp", "value")
+            }
+            cache[(catalog, row.table_name)] = labels
+    state.prometheus_label_columns = cache
+
+
 def _register_source_on_engine(state, model, input: SourceInput) -> None:
     """Provision the source on the bound engine (mirrors config_loader path)."""
     from provisa.core.secrets import resolve_secrets

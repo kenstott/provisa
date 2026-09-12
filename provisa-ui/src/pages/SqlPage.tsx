@@ -37,7 +37,12 @@ import { tabResultsKey, tabSqlKey, tabNlKey } from "./sql/types";
 import type { ResultTab, TopTab, SqlTab, SqlResults, ViewColumnConfig } from "./sql/types";
 import { useResultsGrid } from "./sql/useResultsGrid";
 import { loadHistory, saveHistory } from "./sql/historyHelpers";
-import { autoAliasConflicts, normalizeDomain, parseSemanticMetricQuery } from "./sql/sqlHelpers";
+import {
+  autoAliasConflicts,
+  normalizeDomain,
+  parseSemanticMetricQuery,
+  wrapSampledSql,
+} from "./sql/sqlHelpers";
 import { newTabId, emptyTab, loadTabsMeta, persistTabsMeta, nextTabTitle } from "./sql/tabHelpers";
 import { SchemaBrowser } from "./sql/SchemaBrowser";
 import { JoinCanvas } from "./sql/JoinCanvas";
@@ -617,12 +622,7 @@ export function SqlPage() {
     setResultError("");
     const t0 = performance.now();
     const inner = aliased.trim().replace(/;+$/, "");
-    const sampledSql =
-      sampleMode === "first"
-        ? `SELECT * FROM (\n${inner}\n) _sample LIMIT ${sampleSize}`
-        : sampleMode === "last"
-          ? `SELECT * FROM (\n${inner}\n) _sample ORDER BY 1 DESC LIMIT ${sampleSize}`
-          : `SELECT * FROM (\n${inner}\n) _sample ORDER BY random() LIMIT ${sampleSize}`;
+    const sampledSql = wrapSampledSql(inner, sampleMode, sampleSize);
     const result = await runSql(sampledSql, role, statsEnabled);
     const durationMs = Math.round(performance.now() - t0);
     setExecMs(durationMs);

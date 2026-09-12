@@ -10,6 +10,32 @@
 
 import type { Metric, RegisteredTable, Relationship } from "../../types/admin";
 
+export type SampleMode = "first" | "last" | "random";
+
+/** Wrap a user's SQL for the SQL/Modeling preview's "sample size" cap (REQ-1730).
+ *
+ * "first" means "run my query, capped at N rows" — this must NOT wrap in a subquery:
+ * `SELECT * FROM (<inner with its own ORDER BY>) _sample LIMIT n` gives standard SQL no ordering
+ * guarantee at all once the derived table's ORDER BY is consumed by an enclosing query with none
+ * of its own. Verified directly against Trino (bypassing this app) that it sorts correctly when
+ * ORDER BY isn't trapped inside an unordered derived table — the redis connector's plan shape was
+ * simply the first one observed NOT to coincidentally preserve the inner order, returning rows in
+ * scan order instead of what the user's query asked for. Appending LIMIT straight onto the query
+ * keeps whatever ordering (or lack of one) it already specifies — exactly what "first N rows"
+ * means. "last"/"random" genuinely override the row order (DESC by column 1 / random) and still
+ * need the wrap for that. */
+export function wrapSampledSql(inner: string, sampleMode: SampleMode, sampleSize: number): string {
+  if (sampleMode === "first") {
+    // Already has its own LIMIT — appending a second one is invalid SQL; leave it as-is and let
+    // the server's governed ceiling (REQ-005/263) bound it if it's larger than allowed.
+    if (/\bLIMIT\s+\d+\s*$/i.test(inner)) return inner;
+    return `${inner}\nLIMIT ${sampleSize}`;
+  }
+  return sampleMode === "last"
+    ? `SELECT * FROM (\n${inner}\n) _sample ORDER BY 1 DESC LIMIT ${sampleSize}`
+    : `SELECT * FROM (\n${inner}\n) _sample ORDER BY random() LIMIT ${sampleSize}`;
+}
+
 /** Add `table_col` aliases to any SELECT column whose bare name conflicts with another. */
 export function autoAliasConflicts(sql: string): string {
   // Isolate SELECT item list (between SELECT and the first FROM not inside parens)

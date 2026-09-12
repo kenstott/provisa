@@ -86,6 +86,8 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _register_source_on_engine,
     _remove_view_mv,
     _sync_view_mv,
+    _cache_prometheus_label_columns,
+    _synthesize_mapping_dsl_tables,
     _upsert_source_with_domains,
     _validate_govdata_api_key,
     forget_source_password,
@@ -707,6 +709,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # Provision on the bound engine (the engine makes a catalog; native engines no-op / attach lazily).
         # REQ-1695: under the org's vault -- the password it registers is now a reference into it.
         async with bound_to_request_org():
+            await _synthesize_mapping_dsl_tables(pool, model)
+            await _cache_prometheus_label_columns(pool, state, model)
             _register_source_on_engine(state, model, input)
         await _analyze_source_on_engine(state, pool, model, input)
 
@@ -714,6 +718,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _prime_govdata_cache(input)
 
         _fire_catalog_indexing(state, pool, input)
+
+        # REQ-1730: createSource is an upsert (REQ-1266's own doc on _upsert_source_with_domains) —
+        # replaying it against a DIFFERENT engine than the one active at original registration
+        # (reprovisioning a source under a newly-swapped-to engine) leaves that engine's own
+        # ctx/schema_build_cache never rebuilt, so any table ALREADY registered for this source
+        # (in the shared control plane, from its original registration) compiles against whatever
+        # catalog_name this source resolved to at the LAST rebuild — before this replay corrected
+        # state.source_catalogs[input.id] moments ago. update_table/register_table already rebuild
+        # on every call; create_source alone never did, because a brand-new source has no
+        # registered tables yet to rebuild for. An upserted one can.
+        await _rebuild_schemas()
 
         return MutationResult(
             success=True,

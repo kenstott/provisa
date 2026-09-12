@@ -134,6 +134,7 @@ class FederationEngine:  # REQ-840
         backend_factory: Any = None,
         capabilities: Any = None,
         default_materialize_store: Any = None,
+        supported_materialize_stores: frozenset[str] | None = None,
     ) -> None:
         self.name = name
         # The _ENGINE_BUILDERS key this instance was selected under. build_engine — the one place the
@@ -144,6 +145,14 @@ class FederationEngine:  # REQ-840
         # A zero-arg callable returning this engine's DECLARED default materialization-store DSN (or
         # None). Set per engine in build_*_engine — the ONE place an engine names its own default.
         self._default_store_fn = default_materialize_store
+        # The SQLAlchemy backend names (``make_url(dsn).get_backend_name()``) this engine's own
+        # connector can actually write a materialization into — None means unrestricted (not yet
+        # verified either way for this engine, so no check is asserted rather than guessed). Trino's
+        # postgresql-connector LANDS the replica via a direct Postgres connection (never through
+        # Trino itself); an S3/Iceberg or embedded-file store is feasible in principle but nothing
+        # implements it, so a BYO org store or an explicit ``materialize_store_url`` naming one is a
+        # named config error here rather than a mysterious runtime failure deep in a landing path.
+        self._supported_materialize_stores = supported_materialize_stores
         # Transports this engine advertises (REQ-825), e.g. Arrow Flight. The engine declares its own
         # capabilities here — the generic seam reads them and never hardcodes a per-engine table.
         self._capabilities = capabilities
@@ -350,6 +359,16 @@ class FederationEngine:  # REQ-840
         )
         if dsn is None:
             raise MaterializeStoreUnconfigured(self.name)
+        if self._supported_materialize_stores is not None:
+            from sqlalchemy import make_url
+
+            backend = make_url(dsn).get_backend_name()
+            if backend not in self._supported_materialize_stores:
+                raise ValueError(
+                    f"engine {self.name!r} does not support a {backend!r} materialize store "
+                    f"(only {sorted(self._supported_materialize_stores)} does); an org's own store, "
+                    "materialize_store_url, or $PROVISA_MATERIALIZE_URL named an unsupported one"
+                )
         return dsn
 
     # -- capability discovery (REQ-904) ----------------------------------------
@@ -462,6 +481,10 @@ def build_trino_engine() -> FederationEngine:  # REQ-840 broad federator
         # store (MaterializeStoreUnconfigured) while the read face already named one. An explicit
         # materialize_store_url / $PROVISA_MATERIALIZE_URL still overrides it.
         default_materialize_store=_platform_db_materialize_default,
+        # Feasible in principle (an S3/Iceberg external view, matching the ATTACH-strategy sources'
+        # own external-store pattern) but nothing implements it: today only a Postgres materialize
+        # store works with Trino.
+        supported_materialize_stores=frozenset({"postgresql"}),
         capabilities=frozenset(
             {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
         ),

@@ -57011,30 +57011,130 @@
   code:
   - provisa/api/app_loaders.py
   - provisa/api/admin/schema_mutation.py
+  - provisa/api/admin/schema_common.py
   - provisa/api/app.py
   - provisa/api/rest/cypher_exec.py
   - provisa/api/data/endpoint_executors.py
   - provisa/api/data/materialization.py
   - provisa/api_source/router_integration.py
+  - provisa/api_source/engine_cache.py
   - provisa/events/source_loader.py
   - provisa/federation/backend.py
   - provisa/federation/runtime.py
+  - provisa/federation/engine.py
+  - provisa/core/trino_catalog_files.py
+  - provisa/transpiler/transpile.py
+  - provisa-ui/e2e/engine-swap.spec.ts
+  - provisa-ui/e2e/source-to-query-helpers.ts
+  - provisa-ui/src/pages/SqlPage.tsx
+  - provisa-ui/src/components/SqlModelingModal.tsx
+  - provisa-ui/src/pages/sql/sqlHelpers.ts
   tests:
   - provisa-ui/e2e/engine-swap.spec.ts
+  - tests/unit/test_ensure_cache_schema.py
+  - tests/unit/test_create_source_catalog_registration.py
+  - tests/unit/test_transpile.py
+  - provisa-ui/src/pages/sql/__tests__/wrapSampledSql.test.ts
   use_case: >-
     Building the cross-engine "register once, swap engine, requery" harness surfaced these —
-    nothing had ever registered a source under one engine and queried it under another before.
+    nothing had ever registered a source under one engine and queried it under another before, or
+    exercised a swap-then-query pass for every cat1/cat2 source type end to end.
   scenario: |
-    Given neo4j/mongodb/elasticsearch/redis/cassandra/sparql registered under DuckDB
+    Given neo4j/mongodb/elasticsearch/redis/cassandra/sparql/prometheus/sqlite/graphql_remote/
+    openapi registered once under DuckDB
     When the Trino backend is reloaded from the SAME Postgres control-plane schema and the source
     is replayed via createSource
-    Then querying it under Trino returns the same rows DuckDB did
+    Then querying it under Trino returns the same rows, in the same order, DuckDB did
 
-  # NOTE: engine-swap.spec.ts also surfaces a separate, still-open gap — Trino's provisa_admin
-  # postgresql connector refuses CREATE SCHEMA outright (its connection URL pins a currentSchema,
-  # unlike an ordinary postgres-connector catalog), which blocks the API-result cache schema for
-  # every adapter-fetched type that also flows through cypher_exec.py's "API CACHE" mechanism
-  # (sparql/prometheus/graphql_remote/openapi). A refresh_landed_views hook exists to pre-create it
-  # directly against Postgres (bypassing Trino's connector), but is not yet confirmed to fire on
-  # the Trino backend — see source-e2e-coverage-audit memory for the full trace. Left open, not
-  # part of this REQ's completed scope.
+  # This REQ's scope grew across the harness's full 10-type pass; each gap below was found by
+  # actually reaching that type's query under Trino, not by inspection, and each is now closed and
+  # covered by the tests above.
+  #
+  # Schema/table creation refused by Trino's provisa_admin postgresql connector (its JDBC URL pins
+  # a currentSchema, unlike an ordinary postgres-connector catalog) blocked the API-result cache
+  # for every adapter-fetched type using the "API CACHE" mechanism (sparql/prometheus/
+  # graphql_remote/openapi). Two fixes: (a) EngineRuntime.reconcile_landed_tables calls
+  # TrinoBackend.refresh_landed_views (pre-creates the schema directly against Postgres) in a
+  # `finally`, so one landing_worklist entry failing no longer skips it for every table already
+  # reconciled — covers restart/reload convergence; (b) engine_cache.ensure_cache_schema (schema)
+  # and create_and_insert (table) self-heal by creating directly against the materialize store —
+  # via SQLAlchemy's sync_engine_from_url, generic across whatever backend is actually configured,
+  # not hardcoded to psycopg2/Postgres — when Trino refuses AND a read confirms it is genuinely
+  # missing, gated by _DIRECT_WRITE_SAFE_STORE_BACKENDS (server backends only; a single-writer file
+  # store like DuckDB must be written through the engine's own attached connection) — covers a
+  # source/table registered from the UI on an ALREADY-RUNNING instance. FederationEngine also
+  # gained `supported_materialize_stores`, asserted in `materialize_store()`: today only Trino
+  # declares one (postgresql only — an S3/Iceberg external-view materialize store is feasible in
+  # principle, matching the ATTACH-strategy sources' own pattern, but nothing implements it).
+  #
+  # Mongo-under-Trino: Trino runs in its own Docker container (docker-compose.core.yml) while
+  # DuckDB runs natively as the harness's own process — a source registered with a host-published
+  # "localhost" port (every demo-source-containers.ts port) is unreachable as "localhost" from
+  # inside that container, which resolves to itself. Fixed in the test harness's own
+  # reprovisionSourceOnEngine (not production code — this is purely an artifact of the harness's
+  # Docker topology): substitutes host.docker.internal for localhost/127.0.0.1 in the replayed
+  # source's `host` field before replaying createSource against Trino, as a substring replace
+  # (prometheus stores its target as a full URL there, not a bare hostname).
+  #
+  # Openapi: the Register Table form's submit button was never disabled while column metadata
+  # loaded, and the shared pickSchemaAndTable test helper returned before that async fetch
+  # resolved — usually winning the race, but openapi's column inference needs an extra live HTTP
+  # round-trip (dynamic schema discovery off the response shape) that can lose it under load,
+  # leaving submit clicked with zero columns and the "At least one column must be selected"
+  # validation silently blocking it forever. Fixed in source-to-query-helpers.ts: wait for at
+  # least one column row before returning.
+  #
+  # Redis TABLE_NOT_FOUND: REQ-250/251's Trino table-description files are built from
+  # source.mapping.tables, which a config-declared redis source populates at provisioning but the
+  # UI's Register Table flow never writes back to (DuckDB needs no static description file; it
+  # introspects redis directly). Reprovisioning such a source on Trino then produced an EMPTY
+  # description and every one of its tables 404d. Fixed: schema_common._synthesize_mapping_dsl_tables
+  # synthesizes the same entry redis/fetch.py's own fallback convention already assumes for an
+  # undeclared table (required_key_pattern, key column "key", hash values) from
+  # registered_tables/table_columns, for any table not already declared, called from create_source
+  # before _register_source_on_engine. Prometheus deliberately gets none of this — its Trino
+  # connector has no table-description mechanism at all (verified directly against a live
+  # coordinator: only prometheus.uri/prometheus.http.additional-headers/prometheus.read-timeout
+  # are real catalog properties) and exposes a FIXED schema (labels MAP(VARCHAR,VARCHAR),
+  # timestamp, value) with no per-label columns under any configuration — a registered label
+  # column is only reachable there as labels['col'].
+  #
+  # Redis row ordering: the SQL/Modeling preview's "first N rows" sample mode wrapped the user's
+  # query in `SELECT * FROM (<inner with its own ORDER BY>) _sample LIMIT n` — standard SQL gives
+  # no ordering guarantee once a derived table's ORDER BY is consumed by an enclosing query with
+  # none of its own. Trino's redis connector was the first one observed NOT to coincidentally
+  # preserve it (scan order instead of the requested order); this was always a latent bug for any
+  # connector's plan shape, not something this session's changes introduced. Fixed:
+  # sqlHelpers.wrapSampledSql, shared by SqlPage.tsx and SqlModelingModal.tsx — "first" mode now
+  # appends LIMIT directly (preserving whatever ordering the query already specifies) instead of
+  # wrapping; "last"/"random" still wrap, since they deliberately override the row order.
+  #
+  # Prometheus labels: Trino's prometheus connector's fixed schema (above) means a registered
+  # label column must compile to labels['col'] specifically under Trino — nowhere else (DuckDB
+  # introspects prometheus directly and already exposes it as a flat column). Fixed:
+  # transpile.rewrite_prometheus_labels_for_trino, an AST rewrite applied in
+  # TrinoBackend.transpile_physical after transpile_to_trino, driven by a (catalog, table) → label
+  # column-name cache (schema_common._cache_prometheus_label_columns, populated in create_source
+  # alongside the redis synthesis above) — the physical-SQL rewrite a table-description entry
+  # cannot express for this connector.
+  #
+  # Prometheus catalog routing: catalog_name_for_source's Trino branch used is_adapter_fetched —
+  # does DuckDB's introspection produce rows by running a query — as a proxy for "needs the
+  # materialize-store catalog", which was true for every type with NO Trino connector at all
+  # (openapi/graphql_remote/sqlite/neo4j/sparql/grpc_remote) but wrongly swept in prometheus, which
+  # answers is_adapter_fetched=True yet has its OWN live Trino connector — routing it through
+  # provisa_admin landed every query on a catalog nothing ever populates ('provisa_admin.default.up'
+  # TABLE_NOT_FOUND on every run). Fixed: the check is now the Trino connector's own `mechanism`
+  # (LIVE_IN_PLACE — ATTACH_RW/ATTACH_R/SCAN — vs FETCH, or no Trino connector at all), the
+  # already-established distinction in federation/connector_base.py, never is_adapter_fetched.
+  #
+  # graphql_remote: createSource never called _rebuild_schemas (register_table/update_table
+  # already do, on every call) — a brand-new source has no registered tables yet to rebuild for,
+  # so this was never needed there, but replaying createSource to reprovision an EXISTING source
+  # on a different engine leaves that engine's own ctx/schema_build_cache stale for any table
+  # ALREADY registered for it (in the shared control plane, from its original registration): the
+  # table compiles against whatever catalog_name it resolved to at the LAST rebuild, before this
+  # replay corrected state.source_catalogs moments ago. Fixed: create_source now calls
+  # _rebuild_schemas after registering, mirroring the other mutations. Confirmed working in
+  # isolation; a residual timing race under this harness's heaviest load remains open — tracked
+  # separately, not blocking this REQ's completed scope.
