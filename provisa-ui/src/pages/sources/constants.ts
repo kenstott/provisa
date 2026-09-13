@@ -46,6 +46,13 @@ export const SOURCE_TYPES = [
   { value: "sqlserver", label: "SQL Server", category: "RDBMS", defaultPort: 1433 },
   { value: "oracle", label: "Oracle", category: "RDBMS", defaultPort: 1521 },
   { value: "duckdb", label: "DuckDB", category: "RDBMS", defaultPort: 0 },
+  // REQ-950: Postgres-wire-compatible — reuses the postgres driver/dialect/Trino connector, same
+  // SIMPLE_RDBMS shape as postgresql itself.
+  { value: "cockroachdb", label: "CockroachDB", category: "RDBMS", defaultPort: 26257 },
+  { value: "yugabytedb", label: "YugabyteDB", category: "RDBMS", defaultPort: 5433 },
+  { value: "greenplum", label: "Greenplum", category: "RDBMS", defaultPort: 5432 },
+  // REQ-950: MySQL-wire-compatible — reuses the mysql driver/dialect/Trino connector.
+  { value: "tidb", label: "TiDB", category: "RDBMS", defaultPort: 4000 },
   // REQ-899: reached via a DuckDB community extension, not a Trino connector or direct driver —
   // DuckDB-only. Firebird's DSN shape (firebird://user:pass@host:port/path) matches SIMPLE_RDBMS
   // exactly; `database` carries the .fdb file path in the container, same as the source-of-truth
@@ -148,6 +155,16 @@ export const SIMPLE_RDBMS = new Set([
   "cassandra",
   "redis",
   "firebird",
+  "cockroachdb",
+  "yugabytedb",
+  "greenplum",
+  "tidb",
+  // REQ-994: a remote Trino/Presto coordinator read as a SOURCE (distinct from Trino as Provisa's
+  // own federation engine) via the generic SQLAlchemy trino dialect — host/port/database(=catalog)/
+  // username/password, same shape as any other generic RDB. Previously selectable in the type
+  // dropdown but rendered zero connection fields (executor/drivers/registry.py:85-89 has a real
+  // driver; registration always failed on an empty host).
+  "trino",
 ]);
 
 // Data lake types

@@ -655,15 +655,21 @@ export function SourcesPage() {
         type: backendType(form.type),
         offPeakWindow: coreForm.offPeakWindow?.trim() || null,
         path:
-          FILE_SOURCES.has(form.type) ||
-          form.type === "files" ||
-          form.type === "delta_lake" ||
-          form.type === "iceberg"
-            ? form.type === "files" && form.path
-              ? filesTransport === "file://"
-                ? form.path
-                : filesTransport + form.path
-              : form.path || null
+          // REQ-1736: DuckDBFirebirdConnector.details() (connector_duckdb.py) builds its DSN from
+          // source.path, not source.database — but firebird is SIMPLE_RDBMS, whose single shared
+          // "Database" input binds to form.database (the .fdb file path the user actually types
+          // there). Route it into `path` on submit rather than adding a firebird-only form branch.
+          form.type === "firebird"
+            ? form.database || null
+            : FILE_SOURCES.has(form.type) ||
+                form.type === "files" ||
+                form.type === "delta_lake" ||
+                form.type === "iceberg"
+              ? form.type === "files" && form.path
+                ? filesTransport === "file://"
+                  ? form.path
+                  : filesTransport + form.path
+                : form.path || null
             : null,
         database:
           form.type === "govdata"
