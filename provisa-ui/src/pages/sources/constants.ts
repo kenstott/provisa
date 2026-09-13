@@ -46,6 +46,9 @@ export const SOURCE_TYPES = [
   { value: "sqlserver", label: "SQL Server", category: "RDBMS", defaultPort: 1433 },
   { value: "oracle", label: "Oracle", category: "RDBMS", defaultPort: 1521 },
   { value: "duckdb", label: "DuckDB", category: "RDBMS", defaultPort: 0 },
+  // Exasol's documented default client-connection port (jdbc:exa / provisa/executor/drivers, added
+  // REQ-1731) is 8563.
+  { value: "exasol", label: "Exasol", category: "RDBMS", defaultPort: 8563 },
   // REQ-950: Postgres-wire-compatible — reuses the postgres driver/dialect/Trino connector, same
   // SIMPLE_RDBMS shape as postgresql itself.
   { value: "cockroachdb", label: "CockroachDB", category: "RDBMS", defaultPort: 26257 },
@@ -63,6 +66,10 @@ export const SOURCE_TYPES = [
   { value: "bigquery", label: "BigQuery", category: "Cloud DW", defaultPort: 443 },
   { value: "databricks", label: "Databricks", category: "Cloud DW", defaultPort: 443 },
   { value: "redshift", label: "Redshift", category: "Cloud DW", defaultPort: 5439 },
+  // Fabric/Synapse: T-SQL over TDS/ODBC (provisa/executor/drivers/mssql_warehouse.py); same wire
+  // protocol/default port as sqlserver.
+  { value: "fabric", label: "Microsoft Fabric Warehouse", category: "Cloud DW", defaultPort: 1433 },
+  { value: "synapse", label: "Azure Synapse SQL", category: "Cloud DW", defaultPort: 1433 },
   // Analytics / OLAP
   { value: "clickhouse", label: "ClickHouse", category: "Analytics", defaultPort: 8123 },
   { value: "elasticsearch", label: "Elasticsearch", category: "Analytics", defaultPort: 9200 },
@@ -165,6 +172,11 @@ export const SIMPLE_RDBMS = new Set([
   // dropdown but rendered zero connection fields (executor/drivers/registry.py:85-89 has a real
   // driver; registration always failed on an empty host).
   "trino",
+  // Exasol: host/port/user/password/database(=schema) via pyexasol
+  // (provisa/executor/drivers/exasol.py's ExasolDriver.connect). Same shape as any other generic
+  // RDB; an optional federation_hints["tls_fingerprint"] pin (models.py's Source.jdbc_url) is
+  // handled separately below, not part of this simple shape.
+  "exasol",
 ]);
 
 // Data lake types

@@ -446,7 +446,8 @@ export function SourcesPage() {
     // (warehouse/schema/role/http_path/credentials_path/access_key_id/endpoint) round-trip.
     if (
       (s.type === "delta_lake" || s.type === "iceberg" || s.type === "snowflake" ||
-        s.type === "databricks" || s.type === "bigquery") &&
+        s.type === "databricks" || s.type === "bigquery" || s.type === "exasol" ||
+        s.type === "fabric" || s.type === "synapse") &&
       s.federationHintsJson
     ) {
       try {
@@ -457,6 +458,10 @@ export function SourcesPage() {
           setAuthType(hints.credentials_path ? "service_account" : "application_default");
         } else if (s.type === "databricks") {
           setAuthType("token");
+        } else if (s.type === "exasol") {
+          setAuthType(hints.tls_fingerprint ? "tls_fingerprint" : "none");
+        } else if (s.type === "fabric" || s.type === "synapse") {
+          setAuthType(hints.tenant_id ? "service_principal" : "none");
         } else {
           setAuthType("password");
         }
@@ -607,7 +612,21 @@ export function SourcesPage() {
                       .filter((k) => authFields[k])
                       .map((k) => [k, authFields[k]]),
                   )
-                : {};
+                : // exasol: an optional TLS-fingerprint pin for a self-signed cert the truststore
+                  // can't chain (models.py's Source.jdbc_url reads federation_hints["tls_fingerprint"]).
+                  form.type === "exasol" && authType === "tls_fingerprint" && authFields.tls_fingerprint
+                  ? { tls_fingerprint: authFields.tls_fingerprint }
+                  : // fabric/synapse: an optional Azure AD service-principal identity pinned per-source
+                    // (mssql_warehouse.py's MssqlWarehouseDriver._token reads tenant_id/client_id/
+                    // client_secret); absent, the driver falls back to the ambient credential.
+                    (form.type === "fabric" || form.type === "synapse") &&
+                      authType === "service_principal"
+                    ? Object.fromEntries(
+                        (["tenant_id", "client_id", "client_secret"] as const)
+                          .filter((k) => authFields[k])
+                          .map((k) => [k, authFields[k]]),
+                      )
+                    : {};
       const federationHintsJson =
         Object.keys(federationHints).length > 0 ? JSON.stringify(federationHints) : undefined;
       // password auth (Snowflake) / personal-access-token auth (Databricks) collect into authFields,
