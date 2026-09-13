@@ -25,4 +25,8 @@ export interface ColumnForm {
   dataType: string;
   isPrimaryKey: boolean;
   scope: string;
+  // REQ-1739: dot-notation JSON extraction path (e.g. "payload.order_id") for an `ingest` push
+  // source's per-column mapping — provisa/ingest/router.py's `_extract_row`. Only meaningful when
+  // the owning table's source type is `ingest`.
+  path?: string | null;
 }

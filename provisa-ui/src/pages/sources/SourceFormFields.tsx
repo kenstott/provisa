@@ -114,6 +114,23 @@ export interface SourceFormFieldsProps {
   setGrpcImportPaths: (v: string) => void;
   grpcCacheTtl: string;
   setGrpcCacheTtl: (v: string) => void;
+  // REQ-1739: websocket connection extras — federation_hints (use_ssl/subscribe_payload/
+  // event_path/reconnect_interval), rides through federationHintsJson.
+  wsUseSsl: boolean;
+  setWsUseSsl: (v: boolean) => void;
+  wsSubscribePayload: string;
+  setWsSubscribePayload: (v: string) => void;
+  wsEventPath: string;
+  setWsEventPath: (v: string) => void;
+  wsReconnectInterval: string;
+  setWsReconnectInterval: (v: string) => void;
+  // REQ-1739: rss connection extras — federation_hints (feed_url override/poll_interval/use_ssl).
+  rssFeedUrl: string;
+  setRssFeedUrl: (v: string) => void;
+  rssPollInterval: string;
+  setRssPollInterval: (v: string) => void;
+  rssUseSsl: boolean;
+  setRssUseSsl: (v: boolean) => void;
 }
 
 export function SourceFormFields(props: SourceFormFieldsProps) {
@@ -205,6 +222,14 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
             hideControls
           />
         </>
+      )}
+      {(form.type === "websocket" || form.type === "rss") && (
+        <TextInput
+          label={t("sourceFormFields.pathOptional")}
+          value={form.path}
+          onChange={(e) => setForm({ ...form, path: e.currentTarget.value })}
+          placeholder="/"
+        />
       )}
       {form.type === "duckdb" && (
         <TextInput

@@ -247,6 +247,7 @@ export function RegisterTableForm({
             dataType: c.dataType,
             isPrimaryKey: c.isPrimaryKey ?? false,
             scope: c.nativeFilterType ? "public" : "domain",
+            path: null, // REQ-1739: set below only for ingest sources
           };
         });
         setColumns(formed);
@@ -312,6 +313,7 @@ export function RegisterTableForm({
             dataType: c.dataType,
             isPrimaryKey: false,
             scope: "domain",
+            path: null,
           };
         }),
       );
@@ -350,6 +352,7 @@ export function RegisterTableForm({
         nativeFilterType: c.nativeFilterType || undefined,
         isPrimaryKey: c.isPrimaryKey || undefined,
         scope: c.scope || "domain",
+        path: c.path?.trim() || undefined, // REQ-1739: ingest per-column JSON extraction path
       }));
     if (!sourceId || !schemaName || !tableName) {
       setError(t("registerTableForm.errorRequiredFields"));
@@ -783,6 +786,9 @@ export function RegisterTableForm({
                     <Table.Th>{t("registerTableForm.colHeaderAlias")}</Table.Th>
                     <Table.Th>{t("registerTableForm.colHeaderDescription")}</Table.Th>
                     <Table.Th>{t("registerTableForm.colHeaderScope")}</Table.Th>
+                    {sourceType === "ingest" && (
+                      <Table.Th>{t("registerTableForm.colHeaderJsonPath")}</Table.Th>
+                    )}
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -892,6 +898,17 @@ export function RegisterTableForm({
                             allowDeselect={false}
                           />
                         </Table.Td>
+                        {sourceType === "ingest" && (
+                          <Table.Td>
+                            <TextInput
+                              aria-label={t("registerTableForm.colHeaderJsonPath")}
+                              value={col.path ?? ""}
+                              onChange={(e) => updateCol(i, "path", e.currentTarget.value)}
+                              placeholder="payload.order_id"
+                              data-testid={`register-table-col-path-${col.name}`}
+                            />
+                          </Table.Td>
+                        )}
                       </Table.Tr>
                       {col.maskType && (
                         <Table.Tr>

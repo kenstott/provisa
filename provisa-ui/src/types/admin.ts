@@ -176,6 +176,8 @@ export interface TableColumn {
   description: string | null;
   dataType: string | null;
   nativeFilterType: string | null;
+  // REQ-1739: dot-notation JSON extraction path for an `ingest` push source's column mapping.
+  path?: string | null;
   isPrimaryKey: boolean;
   isForeignKey: boolean;
   isAlternateKey: boolean;

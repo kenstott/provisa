@@ -718,6 +718,9 @@ export function TableEditForm({
               <Table.Th>{t("tableEditForm.writableByHeader")}</Table.Th>
               <Table.Th>{t("tableEditForm.maskingHeader")}</Table.Th>
               <Table.Th>{t("tableEditForm.scopeHeader")}</Table.Th>
+              {editSource?.type === "ingest" && (
+                <Table.Th>{t("tableEditForm.jsonPathHeader")}</Table.Th>
+              )}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -887,6 +890,17 @@ export function TableEditForm({
                       allowDeselect={false}
                     />
                   </Table.Td>
+                  {editSource?.type === "ingest" && (
+                    <Table.Td>
+                      <TextInput
+                        aria-label={t("tableEditForm.jsonPathHeader")}
+                        value={c.path || ""}
+                        onChange={(e) => updateEditCol(i, "path", e.target.value)}
+                        placeholder="payload.order_id"
+                        data-testid={`table-edit-col-path-${c.columnName}`}
+                      />
+                    </Table.Td>
+                  )}
                 </Table.Tr>
                 {c.maskType && (
                   <Table.Tr>

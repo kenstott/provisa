@@ -92,7 +92,8 @@ class SourceType:  # REQ-012
     # source's warehouse extras (Snowflake warehouse/role, Databricks http_path, ...) round-trip
     # into the store on create but can never be read back into the edit form, so a save-then-edit
     # silently drops them from the form (though not from the store, since update_source only
-    # overwrites federation_hints when the input actually carries a federation_hints_json).
+    # overwrites federation_hints when the input actually carries a federation_hints_json). Also
+    # the channel rss's feed_url and websocket's subscribe_payload round-trip through (REQ-1739).
     federation_hints_json: str = "{}"
     change_signal: str = "ttl"  # REQ-929: source default change signal (inherited by its tables)
     cdc: SourceCdcConfigType | None = None  # REQ-824: source-level CDC transport
@@ -390,6 +391,10 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     description: str | None
     data_type: str | None = None
     native_filter_type: str | None = None
+    # REQ-1739: dot-notation JSON extraction path for an `ingest` push source's column mapping
+    # (provisa/ingest/router.py's `_extract_row`) — already a DB column and a core Column model
+    # field, just never surfaced through this GraphQL type, so the table editor couldn't read it.
+    path: str | None = None
     is_primary_key: bool = False
     is_foreign_key: bool = False
     is_alternate_key: bool = False
@@ -616,6 +621,11 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     # a manually-defined column (a non-SQL source the engine can't introspect); the landing write
     # face maps IR → the store's physical type. Null when the type is filled by introspection.
     data_type: str | None = None
+    # REQ-1739: dot-notation JSON extraction path (e.g. "payload.order_id") for an `ingest` push
+    # source's per-column mapping. Mirrors the core Column model's own `path` field
+    # (provisa/core/models.py) and provisa/ingest/router.py's `_extract_row`, which already reads
+    # it — this input type just never carried it, so the Sources UI had no way to set it.
+    path: str | None = None
     native_filter_type: str | None = None
     is_primary_key: bool = False
     is_foreign_key: bool = False

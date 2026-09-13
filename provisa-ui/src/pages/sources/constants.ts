@@ -123,9 +123,31 @@ export const SOURCE_TYPES = [
   { value: "grpc", label: "gRPC", category: "API", defaultPort: 50051 },
   // Streaming
   { value: "kafka", label: "Kafka", category: "Streaming", defaultPort: 9092 },
+  // REQ-1739: derives ws://host:port when no explicit override is set — push_wiring.py's
+  // websocket branch (base_url override, else host+port), same override-else-derive shape
+  // airport/neo4j already use.
+  { value: "websocket", label: "WebSocket Feed", category: "Streaming", defaultPort: 0 },
+  // REQ-1739: derives http(s)://host:port+path (or federation_hints.feed_url override) —
+  // provisa/api/data/subscribe.py's _build_rss_feed_url.
+  { value: "rss", label: "RSS / Atom Feed", category: "Streaming", defaultPort: 0 },
+  // REQ-1739: push receiver — external services POST JSON to /data/ingest/{source_id}/{table}.
+  // Needs no connection fields at the source level (provisa/ingest/router.py).
+  { value: "ingest", label: "Ingest (HTTP Push Receiver)", category: "Streaming", defaultPort: 0 },
   // Enterprise SaaS
   { value: "sharepoint", label: "SharePoint", category: "Enterprise", defaultPort: 0 },
   { value: "splunk", label: "Splunk", category: "Enterprise", defaultPort: 8089 },
+  // Data Quality (REQ-1443) — a checker scans a governed table through Provisa's own pgwire
+  // endpoint; the source itself needs no connection fields (dq/contract.py). soda is Elastic
+  // License 2.0 (self-host only, config/capabilities.yaml cloud_eligible: false) — hidden on a
+  // hosted plane at the point this constant is consumed for the dropdown (SourcesPage.tsx
+  // typeSelectData), never omitted here, since self-hosted still needs it.
+  { value: "soda", label: "Soda (Data Quality)", category: "Data Quality", defaultPort: 0 },
+  {
+    value: "great_expectations",
+    label: "Great Expectations (Data Quality)",
+    category: "Data Quality",
+    defaultPort: 0,
+  },
   // Public Data
 ];
 
@@ -199,7 +221,13 @@ export const DATA_LAKE = new Set(["delta_lake", "iceberg", "hive", "hive_s3", "h
 
 // Host+port only, no database/username/password — the connector's location string derives from
 // host+port alone (e.g. airport's ATTACH location, connector_duckdb.py's DuckDBAirportConnector).
-export const HOST_PORT_ONLY = new Set(["airport"]);
+// REQ-1739: websocket/rss derive their URL from host+port when no federation_hints override is
+// set (push_wiring.py / subscribe.py) — same shape as airport.
+export const HOST_PORT_ONLY = new Set(["airport", "websocket", "rss"]);
+
+// Source types needing no connection fields at all beyond id/description (REQ-1739): ingest is a
+// pure push receiver, soda/great_expectations are DQ checkers that scan through pgwire.
+export const NO_CONNECTION_TYPES = new Set(["ingest", "soda", "great_expectations"]);
 
 // UI source-type values → backend SourceType vocabulary where the two differ (REQ-947).
 export const TYPE_ALIAS: Record<string, string> = {
