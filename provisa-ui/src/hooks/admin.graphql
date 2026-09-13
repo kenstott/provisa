@@ -76,6 +76,7 @@ query SourcesQuery {
     allowedDomains
     description
     mappingJson
+    federationHintsJson
     changeSignal
     cdc {
       bootstrapServers

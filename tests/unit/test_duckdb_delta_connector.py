@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 2e3dd419-92a0-4d45-b69f-f58343f0abf1
 # Canary: placeholder
 #
 # This source code is licensed under the Business Source License 1.1
@@ -22,8 +23,8 @@ from provisa.federation.connector import Mechanism
 from provisa.federation.connector_duckdb import DuckDBDeltaConnector
 
 
-def _src(sid: str, path: str = "/warehouse/orders") -> Source:
-    return Source(id=sid, type=SourceType.delta_lake, path=path)
+def _src(sid: str, path: str = "/warehouse/orders", **kw) -> Source:
+    return Source(id=sid, type=SourceType.delta_lake, path=path, **kw)
 
 
 class _FakeFetch:
@@ -66,6 +67,31 @@ def test_details_emits_delta_scan_view_over_source_path():
     assert details == {
         "view_ddl": "CREATE VIEW orders AS SELECT * FROM delta_scan('s3://bucket/orders')"
     }
+
+
+def test_details_emits_s3_secret_ddl_when_credentials_present():
+    # REQ-1736: an S3-backed delta_lake source with federation_hints credentials must get a
+    # DuckDB SECRET alongside its view — without this, httpfs falls back to default AWS creds and
+    # a cloud-hosted table can never actually be read despite `path` and creds both being correct.
+    src = _src(
+        "orders",
+        path="s3://bucket/orders",
+        federation_hints={"access_key_id": "AKIAFAKE", "secret_access_key": "shh"},
+    )
+    details = DuckDBDeltaConnector().details(src)
+    assert "secret_ddl" in details
+    assert "KEY_ID 'AKIAFAKE'" in details["secret_ddl"]
+    assert "SECRET 'shh'" in details["secret_ddl"]
+
+
+def test_details_omits_secret_ddl_without_credentials():
+    details = DuckDBDeltaConnector().details(_src("orders", path="s3://bucket/orders"))
+    assert "secret_ddl" not in details
+
+
+def test_details_omits_secret_ddl_for_local_path():
+    details = DuckDBDeltaConnector().details(_src("orders", path="/local/orders"))
+    assert "secret_ddl" not in details
 
 
 # ---- LOAD-ONLY probe (REQ-904 / REQ-899) ------------------------------------

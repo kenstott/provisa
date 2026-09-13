@@ -499,9 +499,13 @@ class DuckDBIcebergConnector(_DuckDBExtensionConnector):  # REQ-899
     mechanism = Mechanism.SCAN  # iceberg_scan scanner view — read in place, no attach (REQ-951)
 
     def details(self, source: Source) -> dict:
-        return {
+        details: dict[str, str] = {
             "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM iceberg_scan('{source.path}')"
         }
+        secret_ddl = _s3_secret_ddl(source)
+        if secret_ddl:
+            details["secret_ddl"] = secret_ddl
+        return details
 
 
 class DuckDBDeltaConnector(_DuckDBExtensionConnector):  # REQ-899
@@ -519,7 +523,13 @@ class DuckDBDeltaConnector(_DuckDBExtensionConnector):  # REQ-899
     mechanism = Mechanism.SCAN  # delta_scan scanner view — read in place, no attach (REQ-951)
 
     def details(self, source: Source) -> dict:
-        return {"view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM delta_scan('{source.path}')"}
+        details: dict[str, str] = {
+            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM delta_scan('{source.path}')"
+        }
+        secret_ddl = _s3_secret_ddl(source)
+        if secret_ddl:
+            details["secret_ddl"] = secret_ddl
+        return details
 
 
 # --- Postgres: a single-node federator that ATTACHes remote sources via postgres_fdw (SQL/MED) ---

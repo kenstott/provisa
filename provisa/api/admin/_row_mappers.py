@@ -92,6 +92,10 @@ def _source_from_row(row) -> SourceType:
 
     raw_mapping = row.get("mapping") or {}
     mapping_json = _json.dumps(raw_mapping) if isinstance(raw_mapping, dict) else str(raw_mapping)
+    raw_hints = row.get("federation_hints") or {}
+    federation_hints_json = (
+        _json.dumps(raw_hints) if isinstance(raw_hints, dict) else str(raw_hints)
+    )
     return SourceType(
         id=row["id"],
         type=row["type"],
@@ -111,6 +115,7 @@ def _source_from_row(row) -> SourceType:
         allowed_domains=list(row.get("allowed_domains") or []),
         description=row.get("description") or "",
         mapping_json=mapping_json,
+        federation_hints_json=federation_hints_json,
         change_signal=row.get("change_signal") or "ttl",  # REQ-929
         cdc=_cdc_from_row(row),
     )

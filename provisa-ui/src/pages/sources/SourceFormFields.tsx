@@ -243,11 +243,28 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
             placeholder="org-account.snowflakecomputing.com"
           />
           <TextInput
-            label={t("sourceFormFields.warehouseDatabase")}
+            label={t("sourceFormFields.database")}
             required
             value={form.database}
             onChange={(e) => setForm({ ...form, database: e.currentTarget.value })}
-            placeholder="COMPUTE_WH/MY_DB"
+          />
+          <TextInput
+            label={t("sourceFormFields.warehouse")}
+            value={authFields.warehouse ?? ""}
+            onChange={(e) => setAuthFields({ ...authFields, warehouse: e.currentTarget.value })}
+            placeholder="COMPUTE_WH"
+          />
+          <TextInput
+            label={t("sourceFormFields.schema")}
+            value={authFields.schema ?? ""}
+            onChange={(e) => setAuthFields({ ...authFields, schema: e.currentTarget.value })}
+            placeholder="optional"
+          />
+          <TextInput
+            label={t("sourceFormFields.role")}
+            value={authFields.role ?? ""}
+            onChange={(e) => setAuthFields({ ...authFields, role: e.currentTarget.value })}
+            placeholder="optional"
           />
           <Select
             style={{ gridColumn: "1 / -1" }}
@@ -362,6 +379,14 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
             value={form.database}
             onChange={(e) => setForm({ ...form, database: e.currentTarget.value })}
             placeholder="main"
+          />
+          <TextInput
+            style={{ gridColumn: "1 / -1" }}
+            label={t("sourceFormFields.sqlWarehouseHttpPath")}
+            required
+            value={authFields.http_path ?? ""}
+            onChange={(e) => setAuthFields({ ...authFields, http_path: e.currentTarget.value })}
+            placeholder="/sql/1.0/warehouses/xxxxxxxxxxxxxxxx"
           />
           <Select
             style={{ gridColumn: "1 / -1" }}
@@ -572,9 +597,9 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
               <TextInput
                 label={t("sourceFormFields.warehousePath")}
                 required
-                value={form.database}
-                onChange={(e) => setForm({ ...form, database: e.currentTarget.value })}
-                placeholder="s3://bucket/warehouse"
+                value={form.path}
+                onChange={(e) => setForm({ ...form, path: e.currentTarget.value })}
+                placeholder="s3://bucket/warehouse/table"
               />
             </>
           )}

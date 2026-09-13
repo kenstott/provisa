@@ -88,6 +88,12 @@ class SourceType:  # REQ-012
     allowed_domains: list[str] = strawberry.field(default_factory=list)
     description: str = ""
     mapping_json: str = "{}"
+    # REQ-1736: read-side counterpart of SourceInput.federation_hints_json — without this, a
+    # source's warehouse extras (Snowflake warehouse/role, Databricks http_path, ...) round-trip
+    # into the store on create but can never be read back into the edit form, so a save-then-edit
+    # silently drops them from the form (though not from the store, since update_source only
+    # overwrites federation_hints when the input actually carries a federation_hints_json).
+    federation_hints_json: str = "{}"
     change_signal: str = "ttl"  # REQ-929: source default change signal (inherited by its tables)
     cdc: SourceCdcConfigType | None = None  # REQ-824: source-level CDC transport
 

@@ -50,7 +50,6 @@ import { DERIVED_SOURCE_ID } from "../types/admin";
 import { cdcTransportApplicable, sourceChangeSignals } from "../liveCapability";
 import {
   CATEGORIES,
-  DATA_LAKE,
   DB_DESCRIPTION_TYPES,
   DISCOVERABLE_TYPES,
   FILE_SOURCES,
@@ -422,7 +421,7 @@ export function SourcesPage() {
     );
     setAuthType("none");
     setAuthFields({});
-    if (DATA_LAKE.has(s.type) && s.mappingJson) {
+    if (s.type === "hive" && s.mappingJson) {
       try {
         const { storage, ...creds } = JSON.parse(s.mappingJson) as Record<string, string>;
         setAuthType(
@@ -435,6 +434,35 @@ export function SourcesPage() {
                 : "none",
         );
         setAuthFields(creds);
+      } catch {
+        setAuthType("none");
+        setAuthFields({});
+      }
+    }
+    // delta_lake/iceberg S3 creds and snowflake/databricks/bigquery warehouse extras all live in
+    // federation_hints (never mapping — see the submit-side comment above `federationHints`).
+    // Secrets themselves (password/access_token/private key) are never sent back by the read
+    // query, same as every other source type's password field — only the non-secret extras
+    // (warehouse/schema/role/http_path/credentials_path/access_key_id/endpoint) round-trip.
+    if (
+      (s.type === "delta_lake" || s.type === "iceberg" || s.type === "snowflake" ||
+        s.type === "databricks" || s.type === "bigquery") &&
+      s.federationHintsJson
+    ) {
+      try {
+        const hints = JSON.parse(s.federationHintsJson) as Record<string, string>;
+        if (s.type === "delta_lake" || s.type === "iceberg") {
+          setAuthType(hints.access_key_id ? "aws" : "none");
+        } else if (s.type === "bigquery") {
+          setAuthType(hints.credentials_path ? "service_account" : "application_default");
+        } else if (s.type === "databricks") {
+          setAuthType("token");
+        } else {
+          setAuthType("password");
+        }
+        setAuthFields(
+          hints.credentials_path ? { credentials_json: hints.credentials_path } : hints,
+        );
       } catch {
         setAuthType("none");
         setAuthFields({});
@@ -555,6 +583,44 @@ export function SourcesPage() {
             : authType === "gcs"
               ? "gcs"
               : "hadoop";
+      // Warehouse-specific extras that host/port/database/username/password can't carry
+      // (Source.federation_hints, provisa/core/models.py:232-235). authFields is per-type/per-auth-
+      // mode scratch state that must be explicitly routed here — it is never in `coreForm`.
+      const federationHints: Record<string, string> =
+        form.type === "snowflake"
+          ? Object.fromEntries(
+              (["warehouse", "schema", "role"] as const)
+                .filter((k) => authFields[k])
+                .map((k) => [k, authFields[k]]),
+            )
+          : form.type === "databricks" && authFields.http_path
+            ? { http_path: authFields.http_path }
+            : form.type === "bigquery" && authType === "service_account" && authFields.credentials_json
+              ? { credentials_path: authFields.credentials_json }
+              : // delta_lake/iceberg: DuckDB's _s3_secret_ddl (connector_duckdb.py) reads S3 creds from
+                // federation_hints, never from mapping — unlike hive, which keeps its storage.aws
+                // creds in mapping (Trino's hive connector props). Only "aws" is wired here: DuckDB's
+                // delta_scan/iceberg_scan have no azure/gcs SECRET support yet.
+                (form.type === "delta_lake" || form.type === "iceberg") && authType === "aws"
+                ? Object.fromEntries(
+                    (["access_key_id", "secret_access_key", "endpoint"] as const)
+                      .filter((k) => authFields[k])
+                      .map((k) => [k, authFields[k]]),
+                  )
+                : {};
+      const federationHintsJson =
+        Object.keys(federationHints).length > 0 ? JSON.stringify(federationHints) : undefined;
+      // password auth (Snowflake) / personal-access-token auth (Databricks) collect into authFields,
+      // never into `form.username`/`form.password` — SIMPLE_RDBMS is the only family that binds
+      // those directly (SourceFormFields.tsx:136-172). key_pair/oauth auth modes have no backend
+      // driver support yet (SnowflakeDriver/DatabricksDriver only implement plain password auth) —
+      // deliberately left unwired rather than silently accepted and then failing at connect time.
+      const authCredentials: { username?: string; password?: string } =
+        form.type === "snowflake" && authType === "password"
+          ? { username: authFields.username, password: authFields.password }
+          : form.type === "databricks" && authType === "token"
+            ? { password: authFields.access_token }
+            : {};
       const spMappingJson =
         form.type === "sharepoint"
           ? JSON.stringify({
@@ -576,15 +642,23 @@ export function SourcesPage() {
               // connectors' extra options.
               form.type === "google_sheets"
               ? JSON.stringify({ credentials_json: authFields.credentials_json ?? "" })
-              : DATA_LAKE.has(form.type)
+              : // hive's storage backend (hadoop/S3/ADLS) is a mapping-discriminated config choice
+                // (provisa/core/models.py:91-92, trino_connectors.py's TrinoHiveConnector) — but
+                // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
+                // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
+                form.type === "hive"
                 ? JSON.stringify({ storage: lakeStorage, ...authFields })
                 : undefined;
       const sourcePayload = {
         ...coreForm,
+        ...authCredentials,
         type: backendType(form.type),
         offPeakWindow: coreForm.offPeakWindow?.trim() || null,
         path:
-          FILE_SOURCES.has(form.type) || form.type === "files"
+          FILE_SOURCES.has(form.type) ||
+          form.type === "files" ||
+          form.type === "delta_lake" ||
+          form.type === "iceberg"
             ? form.type === "files" && form.path
               ? filesTransport === "file://"
                 ? form.path
@@ -604,6 +678,7 @@ export function SourcesPage() {
               ).join(",")
             : coreForm.database,
         ...(spMappingJson !== undefined ? { mappingJson: spMappingJson } : {}),
+        ...(federationHintsJson !== undefined ? { federationHintsJson } : {}),
         // REQ-824: attach source-level CDC transport only for Debezium-captured RDBMS
         cdc:
           cdcTransportApplicable(form.type) && cdc.bootstrapServers && cdc.topicPrefix

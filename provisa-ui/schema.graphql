@@ -705,6 +705,7 @@ type SourceType {
   allowedDomains: [String!]!
   description: String!
   mappingJson: String!
+  federationHintsJson: String!
   changeSignal: String!
   cdc: SourceCdcConfigType
 }
