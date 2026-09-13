@@ -1658,7 +1658,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()
-        columns, _ = await _build_columns_for_input(pool, input)
+        columns, _col_err = await _build_columns_for_input(pool, input)
+        if _col_err is not None:
+            return _col_err
         from provisa.core.models import ColumnPreset as ColumnPresetModel
 
         presets = [

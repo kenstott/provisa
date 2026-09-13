@@ -1388,9 +1388,9 @@ Each Query field on the remote schema is exposed as a virtual read-only table in
 
 **Use case:** Auto-registering remote Query fields as tables and Mutation fields as functions eliminates manual registration.
 
-**Code:** `provisa/graphql_remote/`
+**Code:** `provisa/graphql_remote/`, `provisa/api/admin/graphql_remote_router.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_query.py`
 
-**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
+**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_graphql_remote_update_table_columns.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
 
 ### REQ-309 · GraphQL Remote Schema Connector (REQ-307–313) {#REQ-309}
 
@@ -2108,9 +2108,9 @@ Schema generation synthesizes `ColumnMetadata` for remote schema tables (GraphQL
 
 **Use case:** Synthesized ColumnMetadata lets remote schema tables participate in schema generation and query compilation identically to locally connected relational tables.
 
-**Code:** `provisa/compiler/schema_gen.py`, `provisa/api/app.py`
+**Code:** `provisa/compiler/schema_gen.py`, `provisa/api/app.py`, `provisa/api/admin/schema_query.py`
 
-**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_source.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
+**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_source.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_graphql_remote_update_table_columns.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
 
 ### REQ-652 · Vector Search {#REQ-652}
 

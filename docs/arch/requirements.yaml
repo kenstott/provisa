@@ -4309,12 +4309,16 @@
     manual registration.
   code:
   - provisa/graphql_remote/
+  - provisa/api/admin/graphql_remote_router.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/admin/schema_query.py
   tests:
   - tests/integration/test_graphql_execution.py
   - tests/integration/test_graphql_remote_integration.py
   - tests/integration/test_graphql_remote_source.py
   - tests/unit/test_graphql_remote_introspect.py
   - tests/unit/test_graphql_remote_mapper.py
+  - tests/unit/test_graphql_remote_update_table_columns.py
   - tests/unit/test_remote_adapter_contract.py
   - tests/unit/test_schema_service.py
   since: 2026-01
@@ -6528,11 +6532,13 @@
   code:
   - provisa/compiler/schema_gen.py
   - provisa/api/app.py
+  - provisa/api/admin/schema_query.py
   tests:
   - tests/integration/test_graphql_execution.py
   - tests/integration/test_graphql_remote_source.py
   - tests/integration/test_schema_gen.py
   - tests/unit/test_graphql_remote_mapper.py
+  - tests/unit/test_graphql_remote_update_table_columns.py
   - tests/unit/test_remote_adapter_contract.py
   - tests/unit/test_schema_service.py
   since: 2026-01

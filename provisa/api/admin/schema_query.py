@@ -1445,6 +1445,32 @@ async def resolve_available_columns_metadata(
     from provisa.api.app import state
 
     source_type = state.source_types.get(source_id, "")
+    if source_type == "graphql_remote":
+        # REQ-308/REQ-602: graphql_remote has no physical SQL catalog in the engine — its
+        # column types live exclusively in table_columns, written at registration time by
+        # _upsert_tables_to_semantic_layer. Read them back directly so that an updateTable
+        # grant call (columns supplied without data_type) can resolve types from the already-
+        # stored metadata rather than falling through to engine introspection and finding nothing.
+        from sqlalchemy import select as _select
+
+        from provisa.core.schema_org import registered_tables as _rt, table_columns as _tc
+
+        pool = await _get_pool()
+        async with pool.acquire() as _conn:
+            _res = await _conn.execute_core(
+                _select(_tc.c.column_name, _tc.c.data_type)
+                .select_from(_tc.join(_rt, _rt.c.id == _tc.c.table_id))
+                .where(
+                    _rt.c.source_id == source_id,
+                    _rt.c.schema_name == schema_name,
+                    _rt.c.table_name == table_name,
+                    _tc.c.data_type.is_not(None),
+                )
+            )
+            return [
+                AvailableColumnType(name=r.column_name, data_type=r.data_type, comment=None)
+                for r in _res.fetchall()
+            ]
     if source_type == "govdata":
         return await _govdata_columns(source_id, schema_name, table_name, None)
     if source_type == "elasticsearch":
