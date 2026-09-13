@@ -90,6 +90,8 @@ function table(
     mvRefreshInterval: 0,
     mvDebounceQuiet: 0,
     mvDebounceMaxDelay: 0,
+    pushDebounceQuiet: 0,
+    pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
     mvBitemporalMode: null,

@@ -246,6 +246,48 @@ export function LiveDeliveryFieldset({
                   : t("liveDeliveryFieldset.nativeNote")}
             </Text>
           )}
+          {/* REQ-1733: the landing-latency/throughput tradeoff for CDC push landing
+              (subscriptions.cdc_landing.consume_cdc_into_store's debounce_quiet/max_delay) — a
+              Table-level field, not part of `live` (LiveDeliveryConfig governs the OUTBOUND
+              fan-out; this governs the INBOUND write to the store), so it reads/writes
+              editingTable directly, the same way mvDebounceQuiet does. */}
+          {isPushSignal && (
+            <div title={t("liveDeliveryFieldset.pushDebounceTitle")}>
+              <Text size="xs" fw={600} mb={4}>
+                {t("liveDeliveryFieldset.pushDebounceLabel")}
+              </Text>
+              <Group gap="xs">
+                <NumberInput
+                  min={0}
+                  step={0.5}
+                  placeholder={t("liveDeliveryFieldset.pushQuietPlaceholder")}
+                  aria-label={t("liveDeliveryFieldset.pushQuietAria")}
+                  data-testid="push-debounce-quiet"
+                  value={editingTable.pushDebounceQuiet}
+                  onChange={(v) =>
+                    setEditingTable({
+                      ...editingTable,
+                      pushDebounceQuiet: typeof v === "number" ? v : parseFloat(String(v)) || 0,
+                    })
+                  }
+                />
+                <NumberInput
+                  min={0}
+                  step={0.5}
+                  placeholder={t("liveDeliveryFieldset.pushMaxDelayPlaceholder")}
+                  aria-label={t("liveDeliveryFieldset.pushMaxDelayAria")}
+                  data-testid="push-debounce-max-delay"
+                  value={editingTable.pushDebounceMaxDelay}
+                  onChange={(v) =>
+                    setEditingTable({
+                      ...editingTable,
+                      pushDebounceMaxDelay: typeof v === "number" ? v : parseFloat(String(v)) || 0,
+                    })
+                  }
+                />
+              </Group>
+            </div>
+          )}
           {/* REQ-813: inbound Kafka transport params, editable when the change signal is Kafka. */}
           {effectiveSignal === "kafka" && (
             <Stack gap="xs" pl="lg">

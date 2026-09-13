@@ -914,6 +914,13 @@ class Table(
     mv_debounce_max_delay: float = (
         5.0  # hard cap: never more than this stale under continuous churn
     )
+    # REQ-1733: push-source landing debounce (kafka/websocket CDC — subscriptions.cdc_landing's
+    # consume_cdc_into_store). Same quiet+max_delay shape as mv_debounce_* above, but for the CDC
+    # streaming path, not the poll/MV tick loop — independent knobs on independent mechanisms.
+    # quiet=0 lands every message as it arrives (no batching); the UI surface for the operator's
+    # own latency/throughput tradeoff on a push source.
+    push_debounce_quiet: float = 0.0
+    push_debounce_max_delay: float = 5.0
     # REQ-962: temporal-window boundary source. calendar names a registered, versioned calendar;
     # grain ∈ daily/weekly/monthly/quarterly/annual. Declaring a calendar makes the MV PERIODIC
     # (calendar-boundary trigger, REQ-961) instead of live-debounce — the two are mutually exclusive.

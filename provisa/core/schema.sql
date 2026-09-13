@@ -125,6 +125,8 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     probe_type TEXT,     -- REQ-982: input-probe method; NULL = resolve per source class
     mv_debounce_quiet     DOUBLE PRECISION NOT NULL DEFAULT 0,  -- MV NRT debounce quiet window (s)
     mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- MV NRT debounce max delay (s)
+    push_debounce_quiet     DOUBLE PRECISION NOT NULL DEFAULT 0,  -- REQ-1733: CDC push-source debounce quiet window (s)
+    push_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- REQ-1733: CDC push-source debounce max delay (s)
     mv_consistency TEXT NOT NULL DEFAULT 'shared',  -- REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     mv_preprocess TEXT,  -- REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity
     mv_bitemporal_mode TEXT,  -- REQ-1162: NULL | 'snapshot' | 'delta' (append-only time travel)
@@ -217,6 +219,8 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_refresh_interval INTEGER NOT NULL DEFAULT 300;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_quiet DOUBLE PRECISION NOT NULL DEFAULT 0;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS push_debounce_quiet DOUBLE PRECISION NOT NULL DEFAULT 0;  -- REQ-1733
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS push_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5;  -- REQ-1733
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_consistency TEXT NOT NULL DEFAULT 'shared';  -- REQ-879
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_preprocess TEXT;  -- REQ-957
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_bitemporal_mode TEXT;  -- REQ-1162

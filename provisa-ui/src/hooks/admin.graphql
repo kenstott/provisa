@@ -192,6 +192,8 @@ query TablesQuery {
     mvRefreshInterval
     mvDebounceQuiet
     mvDebounceMaxDelay
+    pushDebounceQuiet
+    pushDebounceMaxDelay
     mvConsistency
     mvPreprocess
     mvBitemporalMode
@@ -991,4 +993,3 @@ mutation PurgeCacheByTable($tableId: Int!) {
     ...MutationResult
   }
 }
-

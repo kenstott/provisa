@@ -421,6 +421,8 @@ async def _fetch_table_with_columns(
         mv_refresh_interval=int(row.get("mv_refresh_interval") or 300),
         mv_debounce_quiet=float(row.get("mv_debounce_quiet") or 0.0),  # REQ-963
         mv_debounce_max_delay=float(row.get("mv_debounce_max_delay") or 5.0),  # REQ-963
+        push_debounce_quiet=float(row.get("push_debounce_quiet") or 0.0),  # REQ-1733
+        push_debounce_max_delay=float(row.get("push_debounce_max_delay") or 5.0),  # REQ-1733
         mv_consistency=row.get("mv_consistency") or "shared",  # REQ-879
         mv_preprocess=row.get("mv_preprocess"),  # REQ-957
         mv_bitemporal_mode=row.get("mv_bitemporal_mode"),  # REQ-1162

@@ -177,6 +177,12 @@ registered_tables = Table(
     # REQ-963 live-MV debounce (event-loop path). quiet=0 → real-time recompute.
     Column("mv_debounce_quiet", Float, nullable=False, server_default="0"),
     Column("mv_debounce_max_delay", Float, nullable=False, server_default="5"),
+    # REQ-1733: push-source landing debounce (kafka/websocket CDC — consume_cdc_into_store), the
+    # SAME quiet+max_delay shape as mv_debounce_* above but for the CDC streaming path, not the
+    # poll/MV tick loop — they are independent knobs on independent mechanisms. quiet=0 → land
+    # every message as it arrives (no batching).
+    Column("push_debounce_quiet", Float, nullable=False, server_default="0"),
+    Column("push_debounce_max_delay", Float, nullable=False, server_default="5"),
     # REQ-879: MV cross-instance consistency tier — "shared" (fleet-coordinated refresh) or
     # "distributed" (per-instance).
     Column("mv_consistency", Text, nullable=False, server_default="shared"),

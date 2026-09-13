@@ -1468,6 +1468,14 @@ async def build_org_runtime(
             from provisa.events.app_wiring import wire_event_loop
 
             await wire_event_loop(scheduler, state=state, log=logging.getLogger(__name__))
+
+        # REQ-1733: start (or, on a re-wire, top up) the kafka/websocket push-source CDC landing
+        # listeners — a separate mechanism from wire_event_loop's poll/MV tick loop (CDC upsert/
+        # delete-by-PK isn't expressible through the generic land_source_table write face). Best-
+        # effort, same posture as wire_event_loop: never blocks or fails boot.
+        from provisa.events.push_wiring import wire_push_listeners
+
+        await wire_push_listeners(state=state, log=logging.getLogger(__name__))
     except Exception:
         # The runtime was registered before this body ran (materialize_store() and the catalog-name
         # map are read off the registry while it builds), so a failure part-way leaves a runtime
@@ -2049,6 +2057,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     # Close APQ cache (Phase AN)
     with tolerate_shutdown_failure("APQ cache close"):
         await state.apq_cache.close()
+
+    # Stop push-source (kafka/websocket) CDC landing listeners (REQ-1733)
+    with tolerate_shutdown_failure("push listener shutdown"):
+        from provisa.events.push_wiring import shutdown_push_listeners
+
+        await shutdown_push_listeners(state)
 
     # Stop scheduler (Phase AX)
     if state._scheduler is not None:

@@ -265,6 +265,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     mv_refresh_interval: int = 300
     mv_debounce_quiet: float = 0.0  # REQ-963: seconds of quiet before firing; 0 = real-time
     mv_debounce_max_delay: float = 5.0  # REQ-963: staleness cap under continuous churn
+    push_debounce_quiet: float = 0.0  # REQ-1733: kafka/websocket CDC landing debounce
+    push_debounce_max_delay: float = 5.0  # REQ-1733: staleness cap under continuous message churn
     mv_consistency: str = (
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
@@ -689,6 +691,8 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     mv_refresh_interval: int = 300
     mv_debounce_quiet: float = 0.0  # REQ-963: seconds of quiet before firing; 0 = real-time
     mv_debounce_max_delay: float = 5.0  # REQ-963: staleness cap under continuous churn
+    push_debounce_quiet: float = 0.0  # REQ-1733: kafka/websocket CDC landing debounce
+    push_debounce_max_delay: float = 5.0  # REQ-1733: staleness cap under continuous message churn
     mv_consistency: str = (
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )

@@ -136,6 +136,8 @@ async def upsert(
         "mv_refresh_interval": getattr(table, "mv_refresh_interval", 300),
         "mv_debounce_quiet": getattr(table, "mv_debounce_quiet", 0.0),  # REQ-963
         "mv_debounce_max_delay": getattr(table, "mv_debounce_max_delay", 5.0),  # REQ-963
+        "push_debounce_quiet": getattr(table, "push_debounce_quiet", 0.0),  # REQ-1733
+        "push_debounce_max_delay": getattr(table, "push_debounce_max_delay", 5.0),  # REQ-1733
         "mv_consistency": getattr(table, "mv_consistency", "shared"),  # REQ-879
         "mv_preprocess": getattr(table, "mv_preprocess", None),  # REQ-957
         "mv_bitemporal_mode": getattr(table, "mv_bitemporal_mode", None),  # REQ-1162
@@ -175,6 +177,8 @@ async def upsert(
         "mv_refresh_interval",
         "mv_debounce_quiet",
         "mv_debounce_max_delay",
+        "push_debounce_quiet",
+        "push_debounce_max_delay",
         "mv_consistency",
         "mv_preprocess",
         "mv_bitemporal_mode",  # REQ-1162

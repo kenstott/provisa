@@ -90,6 +90,8 @@ function table(overrides: Partial<RegisteredTable>): RegisteredTable {
     mvRefreshInterval: 0,
     mvDebounceQuiet: 0,
     mvDebounceMaxDelay: 5,
+    pushDebounceQuiet: 0,
+    pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
     mvBitemporalMode: null,

@@ -66,6 +66,8 @@ def table_model_from_input(inp, columns, presets, alias):  # REQ-929, REQ-982
         mv_refresh_interval=inp.mv_refresh_interval,
         mv_debounce_quiet=inp.mv_debounce_quiet,  # REQ-963
         mv_debounce_max_delay=inp.mv_debounce_max_delay,  # REQ-963
+        push_debounce_quiet=inp.push_debounce_quiet,  # REQ-1733
+        push_debounce_max_delay=inp.push_debounce_max_delay,  # REQ-1733
         mv_consistency=inp.mv_consistency,  # REQ-879
         mv_preprocess=inp.mv_preprocess,  # REQ-957
         mv_bitemporal_mode=inp.mv_bitemporal_mode,  # REQ-1162
