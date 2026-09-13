@@ -99,6 +99,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
       description: c.description || undefined,
       dataType: c.dataType || undefined, // REQ-846: steward type override (metadata only)
       nativeFilterType: c.nativeFilterType || undefined,
+      path: c.path || undefined, // REQ-1739: ingest per-column JSON extraction path
       isPrimaryKey: c.isPrimaryKey || undefined,
       isForeignKey: c.isForeignKey || undefined,
       isAlternateKey: c.isAlternateKey || undefined,

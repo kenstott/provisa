@@ -32,9 +32,9 @@ import {
   KAFKA_AUTH_TYPES,
   NAMING_CONVENTIONS,
 } from "./constants";
-import { getCategory } from "./sourceHelpers";
 import { AuthUserPass } from "./AuthUserPass";
 import { OpenApiFormSection } from "./OpenApiFormSection";
+import { PushFeedFormSection } from "./PushFeedFormSection";
 import type { SourceFormFieldsProps } from "./SourceFormFields";
 
 export function SourceFormFieldsExtended({
@@ -104,9 +104,26 @@ export function SourceFormFieldsExtended({
   setGrpcImportPaths,
   grpcCacheTtl,
   setGrpcCacheTtl,
+  wsUseSsl,
+  setWsUseSsl,
+  wsSubscribePayload,
+  setWsSubscribePayload,
+  wsEventPath,
+  setWsEventPath,
+  wsReconnectInterval,
+  setWsReconnectInterval,
+  rssFeedUrl,
+  setRssFeedUrl,
+  rssPollInterval,
+  setRssPollInterval,
+  rssUseSsl,
+  setRssUseSsl,
 }: SourceFormFieldsProps) {
   const { t } = useTranslation();
-  const isKafka = getCategory(form.type) === "Streaming";
+  // REQ-1739: was `getCategory(form.type) === "Streaming"`, which was correct only while kafka was
+  // the sole Streaming member — websocket/rss/ingest now share the category and each needs its own
+  // fields, so this must key on the type itself.
+  const isKafka = form.type === "kafka";
   const simpleAuthData = [
     { value: "none", label: t("sourceFormFieldsExtended.authNone") },
     { value: "basic", label: t("sourceFormFieldsExtended.authBasic") },
@@ -532,6 +549,25 @@ export function SourceFormFieldsExtended({
             <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />
           )}
         </>
+      )}
+      {(form.type === "websocket" || form.type === "rss") && (
+        <PushFeedFormSection
+          formType={form.type}
+          wsUseSsl={wsUseSsl}
+          setWsUseSsl={setWsUseSsl}
+          wsSubscribePayload={wsSubscribePayload}
+          setWsSubscribePayload={setWsSubscribePayload}
+          wsEventPath={wsEventPath}
+          setWsEventPath={setWsEventPath}
+          wsReconnectInterval={wsReconnectInterval}
+          setWsReconnectInterval={setWsReconnectInterval}
+          rssFeedUrl={rssFeedUrl}
+          setRssFeedUrl={setRssFeedUrl}
+          rssPollInterval={rssPollInterval}
+          setRssPollInterval={setRssPollInterval}
+          rssUseSsl={rssUseSsl}
+          setRssUseSsl={setRssUseSsl}
+        />
       )}
       {form.type === "sharepoint" && (
         <>

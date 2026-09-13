@@ -78,6 +78,12 @@
     "topicPrefixPlaceholder": "dbserver1 (topics: {prefix}.{schema}.{table})",
     "schemaRegistryUrlCdcPlaceholder": "blank = JSON; set for Avro",
     "consumerGroupId": "Consumer Group ID (optional)",
-    "consumerGroupIdPlaceholder": "inherit global (provisa-debezium)"
+    "consumerGroupIdPlaceholder": "inherit global (provisa-debezium)",
+    "useSsl": "Use SSL/TLS",
+    "eventPath": "Event Path (optional)",
+    "reconnectIntervalSeconds": "Reconnect Interval (seconds)",
+    "subscribePayload": "Subscribe Payload (JSON, optional)",
+    "feedUrlOverride": "Feed URL (optional override)",
+    "pollIntervalSeconds": "Poll Interval (seconds)"
   }
 }

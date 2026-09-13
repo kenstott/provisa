@@ -49,6 +49,7 @@ def _build_column_models(columns: list) -> list:
             alias=c.alias,
             description=c.description,
             data_type=getattr(c, "data_type", None),
+            path=getattr(c, "path", None),
             native_filter_type=c.native_filter_type,
             is_primary_key=c.is_primary_key,
             is_foreign_key=c.is_foreign_key,

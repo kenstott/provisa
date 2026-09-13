@@ -22,6 +22,7 @@ fragment ColumnFields on TableColumnType {
   description
   dataType
   nativeFilterType
+  path
   isPrimaryKey
   isForeignKey
   isAlternateKey

@@ -40,6 +40,7 @@ import {
   useUpdateSourceAllowedDomains,
   useDomains,
 } from "../hooks/useAdminQueries";
+import { useAuth } from "../context/AuthContext";
 import { SchemaDiscovery } from "../components/SchemaDiscovery";
 import { TagControl } from "../components/TagControl";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
@@ -72,6 +73,12 @@ import { PageLoading } from "../components/PageLoading";
 
 export function SourcesPage() {
   const { t } = useTranslation();
+  // REQ-1739: `billing` is true only where the commercial plugin is mounted (REQ-1469) — the same
+  // hosted-vs-self-hosted signal provisa/api/admin/schema_mutation.py's
+  // `_refuse_soda_on_hosted_plane` gates on server-side (commerce.enabled()). soda is Elastic
+  // License 2.0 and must never be offered as a hosted/managed service; hiding it here is
+  // defense-in-depth UX, not the enforcement boundary — the server refuses it regardless.
+  const { billing: hostedPlane } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { sources, loading: sourcesLoading, refetch: refetchSources } = useSources();
@@ -145,6 +152,14 @@ export function SourcesPage() {
   const [filesAuthMode, setFilesAuthMode] = useState<"userpass" | "certificate">("userpass");
   const [filesCertPath, setFilesCertPath] = useState("");
   const [filesCertPassword, setFilesCertPassword] = useState("");
+  // REQ-1739: websocket/rss federation_hints extras (see federationHintsJson above).
+  const [wsUseSsl, setWsUseSsl] = useState(false);
+  const [wsSubscribePayload, setWsSubscribePayload] = useState("");
+  const [wsEventPath, setWsEventPath] = useState("");
+  const [wsReconnectInterval, setWsReconnectInterval] = useState("");
+  const [rssFeedUrl, setRssFeedUrl] = useState("");
+  const [rssPollInterval, setRssPollInterval] = useState("");
+  const [rssUseSsl, setRssUseSsl] = useState(true);
 
   const updateSearch = (v: string) => {
     setSourceSearch(v);
@@ -256,7 +271,9 @@ export function SourcesPage() {
   const typeSelectData = () =>
     CATEGORIES.map((cat) => ({
       group: cat,
-      items: SOURCE_TYPES.filter((s) => s.category === cat).map((s) => {
+      items: SOURCE_TYPES.filter((s) => s.category === cat)
+        .filter((s) => s.value !== "soda" || !hostedPlane)
+        .map((s) => {
         const info = reachInfoFor(s.value, engineState);
         return {
           value: s.value,
@@ -525,6 +542,41 @@ export function SourcesPage() {
       setSplunkDisableSsl(false);
       setSplunkAuthMode("token");
     }
+    if (s.type === "websocket" && s.federationHintsJson) {
+      try {
+        const h = JSON.parse(s.federationHintsJson) as Record<string, string>;
+        setWsUseSsl((h.use_ssl ?? "false").toLowerCase() === "true");
+        setWsSubscribePayload(h.subscribe_payload ?? "");
+        setWsEventPath(h.event_path ?? "");
+        setWsReconnectInterval(h.reconnect_interval ?? "");
+      } catch {
+        setWsUseSsl(false);
+        setWsSubscribePayload("");
+        setWsEventPath("");
+        setWsReconnectInterval("");
+      }
+    } else {
+      setWsUseSsl(false);
+      setWsSubscribePayload("");
+      setWsEventPath("");
+      setWsReconnectInterval("");
+    }
+    if (s.type === "rss" && s.federationHintsJson) {
+      try {
+        const h = JSON.parse(s.federationHintsJson) as Record<string, string>;
+        setRssFeedUrl(h.feed_url ?? "");
+        setRssPollInterval(h.poll_interval ?? "");
+        setRssUseSsl((h.use_ssl ?? "true").toLowerCase() === "true");
+      } catch {
+        setRssFeedUrl("");
+        setRssPollInterval("");
+        setRssUseSsl(true);
+      }
+    } else {
+      setRssFeedUrl("");
+      setRssPollInterval("");
+      setRssUseSsl(true);
+    }
     if (s.type === "govdata" && s.database) {
       const storedSchemas = s.database
         .split(",")
@@ -575,6 +627,13 @@ export function SourcesPage() {
     setAuthFields({});
     resetSpFields();
     setGovdataSubjects([]);
+    setWsUseSsl(false);
+    setWsSubscribePayload("");
+    setWsEventPath("");
+    setWsReconnectInterval("");
+    setRssFeedUrl("");
+    setRssPollInterval("");
+    setRssUseSsl(true);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -654,7 +713,31 @@ export function SourcesPage() {
                         authFields.auth_mechanism &&
                         authFields.auth_mechanism !== "PLAIN"
                       ? { auth_mechanism: authFields.auth_mechanism }
-                      : {};
+                      : // REQ-1739: websocket/rss connection extras that don't fit host/port/path
+                        // (use_ssl/subscribe_payload/event_path/reconnect_interval for websocket;
+                        // feed_url/poll_interval/use_ssl for rss) travel the same channel.
+                        form.type === "websocket"
+                        ? Object.fromEntries(
+                            (
+                              [
+                                ["use_ssl", wsUseSsl ? "true" : ""],
+                                ["subscribe_payload", wsSubscribePayload.trim()],
+                                ["event_path", wsEventPath.trim()],
+                                ["reconnect_interval", wsReconnectInterval.trim()],
+                              ] as const
+                            ).filter(([, v]) => v),
+                          )
+                        : form.type === "rss"
+                          ? Object.fromEntries(
+                              (
+                                [
+                                  ["feed_url", rssFeedUrl.trim()],
+                                  ["poll_interval", rssPollInterval.trim()],
+                                  ["use_ssl", rssUseSsl ? "true" : "false"],
+                                ] as const
+                              ).filter(([, v]) => v),
+                            )
+                          : {};
       const federationHintsJson =
         Object.keys(federationHints).length > 0 ? JSON.stringify(federationHints) : undefined;
       // password auth (Snowflake) / personal-access-token auth (Databricks) collect into authFields,
@@ -716,7 +799,11 @@ export function SourcesPage() {
                 form.type === "iceberg" ||
                 // REQ-1178: ClickHouseHudiConnector reads source.path (object-store URL) exactly
                 // like delta_lake/iceberg's DuckDB connectors do.
-                form.type === "hudi"
+                form.type === "hudi" ||
+                // REQ-1739: websocket/rss's path is optional (default "/") — the push_wiring.py /
+                // subscribe.py URL derivation reads Source.path the same way a file source does.
+                form.type === "websocket" ||
+                form.type === "rss"
               ? form.type === "files" && form.path
                 ? filesTransport === "file://"
                   ? form.path
@@ -1095,6 +1182,20 @@ export function SourcesPage() {
     setGrpcImportPaths,
     grpcCacheTtl,
     setGrpcCacheTtl,
+    wsUseSsl,
+    setWsUseSsl,
+    wsSubscribePayload,
+    setWsSubscribePayload,
+    wsEventPath,
+    setWsEventPath,
+    wsReconnectInterval,
+    setWsReconnectInterval,
+    rssFeedUrl,
+    setRssFeedUrl,
+    rssPollInterval,
+    setRssPollInterval,
+    rssUseSsl,
+    setRssUseSsl,
   };
 
   if (loading) return <PageLoading message={t("sourcesPage.loading")} />;

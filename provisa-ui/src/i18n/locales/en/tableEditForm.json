@@ -187,6 +187,7 @@
     "writableByHeader": "Writable By (R/W)",
     "maskingHeader": "Masking",
     "scopeHeader": "Scope",
+    "jsonPathHeader": "JSON Path",
     "primaryKeyAria": "Primary Key",
     "pathBadge": "path",
     "queryBadge": "query",

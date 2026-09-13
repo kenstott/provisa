@@ -331,6 +331,7 @@ async def _fetch_table_with_columns(
             description=r.get("description"),
             data_type=r.get("data_type"),
             native_filter_type=r.get("native_filter_type"),
+            path=r.get("path"),  # REQ-1739
             is_primary_key=bool(r.get("is_primary_key") or False),
             is_foreign_key=bool(r.get("is_foreign_key") or False),
             is_alternate_key=bool(r.get("is_alternate_key") or False),

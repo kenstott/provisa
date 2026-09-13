@@ -25,6 +25,18 @@ def test_data_type_defaults_none_when_unassigned():
     assert cols[0].data_type is None  # introspection fills it later; never silently defaulted
 
 
+def test_column_input_path_flows_to_model():  # REQ-1739
+    cols = _build_column_models(
+        [ColumnInput(name="order_id", visible_to=["*"], path="payload.order_id")]
+    )
+    assert cols[0].path == "payload.order_id"
+
+
+def test_path_defaults_none_when_unassigned():  # REQ-1739
+    cols = _build_column_models([ColumnInput(name="id", visible_to=["*"])])
+    assert cols[0].path is None
+
+
 def test_every_ir_type_maps_to_a_graphql_scalar():
     # A persisted IR type must render in the GraphQL API — no IR name may raise (REQ-846). This is
     # the guard that caught the missing "float" mapping when IR types began reaching the schema.

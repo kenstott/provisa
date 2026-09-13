@@ -38,6 +38,7 @@
     "colHeaderAlias": "SQL Alias",
     "colHeaderDescription": "Description",
     "colHeaderScope": "Scope",
+    "colHeaderJsonPath": "JSON Path",
     "maskNone": "None",
     "maskRegex": "Regex",
     "maskConstant": "Constant",
