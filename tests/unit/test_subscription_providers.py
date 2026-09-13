@@ -280,9 +280,12 @@ class TestPollingProvider:
 
 
 class FakeKafkaMessage:
-    def __init__(self, value, timestamp=None):
+    def __init__(self, value, timestamp=None, topic="orders", partition=0, offset=0):
         self.value = value
         self.timestamp = timestamp
+        self.topic = topic
+        self.partition = partition
+        self.offset = offset
 
 
 class FakeKafkaConsumer:
@@ -295,6 +298,9 @@ class FakeKafkaConsumer:
 
     async def stop(self):
         self._started = False
+
+    async def commit(self, offsets=None):
+        pass
 
     def __aiter__(self):
         return self

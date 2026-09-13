@@ -172,6 +172,9 @@ class _FakeProvider:
         for ev in self._events:
             yield ev
 
+    async def ack(self, events):  # REQ-1734: no offset concept in this test double
+        return
+
     async def close(self):
         self.closed = True
 
