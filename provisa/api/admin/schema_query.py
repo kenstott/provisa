@@ -1565,6 +1565,21 @@ async def resolve_available_columns_metadata(
             )
             for c in cols
         ]
+    # REQ-1732: trino-as-a-SOURCE has a live SourcePool (a real DIRECT driver,
+    # executor/drivers/registry.py's `_make_trino`) but no engine attaches it live except another
+    # Trino — checked BEFORE the native-engine seam below, which only covers ATTACH-mechanism
+    # sources and would otherwise fall through to the generic engine-catalog query against a
+    # catalog that does not exist pre-registration (see native_schemas's trino branch).
+    from provisa.api.admin.introspect import native_columns
+
+    native = await native_columns(
+        source_id, source_type, schema_name, table_name, state.source_pools
+    )
+    if native:
+        return [
+            AvailableColumnType(name=name, data_type=dtype.lower(), comment=None)
+            for name, dtype in native
+        ]
     # A __derived__ virtual view has no registered source and thus no catalog_for() entry — it's
     # physically materialized in the view catalog (same pattern as table_profile_router.py:88).
     # REQ-1673: on a native engine the source's catalog does not exist before a table is

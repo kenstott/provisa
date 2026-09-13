@@ -572,7 +572,14 @@ class EngineBackend:
 
     def _attaches_live(self, source: Any) -> bool:
         """Whether the native engine reads this source by ATTACHing it (so its database can be
-        listed) rather than landing it from an adapter or direct driver."""
+        listed) rather than landing it from an adapter or direct driver.
+
+        Deliberately excludes SCAN (csv/parquet/gsheets/iceberg/delta-style single-view scanners):
+        each maps to exactly ONE view with no nested schema/table hierarchy to list — DuckDBRuntime's
+        own _attached_alias already returns None for a "view_ddl" connector for this reason, so
+        including SCAN here would reach the same `[]` by a longer path, not a real fix (see
+        native_schemas's csv/parquet branch, REQ-1732, for the actual schema/table answer these
+        types need)."""
         from provisa.federation.connector import Mechanism
 
         if self.engine.native_store is None:

@@ -1,0 +1,31 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: trino-as-a-SOURCE (start-ui-install.sh --demo --source=trino) — Provisa
+# reads a remote Trino coordinator directly, via the DIRECT driver (executor/drivers/registry.py's
+# `_make_trino`), the same shape as singlestore/snowflake/databricks-as-a-source. Distinct from the
+# shared docker-compose.core.yml `trino` container, which is the APP's own federation ENGINE (its
+# catalog directory, trino/catalog/, is gitignored and runtime-generated — REQ-1338/1339
+# deliberately stopped shipping static catalogs there). This is a standalone, throwaway coordinator
+# with ONE static catalog: Trino's built-in `tpch` connector (a synthetic data generator, zero
+# setup, deterministic rows — no separate seed/prime step needed).
+services:
+  trino:
+    image: trinodb/trino:481
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_DEMO_TRINO_PORT:-23180}:8080"
+    volumes:
+      - ./catalog:/etc/trino/catalog:ro
+    healthcheck:
+      test: ["CMD-SHELL", "trino --execute 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s

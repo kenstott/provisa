@@ -14,6 +14,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from provisa.api.admin.introspect import (
+    native_columns,
     native_schemas,
     native_tables,
     _openapi_is_table,
@@ -188,6 +189,98 @@ async def test_native_schemas_mysql():
 @pytest.mark.asyncio
 async def test_native_schemas_unknown_type_returns_none():
     result = await native_schemas("src", "bigquery", _empty_pool(), None)
+    assert result is None
+
+
+# ── trino-as-a-source (REQ-1732) ───────────────────────────────────────────────
+# trino-as-a-source has a real DIRECT driver (SourcePool via executor/drivers/registry.py's
+# _make_trino) but no engine attaches it live except another Trino, so these are the ONLY
+# discovery/column-resolution path when it's registered under a different active engine (e.g.
+# DuckDB) — see native_columns's own docstring for the full story.
+
+
+@pytest.mark.asyncio
+async def test_native_schemas_trino():
+    pool = _pool([("tiny",), ("information_schema",)])
+    result = await native_schemas("src", "trino", pool, None)
+    assert result == ["tiny"]
+
+
+@pytest.mark.asyncio
+async def test_native_schemas_trino_no_driver_returns_none():
+    result = await native_schemas("src", "trino", _empty_pool(), None)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_native_tables_trino():
+    pool = _pool([("nation",), ("orders",)])
+    result = await native_tables("src", "trino", "tiny", pool, None, None)
+    assert [t.name for t in result] == ["nation", "orders"]
+
+
+@pytest.mark.asyncio
+async def test_native_columns_trino():
+    pool = _pool([("nationkey", "bigint"), ("name", "varchar(25)")])
+    result = await native_columns("src", "trino", "tiny", "nation", pool)
+    assert result == [("nationkey", "bigint"), ("name", "varchar(25)")]
+
+
+@pytest.mark.asyncio
+async def test_native_columns_non_trino_returns_none():
+    """Every other RDBMS type is ATTACH-mechanism on whatever engine it's normally registered
+    under, so resolve_available_columns_metadata's existing engine-catalog fallback already
+    covers it — native_columns must not intercept those."""
+    result = await native_columns("src", "postgresql", "public", "widgets", _pool([]))
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_native_columns_trino_no_driver_returns_none():
+    result = await native_columns("src", "trino", "tiny", "nation", _empty_pool())
+    assert result is None
+
+
+# ── mysql/mariadb-as-a-source under an engine with no ATTACH connector (REQ-1732) ─────────────
+# mysql/mariadb are normally registered under Trino (a real JDBC connector attaches them live),
+# but neither has a DuckDB connector at all (connector_duckdb.py has none) — the same "no engine
+# attaches it live" gap trino has when registered under DuckDB.
+
+
+@pytest.mark.asyncio
+async def test_native_tables_mysql_uses_percent_s_placeholder():
+    """Regression: this branch used to pass a literal `?` placeholder, which aiomysql does not
+    support (it expects `%s`) — raised inside pymysql's own escaping, silently caught by this
+    function's `except Exception: return None` and never surfaced as an error, just an empty
+    picker. Asserting the query text catches a regression without a live mysql server."""
+    pool = _pool([("widgets", None)])
+    result = await native_tables("src", "mysql", "verify_db", pool, None, None)
+    assert [t.name for t in result] == ["widgets"]
+    _, query, params = pool.execute.call_args[0]
+    assert "%s" in query and "?" not in query
+    assert params == ["verify_db"]
+
+
+@pytest.mark.asyncio
+async def test_native_columns_mysql():
+    pool = _pool([("id", "int"), ("name", "varchar")])
+    result = await native_columns("src", "mysql", "verify_db", "widgets", pool)
+    assert result == [("id", "int"), ("name", "varchar")]
+    _, query, params = pool.execute.call_args[0]
+    assert "%s" in query and "?" not in query
+    assert params == ["verify_db", "widgets"]
+
+
+@pytest.mark.asyncio
+async def test_native_columns_mariadb():
+    pool = _pool([("id", "int")])
+    result = await native_columns("src", "mariadb", "verify_db", "widgets", pool)
+    assert result == [("id", "int")]
+
+
+@pytest.mark.asyncio
+async def test_native_columns_mysql_no_driver_returns_none():
+    result = await native_columns("src", "mysql", "verify_db", "widgets", _empty_pool())
     assert result is None
 
 

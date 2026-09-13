@@ -19,6 +19,7 @@
 // and proves the pipeline; nothing before this drove the forms. The Neo4j form had no path to a
 // table at all until REQ-1670, and no test could have said so.
 
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,6 +46,33 @@ import {
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+// mysql/trino-as-a-source (REQ-1732) need real containers this file's other cases don't — scoped
+// to their own describe block's beforeAll/afterAll (below) rather than the shared
+// demo-source-containers.ts DEMO_SOURCES list, so every other test in this file doesn't pay their
+// boot cost.
+const PROVISION = path.join(ROOT, "demo", "sources", "provision.py");
+const PYTHON = path.join(ROOT, ".venv", "bin", "python");
+const EXTRA_PREFIX = "provisa-s2q-extra";
+const E2E_MYSQL_PORT = 33062;
+const E2E_TRINO_SOURCE_PORT = 33081;
+
+function provisionExtraSources(cmd: "up" | "down"): void {
+  const env = {
+    ...process.env,
+    PROVISA_DEMO_MYSQL_PORT: String(E2E_MYSQL_PORT),
+    PROVISA_DEMO_TRINO_PORT: String(E2E_TRINO_SOURCE_PORT),
+  };
+  try {
+    execFileSync(PYTHON, [PROVISION, cmd, "--prefix", EXTRA_PREFIX, "mysql", "trino"], {
+      stdio: "pipe",
+      env,
+    });
+  } catch (e) {
+    if (cmd === "down") return; // a project that was never started removes nothing
+    throw e;
+  }
+}
 
 test.describe("source to query through the UI (REQ-1671)", () => {
   test("neo4j: add the source, register a Cypher table, query it on the SQL page", async ({
@@ -512,6 +540,67 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     expect(rows[9]).toEqual(["10", "Jay Singh", "jay@example.com"]);
   });
 
+  // REQ-1732: csv/parquet as their OWN registrable SourceType (distinct from the `files` directory
+  // crawler, already covered above) had zero coverage at any tier. Each source maps to exactly ONE
+  // DuckDB view named after the source id (DuckDBCsvConnector/DuckDBParquetConnector's `view_ddl` —
+  // no ATTACH, so no nested schema/table hierarchy) — "main" is a fixed placeholder schema and the
+  // table name IS the source id (native_schemas/native_tables' csv/parquet branch, introspect.py).
+  test("csv: add the source, register its one table, query it on the SQL page", async ({
+    page,
+  }) => {
+    test.setTimeout(180000);
+    const stamp = Date.now();
+    const sourceId = `e2e_csv_${stamp}`;
+
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("csv");
+    await page.getByLabel(/CSV File Path/).fill("./demo/files/customers.csv");
+    await submitSourceAndExpectListed(page, sourceId);
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "main", sourceId);
+    await expect(page.getByTestId("register-table-col-selected-email")).toBeVisible({
+      timeout: 60000,
+    });
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT id, first_name, email FROM pet_store.${registered} ORDER BY id`,
+    );
+    expect(rows).toHaveLength(15);
+    expect(rows[0]).toEqual(["1", "Alice", "alice@example.com"]);
+  });
+
+  test("parquet: add the source, register its one table, query it on the SQL page", async ({
+    page,
+  }) => {
+    test.setTimeout(180000);
+    const stamp = Date.now();
+    const sourceId = `e2e_parquet_${stamp}`;
+
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("parquet");
+    await page.getByLabel(/Parquet File Path/).fill("./demo/files/products.parquet");
+    await submitSourceAndExpectListed(page, sourceId);
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "main", sourceId);
+    await expect(page.getByTestId("register-table-col-selected-sku")).toBeVisible({
+      timeout: 60000,
+    });
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT id, sku, name, price FROM pet_store.${registered} ORDER BY id`,
+    );
+    expect(rows).toHaveLength(15);
+    expect(rows[0]).toEqual(["1", "WIDGET-A", "Widget Alpha", "9.99"]);
+  });
+
   // REQ-1727: graphql_remote is baked in (graphql-demo) and queried everywhere, but the Sources
   // form's own combined create+introspect+auto-register flow (POST /admin/sources/graphql-remote)
   // had never been driven. Points at the same live graphql-demo mock the baked-in source reads
@@ -623,5 +712,91 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     // 3. SQL page — the mock's inventory endpoint returns a real, non-empty status/count mapping
     const rows = await runSqlOnPage(page, `SELECT * FROM pet_store.${registered}`);
     expect(rows.length).toBeGreaterThan(0);
+  });
+});
+
+// REQ-1732: mysql and trino-as-a-source had zero e2e coverage at any tier. Own describe block so
+// their containers (provisionExtraSources above) are started/stopped once for these two tests
+// only, not paid by every other test in this file.
+test.describe("source to query through the UI, extra RDBMS coverage (REQ-1732)", () => {
+  test.beforeAll(() => {
+    provisionExtraSources("up");
+  });
+
+  test.afterAll(() => {
+    provisionExtraSources("down");
+  });
+
+  // mysql itself had zero coverage — mariadb/tidb (MySQL wire-compatible siblings) were already
+  // tested, mysql was not.
+  test("mysql: add the source, register a table, query it on the SQL page", async ({ page }) => {
+    test.setTimeout(180000);
+    const stamp = Date.now();
+    const sourceId = `e2e_mysql_${stamp}`;
+
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("mysql");
+    await page.getByLabel(/^Host/).fill("localhost");
+    await page.getByLabel(/^Port/).fill(String(E2E_MYSQL_PORT));
+    await page.getByLabel(/^Username/).fill("root");
+    await page.getByLabel(/^Password/).fill("provisa");
+    await page.getByLabel(/^Database/).fill("provisa_demo");
+    await submitSourceAndExpectListed(page, sourceId);
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "provisa_demo", "widgets");
+    await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+      timeout: 60000,
+    });
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    );
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toEqual(["1", "Widget A"]);
+    expect(rows[2]).toEqual(["3", "Widget C"]);
+  });
+
+  // trino-as-a-SOURCE (Provisa reads a remote Trino coordinator directly, via the DIRECT driver —
+  // executor/drivers/registry.py's `_make_trino`) is a completely different thing from trino-as-
+  // ENGINE (the federation backend most other e2e specs run against). Registered under whichever
+  // engine this test's own backend runs (DuckDB, per the module doc's zero-config default) — no
+  // engine has a live ATTACH connector for "read another Trino as a source," so this exercises the
+  // native_schemas/native_tables/native_columns trino branches (introspect.py) that make its
+  // schema/table/column picker work pre-registration at all. `tpch` is Trino's own built-in
+  // synthetic-data connector (demo/sources/trino/catalog/tpch.properties) — zero seed step needed.
+  test("trino-as-a-source: add the source, register a tpch table, query it on the SQL page", async ({
+    page,
+  }) => {
+    test.setTimeout(180000);
+    const stamp = Date.now();
+    const sourceId = `e2e_trino_src_${stamp}`;
+
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("trino");
+    await page.getByLabel(/^Host/).fill("localhost");
+    await page.getByLabel(/^Port/).fill(String(E2E_TRINO_SOURCE_PORT));
+    await page.getByLabel(/^Username/).fill("provisa");
+    await page.getByLabel(/^Database/).fill("tpch");
+    await submitSourceAndExpectListed(page, sourceId);
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "tiny", "nation");
+    await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+      timeout: 60000,
+    });
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT nationkey, name FROM pet_store.${registered} ORDER BY nationkey LIMIT 5`,
+    );
+    expect(rows).toHaveLength(5);
+    expect(rows[0]).toEqual(["0", "ALGERIA"]);
+    expect(rows[4]).toEqual(["4", "EGYPT"]);
   });
 });

@@ -52,6 +52,7 @@ _SQLSERVER_SYSTEM_SCHEMAS = {
     "db_denydatawriter",
 }
 _PG_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast", "public"}
+_TRINO_SYSTEM_SCHEMAS = {"information_schema"}
 
 PROVISA_INTERNAL_SCHEMAS: frozenset[str] = frozenset(
     {
@@ -148,6 +149,15 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t == "sqlite":
         return ["main"]
 
+    # REQ-1732: csv/parquet (the standalone SourceType, distinct from the `files` directory
+    # crawler above) map to exactly ONE DuckDB view per source (DuckDBCsvConnector/
+    # DuckDBParquetConnector's "view_ddl", never an "attach" — duckdb_runtime.py's
+    # _attached_alias deliberately returns None for it, since there's no nested database to list
+    # schemas/tables from). "main" is a fixed placeholder schema, matching sqlite's single-
+    # namespace convention, so the picker has something to select rather than showing empty.
+    if t in ("csv", "parquet"):
+        return ["main"]
+
     if t == "files":
         # Schema is always the sql-normalised source-id (matches pgwire_replica.schema_name())
         return [source_id.replace("-", "_")]
@@ -195,6 +205,21 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
             "SELECT schema_name FROM information_schema.schemata ORDER BY schema_name",
         )
         return [row[0] for row in result.rows]
+
+    # REQ-1732: trino-as-a-SOURCE (a remote coordinator Provisa reads directly and lands, distinct
+    # from trino-as-ENGINE) has a real DIRECT driver (executor/drivers/registry.py's `_make_trino`,
+    # SQLAlchemyDriver) and so a live SourcePool entry, but was missing from this dispatch — every
+    # branch above it falls through to `return None`, and the generic engine-catalog fallback in
+    # available_schemas queries the ACTIVE ENGINE's catalog for this source, which does not exist
+    # until a table on it is registered (REQ-1673's "seam" only covers ATTACH-mechanism sources on
+    # a native engine) — so a trino source's schema picker was empty before any table could ever be
+    # registered on it. Trino's information_schema is ANSI-standard, same shape as postgresql's.
+    if t == "trino":
+        result = await pool.execute(
+            source_id,
+            "SELECT schema_name FROM information_schema.schemata ORDER BY schema_name",
+        )
+        return [row[0] for row in result.rows if row[0] not in _TRINO_SYSTEM_SCHEMAS]
 
     return None
 
@@ -665,10 +690,18 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
             return [AvailableTableType(name=row[0], comment=row[1]) for row in result.rows]
 
         if t in ("mysql", "mariadb"):
+            # REQ-1732: `%s`, not `?` — aiomysql's paramstyle (MySQLDriver.execute only rewrites
+            # `$N`, never touches a literal `?`). Verified live: passing `?` here raises
+            # "not all arguments converted during string formatting" inside pymysql's own escaping
+            # — silently swallowed by this function's outer `except Exception: return None`, so the
+            # picker just came back empty rather than erroring. This never surfaced before because
+            # mysql/mariadb are normally registered under Trino, where a real ATTACH connector
+            # answers available_tables through the engine-catalog fallback instead, this broken
+            # pool query never actually running.
             result = await pool.execute(
                 source_id,
                 "SELECT TABLE_NAME, TABLE_COMMENT FROM information_schema.TABLES "
-                "WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
+                "WHERE TABLE_SCHEMA = %s AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
                 [schema_name],
             )
             return [AvailableTableType(name=row[0], comment=row[1] or None) for row in result.rows]
@@ -691,9 +724,60 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
             )
             return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
+        # REQ-1732: see native_schemas's trino branch — same "no catalog exists pre-registration"
+        # gap, for tables. $1 (not `?`) because trino's direct driver is the generic
+        # SQLAlchemyDriver, whose _to_named_params expects PG-style positional placeholders.
+        if t == "trino":
+            result = await pool.execute(
+                source_id,
+                "SELECT table_name, NULL FROM information_schema.tables "
+                "WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name",
+                [schema_name],
+            )
+            return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+
     except Exception:
         return None
 
+    return None
+
+
+async def native_columns(  # REQ-1732
+    source_id: str,
+    source_type: str,
+    schema_name: str,
+    table_name: str,
+    pool: "SourcePool",
+) -> "list[tuple[str, str]] | None":
+    """``[(column_name, data_type)]`` via native introspection, or None to fall back to the engine.
+
+    trino/mysql/mariadb (REQ-1732): postgresql/sqlserver/duckdb never needed this because they are
+    ATTACH-mechanism on whatever engine they are normally registered under (their own native
+    engine, or Trino's own JDBC connector), so resolve_available_columns_metadata's generic
+    engine-catalog fallback already sees a real catalog by the time this is called. trino-as-a-
+    SOURCE has no engine that attaches it live except another Trino, and mysql/mariadb have no
+    DuckDB ATTACH connector at all (verified: connector_duckdb.py has none) — this is the only path
+    when the active engine doesn't natively attach the type (e.g. mysql/trino under DuckDB)."""
+    t = source_type.lower()
+    if not pool.has(source_id):
+        return None
+    if t == "trino":
+        result = await pool.execute(
+            source_id,
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
+            [schema_name, table_name],
+        )
+        return [(row[0], row[1]) for row in result.rows]
+    if t in ("mysql", "mariadb"):
+        # %s, not ?  — see _native_tables_rdbms's mysql/mariadb branch for why.
+        result = await pool.execute(
+            source_id,
+            "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION",
+            [schema_name, table_name],
+        )
+        return [(row[0], row[1]) for row in result.rows]
     return None
 
 
@@ -737,6 +821,15 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
 
     if t == "sqlite":
         return await _native_tables_sqlite(source_id, schema_name, config_conn)
+
+    # REQ-1732: see native_schemas's csv/parquet branch — the source IS the one table, named
+    # after the source id itself (DuckDBCsvConnector/DuckDBParquetConnector's view_ddl).
+    if t in ("csv", "parquet"):
+        from provisa.api.admin.types import AvailableTableType
+
+        if schema_name != "main":
+            return []
+        return [AvailableTableType(name=source_id, comment=None)]
 
     if t == "files":
         return await _native_tables_files(source_id, schema_name, config_conn)
