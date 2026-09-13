@@ -466,7 +466,11 @@ class DuckDBGsheetsConnector(_DuckDBExtensionConnector):  # REQ-899
 
 class DuckDBAirportConnector(_DuckDBExtensionConnector):  # REQ-899
     """Arrow Flight server, attached in place via the airport extension. The Flight location is the
-    source's base_url; auth is a DuckDB SECRET (TYPE airport)."""
+    source's base_url when set (an explicit override, e.g. a non-standard scheme), else derived
+    from host+port as ``grpc://host:port`` — the same override-else-derive shape
+    neo4j_config_from_source uses (provisa/neo4j/persist.py) — so the generic Sources form's
+    plain host/port fields (REQ-1730's HOST_PORT_ONLY) are enough to register one; auth is a
+    DuckDB SECRET (TYPE airport)."""
 
     source_type = "airport"
     key = "duckdb_airport"
@@ -474,8 +478,9 @@ class DuckDBAirportConnector(_DuckDBExtensionConnector):  # REQ-899
     probe_symbol = "airport_take_flight"
 
     def details(self, source: Source) -> dict:
+        location = source.base_url or f"grpc://{source.host}:{source.port}"
         return {
-            "attach": f"ATTACH '{source.base_url}' AS \"_src_{source.id}\" (TYPE AIRPORT)",
+            "attach": f"ATTACH '{location}' AS \"_src_{source.id}\" (TYPE AIRPORT)",
             "raw_alias": f"_src_{source.id}",
         }
 

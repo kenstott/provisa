@@ -46,6 +46,11 @@ export const SOURCE_TYPES = [
   { value: "sqlserver", label: "SQL Server", category: "RDBMS", defaultPort: 1433 },
   { value: "oracle", label: "Oracle", category: "RDBMS", defaultPort: 1521 },
   { value: "duckdb", label: "DuckDB", category: "RDBMS", defaultPort: 0 },
+  // REQ-899: reached via a DuckDB community extension, not a Trino connector or direct driver —
+  // DuckDB-only. Firebird's DSN shape (firebird://user:pass@host:port/path) matches SIMPLE_RDBMS
+  // exactly; `database` carries the .fdb file path in the container, same as the source-of-truth
+  // integration test (tests/integration/test_firebird_source_e2e.py).
+  { value: "firebird", label: "Firebird", category: "RDBMS", defaultPort: 3050 },
   // Cloud DW
   { value: "snowflake", label: "Snowflake", category: "Cloud DW", defaultPort: 443 },
   { value: "bigquery", label: "BigQuery", category: "Cloud DW", defaultPort: 443 },
@@ -81,6 +86,11 @@ export const SOURCE_TYPES = [
   // Other
   { value: "google_sheets", label: "Google Sheets", category: "Other", defaultPort: 0 },
   { value: "prometheus", label: "Prometheus", category: "Other", defaultPort: 9090 },
+  // REQ-899/1097: an Arrow Flight server reached via DuckDB's airport community extension, not a
+  // Trino connector or direct driver — DuckDB-only. Host+port only (no auth/database — the
+  // connector's DDL is `ATTACH '<location>' AS ... (TYPE AIRPORT)`, and the location derives from
+  // host+port when no explicit override is set — connector_duckdb.py's DuckDBAirportConnector).
+  { value: "airport", label: "Airport (Arrow Flight)", category: "Other", defaultPort: 50051 },
   // API
   { value: "openapi", label: "REST API (OpenAPI)", category: "API", defaultPort: 443 },
   { value: "graphql", label: "GraphQL", category: "API", defaultPort: 443 },
@@ -137,10 +147,15 @@ export const SIMPLE_RDBMS = new Set([
   "mongodb",
   "cassandra",
   "redis",
+  "firebird",
 ]);
 
 // Data lake types
 export const DATA_LAKE = new Set(["delta_lake", "iceberg", "hive"]);
+
+// Host+port only, no database/username/password — the connector's location string derives from
+// host+port alone (e.g. airport's ATTACH location, connector_duckdb.py's DuckDBAirportConnector).
+export const HOST_PORT_ONLY = new Set(["airport"]);
 
 // UI source-type values → backend SourceType vocabulary where the two differ (REQ-947).
 export const TYPE_ALIAS: Record<string, string> = {

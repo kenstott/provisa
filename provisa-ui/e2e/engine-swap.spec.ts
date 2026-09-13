@@ -16,13 +16,15 @@
 // uses to address TRINO_BACKEND_URL). One registration, N engines, identical rows expected — no
 // process restart, no re-registration per engine.
 //
-// Scope: 9 of cat1+cat2's 13 types. Both categories land MATERIALIZED sources through the SAME
-// mechanism regardless of engine — the app process's own Python driver fetches the source and
-// writes the replica into whichever engine's store is active (REQ-826's `_MATERIALIZE_ONLY`
-// set) — so neo4j/mongodb/elasticsearch/redis/cassandra/sparql/prometheus/graphql_remote/openapi
-// need nothing engine-specific to reach under Trino. Three are excluded from THIS harness, not
-// because they're broken, but because they reach through a DIFFERENT mechanism whose
-// register-once/swap-engine behavior is unproven and out of scope here:
+// Scope: 9 of cat1+cat2's 13 types, plus firebird/airport/singlestore (added after auditing the
+// remaining best-effort/Trino-only source types for this harness's fit — see
+// source-e2e-coverage-audit memory). Both cat1/cat2 categories land MATERIALIZED sources through
+// the SAME mechanism regardless of engine — the app process's own Python driver fetches the
+// source and writes the replica into whichever engine's store is active (REQ-826's
+// `_MATERIALIZE_ONLY` set) — so neo4j/mongodb/elasticsearch/redis/cassandra/sparql/prometheus/
+// graphql_remote/openapi need nothing engine-specific to reach under Trino. Three are excluded
+// from THIS harness, not because they're broken, but because they reach through a DIFFERENT
+// mechanism whose register-once/swap-engine behavior is unproven and out of scope here:
 //   - splunk/sharepoint ATTACH through the connector's bundled Calcite pgwire server as a real
 //     Trino catalog (TrinoBackend.register_source creates it; DuckDB's is a no-op) — that catalog
 //     creation happens INSIDE the registration mutation, which this harness only ever runs
@@ -30,13 +32,32 @@
 //   - sqlite has no Trino connector or FDW path at all (only DuckDB natively and pg via
 //     sqlite_fdw per REQ-1726) — registered here to prove the DuckDB leg, never requeried.
 //
+// firebird/airport are the SAME shape as sqlite: DuckDB ATTACHes them via a community extension
+// (REQ-899) and neither has any Trino connector or land path — registered to prove the DuckDB
+// leg, never requeried (`reachableOn: []`). singlestore is the OPPOSITE of that: it is
+// materializable everywhere (a real MySQL-wire DIRECT driver, `_make_mysql`, was already sitting
+// in executor/drivers/registry.py, unused by any harness) AND Trino attaches it live via a real
+// JDBC connector, so it goes through the full swap like the original 9 (`reachableOn: ["trino"]`).
+// The demo fixtures for all three live under demo/sources/{firebird,airport,singlestore} —
+// provisioned by THIS file's own beforeAll/afterAll (not the shared demo-source-containers.ts
+// DEMO_SOURCES list, which every e2e project pays for on every run) since only this harness needs
+// them. singlestore needs two things this environment may not have: a SINGLESTORE_LICENSE (the
+// singlestoredb-dev image never becomes healthy without one — same gate
+// test_singlestore_source_e2e.py already skips on) and an amd64 host (the image publishes no
+// arm64 manifest at all, verified via `docker manifest inspect` — `docker compose up` fails
+// outright under arm64 emulation, it does not even attempt to boot). Both are checked before
+// singlestore's container is even started, not just before its registration.
+//
 // Run: PROVISA_E2E_LANE=all PROVISA_E2E_CONTROL_PLANE=postgres PROVISA_E2E_WORKERS=1 \
 //      PROVISA_E2E_ORG_ID=e2e_swap PROVISA_E2E_TRINO_ORG_ID=e2e_swap \
 //      npx playwright test --project=swap
 // (The two env overrides put the DuckDB and Trino backends on the SAME org_<id> Postgres schema —
 // normally kept apart to prevent collision — which is exactly the sharing this harness needs.)
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { test, expect, TRINO_BACKEND_URL, UI_URL } from "./coverage";
 import {
@@ -59,6 +80,46 @@ import {
   submitSourceAndExpectListed,
 } from "./source-to-query-helpers";
 import type { Page } from "./coverage";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const PROVISION = path.join(ROOT, "demo", "sources", "provision.py");
+const PYTHON = path.join(ROOT, ".venv", "bin", "python");
+const SWAP_PREFIX = "provisa-swap";
+
+const E2E_FIREBIRD_PORT = 33051;
+const E2E_AIRPORT_PORT = 35061;
+const E2E_SINGLESTORE_PORT = 33071;
+
+// Both gates are checked BEFORE provisioning, not just before registration: an unlicensed or
+// arm64-emulated singlestoredb-dev container never becomes healthy (or, under arm64, never even
+// starts — `docker compose up` fails outright with "no matching manifest"), so attempting it
+// wastes the harness's own boot budget on a doomed wait. See the module doc.
+const SINGLESTORE_AVAILABLE = process.arch === "x64" && !!process.env.SINGLESTORE_LICENSE;
+
+function provisionSwapSources(cmd: "up" | "down"): void {
+  const names = [
+    "firebird",
+    "airport",
+    ...(cmd === "up" && SINGLESTORE_AVAILABLE ? ["singlestore"] : []),
+  ];
+  if (cmd === "down") names.push("singlestore"); // always attempt teardown, even if up skipped it
+  const env = {
+    ...process.env,
+    PROVISA_DEMO_FIREBIRD_PORT: String(E2E_FIREBIRD_PORT),
+    PROVISA_DEMO_AIRPORT_PORT: String(E2E_AIRPORT_PORT),
+    PROVISA_DEMO_SINGLESTORE_PORT: String(E2E_SINGLESTORE_PORT),
+    PROVISA_DEMO_PREFIX: SWAP_PREFIX,
+  };
+  try {
+    execFileSync(PYTHON, [PROVISION, cmd, "--prefix", SWAP_PREFIX, ...names], {
+      stdio: "pipe",
+      env,
+    });
+  } catch (e) {
+    if (cmd === "down") return; // a project that was never started removes nothing
+    throw e;
+  }
+}
 
 /** One source+table's proof: the SQL that reads it back, and the assertion every engine must
  * satisfy identically. An empty `reachableOn` registers the source (proving the DuckDB leg) but
@@ -439,6 +500,111 @@ async function registerOpenapi(page: Page): Promise<Registration> {
   };
 }
 
+async function registerFirebird(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_firebird_${stamp}`;
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("firebird");
+  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Port/).fill(String(E2E_FIREBIRD_PORT));
+  await page.getByLabel(/^Username/).fill("provisa");
+  await page.getByLabel(/^Password/).fill("provisa");
+  // The firebird extension's DSN path is the file's IN-CONTAINER path (FIREBIRD_DATABASE=test.fdb
+  // under /firebird/data — see demo/sources/firebird/compose.yml), not a host path.
+  await page.getByLabel(/^Database/).fill("/firebird/data/test.fdb");
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  // demo/sources/firebird/prime.py quotes lower-case identifiers ("widgets"/"id"/"name") so
+  // DuckDB's ATTACH surfaces them exactly as written — Firebird folds UNQUOTED identifiers to
+  // upper case, and the generic registerTable mutation has no apply_sql_name normalization step
+  // (unlike graphql_remote_router's registration), so an unquoted schema would persist verbatim.
+  await pickSchemaAndTable(page, "main", "widgets");
+  await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+    timeout: 60000,
+  });
+  const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+  return {
+    label: "firebird",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(3);
+      expect(rows[0]).toEqual(["1", "Widget A"]);
+      expect(rows[2]).toEqual(["3", "Widget C"]);
+    },
+    reachableOn: [], // REQ-899: DuckDB community extension only, no Trino connector or land path
+  };
+}
+
+async function registerAirport(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_airport_${stamp}`;
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("airport");
+  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Port/).fill(String(E2E_AIRPORT_PORT));
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "test", "widgets");
+  await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+    timeout: 60000,
+  });
+  const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+  return {
+    label: "airport",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(3);
+      expect(rows[0]).toEqual(["1", "Widget A"]);
+      expect(rows[2]).toEqual(["3", "Widget C"]);
+    },
+    reachableOn: [], // REQ-899/1097: DuckDB community extension only, no Trino connector or land path
+  };
+}
+
+async function registerSinglestore(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_singlestore_${stamp}`;
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("singlestore");
+  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Port/).fill(String(E2E_SINGLESTORE_PORT));
+  await page.getByLabel(/^Username/).fill("root");
+  await page.getByLabel(/^Password/).fill("provisa");
+  await page.getByLabel(/^Database/).fill("provisa_demo");
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "provisa_demo", "widgets");
+  await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+    timeout: 60000,
+  });
+  const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+  return {
+    label: "singlestore",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(3);
+      expect(rows[0]).toEqual(["1", "Widget A"]);
+      expect(rows[2]).toEqual(["3", "Widget C"]);
+    },
+    // Materializable on DuckDB (executor/drivers/registry.py's `_make_mysql`, MySQL
+    // wire-compatible) AND live-attached on Trino (a real JDBC connector) — the full swap, like
+    // the original 9, not the DuckDB-only dead end firebird/airport are stuck in.
+    reachableOn: ["trino"],
+  };
+}
+
 /** Force an already-running engine backend to pick up rows the DuckDB backend just registered
  * into their SHARED Postgres control-plane schema. `PUT /admin/config` re-enters the exact
  * boot-time DB-driven backfill (introspect_tables/_rebuild_schemas/reconcile_landed_tables —
@@ -550,11 +716,23 @@ async function requeryOnEngine(page: Page, engine: EngineTarget, registrations: 
 }
 
 test.describe("engine swap: one registration answers every engine (REQ-1730)", () => {
+  test.beforeAll(() => {
+    // firebird/airport/singlestore's demo fixtures are provisioned HERE, not through the shared
+    // demo-source-containers.ts DEMO_SOURCES list, so every other e2e project doesn't pay their
+    // boot cost on every run — only this harness needs them. singlestore is skipped outright
+    // (not attempted) when SINGLESTORE_AVAILABLE is false — see its module-doc note.
+    provisionSwapSources("up");
+  });
+
+  test.afterAll(() => {
+    provisionSwapSources("down");
+  });
+
   test("cat1+cat2 sources register once under DuckDB, then answer identical queries under every other engine", async ({
     page,
   }) => {
-    // 10 registrations + one reload/requery pass per entry in ENGINES.
-    test.setTimeout((10 + 5 * ENGINES.length) * 60 * 1000);
+    // 12-13 registrations + one reload/requery pass per entry in ENGINES.
+    test.setTimeout((13 + 5 * ENGINES.length) * 60 * 1000);
 
     const registrars = [
       registerNeo4j,
@@ -567,7 +745,16 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
       registerSqlite,
       registerGraphqlRemote,
       registerOpenapi,
+      registerFirebird,
+      registerAirport,
+      ...(SINGLESTORE_AVAILABLE ? [registerSinglestore] : []),
     ];
+    if (!SINGLESTORE_AVAILABLE) {
+      console.log(
+        "skipping singlestore: needs SINGLESTORE_LICENSE and an amd64 host " +
+          "(singlestoredb-dev publishes no arm64 manifest) — see the module doc",
+      );
+    }
 
     const registrations: Registration[] = [];
     for (const registrar of registrars) {

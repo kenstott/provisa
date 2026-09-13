@@ -183,5 +183,15 @@ def test_airport_attach_uses_base_url():
     assert "ATTACH 'grpc://flight:8815'" in d["attach"] and "TYPE AIRPORT" in d["attach"]
 
 
+def test_airport_attach_derives_location_from_host_port_when_no_base_url():  # REQ-1730
+    """The generic Sources form has no base_url field (SourceInput carries host/port, never
+    base_url) — airport must be registerable from plain host+port alone, the same
+    override-else-derive shape neo4j_config_from_source uses."""
+    d = DuckDBAirportConnector().details(
+        _src("air2", SourceType.airport, host="flight", port=8815, base_url=None)
+    )
+    assert "ATTACH 'grpc://flight:8815'" in d["attach"] and "TYPE AIRPORT" in d["attach"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])

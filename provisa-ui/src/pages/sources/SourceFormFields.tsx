@@ -11,7 +11,7 @@
 import { NumberInput, PasswordInput, Select, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { Domain } from "../../types/admin";
-import { DATA_LAKE, FILE_SOURCES, SIMPLE_RDBMS } from "./constants";
+import { DATA_LAKE, FILE_SOURCES, HOST_PORT_ONLY, SIMPLE_RDBMS } from "./constants";
 import { AuthUserPass } from "./AuthUserPass";
 import { SourceFormFieldsExtended } from "./SourceFormFieldsExtended";
 
@@ -122,6 +122,7 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
   const isFile = FILE_SOURCES.has(form.type);
   const isSimpleRdbms = SIMPLE_RDBMS.has(form.type);
   const isDataLake = DATA_LAKE.has(form.type);
+  const isHostPortOnly = HOST_PORT_ONLY.has(form.type);
 
   return (
     <>
@@ -167,6 +168,24 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
             required
             value={form.database}
             onChange={(e) => setForm({ ...form, database: e.currentTarget.value })}
+          />
+        </>
+      )}
+      {isHostPortOnly && (
+        <>
+          <TextInput
+            label={t("sourceFormFields.host")}
+            required
+            value={form.host}
+            onChange={(e) => setForm({ ...form, host: e.currentTarget.value })}
+            placeholder="localhost"
+          />
+          <NumberInput
+            label={t("sourceFormFields.port")}
+            required
+            value={form.port}
+            onChange={(v) => setForm({ ...form, port: typeof v === "number" ? v : 0 })}
+            hideControls
           />
         </>
       )}

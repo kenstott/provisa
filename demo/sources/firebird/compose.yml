@@ -1,0 +1,35 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Firebird (start-ui-install.sh --demo --source=firebird), reached via the
+# DuckDB firebird COMMUNITY EXTENSION (REQ-899) — same fixture shape as docker-compose.test.yml's
+# `firebird` service. There is no Trino connector or direct driver for this type, so it is
+# DuckDB-only (see the `engine` file next to this compose.yml) — provision.py refuses to start it
+# under any other engine rather than registering a source it can never reach.
+services:
+  firebird:
+    image: jacobalberty/firebird:v4
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_DEMO_FIREBIRD_PORT:-23050}:3050"
+    environment:
+      FIREBIRD_DATABASE: test.fdb
+      FIREBIRD_USER: provisa
+      FIREBIRD_PASSWORD: provisa
+      ISC_PASSWORD: masterkey
+    volumes:
+      - firebird_demo_data:/firebird/data
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /firebird/data/test.fdb || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+volumes:
+  firebird_demo_data:

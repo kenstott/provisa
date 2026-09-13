@@ -1,0 +1,39 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: SingleStore (start-ui-install.sh --demo --source=singlestore). Reachable
+# on ANY engine: a real Trino JDBC connector (TrinoConnectors) attaches it live, and the MySQL
+# wire-compatible DIRECT driver (executor/drivers/registry.py's `_make_mysql`) lands it on any
+# engine with no such connector (e.g. DuckDB) — no `engine` file restriction here, unlike
+# firebird/airport. TWO gates, both pre-existing (this fixture adds neither): (1) the
+# singlestoredb-dev image requires a license key (SINGLESTORE_LICENSE) — without one the container
+# never starts healthy; (2) the image publishes an amd64-only manifest (verified via `docker
+# manifest inspect`) — `docker compose up` fails outright under arm64 emulation (no matching
+# manifest), it does not even attempt to boot. Both are the SAME documented gates
+# tests/integration/test_singlestore_source_e2e.py (license) and the exasol precedent (arch)
+# already skip on, not new restrictions.
+services:
+  singlestore:
+    image: ghcr.io/singlestore-labs/singlestoredb-dev:latest
+    restart: unless-stopped
+    environment:
+      SINGLESTORE_LICENSE: "${SINGLESTORE_LICENSE:-}"
+      ROOT_PASSWORD: provisa
+    ports:
+      - "${PROVISA_DEMO_SINGLESTORE_PORT:-23306}:3306"
+    volumes:
+      - singlestore_demo_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -pprovisa || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+volumes:
+  singlestore_demo_data:

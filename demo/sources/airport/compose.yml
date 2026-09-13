@@ -1,0 +1,28 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: airport (start-ui-install.sh --demo --source=airport), reached via the
+# DuckDB airport COMMUNITY EXTENSION (REQ-899/1097) — reuses tests/fixtures/airport_shim, the same
+# ~30-line Go server (github.com/hugr-lab/airport-go) docker-compose.test.yml's `airport-shim`
+# service builds: a static catalog, schema "test", table "widgets". No prime.py — the catalog is
+# baked into the shim, nothing to seed. There is no Trino connector or direct driver for this type,
+# so it is DuckDB-only (see the `engine` file next to this compose.yml).
+services:
+  airport-shim:
+    build: ../../../tests/fixtures/airport_shim
+    image: airport-shim:latest
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_DEMO_AIRPORT_PORT:-25051}:50051"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "50051"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
