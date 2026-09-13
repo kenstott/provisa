@@ -57597,3 +57597,83 @@
     When an operator reopens it in the Edit Source form and saves without touching those fields
     Then the warehouse/schema/role survive the save (round-trip via federationHintsJson), matching
     the round-trip mappingJson already had for hive/google_sheets/sharepoint/splunk
+- id: REQ-1737
+  status: complete
+  since: 2026-09
+  group: "3. Source Registration & Data Modeling"
+  category: Correctness
+  priority: MUST
+  type: behavioral
+  unit_test: false
+  unit_test_reason: UI-only wiring in SourcesPage.tsx/SourceFormFields.tsx/constants.ts; no dedicated
+    SourcesPage test file exists in the repo (same gap the REQ-1736 fix operated under for its UI
+    side — its own declared tests cover only the backend DuckDB connectors it touched). Verified by
+    `tsc --noEmit` (clean) and the full frontend suite (1159/1159 passing, zero regressions); the
+    backend connectors (mssql_warehouse.py, exasol.py) already carry their own driver-level tests
+    from REQ-1730/REQ-1731 and are unchanged here.
+  description: >-
+    A full audit found `fabric`, `synapse`, and `exasol` had complete backend connector support
+    (provisa/executor/drivers/mssql_warehouse.py and exasol.py, added REQ-1730/REQ-1731) but were
+    entirely absent from `SOURCE_TYPES` in `provisa-ui/src/pages/sources/constants.ts` — there was
+    no way to register one through the Add-Source UI at all.
+
+    Fix: added all three to `SOURCE_TYPES` (fabric/synapse under "Cloud DW", default port 1433 —
+    same TDS/ODBC wire protocol as sqlserver; exasol under "RDBMS", default port 8563, its
+    documented client-connection port) and to `SIMPLE_RDBMS` for exasol (host/port/username/
+    password/database, matching `ExasolDriver.connect`'s signature exactly). fabric/synapse are
+    NOT SIMPLE_RDBMS — `MssqlWarehouseDriver` has no username/password auth mode at all; it is
+    Azure AD only, via an optional per-source service-principal identity
+    (`federation_hints["tenant_id"/"client_id"/"client_secret"]`, read by
+    `MssqlWarehouseDriver._token`) or, absent, the ambient credential (`az login` / managed
+    identity). `SourceFormFields.tsx` gained a fabric/synapse block (Server, Database, and an
+    Authentication select: "Ambient Credential" vs "Service Principal" with tenant/client id/
+    secret fields gated behind it) and an exasol block (an Authentication select for an optional
+    TLS-fingerprint pin — `federation_hints["tls_fingerprint"]`, read by `Source.jdbc_url` in
+    provisa/core/models.py for a self-signed cert the truststore can't chain; absent, the driver
+    validates against the truststore as usual).
+
+    `SourcesPage.tsx`'s submit-side `federationHints` computation (established by REQ-1736) is
+    extended with two more branches: exasol's optional `tls_fingerprint`, and fabric/synapse's
+    optional `tenant_id`/`client_id`/`client_secret` triple when "Service Principal" is selected.
+    The edit-load path (parsing `s.federationHintsJson` back into `authFields`/`authType` when
+    reopening a source) is extended the same way, so editing a fabric/synapse/exasol source no
+    longer wipes its own extras on save.
+
+    New i18n label keys (`exasolTrustStoreDefault`, `exasolTlsFingerprintPin`, `tlsFingerprint`,
+    `server`, `azureAmbientCredential`, `azureServicePrincipal`, `tenantId`) were added to
+    `provisa-ui/src/i18n/locales/en/sourceFormFields.json` only; the other 13 locales fall back to
+    English via i18next, per project convention.
+
+    No backend gap: both connectors (and the direct drivers backing them) were already complete
+    and tested (REQ-1730/REQ-1731); this was purely a missing UI registration path. Exasol carries
+    no `cloud_eligible: false` entry in config/capabilities.yaml (unlike `soda`'s Elastic-License
+    gate) — no hosted-plane refusal gate applies or is needed.
+  code:
+  - provisa-ui/src/pages/sources/constants.ts
+  - provisa-ui/src/pages/sources/SourceFormFields.tsx
+  - provisa-ui/src/pages/SourcesPage.tsx
+  - provisa-ui/src/i18n/locales/en/sourceFormFields.json
+  use_case: >-
+    A full audit found fabric/synapse/exasol had working backend connectors but no way to register
+    one through the Add-Source UI; user asked to add all three with correctly wired connection
+    fields.
+  scenario: |
+    Given the Add Source dropdown
+    When it is opened
+    Then "Microsoft Fabric Warehouse", "Azure Synapse SQL", and "Exasol" are selectable options
+
+    Given a Fabric source form with Server and Database filled in, and "Service Principal" selected
+    with tenant_id/client_id/client_secret entered
+    When the source is created
+    Then federation_hints_json carries tenant_id/client_id/client_secret, and
+    MssqlWarehouseDriver._token builds a ClientSecretCredential from them
+
+    Given an Exasol source form with host/port/username/password/database filled in, and
+    "TLS Fingerprint Pin" selected with a fingerprint entered
+    When the source is created
+    Then federation_hints_json carries tls_fingerprint, and Source.jdbc_url pins it into the
+    jdbc:exa URL
+
+    Given an existing Fabric source with a saved service-principal identity
+    When an operator reopens it in the Edit Source form and saves without touching those fields
+    Then tenant_id/client_id/client_secret survive the save (round-trip via federationHintsJson)

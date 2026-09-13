@@ -510,6 +510,104 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
           )}
         </>
       )}
+      {form.type === "exasol" && (
+        // host/port/username/password/database already rendered by isSimpleRdbms above
+        // (provisa/executor/drivers/exasol.py's ExasolDriver.connect). This is the ONLY extra:
+        // an optional TLS-fingerprint pin for a self-signed cert the truststore can't chain
+        // (models.py's Source.jdbc_url, federation_hints["tls_fingerprint"]) — absent, the driver
+        // validates against the truststore as usual.
+        <>
+          <Select
+            style={{ gridColumn: "1 / -1" }}
+            label={t("sourceFormFields.authentication")}
+            data={[
+              { value: "none", label: t("sourceFormFields.exasolTrustStoreDefault") },
+              { value: "tls_fingerprint", label: t("sourceFormFields.exasolTlsFingerprintPin") },
+            ]}
+            value={authType}
+            onChange={(v) => {
+              setAuthType(v ?? "none");
+              setAuthFields({});
+            }}
+            allowDeselect={false}
+          />
+          {authType === "tls_fingerprint" && (
+            <TextInput
+              style={{ gridColumn: "1 / -1" }}
+              label={t("sourceFormFields.tlsFingerprint")}
+              required
+              value={authFields.tls_fingerprint ?? ""}
+              onChange={(e) =>
+                setAuthFields({ ...authFields, tls_fingerprint: e.currentTarget.value })
+              }
+              placeholder="SHA-256 fingerprint, e.g. 3B:D5:...:9F"
+            />
+          )}
+        </>
+      )}
+      {(form.type === "fabric" || form.type === "synapse") && (
+        // T-SQL over TDS/ODBC (provisa/executor/drivers/mssql_warehouse.py's MssqlWarehouseDriver).
+        // No username/password auth mode exists for this driver — it is Azure AD only: a service
+        // principal (tenant_id/client_id/client_secret) pinned per-source in federation_hints, or,
+        // absent, the ambient credential (az login / managed identity via DefaultAzureCredential).
+        <>
+          <TextInput
+            label={t("sourceFormFields.server")}
+            required
+            value={form.host}
+            onChange={(e) => setForm({ ...form, host: e.currentTarget.value })}
+            placeholder={
+              form.type === "fabric"
+                ? "xxxxxxxx.datawarehouse.fabric.microsoft.com"
+                : "xxxxxxxx.sql.azuresynapse.net"
+            }
+          />
+          <TextInput
+            label={t("sourceFormFields.database")}
+            required
+            value={form.database}
+            onChange={(e) => setForm({ ...form, database: e.currentTarget.value })}
+          />
+          <Select
+            style={{ gridColumn: "1 / -1" }}
+            label={t("sourceFormFields.authentication")}
+            data={[
+              { value: "none", label: t("sourceFormFields.azureAmbientCredential") },
+              { value: "service_principal", label: t("sourceFormFields.azureServicePrincipal") },
+            ]}
+            value={authType}
+            onChange={(v) => {
+              setAuthType(v ?? "none");
+              setAuthFields({});
+            }}
+            allowDeselect={false}
+          />
+          {authType === "service_principal" && (
+            <>
+              <TextInput
+                label={t("sourceFormFields.tenantId")}
+                required
+                value={authFields.tenant_id ?? ""}
+                onChange={(e) => setAuthFields({ ...authFields, tenant_id: e.currentTarget.value })}
+              />
+              <TextInput
+                label={t("sourceFormFields.clientId")}
+                required
+                value={authFields.client_id ?? ""}
+                onChange={(e) => setAuthFields({ ...authFields, client_id: e.currentTarget.value })}
+              />
+              <PasswordInput
+                label={t("sourceFormFields.clientSecret")}
+                required
+                value={authFields.client_secret ?? ""}
+                onChange={(e) =>
+                  setAuthFields({ ...authFields, client_secret: e.currentTarget.value })
+                }
+              />
+            </>
+          )}
+        </>
+      )}
       {form.type === "elasticsearch" && (
         <>
           <TextInput

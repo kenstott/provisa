@@ -57,6 +57,13 @@
     "s3EndpointMinio": "S3 Endpoint (MinIO)",
     "storageAccount": "Storage Account",
     "accessKey": "Access Key",
-    "sasToken": "SAS Token"
+    "sasToken": "SAS Token",
+    "exasolTrustStoreDefault": "None (validate against truststore)",
+    "exasolTlsFingerprintPin": "TLS Fingerprint Pin",
+    "tlsFingerprint": "TLS Fingerprint (SHA-256)",
+    "server": "Server",
+    "azureAmbientCredential": "Ambient Credential (az login / managed identity)",
+    "azureServicePrincipal": "Service Principal",
+    "tenantId": "Tenant ID"
   }
 }
