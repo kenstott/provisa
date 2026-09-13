@@ -64,6 +64,10 @@
     "server": "Server",
     "azureAmbientCredential": "Ambient Credential (az login / managed identity)",
     "azureServicePrincipal": "Service Principal",
-    "tenantId": "Tenant ID"
+    "tenantId": "Tenant ID",
+    "authMechanism": "Auth Mechanism",
+    "authMechanismPlain": "PLAIN (username / password)",
+    "authMechanismLdap": "LDAP",
+    "authMechanismGssapi": "GSSAPI (Kerberos)"
   }
 }

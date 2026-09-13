@@ -61,6 +61,10 @@ export const SOURCE_TYPES = [
   // exactly; `database` carries the .fdb file path in the container, same as the source-of-truth
   // integration test (tests/integration/test_firebird_source_e2e.py).
   { value: "firebird", label: "Firebird", category: "RDBMS", defaultPort: 3050 },
+  // REQ-1731: a HiveServer2 endpoint reached directly over Thrift (impyla) — distinct from
+  // `hive`/`hive_s3` (Trino-scanned lake storage). Read-then-land like any other RDB-shaped
+  // source; SIMPLE_RDBMS's host/port/database/username/password shape matches exactly.
+  { value: "hiveserver2", label: "HiveServer2", category: "RDBMS", defaultPort: 10000 },
   // Cloud DW
   { value: "snowflake", label: "Snowflake", category: "Cloud DW", defaultPort: 443 },
   { value: "bigquery", label: "BigQuery", category: "Cloud DW", defaultPort: 443 },
@@ -80,6 +84,14 @@ export const SOURCE_TYPES = [
   { value: "delta_lake", label: "Delta Lake", category: "Data Lake", defaultPort: 0 },
   { value: "iceberg", label: "Apache Iceberg", category: "Data Lake", defaultPort: 0 },
   { value: "hive", label: "Hive Metastore", category: "Data Lake", defaultPort: 9083 },
+  // REQ-229: a Hive lake whose table data lives on S3 object storage — same Thrift metastore
+  // endpoint shape as `hive` (host/port), but the type itself DECLARES S3 storage
+  // (TrinoHiveS3Connector always wires Trino's native S3 filesystem; there is no hadoop/local
+  // choice like plain `hive` offers).
+  { value: "hive_s3", label: "Hive on S3", category: "Data Lake", defaultPort: 9083 },
+  // REQ-1178: Apache Hudi lakehouse table read in place via ClickHouse's native Hudi table engine
+  // (zero-copy) — path-only (object-store URL), no metastore/host of its own.
+  { value: "hudi", label: "Apache Hudi", category: "Data Lake", defaultPort: 0 },
   // NoSQL
   { value: "mongodb", label: "MongoDB", category: "NoSQL", defaultPort: 27017 },
   { value: "cassandra", label: "Cassandra", category: "NoSQL", defaultPort: 9042 },
@@ -177,10 +189,13 @@ export const SIMPLE_RDBMS = new Set([
   // RDB; an optional federation_hints["tls_fingerprint"] pin (models.py's Source.jdbc_url) is
   // handled separately below, not part of this simple shape.
   "exasol",
+  // REQ-1731: HiveServer2 over Thrift (impyla) — host/port/database/username/password, same shape
+  // as any other generic RDB.
+  "hiveserver2",
 ]);
 
 // Data lake types
-export const DATA_LAKE = new Set(["delta_lake", "iceberg", "hive"]);
+export const DATA_LAKE = new Set(["delta_lake", "iceberg", "hive", "hive_s3", "hudi"]);
 
 // Host+port only, no database/username/password — the connector's location string derives from
 // host+port alone (e.g. airport's ATTACH location, connector_duckdb.py's DuckDBAirportConnector).
