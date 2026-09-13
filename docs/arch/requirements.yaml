@@ -57466,3 +57466,41 @@
     Given a Kafka event with no ack_token (e.g. a non-Kafka provider or a test double)
     When ack() is called with a mix of tokened and untokened events
     Then only the tokened events affect the commit; an empty/all-untokened list commits nothing
+
+- id: REQ-1735
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Streaming
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Closes the last SourceType with zero test coverage at any tier: `delta_lake`. Delta Lake is an
+    open table format (Parquet + a `_delta_log` transaction log), not Databricks-specific — it's
+    readable by multiple engines' connectors already in this repo (`DuckDBDeltaConnector`/
+    `PgDuckdbDeltaConnector` in connector_duckdb.py, `ClickHouseDeltaLakeConnector`, plus
+    Snowflake/BigQuery/MSSQL-warehouse external-table variants); Databricks-as-a-source itself maps
+    onto the same generic `delta_lake` reader in trino_connectors.py rather than the other way
+    around.
+
+    Proved the cheapest path: `DuckDBDeltaConnector` (connector_duckdb.py) against a plain embedded
+    `duckdb.connect()` — delta is a CORE DuckDB extension (no compiled-in build required, unlike
+    `PgDuckdbDeltaConnector`'s pg_duckdb variant), needing zero external services (no S3/MinIO, no
+    JVM, no warehouse) to read a local Delta table in place via `delta_scan`.
+
+    Added the `deltalake` package (delta-rs, pure Rust wheel, no JVM) as a base dependency,
+    mirroring `pyiceberg`'s existing placement — DuckDB's delta extension is read-only (`delta_scan`
+    only), so producing the fixture's `_delta_log` for a test needs a real writer.
+  code:
+  - provisa/federation/connector_duckdb.py
+  - pyproject.toml
+  tests:
+  - tests/unit/test_duckdb_delta_connector.py
+  - tests/integration/test_duckdb_delta_source_e2e.py
+  use_case: >-
+    User noted delta_lake was the only SourceType with no test coverage per the prior source-e2e
+    audit, and asked to test delta_lake as a data source.
+  scenario: |
+    Given a real local Delta table (written via the deltalake package)
+    When DuckDBDeltaConnector's delta_scan view is created against it in a plain embedded DuckDB
+    Then rows and predicate pushdown against the Delta table read correctly, in place, zero copy

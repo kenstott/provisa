@@ -18263,3 +18263,15 @@ Closes the auto-commit crash-window limitation [REQ-1733](#REQ-1733) documented 
 **Code:** `provisa/subscriptions/base.py`, `provisa/subscriptions/kafka_provider.py`, `provisa/subscriptions/cdc_landing.py`
 
 **Tests:** `tests/unit/test_kafka_provider.py`, `tests/unit/test_cdc_landing_debounce.py`, `tests/unit/test_materialize_landing.py`, `tests/unit/test_subscription_providers.py`
+
+### REQ-1735 · Streaming {#REQ-1735}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Closes the last SourceType with zero test coverage at any tier: `delta_lake`. Delta Lake is an open table format (Parquet + a `_delta_log` transaction log), not Databricks-specific — it's readable by multiple engines' connectors already in this repo (`DuckDBDeltaConnector`/ `PgDuckdbDeltaConnector` in connector_duckdb.py, `ClickHouseDeltaLakeConnector`, plus Snowflake/BigQuery/MSSQL-warehouse external-table variants); Databricks-as-a-source itself maps onto the same generic `delta_lake` reader in trino_connectors.py rather than the other way around. Proved the cheapest path: `DuckDBDeltaConnector` (connector_duckdb.py) against a plain embedded `duckdb.connect()` — delta is a CORE DuckDB extension (no compiled-in build required, unlike `PgDuckdbDeltaConnector`'s pg_duckdb variant), needing zero external services (no S3/MinIO, no JVM, no warehouse) to read a local Delta table in place via `delta_scan`. Added the `deltalake` package (delta-rs, pure Rust wheel, no JVM) as a base dependency, mirroring `pyiceberg`'s existing placement — DuckDB's delta extension is read-only (`delta_scan` only), so producing the fixture's `_delta_log` for a test needs a real writer.
+
+**Use case:** User noted delta_lake was the only SourceType with no test coverage per the prior source-e2e audit, and asked to test delta_lake as a data source.
+
+**Code:** `provisa/federation/connector_duckdb.py`, `pyproject.toml`
+
+**Tests:** `tests/unit/test_duckdb_delta_connector.py`, `tests/integration/test_duckdb_delta_source_e2e.py`

@@ -91,6 +91,7 @@ dependencies = [
     "jpype1",
     "minio",
     "pyiceberg",
+    "deltalake",
     "neo4j",
     # Native/desktop tier (REQ-979) control plane is SQLite via sqlite+aiosqlite, and SQLAlchemy's
     # async runtime needs greenlet. Both are RUNTIME requirements — the packaged native runtime
