@@ -57035,12 +57035,23 @@
   - provisa-ui/src/pages/SqlPage.tsx
   - provisa-ui/src/components/SqlModelingModal.tsx
   - provisa-ui/src/pages/sql/sqlHelpers.ts
+  - provisa/federation/connector_duckdb.py
+  - provisa-ui/src/pages/sources/constants.ts
+  - provisa-ui/src/pages/sources/SourceFormFields.tsx
+  - demo/sources/firebird/compose.yml
+  - demo/sources/firebird/prime.py
+  - demo/sources/firebird/engine
+  - demo/sources/airport/compose.yml
+  - demo/sources/airport/engine
+  - demo/sources/singlestore/compose.yml
+  - demo/sources/singlestore/prime.py
   tests:
   - provisa-ui/e2e/engine-swap.spec.ts
   - tests/unit/test_ensure_cache_schema.py
   - tests/unit/test_create_source_catalog_registration.py
   - tests/unit/test_transpile.py
   - provisa-ui/src/pages/sql/__tests__/wrapSampledSql.test.ts
+  - tests/unit/test_duckdb_community_connectors.py
   use_case: >-
     Building the cross-engine "register once, swap engine, requery" harness surfaced these —
     nothing had ever registered a source under one engine and queried it under another before, or
@@ -57052,6 +57063,22 @@
     is replayed via createSource
     Then querying it under Trino returns the same rows, in the same order, DuckDB did
 
+  # Extended (2026-09-13): audited the remaining best-effort/Trino-only source types for fit in
+  # this harness. firebird/airport (DuckDB community-extension ATTACH, REQ-899 — no Trino
+  # connector or land path at all) added in the SAME shape sqlite already proves: register to
+  # confirm the DuckDB leg, never requeried. singlestore added to the FULL swap — a real MySQL-wire
+  # DIRECT driver (`_make_mysql`) was already sitting in executor/drivers/registry.py, unused by
+  # any harness, so it lands on DuckDB and attaches live on Trino via a real JDBC connector.
+  # airport needed one fix to be registerable through the plain Sources form at all:
+  # DuckDBAirportConnector.details() required source.base_url, a field SourceInput (the generic
+  # createSource mutation's input type) does not carry — changed to derive `grpc://host:port` from
+  # host+port when base_url is unset, the same override-else-derive shape
+  # neo4j_config_from_source already uses. singlestore's demo fixture is gated the same way
+  # test_singlestore_source_e2e.py already skips (SINGLESTORE_LICENSE) plus a second, previously
+  # undocumented gate found while building this: singlestoredb-dev publishes an amd64-only image
+  # manifest (verified via `docker manifest inspect`) — `docker compose up` fails outright under
+  # arm64 emulation, not just "unhealthy." Both checked before the container is even started.
+  #
   # This REQ's scope grew across the harness's full 10-type pass; each gap below was found by
   # actually reaching that type's query under Trino, not by inspection, and each is now closed and
   # covered by the tests above.
@@ -57164,3 +57191,67 @@
   # across a full run. This is NOT the same race as above (introspect_tables's per-table skip for
   # empty column metadata is a documented, deterministic branch, not a race) — root cause not yet
   # found; tracked as a new, separate issue.
+  #
+  # Fixed (2026-09-13, GH#115): update_table (schema_mutation.py) discarded the MutationResult
+  # error from _build_columns_for_input with `columns, _ = ...`, so a failed column-type
+  # resolution proceeded to upsert an empty column list over the auto-registered ones.
+  # resolve_available_columns_metadata (schema_query.py) had no graphql_remote branch and fell
+  # through to engine information_schema introspection, which finds nothing for a source with no
+  # physical SQL catalog — guaranteeing that failure for any graphql_remote updateTable grant call
+  # omitting data_type (the normal UI-grant shape). Fixed: update_table now returns the error
+  # immediately; resolve_available_columns_metadata gained a graphql_remote branch reading types
+  # back from table_columns. Regression test: tests/unit/test_graphql_remote_update_table_columns.py
+
+- id: REQ-1731
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: RDBMS
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Two source types gain a genuine Provisa-direct read-then-land path (REQ-947's
+    ``complete_reach``), reachable on ANY engine — not just via Trino's own live connector:
+    (1) ``hiveserver2`` (new SourceType) — a HiveServer2 endpoint reached directly over Thrift via
+    impyla, distinct from ``hive``/``hive_s3`` (Trino-scanned lake STORAGE — files + metastore,
+    HiveServer2 never involved) for when HS2 itself is the only thing reachable; (2) ``exasol`` —
+    Provisa now reads it directly via pyexasol (Exasol's own WebSocket client) in addition to
+    Trino's existing JDBC connector, the same shape as the singlestore/snowflake/databricks direct
+    drivers. Both verified live: HiveDriver against a real apache/hive:4.0.0 HiveServer2 (new
+    ``hive-server2`` compose service, SERVICE_OPTS pointed at the existing hive-metastore — real
+    CREATE TABLE/INSERT/SELECT round-tripped); ExasolDriver's wiring verified by unit test with the
+    live e2e arch-gated the same way test_exasol_source_e2e.py already is (exasol/docker-db is
+    amd64-only, unbootable under arm64 emulation). Stock HiveServer2's default auth
+    (``hive.server2.authentication=NONE``) speaks SASL PLAIN and accepts any/empty credentials;
+    impyla's NOSASL (its Impala-oriented default) skips the SASL handshake and a stock HS2 drops
+    the connection immediately rather than falling back — HiveDriver defaults to PLAIN for exactly
+    this reason, confirmed live before settling on it.
+  code:
+  - provisa/executor/drivers/hive.py
+  - provisa/executor/drivers/exasol.py
+  - provisa/executor/drivers/registry.py
+  - provisa/core/models.py
+  - docker-compose.test.yml
+  - tests/conftest.py
+  - pyproject.toml
+  tests:
+  - tests/unit/test_hive_exasol_drivers.py
+  - tests/integration/test_hive_direct_driver_e2e.py
+  - tests/integration/test_exasol_direct_driver_e2e.py
+  use_case: >-
+    Auditing best-effort/Trino-only source types for the engine-swap harness (REQ-1730) surfaced
+    that singlestore, exasol, hive, hive_s3, pinot, and druid have no DuckDB connector and are
+    absent from strategy.py's `_MATERIALIZE_ONLY`, making them UnreachableSource under DuckDB
+    outright — genuinely Trino-only, not merely "no live attach." Of those, singlestore already had
+    a real driver (`_make_mysql`, MySQL wire-compatible) nobody had noticed made it materializable
+    everywhere via `complete_reach()`; hive and exasol had real, install-able client libraries
+    (impyla, pyexasol) but no driver had been written. This closes that gap for those two.
+  scenario: |
+    Given a HiveServer2 endpoint with no DuckDB/Trino connector reachability of its own
+    When SourceType.hiveserver2 is registered and complete_reach() completes the engine's connectors
+    Then a query against it lands via HiveDriver and is queryable through any engine's own store
+
+    Given an Exasol endpoint reachable today only via Trino's JDBC connector
+    When SourceType.exasol is registered under an engine with no live Exasol connector (e.g. DuckDB)
+    Then complete_reach() supplies a land connector backed by ExasolDriver instead of raising
+    UnreachableSource
