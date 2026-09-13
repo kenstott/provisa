@@ -61,6 +61,9 @@ dependencies = [
     "grpcio-status<1.82",  # aligns with the pinned protobuf<7
     "pyodbc",  # Azure Synapse / Microsoft Fabric federation engine (T-SQL over TDS/ODBC)
     "azure-identity",  # Azure AD token auth for Fabric/Synapse (uses `az login` / managed identity)
+    "impyla",  # REQ-1731: HiveServer2 direct driver (Thrift TCLIService)
+    "pyexasol",  # REQ-1731: Exasol direct driver (Exasol's own WebSocket client)
+    "pymysql",  # demo/sources/singlestore/prime.py — a plain sync client for a one-shot seed script
     "dulwich",  # REQ-1524: the per-org model repository. Pure Python — no git binary on the
     # host (GitPython shells out) and no native build (pygit2 needs libgit2), which REQ-294's
     # airgap-capable distribution cannot carry a compiler for.

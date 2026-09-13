@@ -173,8 +173,10 @@ _MARKER_SERVICES: dict[str, list[str]] = {
         "druid",
     ],
     # Hive metastore (local warehouse shared with Trino) — seeding is done through Trino, so the
-    # test process never reaches the metastore directly (no host-published port needed).
-    "requires_hive": ["hive-metastore"],
+    # test process never reaches the metastore directly (no host-published port needed). Also
+    # brings up hive-server2 (REQ-1731): the HiveDriver DIRECT driver reaches Hive over HS2/Thrift,
+    # a completely different path from Trino's own metastore-backed scan.
+    "requires_hive": ["hive-metastore", "hive-server2"],
     # S3-backed Hive: the metastore plus the core MinIO (reused) hold the table data on s3a://.
     "requires_hive_s3": ["hive-s3-metastore"],
     # REQ-1069 metadata-export targets. Marquez brings its own Postgres; OpenMetadata brings its

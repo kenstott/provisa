@@ -88,6 +88,18 @@ def _make_trino() -> DirectDriver:  # remote Trino/Presto coordinator as a SOURC
     return SQLAlchemyDriver("trino")  # trino.sqlalchemy dialect; database part is the catalog
 
 
+def _make_hiveserver2() -> DirectDriver:  # HiveServer2 over Thrift, via impyla
+    from provisa.executor.drivers.hive import HiveDriver
+
+    return HiveDriver()
+
+
+def _make_exasol() -> DirectDriver:  # via pyexasol (Exasol's own WebSocket client)
+    from provisa.executor.drivers.exasol import ExasolDriver
+
+    return ExasolDriver()
+
+
 # source_type → factory function
 _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     "postgresql": _make_pg,
@@ -113,6 +125,11 @@ _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     # Trino/Presto as a SOURCE (not just an engine): a remote coordinator Provisa reads via the
     # SQLAlchemy trino dialect, then lands — reachable as a REPLICA on ANY engine, like GraphQL/REST.
     "trino": _make_trino,
+    # REQ-1731: a HiveServer2/Exasol endpoint reached directly (not through Trino's own lake-scan
+    # hive connector or JDBC exasol connector) — read-then-land on ANY engine, same shape as the
+    # warehouse drivers above.
+    "hiveserver2": _make_hiveserver2,
+    "exasol": _make_exasol,
 }
 
 # FALLBACK: source types with no bespoke async driver, served by the generic SQLAlchemy driver

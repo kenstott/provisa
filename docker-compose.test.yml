@@ -656,6 +656,35 @@ services:
       retries: 36
       start_period: 90s
 
+  # HiveServer2 — the Thrift SQL-execution endpoint the HiveDriver DIRECT driver (REQ-1731,
+  # provisa/executor/drivers/hive.py) connects to via impyla, distinct from hive-metastore above
+  # (which Trino reads directly and never queries through HS2 at all). Points at the SAME metastore
+  # so both paths see the same tables. SERVICE_OPTS is this image's documented mechanism for passing
+  # -D properties to the hive process (entrypoint.sh folds it into HADOOP_CLIENT_OPTS) — verified
+  # live: this is how the metastore URI reaches the HS2 process, there is no dedicated env var for
+  # it. Stock HS2's default auth (hive.server2.authentication=NONE) speaks SASL PLAIN and accepts
+  # any user/password including empty; impyla's NOSASL mode (its Impala-oriented default) skips the
+  # SASL handshake and a stock HS2 drops the connection immediately rather than falling back —
+  # HiveDriver defaults to PLAIN for exactly this reason, confirmed against this fixture.
+  hive-server2:
+    restart: unless-stopped
+    image: *hive_image
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+    environment:
+      SERVICE_NAME: hiveserver2
+      SERVICE_OPTS: "-Dhive.metastore.uris=thrift://hive-metastore:9083"
+      IS_RESUME: "true"
+    ports:
+      - "${HIVE_SERVER2_PORT:-10000}:10000"
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/10000' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 36
+      start_period: 60s
+
   # Hive on S3 (MinIO) as a connector-source: the same Thrift metastore, but the warehouse lives on
   # s3a://provisa-hive-s3. The metastore is given the bundled hadoop-aws + aws-sdk jars
   # (HIVE_AUX_JARS_PATH) and the S3A settings (db/hive-s3-conf/hive-site.xml) so it can create the

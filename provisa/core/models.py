@@ -90,6 +90,11 @@ class SourceType(str, Enum):
     hudi = "hudi"  # REQ-1178: Apache Hudi lakehouse table (ClickHouse Hudi engine, zero-copy)
     hive = "hive"  # storage backend (hadoop/S3/ADLS) is source.mapping["storage"], not a type
     hive_s3 = "hive_s3"  # REQ-229: Hive lake on S3 object storage — distinct type, hive connector
+    # REQ-1731: a HiveServer2 endpoint reached directly over Thrift (impyla) — distinct from `hive`/
+    # `hive_s3` above, which are Trino-scanned lake STORAGE (files + metastore, no query engine of
+    # their own reached). This type is for when HS2 itself is the only thing reachable (no direct
+    # filesystem/S3 access to the warehouse) — read-then-land on any engine, like singlestore.
+    hiveserver2 = "hiveserver2"
     # NoSQL
     mongodb = "mongodb"
     cassandra = "cassandra"
