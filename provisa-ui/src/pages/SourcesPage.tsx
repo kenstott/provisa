@@ -577,6 +577,19 @@ export function SourcesPage() {
       setRssPollInterval("");
       setRssUseSsl(true);
     }
+    // REQ-1740: default_graph_uri round-trips through federation_hints like hiveserver2's
+    // auth_mechanism above — merged into authFields without disturbing authType, since it's
+    // orthogonal to which auth mode (none/bearer/basic) is selected.
+    if (s.type === "sparql" && s.federationHintsJson) {
+      try {
+        const h = JSON.parse(s.federationHintsJson) as Record<string, string>;
+        if (h.default_graph_uri) {
+          setAuthFields((prev) => ({ ...prev, default_graph_uri: h.default_graph_uri }));
+        }
+      } catch {
+        // ignore — default_graph_uri stays unset, same as a source with none saved
+      }
+    }
     if (s.type === "govdata" && s.database) {
       const storedSchemas = s.database
         .split(",")
@@ -737,7 +750,11 @@ export function SourcesPage() {
                                 ] as const
                               ).filter(([, v]) => v),
                             )
-                          : {};
+                          : // REQ-1740: sparql/source.py's SparqlSourceConfig.default_graph_uri —
+                            // optional, restricts queries to one named graph.
+                            form.type === "sparql" && authFields.default_graph_uri?.trim()
+                            ? { default_graph_uri: authFields.default_graph_uri.trim() }
+                            : {};
       const federationHintsJson =
         Object.keys(federationHints).length > 0 ? JSON.stringify(federationHints) : undefined;
       // password auth (Snowflake) / personal-access-token auth (Databricks) collect into authFields,

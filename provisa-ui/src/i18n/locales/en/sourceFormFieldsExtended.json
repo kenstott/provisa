@@ -11,6 +11,7 @@
     "metadataSheetId": "Metadata Sheet ID",
     "metadataSheetIdPlaceholder": "Sheet ID for table definitions",
     "endpointUrl": "Endpoint URL",
+    "defaultGraphUri": "Default Graph URI",
     "namespace": "Namespace",
     "cacheTtlSeconds": "Cache TTL (seconds)",
     "protoPathOrUrl": "Proto Path or URL",

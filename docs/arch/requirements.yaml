@@ -57842,3 +57842,82 @@
     When the table is registered or edited
     Then ColumnInput.path flows through _build_column_models into the Column model and the
     table_columns.path DB column, and _extract_row reads it back to extract nested JSON fields
+
+- id: REQ-1740
+  status: complete
+  since: 2026-09
+  group: "3. Source Registration & Data Modeling"
+  category: Correctness
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Closes the remaining smaller findings from the Add-Source UI audit (REQ-1736 through REQ-1739),
+    left open for a follow-up pass: dead/broken fields on redshift, pinot, druid, and sparql.
+
+    redshift: its Authentication select offered "Username/Password" (binding to `authFields` via
+    `AuthUserPass`) and "IAM Credentials" — but the submit path only ever sent `coreForm`'s
+    `form.username`/`form.password`, never `authFields`, so BOTH modes were silently dropped
+    regardless of which was picked; the IAM mode was additionally dead on the backend, since
+    `SQLAlchemyDriver` (the only driver redshift uses) has no IAM auth path at all — `connect()`
+    only ever builds a plain user/password URL. Fixed by removing the selector/IAM option entirely
+    and binding directly to `form.username`/`form.password`, the same way `SIMPLE_RDBMS` does —
+    this also fixes the edit-load round-trip for free, since `form.username` is already populated
+    from the saved source on edit, unlike `authFields` which nothing ever repopulated.
+
+    pinot: `SIMPLE_RDBMS` rendered database/username/password, but `TrinoPinotConnector.details()`
+    (trino_connectors.py) builds `pinot.controller-urls` from host:port alone — the connector never
+    reads `source.database`/`username`/`password`. Moved pinot from `SIMPLE_RDBMS` to
+    `HOST_PORT_ONLY`.
+
+    druid: `SIMPLE_RDBMS` rendered a required Database field, but `TrinoDruidConnector.details()`
+    builds its Avatica connection-url from `Source.jdbc_url(host, port)` alone — Druid's JDBC URL
+    has no database segment, and the connector never reads `source.database`. The field was both
+    dead AND actively misleading (marked required). Hidden specifically for druid within the
+    `isSimpleRdbms` block (username/password DO reach the connector for druid, unlike pinot, so
+    only the database field is removed, not the whole SIMPLE_RDBMS membership).
+
+    sparql: `SparqlSourceConfig.default_graph_uri` (sparql/source.py) — an optional named-graph
+    restriction — was defined on the backend model and consumed by `build_endpoint`'s query params,
+    but nothing ever set it: `_handle_sparql_table` (config_loader.py, the real registration path —
+    `sparql_router.py`'s own dedicated endpoint is dead code per REQ-1736's audit, the UI never
+    calls it) hardcoded `sparql_config_from_source(source_id=..., endpoint_url=...)` with no
+    default_graph_uri parameter at all, and the Sources form had no field for it. Fixed by adding
+    `default_graph_uri` as an optional parameter threaded through `sparql_config_from_source`/
+    `persist_sparql_table`/`_handle_sparql_table`, sourced from `Source.federation_hints`
+    (`federation_hints["default_graph_uri"]`, the same channel REQ-1739's rss/websocket fix uses),
+    plus a new optional "Default Graph URI" field in `SourceFormFieldsExtended.tsx`.
+
+    Explicitly NOT fixed in this pass (documented, not silently left broken): splunk's optional
+    `datamodel_filter` (trino_connectors.py) still has no UI field — deferred as a minor,
+    purely-additive gap, not a correctness bug (splunk works without it, just can't restrict to
+    one CIM data model). sparql/neo4j auth (bearer/basic token or username/password) is rendered in
+    the Sources form but does not appear to reach persistence through the real (generic-flow)
+    registration path either — `_handle_neo4j_table`/`_handle_sparql_table` pass no auth-related
+    argument to their respective `persist_*` functions — this is a materially larger gap than a
+    dead field and was intentionally left for a dedicated follow-up rather than folded into this
+    pass silently.
+  code:
+  - provisa-ui/src/pages/sources/SourceFormFields.tsx
+  - provisa-ui/src/pages/sources/SourceFormFieldsExtended.tsx
+  - provisa-ui/src/pages/sources/constants.ts
+  - provisa-ui/src/pages/SourcesPage.tsx
+  - provisa-ui/src/i18n/locales/en/sourceFormFieldsExtended.json
+  - provisa/sparql/persist.py
+  - provisa/core/config_loader.py
+  use_case: >-
+    User asked to continue fixing the remaining smaller gaps found by the original Add-Source UI
+    audit: Redshift/Pinot/Druid dead fields, sparql's default_graph_uri, splunk's datamodel_filter,
+    and neo4j's dropped HTTPS checkbox.
+  scenario: |
+    Given a redshift source form with username/password entered
+    When the source is created
+    Then form.username/form.password (not authFields) carry the credentials into the mutation
+
+    Given the Add Source dropdown
+    When Pinot or Druid is selected
+    Then no dead database/username/password fields are rendered that the connector never reads
+
+    Given a sparql source form with a Default Graph URI entered
+    When the source is created and a table registered under it
+    Then federation_hints["default_graph_uri"] flows through _handle_sparql_table into
+    SparqlSourceConfig, and build_endpoint's query carries the default-graph-uri parameter

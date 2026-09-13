@@ -32,12 +32,14 @@ if TYPE_CHECKING:
 
 
 def sparql_config_from_source(
-    *, source_id: str, endpoint_url: str
+    *, source_id: str, endpoint_url: str, default_graph_uri: str | None = None
 ) -> "tuple[SparqlSourceConfig, ApiSource]":  # REQ-1683
     """The endpoint config and api_sources record for a ``sparql`` Source row."""
     from provisa.sparql.source import SparqlSourceConfig, build_api_source
 
-    cfg = SparqlSourceConfig(source_id=source_id, endpoint_url=endpoint_url)
+    cfg = SparqlSourceConfig(
+        source_id=source_id, endpoint_url=endpoint_url, default_graph_uri=default_graph_uri
+    )
     return cfg, build_api_source(cfg)
 
 
@@ -50,12 +52,15 @@ async def persist_sparql_table(  # REQ-1683
     query_template: str,
     columns: list,
     ttl: int,
+    default_graph_uri: str | None = None,  # REQ-1740
 ) -> "tuple[ApiSource, ApiEndpoint]":
     """Persist one SPARQL-backed table: its source's api_sources row and its api_endpoints row.
     Returns the records so the caller can mirror them into live state."""
     from provisa.sparql.source import build_endpoint
 
-    cfg, api_source = sparql_config_from_source(source_id=source_id, endpoint_url=endpoint_url)
+    cfg, api_source = sparql_config_from_source(
+        source_id=source_id, endpoint_url=endpoint_url, default_graph_uri=default_graph_uri
+    )
     endpoint = build_endpoint(
         cfg, table_name, query_template, api_columns_from_config(columns), ttl
     )

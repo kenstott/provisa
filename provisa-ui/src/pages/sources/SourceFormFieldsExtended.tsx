@@ -35,6 +35,7 @@ import {
 import { AuthUserPass } from "./AuthUserPass";
 import { OpenApiFormSection } from "./OpenApiFormSection";
 import { PushFeedFormSection } from "./PushFeedFormSection";
+import { SparqlFormSection } from "./SparqlFormSection";
 import type { SourceFormFieldsProps } from "./SourceFormFields";
 
 export function SourceFormFieldsExtended({
@@ -427,47 +428,14 @@ export function SourceFormFieldsExtended({
         </>
       )}
       {form.type === "sparql" && (
-        <>
-          <TextInput
-            required
-            label={t("sourceFormFieldsExtended.endpointUrl")}
-            value={form.host}
-            onChange={(e) => setForm({ ...form, host: e.target.value })}
-            placeholder="https://dbpedia.org/sparql"
-            style={{ gridColumn: "1 / -1" }}
-            data-testid="sparql-endpoint-input"
-          />
-          <Select
-            label={t("sourceFormFieldsExtended.authentication")}
-            value={authType}
-            onChange={(v) => {
-              setAuthType(v ?? "");
-              setAuthFields({});
-            }}
-            data={[
-              { value: "none", label: t("sourceFormFieldsExtended.authNone") },
-              { value: "bearer", label: t("sourceFormFieldsExtended.authBearer") },
-              { value: "basic", label: t("sourceFormFieldsExtended.authBasic") },
-            ]}
-            allowDeselect={false}
-            style={{ gridColumn: "1 / -1" }}
-            data-testid="sparql-auth-type-select"
-          />
-          {authType === "bearer" && (
-            <TextInput
-              required
-              label={t("sourceFormFieldsExtended.token")}
-              value={authFields.token ?? ""}
-              onChange={(e) => setAuthFields({ ...authFields, token: e.target.value })}
-              placeholder="${env:SPARQL_TOKEN}"
-              style={{ gridColumn: "1 / -1" }}
-              data-testid="sparql-token-input"
-            />
-          )}
-          {authType === "basic" && (
-            <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />
-          )}
-        </>
+        <SparqlFormSection
+          form={form}
+          setForm={setForm}
+          authType={authType}
+          setAuthType={setAuthType}
+          authFields={authFields}
+          setAuthFields={setAuthFields}
+        />
       )}
       {form.type === "govdata" && (
         <>

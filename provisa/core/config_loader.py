@@ -524,6 +524,7 @@ async def _handle_sparql_table(conn: "Connection", tbl: Table, src: Source) -> N
         query_template=tbl.query_template,
         columns=tbl.columns,
         ttl=tbl.cache_ttl or src.cache_ttl or 300,
+        default_graph_uri=src.federation_hints.get("default_graph_uri"),  # REQ-1740
     )
 
 

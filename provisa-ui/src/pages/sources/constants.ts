@@ -190,7 +190,6 @@ export const SIMPLE_RDBMS = new Set([
   "sqlserver",
   "oracle",
   "clickhouse",
-  "pinot",
   "druid",
   "mongodb",
   "cassandra",
@@ -223,7 +222,10 @@ export const DATA_LAKE = new Set(["delta_lake", "iceberg", "hive", "hive_s3", "h
 // host+port alone (e.g. airport's ATTACH location, connector_duckdb.py's DuckDBAirportConnector).
 // REQ-1739: websocket/rss derive their URL from host+port when no federation_hints override is
 // set (push_wiring.py / subscribe.py) — same shape as airport.
-export const HOST_PORT_ONLY = new Set(["airport", "websocket", "rss"]);
+// REQ-1740: Trino's pinot connector reaches the cluster through the controller's REST endpoint
+// (pinot.controller-urls, TrinoPinotConnector.details() in trino_connectors.py) — host:port only;
+// database/username/password rendered under SIMPLE_RDBMS were dead inputs nothing ever read.
+export const HOST_PORT_ONLY = new Set(["airport", "websocket", "rss", "pinot"]);
 
 // Source types needing no connection fields at all beyond id/description (REQ-1739): ingest is a
 // pure push receiver, soda/great_expectations are DQ checkers that scan through pgwire.

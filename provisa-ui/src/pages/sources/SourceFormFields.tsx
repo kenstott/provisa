@@ -180,12 +180,20 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
               onChange={(e) => setForm({ ...form, password: e.currentTarget.value })}
             />
           </div>
-          <TextInput
-            label={t("sourceFormFields.database")}
-            required
-            value={form.database}
-            onChange={(e) => setForm({ ...form, database: e.currentTarget.value })}
-          />
+          {
+            // REQ-1740: TrinoDruidConnector.details() (trino_connectors.py) builds its Avatica
+            // connection-url from Source.jdbc_url(host, port) alone — Druid's Avatica JDBC URL has
+            // no database segment, and the connector never reads source.database. Rendering (and
+            // requiring) it here was a dead, actively misleading input.
+            form.type !== "druid" && (
+              <TextInput
+                label={t("sourceFormFields.database")}
+                required
+                value={form.database}
+                onChange={(e) => setForm({ ...form, database: e.currentTarget.value })}
+              />
+            )
+          }
         </>
       )}
       {form.type === "hiveserver2" && (
@@ -506,50 +514,33 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
             onChange={(e) => setForm({ ...form, database: e.currentTarget.value })}
             placeholder="dev"
           />
-          <Select
-            style={{ gridColumn: "1 / -1" }}
-            label={t("sourceFormFields.authentication")}
-            data={[
-              { value: "password", label: t("sourceFormFields.usernamePassword") },
-              { value: "iam", label: t("sourceFormFields.iamCredentials") },
-            ]}
-            value={authType}
-            onChange={(v) => {
-              setAuthType(v ?? "");
-              setAuthFields({});
-            }}
-            allowDeselect={false}
-          />
-          {authType === "password" && (
-            <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />
-          )}
-          {authType === "iam" && (
-            <>
-              <TextInput
-                label={t("sourceFormFields.accessKeyId")}
-                required
-                value={authFields.access_key_id ?? ""}
-                onChange={(e) =>
-                  setAuthFields({ ...authFields, access_key_id: e.currentTarget.value })
-                }
-                placeholder="${env:AWS_ACCESS_KEY_ID}"
-              />
-              <PasswordInput
-                label={t("sourceFormFields.secretAccessKey")}
-                required
-                value={authFields.secret_access_key ?? ""}
-                onChange={(e) =>
-                  setAuthFields({ ...authFields, secret_access_key: e.currentTarget.value })
-                }
-                placeholder="${env:AWS_SECRET_ACCESS_KEY}"
-              />
-              <TextInput
-                label={t("sourceFormFields.region")}
-                value={authFields.region ?? "us-east-1"}
-                onChange={(e) => setAuthFields({ ...authFields, region: e.currentTarget.value })}
-              />
-            </>
-          )}
+          {
+            // REQ-1740: an Authentication select ("Username/Password" vs "IAM Credentials") used
+            // to render here, with the password mode binding to authFields (not form) — but the
+            // submit path only ever sends coreForm's form.username/form.password, so redshift's
+            // credentials were collected and then silently dropped regardless of which mode was
+            // picked. The IAM mode was additionally dead on the backend: SQLAlchemyDriver
+            // (executor/drivers/sqlalchemy_driver.py), the only driver redshift uses, has no IAM
+            // auth path at all — connect() only ever builds a plain user/password URL. Removed the
+            // selector/IAM entirely and bound directly to form.username/form.password, the same
+            // way SIMPLE_RDBMS does — this also fixes the edit-load round-trip for free, since
+            // form.username is already populated from the saved source (SourcesPage.tsx's
+            // handleEdit), unlike authFields which nothing ever repopulated for redshift.
+          }
+          <div style={{ display: "flex", gap: "0.75rem" }}>
+            <TextInput
+              style={{ flex: 1 }}
+              label={t("sourceFormFields.username")}
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.currentTarget.value })}
+            />
+            <PasswordInput
+              style={{ flex: 1 }}
+              label={t("sourceFormFields.password")}
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.currentTarget.value })}
+            />
+          </div>
         </>
       )}
       {form.type === "exasol" && (
