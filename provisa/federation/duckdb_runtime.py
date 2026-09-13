@@ -783,16 +783,18 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         streaming through the Flight server's GeneratorStream (REQ-986, REQ-1214).
 
         Truly lazy: the batches are pulled from a PRIVATE cursor's Arrow record-batch reader
-        (``fetch_record_batch``) on demand, so the full result never materializes — peak memory is
-        bounded by one record batch, not the total result size. A private cursor (not the shared
-        connection) keeps concurrent worker-thread streams from corrupting each other's fetch state;
-        it is closed when the generator drains or the consumer stops early."""
+        (``to_arrow_reader`` — ``fetch_record_batch`` is deprecated as of duckdb 1.x, same
+        batch_size arg and RecordBatchReader return) on demand, so the full result never
+        materializes — peak memory is bounded by one record batch, not the total result size. A
+        private cursor (not the shared connection) keeps concurrent worker-thread streams from
+        corrupting each other's fetch state; it is closed when the generator drains or the
+        consumer stops early."""
         # Held for the whole stream — same reason as run_sync: the batches are scanned on demand.
         self._catalog_gate.acquire_read()
         try:
             cur = self._con.cursor()
             cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
-            reader = cur.fetch_record_batch(_ARROW_STREAM_BATCH_ROWS)
+            reader = cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
             schema = reader.schema
         except BaseException:
             self._catalog_gate.release_read()
