@@ -171,6 +171,23 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
           />
         </>
       )}
+      {form.type === "hiveserver2" && (
+        // REQ-1731: HiveDriver.configure() reads `auth_mechanism` from Source.federation_hints,
+        // defaulting to PLAIN when unset (stock HS2's SASL PLAIN, works with any/no credentials).
+        // GSSAPI (Kerberos) and LDAP are the other mechanisms impyla supports against a real HS2.
+        <Select
+          style={{ gridColumn: "1 / -1" }}
+          label={t("sourceFormFields.authMechanism")}
+          data={[
+            { value: "PLAIN", label: t("sourceFormFields.authMechanismPlain") },
+            { value: "LDAP", label: t("sourceFormFields.authMechanismLdap") },
+            { value: "GSSAPI", label: t("sourceFormFields.authMechanismGssapi") },
+          ]}
+          value={authFields.auth_mechanism ?? "PLAIN"}
+          onChange={(v) => setAuthFields({ ...authFields, auth_mechanism: v ?? "PLAIN" })}
+          allowDeselect={false}
+        />
+      )}
       {isHostPortOnly && (
         <>
           <TextInput
@@ -568,7 +585,7 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
       )}
       {isDataLake && (
         <>
-          {form.type === "hive" && (
+          {(form.type === "hive" || form.type === "hive_s3") && (
             <>
               <TextInput
                 label={t("sourceFormFields.metastoreUri")}
@@ -603,15 +620,31 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
               />
             </>
           )}
+          {form.type === "hudi" && (
+            <TextInput
+              style={{ gridColumn: "1 / -1" }}
+              label={t("sourceFormFields.warehousePath")}
+              required
+              value={form.path}
+              onChange={(e) => setForm({ ...form, path: e.currentTarget.value })}
+              placeholder="s3://bucket/warehouse/hudi_table"
+            />
+          )}
+          {/* REQ-229: hive_s3 DECLARES S3 storage — TrinoHiveS3Connector always wires the native S3
+              filesystem, so the "none"/hadoop-local option `hive` offers makes no sense here. */}
           <Select
             style={{ gridColumn: "1 / -1" }}
             label={t("sourceFormFields.storageAuthentication")}
-            data={[
-              { value: "none", label: t("sourceFormFields.noneInstanceRoleLocal") },
-              { value: "aws", label: t("sourceFormFields.awsS3AccessKey") },
-              { value: "azure", label: t("sourceFormFields.azureAdls") },
-              { value: "gcs", label: t("sourceFormFields.googleCloudStorage") },
-            ]}
+            data={
+              form.type === "hive_s3"
+                ? [{ value: "aws", label: t("sourceFormFields.awsS3AccessKey") }]
+                : [
+                    { value: "none", label: t("sourceFormFields.noneInstanceRoleLocal") },
+                    { value: "aws", label: t("sourceFormFields.awsS3AccessKey") },
+                    { value: "azure", label: t("sourceFormFields.azureAdls") },
+                    { value: "gcs", label: t("sourceFormFields.googleCloudStorage") },
+                  ]
+            }
             value={authType}
             onChange={(v) => {
               setAuthType(v ?? "");
@@ -641,14 +674,18 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
               />
               <TextInput
                 label={t("sourceFormFields.region")}
+                required={form.type === "hive_s3"}
                 value={authFields.region ?? "us-east-1"}
                 onChange={(e) => setAuthFields({ ...authFields, region: e.currentTarget.value })}
               />
               <TextInput
                 label={t("sourceFormFields.s3EndpointMinio")}
+                required={form.type === "hive_s3"}
                 value={authFields.endpoint ?? ""}
                 onChange={(e) => setAuthFields({ ...authFields, endpoint: e.currentTarget.value })}
-                placeholder="optional — for S3-compatible"
+                placeholder={
+                  form.type === "hive_s3" ? "http://minio:9000" : "optional — for S3-compatible"
+                }
               />
             </>
           )}

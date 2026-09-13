@@ -57,6 +57,10 @@
     "s3EndpointMinio": "S3 Endpoint (MinIO)",
     "storageAccount": "Storage Account",
     "accessKey": "Access Key",
-    "sasToken": "SAS Token"
+    "sasToken": "SAS Token",
+    "authMechanism": "Auth Mechanism",
+    "authMechanismPlain": "PLAIN (username / password)",
+    "authMechanismLdap": "LDAP",
+    "authMechanismGssapi": "GSSAPI (Kerberos)"
   }
 }

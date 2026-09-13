@@ -279,7 +279,9 @@ export function SourcesPage() {
     const signals = sourceChangeSignals(type);
     const changeSignal = signals.includes(form.changeSignal) ? form.changeSignal : signals[0];
     setForm({ ...form, type, port: getDefaultPort(type), description: "", changeSignal });
-    setAuthType("none");
+    // REQ-229: hive_s3 DECLARES S3 storage — the Storage Authentication select offers only "aws"
+    // for this type (SourceFormFields.tsx), so default straight to it instead of "none".
+    setAuthType(type === "hive_s3" ? "aws" : "none");
     setAuthFields({});
     resetSpFields();
   };
@@ -421,7 +423,7 @@ export function SourcesPage() {
     );
     setAuthType("none");
     setAuthFields({});
-    if (s.type === "hive" && s.mappingJson) {
+    if ((s.type === "hive" || s.type === "hive_s3") && s.mappingJson) {
       try {
         const { storage, ...creds } = JSON.parse(s.mappingJson) as Record<string, string>;
         setAuthType(
@@ -445,13 +447,13 @@ export function SourcesPage() {
     // query, same as every other source type's password field — only the non-secret extras
     // (warehouse/schema/role/http_path/credentials_path/access_key_id/endpoint) round-trip.
     if (
-      (s.type === "delta_lake" || s.type === "iceberg" || s.type === "snowflake" ||
-        s.type === "databricks" || s.type === "bigquery") &&
+      (s.type === "delta_lake" || s.type === "iceberg" || s.type === "hudi" ||
+        s.type === "snowflake" || s.type === "databricks" || s.type === "bigquery") &&
       s.federationHintsJson
     ) {
       try {
         const hints = JSON.parse(s.federationHintsJson) as Record<string, string>;
-        if (s.type === "delta_lake" || s.type === "iceberg") {
+        if (s.type === "delta_lake" || s.type === "iceberg" || s.type === "hudi") {
           setAuthType(hints.access_key_id ? "aws" : "none");
         } else if (s.type === "bigquery") {
           setAuthType(hints.credentials_path ? "service_account" : "application_default");
@@ -465,6 +467,17 @@ export function SourcesPage() {
         );
       } catch {
         setAuthType("none");
+        setAuthFields({});
+      }
+    }
+    // REQ-1731: auth_mechanism round-trips through federation_hints, same channel as the other
+    // types above — reopening a non-default (GSSAPI/LDAP) hiveserver2 source for editing must not
+    // silently reset it to PLAIN.
+    if (s.type === "hiveserver2" && s.federationHintsJson) {
+      try {
+        const hints = JSON.parse(s.federationHintsJson) as Record<string, string>;
+        setAuthFields(hints.auth_mechanism ? { auth_mechanism: hints.auth_mechanism } : {});
+      } catch {
         setAuthFields({});
       }
     }
@@ -576,13 +589,17 @@ export function SourcesPage() {
       // by mapping.storage. Derived from the Storage Authentication select (none→hadoop, aws→s3,
       // azure→adls, gcs→gcs) so the connector wires the matching native filesystem.
       const lakeStorage =
-        authType === "aws"
+        // REQ-229: hive_s3 DECLARES S3 storage — always "s3" regardless of the (single-option)
+        // Storage Authentication select, never the hadoop/local default plain `hive` falls back to.
+        form.type === "hive_s3"
           ? "s3"
-          : authType === "azure"
-            ? "adls"
-            : authType === "gcs"
-              ? "gcs"
-              : "hadoop";
+          : authType === "aws"
+            ? "s3"
+            : authType === "azure"
+              ? "adls"
+              : authType === "gcs"
+                ? "gcs"
+                : "hadoop";
       // Warehouse-specific extras that host/port/database/username/password can't carry
       // (Source.federation_hints, provisa/core/models.py:232-235). authFields is per-type/per-auth-
       // mode scratch state that must be explicitly routed here — it is never in `coreForm`.
@@ -600,14 +617,25 @@ export function SourcesPage() {
               : // delta_lake/iceberg: DuckDB's _s3_secret_ddl (connector_duckdb.py) reads S3 creds from
                 // federation_hints, never from mapping — unlike hive, which keeps its storage.aws
                 // creds in mapping (Trino's hive connector props). Only "aws" is wired here: DuckDB's
-                // delta_scan/iceberg_scan have no azure/gcs SECRET support yet.
-                (form.type === "delta_lake" || form.type === "iceberg") && authType === "aws"
+                // delta_scan/iceberg_scan have no azure/gcs SECRET support yet. hudi: ClickHouse's
+                // _clickhouse_s3_creds (clickhouse_connectors.py) reads the same access_key_id/
+                // secret_access_key spelling from federation_hints (endpoint travels in `path` itself
+                // for the Hudi table engine, unused here but harmless if filled in).
+                (form.type === "delta_lake" || form.type === "iceberg" || form.type === "hudi") &&
+                  authType === "aws"
                 ? Object.fromEntries(
                     (["access_key_id", "secret_access_key", "endpoint"] as const)
                       .filter((k) => authFields[k])
                       .map((k) => [k, authFields[k]]),
                   )
-                : {};
+                : // REQ-1731: HiveDriver.configure() reads `auth_mechanism` from federation_hints;
+                  // PLAIN is the driver's own default, so only submit it when the operator picked a
+                  // non-default mechanism (GSSAPI/LDAP) — no point round-tripping the default.
+                  form.type === "hiveserver2" &&
+                    authFields.auth_mechanism &&
+                    authFields.auth_mechanism !== "PLAIN"
+                  ? { auth_mechanism: authFields.auth_mechanism }
+                  : {};
       const federationHintsJson =
         Object.keys(federationHints).length > 0 ? JSON.stringify(federationHints) : undefined;
       // password auth (Snowflake) / personal-access-token auth (Databricks) collect into authFields,
@@ -642,11 +670,13 @@ export function SourcesPage() {
               // connectors' extra options.
               form.type === "google_sheets"
               ? JSON.stringify({ credentials_json: authFields.credentials_json ?? "" })
-              : // hive's storage backend (hadoop/S3/ADLS) is a mapping-discriminated config choice
-                // (provisa/core/models.py:91-92, trino_connectors.py's TrinoHiveConnector) — but
-                // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
-                // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
-                form.type === "hive"
+              : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
+                // region/endpoint) are a mapping-discriminated config choice read by
+                // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
+                // delta_lake/iceberg/hudi have no such mapping.storage reader; their S3 creds route
+                // through federationHintsJson above instead (_s3_secret_ddl / _clickhouse_s3_creds
+                // read federation_hints).
+                form.type === "hive" || form.type === "hive_s3"
                 ? JSON.stringify({ storage: lakeStorage, ...authFields })
                 : undefined;
       const sourcePayload = {
@@ -664,7 +694,10 @@ export function SourcesPage() {
             : FILE_SOURCES.has(form.type) ||
                 form.type === "files" ||
                 form.type === "delta_lake" ||
-                form.type === "iceberg"
+                form.type === "iceberg" ||
+                // REQ-1178: ClickHouseHudiConnector reads source.path (object-store URL) exactly
+                // like delta_lake/iceberg's DuckDB connectors do.
+                form.type === "hudi"
               ? form.type === "files" && form.path
                 ? filesTransport === "file://"
                   ? form.path
