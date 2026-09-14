@@ -265,15 +265,10 @@ test.describe("source to query through the UI, community-extension sources (REQ-
   // from DuckDB as Provisa's own engine. No docker fixture; demo/files/widgets.duckdb is written
   // by this file's own beforeAll.
   test("duckdb: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    // REAL BUG, reproduced in true isolation (no docker, no shared agents, no contention). The
-    // introspect.py current_database() fix from an earlier session IS confirmed working
-    // (registration reaches the schema pick without a "main" x3 React key collision). What's
-    // broken now: after selecting the table, the Register Table form's column checkboxes never
-    // appear (`[data-testid^="register-table-col-selected-"]` never becomes visible, 30s
-    // timeout). Same symptom class as airport's table picker above, and pinot/hive_s3's pickers in
-    // source-to-query-olap-lake.spec.ts — likely one systemic bug in Register Table's async
-    // metadata population, not a per-connector issue. Root cause not yet isolated.
-    test.skip(true, "real bug: Register Table's column checkboxes never appear after table selection; not contention");
+    // REQ-1750: root cause found and fixed — native_columns (introspect.py) had no "duckdb"
+    // branch, so it fell through to the engine's ATTACH seam, empty pre-registration (REQ-1673).
+    // native_schemas/_native_tables_rdbms already sidestepped this via the direct pool connection
+    // (REQ-1746); native_columns now does too.
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_cext_duckdb_${stamp}`;

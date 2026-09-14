@@ -320,6 +320,24 @@ async def test_native_columns_tidb():
     assert params == ["verify_db", "widgets"]
 
 
+# ── duckdb-as-a-source's column picker (REQ-1749) ──────────────────────────────────────────────
+# native_schemas/_native_tables_rdbms already had "duckdb" branches (REQ-1746) using the DIRECT
+# pool connection, scoped to current_database() so a fresh attached file's system/temp catalogs
+# don't leak in. native_columns had NO such branch — it fell through to the engine's own ATTACH
+# seam, which is empty pre-registration (REQ-1673: the engine attaches a source only once a table
+# on it is registered) — the Register Table form's column checkboxes never appeared.
+
+
+@pytest.mark.asyncio
+async def test_native_columns_duckdb_scoped_to_current_database():
+    pool = _pool([("id", "int"), ("name", "varchar")])
+    result = await native_columns("src", "duckdb", "main", "widgets", pool)
+    assert result == [("id", "int"), ("name", "varchar")]
+    _, query, params = pool.execute.call_args[0]
+    assert "current_database()" in query
+    assert params == ["main", "widgets"]
+
+
 @pytest.mark.asyncio
 async def test_native_schemas_sqlite_returns_main():
     # Regression: SQLite was falling through to Trino which returned internal PG

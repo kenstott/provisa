@@ -18451,3 +18451,15 @@ Fixed a real, reproducible bug found while re-verifying the [REQ-1671](#REQ-1671
 **Code:** `provisa/api/admin/introspect.py`
 
 **Tests:** `tests/unit/test_native_introspect.py`
+
+### REQ-1750 · Bug Fix {#REQ-1750}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Second real bug found in the same "systemic Register Table picker" investigation as [REQ-1749](#REQ-1749): native_columns (provisa/api/admin/introspect.py) had no branch for SourceType.duckdb — its own docstring incorrectly claimed duckdb "never needed this" because it is ATTACH-mechanism, but that assumption only holds once a table is registered ([REQ-1673](#REQ-1673): the engine attaches a source lazily, on first table registration). Pre-registration, native_columns returning None fell through to the engine's own ATTACH seam (introspect_columns), which sees nothing yet — the Register Table form's column checkboxes never appeared for a duckdb-type source, even though native_schemas/_native_tables_rdbms already had their own "duckdb" branches ([REQ-1746](#REQ-1746)) using the DIRECT pool connection specifically to sidestep this same gap. Added a matching "duckdb" branch to native_columns, scoped to `current_database()` the same way.
+
+**Use case:** Re-verifying source-to-query-community-ext.spec.ts's duckdb-as-a-source test in true isolation found the column picker never populated after table selection, despite the schema/table pickers ([REQ-1746](#REQ-1746)) working correctly.
+
+**Code:** `provisa/api/admin/introspect.py`
+
+**Tests:** `tests/unit/test_native_introspect.py`

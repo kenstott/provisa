@@ -58582,3 +58582,34 @@
     Given a tidb table is selected
     When the Register Table form loads its column picker
     Then the table's real columns appear
+- id: REQ-1750
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Bug Fix
+  priority: MUST
+  type: behavioral
+  description: >-
+    Second real bug found in the same "systemic Register Table picker" investigation as REQ-1749:
+    native_columns (provisa/api/admin/introspect.py) had no branch for SourceType.duckdb — its own
+    docstring incorrectly claimed duckdb "never needed this" because it is ATTACH-mechanism, but
+    that assumption only holds once a table is registered (REQ-1673: the engine attaches a source
+    lazily, on first table registration). Pre-registration, native_columns returning None fell
+    through to the engine's own ATTACH seam (introspect_columns), which sees nothing yet — the
+    Register Table form's column checkboxes never appeared for a duckdb-type source, even though
+    native_schemas/_native_tables_rdbms already had their own "duckdb" branches (REQ-1746) using
+    the DIRECT pool connection specifically to sidestep this same gap. Added a matching "duckdb"
+    branch to native_columns, scoped to `current_database()` the same way.
+  code:
+  - provisa/api/admin/introspect.py
+  tests:
+  - tests/unit/test_native_introspect.py
+  use_case: >-
+    Re-verifying source-to-query-community-ext.spec.ts's duckdb-as-a-source test in true isolation
+    found the column picker never populated after table selection, despite the schema/table
+    pickers (REQ-1746) working correctly.
+  scenario: |
+    Given a duckdb-type source (a second local .duckdb file) with a table selected in Register
+    Table
+    When the column picker loads
+    Then the table's real columns appear as checkboxes, not an empty/stuck-loading list

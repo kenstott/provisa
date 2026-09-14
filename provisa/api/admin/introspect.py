@@ -859,13 +859,16 @@ async def native_columns(  # REQ-1732
 ) -> "list[tuple[str, str]] | None":
     """``[(column_name, data_type)]`` via native introspection, or None to fall back to the engine.
 
-    trino/mysql/mariadb (REQ-1732): postgresql/sqlserver/duckdb never needed this because they are
-    ATTACH-mechanism on whatever engine they are normally registered under (their own native
+    trino/mysql/mariadb/tidb (REQ-1732/1749): postgresql/sqlserver never needed this because they
+    are ATTACH-mechanism on whatever engine they are normally registered under (their own native
     engine, or Trino's own JDBC connector), so resolve_available_columns_metadata's generic
     engine-catalog fallback already sees a real catalog by the time this is called. trino-as-a-
-    SOURCE has no engine that attaches it live except another Trino, and mysql/mariadb have no
+    SOURCE has no engine that attaches it live except another Trino, and mysql/mariadb/tidb have no
     DuckDB ATTACH connector at all (verified: connector_duckdb.py has none) — this is the only path
     when the active engine doesn't natively attach the type (e.g. mysql/trino under DuckDB).
+    duckdb (REQ-1749) DOES have a DuckDB ATTACH connector (DuckDBDuckdbConnector), but the ATTACH
+    only happens once a table on it is registered (REQ-1673) — pre-registration, this is the only
+    path there too.
 
     snowflake/databricks/bigquery/fabric/synapse: same gap as native_schemas — these DIRECT
     warehouse drivers have no ATTACH-mechanism seam under an engine (e.g. DuckDB) that only lands
@@ -879,6 +882,22 @@ async def native_columns(  # REQ-1732
             source_id,
             "SELECT column_name, data_type FROM information_schema.columns "
             "WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
+            [schema_name, table_name],
+        )
+        return [(row[0], row[1]) for row in result.rows]
+    if t == "duckdb":
+        # REQ-1749: contrary to this docstring's original claim, a duckdb-type source registered
+        # under the DuckDB ENGINE itself has the same pre-registration gap as trino above — the
+        # engine's own ATTACH (DuckDBDuckdbConnector, alias `_src_<source_id>`) happens only once a
+        # table on it is registered (REQ-1673), so resolve_available_columns_metadata's engine-
+        # catalog fallback saw nothing yet and the column checkboxes never appeared. native_schemas
+        # and _native_tables_rdbms's own "duckdb" branches already sidestep this via the DIRECT
+        # pool connection (REQ-1746) — this mirrors that, scoped the same way to current_database().
+        result = await pool.execute(
+            source_id,
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_catalog = current_database() AND table_schema = ? AND table_name = ? "
+            "ORDER BY ordinal_position",
             [schema_name, table_name],
         )
         return [(row[0], row[1]) for row in result.rows]
