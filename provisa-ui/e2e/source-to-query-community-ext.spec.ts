@@ -135,18 +135,21 @@ test.describe("source to query through the UI, community-extension sources (REQ-
   test("firebird: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    // Unverified this session: every playwright run against this file either (a) reused another
-    // agent's already-running webServer on the shared default ports (playwright.config.ts's
-    // reuseExistingServer + fixed 8901/3901 defaults — confirmed cross-agent, see the PR/commit
-    // history around this file's introduction) rather than booting from this worktree's own code,
-    // or (b) failed in global-setup's shared demo-source-containers.ts fixture (a stale splunk
-    // data-model 404 unrelated to firebird) before any test in this file ran. The DuckDB
-    // ATTACH/DSN mechanism itself (DuckDBFirebirdConnector.details(), the exact
-    // firebird://user:pass@host:port/path DSN and DUCKDB_FIREBIRD_CLIENT_LIBRARY) was verified
-    // directly against a live container outside the UI harness. Re-run this file standalone (see
-    // the module "Run:" comment) once an isolated webServer + a healthy shared splunk fixture are
-    // available to get a real pass/fail.
-    test.skip(true, "unverified this session — see comment above; needs a clean isolated re-run");
+    // STILL NOT CONFIRMED, but for a NEW reason: the old "cross-agent contention" explanation no
+    // longer applies (re-run this session on an isolated webServer with PROVISA_E2E_SKIP_SHARED_
+    // SOURCES=1, no other agents). One isolated attempt hit a stale docker volume from an earlier
+    // session leaving a "widgets" table already present (prime.py's CREATE TABLE isn't
+    // idempotent) — cleaned and retried. The retry then HUNG: 25 minutes at zero CPU, frozen mid-
+    // webServer-startup, before beforeAll's docker provisioning ever ran — no error, no progress,
+    // killed manually. This harness (Playwright's globalSetup + webServer sequence) has shown
+    // several distinct instability modes this session (a DuckDB warm-up query intermittently
+    // hitting HeadersTimeoutError before any test runs; webServer stdout capture silently going
+    // quiet partway through a run; and now this outright hang) — likely worth its own
+    // investigation, separate from firebird itself. The DuckDB ATTACH/DSN mechanism
+    // (DuckDBFirebirdConnector.details(), the exact firebird://user:pass@host:port/path DSN and
+    // DUCKDB_FIREBIRD_CLIENT_LIBRARY) was verified directly against a live container outside the
+    // UI harness in an earlier session. Re-run to get a real pass/fail once the harness hang is
+    // understood.
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_cext_firebird_${stamp}`;
@@ -184,14 +187,15 @@ test.describe("source to query through the UI, community-extension sources (REQ-
   test("airport: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    // Unverified this session — same reason as the firebird test above (cross-agent webServer
-    // reuse on shared default ports, then a shared-fixture splunk failure in global-setup). One
-    // run under contaminated conditions DID get through registration to the SQL-run step and
-    // failed there with a genuine bug this session found and fixed (native_backend.py's
-    // _attach_tbl merged SimpleNamespace was missing base_url, which
-    // DuckDBAirportConnector.details() reads directly — see that file's REQ-1746 comment); that
-    // fix has not yet been confirmed against a clean isolated run.
-    test.skip(true, "unverified this session — see comment above; needs a clean isolated re-run");
+    // REAL BUG, reproduced in true isolation (own webServer, no shared agents, no contention). The
+    // native_backend.py base_url fix from an earlier session IS confirmed working (registration
+    // succeeds through the schema pick). What's broken now: the Register Table form's table
+    // picker never shows "widgets" — 120s timeout, 0 elements found. Same symptom class as
+    // duckdb's column picker below, and as pinot/hive_s3's pickers in
+    // source-to-query-olap-lake.spec.ts — likely one systemic bug in how Register Table
+    // introspects/populates its async pickers, not a per-connector issue. Root cause not yet
+    // isolated.
+    test.skip(true, "real bug: Register Table's table picker never shows 'widgets'; not contention");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_cext_airport_${stamp}`;
@@ -261,15 +265,15 @@ test.describe("source to query through the UI, community-extension sources (REQ-
   // from DuckDB as Provisa's own engine. No docker fixture; demo/files/widgets.duckdb is written
   // by this file's own beforeAll.
   test("duckdb: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    // Unverified this session — same reason as the firebird/airport tests above. One run under
-    // contaminated conditions (an unfixed backend) reproduced a genuine bug this session found
-    // and fixed: introspect.py's native_schemas/native_tables "duckdb" branches queried
-    // information_schema across EVERY catalog a direct DuckDB connection carries (system/temp/
-    // the file itself), so a fresh file's schema picker showed "main" three times (a React key
-    // collision) instead of once — fixed by scoping both queries to
-    // `catalog_name = current_database()`, verified directly with duckdb.connect() against this
-    // exact fixture shape. That fix has not yet been confirmed against a clean isolated e2e run.
-    test.skip(true, "unverified this session — see comment above; needs a clean isolated re-run");
+    // REAL BUG, reproduced in true isolation (no docker, no shared agents, no contention). The
+    // introspect.py current_database() fix from an earlier session IS confirmed working
+    // (registration reaches the schema pick without a "main" x3 React key collision). What's
+    // broken now: after selecting the table, the Register Table form's column checkboxes never
+    // appear (`[data-testid^="register-table-col-selected-"]` never becomes visible, 30s
+    // timeout). Same symptom class as airport's table picker above, and pinot/hive_s3's pickers in
+    // source-to-query-olap-lake.spec.ts — likely one systemic bug in Register Table's async
+    // metadata population, not a per-connector issue. Root cause not yet isolated.
+    test.skip(true, "real bug: Register Table's column checkboxes never appear after table selection; not contention");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_cext_duckdb_${stamp}`;
