@@ -36,6 +36,19 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
     from provisa.executor.pool import SourcePool
 
+
+async def _source_database(source_id: str, config_conn: "Connection") -> str:
+    """The source's stored ``database`` field — Databricks (Unity Catalog name) and BigQuery
+    (project) need it to qualify ``information_schema``; unlike postgresql/trino, their connection
+    has no single ambient default catalog the way a plain ``information_schema.schemata`` query
+    could rely on."""
+    result = await config_conn.execute_core(
+        select(sources.c.database).where(sources.c.id == source_id)
+    )
+    row = result.fetchone()
+    return row[0] if row and row[0] else ""
+
+
 _MYSQL_SYSTEM_DBS = {"information_schema", "mysql", "performance_schema", "sys"}
 _SQLSERVER_SYSTEM_SCHEMAS = {
     "sys",
@@ -258,6 +271,53 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
             "SELECT schema_name FROM information_schema.schemata ORDER BY schema_name",
         )
         return [row[0] for row in result.rows if row[0] not in _TRINO_SYSTEM_SCHEMAS]
+
+    # Same "no catalog exists pre-registration" gap as trino above, for the warehouse DIRECT
+    # drivers (executor/drivers/snowflake.py, databricks.py, bigquery.py, mssql_warehouse.py —
+    # REQ-987/988): on an engine that has no live ATTACH connector for these (e.g. DuckDB, which
+    # only ever lands them via WarehouseNativeConnector), the REQ-1673 seam's _attached_alias has
+    # no "attach" details to key off and always returns [] — so these 4 source types' Register
+    # Table schema picker never showed anything until a table was registered by some other means.
+    if t == "snowflake":
+        result = await pool.execute(
+            source_id,
+            "SELECT schema_name FROM information_schema.schemata ORDER BY schema_name",
+        )
+        return [row[0] for row in result.rows if row[0] != "INFORMATION_SCHEMA"]
+
+    if t == "databricks":
+        # Unity Catalog information_schema is catalog-qualified; the connection carries no default
+        # catalog (databricks.py's DatabricksDriver.connect ignores `database`), so the source's
+        # stored catalog name has to be read back to qualify the query.
+        catalog = await _source_database(source_id, config_conn)
+        if not catalog:
+            return None
+        result = await pool.execute(
+            source_id,
+            f"SELECT schema_name FROM `{catalog}`.information_schema.schemata ORDER BY schema_name",
+        )
+        return [row[0] for row in result.rows if row[0] != "information_schema"]
+
+    if t == "bigquery":
+        # BigQuery's project-level INFORMATION_SCHEMA.SCHEMATA lists every dataset in the project
+        # (bigquery.py's BigQueryDriver.connect scopes the client to the source's project).
+        project = await _source_database(source_id, config_conn)
+        if not project:
+            return None
+        result = await pool.execute(
+            source_id, f"SELECT schema_name FROM `{project}`.INFORMATION_SCHEMA.SCHEMATA"
+        )
+        return sorted(row[0] for row in result.rows)
+
+    if t in ("fabric", "synapse"):
+        # T-SQL, same shape as the sqlserver branch above — the connection is already scoped to
+        # the source's one warehouse database (mssql_warehouse.py's MssqlWarehouseDriver.connect).
+        fab_exclude = "','".join(sorted(_SQLSERVER_SYSTEM_SCHEMAS))
+        result = await pool.execute(
+            source_id,
+            f"SELECT name FROM sys.schemas WHERE name NOT IN ('{fab_exclude}') ORDER BY name",
+        )
+        return [row[0] for row in result.rows]
 
     return None
 
@@ -790,6 +850,7 @@ async def native_columns(  # REQ-1732
     schema_name: str,
     table_name: str,
     pool: "SourcePool",
+    config_conn: "Connection | None" = None,
 ) -> "list[tuple[str, str]] | None":
     """``[(column_name, data_type)]`` via native introspection, or None to fall back to the engine.
 
@@ -799,7 +860,12 @@ async def native_columns(  # REQ-1732
     engine-catalog fallback already sees a real catalog by the time this is called. trino-as-a-
     SOURCE has no engine that attaches it live except another Trino, and mysql/mariadb have no
     DuckDB ATTACH connector at all (verified: connector_duckdb.py has none) — this is the only path
-    when the active engine doesn't natively attach the type (e.g. mysql/trino under DuckDB)."""
+    when the active engine doesn't natively attach the type (e.g. mysql/trino under DuckDB).
+
+    snowflake/databricks/bigquery/fabric/synapse: same gap as native_schemas — these DIRECT
+    warehouse drivers have no ATTACH-mechanism seam under an engine (e.g. DuckDB) that only lands
+    them, so this is the only path there too. ``config_conn`` is required for databricks/bigquery,
+    which need the source's stored catalog/project to qualify information_schema."""
     t = source_type.lower()
     if not pool.has(source_id):
         return None
@@ -817,6 +883,51 @@ async def native_columns(  # REQ-1732
             source_id,
             "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS "
             "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION",
+            [schema_name, table_name],
+        )
+        return [(row[0], row[1]) for row in result.rows]
+    if t == "snowflake":
+        # SnowflakeDriver.execute forwards `params` straight to snowflake-connector's cursor,
+        # whose paramstyle only binds scalars into a literal SQL string (no identifier binding),
+        # and pool.execute's own signature is list-params-only — schema/table names are inlined
+        # instead, same as the databricks/bigquery/fabric branches below.
+        result = await pool.execute(
+            source_id,
+            f"SELECT column_name, data_type FROM information_schema.columns "
+            f"WHERE table_schema = '{schema_name}' AND table_name = '{table_name}' "
+            "ORDER BY ordinal_position",
+        )
+        return [(row[0], row[1]) for row in result.rows]
+    if t == "databricks":
+        if config_conn is None:
+            return None
+        catalog = await _source_database(source_id, config_conn)
+        if not catalog:
+            return None
+        result = await pool.execute(
+            source_id,
+            f"SELECT column_name, data_type FROM `{catalog}`.information_schema.columns "
+            f"WHERE table_schema = '{schema_name}' AND table_name = '{table_name}' "
+            "ORDER BY ordinal_position",
+        )
+        return [(row[0], row[1]) for row in result.rows]
+    if t == "bigquery":
+        if config_conn is None:
+            return None
+        project = await _source_database(source_id, config_conn)
+        if not project:
+            return None
+        result = await pool.execute(
+            source_id,
+            f"SELECT column_name, data_type FROM `{project}`.`{schema_name}`.INFORMATION_SCHEMA.COLUMNS "
+            f"WHERE table_name = '{table_name}' ORDER BY ordinal_position",
+        )
+        return [(row[0], row[1]) for row in result.rows]
+    if t in ("fabric", "synapse"):
+        result = await pool.execute(
+            source_id,
+            "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
             [schema_name, table_name],
         )
         return [(row[0], row[1]) for row in result.rows]
@@ -900,6 +1011,57 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
 
     if t == "govdata":
         return await _native_tables_govdata(source_id, schema_name, config_conn)
+
+    # See native_schemas's snowflake/databricks/bigquery/fabric/synapse branches for why these
+    # need their own path rather than falling through to _native_tables_rdbms's engine-catalog
+    # assumption (that function has no config_conn to look up a source's catalog/project with).
+    if t == "snowflake":
+        from provisa.api.admin.types import AvailableTableType
+
+        result = await pool.execute(
+            source_id,
+            f"SELECT table_name FROM information_schema.tables "
+            f"WHERE table_schema = '{schema_name}' AND table_type = 'BASE TABLE' "
+            "ORDER BY table_name",
+        )
+        return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+
+    if t == "databricks":
+        from provisa.api.admin.types import AvailableTableType
+
+        catalog = await _source_database(source_id, config_conn)
+        if not catalog:
+            return None
+        result = await pool.execute(
+            source_id,
+            f"SELECT table_name FROM `{catalog}`.information_schema.tables "
+            f"WHERE table_schema = '{schema_name}' ORDER BY table_name",
+        )
+        return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+
+    if t == "bigquery":
+        from provisa.api.admin.types import AvailableTableType
+
+        project = await _source_database(source_id, config_conn)
+        if not project:
+            return None
+        result = await pool.execute(
+            source_id,
+            f"SELECT table_name FROM `{project}`.`{schema_name}`.INFORMATION_SCHEMA.TABLES "
+            "ORDER BY table_name",
+        )
+        return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+
+    if t in ("fabric", "synapse"):
+        from provisa.api.admin.types import AvailableTableType
+
+        result = await pool.execute(
+            source_id,
+            "SELECT TABLE_NAME, NULL FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
+            [schema_name],
+        )
+        return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
     return await _native_tables_rdbms(source_id, source_type, schema_name, pool)
 

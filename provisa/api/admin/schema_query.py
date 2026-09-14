@@ -1608,9 +1608,14 @@ async def resolve_available_columns_metadata(
     # catalog that does not exist pre-registration (see native_schemas's trino branch).
     from provisa.api.admin.introspect import native_columns
 
-    native = await native_columns(
-        source_id, source_type, schema_name, table_name, state.source_pools
-    )
+    # databricks/bigquery need config_conn to look up the source's stored catalog/project
+    # (see native_schemas's databricks/bigquery branches) — acquire one the same way the
+    # "files" branch above does.
+    pool = await _get_pool()
+    async with pool.acquire() as _cc:
+        native = await native_columns(
+            source_id, source_type, schema_name, table_name, state.source_pools, _cc
+        )
     if native:
         return [
             AvailableColumnType(name=name, data_type=dtype.lower(), comment=None)
