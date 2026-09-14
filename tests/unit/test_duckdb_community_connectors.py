@@ -167,12 +167,13 @@ def test_bigquery_attach_reads_project_from_federation_hints():
     assert "project=my-gcp" in d["attach"] and "TYPE bigquery" in d["attach"]
 
 
-def test_gsheets_view_reads_spreadsheet_id_from_hints_and_has_no_pushdown():
+def test_gsheets_view_reads_spreadsheet_id_from_database_and_has_no_pushdown():  # REQ-1742
+    # source.database is the Sources form's "Metadata Sheet ID" field — the shape the UI actually
+    # sends, and what TrinoGsheetsConnector already reads. federation_hints["spreadsheet_id"] is
+    # never populated by anything (fixed after always raising KeyError).
     conn = DuckDBGsheetsConnector()
     assert conn.capability().predicate_pushdown is False
-    d = conn.details(
-        _src("gs", SourceType.google_sheets, federation_hints={"spreadsheet_id": "abc123"})
-    )
+    d = conn.details(_src("gs", SourceType.google_sheets, database="abc123"))
     assert "read_gsheet('abc123')" in d["view_ddl"]
 
 
