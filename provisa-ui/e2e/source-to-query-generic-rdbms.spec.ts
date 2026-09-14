@@ -95,14 +95,19 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   });
 
   test("mariadb: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    // Not verified via a full UI-driven playwright run in this session: the shared
-    // demo-source-containers.ts global setup (fixed docker-compose project names/ports, used by
-    // every core-lane spec) was contended by 5 other concurrent agents running the same exercise
-    // in parallel worktrees, and repeated attempts (with a cross-agent mkdir-based run lock) never
-    // got a full run through before the task's time budget ran out. The demo/sources/mariadb
-    // fixture itself IS independently verified: a standalone `provision.py up mariadb` boots the
-    // container healthy and prime.py's seed-then-readback of 3 widgets rows succeeds (see REQ-1744).
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1744)");
+    // REAL BUG, reproduced twice in isolation (not contention — confirmed by re-running this file
+    // alone with no other agents, no shared docker-compose stack): the SQL page's query against
+    // pet_store.<table> fails with a genuine MariaDB syntax error — "You have an error in your SQL
+    // syntax ... near '"provisa_demo"."widgets" AS "widgets" ORDER BY id LIMIT 100'". MariaDB
+    // rejects ANSI double-quoted identifiers by default (needs backticks or sql_mode=ANSI_QUOTES);
+    // somewhere in the governed-SQL/residency-landing pipeline a query destined for MariaDB is
+    // built with double quotes instead of the mariadb dialect's quoting. Root cause not yet
+    // isolated to an exact source line — multiple live-traceback attempts were defeated by this
+    // harness's own instability (globalSetup's DuckDB warm-up query intermittently hits a
+    // HeadersTimeoutError before any test runs; Playwright's webServer stdout capture silently
+    // drops content partway through a run). Leave skipped until a controlled repro (outside this
+    // Playwright harness) pins the exact call site.
+    test.skip(true, "real MariaDB identifier-quoting bug, reproduced twice — not contention; root cause not yet isolated");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_mariadb_${stamp}`;
@@ -134,7 +139,13 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   });
 
   test("tidb: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1744)");
+    // REAL BUG, reproduced in isolation (not contention — confirmed by re-running this file alone,
+    // no other agents, no shared docker-compose stack): the Register Table form's schema picker
+    // never shows the "test" schema for a tidb source — 120s timeout, 242 poll attempts, 0
+    // elements found. A different bug than mariadb's above (this one fails at schema
+    // introspection, before ever reaching the SQL page). Root cause not yet isolated. Leave
+    // skipped until investigated.
+    test.skip(true, "real tidb schema-introspection bug — Register Table's schema picker never populates 'test'; not contention");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_tidb_${stamp}`;
@@ -167,7 +178,6 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   test("cockroachdb: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1744)");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_cockroachdb_${stamp}`;
@@ -200,7 +210,6 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   test("yugabytedb: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1744)");
     test.setTimeout(240000);
     const stamp = Date.now();
     const sourceId = `e2e_yugabytedb_${stamp}`;
@@ -234,7 +243,6 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   test("clickhouse: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1744)");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_clickhouse_${stamp}`;
@@ -274,12 +282,6 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
         "(provisa/executor/drivers/sqlserver.py links libodbc at import) — same host dependency " +
         "tests/integration/test_sqlserver_source_e2e.py's importorskip guards against",
     );
-    // Also not verified end-to-end this session even when the ODBC driver is present: shared
-    // e2e global-setup contention across 6 concurrent agents (see REQ-1744) — the sqlserver
-    // container itself was independently confirmed booting healthy via a standalone
-    // `provision.py up sqlserver`, but the prime step there also hits the same missing-ODBC
-    // host gap this test.skip already documents.
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents (REQ-1744)");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_sqlserver_${stamp}`;
@@ -311,7 +313,6 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   });
 
   test("oracle: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1744)");
     // gvenzl/oracle-free's first boot creates the database from scratch; the healthcheck alone
     // is given a 180s start_period + 60 retries in demo/sources/oracle/compose.yml.
     test.setTimeout(360000);

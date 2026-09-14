@@ -169,13 +169,19 @@ async function bootstrapBackend(BACKEND_URL: string, yaml: string, orgId: string
 }
 
 export default async function globalSetup() {
+  // PROVISA_E2E_SKIP_SHARED_SOURCES=1 opts out of the two blocks below — for a run targeting a
+  // spec file that provisions its own fixtures (e.g. source-to-query-generic-rdbms.spec.ts) and
+  // needs neither the neo4j export container nor the shared 9-service demo-source-containers.ts
+  // stack (neo4j/mongodb/elasticsearch/redis/cassandra/sparql/prometheus/chinook/splunk). Default
+  // (unset) preserves prior behavior — every spec in the core lane still gets both.
+  const SKIP_SHARED = process.env.PROVISA_E2E_SKIP_SHARED_SOURCES === "1";
   // Start the Neo4j export target now, before any browser exists — see neo4j-container.ts for why
   // it cannot start mid-run. `docker run -d` returns immediately; the spec still waits for the
   // engine to accept queries, and by then the container has had the whole bootstrap to boot.
   // The trino lane does not carry neo4j-docker-export.spec.ts, so it starts nothing.
-  if (process.env.PROVISA_E2E_LANE !== "trino") startNeo4jContainer();
+  if (process.env.PROVISA_E2E_LANE !== "trino" && !SKIP_SHARED) startNeo4jContainer();
   // REQ-1671: the live sources source-to-query.spec.ts configures through the UI (core lane).
-  if (process.env.PROVISA_E2E_LANE !== "trino") startDemoSources();
+  if (process.env.PROVISA_E2E_LANE !== "trino" && !SKIP_SHARED) startDemoSources();
 
   const yaml = fs.readFileSync(CONFIG_PATH, "utf8");
   fs.writeFileSync(SNAPSHOT_PATH, yaml);
