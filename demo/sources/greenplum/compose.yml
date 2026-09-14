@@ -1,0 +1,28 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Greenplum (start-ui-install.sh --demo --source=greenplum). Postgres
+# wire-compatible (reuses the asyncpg direct driver + postgres dialect, REQ-950/1097) — same
+# image/config as docker-compose.test.yml's `greenplum` service (datagrip/greenplum:6.8,
+# amd64-only, single-node GPDB whose entrypoint builds the cluster on first boot), ported here for
+# the source-to-query e2e. No data volume: the entrypoint's cluster build lives under
+# /home/gpadmin, and a mount there collides with init. Slow to boot (3-5 min under amd64 emulation
+# on arm64 hosts) — see this file's e2e test.skip for why the e2e case itself does not run it.
+services:
+  greenplum:
+    image: datagrip/greenplum:6.8
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_DEMO_GREENPLUM_PORT:-25432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "su - gpadmin -c '. /opt/greenplum-db-6.8.1/greenplum_path.sh && psql -p 5432 -d postgres -Atc \"select 1\"' 2>/dev/null | grep -qx 1 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 40
+      start_period: 180s

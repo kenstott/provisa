@@ -1,0 +1,30 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: YugabyteDB (start-ui-install.sh --demo --source=yugabytedb). YSQL is
+# Postgres wire-compatible (reuses the asyncpg direct driver + postgres dialect, REQ-950/1097) —
+# same image/config as docker-compose.test.yml's `yugabytedb` service, ported here for the
+# source-to-query e2e.
+services:
+  yugabytedb:
+    image: yugabytedb/yugabyte:latest
+    restart: unless-stopped
+    command: ["bin/yugabyted", "start", "--background=false"]
+    ports:
+      - "${PROVISA_DEMO_YUGABYTEDB_PORT:-25433}:5433"
+    volumes:
+      - yugabyte_demo_data:/home/yugabyte/var
+    healthcheck:
+      test: ["CMD-SHELL", "bin/yugabyted status || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 120s
+volumes:
+  yugabyte_demo_data:
