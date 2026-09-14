@@ -18337,3 +18337,15 @@ Closes the remaining smaller findings from the Add-Source UI audit ([REQ-1736](#
 **Code:** `provisa-ui/src/pages/sources/SourceFormFields.tsx`, `provisa-ui/src/pages/sources/SourceFormFieldsExtended.tsx`, `provisa-ui/src/pages/sources/constants.ts`, `provisa-ui/src/pages/SourcesPage.tsx`, `provisa-ui/src/i18n/locales/en/sourceFormFieldsExtended.json`, `provisa/sparql/persist.py`, `provisa/core/config_loader.py`
 
 **Tests:** —
+
+### REQ-1741 · Correctness {#REQ-1741}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+delta_lake and iceberg gain real e2e coverage through the ordinary Sources-form → Register-Table-form → SQL-page UI flow, against the DuckDB federation engine — no docker, both are local-file-based (DuckDBDeltaConnector/DuckDBIcebergConnector, connector_duckdb.py, [REQ-899](#REQ-899): a SCAN-mechanism connector reading the table in place via delta_scan/iceberg_scan, one view per source, no ATTACH). Fixtures are a real local Delta table (written with the `deltalake` package) and a real local Iceberg table (written with `pyiceberg`), generated once per test run. Surfaced and fixed a genuine pre-registration discovery gap, the same shape [REQ-1732](#REQ-1732) already fixed for csv/parquet: `native_schemas`/`native_tables` (introspect.py) had no branch for delta_lake/iceberg, so the Register Table picker's schema/table dropdowns would never populate for them. The [REQ-1673](#REQ-1673) seam (`duckdb_runtime._attached_alias`) deliberately returns None for a view_ddl-mechanism source (there is no attached database to list schemas/tables from) — `introspect_schemas`/`introspect_tables` then return `[]` (not None), which short-circuits `available_schemas`/`available_tables` (schema_query.py) before the engine-catalog fallback ever runs, since those check `is not None` rather than truthiness. Fixed by extending the existing csv/parquet branch to also cover delta_lake/iceberg: a fixed "main" placeholder schema, and the source id as the one table (matching each connector's single `view_ddl`). hudi is explicitly OUT of scope for the DuckDB engine: there is no DuckDB hudi connector anywhere in connector_duckdb.py (verified by grep — zero "hudi" hits). The only hudi connector is `ClickHouseHudiConnector` (clickhouse_connectors.py, [REQ-1178](#REQ-1178)), registered exclusively in the ClickHouse-as-engine connector table (federation/engine.py). hudi is reachable only under ClickHouse-as-engine, a structural constraint, not a gap to close here.
+
+**Use case:** Proving delta_lake, iceberg, and hudi work end-to-end through the real UI against the DuckDB federation engine — the same source-to-query UI-flow audit already applied to sqlite/csv/ parquet/mysql/trino-as-a-source ([REQ-1671](#REQ-1671), [REQ-1732](#REQ-1732)), extended to the three remaining lakehouse-shaped SourceTypes the original coverage audit named as untested.
+
+**Code:** `provisa/api/admin/introspect.py`, `provisa-ui/e2e/source-to-query-file-lake.spec.ts`, `provisa-ui/e2e/make-file-lake-fixtures.py`
+
+**Tests:** `provisa-ui/e2e/source-to-query-file-lake.spec.ts`

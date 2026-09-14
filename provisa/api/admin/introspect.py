@@ -155,7 +155,15 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     # _attached_alias deliberately returns None for it, since there's no nested database to list
     # schemas/tables from). "main" is a fixed placeholder schema, matching sqlite's single-
     # namespace convention, so the picker has something to select rather than showing empty.
-    if t in ("csv", "parquet"):
+    # REQ-1741: delta_lake/iceberg (DuckDBDeltaConnector/DuckDBIcebergConnector) are SCAN-mechanism
+    # connectors exactly like csv/parquet above — one view_ddl per source, no ATTACH. The REQ-1673
+    # seam (duckdb_runtime._attached_alias) deliberately returns None for a view_ddl source since
+    # there is no attached database to list schemas/tables from, so introspect_schemas/
+    # introspect_tables come back `[]` (not None) and available_schemas/available_tables would
+    # short-circuit on that empty list before ever reaching the engine-catalog fallback — the
+    # schema/table pickers would stay permanently empty and Register Table could never complete
+    # for these two types. Same fix as REQ-1732: a fixed "main" placeholder schema.
+    if t in ("csv", "parquet", "delta_lake", "iceberg"):
         return ["main"]
 
     if t == "files":
@@ -822,9 +830,9 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     if t == "sqlite":
         return await _native_tables_sqlite(source_id, schema_name, config_conn)
 
-    # REQ-1732: see native_schemas's csv/parquet branch — the source IS the one table, named
-    # after the source id itself (DuckDBCsvConnector/DuckDBParquetConnector's view_ddl).
-    if t in ("csv", "parquet"):
+    # REQ-1732/REQ-1741: see native_schemas's csv/parquet/delta_lake/iceberg branch — the source IS
+    # the one table, named after the source id itself (each connector's view_ddl).
+    if t in ("csv", "parquet", "delta_lake", "iceberg"):
         from provisa.api.admin.types import AvailableTableType
 
         if schema_name != "main":
