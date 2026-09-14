@@ -205,16 +205,19 @@ def compile_proto_stubs(  # REQ-329
     Raises:
         ValueError — if protoc compilation fails.
     """
+    import grpc_tools
     from grpc_tools import protoc  # type: ignore[import]
-    import pkg_resources  # pyright: ignore[reportMissingImports]
 
     tmp = out_dir or tempfile.mkdtemp(prefix="grpc_remote_stubs_")
     proto_file = os.path.join(tmp, f"{proto_name}.proto")
     Path(proto_file).write_text(proto_text)
 
     # Well-known proto include path is required to compile; a failure here would
-    # otherwise surface as a confusing missing-import protoc error.
-    well_known = pkg_resources.resource_filename("grpc_tools", "_proto")
+    # otherwise surface as a confusing missing-import protoc error. `grpc_tools` ships `_proto`
+    # as a regular package directory alongside its own __init__.py — resolved from the module's
+    # own file location rather than pkg_resources, which setuptools >= 81 no longer installs by
+    # default (ModuleNotFoundError: no module named 'pkg_resources').
+    well_known = os.path.join(os.path.dirname(grpc_tools.__file__), "_proto")
 
     include_flags: list[str] = [f"-I{tmp}", f"-I{well_known}"]
     for ip in import_paths or []:

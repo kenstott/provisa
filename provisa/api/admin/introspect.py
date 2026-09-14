@@ -158,6 +158,18 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t in ("csv", "parquet"):
         return ["main"]
 
+    # REQ-1742: google_sheets (DuckDBGsheetsConnector, connector_duckdb.py) is a SCAN-mechanism
+    # source exactly like csv/parquet above — one DuckDB view per source
+    # (``CREATE VIEW "<id>" AS SELECT * FROM read_gsheet(...)``), never an "attach", so
+    # duckdb_runtime.py's ``_attached_alias`` returns None for it and the REQ-1673 introspection
+    # seam has no database to list schemas/tables from. Before this branch existed, google_sheets
+    # fell all the way through to the RDBMS dispatch below, which requires a `pool.has(source_id)`
+    # driver pool entry google_sheets never has, returning None — the Register Table form's schema
+    # picker was empty for every google_sheets source, with no way to ever register a table on one
+    # through the UI. "main" matches csv/parquet's fixed placeholder-schema convention.
+    if t == "google_sheets":
+        return ["main"]
+
     if t == "files":
         # Schema is always the sql-normalised source-id (matches pgwire_replica.schema_name())
         return [source_id.replace("-", "_")]
@@ -825,6 +837,15 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     # REQ-1732: see native_schemas's csv/parquet branch — the source IS the one table, named
     # after the source id itself (DuckDBCsvConnector/DuckDBParquetConnector's view_ddl).
     if t in ("csv", "parquet"):
+        from provisa.api.admin.types import AvailableTableType
+
+        if schema_name != "main":
+            return []
+        return [AvailableTableType(name=source_id, comment=None)]
+
+    # REQ-1742: see native_schemas's google_sheets branch — the source IS the one table, named
+    # after the source id itself (DuckDBGsheetsConnector's view_ddl), same shape as csv/parquet.
+    if t == "google_sheets":
         from provisa.api.admin.types import AvailableTableType
 
         if schema_name != "main":
