@@ -175,6 +175,10 @@ class NativeEngineBackend(EngineBackend):
                     path=_rs_dict.get("path"),
                     host=_rs_dict.get("host"),
                     port=_rs_dict.get("port"),
+                    # REQ-1741: forwarded so _attach_tbl's merged SimpleNamespace below (which
+                    # reads it via getattr(src, "base_url", ...)) can actually see it — see that
+                    # merge's own comment for the connector-side failure this fixes.
+                    base_url=_rs_dict.get("base_url"),
                     database=_rs_dict.get("database"),
                     username=_rs_dict.get("username"),
                     # REQ-1695: the row's password reference is the source's password.
@@ -197,6 +201,13 @@ class NativeEngineBackend(EngineBackend):
                 type=getattr(src, "type", SimpleNamespace(value="")),
                 host=_rs(getattr(src, "host", None)),
                 port=getattr(src, "port", None),
+                # REQ-1741: DuckDBAirportConnector.details() (connector_duckdb.py) reads
+                # source.base_url directly (not via getattr) — omitting it here raises
+                # AttributeError inside the connector at attach time, the same failure mode
+                # backend.py's _merged_source (REQ-1693) already documents and fixes for the
+                # non-runtime-source path; this merge (runtime_sources registered after startup)
+                # needed the identical field.
+                base_url=_rs(getattr(src, "base_url", None)),
                 database=_rs(getattr(src, "database", None)),
                 username=_rs(getattr(src, "username", None)),
                 password=_rs(getattr(src, "password", None)),

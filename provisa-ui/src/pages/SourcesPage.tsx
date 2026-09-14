@@ -808,7 +808,13 @@ export function SourcesPage() {
           // source.path, not source.database — but firebird is SIMPLE_RDBMS, whose single shared
           // "Database" input binds to form.database (the .fdb file path the user actually types
           // there). Route it into `path` on submit rather than adding a firebird-only form branch.
-          form.type === "firebird"
+          // duckdb-as-a-source has the identical split: DuckDBDriver's source_pools connection
+          // (introspect.py's native_schemas/native_tables "duckdb" branch) reads source.database,
+          // but DuckDBDuckdbConnector.details() (the ATTACH the query-time federation engine
+          // issues) reads source.path — SourceFormFields' "File Path" input for form.type ===
+          // "duckdb" binds to form.database, same shared-field shape as firebird, so it needs the
+          // same routing here or the engine ATTACHes `None` at query time.
+          form.type === "firebird" || form.type === "duckdb"
             ? form.database || null
             : FILE_SOURCES.has(form.type) ||
                 form.type === "files" ||

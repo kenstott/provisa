@@ -174,6 +174,25 @@ def create_products_parquet() -> None:
     print("Created products.parquet")
 
 
+def create_widgets_duckdb() -> None:
+    """A second, standalone DuckDB database file — the fixture for registering `duckdb` as a
+    SourceType (ATTACHing one DuckDB file from another, distinct from DuckDB as Provisa's own
+    engine). Same widgets(id, name) shape as demo/sources/firebird and demo/sources/airport's
+    fixtures, for the same 3-row assertion shape in the e2e that reads it back."""
+    import duckdb
+
+    db_path = HERE / "widgets.duckdb"
+    db_path.unlink(missing_ok=True)
+    conn = duckdb.connect(str(db_path))
+    conn.execute("CREATE TABLE widgets (id INTEGER, name VARCHAR)")
+    conn.executemany(
+        "INSERT INTO widgets VALUES (?, ?)",
+        [(1, "Widget A"), (2, "Widget B"), (3, "Widget C")],
+    )
+    conn.close()
+    print("Created widgets.duckdb")
+
+
 def create_orders_sqlite() -> None:
     db_path = HERE / "orders.sqlite"
     db_path.unlink(missing_ok=True)
