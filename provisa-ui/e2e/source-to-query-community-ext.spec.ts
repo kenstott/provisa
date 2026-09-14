@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1741: the four remaining DuckDB-ATTACH-mechanism SourceTypes proven end-to-end through the
+// REQ-1746: the four remaining DuckDB-ATTACH-mechanism SourceTypes proven end-to-end through the
 // real UI (source-to-query.spec.ts's three-screen shape: Sources form -> Register Table form ->
 // SQL page), against the DuckDB federation engine — split into their own file (not added to
 // source-to-query.spec.ts or engine-swap.spec.ts) so parallel work on either of those files never
@@ -110,7 +110,7 @@ function provisionSources(cmd: "up" | "down"): void {
   }
 }
 
-test.describe("source to query through the UI, community-extension sources (REQ-1741)", () => {
+test.describe("source to query through the UI, community-extension sources (REQ-1746)", () => {
   test.beforeAll(() => {
     provisionSources("up");
     // demo/files/create_demo_files.py's create_widgets_duckdb() writes a standalone
@@ -189,7 +189,7 @@ test.describe("source to query through the UI, community-extension sources (REQ-
     // run under contaminated conditions DID get through registration to the SQL-run step and
     // failed there with a genuine bug this session found and fixed (native_backend.py's
     // _attach_tbl merged SimpleNamespace was missing base_url, which
-    // DuckDBAirportConnector.details() reads directly — see that file's REQ-1741 comment); that
+    // DuckDBAirportConnector.details() reads directly — see that file's REQ-1746 comment); that
     // fix has not yet been confirmed against a clean isolated run.
     test.skip(true, "unverified this session — see comment above; needs a clean isolated re-run");
     test.setTimeout(180000);
@@ -257,7 +257,7 @@ test.describe("source to query through the UI, community-extension sources (REQ-
     expect(rows[2]).toEqual(["3", "Widget C"]);
   });
 
-  // REQ-1741: duckdb as a registrable SourceType — ATTACHing a second local .duckdb file, distinct
+  // REQ-1746: duckdb as a registrable SourceType — ATTACHing a second local .duckdb file, distinct
   // from DuckDB as Provisa's own engine. No docker fixture; demo/files/widgets.duckdb is written
   // by this file's own beforeAll.
   test("duckdb: add the source, register a table, query it on the SQL page", async ({ page }) => {

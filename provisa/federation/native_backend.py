@@ -175,7 +175,7 @@ class NativeEngineBackend(EngineBackend):
                     path=_rs_dict.get("path"),
                     host=_rs_dict.get("host"),
                     port=_rs_dict.get("port"),
-                    # REQ-1741: forwarded so _attach_tbl's merged SimpleNamespace below (which
+                    # REQ-1746: forwarded so _attach_tbl's merged SimpleNamespace below (which
                     # reads it via getattr(src, "base_url", ...)) can actually see it — see that
                     # merge's own comment for the connector-side failure this fixes.
                     base_url=_rs_dict.get("base_url"),
@@ -201,7 +201,7 @@ class NativeEngineBackend(EngineBackend):
                 type=getattr(src, "type", SimpleNamespace(value="")),
                 host=_rs(getattr(src, "host", None)),
                 port=getattr(src, "port", None),
-                # REQ-1741: DuckDBAirportConnector.details() (connector_duckdb.py) reads
+                # REQ-1746: DuckDBAirportConnector.details() (connector_duckdb.py) reads
                 # source.base_url directly (not via getattr) — omitting it here raises
                 # AttributeError inside the connector at attach time, the same failure mode
                 # backend.py's _merged_source (REQ-1693) already documents and fixes for the

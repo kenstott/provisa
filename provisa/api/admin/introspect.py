@@ -200,7 +200,7 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         return [row[0] for row in result.rows]
 
     if t == "duckdb":
-        # REQ-1741: DuckDBDriver.connect() (source_pools) opens the attached .duckdb file
+        # REQ-1746: DuckDBDriver.connect() (source_pools) opens the attached .duckdb file
         # DIRECTLY, so this connection always carries "system"/"temp" alongside the file's own
         # catalog (named after the file, e.g. "widgets") — every one of them has its own "main"
         # schema. An unfiltered information_schema.schemata scan returns "main" once per catalog
@@ -725,7 +725,7 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
             return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
         if t == "duckdb":
-            # REQ-1741: scoped to the attached file's own catalog for the same reason
+            # REQ-1746: scoped to the attached file's own catalog for the same reason
             # native_schemas' "duckdb" branch is above — a DIRECT connection to the file also
             # carries "system"/"temp" catalogs alongside it.
             result = await pool.execute(
