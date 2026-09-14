@@ -1,0 +1,52 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: HiveServer2 reached directly over Thrift (impyla), the shape
+# provisa/executor/drivers/hive.py's HiveDriver connects to — distinct from `hive`/`hive_s3`
+# (Trino-scanned lake storage via a Thrift metastore, no HS2 involved). Two containers, same shape
+# proven in docker-compose.test.yml's hive-metastore/hive-server2 pair: an embedded-Derby metastore
+# and an HS2 process pointed at it via SERVICE_OPTS. Reachable on ANY engine (the DuckDB core lane
+# included) because HiveDriver is a DIRECT driver, not a Trino connector.
+services:
+  hive-metastore:
+    image: &hive_image apache/hive:4.0.0
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: derby
+    volumes:
+      - hiveserver2_demo_warehouse:/opt/hive/data/warehouse
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/9083' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 36
+      start_period: 90s
+
+  hive-server2:
+    image: *hive_image
+    restart: unless-stopped
+    depends_on:
+      hive-metastore:
+        condition: service_healthy
+    environment:
+      SERVICE_NAME: hiveserver2
+      SERVICE_OPTS: "-Dhive.metastore.uris=thrift://hive-metastore:9083"
+      IS_RESUME: "true"
+    ports:
+      - "${PROVISA_DEMO_HIVESERVER2_PORT:-23100}:10000"
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/10000' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 36
+      start_period: 60s
+
+volumes:
+  hiveserver2_demo_warehouse:

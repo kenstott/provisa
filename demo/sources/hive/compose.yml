@@ -1,0 +1,34 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Hive (local/Hadoop-native warehouse) as a Trino connector-source
+# (TrinoHiveConnector, provisa/federation/trino_connectors.py) — REQ-1097. provision.py's
+# --network flag joins this container to the shared trino/postgres/minio network under the
+# ALIAS "hive" (the directory name — see provision.py's _join_network), so Trino resolves the
+# Thrift metastore in-network at hive:9083 and reads table data from a warehouse volume via
+# Trino's Hadoop-native filesystem. Same image/shape already proven in docker-compose.test.yml's
+# `hive-metastore` service.
+services:
+  hive-metastore:
+    image: apache/hive:4.0.0
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: derby
+    volumes:
+      - hive_demo_warehouse:/opt/hive/data/warehouse
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/9083' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 36
+      start_period: 90s
+
+volumes:
+  hive_demo_warehouse:
