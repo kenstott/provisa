@@ -89,9 +89,6 @@ export const SOURCE_TYPES = [
   // (TrinoHiveS3Connector always wires Trino's native S3 filesystem; there is no hadoop/local
   // choice like plain `hive` offers).
   { value: "hive_s3", label: "Hive on S3", category: "Data Lake", defaultPort: 9083 },
-  // REQ-1178: Apache Hudi lakehouse table read in place via ClickHouse's native Hudi table engine
-  // (zero-copy) — path-only (object-store URL), no metastore/host of its own.
-  { value: "hudi", label: "Apache Hudi", category: "Data Lake", defaultPort: 0 },
   // NoSQL
   { value: "mongodb", label: "MongoDB", category: "NoSQL", defaultPort: 27017 },
   { value: "cassandra", label: "Cassandra", category: "NoSQL", defaultPort: 9042 },
@@ -216,7 +213,7 @@ export const SIMPLE_RDBMS = new Set([
 ]);
 
 // Data lake types
-export const DATA_LAKE = new Set(["delta_lake", "iceberg", "hive", "hive_s3", "hudi"]);
+export const DATA_LAKE = new Set(["delta_lake", "iceberg", "hive", "hive_s3"]);
 
 // Host+port only, no database/username/password — the connector's location string derives from
 // host+port alone (e.g. airport's ATTACH location, connector_duckdb.py's DuckDBAirportConnector).

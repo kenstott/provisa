@@ -23,12 +23,8 @@
 // tests/integration/test_embedded_pg_duckdb_iceberg_e2e.py's helpers. The app backend runs
 // natively (not in a container) so an absolute host path is directly readable by DuckDB.
 //
-// hudi is NOT covered here: there is no DuckDB hudi connector anywhere in
-// provisa/federation/connector_duckdb.py (grep confirms zero "hudi" hits) — the only hudi
-// connector is ClickHouseHudiConnector (provisa/federation/clickhouse_connectors.py:258-260,
-// REQ-1178), registered exclusively in the ClickHouse-as-engine connector table
-// (provisa/federation/engine.py:698). hudi is reachable only under ClickHouse-as-engine, which is
-// out of scope for this DuckDB-only pass — see the final report for the file:line citations.
+// hudi was removed as a SourceType entirely (it was only ever reachable under ClickHouse-as-engine
+// via the now-deleted ClickHouseHudiConnector, never under DuckDB) — no longer covered here.
 //
 // Along the way this uncovered a real registration-flow bug (fixed as part of REQ-1743,
 // provisa/api/admin/introspect.py): delta_lake/iceberg had no native_schemas/native_tables branch,

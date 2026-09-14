@@ -669,7 +669,6 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
     from provisa.federation.clickhouse_connectors import (
         ClickHouseCsvConnector,
         ClickHouseDeltaLakeConnector,
-        ClickHouseHudiConnector,
         ClickHouseIcebergConnector,
         ClickHouseMongoConnector,
         ClickHouseMysqlConnector,
@@ -695,7 +694,6 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
                 ClickHouseParquetConnector(),  # parquet — S3/URL/File engine by path scheme
                 ClickHouseIcebergConnector(),  # iceberg — IcebergS3 lakehouse engine (zero-copy)
                 ClickHouseDeltaLakeConnector(),  # delta_lake — DeltaLake lakehouse engine (zero-copy)
-                ClickHouseHudiConnector(),  # hudi — Hudi lakehouse engine (zero-copy, REQ-1178)
                 # Config-declared ClickHouse connectors (JDBC/ODBC bridge, Redis, HDFS, URL, …) — REQ-1178
                 *load_custom_connectors("clickhouse"),
             ],

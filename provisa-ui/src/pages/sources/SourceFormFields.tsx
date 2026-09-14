@@ -734,16 +734,6 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
               />
             </>
           )}
-          {form.type === "hudi" && (
-            <TextInput
-              style={{ gridColumn: "1 / -1" }}
-              label={t("sourceFormFields.warehousePath")}
-              required
-              value={form.path}
-              onChange={(e) => setForm({ ...form, path: e.currentTarget.value })}
-              placeholder="s3://bucket/warehouse/hudi_table"
-            />
-          )}
           {/* REQ-229: hive_s3 DECLARES S3 storage — TrinoHiveS3Connector always wires the native S3
               filesystem, so the "none"/hadoop-local option `hive` offers makes no sense here. */}
           <Select

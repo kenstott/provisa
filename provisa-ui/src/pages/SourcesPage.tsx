@@ -464,14 +464,14 @@ export function SourcesPage() {
     // query, same as every other source type's password field — only the non-secret extras
     // (warehouse/schema/role/http_path/credentials_path/access_key_id/endpoint) round-trip.
     if (
-      (s.type === "delta_lake" || s.type === "iceberg" || s.type === "hudi" ||
+      (s.type === "delta_lake" || s.type === "iceberg" ||
         s.type === "snowflake" || s.type === "databricks" || s.type === "bigquery" ||
         s.type === "exasol" || s.type === "fabric" || s.type === "synapse") &&
       s.federationHintsJson
     ) {
       try {
         const hints = JSON.parse(s.federationHintsJson) as Record<string, string>;
-        if (s.type === "delta_lake" || s.type === "iceberg" || s.type === "hudi") {
+        if (s.type === "delta_lake" || s.type === "iceberg") {
           setAuthType(hints.access_key_id ? "aws" : "none");
         } else if (s.type === "bigquery") {
           setAuthType(hints.credentials_path ? "service_account" : "application_default");
@@ -694,11 +694,8 @@ export function SourcesPage() {
               : // delta_lake/iceberg: DuckDB's _s3_secret_ddl (connector_duckdb.py) reads S3 creds from
                 // federation_hints, never from mapping — unlike hive, which keeps its storage.aws
                 // creds in mapping (Trino's hive connector props). Only "aws" is wired here: DuckDB's
-                // delta_scan/iceberg_scan have no azure/gcs SECRET support yet. hudi: ClickHouse's
-                // _clickhouse_s3_creds (clickhouse_connectors.py) reads the same access_key_id/
-                // secret_access_key spelling from federation_hints (endpoint travels in `path` itself
-                // for the Hudi table engine, unused here but harmless if filled in).
-                (form.type === "delta_lake" || form.type === "iceberg" || form.type === "hudi") &&
+                // delta_scan/iceberg_scan have no azure/gcs SECRET support yet.
+                (form.type === "delta_lake" || form.type === "iceberg") &&
                   authType === "aws"
                 ? Object.fromEntries(
                     (["access_key_id", "secret_access_key", "endpoint"] as const)
@@ -792,9 +789,8 @@ export function SourcesPage() {
               : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
                 // region/endpoint) are a mapping-discriminated config choice read by
                 // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
-                // delta_lake/iceberg/hudi have no such mapping.storage reader; their S3 creds route
-                // through federationHintsJson above instead (_s3_secret_ddl / _clickhouse_s3_creds
-                // read federation_hints).
+                // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
+                // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
                 form.type === "hive" || form.type === "hive_s3"
                 ? JSON.stringify({ storage: lakeStorage, ...authFields })
                 : undefined;
@@ -820,9 +816,6 @@ export function SourcesPage() {
                 form.type === "files" ||
                 form.type === "delta_lake" ||
                 form.type === "iceberg" ||
-                // REQ-1178: ClickHouseHudiConnector reads source.path (object-store URL) exactly
-                // like delta_lake/iceberg's DuckDB connectors do.
-                form.type === "hudi" ||
                 // REQ-1739: websocket/rss's path is optional (default "/") — the push_wiring.py /
                 // subscribe.py URL derivation reads Source.path the same way a file source does.
                 form.type === "websocket" ||

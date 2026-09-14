@@ -253,9 +253,3 @@ class ClickHouseDeltaLakeConnector(_ClickHouseLakeConnector):
     source_type = "delta_lake"
     key = "clickhouse_delta"
     _engine_name = "DeltaLake"
-
-
-class ClickHouseHudiConnector(_ClickHouseLakeConnector):  # REQ-1178
-    source_type = "hudi"
-    key = "clickhouse_hudi"
-    _engine_name = "Hudi"

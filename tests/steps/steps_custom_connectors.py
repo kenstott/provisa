@@ -5,7 +5,7 @@
 # found in the LICENSE file in the root directory of this source tree.
 
 """Step definitions for REQ-1177 (config-driven custom source connectors) and REQ-1178 (config-driven
-ClickHouse connectors + SQLite/Hudi OOTB reach).
+ClickHouse connectors + SQLite OOTB reach).
 
 Each step drives the REAL native runtime (DuckDB in-process, embedded chdb ClickHouse) or the real
 engine builder against an operator-authored descriptor loaded via PROVISA_CUSTOM_CONNECTORS — proving

@@ -18425,3 +18425,17 @@ Fixes a registration-flow gap discovered while writing UI e2e coverage for the s
 **Code:** `provisa/api/admin/introspect.py`, `provisa/api/admin/schema_query.py`, `provisa-ui/e2e/source-to-query-cloud-warehouse.spec.ts`, `provisa-ui/e2e/cloud_warehouse_seed.py`
 
 **Tests:** `provisa-ui/e2e/source-to-query-cloud-warehouse.spec.ts`
+
+## 4. Source Connectors
+
+### REQ-1748 · Removal {#REQ-1748}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Removed `hudi` as a SourceType entirely, per explicit user request — UI, backend connector, and tests. `hudi` (added [REQ-1178](#REQ-1178)) was only ever reachable via `ClickHouseHudiConnector` (clickhouse_connectors.py) under ClickHouse-as-engine; it had no DuckDB connector at all ([REQ-1743](#REQ-1743) documented this as a structural constraint, not a gap). Deleted: `SourceType.hudi` (provisa/core/models.py); `ClickHouseHudiConnector` and its registration in `build_clickhouse_engine` (clickhouse_connectors.py, engine.py); the "Apache Hudi" dropdown entry and its `form.type === "hudi"` Warehouse Path field, and every `"hudi"` branch in the federationHints/path-routing/edit-load conditional ladders (constants.ts, SourceFormFields.tsx, SourcesPage.tsx); `test_hudi_lakehouse_engine_ddl_zero_copy` and the `ClickHouseHudiConnector` import (test_clickhouse_connectors.py), and "hudi" dropped from that file's reachability-list test. Prior [REQ-1178](#REQ-1178)/1736-1747 entries that mention hudi are left as an unedited historical record of work done while it existed — not retroactively altered.
+
+**Use case:** User asked to remove hudi as a datasource — UI, server, and tests.
+
+**Code:** `provisa/core/models.py`, `provisa/federation/clickhouse_connectors.py`, `provisa/federation/engine.py`, `provisa-ui/src/pages/sources/constants.ts`, `provisa-ui/src/pages/sources/SourceFormFields.tsx`, `provisa-ui/src/pages/SourcesPage.tsx`
+
+**Tests:** `tests/unit/test_clickhouse_connectors.py`

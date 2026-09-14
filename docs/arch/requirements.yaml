@@ -58505,3 +58505,43 @@
     Then they list the source's real remote tables and columns via native_schemas/native_tables/
     native_columns, not the engine-catalog fallback (which has nothing to fall back to pre-
     registration)
+
+- id: REQ-1748
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Removal
+  priority: MUST
+  type: behavioral
+  description: >-
+    Removed `hudi` as a SourceType entirely, per explicit user request — UI, backend connector, and
+    tests. `hudi` (added REQ-1178) was only ever reachable via `ClickHouseHudiConnector`
+    (clickhouse_connectors.py) under ClickHouse-as-engine; it had no DuckDB connector at all (REQ-1743
+    documented this as a structural constraint, not a gap). Deleted:
+    `SourceType.hudi` (provisa/core/models.py); `ClickHouseHudiConnector` and its registration in
+    `build_clickhouse_engine` (clickhouse_connectors.py, engine.py); the "Apache Hudi" dropdown entry
+    and its `form.type === "hudi"` Warehouse Path field, and every `"hudi"` branch in the
+    federationHints/path-routing/edit-load conditional ladders (constants.ts, SourceFormFields.tsx,
+    SourcesPage.tsx); `test_hudi_lakehouse_engine_ddl_zero_copy` and the `ClickHouseHudiConnector`
+    import (test_clickhouse_connectors.py), and "hudi" dropped from that file's reachability-list
+    test. Prior REQ-1178/1736-1747 entries that mention hudi are left as an unedited historical
+    record of work done while it existed — not retroactively altered.
+  code:
+  - provisa/core/models.py
+  - provisa/federation/clickhouse_connectors.py
+  - provisa/federation/engine.py
+  - provisa-ui/src/pages/sources/constants.ts
+  - provisa-ui/src/pages/sources/SourceFormFields.tsx
+  - provisa-ui/src/pages/SourcesPage.tsx
+  tests:
+  - tests/unit/test_clickhouse_connectors.py
+  use_case: >-
+    User asked to remove hudi as a datasource — UI, server, and tests.
+  scenario: |
+    Given the Add Source type dropdown
+    When it renders
+    Then "Apache Hudi" is no longer a selectable option
+
+    Given the ClickHouse federation engine's connector registry
+    When it is built
+    Then no connector advertises source_type "hudi"

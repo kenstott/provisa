@@ -18,7 +18,6 @@ import pytest
 from provisa.core.models import Source, SourceType
 from provisa.federation.clickhouse_connectors import (
     ClickHouseCsvConnector,
-    ClickHouseHudiConnector,
     ClickHouseMongoConnector,
     ClickHouseMysqlConnector,
     ClickHouseParquetConnector,
@@ -97,24 +96,6 @@ def test_sqlite_without_path_fails_loud():  # REQ-1178
         ClickHouseSqliteConnector().details(_src("app", SourceType.sqlite))
 
 
-def test_hudi_lakehouse_engine_ddl_zero_copy():  # REQ-1178
-    d = ClickHouseHudiConnector().details(
-        _src(
-            "lake",
-            SourceType.hudi,
-            path="s3://bucket/hudi_tbl",
-            federation_hints={"aws_key": "AK", "aws_secret": "SK"},
-        )
-    )
-    assert d == {
-        "engine_clause": "Hudi('s3://bucket/hudi_tbl', 'AK', 'SK')",
-        "infer": True,
-        "validate": True,
-    }
-    assert ClickHouseHudiConnector().mechanism is Mechanism.SCAN
-    assert ClickHouseHudiConnector().reads_in_place is True
-
-
 # ---- per-table TABLE engine (mongo needs columns; files infer) ---------------
 
 
@@ -178,7 +159,7 @@ def test_engine_reaches_the_five_source_types_and_is_clickhouse_native():
     eng = build_clickhouse_engine()
     assert eng.name == "clickhouse"
     assert eng.native_store == "clickhouse"
-    for t in ("postgresql", "mysql", "sqlite", "mongodb", "csv", "parquet", "hudi"):
+    for t in ("postgresql", "mysql", "sqlite", "mongodb", "csv", "parquet"):
         assert eng.reachable(t)
 
 

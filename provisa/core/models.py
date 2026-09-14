@@ -87,7 +87,6 @@ class SourceType(str, Enum):
     # Data Lake
     delta_lake = "delta_lake"
     iceberg = "iceberg"
-    hudi = "hudi"  # REQ-1178: Apache Hudi lakehouse table (ClickHouse Hudi engine, zero-copy)
     hive = "hive"  # storage backend (hadoop/S3/ADLS) is source.mapping["storage"], not a type
     hive_s3 = "hive_s3"  # REQ-229: Hive lake on S3 object storage — distinct type, hive connector
     # REQ-1731: a HiveServer2 endpoint reached directly over Thrift (impyla) — distinct from `hive`/
