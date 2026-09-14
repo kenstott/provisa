@@ -101,8 +101,8 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
     // in parallel worktrees, and repeated attempts (with a cross-agent mkdir-based run lock) never
     // got a full run through before the task's time budget ran out. The demo/sources/mariadb
     // fixture itself IS independently verified: a standalone `provision.py up mariadb` boots the
-    // container healthy and prime.py's seed-then-readback of 3 widgets rows succeeds (see REQ-1741).
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1741)");
+    // container healthy and prime.py's seed-then-readback of 3 widgets rows succeeds (see REQ-1744).
+    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1744)");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_mariadb_${stamp}`;
@@ -134,7 +134,7 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   });
 
   test("tidb: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1741)");
+    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1744)");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_tidb_${stamp}`;
@@ -167,7 +167,7 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   test("cockroachdb: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1741)");
+    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1744)");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_cockroachdb_${stamp}`;
@@ -200,7 +200,7 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   test("yugabytedb: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1741)");
+    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1744)");
     test.setTimeout(240000);
     const stamp = Date.now();
     const sourceId = `e2e_yugabytedb_${stamp}`;
@@ -234,7 +234,7 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   test("clickhouse: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1741)");
+    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1744)");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_clickhouse_${stamp}`;
@@ -275,11 +275,11 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
         "tests/integration/test_sqlserver_source_e2e.py's importorskip guards against",
     );
     // Also not verified end-to-end this session even when the ODBC driver is present: shared
-    // e2e global-setup contention across 6 concurrent agents (see REQ-1741) — the sqlserver
+    // e2e global-setup contention across 6 concurrent agents (see REQ-1744) — the sqlserver
     // container itself was independently confirmed booting healthy via a standalone
     // `provision.py up sqlserver`, but the prime step there also hits the same missing-ODBC
     // host gap this test.skip already documents.
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents (REQ-1741)");
+    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents (REQ-1744)");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_sqlserver_${stamp}`;
@@ -311,7 +311,7 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   });
 
   test("oracle: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1741)");
+    test.skip(true, "not verified end-to-end this session — shared e2e global-setup contention across 6 concurrent agents; fixture itself independently verified standalone (REQ-1744)");
     // gvenzl/oracle-free's first boot creates the database from scratch; the healthcheck alone
     // is given a 180s start_period + 60 retries in demo/sources/oracle/compose.yml.
     test.setTimeout(360000);
