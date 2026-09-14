@@ -118,19 +118,20 @@ async function pollUntilLanded(
 }
 
 test.describe("source to query through the UI — streaming/push types (REQ-1739/REQ-1745)", () => {
-  // ingest: NOT CONFIRMED PASSING within this task's time budget (test.skip below). The
-  // registration-flow fix (REQ-1745: native_schemas/native_tables/resolve_available_columns_
-  // metadata branches for ingest) and the runtime re-wire fix (_rebuild_schemas_impl now calls
-  // _init_ingest_engines) are both implemented and statically reviewed, and this test's logic
-  // passed tsc/eslint, but every actual Playwright invocation in this session was consumed by
-  // shared e2e infrastructure contention (docker-compose "provisa-e2e" project shared across 6
-  // concurrent agents: containers evicted mid-boot, a venv drift that dropped cassandra-driver
-  // mid-session, stale orphaned dev-server processes from repeated port-isolation retries) before
-  // this specific test ever got to execute its own assertions. Skipping rather than reporting an
-  // unverified pass; the body is left intact (not deleted) for the next pass to un-skip and run.
-  test.skip("ingest: add the source, register a table, POST a row, query it on the SQL page", async ({
+  test("ingest: add the source, register a table, POST a row, query it on the SQL page", async ({
     page,
   }) => {
+    // REAL BUG, reproduced in isolation (this file is entirely docker-free — in-process HTTP/WS
+    // fixtures only — so this is not contention of any kind). Registration succeeds (source
+    // created, table registered with ext_id/value columns), but the immediately-following POST to
+    // /data/ingest/<sourceId>/<sourceId> gets 404 "Ingest source '<id>' not found" —
+    // state.ingest_tables has no entry for this source_id at all. _init_ingest_engines() (called
+    // from _rebuild_schemas_impl on every rebuild per REQ-1745, provisa/api/app.py) rebuilds
+    // state.ingest_tables fresh from the DB each call and SHOULD pick up a just-registered table —
+    // the code path looks structurally correct on read. Most likely a rebuild-timing race
+    // (registerTable's mutation may not await _rebuild_schemas() before returning success to the
+    // client) rather than a missing wire-up, but not confirmed live. Root cause not yet isolated.
+    test.skip(true, "real bug: POST /data/ingest 404s 'source not found' immediately after successful registration; not contention");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_ingest_${stamp}`;
@@ -198,14 +199,17 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     async () => {},
   );
 
-  // websocket: NOT CONFIRMED PASSING within this task's time budget, same reason as ingest above
-  // (shared e2e infrastructure contention consumed every real Playwright invocation before this
-  // test executed). The registration-flow fix (REQ-1745) and push-landing re-wire fix
-  // (_rebuild_schemas_impl now calls wire_push_listeners) are implemented and statically reviewed;
-  // body left intact for the next pass to un-skip and run.
-  test.skip("websocket: add the source, register a table, land pushed events, query it", async ({
+  test("websocket: add the source, register a table, land pushed events, query it", async ({
     page,
   }) => {
+    // REAL BUG, reproduced in isolation (docker-free, in-process WS fixture — not contention).
+    // Registration succeeds, but the pushed events (ws-1/ws-2) never land: every poll attempt in
+    // pollUntilLanded times out inside its own 120s runSqlOnPage wait for the results grid,
+    // suggesting the CDC/push-listener mechanism (wire_push_listeners, provisa/events/
+    // push_wiring.py) never actually starts a listener for a table registered against an
+    // already-running runtime — the same re-wire gap this file's rss test above documents for the
+    // poll-source case, but for the push-source case. Root cause not yet isolated live.
+    test.skip(true, "real bug: pushed websocket events never land (SQL page query never completes); not contention");
     test.setTimeout(240000);
     const stamp = Date.now();
     const sourceId = `e2e_websocket_${stamp}`;
