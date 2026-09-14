@@ -292,6 +292,43 @@ def make_prometheus_loader() -> AdapterLoader:
     return _load
 
 
+def make_rss_loader() -> AdapterLoader:
+    """Build the RSS/Atom row-fetch (REQ-342/1741): the feed's current items, read over HTTP and
+    landed like any other fetched source.
+
+    Unlike kafka/websocket (REQ-1733, a separate CDC-landing task per table via push_wiring.py),
+    rss has no push transport to drain — it is a POLL source, so it goes through this generic
+    adapter_loaders seam instead. Before this loader existed, "rss" was in ``_ADAPTER_FETCH_ONLY``
+    with no entry in ``build_adapter_loaders``, so every poll of an rss table raised
+    ``UnsupportedSourceFetch`` and nothing ever landed — the REQ-1739 form field had a mechanism
+    (RSSNotificationProvider, unit-tested) that nothing at boot ever wired to the landing path,
+    exactly the gap REQ-1733's own docstring called out for kafka/websocket before that fix.
+
+    A fresh, watermark-less ``RSSNotificationProvider`` is built per call so ``poll_once`` returns
+    the FULL current snapshot (matching ``SourceRowLoader.load``'s "ignores claimed events, returns
+    a full snapshot" contract) rather than only items new since a prior call's in-memory watermark,
+    which a stateless per-call provider could never carry between polls anyway."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.subscriptions.rss_provider import RSSNotificationProvider
+
+    def _feed_url(source: Any) -> str:
+        hints = getattr(source, "federation_hints", None) or {}
+        feed_url = hints.get("feed_url")
+        if feed_url:
+            return resolve_secrets(feed_url)
+        use_ssl = str(hints.get("use_ssl", "true")).lower() == "true"
+        scheme = "https" if use_ssl else "http"
+        path = getattr(source, "path", None) or "/"
+        return f"{scheme}://{resolve_secrets(source.host)}:{source.port}{path}"
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        provider = RSSNotificationProvider(_feed_url(source))
+        events = await provider.poll_once(table.table_name)
+        return [event.row for event in events]
+
+    return _load
+
+
 def make_dq_loader(app_state: Any) -> AdapterLoader:
     """Build the data-quality checker row-fetch (REQ-1443).
 
