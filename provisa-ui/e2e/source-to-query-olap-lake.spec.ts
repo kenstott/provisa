@@ -356,20 +356,23 @@ test.describe("source to query through the UI: hive_s3 (REQ-229)", () => {
   });
 
   test("hive_s3: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    // REAL BUG, reproduced 3x in true isolation (own docker-compose.core.yml stack, no contention,
-    // no shared agents): the Register Table form's schema picker never shows "wh" — 120s timeout,
-    // 0 elements found. The seed step's own Trino client (below) DOES genuinely create the schema
-    // + table + rows first (proven by a subsequent retry's own seed attempt failing with
-    // HIVE_PATH_ALREADY_EXISTS on the S3 path a prior seed run had already written) — the data is
-    // there and Trino-reachable; the UI's schema picker just never populates it. Same symptom
-    // class as pinot's table picker above (never shows "airlinestats" despite the data genuinely
-    // existing) — looks like a systemic bug in how the Register Table form introspects
-    // schemas/tables for Trino-routed (non-DuckDB-attached) sources, not a per-connector issue.
-    // Root cause not yet isolated. (Separately, this test's own seed script had a real bug of its
-    // own, now fixed: CREATE CATALOG ... WITH (...) quoted property KEYS as string literals
-    // instead of double-quoted identifiers, which trinodb/trino:481 rejects with SYNTAX_ERROR.)
-    test.skip(true, "real bug: Register Table's schema picker never shows 'wh' despite the data existing and being Trino-reachable; not contention");
-    test.setTimeout(300000);
+    // REQ-1752: ROOT CAUSE FOUND AND FIXED — a real UI bug, not a systemic introspection issue
+    // (unlike pinot above, which was a third-party connector cold-start race). SourceFormFields.tsx's
+    // Region field displayed a fallback default (`authFields.region ?? "us-east-1"`) that was never
+    // actually written into authFields. Typing that exact same string is a same-value write: React's
+    // controlled-input reconciliation drops it, onChange never fires, authFields.region stays unset.
+    // mappingJson then omits "region" entirely, _hive_s3_props (trino_connectors.py) raises
+    // ValueError, and _register_source_on_engine's best-effort catch (schema_common.py) swallows
+    // it — the source record is created but its Trino catalog never is, so the schema picker sits
+    // empty forever with zero visible error. Live-traced this session by instrumenting
+    // create_catalog/_register_source_on_engine and the form's own submit handler (all reverted).
+    // Fixed by making the field's displayed default a placeholder instead of a phantom value (see
+    // SourceFormFields.tsx). (Separately, this test's own seed script had two more real bugs, both
+    // now fixed: CREATE CATALOG ... WITH (...) quoted property KEYS as string literals instead of
+    // double-quoted identifiers, which trinodb/trino:481 rejects with SYNTAX_ERROR; and DROP TABLE
+    // not removing the underlying S3 objects for a non-managed-writes table, so a prior interrupted
+    // seed poisoned the next run with HIVE_PATH_ALREADY_EXISTS.)
+test.setTimeout(300000);
     const stamp = Date.now();
     const sourceId = `e2e_hive_s3_${stamp}`;
     await routeToTrinoBackend(page);
@@ -405,6 +408,24 @@ test.describe("source to query through the UI: hive_s3 (REQ-229)", () => {
           "ex(f'CREATE CATALOG e2e_olap_hive_s3_seed USING hive WITH ({props})')\n" +
           "ex('CREATE SCHEMA IF NOT EXISTS e2e_olap_hive_s3_seed.wh')\n" +
           "ex('DROP TABLE IF EXISTS e2e_olap_hive_s3_seed.wh.widgets')\n" +
+          // DROP TABLE removes the metastore entry but NOT the underlying S3 objects for a
+          // non-managed-writes table (hive.non-managed-table-writes-enabled=true means Trino
+          // treats the table as externally owned even when non-ACID/"managed" per the metastore —
+          // see _hive_metastore_props' own comment above). A prior run's interrupted seed (or this
+          // test's own beforeAll re-running after a failure) left the S3 path populated, and the
+          // next CREATE TABLE then died HIVE_PATH_ALREADY_EXISTS — reproduced live in this
+          // session. Clearing the path explicitly makes the seed idempotent regardless of what a
+          // previous attempt left behind.
+          "import boto3\n" +
+          "from botocore.client import Config\n" +
+          "s3 = boto3.client('s3', endpoint_url='http://localhost:9000', " +
+          "aws_access_key_id='minioadmin', aws_secret_access_key='minioadmin', " +
+          "region_name='us-east-1', config=Config(signature_version='s3v4', " +
+          "s3={'addressing_style': 'path'}))\n" +
+          "for page in s3.get_paginator('list_objects_v2').paginate(" +
+          "Bucket='provisa-hive-s3', Prefix='warehouse/wh.db/widgets/'):\n" +
+          "    for obj in page.get('Contents', []):\n" +
+          "        s3.delete_object(Bucket='provisa-hive-s3', Key=obj['Key'])\n" +
           "ex(\"CREATE TABLE e2e_olap_hive_s3_seed.wh.widgets (id integer, name varchar) WITH (format='PARQUET')\")\n" +
           "ex(\"INSERT INTO e2e_olap_hive_s3_seed.wh.widgets VALUES (1, 'Widget A'), (2, 'Widget B'), (3, 'Widget C')\")\n" +
           "ex('DROP CATALOG e2e_olap_hive_s3_seed')\n",

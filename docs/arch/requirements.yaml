@@ -58649,3 +58649,37 @@
     When the Register Table form is opened
     Then the table picker eventually shows "airlinestats" once Trino's Pinot connector has
     converged, without the test flagging a false Provisa-side defect
+- id: REQ-1752
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Bug Fix
+  priority: MUST
+  type: behavioral
+  description: >-
+    hive_s3's Register Table schema picker never showed 'wh' — root-cause isolated by
+    instrumenting provisa/core/catalog.py's create_catalog, provisa/api/admin/schema_common.py's
+    _register_source_on_engine, and SourcesPage.tsx's submit handler (all temporary, reverted).
+    SourceFormFields.tsx's Storage Authentication "Region" field displayed a fallback default
+    (authFields.region ?? "us-east-1") that was never written into authFields — typing that exact
+    string is a same-value write, so React's controlled-input reconciliation drops the change and
+    onChange never fires. The submitted mappingJson then omits "region" entirely,
+    _hive_s3_props (trino_connectors.py) raises ValueError, and
+    _register_source_on_engine's best-effort catch (a deliberate, pre-existing design per its own
+    complexity-gate comment) swallows it — the source row is created but its Trino catalog never
+    is, so the schema picker sits empty with zero visible error. Fixed by replacing the phantom
+    default with a real placeholder, so what is displayed is never mistaken for what is stored.
+  code:
+  - provisa-ui/src/pages/sources/SourceFormFields.tsx
+  tests:
+  - provisa-ui/e2e/source-to-query-olap-lake.spec.ts
+  use_case: >-
+    Re-verifying hive_s3's e2e test in true isolation (own docker-compose.core.yml stack) found
+    the schema picker never populated despite the seed data genuinely existing and being
+    Trino-reachable; live tracing distinguished this UI-level phantom-default bug from pinot's
+    unrelated Trino-connector cold-start race (REQ-1751).
+  scenario: |
+    Given a hive_s3 source form with the Region field showing its placeholder-suggested default
+    When the operator accepts that value by typing it explicitly (not just leaving it untouched)
+    Then the typed value is written into the source's mapping and its Trino catalog is created
+    with a real region, not silently omitted

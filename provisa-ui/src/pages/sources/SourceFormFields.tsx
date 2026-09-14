@@ -779,8 +779,20 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
               <TextInput
                 label={t("sourceFormFields.region")}
                 required={form.type === "hive_s3"}
-                value={authFields.region ?? "us-east-1"}
+                // Was `authFields.region ?? "us-east-1"` — a DISPLAY-ONLY default that never
+                // actually entered authFields. Typing the exact string already shown ("us-east-1")
+                // is a same-value write: React's controlled-input reconciliation drops it, so
+                // onChange never fires and authFields.region stays unset. mappingJson then omits
+                // "region" entirely, _hive_s3_props (trino_connectors.py) raises "hive_s3 requires
+                // ... region in mapping", and that raise is swallowed by
+                // _register_source_on_engine's best-effort catch (schema_common.py) — the source
+                // record still gets created, but its Trino catalog never does, so the Register
+                // Table schema picker sits empty forever with no visible error. Live-traced this
+                // session (source-to-query-olap-lake.spec.ts's hive_s3 test). A placeholder can
+                // suggest a value; only real state can submit one.
+                value={authFields.region ?? ""}
                 onChange={(e) => setAuthFields({ ...authFields, region: e.currentTarget.value })}
+                placeholder={form.type === "hive_s3" ? "us-east-1" : "optional"}
               />
               <TextInput
                 label={t("sourceFormFields.s3EndpointMinio")}

@@ -18475,3 +18475,17 @@ pinot's e2e test ([REQ-1740](#REQ-1740)) was live-traced by exec'ing directly in
 **Code:** `provisa-ui/e2e/source-to-query-olap-lake.spec.ts`
 
 **Tests:** `provisa-ui/e2e/source-to-query-olap-lake.spec.ts`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1752 · Bug Fix {#REQ-1752}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+hive_s3's Register Table schema picker never showed 'wh' — root-cause isolated by instrumenting provisa/core/catalog.py's create_catalog, provisa/api/admin/schema_common.py's _register_source_on_engine, and SourcesPage.tsx's submit handler (all temporary, reverted). SourceFormFields.tsx's Storage Authentication "Region" field displayed a fallback default (authFields.region ?? "us-east-1") that was never written into authFields — typing that exact string is a same-value write, so React's controlled-input reconciliation drops the change and onChange never fires. The submitted mappingJson then omits "region" entirely, _hive_s3_props (trino_connectors.py) raises ValueError, and _register_source_on_engine's best-effort catch (a deliberate, pre-existing design per its own complexity-gate comment) swallows it — the source row is created but its Trino catalog never is, so the schema picker sits empty with zero visible error. Fixed by replacing the phantom default with a real placeholder, so what is displayed is never mistaken for what is stored.
+
+**Use case:** Re-verifying hive_s3's e2e test in true isolation (own docker-compose.core.yml stack) found the schema picker never populated despite the seed data genuinely existing and being Trino-reachable; live tracing distinguished this UI-level phantom-default bug from pinot's unrelated Trino-connector cold-start race ([REQ-1751](#REQ-1751)).
+
+**Code:** `provisa-ui/src/pages/sources/SourceFormFields.tsx`
+
+**Tests:** `provisa-ui/e2e/source-to-query-olap-lake.spec.ts`
