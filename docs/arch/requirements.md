@@ -18463,3 +18463,15 @@ Second real bug found in the same "systemic Register Table picker" investigation
 **Code:** `provisa/api/admin/introspect.py`
 
 **Tests:** `tests/unit/test_native_introspect.py`
+
+### REQ-1751 · Bug Fix {#REQ-1751}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+pinot's e2e test ([REQ-1740](#REQ-1740)) was live-traced by exec'ing directly into the Trino container and running the exact information_schema query available_tables' engine-catalog fallback (provisa/api/admin/schema_query.py) runs, against the identical catalog name the failing test run had just created: 0 rows immediately after CREATE CATALOG, then the expected "airlinestats" (and 6 other) tables correctly listed several minutes later against that same catalog with no code path touching it in between. This is a cold-start race in Trino's own Pinot connector — its table-list cache (pinot.metadata-expiry, 2 min) is populated from the Pinot controller's Helix external view, which had not yet converged for the QuickStart demo fixture's freshly-loaded table at the moment create_catalog() ran. Not a defect in TrinoPinotConnector or in available_tables' introspection (both verified correct against the same catalog). Replaced the test's blind UI-picker wait with waitForTrinoTable(), which polls availableTables directly (bypassing the UI) until the table appears or 150s elapses, so the test masks the same cold-start latency a production deployment never hits (a real Pinot source is already stable by the time someone registers it in Provisa).
+
+**Use case:** Re-verifying pinot's e2e test in true isolation (own docker-compose.core.yml stack, no contention) found the Register Table picker never showed "airlinestats" within a 120s UI-level timeout; live Trino tracing against the exact failing catalog name distinguished a genuine Provisa introspection defect from a third-party connector's own async discovery latency.
+
+**Code:** `provisa-ui/e2e/source-to-query-olap-lake.spec.ts`
+
+**Tests:** `provisa-ui/e2e/source-to-query-olap-lake.spec.ts`
