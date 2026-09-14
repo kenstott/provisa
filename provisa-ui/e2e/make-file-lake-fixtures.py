@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 4d0c4cfd-af29-40db-9006-a33cfbcdcacb
 # Canary: placeholder
 #
 # This source code is licensed under the Business Source License 1.1
@@ -9,7 +10,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1741: writes a real local Delta Lake table and a real local Iceberg table for
+"""REQ-1743: writes a real local Delta Lake table and a real local Iceberg table for
 source-to-query-file-lake.spec.ts to register through the actual Sources form -> Register Table
 form -> SQL page UI flow (DuckDB engine, DuckDBDeltaConnector/DuckDBIcebergConnector, both
 SCAN-mechanism/view_ddl, REQ-899). Mirrors tests/integration/test_duckdb_delta_source_e2e.py's

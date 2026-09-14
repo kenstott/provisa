@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: c53fb66e-dede-4125-9c0d-b21010c0bf26
 // Canary: placeholder
 //
 // This source code is licensed under the Business Source License 1.1
@@ -8,7 +9,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1741: delta_lake and iceberg through the real UI (Sources form -> Register Table form ->
+// REQ-1743: delta_lake and iceberg through the real UI (Sources form -> Register Table form ->
 // SQL page), against the DuckDB federation engine — the same three-screen shape as
 // source-to-query.spec.ts's sqlite/csv/parquet cases, since delta_lake/iceberg are likewise
 // local-file-based, no docker, no network service (DuckDBDeltaConnector/DuckDBIcebergConnector,
@@ -29,7 +30,7 @@
 // (provisa/federation/engine.py:698). hudi is reachable only under ClickHouse-as-engine, which is
 // out of scope for this DuckDB-only pass — see the final report for the file:line citations.
 //
-// Along the way this uncovered a real registration-flow bug (fixed as part of REQ-1741,
+// Along the way this uncovered a real registration-flow bug (fixed as part of REQ-1743,
 // provisa/api/admin/introspect.py): delta_lake/iceberg had no native_schemas/native_tables branch,
 // so the Register Table schema/table pickers would never populate for them (the REQ-1673 seam
 // explicitly returns None/[] for a view_ddl-mechanism source, and an empty list short-circuits
@@ -60,7 +61,7 @@ let deltaTablePath: string;
 let icebergTablePath: string;
 let fixtureDir: string;
 
-test.describe("source to query through the UI, file-based lakehouse types (REQ-1741)", () => {
+test.describe("source to query through the UI, file-based lakehouse types (REQ-1743)", () => {
   test.beforeAll(() => {
     fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "provisa-file-lake-"));
     const out = execFileSync(PYTHON, [MAKE_FIXTURES, fixtureDir], { encoding: "utf8" });
