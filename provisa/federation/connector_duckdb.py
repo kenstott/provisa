@@ -448,7 +448,7 @@ class DuckDBFirebirdConnector(_DuckDBExtensionConnector):  # REQ-899
 
 class DuckDBGsheetsConnector(_DuckDBExtensionConnector):  # REQ-899
     """Google Sheets, referenced in place via a read_gsheet scanner view (gsheets extension). The
-    spreadsheet id is ``source.database`` (the Sources form's "Metadata Sheet ID" field — REQ-1741:
+    spreadsheet id is ``source.database`` (the Sources form's "Metadata Sheet ID" field — REQ-1742:
     matches TrinoGsheetsConnector's own read of the same field, the shape the UI actually sends;
     ``federation_hints`` is never populated with a ``spreadsheet_id`` key by anything, so reading it
     here always raised KeyError before this fix — no UI-registered google_sheets source could ever

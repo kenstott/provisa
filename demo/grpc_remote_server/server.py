@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Demo gRPC server for the gRPC Remote Schema Connector e2e (REQ-1741).
+"""Demo gRPC server for the gRPC Remote Schema Connector e2e (REQ-1742).
 
 Proto-BASED, unlike demo/grpc_server/server.py's proto-less bytes-in/bytes-out bridge: this
 server compiles animal_catalog.proto with the SAME grpc_tools.protoc path the connector itself

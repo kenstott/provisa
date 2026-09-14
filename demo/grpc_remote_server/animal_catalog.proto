@@ -7,7 +7,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// Demo schema for the gRPC Remote Schema Connector e2e (REQ-1741). Unlike
+// Demo schema for the gRPC Remote Schema Connector e2e (REQ-1742). Unlike
 // demo/grpc_server/server.py (a proto-less bytes-in/bytes-out bridge used only for the
 // grpc-kind command dispatch), this IS a real .proto: a service the connector introspects to
 // auto-register a virtual table (provisa/grpc_remote/mapper.py, loader.py).

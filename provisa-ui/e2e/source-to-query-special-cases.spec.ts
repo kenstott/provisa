@@ -8,10 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1741: source-to-query e2e coverage for five SourceTypes that don't fit the plain
+// REQ-1742: source-to-query e2e coverage for five SourceTypes that don't fit the plain
 // register-a-table-and-SELECT shape of source-to-query.spec.ts cleanly enough to share its file —
 // each needed its own investigation before a test could be written at all. See that
-// investigation recorded on REQ-1741 in docs/arch/requirements.yaml for the full account; the
+// investigation recorded on REQ-1742 in docs/arch/requirements.yaml for the full account; the
 // short version:
 //
 //   google_sheets — DuckDBGsheetsConnector had TWO bugs blocking every UI-registered instance of
@@ -94,7 +94,7 @@ async function waitForPort(port: number, timeoutMs: number): Promise<void> {
   }
 }
 
-test.describe("google_sheets: source to query through the UI (REQ-1741)", () => {
+test.describe("google_sheets: source to query through the UI (REQ-1742)", () => {
   const credsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS ?? "";
   const sheetId = process.env.GSHEETS_TEST_SHEET_ID ?? "";
   const haveFixture = !!credsPath && fs.existsSync(credsPath) && !!sheetId;
@@ -106,7 +106,7 @@ test.describe("google_sheets: source to query through the UI (REQ-1741)", () => 
         "sheet (see gsheets-e2e-fixture project memory) — the service account has zero Drive " +
         "quota so no throwaway sheet can be created; this test reads the existing shared fixture.",
     );
-    // REQ-1741: three real connector bugs were found and fixed while building this test (all
+    // REQ-1742: three real connector bugs were found and fixed while building this test (all
     // blocked EVERY UI-registered google_sheets source, not just this test — see
     // provisa/federation/connector_duckdb.py's DuckDBGsheetsConnector and provisa/api/admin/
     // introspect.py's google_sheets branches): the connector read
@@ -149,7 +149,7 @@ test.describe("google_sheets: source to query through the UI (REQ-1741)", () => 
   });
 });
 
-test.describe("govdata: source to query through the UI (REQ-1741)", () => {
+test.describe("govdata: source to query through the UI (REQ-1742)", () => {
   const apiKey = process.env.FREE_ASKAMERICA_KEY ?? "";
 
   test("add the source, register a weather table, query it on the SQL page", async ({ page }) => {
@@ -158,7 +158,7 @@ test.describe("govdata: source to query through the UI (REQ-1741)", () => {
       "FREE_ASKAMERICA_KEY not set in .env — govdata is a real external API " +
         "(AskAmerica/US government open data) and has no offline mock to test against.",
     );
-    // REQ-1741: the askamerica connection itself is real and works — verified directly (outside
+    // REQ-1742: the askamerica connection itself is real and works — verified directly (outside
     // Playwright) against the live API: fetch_tables/fetch_columns(GovDataSource(schemas=
     // ["weather"])) returned real NOAA/NWS tables (nws_stations among them) and typed columns in
     // ~19s cold (JVM + catalog-credential fetch), then near-instant on cache hit. What's NOT
@@ -193,7 +193,7 @@ test.describe("govdata: source to query through the UI (REQ-1741)", () => {
   });
 });
 
-test.describe("grpc_remote: source to query through the UI (REQ-1741)", () => {
+test.describe("grpc_remote: source to query through the UI (REQ-1742)", () => {
   const PORT = 51072;
   let server: ChildProcess | null = null;
 
@@ -211,7 +211,7 @@ test.describe("grpc_remote: source to query through the UI (REQ-1741)", () => {
   });
 
   test("add the source, auto-register its table, query it on the SQL page", async ({ page }) => {
-    // REQ-1741: two real bugs were found and fixed while building this test, both blocking EVERY
+    // REQ-1742: two real bugs were found and fixed while building this test, both blocking EVERY
     // real grpc_remote registration in this environment, not just this test:
     //   - provisa/grpc_remote/loader.py's compile_proto_stubs imported `pkg_resources`, which
     //     setuptools >= 81 no longer installs by default (ModuleNotFoundError) — fixed to resolve
@@ -293,9 +293,9 @@ for (const c of [
   { type: "soda", checker: "Soda", checkType: "row_count" },
   { type: "great_expectations", checker: "Great Expectations", checkType: "expect_table_row_count_to_be_between" },
 ] as const) {
-  test.describe(`${c.type}: source to query through the UI (REQ-1741)`, () => {
+  test.describe(`${c.type}: source to query through the UI (REQ-1742)`, () => {
     test(`add the source, attach a rule to an existing table, dry-run it`, async ({ page }) => {
-      // REQ-1741: the register+dry-run shape below (create the checker source, pick an already-
+      // REQ-1742: the register+dry-run shape below (create the checker source, pick an already-
       // governed table via the DQ contract panel — RegisterTableForm.tsx's `isChecker` branch —
       // add a dataset-scope rule, dry-run it) is this SourceType's genuine "create a datasource,
       // register a table, run my data" analog; a plain SELECT does not reflect what soda/

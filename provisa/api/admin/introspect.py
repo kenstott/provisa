@@ -158,7 +158,7 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t in ("csv", "parquet"):
         return ["main"]
 
-    # REQ-1741: google_sheets (DuckDBGsheetsConnector, connector_duckdb.py) is a SCAN-mechanism
+    # REQ-1742: google_sheets (DuckDBGsheetsConnector, connector_duckdb.py) is a SCAN-mechanism
     # source exactly like csv/parquet above — one DuckDB view per source
     # (``CREATE VIEW "<id>" AS SELECT * FROM read_gsheet(...)``), never an "attach", so
     # duckdb_runtime.py's ``_attached_alias`` returns None for it and the REQ-1673 introspection
@@ -843,7 +843,7 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
             return []
         return [AvailableTableType(name=source_id, comment=None)]
 
-    # REQ-1741: see native_schemas's google_sheets branch — the source IS the one table, named
+    # REQ-1742: see native_schemas's google_sheets branch — the source IS the one table, named
     # after the source id itself (DuckDBGsheetsConnector's view_ddl), same shape as csv/parquet.
     if t == "google_sheets":
         from provisa.api.admin.types import AvailableTableType

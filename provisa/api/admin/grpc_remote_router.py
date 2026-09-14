@@ -257,7 +257,7 @@ async def register_grpc_remote_source(
     body: GrpcRemoteRegisterRequest,
 ):  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, REQ-598
     """Compile proto stubs and auto-register virtual tables + tracked functions."""
-    # REQ-1741: this handler used `request.app.state` (Starlette's per-request state, a bare
+    # REQ-1742: this handler used `request.app.state` (Starlette's per-request state, a bare
     # object with none of provisa's attributes) instead of provisa's own app-state singleton —
     # every real call raised AttributeError ('State' object has no attribute 'catalog_for')
     # before it could compile a single proto. Every OTHER admin router (graphql_remote_router.py,
@@ -301,7 +301,7 @@ async def register_grpc_remote_source(
 @router.post("/refresh/{source_id}")
 async def refresh_grpc_remote_source(source_id: str):  # REQ-329
     """Re-compile proto stubs from stored path and re-run registration."""
-    from provisa.api.app import state  # REQ-1741: see register_grpc_remote_source
+    from provisa.api.app import state  # REQ-1742: see register_grpc_remote_source
 
     sources = getattr(state, "grpc_remote_sources", {})
     if source_id not in sources:
@@ -347,7 +347,7 @@ async def refresh_grpc_remote_source(source_id: str):  # REQ-329
 @router.get("/list")
 async def list_grpc_remote_sources():  # REQ-598
     """Return all registered gRPC remote sources (without channel/pb2 objects)."""
-    from provisa.api.app import state  # REQ-1741: see register_grpc_remote_source
+    from provisa.api.app import state  # REQ-1742: see register_grpc_remote_source
 
     sources = getattr(state, "grpc_remote_sources", {})
     result = []
@@ -373,7 +373,7 @@ async def list_grpc_remote_sources():  # REQ-598
 @router.get("/{source_id}/proto")
 async def get_grpc_proto(source_id: str):  # REQ-525
     """Return stored proto text for a registered gRPC source."""
-    from provisa.api.app import state  # REQ-1741: see register_grpc_remote_source
+    from provisa.api.app import state  # REQ-1742: see register_grpc_remote_source
 
     sources = getattr(state, "grpc_remote_sources", {})
     if source_id not in sources:
@@ -389,7 +389,7 @@ async def get_grpc_proto(source_id: str):  # REQ-525
 @router.put("/{source_id}/proto")
 async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
     """Store new proto text and re-run registration."""
-    from provisa.api.app import state  # REQ-1741: see register_grpc_remote_source
+    from provisa.api.app import state  # REQ-1742: see register_grpc_remote_source
 
     sources = getattr(state, "grpc_remote_sources", {})
     if source_id not in sources:
