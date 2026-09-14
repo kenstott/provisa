@@ -716,7 +716,7 @@ async def _init_ingest_engines() -> None:
                     )
                 ).fetchall()
             ]
-        # REQ-1741: an ingest source (NO_CONNECTION_TYPES in the Sources form — REQ-1739
+        # REQ-1745: an ingest source (NO_CONNECTION_TYPES in the Sources form — REQ-1739
         # deliberately gives it no host/port/database fields, "since a checker's target lives on
         # the Table") has nothing of its own to connect with. It previously defaulted to the
         # literal localhost:5432 with an empty database/username — wrong on any deployment whose

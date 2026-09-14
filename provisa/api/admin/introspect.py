@@ -158,7 +158,7 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t in ("csv", "parquet"):
         return ["main"]
 
-    # REQ-1741: rss/websocket/ingest (REQ-1739's UI-newly-reachable streaming types) are
+    # REQ-1745: rss/websocket/ingest (REQ-1739's UI-newly-reachable streaming types) are
     # MATERIALIZE_ONLY with no live-scannable relation — like elasticsearch/redis/prometheus above,
     # a fixed "default" schema gives the Register Table picker something to select. Without this
     # branch, available_schemas fell through to the introspect_schemas seam, which returns [] for a
@@ -840,7 +840,7 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
             return []
         return [AvailableTableType(name=source_id, comment=None)]
 
-    # REQ-1741: rss/websocket — one feed/socket per source — and ingest, as a matching one-table-
+    # REQ-1745: rss/websocket — one feed/socket per source — and ingest, as a matching one-table-
     # per-source placeholder (real ingest usage allows several independently-named backing tables
     # per source, per state.ingest_tables' source_id -> {table_name -> columns} shape; a genuine
     # "type a new table name" input, mirroring the neo4j/sparql custom-projection mode, is the real

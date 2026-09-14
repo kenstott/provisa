@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1739/REQ-1741: kafka/websocket/rss/ingest end-to-end through the real UI, against the
+// REQ-1739/REQ-1745: kafka/websocket/rss/ingest end-to-end through the real UI, against the
 // DuckDB federation engine. Unlike source-to-query.spec.ts's pull-based sources, these are
 // push/poll sources — a table registered against them starts a background listener (kafka/
 // websocket, REQ-1733) or a poll job (rss) that lands rows asynchronously, so the shape here is
@@ -40,7 +40,7 @@ const E2E_WS_PORT = 37802;
 
 // ---------------------------------------------------------------------------------------------
 // RSS fixture: a static feed served over plain HTTP. subscriptions/rss_provider.py polls it and
-// (REQ-1741) make_rss_loader lands its current items every tick — a poll source, so the feed
+// (REQ-1745) make_rss_loader lands its current items every tick — a poll source, so the feed
 // content is fixed for the whole test rather than appended to mid-run.
 // ---------------------------------------------------------------------------------------------
 
@@ -117,9 +117,9 @@ async function pollUntilLanded(
   );
 }
 
-test.describe("source to query through the UI — streaming/push types (REQ-1739/REQ-1741)", () => {
+test.describe("source to query through the UI — streaming/push types (REQ-1739/REQ-1745)", () => {
   // ingest: NOT CONFIRMED PASSING within this task's time budget (test.skip below). The
-  // registration-flow fix (REQ-1741: native_schemas/native_tables/resolve_available_columns_
+  // registration-flow fix (REQ-1745: native_schemas/native_tables/resolve_available_columns_
   // metadata branches for ingest) and the runtime re-wire fix (_rebuild_schemas_impl now calls
   // _init_ingest_engines) are both implemented and statically reviewed, and this test's logic
   // passed tsc/eslint, but every actual Playwright invocation in this session was consumed by
@@ -141,9 +141,9 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     await page.getByTestId("sources-type-select").selectOption("ingest");
     await submitSourceAndExpectListed(page, sourceId);
 
-    // 2. Register Table form — ingest has no live catalog to introspect (REQ-1741 gives it a
+    // 2. Register Table form — ingest has no live catalog to introspect (REQ-1745 gives it a
     // synthetic single "default"/<sourceId> pick, mirroring elasticsearch/redis/prometheus'
-    // "default" schema and csv/parquet's one-table-per-source shape). Columns are a REQ-1741
+    // "default" schema and csv/parquet's one-table-per-source shape). Columns are a REQ-1745
     // placeholder (ext_id/value, not "id" — provisa/ingest/ddl.py always injects its own
     // `id SERIAL PRIMARY KEY`) with per-column JSON extraction paths (REQ-1739).
     await openRegisterForm(page, sourceId);
@@ -173,7 +173,7 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
   });
 
   // rss: SKIPPED. The Register Table flow through the real UI (source create → schema/table
-  // pick → column select → submit, all fixed by this file's REQ-1741 introspection branches) DOES
+  // pick → column select → submit, all fixed by this file's REQ-1745 introspection branches) DOES
   // work and was verified manually while developing this test. What's still missing is the
   // LANDING side: rss is POLL, not push, so it lands through SourceRowLoader/build_adapter_loaders
   // (make_rss_loader, added alongside this file), which only runs when wire_event_loop executes —
@@ -193,14 +193,14 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
   // what isn't already running) — real, scoped follow-up work, not a one-line change, so left
   // for a dedicated pass rather than forced here.
   test.skip(
-    "rss: SKIPPED — registration verified working (REQ-1741 introspection fix), but poll " +
+    "rss: SKIPPED — registration verified working (REQ-1745 introspection fix), but poll " +
       "landing has no re-wire path off an already-running runtime; see comment above",
     async () => {},
   );
 
   // websocket: NOT CONFIRMED PASSING within this task's time budget, same reason as ingest above
   // (shared e2e infrastructure contention consumed every real Playwright invocation before this
-  // test executed). The registration-flow fix (REQ-1741) and push-landing re-wire fix
+  // test executed). The registration-flow fix (REQ-1745) and push-landing re-wire fix
   // (_rebuild_schemas_impl now calls wire_push_listeners) are implemented and statically reviewed;
   // body left intact for the next pass to un-skip and run.
   test.skip("websocket: add the source, register a table, land pushed events, query it", async ({
@@ -219,7 +219,7 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     await page.getByLabel(/^Port/).fill(String(E2E_WS_PORT));
     await submitSourceAndExpectListed(page, sourceId);
 
-    // 2. Register Table form — REQ-1741's synthetic "default"/<sourceId> pick + placeholder
+    // 2. Register Table form — REQ-1745's synthetic "default"/<sourceId> pick + placeholder
     // id/value columns. CDC landing (push_wiring.py) hard-requires a declared primary key, so
     // "id" must be checked here — unlike ingest, nothing auto-marks one.
     await openRegisterForm(page, sourceId);

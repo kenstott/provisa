@@ -1482,7 +1482,7 @@ async def resolve_available_columns_metadata(
     if source_type == "prometheus":
         return await _prometheus_columns(source_id, table_name)
     if source_type == "rss":
-        # REQ-1741: an rss/Atom feed has no catalog to introspect at all (native_schemas/
+        # REQ-1745: an rss/Atom feed has no catalog to introspect at all (native_schemas/
         # native_tables give it a synthetic single "default"/<source_id> pick so the picker isn't
         # permanently empty, but there is still no live relation to DESCRIBE). The columns are
         # exactly RSSNotificationProvider's own item shape (rss_provider.py's parse_feed/poll_once
@@ -1496,7 +1496,7 @@ async def resolve_available_columns_metadata(
             AvailableColumnType(name="published", data_type="timestamp", comment=None),
         ]
     if source_type == "websocket":
-        # REQ-1741: a websocket event's shape is whatever the remote socket happens to send —
+        # REQ-1745: a websocket event's shape is whatever the remote socket happens to send —
         # there is no catalog to introspect. Genuine placeholder (id/value), not introspection; a
         # proper "define your own columns" input (mirroring neo4j/sparql's custom-projection mode)
         # is the real fix and is left as a follow-up — this at least makes ONE table registrable
@@ -1509,7 +1509,7 @@ async def resolve_available_columns_metadata(
             AvailableColumnType(name="value", data_type="text", comment=None),
         ]
     if source_type == "ingest":
-        # REQ-1741: same placeholder reasoning as websocket above, but "id" is deliberately NOT
+        # REQ-1745: same placeholder reasoning as websocket above, but "id" is deliberately NOT
         # one of the offered names — provisa/ingest/ddl.py's generate_create_table ALWAYS injects
         # its own ``id SERIAL PRIMARY KEY`` for an ingest backing table, so a steward-declared "id"
         # column would collide with it (duplicate column) the moment CREATE TABLE ran.

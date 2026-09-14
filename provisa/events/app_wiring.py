@@ -174,7 +174,7 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
     loaders["soda"] = dq_loader
     loaders["great_expectations"] = dq_loader
     loaders["sqlite"] = make_sqlite_loader()
-    # REQ-1741: rss has no engine connector on ANY engine (it's poll-only, _MATERIALIZE_ONLY with
+    # REQ-1745: rss has no engine connector on ANY engine (it's poll-only, _MATERIALIZE_ONLY with
     # no ATTACH/SCAN mechanism) — unconditional, matching sqlite/dq above rather than the
     # engine_attaches-gated entries below (which exist for types some engine DOES attach live).
     loaders["rss"] = make_rss_loader()

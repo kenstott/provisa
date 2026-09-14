@@ -1902,7 +1902,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
 
     await notify_model_changed(state.active_org_id, reason="schema rebuild")
 
-    # REQ-1741: re-wire push-source landing and ingest engines on EVERY rebuild, not only
+    # REQ-1745: re-wire push-source landing and ingest engines on EVERY rebuild, not only
     # register_runtime's per-org build (that call site never fires for the default/single-tenant
     # path this function is on when a mutation calls `_rebuild_schemas()` directly — e.g.
     # schema_mutation.py's registerTable). Without this, a kafka/websocket/ingest source
@@ -1922,7 +1922,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
         await _init_ingest_engines()
     except Exception:
         logging.getLogger(__name__).exception("_init_ingest_engines failed during schema rebuild")
-    # NOTE (REQ-1741): a table on a poll-only adapter-fetch source (rss is the current example)
+    # NOTE (REQ-1745): a table on a poll-only adapter-fetch source (rss is the current example)
     # only gets its poll job (re)registered by wire_event_loop, which register_runtime calls but
     # this function does not — a table registered against an already-running runtime (the common
     # case outside a fresh per-org build) has no poll job until the next org-runtime rebuild.

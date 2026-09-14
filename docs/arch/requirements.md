@@ -18338,7 +18338,7 @@ Closes the remaining smaller findings from the Add-Source UI audit ([REQ-1736](#
 
 **Tests:** —
 
-### REQ-1741 · Streaming {#REQ-1741}
+### REQ-1745 · Streaming {#REQ-1745}
 
 **Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
