@@ -58620,6 +58620,11 @@
   category: Bug Fix
   priority: SHOULD
   type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    The defect is a timing race between Trino's own Pinot-connector cache and its controller's
+    Helix external-view convergence — observable only against a live Trino coordinator and a live
+    Pinot cluster; there is no in-process interface to mock or assert against.
   description: >-
     pinot's e2e test (REQ-1740) was live-traced by exec'ing directly into the Trino container and
     running the exact information_schema query available_tables' engine-catalog fallback
@@ -58656,6 +58661,12 @@
   category: Bug Fix
   priority: MUST
   type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    SourceFormFields.tsx has no existing vitest scaffolding (no provider/mock harness for this
+    form); the regression is already asserted end-to-end by
+    source-to-query-olap-lake.spec.ts's hive_s3 test, which fills the Region field with the exact
+    displayed default and would fail again if the same-value onChange drop returned.
   description: >-
     hive_s3's Register Table schema picker never showed 'wh' — root-cause isolated by
     instrumenting provisa/core/catalog.py's create_catalog, provisa/api/admin/schema_common.py's
