@@ -448,7 +448,14 @@ class DuckDBFirebirdConnector(_DuckDBExtensionConnector):  # REQ-899
 
 class DuckDBGsheetsConnector(_DuckDBExtensionConnector):  # REQ-899
     """Google Sheets, referenced in place via a read_gsheet scanner view (gsheets extension). The
-    spreadsheet id comes from federation_hints; auth is a DuckDB SECRET (TYPE gsheet)."""
+    spreadsheet id is ``source.database`` (the Sources form's "Metadata Sheet ID" field — REQ-1741:
+    matches TrinoGsheetsConnector's own read of the same field, the shape the UI actually sends;
+    ``federation_hints`` is never populated with a ``spreadsheet_id`` key by anything, so reading it
+    here always raised KeyError before this fix — no UI-registered google_sheets source could ever
+    attach on the DuckDB engine). Auth is a DuckDB SECRET (TYPE gsheet, PROVIDER key_file), built
+    from the service-account key path in ``source.mapping["credentials_json"]`` — the gsheets
+    extension requires a secret even for a publicly-viewable sheet (confirmed empirically in
+    tests/integration/test_google_sheets_source_e2e.py)."""
 
     source_type = "google_sheets"
     key = "duckdb_gsheets"
@@ -460,8 +467,22 @@ class DuckDBGsheetsConnector(_DuckDBExtensionConnector):  # REQ-899
         return Capability()  # a Sheets scan has no predicate pushdown
 
     def details(self, source: Source) -> dict:
-        sheet = source.federation_hints["spreadsheet_id"]
-        return {"view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM read_gsheet('{sheet}')"}
+        if not source.database:
+            raise ValueError(
+                f"Source {source.id!r}: 'database' (Google metadata sheet id) is required for the "
+                "google_sheets connector"
+            )
+        sheet = source.database
+        details: dict[str, str] = {
+            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM read_gsheet('{sheet}')"
+        }
+        credentials = source.mapping.get("credentials_json")
+        if credentials:
+            details["secret_ddl"] = (
+                f'CREATE OR REPLACE SECRET "_gsheet_{source.id}" '
+                f"(TYPE gsheet, PROVIDER key_file, FILEPATH '{credentials}')"
+            )
+        return details
 
 
 class DuckDBAirportConnector(_DuckDBExtensionConnector):  # REQ-899

@@ -57921,3 +57921,111 @@
     When the source is created and a table registered under it
     Then federation_hints["default_graph_uri"] flows through _handle_sparql_table into
     SparqlSourceConfig, and build_endpoint's query carries the default-graph-uri parameter
+
+- id: REQ-1741
+  status: proposed
+  since: 2026-09
+  group: "3. Source Registration & Data Modeling"
+  category: Correctness
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    New e2e coverage (provisa-ui/e2e/source-to-query-special-cases.spec.ts) for five SourceTypes
+    that don't fit the plain register-a-table-and-SELECT shape well enough to share
+    source-to-query.spec.ts: google_sheets, govdata, grpc_remote, soda, great_expectations. Each
+    was investigated before writing a test. Several real, previously-undetected bugs were found
+    and fixed along the way — every one of them blocked EVERY real invocation of the affected
+    path, not just this test. None of the five tests is currently passing through the browser;
+    all are `test.skip(true, "<reason>")`'d with the reason recorded in the test file itself. This
+    entry documents exactly what was proved vs. what remains a genuine gap.
+
+    google_sheets — THREE real bugs fixed in DuckDBGsheetsConnector (connector_duckdb.py) and
+    introspect.py's native_schemas/native_tables: (1) the connector read
+    `source.federation_hints["spreadsheet_id"]`, a key nothing anywhere ever populated (guaranteed
+    KeyError on attach) — fixed to read `source.database` (the Sources form's real "Metadata Sheet
+    ID" field, matching what TrinoGsheetsConnector already reads); (2) it built no `secret_ddl` at
+    all, so DuckDB's `gsheets` extension had no credentials even for a service-account-shared
+    sheet (confirmed empirically in tests/integration/test_google_sheets_source_e2e.py that a
+    secret is required even for a public sheet) — fixed to build one from
+    `source.mapping["credentials_json"]`; (3) native_schemas/native_tables had no google_sheets
+    case at all, so the Register Table form's schema picker was always empty for this type — fixed
+    by adding a "main"/source-id branch mirroring the existing csv/parquet SCAN-mechanism pattern.
+    Despite all three fixes, the one full Playwright run that reached the UI flow (attaching a
+    LIVE google_sheets source via the real durable fixture sheet, gsheets-e2e-fixture project
+    memory) crashed the shared single-worker backend process outright, ~29s into registration,
+    with no further diagnostic captured before this session's time budget was called — every
+    subsequent request in that run then failed with ERR_CONNECTION_REFUSED, which is why govdata/
+    grpc_remote/soda/great_expectations below also show no browser-verified result from that same
+    run. Root cause NOT isolated. Remaining gap: reproduce with the backend run in the foreground
+    (not via playwright's webServer, which swallows the crash's own stack trace) to get a real
+    traceback.
+
+    govdata — the askamerica connection itself is real and independently confirmed working
+    (outside Playwright): `fetch_tables`/`fetch_columns` against a `GovDataSource` scoped to the
+    "weather" schema returned real NOAA/NWS tables (nws_stations, cdo_stations, ghcnd_daily, etc.)
+    and correctly typed columns, in ~19s cold (JVM start + catalog-credential fetch from
+    api.askamerica.ai) then near-instant on a warm cache. The browser-driven Register Table flow
+    itself is NOT independently confirmed — the run that reached this test came after the
+    google_sheets crash above.
+
+    grpc_remote — TWO real bugs fixed, both blocking every real grpc_remote registration in this
+    environment, not just this test: (1) provisa/grpc_remote/loader.py's compile_proto_stubs
+    imported `pkg_resources`, which setuptools >= 81 no longer installs by default
+    (ModuleNotFoundError on every proto compile) — fixed to resolve grpc_tools' bundled
+    well-known protos from the module's own `__file__` location instead; (2) EVERY handler in
+    provisa/api/admin/grpc_remote_router.py read `request.app.state` (Starlette's bare per-request
+    state object, which has none of provisa's attributes) instead of provisa's own app-state
+    singleton (`from provisa.api.app import state` — the pattern every sibling router, e.g.
+    graphql_remote_router.py, already uses) — register/refresh/list/get-proto/put-proto could
+    never have completed ('State' object has no attribute 'catalog_for'). Fixed across all 5
+    handlers. A new minimal proto-based demo fixture was added
+    (demo/grpc_remote_server/{animal_catalog.proto,server.py} — a genuine .proto + a
+    grpc.aio server compiled via the SAME grpc_tools path the connector itself uses, unlike the
+    pre-existing demo/grpc_server/server.py, which is deliberately proto-less and cannot exercise
+    this connector at all). The full proto -> compile -> register -> query pipeline was verified
+    end to end via a standalone Python script driving provisa.grpc_remote.{loader,mapper,executor}
+    directly against the new demo server: real typed columns (name text, species text,
+    avg_lifespan_years integer) and the 3 seeded rows came back correctly. The browser-driven flow
+    itself is NOT independently confirmed — the run that reached this test also came after the
+    google_sheets crash above.
+
+    soda / great_expectations — investigation finding: these are DATA-QUALITY CHECKERS
+    (provisa/dq/contract.py CHECKERS), not conventional data sources. A checker "source" has no
+    remote table of its own to register-and-SELECT from; RegisterTableForm.tsx's `isChecker`
+    branch and DataQualityPanel.tsx instead attach a contract to an ALREADY-governed table (picked
+    by that same panel) and a dry-run button runs the checker for real, returning per-check
+    pass/fail outcomes. That dry run — not a SELECT — is judged to be this SourceType's genuine
+    "create a datasource, register a table, run my data" analog; a forced SELECT would not reflect
+    what these SourceTypes actually do. tables-register-dq.spec.ts already covers a narrower slice
+    of this same shape (using the shipped dq-checker/dq-soda baked sources, no dry run); this
+    entry's tests add the two pieces that one doesn't cover — creating the checker SOURCE itself
+    via the Sources form, and actually running the dry-run scan against pet-store-sqlite's `vets`
+    table — but neither was independently re-verified through the browser: the run that reached
+    them also came after the google_sheets crash above.
+  code:
+  - provisa-ui/e2e/source-to-query-special-cases.spec.ts
+  - demo/grpc_remote_server/animal_catalog.proto
+  - demo/grpc_remote_server/server.py
+  - provisa/federation/connector_duckdb.py
+  - provisa/api/admin/introspect.py
+  - provisa/grpc_remote/loader.py
+  - provisa/api/admin/grpc_remote_router.py
+  use_case: >-
+    User asked for e2e coverage proving google_sheets, govdata, grpc_remote, soda, and
+    great_expectations work end to end through the real UI against the DuckDB federation engine,
+    with an explicit instruction to investigate feasibility per-type first and document honest
+    gaps rather than force artificial passes.
+  scenario: |
+    Given the standalone Python verification scripts run during this investigation (not part of
+    the committed test suite)
+    When fetch_tables/fetch_columns is called against a real GovDataSource scoped to "weather"
+    Then real NOAA/NWS table and column metadata comes back
+
+    When the grpc_remote proto/mapper/executor pipeline is driven directly against the new
+    demo/grpc_remote_server fixture
+    Then real, correctly-typed rows come back for the ListBreeds virtual table
+
+    Given provisa-ui/e2e/source-to-query-special-cases.spec.ts
+    When run with `npx playwright test source-to-query-special-cases --project=core`
+    Then all 5 tests report as skipped, each with the precise reason recorded in this description
+    and in the test file's own comments — not a forced pass

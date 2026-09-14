@@ -1,0 +1,37 @@
+// Copyright (c) 2026 Kenneth Stott
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
+// Demo schema for the gRPC Remote Schema Connector e2e (REQ-1741). Unlike
+// demo/grpc_server/server.py (a proto-less bytes-in/bytes-out bridge used only for the
+// grpc-kind command dispatch), this IS a real .proto: a service the connector introspects to
+// auto-register a virtual table (provisa/grpc_remote/mapper.py, loader.py).
+//
+// ListBreeds is server-streaming and returns the row message (Breed) directly rather than a
+// list-wrapper message — provisa/grpc_remote/mapper.py's `_message_columns` only expands a
+// message's OWN fields into typed columns; a `repeated Breed breeds` wrapper field would instead
+// collapse to a single opaque `jsonb` column. Streaming individual Breed rows gives the table
+// real per-column typing (name/species/avg_lifespan_years) end to end.
+
+syntax = "proto3";
+
+package provisa.demo.animal;
+
+message ListBreedsRequest {
+  int32 limit = 1;
+}
+
+message Breed {
+  string name = 1;
+  string species = 2;
+  int32 avg_lifespan_years = 3;
+}
+
+service AnimalCatalog {
+  rpc ListBreeds (ListBreedsRequest) returns (stream Breed);
+}
