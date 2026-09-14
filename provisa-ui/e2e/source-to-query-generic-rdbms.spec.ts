@@ -139,13 +139,13 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   });
 
   test("tidb: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    // REAL BUG, reproduced in isolation (not contention — confirmed by re-running this file alone,
-    // no other agents, no shared docker-compose stack): the Register Table form's schema picker
-    // never shows the "test" schema for a tidb source — 120s timeout, 242 poll attempts, 0
-    // elements found. A different bug than mariadb's above (this one fails at schema
-    // introspection, before ever reaching the SQL page). Root cause not yet isolated. Leave
-    // skipped until investigated.
-    test.skip(true, "real tidb schema-introspection bug — Register Table's schema picker never populates 'test'; not contention");
+    // REQ-1749: the schema/table/column picker bug is FIXED (introspect.py's native_schemas/
+    // _native_tables_rdbms/native_columns were missing "tidb" from their mysql/mariadb dispatch
+    // tuples — verified: registration now reaches the SQL page). What remains is the SAME real bug
+    // documented on the mariadb test above: TiDB (identical MySQL wire protocol) rejects the SQL
+    // page's ANSI-double-quoted identifiers with the identical SYNTAX_ERROR shape. Root cause not
+    // yet isolated for that part either — see the mariadb test's comment.
+    test.skip(true, "real bug shared with mariadb above: TiDB rejects the SQL page's ANSI-quoted identifiers; picker bug is fixed (REQ-1749)");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_tidb_${stamp}`;

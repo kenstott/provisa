@@ -284,6 +284,42 @@ async def test_native_columns_mysql_no_driver_returns_none():
     assert result is None
 
 
+# ── tidb-as-a-source (REQ-1671 e2e fanout regression) ──────────────────────────────────────────
+# tidb speaks the identical MySQL wire protocol as mysql/mariadb (REQ-950) but was missing from
+# all three mysql/mariadb dispatch tuples in this module — native_schemas/native_tables/
+# native_columns all silently `return None` for it, and available_schemas' engine-catalog
+# fallback then queries a catalog that does not exist pre-registration, swallowed by
+# discovery_fallback into an empty list: the Register Table schema/table/column pickers stayed
+# permanently empty for a tidb source with no error ever surfacing.
+
+
+@pytest.mark.asyncio
+async def test_native_schemas_tidb():
+    pool = _pool([("mydb",), ("information_schema",), ("mysql",), ("sys",)])
+    result = await native_schemas("src", "tidb", pool, None)
+    assert result == ["mydb"]
+
+
+@pytest.mark.asyncio
+async def test_native_tables_tidb_uses_percent_s_placeholder():
+    pool = _pool([("widgets", None)])
+    result = await native_tables("src", "tidb", "verify_db", pool, None, None)
+    assert [t.name for t in result] == ["widgets"]
+    _, query, params = pool.execute.call_args[0]
+    assert "%s" in query and "?" not in query
+    assert params == ["verify_db"]
+
+
+@pytest.mark.asyncio
+async def test_native_columns_tidb():
+    pool = _pool([("id", "int"), ("name", "varchar")])
+    result = await native_columns("src", "tidb", "verify_db", "widgets", pool)
+    assert result == [("id", "int"), ("name", "varchar")]
+    _, query, params = pool.execute.call_args[0]
+    assert "%s" in query and "?" not in query
+    assert params == ["verify_db", "widgets"]
+
+
 @pytest.mark.asyncio
 async def test_native_schemas_sqlite_returns_main():
     # Regression: SQLite was falling through to Trino which returned internal PG

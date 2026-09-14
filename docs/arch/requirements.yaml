@@ -58545,3 +58545,40 @@
     Given the ClickHouse federation engine's connector registry
     When it is built
     Then no connector advertises source_type "hudi"
+- id: REQ-1749
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Bug Fix
+  priority: MUST
+  type: behavioral
+  description: >-
+    Fixed a real, reproducible bug found while re-verifying the REQ-1671 fanout's
+    "contention"-blocked e2e tests in true isolation: tidb was missing from three mysql/mariadb
+    dispatch tuples in provisa/api/admin/introspect.py (native_schemas, _native_tables_rdbms,
+    native_columns), despite speaking the identical MySQL wire protocol (REQ-950). A tidb source
+    fell through every branch to `return None`, and available_schemas'/available_tables' engine-
+    catalog fallback then queried a Trino/DuckDB catalog that does not exist pre-registration,
+    silently swallowed to an empty list by discovery_fallback — the Register Table form's schema,
+    table, and column pickers stayed permanently empty for a tidb source, with no error ever
+    surfacing to the operator. Added "tidb" alongside "mysql"/"mariadb" in all three tuples.
+  code:
+  - provisa/api/admin/introspect.py
+  tests:
+  - tests/unit/test_native_introspect.py
+  use_case: >-
+    Re-verifying source-to-query-generic-rdbms.spec.ts's tidb test in true isolation (no shared
+    docker stack, no concurrent agents) surfaced a genuine schema-picker bug distinct from the
+    "contention" explanation the original 6-agent fanout had recorded.
+  scenario: |
+    Given a tidb source registered with valid connection details
+    When the Register Table form loads its schema picker
+    Then the source's real database/schema names appear, not an empty list
+
+    Given a tidb source's schema is selected
+    When the Register Table form loads its table picker
+    Then the schema's real tables appear with a correctly `%s`-parameterized query
+
+    Given a tidb table is selected
+    When the Register Table form loads its column picker
+    Then the table's real columns appear

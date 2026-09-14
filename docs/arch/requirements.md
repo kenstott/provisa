@@ -18439,3 +18439,15 @@ Removed `hudi` as a SourceType entirely, per explicit user request — UI, backe
 **Code:** `provisa/core/models.py`, `provisa/federation/clickhouse_connectors.py`, `provisa/federation/engine.py`, `provisa-ui/src/pages/sources/constants.ts`, `provisa-ui/src/pages/sources/SourceFormFields.tsx`, `provisa-ui/src/pages/SourcesPage.tsx`
 
 **Tests:** `tests/unit/test_clickhouse_connectors.py`
+
+### REQ-1749 · Bug Fix {#REQ-1749}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Fixed a real, reproducible bug found while re-verifying the [REQ-1671](#REQ-1671) fanout's "contention"-blocked e2e tests in true isolation: tidb was missing from three mysql/mariadb dispatch tuples in provisa/api/admin/introspect.py (native_schemas, _native_tables_rdbms, native_columns), despite speaking the identical MySQL wire protocol ([REQ-950](#REQ-950)). A tidb source fell through every branch to `return None`, and available_schemas'/available_tables' engine- catalog fallback then queried a Trino/DuckDB catalog that does not exist pre-registration, silently swallowed to an empty list by discovery_fallback — the Register Table form's schema, table, and column pickers stayed permanently empty for a tidb source, with no error ever surfacing to the operator. Added "tidb" alongside "mysql"/"mariadb" in all three tuples.
+
+**Use case:** Re-verifying source-to-query-generic-rdbms.spec.ts's tidb test in true isolation (no shared docker stack, no concurrent agents) surfaced a genuine schema-picker bug distinct from the "contention" explanation the original 6-agent fanout had recorded.
+
+**Code:** `provisa/api/admin/introspect.py`
+
+**Tests:** `tests/unit/test_native_introspect.py`

@@ -1599,6 +1599,21 @@ wheels = [
 ]
 
 [[package]]
+name = "hdbcli"
+version = "2.29.27"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/28/3d/47cf72139a8fa098bce7c08cbcffcfbc63081b74b5991bee9bd7858f1ec8/hdbcli-2.29.27-cp310-abi3-macosx_13_0_arm64.whl", hash = "sha256:338be359ea95fb2188c3a15dfeb67ba5a063532497476967d9580c3b0ad94ef0", size = 5219372, upload-time = "2026-08-27T14:17:31.635Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/a6/c60d52a2cde49d2c26ff14e1cd6da6d525cfcf12ff542a034cc0db1ea7e4/hdbcli-2.29.27-cp310-abi3-macosx_13_0_x86_64.whl", hash = "sha256:ef090c86b70910d35147c54fc9f87e06040a759aaeae7c810e319dfdd0ed13f6", size = 5708150, upload-time = "2026-08-27T14:17:33.925Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/8f/fa73fe00fb7df413e172621d41dab13cc8d97454a427c2343d5e0724f593/hdbcli-2.29.27-cp310-abi3-manylinux2014_aarch64.whl", hash = "sha256:ab91d1ad921e7cf0d5962646bfa5f7b496546f1b2702dd9270ce6e01abac963e", size = 5511832, upload-time = "2026-08-27T14:17:36.028Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/de/e17c9f452d7c6fd4ab031d2ceb8a23fbb4468554259a521ca44631cbde08/hdbcli-2.29.27-cp310-abi3-manylinux2014_ppc64le.whl", hash = "sha256:22c3779a92480ae74e785a4acfe9072b1fc517c3749d3d8c0fafec54dafb1634", size = 6103151, upload-time = "2026-08-27T14:17:38.789Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/cc/45d10e76a98e1f6b8c5f3ab1ac700f123f3f6fd61fbbb847a90367123c42/hdbcli-2.29.27-cp310-abi3-manylinux2014_x86_64.whl", hash = "sha256:95591da2ff6d3ae6ffa69cddd2b2d73523cadf7da880a8cd966f984b35523cff", size = 5842403, upload-time = "2026-08-27T14:17:40.829Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/4a/911a9f7953c2653cd7abfa3f38cf08313d5cba04cc1fe8146b10be5fc2f7/hdbcli-2.29.27-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:a3d12d56658ee3a89e27cfba907ccba17cdfe012e9a6da8bbfe32116aedd796a", size = 5932207, upload-time = "2026-08-27T14:17:42.68Z" },
+    { url = "https://files.pythonhosted.org/packages/11/29/a9fe29ef382f9cbbd31e7643044ca5e0b8c3defda4e738d7400185865580/hdbcli-2.29.27-cp310-abi3-win32.whl", hash = "sha256:a0e5e77f5f892a9409dd3b0ad64aaf4ad726d55c5f784cb508d070b64d68c905", size = 3433963, upload-time = "2026-08-27T14:17:44.301Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/da/705ef4a535d74064d0cd7c879dbadecb791550c1ce59a441c8c6e6bcc2f2/hdbcli-2.29.27-cp310-abi3-win_amd64.whl", hash = "sha256:88fe24a89dd13d8bad6db9d28d971033af581b85051b5326c8a4f86e75d42559", size = 3753483, upload-time = "2026-08-27T14:17:46.119Z" },
+]
+
+[[package]]
 name = "hf-xet"
 version = "1.5.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3191,7 +3206,9 @@ all-drivers = [
     { name = "aiomysql" },
     { name = "aioodbc" },
     { name = "cassandra-driver" },
+    { name = "hdbcli" },
     { name = "oracledb" },
+    { name = "sqlalchemy-hana" },
 ]
 azure = [
     { name = "azure-keyvault-keys" },
@@ -3263,6 +3280,10 @@ mysql = [
 ]
 oracle = [
     { name = "oracledb" },
+]
+saphana = [
+    { name = "hdbcli" },
+    { name = "sqlalchemy-hana" },
 ]
 soda = [
     { name = "soda-postgres" },
@@ -3339,6 +3360,8 @@ requires-dist = [
     { name = "grpcio-reflection" },
     { name = "grpcio-status", specifier = "<1.82" },
     { name = "grpcio-tools" },
+    { name = "hdbcli", marker = "extra == 'all-drivers'" },
+    { name = "hdbcli", marker = "extra == 'saphana'" },
     { name = "httpx" },
     { name = "hvac", marker = "extra == 'kms-all'" },
     { name = "hvac", marker = "extra == 'vault'" },
@@ -3402,6 +3425,8 @@ requires-dist = [
     { name = "snowflake-sqlalchemy" },
     { name = "soda-postgres", marker = "extra == 'soda'" },
     { name = "sqlalchemy", specifier = ">=2" },
+    { name = "sqlalchemy-hana", marker = "extra == 'all-drivers'" },
+    { name = "sqlalchemy-hana", marker = "extra == 'saphana'" },
     { name = "sqlglot" },
     { name = "strawberry-graphql", extras = ["fastapi"] },
     { name = "syrupy", marker = "extra == 'dev'" },
@@ -3409,7 +3434,7 @@ requires-dist = [
     { name = "uvicorn" },
     { name = "websockets", specifier = ">=11.0" },
 ]
-provides-extras = ["embedded", "desktop", "docs", "mysql", "sqlserver", "oracle", "cassandra", "all-drivers", "soda", "gx", "demo", "govdata", "firebase", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
+provides-extras = ["embedded", "desktop", "docs", "mysql", "sqlserver", "oracle", "saphana", "cassandra", "all-drivers", "soda", "gx", "demo", "govdata", "firebase", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
 
 [[package]]
 name = "provisa-duckdb-ext"
@@ -4421,6 +4446,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ed/8e/bad6ed253e8a99edfc99af02f7173ec48a1d3ed1b9b35a1b8bc1700900cc/sqlalchemy-2.0.50-cp312-cp312-win32.whl", hash = "sha256:1208050441471d003b7c8cb4054fb084f185cf35ac3f0ea270803865bca9939a", size = 2119194, upload-time = "2026-05-24T19:50:04.943Z" },
     { url = "https://files.pythonhosted.org/packages/b6/2d/314a6690dda4b9cfc571eab1a63cf6fe6e1470aa3759ccda6aa016ee0f5a/sqlalchemy-2.0.50-cp312-cp312-win_amd64.whl", hash = "sha256:9d1af51558029a156a70986b7df88f042b3d158d7c8d8fb5072912d4b32d89c7", size = 2146186, upload-time = "2026-05-24T19:50:06.74Z" },
     { url = "https://files.pythonhosted.org/packages/d0/10/f7220e9b784d295d241c86ed99aeb537f92afcd469a64861f2717e9bb077/sqlalchemy-2.0.50-py3-none-any.whl", hash = "sha256:92064363517a3ff8212b5a93b8c62876579d8dfd1ca5b561335f30152d884fa9", size = 1943861, upload-time = "2026-05-24T19:59:01.119Z" },
+]
+
+[[package]]
+name = "sqlalchemy-hana"
+version = "4.6.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "hdbcli" },
+    { name = "sqlalchemy" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f1/3c/b940cdbb8aadae31666aab6913c3cf70b8099a4cf9cb9d8a299b128e9c9d/sqlalchemy_hana-4.6.1.tar.gz", hash = "sha256:b79ef522562e18b616e47d3bed56032c3d26a6f46ff2b03432268a265d5bb657", size = 46826, upload-time = "2026-07-17T11:07:50.916Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/67/6d/6066815a6ebc9dff9daf2da00e2e109be738ac4a2c7446c07c8c263e7d80/sqlalchemy_hana-4.6.1-py3-none-any.whl", hash = "sha256:1edeab5d389be8b583aacc44eaee7b01a021e17b2597c0adfc249e427b060a84", size = 30666, upload-time = "2026-07-17T11:07:49.583Z" },
 ]
 
 [[package]]

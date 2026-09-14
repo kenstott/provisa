@@ -229,7 +229,11 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         )
         return [row[0] for row in result.rows]
 
-    if t in ("mysql", "mariadb"):
+    if t in ("mysql", "mariadb", "tidb"):
+        # tidb speaks the identical MySQL wire protocol (REQ-950) — was missing from this tuple,
+        # so a tidb source fell through to `return None` below, then available_schemas' engine-
+        # catalog fallback silently returned [] (the catalog does not exist pre-registration,
+        # discovery_fallback swallows the failure) — the schema picker was permanently empty.
         result = await pool.execute(source_id, "SHOW DATABASES")
         return [row[0] for row in result.rows if row[0] not in _MYSQL_SYSTEM_DBS]
 
@@ -787,7 +791,7 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
             )
             return [AvailableTableType(name=row[0], comment=row[1]) for row in result.rows]
 
-        if t in ("mysql", "mariadb"):
+        if t in ("mysql", "mariadb", "tidb"):
             # REQ-1732: `%s`, not `?` — aiomysql's paramstyle (MySQLDriver.execute only rewrites
             # `$N`, never touches a literal `?`). Verified live: passing `?` here raises
             # "not all arguments converted during string formatting" inside pymysql's own escaping
@@ -795,7 +799,8 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
             # picker just came back empty rather than erroring. This never surfaced before because
             # mysql/mariadb are normally registered under Trino, where a real ATTACH connector
             # answers available_tables through the engine-catalog fallback instead, this broken
-            # pool query never actually running.
+            # pool query never actually running. tidb (identical MySQL wire protocol) was missing
+            # from this tuple too — same silent-empty-picker symptom.
             result = await pool.execute(
                 source_id,
                 "SELECT TABLE_NAME, TABLE_COMMENT FROM information_schema.TABLES "
@@ -877,7 +882,7 @@ async def native_columns(  # REQ-1732
             [schema_name, table_name],
         )
         return [(row[0], row[1]) for row in result.rows]
-    if t in ("mysql", "mariadb"):
+    if t in ("mysql", "mariadb", "tidb"):
         # %s, not ?  — see _native_tables_rdbms's mysql/mariadb branch for why.
         result = await pool.execute(
             source_id,
