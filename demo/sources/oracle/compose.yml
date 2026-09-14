@@ -1,0 +1,32 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Oracle (start-ui-install.sh --demo --source=oracle). Read through the
+# oracledb-based direct driver (thin mode, no Instant Client needed). Same image/config as
+# docker-compose.test.yml's `oracle` service (gvenzl/oracle-free:slim), ported here for the
+# source-to-query e2e. Oracle-free's first boot creates the database from scratch and can take
+# several minutes even with the generous start_period/retries below.
+services:
+  oracle:
+    image: gvenzl/oracle-free:slim
+    restart: unless-stopped
+    environment:
+      ORACLE_PASSWORD: provisa
+    ports:
+      - "${PROVISA_DEMO_ORACLE_PORT:-21521}:1521"
+    volumes:
+      - oracle_demo_data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 180s
+volumes:
+  oracle_demo_data:

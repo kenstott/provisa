@@ -1,0 +1,28 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: TiDB (start-ui-install.sh --demo --source=tidb). MySQL wire-compatible
+# (reuses the aiomysql direct driver + mysql dialect, REQ-950/1097) — same image/config as
+# docker-compose.test.yml's `tidb` service, ported here for the source-to-query e2e.
+services:
+  tidb:
+    image: pingcap/tidb:latest
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_DEMO_TIDB_PORT:-24000}:4000"
+    volumes:
+      - tidb_demo_data:/tmp/tidb
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/4000' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+volumes:
+  tidb_demo_data:

@@ -1,0 +1,33 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: SQL Server (start-ui-install.sh --demo --source=sqlserver). Read through
+# the pyodbc-based direct driver (provisa/executor/drivers/sqlserver.py), which requires the host
+# running the app to have unixODBC + "ODBC Driver 18 for SQL Server" registered — a host
+# dependency, not something this compose file can provide. Same image/config as
+# docker-compose.test.yml's `sqlserver` service, ported here for the source-to-query e2e.
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Provisa_2026!"
+    ports:
+      - "${PROVISA_DEMO_SQLSERVER_PORT:-21433}:1433"
+    volumes:
+      - mssql_demo_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"Provisa_2026!\" -Q \"SELECT 1\" || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 90s
+volumes:
+  mssql_demo_data:

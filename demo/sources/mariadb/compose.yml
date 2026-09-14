@@ -1,0 +1,31 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: MariaDB (start-ui-install.sh --demo --source=mariadb). MySQL wire-compatible
+# (reuses the aiomysql direct driver + mysql dialect, REQ-950/1097) — same image/config as
+# docker-compose.test.yml's `mariadb` service, ported here for the source-to-query e2e.
+services:
+  mariadb:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: provisa
+      MARIADB_DATABASE: provisa_demo
+    ports:
+      - "${PROVISA_DEMO_MARIADB_PORT:-23310}:3306"
+    volumes:
+      - mariadb_demo_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+volumes:
+  mariadb_demo_data:
