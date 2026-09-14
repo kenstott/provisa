@@ -59,6 +59,7 @@ class SourceType(str, Enum):
     oracle = "oracle"
     firebird = "firebird"  # Firebird 3/4/5 — DuckDB firebird community extension (REQ-899)
     duckdb = "duckdb"
+    saphana = "saphana"  # SAP HANA — generic self-only landing engine (hana+hdbcli dialect)
     # Postgres-wire-compatible RDBs — reuse the postgres driver/dialect/Trino connector (REQ-950)
     cockroachdb = "cockroachdb"
     yugabytedb = "yugabytedb"

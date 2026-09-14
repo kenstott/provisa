@@ -49,6 +49,8 @@ export const SOURCE_TYPES = [
   // Exasol's documented default client-connection port (jdbc:exa / provisa/executor/drivers, added
   // REQ-1731) is 8563.
   { value: "exasol", label: "Exasol", category: "RDBMS", defaultPort: 8563 },
+  // SAP HANA's HDB SQL port for the default tenant (instance 00): 3<instance>15 — 39015.
+  { value: "saphana", label: "SAP HANA", category: "RDBMS", defaultPort: 39015 },
   // REQ-950: Postgres-wire-compatible — reuses the postgres driver/dialect/Trino connector, same
   // SIMPLE_RDBMS shape as postgresql itself.
   { value: "cockroachdb", label: "CockroachDB", category: "RDBMS", defaultPort: 26257 },

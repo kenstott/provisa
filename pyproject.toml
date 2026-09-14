@@ -141,9 +141,13 @@ docs = ["mkdocs-material", "pymdown-extensions", "mkdocs-static-i18n"]
 mysql = ["aiomysql"]
 sqlserver = ["aioodbc"]
 oracle = ["oracledb"]
+# SAP HANA source type: a generic self-only landing engine (build_sqlalchemy_engine, engine.py's
+# _RDB_KINDS) reached via the hana+hdbcli SQLAlchemy dialect. hdbcli is SAP's own DBAPI driver;
+# sqlalchemy-hana registers the dialect SQLAlchemy needs to speak it.
+saphana = ["hdbcli", "sqlalchemy-hana"]
 # REQ-1676: Cassandra read natively over CQL (Apache-2.0). The Trino connector needs nothing here.
 cassandra = ["cassandra-driver>=3.29"]
-all-drivers = ["aiomysql", "aioodbc", "oracledb", "cassandra-driver>=3.29"]
+all-drivers = ["aiomysql", "aioodbc", "oracledb", "hdbcli", "sqlalchemy-hana", "cassandra-driver>=3.29"]
 # REQ-1443: external data-quality checker, invoked out-of-process (never linked). Only the
 # postgres package is needed — the checker aims at Provisa's own pgwire endpoint so it scans the
 # FEDERATED view, which is why a Snowflake- or Iceberg-backed table needs no per-warehouse package.
