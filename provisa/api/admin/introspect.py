@@ -229,9 +229,18 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         return [row[0] for row in result.rows]
 
     if t == "duckdb":
+        # REQ-1746: DuckDBDriver.connect() (source_pools) opens the attached .duckdb file
+        # DIRECTLY, so this connection always carries "system"/"temp" alongside the file's own
+        # catalog (named after the file, e.g. "widgets") — every one of them has its own "main"
+        # schema. An unfiltered information_schema.schemata scan returns "main" once per catalog
+        # (verified live: 3x for a fresh file), which the Register Table schema picker then
+        # renders as duplicate <option value="main"> entries (React key collision). Scope to the
+        # file's own catalog — current_database() is the connection's default/current one, i.e.
+        # the attached file itself, matching what native_tables' "duckdb" branch below then reads.
         result = await pool.execute(
             source_id,
-            "SELECT schema_name FROM information_schema.schemata ORDER BY schema_name",
+            "SELECT schema_name FROM information_schema.schemata "
+            "WHERE catalog_name = current_database() ORDER BY schema_name",
         )
         return [row[0] for row in result.rows]
 
@@ -745,10 +754,14 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
             return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
         if t == "duckdb":
+            # REQ-1746: scoped to the attached file's own catalog for the same reason
+            # native_schemas' "duckdb" branch is above — a DIRECT connection to the file also
+            # carries "system"/"temp" catalogs alongside it.
             result = await pool.execute(
                 source_id,
                 "SELECT table_name, NULL FROM information_schema.tables "
-                "WHERE table_schema = ? AND table_type = 'BASE TABLE' ORDER BY table_name",
+                "WHERE table_catalog = current_database() AND table_schema = ? "
+                "AND table_type = 'BASE TABLE' ORDER BY table_name",
                 [schema_name],
             )
             return [AvailableTableType(name=row[0], comment=None) for row in result.rows]

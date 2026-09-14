@@ -58356,3 +58356,88 @@
     Given a kafka or websocket table registered through the UI on an already-running server
     When wire_push_listeners re-runs at the end of the next schema rebuild
     Then its CDC-landing listener is started (not only after a fresh per-org runtime build)
+- id: REQ-1746
+  status: in-progress
+  since: 2026-09
+  group: "3. Source Registration & Data Modeling"
+  category: Correctness
+  priority: MUST
+  type: behavioral
+  description: >-
+    New e2e coverage (provisa-ui/e2e/source-to-query-community-ext.spec.ts, the same three-screen
+    shape as REQ-1671/REQ-1730: Sources form -> Register Table form -> SQL page) for the four
+    DuckDB-ATTACH-mechanism SourceTypes engine-swap.spec.ts had only ever proven as one leg of a
+    cross-engine harness (firebird/airport), never proven standalone, plus singlestore (gated on
+    SINGLESTORE_LICENSE + amd64, same as engine-swap.spec.ts) and duckdb-as-a-source (no prior
+    e2e precedent at all: ATTACHing a second local .duckdb file as a SOURCE, distinct from DuckDB
+    as Provisa's own federation engine).
+
+    Writing this surfaced two real, previously-undetected bugs, both fixed:
+
+    1. duckdb-as-a-source had no working path to a query at all. SourcesPage.tsx's submit path
+    routed the shared "File Path" input's value (form.database) into `path` only for
+    `form.type === "firebird"` (REQ-1736's fix) — duckdb needed the identical routing (its
+    DuckDBDuckdbConnector.details(), connector_duckdb.py, ATTACHes `source.path`, but
+    introspect.py's native_schemas/native_tables "duckdb" branch reads `source.database` via the
+    DIRECT DuckDBDriver) and was missing it, so the query-time engine ATTACHed `None`. Fixed by
+    adding "duckdb" alongside "firebird" to that ternary.
+
+    2. Once (1) was fixed, a second bug surfaced: introspect.py's native_schemas/native_tables
+    "duckdb" branches queried information_schema.schemata/tables with no catalog filter. A
+    DuckDBDriver connection opened DIRECTLY against an attached .duckdb file always also carries
+    "system" and "temp" catalogs, each with their own "main" schema — so an unfiltered query
+    returned "main" three times (verified live: `SELECT catalog_name, schema_name FROM
+    information_schema.schemata` against a fresh file returns system/main, temp/main, and
+    <file>/main), which the Register Table schema picker rendered as three duplicate
+    `<option value="main">` elements (a React key collision, and the wrong element could bind on
+    select). Fixed by scoping both queries to `catalog_name = current_database()` /
+    `table_catalog = current_database()`.
+
+    A third, unrelated bug was found while investigating an airport-source query failure:
+    `NativeEngineBackend._attach_tbl`'s merged `SimpleNamespace` (provisa/federation/
+    native_backend.py, the runtime_sources/dynamically-registered-source attach path) omitted
+    `base_url`, which `DuckDBAirportConnector.details()` reads directly (`source.base_url or
+    f"grpc://{host}:{port}"`, no `getattr`) — raising `AttributeError` at attach time, surfaced to
+    the UI as a generic SQL-run 400. `NativeEngineBackend._merged_source` (the OTHER merge path,
+    used for config-declared sources) already carries `base_url` for exactly this reason
+    (REQ-1693's comment on that line describes the identical failure mode); `_attach_tbl`'s merge
+    needed the same field, both where it is built from a runtime_sources DB-row dict and where it
+    re-merges from the resulting object.
+
+    Status: the three fixes are made and each was verified independently outside the UI harness
+    (direct duckdb.connect() queries reproducing introspect.py's exact SQL; the exact ATTACH DSN
+    DuckDBFirebirdConnector builds, run live against the firebird demo container). The new spec's
+    four tests are NOT yet confirmed green end-to-end through the UI: every playwright run this
+    session either reused another concurrently-running agent's webServer process on
+    playwright.config.ts's shared default ports (`reuseExistingServer: !process.env.CI` plus fixed
+    8901/3901/8907/8908 defaults — a distinct, separately-worth-fixing bug: parallel e2e runs
+    silently test each other's code) rather than this worktree's own, or hit a stale shared
+    demo-source-containers.ts splunk fixture failing in global-setup before any test in the new
+    file ran. firebird/airport/duckdb are `test.skip`'d with these reasons pending a clean
+    isolated re-run; singlestore's skip is the pre-existing license/arch gate.
+  code:
+  - provisa-ui/src/pages/SourcesPage.tsx
+  - provisa/api/admin/introspect.py
+  - provisa/federation/native_backend.py
+  - demo/files/create_demo_files.py
+  - scripts/resolve_firebird_client_lib.py
+  tests:
+  - provisa-ui/e2e/source-to-query-community-ext.spec.ts
+  use_case: >-
+    User asked to write and verify Playwright e2e tests proving firebird/airport/singlestore/
+    duckdb work end-to-end through the real UI against the DuckDB federation engine, reusing
+    engine-swap.spec.ts's registration code and demo/sources fixtures.
+  scenario: |
+    Given a duckdb source form pointed at a second local .duckdb file's path
+    When the source is created
+    Then source.path (not just source.database) carries the file path, so the query-time engine's
+    ATTACH is not `None`
+
+    Given that duckdb source's Register Table schema picker
+    When schemas are listed for the attached file
+    Then "main" appears exactly once, not once per system/temp/file catalog
+
+    Given an airport (or any runtime_sources-registered) source whose connector reads
+    source.base_url directly
+    When NativeEngineBackend._attach_tbl merges the source for attach
+    Then base_url is present, not omitted, so the connector's attach does not raise AttributeError
