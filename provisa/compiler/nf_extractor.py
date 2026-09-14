@@ -257,6 +257,25 @@ def drop_union_branches_for_table(sql: str, table_name: str) -> str:  # REQ-599
     return root.sql(dialect="postgres")
 
 
+def apply_dropped_tables(sql: str, dropped: dict[str, str]) -> str:  # REQ-599
+    """Drop UNION branches for each table in *dropped*; raise the table's own reason for any
+    that survive.
+
+    ``dropped`` maps a materialization-unreachable table (unsatisfied required_args, an
+    unreachable remote, or a failed fetch) to a human reason. A table referenced inside a UNION
+    (a relationship join, a multi-label sweep) is simply excluded from the sweep — the ordinary
+    REQ-848/REQ-941 behavior. A table that is the SOLE FROM target has no branch to drop, would
+    otherwise reach the engine unqualified, and surfaces as an opaque native catalog error
+    instead of the caller-facing reason recorded here — so it raises loud instead (matches the
+    pgwire ``_optimize_and_route`` no-op detection, generalized to every settled-pipeline caller).
+    """
+    for table_name, reason in dropped.items():
+        sql = drop_union_branches_for_table(sql, table_name)
+        if table_name in find_api_table_names(sql):
+            raise ValueError(f"Table {table_name!r} {reason}")
+    return sql
+
+
 def where_referenced_tables(sql: str) -> set[str]:  # REQ-599
     """Return table names (or aliases) that appear in WHERE predicates (not JOIN ON conditions)."""
     ast = sqlglot.parse_one(sql, dialect="postgres")

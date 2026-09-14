@@ -213,10 +213,9 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         rewritten_sql, state, compiled.gql_remote_extra_selections
     )
     if _join_dropped:
-        from provisa.compiler.nf_extractor import drop_union_branches_for_table
+        from provisa.compiler.nf_extractor import apply_dropped_tables
 
-        for _dtn in _join_dropped:
-            rewritten_sql = drop_union_branches_for_table(rewritten_sql, _dtn)
+        rewritten_sql = apply_dropped_tables(rewritten_sql, _join_dropped)
     if _join_values_ctes:
         from provisa.cache.values_cte import build_values_cte_sql
 
@@ -451,10 +450,9 @@ async def _execute_engine_standard(
         exec_sql, state, compiled.gql_remote_extra_selections, nf_args=_nf_args
     )
     if _api_dropped:
-        from provisa.compiler.nf_extractor import drop_union_branches_for_table
+        from provisa.compiler.nf_extractor import apply_dropped_tables
 
-        for _dtn in _api_dropped:
-            exec_sql = drop_union_branches_for_table(exec_sql, _dtn)
+        exec_sql = apply_dropped_tables(exec_sql, _api_dropped)
     for _tn, _entry in _api_values_ctes.items():
         exec_sql = build_values_cte_sql(exec_sql, _tn, _entry)
     if _api_cache_rewrites:
@@ -558,10 +556,9 @@ async def _exec_nodes_query(compiled, ctx, state, decision):
         nodes_exec_sql, state, compiled.gql_remote_extra_selections
     )
     if _nodes_dropped:
-        from provisa.compiler.nf_extractor import drop_union_branches_for_table
+        from provisa.compiler.nf_extractor import apply_dropped_tables
 
-        for _dtn in _nodes_dropped:
-            nodes_exec_sql = drop_union_branches_for_table(nodes_exec_sql, _dtn)
+        nodes_exec_sql = apply_dropped_tables(nodes_exec_sql, _nodes_dropped)
     for _tn, _entry in _nodes_values_ctes.items():
         nodes_exec_sql = build_values_cte_sql(nodes_exec_sql, _tn, _entry)
     if _nodes_cache_rewrites:
@@ -787,10 +784,9 @@ async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redi
         _ctas_exec_sql, state, compiled.gql_remote_extra_selections
     )
     if _ctas_dropped:
-        from provisa.compiler.nf_extractor import drop_union_branches_for_table
+        from provisa.compiler.nf_extractor import apply_dropped_tables
 
-        for _dtn in _ctas_dropped:
-            _ctas_exec_sql = drop_union_branches_for_table(_ctas_exec_sql, _dtn)
+        _ctas_exec_sql = apply_dropped_tables(_ctas_exec_sql, _ctas_dropped)
     if _ctas_values_ctes:
         from provisa.cache.values_cte import build_values_cte_sql
 

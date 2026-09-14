@@ -881,7 +881,7 @@ class TestMaterializeApiToEngineCache:
         rewrites, ctes, dropped = await _materialize_api_to_engine_cache("SELECT 1", state)
         assert rewrites == {}
         assert ctes == {}
-        assert dropped == []
+        assert dropped == {}
 
     async def test_hot_table_short_circuits(self):
         from provisa.cache.hot_tables import HotTableEntry
@@ -903,7 +903,7 @@ class TestMaterializeApiToEngineCache:
         )
         assert rewrites == {}
         assert ctes["pets"] is entry
-        assert dropped == []
+        assert dropped == {}
 
     async def test_no_pg_pool_skips_api_endpoint_table(self):
         ep = _ep([_col("id")])
@@ -918,7 +918,7 @@ class TestMaterializeApiToEngineCache:
         )
         assert rewrites == {}
         assert ctes == {}
-        assert dropped == []
+        assert dropped == {}
 
     async def test_gql_remote_missing_required_arg_drops_branch(self):
         reg = {
@@ -942,7 +942,10 @@ class TestMaterializeApiToEngineCache:
         rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
             "SELECT * FROM pets", state, nf_args={}
         )
-        assert dropped == ["pets"]
+        assert dropped == {
+            "pets": "requires filter(s) ['name'] — add a WHERE clause with the "
+            "required parameter(s)"
+        }
         assert rewrites == {}
         assert ctes == {}
 
@@ -960,7 +963,7 @@ class TestMaterializeApiToEngineCache:
         )
         assert rewrites == {}
         assert ctes == {}
-        assert dropped == []
+        assert dropped == {}
 
     async def test_gql_remote_required_arg_resolved_materializes(self):
         reg = {
@@ -995,7 +998,7 @@ class TestMaterializeApiToEngineCache:
             rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
                 "SELECT * FROM pets", state, nf_args={"name": "Fido"}
             )
-        assert dropped == []
+        assert dropped == {}
         assert "pets" in rewrites
 
     async def test_gql_remote_no_required_args_materializes(self):
@@ -1030,7 +1033,7 @@ class TestMaterializeApiToEngineCache:
             rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
                 "SELECT * FROM pets", state
             )
-        assert dropped == []
+        assert dropped == {}
         assert "pets" in rewrites
 
     async def test_gql_remote_runtime_error_drops_branch(self):
@@ -1069,7 +1072,7 @@ class TestMaterializeApiToEngineCache:
             rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
                 "SELECT * FROM pets", state
             )
-        assert dropped == ["pets"]
+        assert dropped == {"pets": "remote GraphQL source unreachable"}
 
     async def test_ep_found_but_unmaterializable_dropped(self):
         ep = _ep([_col("id"), _col("owner_id", param_type=ParamType.path)])
@@ -1096,6 +1099,6 @@ class TestMaterializeApiToEngineCache:
             rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
                 "SELECT * FROM pets", state
             )
-        assert dropped == ["pets"]
+        assert dropped == {"pets": "could not be materialized"}
         assert rewrites == {}
         assert ctes == {}

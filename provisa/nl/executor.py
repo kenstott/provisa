@@ -104,7 +104,7 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
     from provisa.api.data.materialization import _materialize_api_to_engine_cache
     from provisa.cache.values_cte import build_values_cte_sql
     from provisa.api_source.engine_cache import rewrite_all_from_cache
-    from provisa.compiler.nf_extractor import drop_union_branches_for_table
+    from provisa.compiler.nf_extractor import apply_dropped_tables
     from provisa.compiler.parser import parse_query
     from provisa.compiler.sql_gen import compile_query
     from provisa.compiler.sql_rewrite import rewrite_semantic_to_catalog_physical
@@ -142,8 +142,7 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
         cache_rewrites, values_ctes, dropped = await _materialize_api_to_engine_cache(
             exec_sql, app_state, cq.gql_remote_extra_selections
         )
-        for table_name in dropped:
-            exec_sql = drop_union_branches_for_table(exec_sql, table_name)
+        exec_sql = apply_dropped_tables(exec_sql, dropped)
         for table_name, entry in values_ctes.items():
             exec_sql = build_values_cte_sql(exec_sql, table_name, entry)
         if cache_rewrites:
@@ -163,8 +162,7 @@ async def _compile_and_execute_graphql(query: str, role: str, app_state: Any) ->
             ) = await _materialize_api_to_engine_cache(
                 nodes_exec_sql, app_state, cq.gql_remote_extra_selections
             )
-            for table_name in nodes_dropped:
-                nodes_exec_sql = drop_union_branches_for_table(nodes_exec_sql, table_name)
+            nodes_exec_sql = apply_dropped_tables(nodes_exec_sql, nodes_dropped)
             for table_name, entry in nodes_values_ctes.items():
                 nodes_exec_sql = build_values_cte_sql(nodes_exec_sql, table_name, entry)
             if nodes_cache_rewrites:

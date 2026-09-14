@@ -921,7 +921,7 @@ class TestExecCtasRoute:
             ),
             patch(
                 "provisa.api.data.endpoint_executors._materialize_api_to_engine_cache",
-                new=AsyncMock(return_value=({}, {}, ["dead_table"])),
+                new=AsyncMock(return_value=({}, {}, {"dead_table": "could not be materialized"})),
             ),
             patch(
                 "provisa.compiler.nf_extractor.drop_union_branches_for_table",

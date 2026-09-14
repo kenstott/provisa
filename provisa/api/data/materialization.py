@@ -607,7 +607,7 @@ async def _materialize_api_to_engine_cache(
     state,
     gql_remote_extra_selections: dict | None = None,
     nf_args: dict | None = None,
-) -> tuple[dict, dict, list[str]]:
+) -> tuple[dict, dict, dict[str, str]]:
     """Materialize API-backed tables into the engine cache (VARCHAR columns) before the engine SQL runs.
 
     Avoids INVALID_CAST_ARGUMENT: the engine's PG connector exposes JSONB as json type;
@@ -617,13 +617,15 @@ async def _materialize_api_to_engine_cache(
     Returns (cache_rewrites, values_cte_entries, dropped_tables):
       cache_rewrites: {physical_table_name: (CacheLocation, cache_tbl)}
       values_cte_entries: {physical_table_name: HotTableEntry} — inlined as VALUES CTEs
-      dropped_tables: table names whose UNION branches should be dropped (unreachable remotes)
+      dropped_tables: {physical_table_name: reason} whose UNION branches should be dropped
+        (unreachable remotes) — a table with no UNION to drop from survives the branch-drop, and
+        ``nf_extractor.apply_dropped_tables`` raises the reason for whichever ones do (REQ-848)
     """
     from provisa.compiler.nf_extractor import find_api_table_names
 
     cache_rewrites: dict = {}
     values_cte_entries: dict = {}
-    dropped_tables: list[str] = []
+    dropped_tables: dict[str, str] = {}
     hot_mgr = getattr(state, "hot_manager", None)
     table_names = find_api_table_names(exec_sql)
     if not table_names:
@@ -675,8 +677,14 @@ async def _materialize_api_to_engine_cache(
                 if missing:
                     # Required filter(s) absent — exclude the object (drop its union branch) so a
                     # broad sweep (graph counts, multi-label union) skips it instead of erroring.
+                    # A table with no union to drop from (a lone FROM target) survives the branch
+                    # drop and is surfaced as this exact reason by nf_extractor.apply_dropped_tables
+                    # instead of reaching the engine as an unqualified, confusing catalog error.
                     log.warning("[MAT] %s requires filter(s) %s — dropping branch", tn, missing)
-                    dropped_tables.append(tn)
+                    dropped_tables[tn] = (
+                        f"requires filter(s) {missing} — add a WHERE clause with the "
+                        "required parameter(s)"
+                    )
                 else:
                     try:
                         await _mat_gql_remote_table(
@@ -693,7 +701,7 @@ async def _materialize_api_to_engine_cache(
                         )
                     except RuntimeError as _gql_err:
                         log.warning("[MAT] GQL remote unreachable for %s: %s", tn, _gql_err)
-                        dropped_tables.append(tn)
+                        dropped_tables[tn] = "remote GraphQL source unreachable"
             continue
 
         if not _has_pg_pool:
@@ -713,6 +721,6 @@ async def _materialize_api_to_engine_cache(
         )
         if tn not in cache_rewrites and tn not in values_cte_entries:
             log.warning("[MAT] %s could not be materialized — dropping union branch", tn)
-            dropped_tables.append(tn)
+            dropped_tables[tn] = "could not be materialized"
 
     return cache_rewrites, values_cte_entries, dropped_tables
