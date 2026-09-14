@@ -18338,7 +18338,7 @@ Closes the remaining smaller findings from the Add-Source UI audit ([REQ-1736](#
 
 **Tests:** —
 
-### REQ-1741 · Correctness {#REQ-1741}
+### REQ-1747 · Correctness {#REQ-1747}
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 

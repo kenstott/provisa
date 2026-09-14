@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """Seed / teardown a small live table in each cloud warehouse for source-to-query-cloud-warehouse.
-spec.ts (REQ-1741 lane): the Playwright spec drives the Sources/Register Table/SQL-page UI against
+spec.ts (REQ-1747 lane): the Playwright spec drives the Sources/Register Table/SQL-page UI against
 whatever this script puts there, then calls it again with "down" to remove it. Mirrors the exact
 connection code the existing python integration suites already use for each warehouse (
 tests/integration/test_snowflake_source_e2e.py, test_databricks_source_e2e.py,

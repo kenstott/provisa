@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1741: the six cloud-warehouse SourceTypes (snowflake/bigquery/databricks/fabric/synapse/
+// REQ-1747: the six cloud-warehouse SourceTypes (snowflake/bigquery/databricks/fabric/synapse/
 // redshift) through the same three-screen UI flow as source-to-query.spec.ts (Sources form →
 // Register Table form → SQL page SELECT), against the DuckDB federation engine, using the LIVE
 // warehouse credentials in the repo-root .env (never printed/logged here — only the env var
@@ -76,7 +76,7 @@ const WIDGET_ROWS = [
   ["3", "gear"],
 ];
 
-test.describe("cloud warehouse sources through the UI (REQ-1741)", () => {
+test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
   test("snowflake: add the source, register a table, query it on the SQL page", async ({ page }) => {
     test.skip(
       !(

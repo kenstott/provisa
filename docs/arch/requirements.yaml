@@ -57922,7 +57922,7 @@
     Then federation_hints["default_graph_uri"] flows through _handle_sparql_table into
     SparqlSourceConfig, and build_endpoint's query carries the default-graph-uri parameter
 
-- id: REQ-1741
+- id: REQ-1747
   status: complete
   since: 2026-09
   group: "3. Source Registration & Data Modeling"
