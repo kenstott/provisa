@@ -178,6 +178,15 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t == "google_sheets":
         return ["main"]
 
+    # REQ-1745: rss/websocket/ingest (REQ-1739's UI-newly-reachable streaming types) are
+    # MATERIALIZE_ONLY with no live-scannable relation — like elasticsearch/redis/prometheus above,
+    # a fixed "default" schema gives the Register Table picker something to select. Without this
+    # branch, available_schemas fell through to the introspect_schemas seam, which returns [] for a
+    # source with no ATTACH/view_ddl connector detail — the picker never populated and no table
+    # could ever be registered against these types at all.
+    if t in ("rss", "websocket", "ingest"):
+        return ["default"]
+
     if t == "files":
         # Schema is always the sql-normalised source-id (matches pgwire_replica.schema_name())
         return [source_id.replace("-", "_")]
@@ -857,6 +866,19 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
         from provisa.api.admin.types import AvailableTableType
 
         if schema_name != "main":
+            return []
+        return [AvailableTableType(name=source_id, comment=None)]
+
+    # REQ-1745: rss/websocket — one feed/socket per source — and ingest, as a matching one-table-
+    # per-source placeholder (real ingest usage allows several independently-named backing tables
+    # per source, per state.ingest_tables' source_id -> {table_name -> columns} shape; a genuine
+    # "type a new table name" input, mirroring the neo4j/sparql custom-projection mode, is the real
+    # fix for that and is left as a follow-up — this unblocks the ONE-table case, which is exactly
+    # what was completely unreachable before). Named after the source id, as csv/parquet above.
+    if t in ("rss", "websocket", "ingest"):
+        from provisa.api.admin.types import AvailableTableType
+
+        if schema_name != "default":
             return []
         return [AvailableTableType(name=source_id, comment=None)]
 

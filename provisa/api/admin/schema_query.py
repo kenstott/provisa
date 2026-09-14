@@ -1481,6 +1481,42 @@ async def resolve_available_columns_metadata(
         return await _cassandra_columns(source_id, schema_name, table_name)
     if source_type == "prometheus":
         return await _prometheus_columns(source_id, table_name)
+    if source_type == "rss":
+        # REQ-1745: an rss/Atom feed has no catalog to introspect at all (native_schemas/
+        # native_tables give it a synthetic single "default"/<source_id> pick so the picker isn't
+        # permanently empty, but there is still no live relation to DESCRIBE). The columns are
+        # exactly RSSNotificationProvider's own item shape (rss_provider.py's parse_feed/poll_once
+        # build one dict per item with exactly these keys) — declaring anything else would silently
+        # diverge from what the provider actually lands.
+        return [
+            AvailableColumnType(name="id", data_type="text", comment=None),
+            AvailableColumnType(name="title", data_type="text", comment=None),
+            AvailableColumnType(name="link", data_type="text", comment=None),
+            AvailableColumnType(name="description", data_type="text", comment=None),
+            AvailableColumnType(name="published", data_type="timestamp", comment=None),
+        ]
+    if source_type == "websocket":
+        # REQ-1745: a websocket event's shape is whatever the remote socket happens to send —
+        # there is no catalog to introspect. Genuine placeholder (id/value), not introspection; a
+        # proper "define your own columns" input (mirroring neo4j/sparql's custom-projection mode)
+        # is the real fix and is left as a follow-up — this at least makes ONE table registrable
+        # end to end instead of the column list being permanently empty and submit permanently
+        # blocked on "at least one column must be selected". "id" is declared here (unlike
+        # ingest below) so the steward has an eligible primary-key column to check — CDC landing
+        # (push_wiring.py) hard-requires one.
+        return [
+            AvailableColumnType(name="id", data_type="text", comment=None),
+            AvailableColumnType(name="value", data_type="text", comment=None),
+        ]
+    if source_type == "ingest":
+        # REQ-1745: same placeholder reasoning as websocket above, but "id" is deliberately NOT
+        # one of the offered names — provisa/ingest/ddl.py's generate_create_table ALWAYS injects
+        # its own ``id SERIAL PRIMARY KEY`` for an ingest backing table, so a steward-declared "id"
+        # column would collide with it (duplicate column) the moment CREATE TABLE ran.
+        return [
+            AvailableColumnType(name="ext_id", data_type="text", comment=None),
+            AvailableColumnType(name="value", data_type="text", comment=None),
+        ]
     if source_type == "files":
         # Files sources use the engine abstraction (EngineRuntime.introspect_columns) which
         # dispatches to the bound engine's backend — DuckDB, ClickHouse, etc. — and resolves

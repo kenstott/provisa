@@ -716,16 +716,43 @@ async def _init_ingest_engines() -> None:
                     )
                 ).fetchall()
             ]
+        # REQ-1745: an ingest source (NO_CONNECTION_TYPES in the Sources form — REQ-1739
+        # deliberately gives it no host/port/database fields, "since a checker's target lives on
+        # the Table") has nothing of its own to connect with. It previously defaulted to the
+        # literal localhost:5432 with an empty database/username — wrong on any deployment whose
+        # control-plane postgres isn't on the machine-default port (the e2e harness's is docker-
+        # assigned and ephemeral; REAL prod deployments dial a managed Cloud SQL host, never
+        # localhost), so a UI-registered ingest source silently wrote rows nowhere reachable. The
+        # only sensible default for "no connection configured" is the SAME tenant database
+        # Provisa itself is already connected to — read off state.tenant_db's own engine URL,
+        # which is exactly the DSN this process used to reach its own (org-scoped) postgres.
+        _tenant_url = state.tenant_db.engine.url
+        _tenant_is_pg = _tenant_url.get_backend_name() == "postgresql"
         for _isrc in _ingest_sources:
             _sid = _isrc["id"]
             _pw = _resolve_secrets("")
+            if _isrc["host"]:
+                _host, _port, _database, _username = (
+                    _isrc["host"],
+                    _isrc["port"] or 5432,
+                    _isrc["database"] or "",
+                    _isrc["username"] or "",
+                )
+            elif _tenant_is_pg:
+                _host = _tenant_url.host or "localhost"
+                _port = _tenant_url.port or 5432
+                _database = _tenant_url.database or ""
+                _username = _tenant_url.username or ""
+                _pw = _resolve_secrets(_tenant_url.password or "")
+            else:
+                _host, _port, _database, _username = "localhost", 5432, "", ""
             _eng = _get_ingest_engine(
                 source_id=_sid,
                 dialect=_isrc["dialect"] or "postgresql+asyncpg",
-                host=_isrc["host"] or "localhost",
-                port=_isrc["port"] or 5432,
-                database=_isrc["database"] or "",
-                username=_isrc["username"] or "",
+                host=_host,
+                port=_port,
+                database=_database,
+                username=_username,
                 password=_pw or "",
             )
             state.ingest_engines[_sid] = _eng
