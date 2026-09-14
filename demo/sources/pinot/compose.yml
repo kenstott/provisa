@@ -1,0 +1,52 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Apache Pinot as a Trino connector-source (federation-engine -> Trino pinot
+# catalog, TrinoPinotConnector.details() in provisa/federation/trino_connectors.py) — REQ-1097.
+# QuickStart -type batch brings up zookeeper+controller+broker+server in ONE container preloaded
+# with sample tables (airlineStats, baseballStats, ...). Trino reaches the controller's REST
+# endpoint in-network at pinot:9000 (pinot.controller-urls); the host-published
+# PROVISA_DEMO_PINOT_CONTROLLER_PORT is only for the e2e's own health/wait probe.
+#
+# This is a Trino-connector-only source type (no direct driver — register_source() is a no-op on
+# a native/DuckDB engine), so this fixture is useful only where a live Trino is reachable, and it
+# is deliberately SINGLE-HOMED onto that Trino's own network rather than joined post-hoc via
+# provision.py's --network flag: Pinot's broker self-registers with ZooKeeper using the address of
+# its OWN first network interface (a literal container IP, not the "pinot" alias), and a
+# post-hoc-joined SECOND network leaves that self-registered address on the container's original,
+# Trino-unreachable network — every catalog/schema listing then works (it only talks to the
+# controller) but any real data query fails ("Server refused connection" to the broker's advertised
+# IP). Confirmed live: docker-compose.test.yml's `pinot` service works for the same reason — it and
+# Trino share ONE compose project/network from container creation, never joined after the fact.
+# PROVISA_TRINO_NETWORK names that network (the e2e harness's shared trino/postgres/minio project,
+# "provisa_default" by default); this fixture therefore requires it to already exist.
+networks:
+  default:
+    name: "${PROVISA_TRINO_NETWORK:-provisa_default}"
+    external: true
+
+services:
+  pinot:
+    image: apachepinot/pinot:1.2.0
+    restart: unless-stopped
+    command: ["QuickStart", "-type", "batch"]
+    networks:
+      default:
+        aliases:
+          - pinot
+    ports:
+      - "${PROVISA_DEMO_PINOT_CONTROLLER_PORT:-23200}:9000"
+    environment:
+      JAVA_OPTS: "-Xms256M -Xmx1G"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 120s

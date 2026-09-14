@@ -1,0 +1,37 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Hive on S3 (hive_s3) as a Trino connector-source (TrinoHiveS3Connector,
+# provisa/federation/trino_connectors.py) — REQ-229/1097. Reuses the SAME Thrift-metastore image
+# and the checked-in db/hive-s3-conf/hive-site.xml (also used by tests/integration/
+# test_hive_s3_source_e2e.py) — warehouse on s3a://provisa-hive-s3, pointed at the core `minio`
+# service (reached in-network at minio:9000; the bucket is created by the test process over
+# MinIO's host-published port before seeding). provision.py's --network flag joins this container
+# to the shared trino/postgres/minio network under the alias "hive-s3" (the directory name), so
+# Trino resolves the metastore in-network at hive-s3:9083. NOT "hive_s3": Trino's hive connector
+# builds a java.net.URI from the metastore host, and URI's authority parser rejects an underscore
+# in the host component ("metastoreUri host is missing: thrift://hive_s3:9083") — confirmed live
+# against this fixture, hence the hyphenated directory name.
+services:
+  hive-s3-metastore:
+    image: apache/hive:4.0.0
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: derby
+      HIVE_CUSTOM_CONF_DIR: /hive-custom-conf
+      HIVE_AUX_JARS_PATH: /opt/hadoop/share/hadoop/tools/lib/hadoop-aws-3.3.6.jar:/opt/hadoop/share/hadoop/tools/lib/aws-java-sdk-bundle-1.12.367.jar
+    volumes:
+      - ../../../db/hive-s3-conf:/hive-custom-conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/9083' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 36
+      start_period: 90s
