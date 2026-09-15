@@ -50,10 +50,14 @@ jobs:
     # unblock, then to 90: source-to-query-generic-rdbms.spec.ts's beforeAll now also provisions
     # saphana, whose HXE tenant DB alone can take up to 15 minutes past container-healthy
     # (demo/sources/saphana/prime.py's own retry budget), serially on top of every other fixture in
-    # that file. The real fix (splitting/parallelizing this job, or trimming serial per-file
+    # that file. Raised again to 120 (REQ-1763): source-to-query-olap-lake.spec.ts's druid and
+    # exasol describe blocks now also run for real here (RUNNING_IN_CI) — each has its own
+    # beforeAll budgeted up to 15 minutes (Druid's 6-service amd64-emulated-free cold boot;
+    # exasol's EXAStorage cold init), and this job's single core-lane worker runs every spec file
+    # serially. The real fix (splitting/parallelizing this job, or trimming serial per-file
     # container provisioning — several files stand up every fixture in one beforeAll even when most
     # of that file's tests are skipped) is tracked separately, not done here.
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       # playwright.config.ts keys `reuseExistingServer` off this: under CI every webServer must be
       # started by the harness, never adopted from a stale process.

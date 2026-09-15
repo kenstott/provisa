@@ -30,6 +30,19 @@ from provisa.executor.result import QueryResult
 class ExasolDriver(DirectDriver):
     def __init__(self) -> None:
         self._conn: Any = None
+        self._extra: dict[str, str] = {}
+
+    def configure(self, extra: dict[str, str]) -> None:
+        """``tls_fingerprint`` (optional) from ``Source.federation_hints`` — the same channel
+        ``Source.jdbc_url()`` (core/models.py) already reads to pin Trino's exasol JDBC connector
+        to a self-signed cert. Exasol 8 always serves TLS with a certificate generated per
+        container boot, so there is no CA to trust; pyexasol's own DSN syntax
+        (``<host>:<port>/<FINGERPRINT>``, connection.py's ``_process_dsn``) is its documented way
+        to pin one, mirroring exaplus's ``<host>/<FINGERPRINT>:<port>`` used elsewhere in this
+        codebase's Exasol fixtures/tests. Without this override the base no-op left the fingerprint
+        the UI form collects entirely unused — connect() always used the plain, unpinned DSN and
+        failed PKIX validation against any self-signed Exasol server."""
+        self._extra = dict(extra)
 
     async def connect(
         self,
@@ -43,9 +56,14 @@ class ExasolDriver(DirectDriver):
     ) -> None:
         import pyexasol  # pyright: ignore[reportMissingImports]
 
+        fingerprint = self._extra.get("tls_fingerprint")
+        dsn = f"{host}:{port or 8563}"
+        if fingerprint:
+            dsn = f"{dsn}/{fingerprint}"
+
         def _open() -> Any:
             return pyexasol.connect(
-                dsn=f"{host}:{port or 8563}",
+                dsn=dsn,
                 user=user,
                 password=password,
                 schema=database or "",

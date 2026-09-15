@@ -357,6 +357,20 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         result = await pool.execute(source_id, "SHOW SCHEMAS")
         return [row[0] for row in result.rows]
 
+    if t == "exasol":
+        # REQ-1731 gap: same missing-dispatch-branch symptom as hiveserver2 above — ExasolDriver
+        # (executor/drivers/exasol.py, via pyexasol) is a real DIRECT driver with a source_pools
+        # entry, but no branch here at all. EXA_SCHEMAS is Exasol's own system-catalog view for
+        # schemas (the same one pyexasol's own ext.py list_schemas() helper reads); EXASOL_SYSTEM
+        # schemas (SYS/EXA_STATISTICS) are excluded the same way the postgresql/sqlserver branches
+        # above exclude their own catalog schemas.
+        result = await pool.execute(
+            source_id,
+            "SELECT schema_name FROM EXA_SCHEMAS "
+            "WHERE schema_name NOT IN ('SYS', 'EXA_STATISTICS') ORDER BY schema_name",
+        )
+        return [row[0] for row in result.rows]
+
     if t in ("fabric", "synapse"):
         # T-SQL, same shape as the sqlserver branch above — the connection is already scoped to
         # the source's one warehouse database (mssql_warehouse.py's MssqlWarehouseDriver.connect).
@@ -909,6 +923,21 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
             result = await pool.execute(source_id, f"SHOW TABLES IN {schema_name}")
             return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
+        # REQ-1731 gap: see native_schemas's exasol branch — same missing-dispatch-branch symptom,
+        # for tables. EXA_ALL_TABLES is Exasol's own system-catalog view (pyexasol's own ext.py
+        # list_tables() helper reads it the same way); f-string, not a bound param, because
+        # ExasolDriver.execute (executor/drivers/exasol.py) ignores `params` entirely — pyexasol
+        # has no bind-parameter execute path this driver wires up, same constraint as the
+        # snowflake/databricks/bigquery f-string branches elsewhere in this file. schema_name here
+        # is always a value native_schemas itself already returned from EXA_SCHEMAS.
+        if t == "exasol":
+            result = await pool.execute(
+                source_id,
+                f"SELECT table_name FROM EXA_ALL_TABLES WHERE table_schema = '{schema_name}' "
+                "ORDER BY table_name",
+            )
+            return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+
     except Exception:
         return None
 
@@ -1030,6 +1059,20 @@ async def native_columns(  # REQ-1732
         # here are always values native_schemas/this same dispatch already returned from HS2 itself
         # (SHOW SCHEMAS / SHOW TABLES IN), never raw user input — same constraint noted above.
         result = await pool.execute(source_id, f"DESCRIBE {schema_name}.{table_name}")
+        return [(row[0], row[1]) for row in result.rows]
+    if t == "exasol":
+        # REQ-1731 gap: see _native_tables_rdbms's exasol branch — same missing-dispatch symptom,
+        # for columns. EXA_ALL_COLUMNS is Exasol's own system-catalog view (column_type is the
+        # full rendered type, e.g. "VARCHAR(64) UTF8" — same shape pyexasol's own ext.py
+        # list_columns() helper reads). f-string for the same reason noted above (ExasolDriver.
+        # execute ignores `params`); schema_name/table_name are always values this same dispatch
+        # already returned from EXA_SCHEMAS/EXA_ALL_TABLES.
+        result = await pool.execute(
+            source_id,
+            "SELECT column_name, column_type FROM EXA_ALL_COLUMNS "
+            f"WHERE column_schema = '{schema_name}' AND column_table = '{table_name}' "
+            "ORDER BY column_ordinal_position",
+        )
         return [(row[0], row[1]) for row in result.rows]
     if t in ("fabric", "synapse"):
         result = await pool.execute(

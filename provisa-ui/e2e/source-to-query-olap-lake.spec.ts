@@ -39,12 +39,17 @@
 //   Run: cd provisa-ui && npx playwright test source-to-query-olap-lake --project=core
 //        (PROVISA_E2E_LANE left at its default "all" — see note above)
 //
-//   - druid and exasol are SKIPPED — see the two test.skip() blocks below for the specific,
-//     verified reason each was cut (not "flaky," not "ran out of time": a concrete resource/infra
-//     constraint verified against a live container in this session).
-//   - plain `hive` (Hadoop/local-storage lakehouse read) is ALSO skipped, for a reason discovered
-//     only by actually trying it against this session's live shared Trino container — see that
-//     test.skip() block.
+//   - druid and exasol are CI-ONLY (REQ-1763's RUNNING_IN_CI pattern, same as
+//     source-to-query-generic-rdbms.spec.ts's saphana/greenplum): both fixtures' images are
+//     amd64-only, unbootable under arm64 emulation, so they still skip on Apple Silicon local
+//     dev but run for real on ui-e2e-core.yml's ubuntu-latest runner (a genuine amd64 host). See
+//     each test.describe's own comment for the fixture-specific detail.
+//   - plain `hive` (Hadoop/local-storage lakehouse read) is SKIPPED unconditionally (including in
+//     CI), for a reason discovered only by actually trying it against a live shared Trino
+//     coordinator — see that test.skip() block. Unlike druid/exasol, this is not a resource/arch
+//     constraint the CI runner sidesteps: it needs a warehouse volume shared between hive-metastore
+//     and Trino's OWN container, which the shared docker-compose.core.yml stack does not mount
+//     (see that skip's comment for the full detail and the shape of the real fix).
 //   - hiveserver2, pinot, and hive_s3 were previously test.skip()'d for shared-fanout run-lock
 //     contention (six parallel agents sharing one advisory lock). Re-verified in isolation (no
 //     shared stack, no concurrent agents, PROVISA_E2E_SKIP_SHARED_SOURCES=1) — see each test's own
@@ -55,6 +60,8 @@
 // RDBMS block (33xxx).
 
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "playwright/test";
@@ -80,6 +87,21 @@ const DOCKER_NETWORK = process.env.PROVISA_E2E_DOCKER_NETWORK ?? "provisa_defaul
 
 const E2E_PINOT_CONTROLLER_PORT = Number(process.env.PROVISA_DEMO_PINOT_CONTROLLER_PORT ?? 36900);
 const E2E_HIVESERVER2_PORT = Number(process.env.PROVISA_DEMO_HIVESERVER2_PORT ?? 36910);
+
+// druid/exasol only actually run in CI (ubuntu-latest is a real amd64 Linux host) — both images
+// are amd64-only and unbootable under arm64 emulation (see each test's own comment below), the
+// same constraint source-to-query-generic-rdbms.spec.ts's RUNNING_IN_CI gate documents for
+// saphana/greenplum. process.env.CI is set to "true" by ui-e2e-core.yml specifically.
+const RUNNING_IN_CI = process.env.CI === "true";
+const E2E_DRUID_COORD_PORT = Number(process.env.PROVISA_DEMO_DRUID_COORD_PORT ?? 36920);
+const E2E_DRUID_BROKER_PORT = Number(process.env.PROVISA_DEMO_DRUID_BROKER_PORT ?? 36921);
+const E2E_EXASOL_PORT = Number(process.env.PROVISA_DEMO_EXASOL_PORT ?? 36930);
+// Exasol's TLS certificate is regenerated every container boot (see demo/sources/exasol/prime.py's
+// module doc) — there is no fixed fingerprint to hardcode, so prime.py writes the one THIS run's
+// container actually presents to a file this test reads back after provisioning.
+const E2E_EXASOL_FINGERPRINT_FILE =
+  process.env.PROVISA_DEMO_EXASOL_FINGERPRINT_FILE ??
+  path.join(os.tmpdir(), "provisa-e2e-olap-lake-exasol-fingerprint.txt");
 
 function provision(cmd: "up" | "down", names: string[], env: Record<string, string> = {}): void {
   try {
@@ -508,49 +530,182 @@ test("hive (local/Hadoop warehouse): skipped — requires a filesystem mount on 
 });
 
 // ---------------------------------------------------------------------------------------------
-// druid — SKIPPED.
+// druid — Trino connector only (TrinoDruidConnector), routed to the Trino-backed webServer.
+// CI-only: apache/druid is amd64-only (linux/amd64 platform pin, same as exasol below); under
+// QEMU emulation on an arm64 host the 6-service topology's cold boot realistically exceeds a
+// reasonable single e2e budget. ui-e2e-core.yml's ubuntu-latest runner is a genuine amd64 host,
+// so demo/sources/druid runs for real there (RUNNING_IN_CI gate) — locally it still skips.
 // ---------------------------------------------------------------------------------------------
-test("druid: skipped — 6-service stack (zookeeper + postgres metadata store + coordinator + historical + middlemanager + broker), amd64-only image", async () => {
-  // docker-compose.test.yml's own druid fixture (read while researching this file) needs SIX
-  // containers wired together (druid-zookeeper, druid-metadata, druid-coordinator,
-  // druid-historical, druid-middlemanager, druid — the broker Trino's connector actually talks
-  // to), each depends_on the last with a real healthcheck, and the image is amd64-only (the same
-  // constraint as this file's own exasol skip below) — under emulation on an arm64 host, that
-  // fixture's own start_period budgets 180s PER SERVICE. Apache Druid ships no perl-based
-  // single-container "quickstart" the way Pinot does (bin/supervise, Druid's own all-in-one
-  // script, requires perl the official image does not carry — confirmed by that same compose
-  // file's comment), so there is no lighter path to a working Druid broker than standing up the
-  // full topology. Given this batch's other five types and the shared-Trino contention already
-  // active in this session (see the coordinator's cross-agent notice), spending the 15-20 minutes
-  // a cold 6-service amd64-emulated boot needs was not a reasonable trade against the rest of this
-  // task. A future session with more time budget can lift docker-compose.test.yml's druid-* block
-  // essentially as-is into demo/sources/druid.
-  test.skip(
-    true,
-    "6-service amd64-only stack (zookeeper + postgres + coordinator + historical + " +
-      "middlemanager + broker); not attempted given this batch's time budget (see comment above)",
-  );
+test.describe("source to query through the UI: druid (REQ-1763)", () => {
+  test.beforeAll(() => {
+    // Mirrors source-to-query-generic-rdbms.spec.ts's RUNNING_IN_CI pattern: no test.skip()
+    // signal inside beforeAll (a plain early return instead) — the per-test test.skip() below is
+    // what reports the actual skip; this only avoids provisioning a fixture nothing will use.
+    if (!RUNNING_IN_CI) return;
+    // Apache Druid ships no perl-based single-container "quickstart" the way Pinot does, so this
+    // is the full upstream multi-container layout (zookeeper + postgres metadata store +
+    // coordinator + historical + middlemanager + broker) — demo/sources/druid/compose.yml lifts
+    // docker-compose.test.yml's own druid-* block verbatim. Its own healthchecks budget up to
+    // 180s start_period per service; this beforeAll's timeout has to cover the whole serial chain.
+    test.setTimeout(900000);
+    provision("up", ["druid"], {
+      PROVISA_DEMO_DRUID_COORD_PORT: String(E2E_DRUID_COORD_PORT),
+      PROVISA_DEMO_DRUID_BROKER_PORT: String(E2E_DRUID_BROKER_PORT),
+      PROVISA_TRINO_NETWORK: DOCKER_NETWORK,
+    });
+    // prime.py ingests through Druid's own native batch API and polls the broker until the
+    // segment is loaded and queryable — see that script's module doc.
+    execFileSync(
+      PYTHON,
+      [path.join(ROOT, "demo", "sources", "druid", "prime.py")],
+      {
+        stdio: "inherit",
+        env: {
+          ...process.env,
+          PROVISA_DEMO_DRUID_COORD_PORT: String(E2E_DRUID_COORD_PORT),
+          PROVISA_DEMO_DRUID_BROKER_PORT: String(E2E_DRUID_BROKER_PORT),
+        },
+      },
+    );
+  });
+
+  test.afterAll(() => {
+    if (!RUNNING_IN_CI) return;
+    provision("down", ["druid"]);
+  });
+
+  test("druid: add the source, register the widgets datasource, query it on the SQL page", async ({
+    page,
+  }) => {
+    test.skip(
+      !RUNNING_IN_CI,
+      "apache/druid is amd64-only; the 6-service topology's cold boot under QEMU emulation " +
+        "realistically exceeds a reasonable single e2e budget locally — runs for real in CI " +
+        "(ubuntu-latest is a genuine amd64 host)",
+    );
+    test.setTimeout(300000);
+    const stamp = Date.now();
+    const sourceId = `e2e_druid_${stamp}`;
+    await routeToTrinoBackend(page);
+
+    // Named "druid" in compose.yml so provision.py's --network join aliases the broker "druid" on
+    // Trino's own network too — Trino reaches it at its real container port (8082), not the
+    // host-published probe port this file's own provisioning waited on.
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("druid");
+    await page.getByLabel(/^Host/).fill("druid");
+    await page.getByLabel(/^Port/).fill("8082");
+    await submitSourceAndExpectListed(page, sourceId);
+    await waitForTrinoTable(sourceId, "druid", "widgets");
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "druid", "widgets");
+    await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+      timeout: 60000,
+    });
+    await page.getByTestId("register-table-submit").click();
+    const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
+    await expect(row).toBeVisible({ timeout: 120000 });
+
+    const registered = await trinoTableName(sourceId);
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    );
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toEqual(["1", "Widget A"]);
+    expect(rows[2]).toEqual(["3", "Widget C"]);
+
+    await cleanupTrinoSource(sourceId);
+  });
 });
 
 // ---------------------------------------------------------------------------------------------
-// exasol — SKIPPED.
+// exasol — DIRECT driver (pyexasol, executor/drivers/exasol.py), core lane / DuckDB backend, no
+// Trino routing needed. CI-only: exasol/docker-db needs privileged mode + shm_size 2g + several
+// GB RAM and a multi-minute cold EXAStorage init, and is amd64-only — under QEMU emulation on an
+// arm64 host it never becomes healthy (same constraint tests/integration/test_exasol_source_e2e.py
+// arch-gates on). ui-e2e-core.yml's ubuntu-latest runner is a genuine amd64 host, so this runs for
+// real there (RUNNING_IN_CI gate) — locally it still skips.
 // ---------------------------------------------------------------------------------------------
-test("exasol: skipped — exasol/docker-db needs privileged mode + several GB RAM and a multi-minute cold init, amd64-only", async () => {
-  // docker-compose.test.yml's own exasol fixture (read while researching this file) documents
-  // exactly why: the image requires `privileged: true` and `shm_size: 2g`, is amd64-only (an
-  // arm64 host runs it under emulation), and its own healthcheck budgets a 180s start_period with
-  // 60 retries at 10s intervals — a from-cold EXAStorage init genuinely takes minutes, not
-  // seconds, and per that file's own comment a *named* volume left EXAStorage recovering into a
-  // crash loop, so every run needs a throwaway writable-layer /exa (no reuse across runs).
-  // ExasolDriver (provisa/executor/drivers/exasol.py) is a DIRECT driver — no Trino dependency, so
-  // this is a pure resource/time-budget constraint, not an architectural one: a session with
-  // several spare GB of RAM and ~5 minutes to spend on one container can lift
-  // docker-compose.test.yml's exasol block into demo/sources/exasol largely unchanged. Not
-  // attempted here given this batch's other five types and the active cross-agent Docker
-  // contention already noted by the coordinator in this session.
-  test.skip(
-    true,
-    "privileged mode + several GB RAM + multi-minute cold init, amd64-only; not attempted given " +
-      "this batch's time budget (see comment above)",
-  );
+test.describe("source to query through the UI: exasol (REQ-1731, REQ-1763)", () => {
+  let exasolFingerprint = "";
+
+  test.beforeAll(() => {
+    // See druid's identical beforeAll comment above for why this is a plain early return, not a
+    // test.skip() signal.
+    if (!RUNNING_IN_CI) return;
+    // EXAStorage cold init genuinely takes minutes, not seconds (see demo/sources/exasol/
+    // compose.yml's own healthcheck budget: 60 retries at 10s = up to 600s past container start).
+    test.setTimeout(900000);
+    if (fs.existsSync(E2E_EXASOL_FINGERPRINT_FILE)) fs.rmSync(E2E_EXASOL_FINGERPRINT_FILE);
+    provision("up", ["exasol"], {
+      PROVISA_DEMO_EXASOL_PORT: String(E2E_EXASOL_PORT),
+      PROVISA_DEMO_EXASOL_FINGERPRINT_FILE: E2E_EXASOL_FINGERPRINT_FILE,
+    });
+    exasolFingerprint = fs.readFileSync(E2E_EXASOL_FINGERPRINT_FILE, "utf8").trim();
+  });
+
+  test.afterAll(() => {
+    if (!RUNNING_IN_CI) return;
+    provision("down", ["exasol"]);
+    if (fs.existsSync(E2E_EXASOL_FINGERPRINT_FILE)) fs.rmSync(E2E_EXASOL_FINGERPRINT_FILE);
+  });
+
+  test("exasol: add the source, register a table, query it on the SQL page", async ({ page }) => {
+    test.skip(
+      !RUNNING_IN_CI,
+      "exasol/docker-db needs privileged mode + several GB RAM + a multi-minute cold init, and " +
+        "is amd64-only (unbootable under arm64 emulation, verified — see " +
+        "tests/integration/test_exasol_source_e2e.py's identical arch gate); runs for real in " +
+        "CI (ubuntu-latest is a genuine amd64 host)",
+    );
+    test.setTimeout(180000);
+    const stamp = Date.now();
+    const sourceId = `e2e_exasol_${stamp}`;
+
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("exasol");
+    await page.getByLabel(/^Host/).fill("localhost");
+    await page.getByLabel(/^Port/).fill(String(E2E_EXASOL_PORT));
+    await page.getByLabel(/^Username/).fill("sys");
+    await page.getByLabel(/^Password/).fill("exasol");
+    await page.getByLabel(/^Database/).fill("PROVISA");
+    // Exasol always serves TLS with a self-signed, per-boot certificate — pin the fingerprint
+    // THIS run's container actually presents (read back from prime.py's output file above),
+    // exactly the same pin ExasolDriver.connect() (executor/drivers/exasol.py) needs to validate.
+    await page.getByLabel(/^Authentication/).selectOption("tls_fingerprint");
+    await page.getByLabel(/TLS Fingerprint/).fill(exasolFingerprint);
+    await submitSourceAndExpectListed(page, sourceId);
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "PROVISA", "WIDGETS");
+    await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+      timeout: 60000,
+    });
+    await page.getByTestId("register-table-submit").click();
+    const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
+    await expect(row).toBeVisible({ timeout: 120000 });
+
+    const res = await page.request.post("/admin/graphql", {
+      data: { query: "{ tables { sourceId dqDataset } }" },
+    });
+    const tables = (await res.json()).data.tables as {
+      sourceId: string;
+      dqDataset: string | null;
+    }[];
+    const mine = tables.find((t) => t.sourceId === sourceId);
+    expect(mine?.dqDataset).toBeTruthy();
+    const registered = mine!.dqDataset!.split("/").pop()!;
+
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    );
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toEqual(["1", "Widget A"]);
+    expect(rows[2]).toEqual(["3", "Widget C"]);
+  });
 });

@@ -59280,11 +59280,66 @@
     ui-e2e-core.yml's timeout-minutes from 60 to 90: saphana's HXE tenant DB can take up to 15
     minutes past container-healthy before prime.py's own retry loop succeeds, serially on top of
     every other fixture this file's beforeAll already provisions.
+
+    (Amended 2026-09-15, druid/exasol wired; hive deferred:) closes 2 of the remaining 3 "5 heavy
+    fixtures" (hive/druid/exasol, source-to-query-olap-lake.spec.ts): built demo/sources/druid
+    (the 6-service upstream topology — zookeeper/postgres-metadata/coordinator/historical/
+    middlemanager/broker — lifted from docker-compose.test.yml's druid-* block, since apache/druid
+    ships no perl and cannot run its single-container quickstart) and demo/sources/exasol
+    (privileged+shm_size 2g exasol/docker-db, lifted from that same file's exasol block), each
+    with the same `RUNNING_IN_CI` gate as saphana/greenplum. Both images are amd64-only.
+
+    Building exasol's real e2e surfaced two further latent gaps in REQ-1731's own DIRECT driver,
+    both fixed here since they block the very test this REQ exists to un-skip: (1)
+    ``ExasolDriver`` (executor/drivers/exasol.py) never overrode ``configure()``, so the
+    ``tls_fingerprint`` the UI form's exasol auth-mode collects into ``Source.federation_hints``
+    was silently never applied — ``connect()`` always built the plain, unpinned DSN, which fails
+    PKIX validation against Exasol 8's self-signed per-boot certificate. Fixed by reading
+    ``tls_fingerprint`` in a new ``configure()`` override and building pyexasol's own
+    ``<host>:<port>/<FINGERPRINT>`` pinned DSN form when set (unit-tested:
+    ``test_exasol_driver_honors_configured_tls_fingerprint``). (2) exasol had the exact same
+    missing-introspection-dispatch-branch gap this REQ's own hiveserver2 sibling fix (REQ-1731's
+    amendment, same day) just found and fixed: ``native_schemas``/``_native_tables_rdbms``/
+    ``native_columns`` (provisa/api/admin/introspect.py) had no ``exasol`` branch, so the Register
+    Table pickers fell to the engine-catalog fallback and stayed empty pre-registration. Added
+    EXA_SCHEMAS/EXA_ALL_TABLES/EXA_ALL_COLUMNS branches (Exasol's own system-catalog views, the
+    same ones pyexasol's own ``ext.py`` metadata helpers read).
+
+    Since demo/sources/exasol's TLS certificate regenerates every container boot, prime.py writes
+    the fingerprint it observes to a file (``PROVISA_DEMO_EXASOL_FINGERPRINT_FILE``) the e2e test
+    reads back and types into the form, rather than a hardcoded constant.
+
+    hive (plain, local/Hadoop-storage lakehouse read — distinct SourceType from hive_s3, which
+    already runs) stays test.skip(true, ...) unconditionally, INCLUDING in CI: unlike druid/
+    exasol, its blocker is not amd64-arch/resource, so RUNNING_IN_CI does not fix it.
+    TrinoHiveConnector's default (non-S3) storage backend reads table data through Trino's OWN
+    local filesystem at whatever path the metastore recorded, which only works when Trino and
+    hive-metastore are in the SAME compose project sharing one named volume at the same container
+    path (docker-compose.test.yml's own itest stack does exactly this, merging core.yml + test.yml
+    into one project). demo/sources/hive is a SEPARATE compose project from
+    docker-compose.core.yml's shared `trino` service (the one ui-e2e-core.yml's Trino lane starts)
+    and joined to it only post-hoc via `--network` — Docker named volumes cannot be shared across
+    separately-started compose projects that way, only real containers reached over a network can.
+    The actual fix needs core.yml's own `trino` service and demo/sources/hive/compose.yml's
+    hive-metastore to mount the SAME literal volume, which means marking that volume external
+    (pre-created, not compose-auto-created) in core.yml — a change to SHARED core infrastructure
+    every instance's compose stack reads (three-instance-isolation: local-dev also boots from
+    docker-compose.core.yml), not a self-contained new fixture directory. Deliberately not
+    attempted blind in this session; left as the concrete next step for whoever picks it up.
   code:
   - provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts
+  - provisa-ui/e2e/source-to-query-olap-lake.spec.ts
+  - demo/sources/druid/compose.yml
+  - demo/sources/druid/prime.py
+  - demo/sources/exasol/compose.yml
+  - demo/sources/exasol/prime.py
+  - provisa/executor/drivers/exasol.py
+  - provisa/api/admin/introspect.py
   - .github/workflows/ui-e2e-core.yml
   tests:
   - provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts
+  - provisa-ui/e2e/source-to-query-olap-lake.spec.ts
+  - tests/unit/test_hive_exasol_drivers.py
   use_case: >-
     "wire all 5 into the github action" — closing the gap between fixtures that were built and
     verified against a real amd64 host this session (saphana, greenplum, plus hive/druid/exasol

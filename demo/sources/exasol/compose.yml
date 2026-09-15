@@ -1,0 +1,42 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Exasol as a Trino connector-source (federation-engine -> Trino exasol
+# catalog, provisa/federation/trino_connectors.py's generic _TRINO_JDBC_TYPES entry) — REQ-1097.
+# Lifted from docker-compose.test.yml's own `exasol` service (its module comment there has the
+# full rationale for every setting below; kept verbatim here). Trino reaches it in-network at
+# exasol:8563. amd64-only image (exasol/docker-db) — unbootable under arm64 emulation, so the e2e
+# case this fixture backs is gated on process.env.CI (ubuntu-latest is a genuine amd64 host); not
+# runnable on Apple Silicon local dev, same constraint tests/integration/test_exasol_source_e2e.py
+# already documents and arch-gates on.
+services:
+  exasol:
+    restart: unless-stopped
+    image: exasol/docker-db:latest
+    privileged: true
+    shm_size: 2g
+    ports:
+      - "${PROVISA_DEMO_EXASOL_PORT:-23210}:8563"
+    # No volume: /exa lives on the container's writable layer and dies with it (see
+    # docker-compose.test.yml's identical comment — a named volume left EXAStorage recovering into
+    # a crash loop across container recreation). Each `provision.py up` gets a clean /exa.
+    healthcheck:
+      # A TCP probe on 8563 is NOT readiness: the listener opens while EXAStorage is still loading
+      # the database. The probe executes a real statement instead, so "healthy" means SQL works.
+      # Exasol 8 always serves TLS with a self-signed, per-container certificate — the plain form
+      # fails PKIX validation, so on first failure the probe extracts the fingerprint exaplus
+      # itself reports and retries pinned to it (host/<FINGERPRINT>:port), exactly as
+      # docker-compose.test.yml's identical healthcheck does.
+      test:
+        - "CMD-SHELL"
+        - "out=$$(exaplus -c localhost:8563 -u sys -p exasol -sql 'SELECT 1;' -q 2>&1) && exit 0; fp=$$(printf '%s' \"$$out\" | sed -n 's|.*localhost/\\([0-9A-F]\\{64\\}\\):8563.*|\\1|p' | head -1); [ -n \"$$fp\" ] || { printf '%s\\n' \"$$out\" | tail -20; exit 1; }; out=$$(exaplus -c localhost/$$fp:8563 -u sys -p exasol -sql 'SELECT 1;' -q 2>&1) || { printf '%s\\n' \"$$out\" | tail -20; exit 1; }"
+      interval: 10s
+      timeout: 15s
+      retries: 60
+      start_period: 180s

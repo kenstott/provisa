@@ -1,0 +1,151 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Apache Druid as a Trino connector-source (federation-engine -> Trino druid
+# catalog, provisa/federation/trino_connectors.py's TrinoDruidConnector) — REQ-1097. Lifted from
+# docker-compose.test.yml's own druid-* block (its module comment there has the full rationale for
+# every setting below; kept verbatim here). Trino reaches the BROKER (the service named "druid",
+# so provision.py's --network alias resolves it as such) in-network at druid:8082 over Avatica.
+#
+# The official apache/druid image has no perl, so bin/supervise (the single-container quickstart)
+# cannot run — Druid is split into its normal processes (each via /druid.sh <service>) with an
+# external ZooKeeper and a Postgres metadata store, the standard upstream multi-container layout.
+# amd64-only image -> unbootable under arm64 emulation, so the e2e case this fixture backs is
+# gated on process.env.CI (ubuntu-latest is a genuine amd64 host), same as exasol's sibling
+# fixture. ${PROVISA_DEMO_DRUID_BROKER_PORT}/${PROVISA_DEMO_DRUID_COORD_PORT} are host-published
+# only so the seeding process (prime.py) can submit an ingestion task to the overlord and poll the
+# broker for query-readiness; Trino itself never uses them (it reaches the broker in-network).
+services:
+  druid-zookeeper:
+    restart: unless-stopped
+    image: zookeeper:3.8
+    environment:
+      ZOO_MY_ID: "1"
+      ZOO_4LW_COMMANDS_WHITELIST: ruok
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc -w2 localhost 2181 | grep -q imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  druid-metadata:
+    restart: unless-stopped
+    image: postgres:16
+    environment:
+      POSTGRES_USER: druid
+      POSTGRES_PASSWORD: diurd
+      POSTGRES_DB: druid
+    volumes:
+      - druid_demo_metadata_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U druid -d druid"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  druid-coordinator:
+    restart: unless-stopped
+    image: &druid_image apache/druid:30.0.0
+    platform: linux/amd64
+    command: ["coordinator"]
+    depends_on:
+      druid-zookeeper: {condition: service_healthy}
+      druid-metadata: {condition: service_healthy}
+    ports:
+      - "${PROVISA_DEMO_DRUID_COORD_PORT:-23221}:8081"
+    environment: &druid_env
+      ZOOKEEPER: druid-zookeeper
+      DRUID_XMS: 256m
+      DRUID_XMX: 512m
+      DRUID_MAXDIRECTMEMORYSIZE: 512m
+      druid_metadata_storage_type: postgresql
+      druid_metadata_storage_connector_connectURI: jdbc:postgresql://druid-metadata:5432/druid
+      druid_metadata_storage_connector_user: druid
+      druid_metadata_storage_connector_password: diurd
+      druid_extensions_loadList: '["postgresql-metadata-storage", "druid-multi-stage-query"]'
+      druid_storage_type: local
+      druid_storage_storageDirectory: /opt/shared/segments
+      druid_indexer_logs_type: file
+      druid_indexer_logs_directory: /opt/shared/indexing-logs
+      druid_processing_numThreads: "1"
+      druid_processing_numMergeBuffers: "2"
+      druid_processing_buffer_sizeBytes: "50000000"
+      druid_server_maxSize: "100000000"
+      druid_emitter: noop
+      druid_indexer_runner_javaOptsArray: '["-server","-Xms256m","-Xmx256m","-XX:MaxDirectMemorySize=256m","-Duser.timezone=UTC","-Dfile.encoding=UTF-8"]'
+      druid_coordinator_asOverlord_enabled: "true"
+      druid_coordinator_asOverlord_overlordService: druid/overlord
+    volumes:
+      - druid_demo_shared:/opt/shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8081/status/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 180s
+
+  druid-historical:
+    restart: unless-stopped
+    image: *druid_image
+    platform: linux/amd64
+    command: ["historical"]
+    depends_on:
+      druid-coordinator: {condition: service_healthy}
+    environment: *druid_env
+    volumes:
+      - druid_demo_shared:/opt/shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8083/status/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 180s
+
+  druid-middlemanager:
+    restart: unless-stopped
+    image: *druid_image
+    platform: linux/amd64
+    command: ["middleManager"]
+    depends_on:
+      druid-coordinator: {condition: service_healthy}
+    environment: *druid_env
+    volumes:
+      - druid_demo_shared:/opt/shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8091/status/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 180s
+
+  # The BROKER is the query entry point Trino's druid connector attaches to (druid:8082 Avatica).
+  # Named "druid" so provision.py's --network join aliases it "druid" too, matching the compose
+  # service name Source.host must resolve on Trino's own network.
+  druid:
+    restart: unless-stopped
+    image: *druid_image
+    platform: linux/amd64
+    command: ["broker"]
+    depends_on:
+      druid-coordinator: {condition: service_healthy}
+    ports:
+      - "${PROVISA_DEMO_DRUID_BROKER_PORT:-23222}:8082"
+    environment: *druid_env
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8082/status/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 180s
+
+volumes:
+  druid_demo_metadata_data:
+  druid_demo_shared:
