@@ -25,6 +25,7 @@ import logging
 import time
 from datetime import datetime, timezone
 
+from provisa.federation.execution_auth import SystemAuth, mint_system_token
 from provisa.mv.bitemporal import append_sql, create_sql, system_columns_ddl
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
@@ -50,6 +51,7 @@ async def _refresh_bitemporal(
     table_exists: bool,
     existing_cols: list[str],
     system_ts: str | None = None,
+    authorization: SystemAuth | None = None,
 ) -> None:
     """Advance a bitemporal MV by APPENDING this refresh (REQ-1162): first materialization creates
     the log; subsequent refreshes append a full snapshot or an engine-computed delta. No UPDATE/
@@ -63,13 +65,19 @@ async def _refresh_bitemporal(
     assert spec is not None
     now_ts = system_ts or _now_ts_literal()
     if not table_exists:
-        await engine.execute_engine(create_sql(target, select_sql, spec, now_ts))
+        await engine.execute_engine(
+            create_sql(target, select_sql, spec, now_ts), authorization=authorization
+        )
         return
 
     sys_names = {c for c, _ in system_columns_ddl(spec)}
     existing_business = [c for c in existing_cols if c not in sys_names]
     new_cols = list(
-        (await engine.execute_engine(f"SELECT * FROM ({select_sql}) _shape LIMIT 0")).column_names
+        (
+            await engine.execute_engine(
+                f"SELECT * FROM ({select_sql}) _shape LIMIT 0", authorization=authorization
+            )
+        ).column_names
     )
     if new_cols != existing_business:
         log.info(
@@ -80,33 +88,50 @@ async def _refresh_bitemporal(
             len(existing_business),
             len(new_cols),
         )
-        await engine.execute_engine(f"DROP TABLE {target}")
-        await engine.execute_engine(create_sql(target, select_sql, spec, now_ts))
+        await engine.execute_engine(f"DROP TABLE {target}", authorization=authorization)
+        await engine.execute_engine(
+            create_sql(target, select_sql, spec, now_ts), authorization=authorization
+        )
         return
 
     for stmt in append_sql(target, select_sql, spec, new_cols, now_ts, engine.dialect):
-        await engine.execute_engine(stmt)
+        await engine.execute_engine(stmt, authorization=authorization)
 
 
 async def apply_bitemporal_append(engine, mv: MVDefinition, *, system_ts: str | None = None) -> str:
     """Append one bitemporal refresh for ``mv`` and return the target ref (REQ-1162). The reusable
     entry point for BOTH refresh paths: the scheduled materializer (wall-clock stamp) and the
     event-loop periodic-snapshot generate (calendar ``window.end`` stamp via ``system_ts``). Ensures
-    the target schema, probes the existing shape, and delegates to :func:`_refresh_bitemporal`."""
+    the target schema, probes the existing shape, and delegates to :func:`_refresh_bitemporal`.
+
+    Mints one SystemAuth token for this entire append (REQ-1760) — the system's own identity,
+    not a per-role governance claim, since a refresh always runs unrestricted by design (REQ-1756;
+    governance is enforced on read of the MV, not on this landing write)."""
     target = _target_ref(mv)
-    select_sql = await _build_refresh_sql(mv, engine)
+    authorization = SystemAuth(mint_system_token(), reason=f"mv_bitemporal_append:{mv.id}")
+    select_sql = await _build_refresh_sql(mv, engine, authorization=authorization)
     await engine.execute_engine(
-        f'CREATE SCHEMA IF NOT EXISTS "{mv.target_catalog}"."{mv.target_schema}"'
+        f'CREATE SCHEMA IF NOT EXISTS "{mv.target_catalog}"."{mv.target_schema}"',
+        authorization=authorization,
     )
     try:
         existing_cols = (
-            await engine.execute_engine(f"SELECT * FROM {target} LIMIT 0")
+            await engine.execute_engine(
+                f"SELECT * FROM {target} LIMIT 0", authorization=authorization
+            )
         ).column_names
         table_exists = True
     except Exception:
         existing_cols, table_exists = [], False
     await _refresh_bitemporal(
-        engine, mv, target, select_sql, table_exists, existing_cols, system_ts=system_ts
+        engine,
+        mv,
+        target,
+        select_sql,
+        table_exists,
+        existing_cols,
+        system_ts=system_ts,
+        authorization=authorization,
     )
     return target
 
@@ -162,7 +187,9 @@ def _mv_definition_version(mv: MVDefinition) -> str:  # REQ-862
     )
 
 
-async def _build_refresh_sql(mv: MVDefinition, engine=None) -> str:
+async def _build_refresh_sql(
+    mv: MVDefinition, engine=None, authorization: SystemAuth | None = None
+) -> str:
     """Build the SELECT SQL for an MV refresh.
 
     For join-pattern MVs, builds a SELECT from the source tables with the join.
@@ -184,7 +211,11 @@ async def _build_refresh_sql(mv: MVDefinition, engine=None) -> str:
 
         async def _columns_of(table: str) -> list[str]:
             try:
-                rows = (await engine.execute_engine(f'SHOW COLUMNS FROM "{table}"')).rows
+                rows = (
+                    await engine.execute_engine(
+                        f'SHOW COLUMNS FROM "{table}"', authorization=authorization
+                    )
+                ).rows
             except Exception as exc:
                 # Falling back to left.* silently drops the table's columns — fail loud.
                 raise RuntimeError(
@@ -238,10 +269,12 @@ def _target_ref(mv: MVDefinition) -> str:
     return f'"{mv.target_catalog}"."{mv.target_schema}"."{mv.target_table}"'
 
 
-async def _read_target_rows(engine, target: str) -> list[dict]:  # REQ-877
+async def _read_target_rows(
+    engine, target: str, authorization: SystemAuth | None = None
+) -> list[dict]:  # REQ-877
     """Read the full target row set as column-keyed dicts — the snapshot the row-level delta diff
     (REQ-877) is computed on. Only called when an MV opts into row-delta capture."""
-    res = await engine.execute_engine(f"SELECT * FROM {target}")
+    res = await engine.execute_engine(f"SELECT * FROM {target}", authorization=authorization)
     return [dict(zip(res.column_names, row, strict=True)) for row in res.rows]
 
 
@@ -251,17 +284,28 @@ def _captures_deltas(mv: MVDefinition, store) -> bool:  # REQ-877
 
 
 async def _snapshot_prev_rows(  # REQ-877
-    engine, mv: MVDefinition, store, target: str, *, table_exists: bool
+    engine,
+    mv: MVDefinition,
+    store,
+    target: str,
+    *,
+    table_exists: bool,
+    authorization: SystemAuth | None = None,
 ) -> list[dict]:
     """Prior landed rows for the delta diff, read BEFORE any mutation. Empty unless this MV captures
     deltas and the target already exists (a first refresh has an empty prior set ⇒ all inserts)."""
     if _captures_deltas(mv, store) and table_exists:
-        return await _read_target_rows(engine, target)
+        return await _read_target_rows(engine, target, authorization=authorization)
     return []
 
 
 async def _post_refresh_delta_capture(  # REQ-877
-    engine, mv: MVDefinition, store, prev_rows: list[dict], target: str
+    engine,
+    mv: MVDefinition,
+    store,
+    prev_rows: list[dict],
+    target: str,
+    authorization: SystemAuth | None = None,
 ) -> None:
     """Best-effort row-level delta capture OFF the refresh critical path: diff the prior and freshly
     landed row sets into the append-only ledger. Runs AFTER the refresh is committed and marked
@@ -272,7 +316,7 @@ async def _post_refresh_delta_capture(  # REQ-877
     from provisa.mv.delta import capture_row_deltas  # noqa: PLC0415
 
     try:
-        curr_rows = await _read_target_rows(engine, target)
+        curr_rows = await _read_target_rows(engine, target, authorization=authorization)
         await capture_row_deltas(
             store, mv, prev_rows, curr_rows, definition_version=_mv_definition_version(mv)
         )
@@ -280,10 +324,14 @@ async def _post_refresh_delta_capture(  # REQ-877
         log.exception("MV %s: row-level delta capture failed (refresh unaffected)", mv.id)
 
 
-async def _probe_source_count(engine, mv: MVDefinition) -> int:  # REQ-235
+async def _probe_source_count(
+    engine, mv: MVDefinition, authorization: SystemAuth | None = None
+) -> int:  # REQ-235
     """Run a COUNT(*) probe against the MV's source query to estimate result size."""
-    select_sql = await _build_refresh_sql(mv, engine)
-    res = await engine.execute_engine(f"SELECT COUNT(*) FROM ({select_sql}) _probe")
+    select_sql = await _build_refresh_sql(mv, engine, authorization=authorization)
+    res = await engine.execute_engine(
+        f"SELECT COUNT(*) FROM ({select_sql}) _probe", authorization=authorization
+    )
     return res.rows[0][0]
 
 
@@ -309,7 +357,7 @@ async def _evaluate_preflight(engine, mv: MVDefinition, select_sql: str):
     return await evaluate_streams(engine, source, inputs, ctx)
 
 
-async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
+async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
     engine,
     mv: MVDefinition,
     registry: MVRegistry,
@@ -322,6 +370,11 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
     Subsequent: DELETE FROM target; INSERT INTO target SELECT.
     Skips materialization if source row count exceeds max_rows.
 
+    Mints one SystemAuth token for this entire refresh (REQ-1760) — proves the system's own
+    identity is making these execute_engine calls, not a per-role governance claim: a refresh
+    always runs unrestricted by design (REQ-1756), with governance enforced on read of the MV,
+    not on this landing write.
+
     REQ-879: when ``store`` (the shared control-plane catalog) is provided and the MV is on the
     ``shared`` consistency tier, the refresh is driven off an ATOMIC CLAIM on the shared
     ``materialized_views`` row — exactly one fleet instance refreshes a given MV at a time. A
@@ -330,6 +383,8 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
     a lost lease discards the result rather than clobbering a newer refresh. When ``store`` is
     None or the MV is ``distributed``, refresh is per-instance (the distributed tier)."""
     from provisa.mv.input_signals import gather_input_signals, input_token  # noqa: PLC0415
+
+    authorization = SystemAuth(mint_system_token(), reason=f"mv_refresh:{mv.id}")
 
     coordinated = store is not None and mv.consistency == "shared"
     if coordinated and writer is None:
@@ -416,7 +471,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
                 return
 
         # Size guard: probe source count before materializing
-        source_count = await _probe_source_count(engine, mv)
+        source_count = await _probe_source_count(engine, mv, authorization=authorization)
         if source_count > mv.max_rows:
             log.warning(
                 "MV %s source has %d rows (max_rows=%d) — skipping materialization",
@@ -433,7 +488,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
             mv.last_error = f"Source row count {source_count} exceeds max_rows {mv.max_rows}"
             return
 
-        select_sql = await _build_refresh_sql(mv, engine)
+        select_sql = await _build_refresh_sql(mv, engine, authorization=authorization)
         _emit_column_lineage_span(mv, select_sql, str(start), input_signals)  # REQ-862
 
         # REQ-1165: preflight CHECK — gate the materialization before any write. A SQL-expressible
@@ -441,6 +496,8 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
         # non-SQL check streams the SELECT as Arrow batches and short-circuits. Anything but CONTINUE
         # skips the rebuild: ABORT is a fatal reject (STALE + error), QUARANTINE a non-fatal hold —
         # neither writes the target, mirroring the size-guard skip above.
+        # NOTE: preflight_eval.evaluate_streams (mv/preflight_eval.py) is a separate module with
+        # its own execute_engine call site, not yet migrated to REQ-1760 — out of scope here.
         verdict = await _evaluate_preflight(engine, mv, select_sql)
         if verdict is not None and not verdict.is_continue:
             if coordinated:
@@ -464,14 +521,17 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
         # catalog-qualified form is portable across the engines that materialize (DuckDB/Trino/
         # Postgres/Databricks/BigQuery all accept CREATE SCHEMA IF NOT EXISTS "catalog"."schema").
         await engine.execute_engine(
-            f'CREATE SCHEMA IF NOT EXISTS "{mv.target_catalog}"."{mv.target_schema}"'
+            f'CREATE SCHEMA IF NOT EXISTS "{mv.target_catalog}"."{mv.target_schema}"',
+            authorization=authorization,
         )
 
         # Check if target table exists — probe through the engine (empty rows on absence).
         # SELECT * (not SELECT 1) so column_names carries the existing target shape.
         try:
             existing_cols = (
-                await engine.execute_engine(f"SELECT * FROM {target} LIMIT 0")
+                await engine.execute_engine(
+                    f"SELECT * FROM {target} LIMIT 0", authorization=authorization
+                )
             ).column_names
             table_exists = True
         except Exception:
@@ -480,18 +540,30 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
 
         # REQ-877: snapshot the prior landed rows BEFORE any mutation, so the post-refresh diff sees
         # the true previous state (empty unless this MV captures deltas and the target exists).
-        prev_rows = await _snapshot_prev_rows(engine, mv, store, target, table_exists=table_exists)
+        prev_rows = await _snapshot_prev_rows(
+            engine, mv, store, target, table_exists=table_exists, authorization=authorization
+        )
 
         if mv.bitemporal is not None:
             # REQ-1162: append-only bitemporal maintenance — never DELETE/UPDATE the history.
-            await _refresh_bitemporal(engine, mv, target, select_sql, table_exists, existing_cols)
+            await _refresh_bitemporal(
+                engine,
+                mv,
+                target,
+                select_sql,
+                table_exists,
+                existing_cols,
+                authorization=authorization,
+            )
         else:
             # DELETE+INSERT only reconciles rows, not shape. If the view SQL was edited so its
             # column set no longer matches the existing target (count or names), INSERT would
             # mismatch — "table T has N columns but M values were supplied". Rebuild instead.
             if table_exists:
                 new_cols = (
-                    await engine.execute_engine(f"SELECT * FROM ({select_sql}) _shape LIMIT 0")
+                    await engine.execute_engine(
+                        f"SELECT * FROM ({select_sql}) _shape LIMIT 0", authorization=authorization
+                    )
                 ).column_names
                 if new_cols != existing_cols:
                     log.info(
@@ -501,14 +573,18 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
                         len(existing_cols),
                         len(new_cols),
                     )
-                    await engine.execute_engine(f"DROP TABLE {target}")
+                    await engine.execute_engine(f"DROP TABLE {target}", authorization=authorization)
                     table_exists = False
 
             if table_exists:
-                await engine.execute_engine(f"DELETE FROM {target}")
-                await engine.execute_engine(f"INSERT INTO {target} {select_sql}")
+                await engine.execute_engine(f"DELETE FROM {target}", authorization=authorization)
+                await engine.execute_engine(
+                    f"INSERT INTO {target} {select_sql}", authorization=authorization
+                )
             else:
-                await engine.execute_engine(f"CREATE TABLE {target} AS {select_sql}")
+                await engine.execute_engine(
+                    f"CREATE TABLE {target} AS {select_sql}", authorization=authorization
+                )
             # REQ-1652/1654/1655: the MV's keys, descriptions and tags converge onto the store table
             # it was just created in (or refreshed into) -- on a store that can hold them.
             if hasattr(engine, "reconcile_mv_metadata"):
@@ -519,7 +595,11 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
                 )
 
         # Get row count
-        row_count = (await engine.execute_engine(f"SELECT COUNT(*) FROM {target}")).rows[0][0]
+        row_count = (
+            await engine.execute_engine(
+                f"SELECT COUNT(*) FROM {target}", authorization=authorization
+            )
+        ).rows[0][0]
 
         duration = time.time() - start
         if coordinated:
@@ -548,7 +628,9 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879
             row_count,
             duration,
         )
-        await _post_refresh_delta_capture(engine, mv, store, prev_rows, target)  # REQ-877
+        await _post_refresh_delta_capture(
+            engine, mv, store, prev_rows, target, authorization=authorization
+        )  # REQ-877
     except Exception as e:
         if coordinated:
             assert store is not None and writer is not None
@@ -580,7 +662,10 @@ async def reclaim_removed_mvs(  # REQ-234
             continue
         target = _target_ref(mv)
         try:
-            await engine.execute_engine(f"DROP TABLE IF EXISTS {target}")
+            await engine.execute_engine(
+                f"DROP TABLE IF EXISTS {target}",
+                authorization=SystemAuth(mint_system_token(), reason=f"mv_reclaim:{mv_id}"),
+            )
             log.info("Reclaimed removed MV %s — dropped %s", mv_id, target)
         except Exception:
             log.exception("Failed to drop table for removed MV %s", mv_id)
@@ -607,7 +692,14 @@ async def detect_orphans(  # REQ-234
     """
     # Snowflake spells the schema-scoped listing ``SHOW TABLES IN SCHEMA``; DuckDB/Trino ``FROM``.
     scope = "IN SCHEMA" if getattr(engine, "dialect", "") == "snowflake" else "FROM"
-    rows = (await engine.execute_engine(f'SHOW TABLES {scope} "{catalog}"."{schema_name}"')).rows
+    rows = (
+        await engine.execute_engine(
+            f'SHOW TABLES {scope} "{catalog}"."{schema_name}"',
+            authorization=SystemAuth(
+                mint_system_token(), reason=f"mv_detect_orphans:{catalog}.{schema_name}"
+            ),
+        )
+    ).rows
     actual_tables = {row[0] for row in rows}
 
     known_tables = {mv.target_table for mv in registry.all()}
@@ -661,7 +753,12 @@ async def drop_expired_orphans(  # REQ-234
         if (now - first_seen) >= grace_period:
             target = f'"{catalog}"."{schema_name}"."{table}"'
             try:
-                await engine.execute_engine(f"DROP TABLE IF EXISTS {target}")
+                await engine.execute_engine(
+                    f"DROP TABLE IF EXISTS {target}",
+                    authorization=SystemAuth(
+                        mint_system_token(), reason=f"mv_drop_expired_orphan:{target}"
+                    ),
+                )
                 log.info("Dropped expired orphan table %s", target)
                 dropped.append(table)
             except Exception:
