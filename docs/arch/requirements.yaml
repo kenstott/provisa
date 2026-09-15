@@ -58785,3 +58785,45 @@
     When it is registered through the Sources form and a table is registered through Register Table
     Then the schema/table/column pickers populate from HANA's own catalog and the SQL page query
     against the registered table returns real rows
+- id: REQ-1755
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Bug Fix
+  priority: SHOULD
+  type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    Covered directly by tests/unit/test_connection_pool.py's TestSourceDialectMap, which asserts
+    every _SOURCE_DIALECT value is a real SQLGlot dialect and that the four newly-added entries
+    resolve correctly — no live database connection needed for this specific defect.
+  description: >-
+    provisa/executor/pool.py's _SOURCE_DIALECT map (SourcePool.dialect_for(), the SQLGlot dialect
+    a per-source direct-driver query is compiled in) was missing cockroachdb/yugabytedb/greenplum/
+    tidb entirely. `.get(source_type, source_type)` then fell back to each type's own literal name
+    as the dialect — none of "cockroachdb"/"yugabytedb"/"greenplum"/"tidb" are real SQLGlot
+    dialects (verified: sqlglot.transpile raises "Unknown dialect" for all four). registry.py's
+    _DRIVER_FACTORIES already documents these as wire-compatible reuses of a base protocol
+    (cockroachdb/yugabytedb/greenplum -> the postgres driver, tidb -> the mysql driver, REQ-950) —
+    mapped each to that base protocol's SQLGlot dialect instead.
+    NOTE: found while investigating the user's hypothesis that mariadb/tidb's SQL-page
+    ANSI-double-quote bug (documented on source-to-query-generic-rdbms.spec.ts's mariadb/tidb
+    tests) was a SQLGlot dialect-resolution issue. It is NOT the same bug: dialect_for() has
+    exactly one call site (schema_mutation_ops.py's cross-source view-materialization mutation),
+    not the SQL page's own query pipeline, and mariadb was ALREADY correctly mapped here despite
+    still showing the SQL-page bug. This fix closes a real, separate, previously-undetected gap
+    for the other four types; the SQL-page bug's actual root cause is still unisolated.
+  code:
+  - provisa/executor/pool.py
+  tests:
+  - tests/unit/test_connection_pool.py
+  use_case: >-
+    Investigating a report that mariadb/tidb's SQL-page bug looked like a SQLGlot dialect issue
+    surfaced this adjacent, genuinely broken dialect map for four other wire-compatible RDBMS
+    types, affecting the one code path that does read _SOURCE_DIALECT.
+  scenario: |
+    Given a cockroachdb, yugabytedb, greenplum, or tidb source
+    When a cross-source view is materialized against it (schema_mutation_ops.py's single-source
+    view path)
+    Then the generated DDL is compiled in that source's real wire-protocol dialect (postgres or
+    mysql), not an invalid dialect name that would raise inside SQLGlot

@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from provisa.executor.drivers.base import DirectDriver
-from provisa.executor.pool import SourcePool
+from provisa.executor.pool import _SOURCE_DIALECT, SourcePool
 from provisa.executor.result import QueryResult
 
 
@@ -113,3 +113,31 @@ class TestSourcePoolPureLogic:
         sp = SourcePool()
         await sp.close_all()  # must not raise
         assert sp.source_ids == []
+
+
+class TestSourceDialectMap:
+    """REQ-1754: cockroachdb/yugabytedb/greenplum/tidb were missing from _SOURCE_DIALECT, so
+    dialect_for() fell back to their own (invalid) name via `.get(source_type, source_type)` —
+    none of "cockroachdb"/"yugabytedb"/"greenplum"/"tidb" are real SQLGlot dialects. Each is
+    wire-compatible with a base protocol (registry.py's _DRIVER_FACTORIES: the first three reuse
+    the postgres driver, tidb reuses mysql) and must resolve to that dialect instead."""
+
+    def test_dialect_for_wire_compatible_types(self):
+        sp = SourcePool()
+        sp._dialects["cr"] = _SOURCE_DIALECT.get("cockroachdb", "cockroachdb")
+        sp._dialects["yb"] = _SOURCE_DIALECT.get("yugabytedb", "yugabytedb")
+        sp._dialects["gp"] = _SOURCE_DIALECT.get("greenplum", "greenplum")
+        sp._dialects["td"] = _SOURCE_DIALECT.get("tidb", "tidb")
+        assert sp.dialect_for("cr") == "postgres"
+        assert sp.dialect_for("yb") == "postgres"
+        assert sp.dialect_for("gp") == "postgres"
+        assert sp.dialect_for("td") == "mysql"
+
+    def test_every_mapped_dialect_is_a_real_sqlglot_dialect(self):
+        import sqlglot
+
+        for source_type, dialect in _SOURCE_DIALECT.items():
+            try:
+                sqlglot.transpile("SELECT 1", write=dialect)
+            except Exception as exc:  # pragma: no cover - failure path, asserted below
+                pytest.fail(f"{source_type!r} maps to invalid SQLGlot dialect {dialect!r}: {exc}")

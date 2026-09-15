@@ -32,6 +32,16 @@ _SOURCE_DIALECT: dict[str, str] = {
     "duckdb": "duckdb",
     "sqlserver": "tsql",
     "oracle": "oracle",
+    # REQ-950/registry.py's _DRIVER_FACTORIES: wire-compatible RDBs reuse the base wire's native
+    # driver (cockroachdb/yugabytedb/greenplum -> _make_pg, tidb -> _make_mysql) but were missing
+    # here — none of their own names ("cockroachdb"/"yugabytedb"/"greenplum"/"tidb") are valid
+    # SQLGlot dialects (verified: sqlglot.transpile raises "Unknown dialect"), so a direct query
+    # against one of these sources fell through `.get(source_type, source_type)` to that invalid
+    # name. Map each to the SQLGlot dialect of the wire protocol it actually speaks.
+    "cockroachdb": "postgres",
+    "yugabytedb": "postgres",
+    "greenplum": "postgres",
+    "tidb": "mysql",
     # Warehouse sources read directly then landed (REQ-986/987/988) — their SQLGlot dialect for the
     # direct read SQL. Databricks reads via the Databricks/Spark SQL dialect.
     "databricks": "databricks",

@@ -18503,3 +18503,15 @@ A saphana source could not actually be registered and queried through the UI bef
 **Code:** `provisa-ui/src/pages/sources/constants.ts`, `provisa/executor/drivers/registry.py`, `provisa/api/admin/introspect.py`, `provisa/compiler/type_map.py`
 
 **Tests:** `tests/unit/test_native_introspect.py`, `tests/unit/test_type_map.py`, `provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts`, `demo/sources/saphana/compose.yml`, `demo/sources/saphana/prime.py`
+
+### REQ-1755 · Bug Fix {#REQ-1755}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+provisa/executor/pool.py's _SOURCE_DIALECT map (SourcePool.dialect_for(), the SQLGlot dialect a per-source direct-driver query is compiled in) was missing cockroachdb/yugabytedb/greenplum/ tidb entirely. `.get(source_type, source_type)` then fell back to each type's own literal name as the dialect — none of "cockroachdb"/"yugabytedb"/"greenplum"/"tidb" are real SQLGlot dialects (verified: sqlglot.transpile raises "Unknown dialect" for all four). registry.py's _DRIVER_FACTORIES already documents these as wire-compatible reuses of a base protocol (cockroachdb/yugabytedb/greenplum -> the postgres driver, tidb -> the mysql driver, [REQ-950](#REQ-950)) — mapped each to that base protocol's SQLGlot dialect instead. NOTE: found while investigating the user's hypothesis that mariadb/tidb's SQL-page ANSI-double-quote bug (documented on source-to-query-generic-rdbms.spec.ts's mariadb/tidb tests) was a SQLGlot dialect-resolution issue. It is NOT the same bug: dialect_for() has exactly one call site (schema_mutation_ops.py's cross-source view-materialization mutation), not the SQL page's own query pipeline, and mariadb was ALREADY correctly mapped here despite still showing the SQL-page bug. This fix closes a real, separate, previously-undetected gap for the other four types; the SQL-page bug's actual root cause is still unisolated.
+
+**Use case:** Investigating a report that mariadb/tidb's SQL-page bug looked like a SQLGlot dialect issue surfaced this adjacent, genuinely broken dialect map for four other wire-compatible RDBMS types, affecting the one code path that does read _SOURCE_DIALECT.
+
+**Code:** `provisa/executor/pool.py`
+
+**Tests:** `tests/unit/test_connection_pool.py`
