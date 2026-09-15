@@ -11,8 +11,13 @@ name: UI e2e (core lane)
 #     so app.py resolves state.redis_url to None
 #   - federation on DuckDB — PROVISA_ENGINE is only set to trino on the second backend
 #
-# The remaining two specs (sharepoint, splunk) need a Trino catalog and a networked control plane;
-# they live in ui-e2e-trino.yml. Together the two lanes run every spec — neither skips.
+# The remaining specs need a Trino catalog and a networked control plane; they live in
+# ui-e2e-trino.yml (playwright.config.ts's TRINO_SPECS — sharepoint, splunk, and, since the
+# REQ-1763 amendment of 2026-09-15, source-to-query-olap-lake-trino.spec.ts's pinot/hive_s3/hive/
+# druid: those four have no direct driver, only a Trino connector, so they were split out of
+# source-to-query-olap-lake.spec.ts — this lane's own PROVISA_E2E_LANE=core never starts the
+# Trino-backed webServer they need, so they could never actually run here). Together the two
+# lanes run every spec — neither skips.
 #
 # REQ-1759: this lane's own container/service fixtures make it expensive — real-world runs
 # consistently ran 30-60+ minutes even after the timeout was raised to cover genuine (not
@@ -50,11 +55,12 @@ jobs:
     # unblock, then to 90: source-to-query-generic-rdbms.spec.ts's beforeAll now also provisions
     # saphana, whose HXE tenant DB alone can take up to 15 minutes past container-healthy
     # (demo/sources/saphana/prime.py's own retry budget), serially on top of every other fixture in
-    # that file. Raised again to 120 (REQ-1763): source-to-query-olap-lake.spec.ts's druid and
-    # exasol describe blocks now also run for real here (RUNNING_IN_CI) — each has its own
-    # beforeAll budgeted up to 15 minutes (Druid's 6-service amd64-emulated-free cold boot;
-    # exasol's EXAStorage cold init), and this job's single core-lane worker runs every spec file
-    # serially. The real fix (splitting/parallelizing this job, or trimming serial per-file
+    # that file. Raised again to 120 (REQ-1763): source-to-query-olap-lake.spec.ts's exasol describe
+    # block also runs for real here (RUNNING_IN_CI), with its own beforeAll budgeted up to 15
+    # minutes (EXAStorage cold init), and this job's single core-lane worker runs every spec file
+    # serially. (druid moved to ui-e2e-trino.yml with the rest of TRINO_SPECS — REQ-1763 amendment,
+    # 2026-09-15 — since it, like pinot/hive_s3/hive, has no direct driver and was never actually
+    # reachable here.) The real fix (splitting/parallelizing this job, or trimming serial per-file
     # container provisioning — several files stand up every fixture in one beforeAll even when most
     # of that file's tests are skipped) is tracked separately, not done here.
     timeout-minutes: 120

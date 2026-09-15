@@ -28,7 +28,7 @@
 # `hive_warehouse` volume is declared external, pointed at the ACTUAL live volume name docker-
 # compose.core.yml's `trino` service already mounts at this same path. That name is resolved at
 # provision time by inspecting the running Trino container's own mounts (see the e2e test's
-# resolveHiveWarehouseVolume() in source-to-query-olap-lake.spec.ts) and passed in as
+# resolveHiveWarehouseVolume() in source-to-query-olap-lake-trino.spec.ts) and passed in as
 # PROVISA_HIVE_WAREHOUSE_VOLUME — required, no fallback: an unresolved/wrong volume name would
 # silently mount the wrong (or a brand-new, unshared) volume, defeating the whole point.
 # docker-compose.core.yml itself needs NO change: it already declares `hive_warehouse` as a plain

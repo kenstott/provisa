@@ -94,7 +94,25 @@ const IS_RUNNER = process.env.TEST_WORKER_INDEX === undefined;
 // box behaves exactly as before.
 // The specs that address the Trino backend (TRINO_BACKEND_URL from e2e/coverage.ts). Kept as one
 // literal so the project split and the lane's server list cannot drift apart.
-const TRINO_SPECS = ["**/sharepoint-connector.spec.ts", "**/splunk-connector.spec.ts"];
+//
+// REQ-1763 amendment (2026-09-15): added source-to-query-olap-lake-trino.spec.ts. Its four cases
+// (pinot/hive_s3/hive/druid) used to live inside source-to-query-olap-lake.spec.ts, which stayed
+// in the default "core" project's testMatch (not listed here) on the theory that a routine run
+// used PROVISA_E2E_LANE=all and so started the Trino backend anyway. That theory was wrong for
+// real CI: .github/workflows/ui-e2e-core.yml hardcodes PROVISA_E2E_LANE=core, so RUNS_TRINO below
+// is false there and the Trino-backed webServer never starts — every one of those four cases
+// routed (via routeToTrinoBackend) to a backend that was never running, structurally unreachable
+// under the exact env the real core-lane workflow sets. Verified live in this session: with
+// PROVISA_E2E_LANE=core, the webServer list this config produces has no entry for
+// E2E_TRINO_API_PORT (8990) at all, and `--project=core -g pinot` still selects the test. Splitting
+// those four cases into their own file and listing it here (so "core"'s testIgnore excludes it and
+// "trino"'s testMatch includes it) is the actual fix — the previous placement's "must be run with
+// LANE=all/=trino" comment described an invocation nothing in CI ever performs.
+const TRINO_SPECS = [
+  "**/sharepoint-connector.spec.ts",
+  "**/splunk-connector.spec.ts",
+  "**/source-to-query-olap-lake-trino.spec.ts",
+];
 // The cross-engine swap harness (REQ-1730): registers against the DuckDB backend, then requeries
 // against the Trino one — it needs BOTH webServer entries up and sharing one Postgres control-plane
 // org schema (PROVISA_E2E_ORG_ID == PROVISA_E2E_TRINO_ORG_ID), which no ordinary core/trino run

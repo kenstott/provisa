@@ -58057,6 +58057,7 @@
   - demo/sources/hiveserver2/prime.py
   tests:
   - provisa-ui/e2e/source-to-query-olap-lake.spec.ts
+  - provisa-ui/e2e/source-to-query-olap-lake-trino.spec.ts
   unit_test: false
   unit_test_reason: E2E coverage requirement by definition -- proves three real UI screens plus a
     live Trino/DuckDB round trip against live containers, which has no unit-level equivalent.
@@ -58714,10 +58715,16 @@
     availableTables directly (bypassing the UI) until the table appears or 150s elapses, so the
     test masks the same cold-start latency a production deployment never hits (a real Pinot source
     is already stable by the time someone registers it in Provisa).
+
+    (Amended 2026-09-15, relocated:) this test now lives in
+    provisa-ui/e2e/source-to-query-olap-lake-trino.spec.ts, split out of
+    source-to-query-olap-lake.spec.ts by REQ-1763's 2026-09-15 amendment (that file's Trino-only
+    cases were unreachable under real CI's PROVISA_E2E_LANE=core). waitForTrinoTable() and this
+    test's own logic are unchanged by the move.
   code:
-  - provisa-ui/e2e/source-to-query-olap-lake.spec.ts
+  - provisa-ui/e2e/source-to-query-olap-lake-trino.spec.ts
   tests:
-  - provisa-ui/e2e/source-to-query-olap-lake.spec.ts
+  - provisa-ui/e2e/source-to-query-olap-lake-trino.spec.ts
   use_case: >-
     Re-verifying pinot's e2e test in true isolation (own docker-compose.core.yml stack, no
     contention) found the Register Table picker never showed "airlinestats" within a 120s UI-level
@@ -58754,10 +58761,16 @@
     complexity-gate comment) swallows it — the source row is created but its Trino catalog never
     is, so the schema picker sits empty with zero visible error. Fixed by replacing the phantom
     default with a real placeholder, so what is displayed is never mistaken for what is stored.
+
+    (Amended 2026-09-15, relocated:) this test now lives in
+    provisa-ui/e2e/source-to-query-olap-lake-trino.spec.ts, split out of
+    source-to-query-olap-lake.spec.ts by REQ-1763's 2026-09-15 amendment (that file's Trino-only
+    cases were unreachable under real CI's PROVISA_E2E_LANE=core). Test logic is unchanged by the
+    move.
   code:
   - provisa-ui/src/pages/sources/SourceFormFields.tsx
   tests:
-  - provisa-ui/e2e/source-to-query-olap-lake.spec.ts
+  - provisa-ui/e2e/source-to-query-olap-lake-trino.spec.ts
   use_case: >-
     Re-verifying hive_s3's e2e test in true isolation (own docker-compose.core.yml stack) found
     the schema picker never populated despite the seed data genuinely existing and being
@@ -59359,9 +59372,50 @@
     `tsc --noEmit` and `eslint` clean on the spec file. NOT verified live end-to-end (arm64 host,
     no live core Trino container in this session) — that requires the CI-lane gap above to be
     closed first, same situation druid/exasol were left in.
+
+    (Amended 2026-09-15, KNOWN GAP above closed:) the "hive_s3/pinot/druid above already carry via
+    routeToTrinoBackend()" precondition this amendment flagged and deferred was real and reproduced
+    live: with PROVISA_E2E_LANE=core (the literal env .github/workflows/ui-e2e-core.yml sets),
+    playwright.config.ts's own webServer list has no entry for the Trino-backed backend
+    (E2E_TRINO_API_PORT/8990) at all, while `--project=core -g pinot` still selects
+    source-to-query-olap-lake.spec.ts's pinot test — every routeToTrinoBackend() call in that file
+    was redirecting to a backend the real core-lane workflow never started. Root cause: the four
+    Trino-connector-only cases (pinot, hive_s3, hive, druid — no direct driver,
+    EngineBackend.register_source is a no-op on native/DuckDB) lived in the same FILE as
+    hiveserver2 (a real direct driver, correctly core-lane), and playwright.config.ts's
+    TRINO_SPECS/testIgnore split operates at file granularity — so the file as a whole stayed in
+    the default "core" project's testMatch, reachable only by accident whenever someone verified
+    locally with PROVISA_E2E_LANE left at its unset default "all" (which does start the Trino
+    backend), never against the exact env the CI workflow uses. Fixed by splitting the four
+    Trino-only cases into a new file, provisa-ui/e2e/source-to-query-olap-lake-trino.spec.ts, and
+    adding it to playwright.config.ts's TRINO_SPECS — "core"'s testIgnore now excludes it and
+    "trino"'s testMatch includes it, at file granularity, same as sharepoint/splunk always worked.
+    hive's own resolveHiveWarehouseVolume() skip-degrade (this REQ's own prior amendment) is also
+    now moot for the "trino" project: the Trino-backed webServer that project declares brings
+    docker-compose.core.yml's `trino` up before any test in the new file runs, so the live
+    container resolveHiveWarehouseVolume() needs is always present there — removed the RUNNING_IN_CI
+    gate this test never actually needed (its blocker was never arch/resource, only Trino
+    liveness) and the try/catch skip-degrade, since neither precondition can fail under "trino"
+    anymore. hiveserver2/exasol (real direct drivers) are untouched, stay in
+    source-to-query-olap-lake.spec.ts, and stay in the "core" project exactly as before. Wired
+    .github/workflows/ui-e2e-trino.yml's path filters and raised its timeout-minutes 90 -> 150 to
+    cover the four newly-added cases (druid's own 900s/15m beforeAll alone). Verified live in this
+    session (`node --input-type=module -e 'import cfg from "./playwright.config.ts"'` with
+    PROVISA_E2E_LANE=core): the produced webServer list has no Trino-backend entry;
+    `--project=core --list` no longer selects pinot/hive_s3/hive/druid and still selects
+    hiveserver2/exasol; `--project=trino --list` (PROVISA_E2E_LANE=trino) selects sharepoint,
+    splunk, and all four moved cases from the new file. Did NOT boot a live Trino coordinator
+    against pinot/hive_s3 in this session: the shared dev checkout's docker-compose.core.yml
+    project (project name "provisa") is already running other agents' containers on an 11.7 GiB
+    Docker VM already near capacity (test-infra-docker-memory-limits), and a 7g Trino coordinator
+    cold boot on top of that risked OOM-ing concurrent agents' unrelated runs — left for
+    ui-e2e-trino.yml's own isolated CI runner (this lane's designed venue per REQ-1759; it already
+    runs on-demand, not on every push) to confirm end-to-end.
   code:
   - provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts
   - provisa-ui/e2e/source-to-query-olap-lake.spec.ts
+  - provisa-ui/e2e/source-to-query-olap-lake-trino.spec.ts
+  - provisa-ui/playwright.config.ts
   - demo/sources/druid/compose.yml
   - demo/sources/druid/prime.py
   - demo/sources/exasol/compose.yml
@@ -59370,9 +59424,11 @@
   - provisa/executor/drivers/exasol.py
   - provisa/api/admin/introspect.py
   - .github/workflows/ui-e2e-core.yml
+  - .github/workflows/ui-e2e-trino.yml
   tests:
   - provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts
   - provisa-ui/e2e/source-to-query-olap-lake.spec.ts
+  - provisa-ui/e2e/source-to-query-olap-lake-trino.spec.ts
   - tests/unit/test_hive_exasol_drivers.py
   use_case: >-
     "wire all 5 into the github action" — closing the gap between fixtures that were built and

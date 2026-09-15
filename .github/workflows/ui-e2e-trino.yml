@@ -1,11 +1,19 @@
 name: UI e2e (Trino lane)
 
-# The two connector specs (sharepoint, splunk) that cannot run in ui-e2e-core.yml. Both need
-# TrinoBackend.register_source() to create a real Trino catalog — NativeBackend (DuckDB) is a
-# no-op there, so the schema dropdown never populates — and Trino loads those catalog specs over
-# JDBC from inside its own container, which a SQLite control plane cannot serve. Hence the compose
-# Postgres plus a Trino coordinator for two tests. Every other spec is in the core lane; between
-# the two workflows nothing is skipped.
+# playwright.config.ts's TRINO_SPECS — every spec whose tests address TRINO_BACKEND_URL because
+# their SourceType has no direct driver, only a Trino connector, so NativeBackend (DuckDB) is a
+# no-op and the schema dropdown never populates: sharepoint, splunk, and (REQ-1763 amendment,
+# 2026-09-15) source-to-query-olap-lake-trino.spec.ts's pinot/hive_s3/hive/druid. Trino loads
+# catalog specs over JDBC from inside its own container, which a SQLite control plane cannot
+# serve. Hence the compose Postgres plus a Trino coordinator. Every other spec is in the core
+# lane; between the two workflows nothing is skipped.
+#
+# source-to-query-olap-lake-trino.spec.ts's four cases used to live inside
+# source-to-query-olap-lake.spec.ts, in the "core" project's testMatch — reachable only when
+# someone ran locally with PROVISA_E2E_LANE left at its default "all" (which starts the Trino
+# backend too), never under this repo's real ui-e2e-core.yml (PROVISA_E2E_LANE=core hardcoded,
+# RUNS_TRINO false, Trino-backed webServer never started). Moved here so they run against a Trino
+# backend that is actually live.
 #
 # playwright.config.ts still starts the DuckDB backend, the graphql-demo and petstore-mock servers
 # and Vite here: the UI these specs drive is served by the same app.
@@ -28,6 +36,7 @@ on:
     paths:
       - "provisa-ui/e2e/sharepoint-connector.spec.ts"
       - "provisa-ui/e2e/splunk-connector.spec.ts"
+      - "provisa-ui/e2e/source-to-query-olap-lake-trino.spec.ts"
       - "provisa-ui/playwright.config.ts"
       - "provisa-ui/e2e/coverage.ts"
       - "provisa-ui/e2e/global-setup.ts"
@@ -54,8 +63,12 @@ jobs:
     name: Playwright Trino lane
     runs-on: ubuntu-latest
     # Trino's healthcheck start_period alone is 120s, and the Trino-engine backend's
-    # register_system_catalogs() gets a 300s webServer timeout on a cold JVM.
-    timeout-minutes: 90
+    # register_system_catalogs() gets a 300s webServer timeout on a cold JVM. Raised from 90
+    # (REQ-1763 amendment): source-to-query-olap-lake-trino.spec.ts's druid case alone budgets a
+    # 900s (15m) beforeAll for its 6-service amd64 cold boot, on top of pinot/hive_s3/hive's own
+    # 300s-per-test budgets — this job's single worker runs every spec file serially, mirroring
+    # ui-e2e-core.yml's own reasoning for its 120-minute budget.
+    timeout-minutes: 150
     env:
       # playwright.config.ts keys `reuseExistingServer` off this: under CI every webServer
       # must be started by the harness, never adopted from a stale process.
