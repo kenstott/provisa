@@ -1,0 +1,32 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: PostgreSQL (start-ui-install.sh --demo --source=postgresql). Native
+# postgres wire protocol (reuses the asyncpg direct driver + postgres dialect, REQ-950/1097),
+# ported here for the source-to-query e2e (REQ-1768).
+services:
+  postgresql:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: provisa
+      POSTGRES_PASSWORD: provisa
+      POSTGRES_DB: provisa_demo
+    ports:
+      - "${PROVISA_DEMO_POSTGRESQL_PORT:-25432}:5432"
+    volumes:
+      - postgresql_demo_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U provisa -d provisa_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+volumes:
+  postgresql_demo_data:

@@ -59748,3 +59748,97 @@
     When its columns are stored with visible_to set to the real role-id list
     Then every role that should see the table's columns does, in both the compiled schema and at
     query-authorization time
+- id: REQ-1769
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Bug Fix
+  priority: SHOULD
+  type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    A missing-UI + downstream-consumer bug, only observable end to end against push_wiring.py's
+    real CDC-listener startup path and a real kafka broker (demo/sources/kafka's compose
+    fixture) — verified live, not unit-mockable.
+  description: >-
+    REQ-1767 documented, but left unaddressed, a follow-up gap: SchemaDiscovery.tsx's column
+    editor (the "Discover" flow used for mongodb/elasticsearch/cassandra/prometheus/kafka schema
+    discovery + registration) had NO primary-key selection UI at all, unlike
+    RegisterTableForm.tsx's own register-table-col-pk-<name> checkboxes. Every column registered
+    through Discover therefore always got is_primary_key=false (handleRegister's columns.map()
+    never set it). provisa/events/push_wiring.py's wire_push_listeners hard-requires at least one
+    declared primary-key column before starting a CDC listener for a kafka/websocket push source
+    ("no primary key column declared — CDC landing ... requires one, skipping") — so ANY table
+    registered through Discover for a push-capable source type could register fine and be
+    queryable, but never receive live CDC data, silently and permanently.
+
+    Fixed by adding an "Is PK" checkbox column to SchemaDiscovery.tsx's column table (same
+    ColumnRow shape as selected/name/type/alias/description/sourcePath), data-testid
+    discover-col-pk-<name>, wired into handleRegister's registerTable call as the `isPrimaryKey`
+    GraphQL field (matching RegisterTableForm's own already-working convention and the server-side
+    ColumnInput.is_primary_key field in provisa/api/admin/types.py).
+  code:
+  - provisa-ui/src/components/SchemaDiscovery.tsx
+  - provisa-ui/src/i18n/locales/en/schemaDiscovery.json
+  tests:
+  - provisa-ui/e2e/source-to-query-streaming.spec.ts
+  use_case: >-
+    Extending REQ-1767's own kafka-schema-registry-discovery e2e test to also prove the full CDC-
+    landing round trip on a Discover-flow-registered table, which needed a PK checkbox to exist
+    before it could be checked.
+  scenario: |
+    Given a steward discovers a kafka topic's schema through SchemaDiscovery.tsx and checks the
+    "id" column's PK checkbox before clicking Register
+    When the table is registered and its Change Signal is set to kafka with live delivery enabled
+    Then a message produced on the topic lands in the table via the same CDC-listener mechanism
+    RegisterTableForm-registered kafka/websocket tables already use
+- id: REQ-1768
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Bug Fix
+  priority: MUST
+  type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    Playwright e2e UI wiring verified live against a real postgres:16 container
+    (demo/sources/postgresql) — the defect this uncovered was a hardcoded schema-exclusion set only
+    observable by actually registering a real external PostgreSQL source through the UI and driving
+    the Register Table form's schema picker; unit-level mocking of native_schemas would not exercise
+    the real query against a live Postgres server.
+  description: >-
+    postgresql is the single most-used SourceType in the product but had zero e2e coverage of its
+    own registration flow — every existing e2e test only exercised it indirectly through the
+    pre-seeded pet_store baseline fixture, never by driving the Sources form -> Register Table form
+    -> SQL page round trip for a freshly-registered postgresql source. Added that coverage
+    (source-to-query-generic-rdbms.spec.ts, a new demo/sources/postgresql fixture) and found a real
+    defect: introspect.py's native_schemas dispatch for source_type=="postgresql" excludes
+    _PG_SYSTEM_SCHEMAS from its schema list, and that set included "public" — Postgres's default
+    schema, where the overwhelming majority of real installations keep their tables. The exclusion
+    was added 2026-06-07 to hide Provisa's own control-plane schema when its backing Postgres was
+    also registered as a postgresql-type data source, but the 2026-06-26 multi-tenancy migration
+    moved Provisa's own tables into "platform"/"audit" and per-org "org_<id>" schemas, and
+    is_provisa_internal() already excludes those from every native_schemas caller
+    (schema_query.py) — the "public" exclusion was stale and, for any newly-registered external
+    postgresql source, left the Register Table form's schema picker permanently empty. Fixed by
+    dropping "public" from _PG_SYSTEM_SCHEMAS; is_provisa_internal() continues to hide the real
+    Provisa-internal schemas.
+  code:
+  - provisa/api/admin/introspect.py
+  - demo/sources/postgresql/compose.yml
+  - demo/sources/postgresql/prime.py
+  tests:
+  - provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts
+  use_case: >-
+    Registering a plain PostgreSQL source through the real Sources/Register Table UI and querying
+    a registered table on the SQL page must actually work — the schema picker must show "public"
+    for a source that has no other schemas, matching what any real Postgres installation looks like.
+  scenario: |
+    Given the Sources form with type=postgresql, a live postgres:16 container, and no pre-existing
+    schemas other than "public"
+    When the source is registered and the Register Table form's schema picker loads
+    Then "public" appears as a selectable schema (not silently excluded as a "system" schema)
+
+    Given the "widgets" table is picked from "public" and registered
+    When a SELECT is run against it on the SQL page
+    Then the 3 seeded rows are returned in order

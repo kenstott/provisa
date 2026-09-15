@@ -18671,3 +18671,27 @@ provisa/kafka/schema_registry.py's SchemaRegistryClient (REQ-116/147/150) — a 
 **Code:** `provisa/api/admin/discovery_schema.py`, `provisa/kafka/source.py`, `provisa/source_adapters/registry.py`, `provisa-ui/src/pages/sources/constants.ts`, `provisa-ui/src/components/SchemaDiscovery.tsx`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/i18n/locales/en/schemaDiscovery.json`, `demo/sources/kafka/compose.yml`
 
 **Tests:** `provisa-ui/e2e/source-to-query-streaming.spec.ts`
+
+### REQ-1769 · Bug Fix {#REQ-1769}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+[REQ-1767](#REQ-1767) documented, but left unaddressed, a follow-up gap: SchemaDiscovery.tsx's column editor (the "Discover" flow used for mongodb/elasticsearch/cassandra/prometheus/kafka schema discovery + registration) had NO primary-key selection UI at all, unlike RegisterTableForm.tsx's own register-table-col-pk-<name> checkboxes. Every column registered through Discover therefore always got is_primary_key=false (handleRegister's columns.map() never set it). provisa/events/push_wiring.py's wire_push_listeners hard-requires at least one declared primary-key column before starting a CDC listener for a kafka/websocket push source ("no primary key column declared — CDC landing ... requires one, skipping") — so ANY table registered through Discover for a push-capable source type could register fine and be queryable, but never receive live CDC data, silently and permanently. Fixed by adding an "Is PK" checkbox column to SchemaDiscovery.tsx's column table (same ColumnRow shape as selected/name/type/alias/description/sourcePath), data-testid discover-col-pk-<name>, wired into handleRegister's registerTable call as the `isPrimaryKey` GraphQL field (matching RegisterTableForm's own already-working convention and the server-side ColumnInput.is_primary_key field in provisa/api/admin/types.py).
+
+**Use case:** Extending [REQ-1767](#REQ-1767)'s own kafka-schema-registry-discovery e2e test to also prove the full CDC- landing round trip on a Discover-flow-registered table, which needed a PK checkbox to exist before it could be checked.
+
+**Code:** `provisa-ui/src/components/SchemaDiscovery.tsx`, `provisa-ui/src/i18n/locales/en/schemaDiscovery.json`
+
+**Tests:** `provisa-ui/e2e/source-to-query-streaming.spec.ts`
+
+### REQ-1768 · Bug Fix {#REQ-1768}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+postgresql is the single most-used SourceType in the product but had zero e2e coverage of its own registration flow — every existing e2e test only exercised it indirectly through the pre-seeded pet_store baseline fixture, never by driving the Sources form -> Register Table form -> SQL page round trip for a freshly-registered postgresql source. Added that coverage (source-to-query-generic-rdbms.spec.ts, a new demo/sources/postgresql fixture) and found a real defect: introspect.py's native_schemas dispatch for source_type=="postgresql" excludes _PG_SYSTEM_SCHEMAS from its schema list, and that set included "public" — Postgres's default schema, where the overwhelming majority of real installations keep their tables. The exclusion was added 2026-06-07 to hide Provisa's own control-plane schema when its backing Postgres was also registered as a postgresql-type data source, but the 2026-06-26 multi-tenancy migration moved Provisa's own tables into "platform"/"audit" and per-org "org_<id>" schemas, and is_provisa_internal() already excludes those from every native_schemas caller (schema_query.py) — the "public" exclusion was stale and, for any newly-registered external postgresql source, left the Register Table form's schema picker permanently empty. Fixed by dropping "public" from _PG_SYSTEM_SCHEMAS; is_provisa_internal() continues to hide the real Provisa-internal schemas.
+
+**Use case:** Registering a plain PostgreSQL source through the real Sources/Register Table UI and querying a registered table on the SQL page must actually work — the schema picker must show "public" for a source that has no other schemas, matching what any real Postgres installation looks like.
+
+**Code:** `provisa/api/admin/introspect.py`, `demo/sources/postgresql/compose.yml`, `demo/sources/postgresql/prime.py`
+
+**Tests:** `provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts`

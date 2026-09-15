@@ -14,6 +14,10 @@
 // -> Register Table form -> SQL page), each against its own demo/sources/<name> container started
 // only for this describe block (provisionExtraSources's pattern in source-to-query.spec.ts).
 //
+// REQ-1768: postgresql (the most-used SourceType) added to this file's SOURCES/tests — its own
+// registration flow had zero e2e coverage; every other test only exercised it indirectly via the
+// pre-seeded pet_store baseline fixture.
+//
 // Port range: 358xx-359xx — distinct from source-to-query.spec.ts (33062/33081),
 // engine-swap.spec.ts (33051/33061/33071) and demo-source-containers.ts's shared range
 // (33xxx/35433/36xxx/37xxx/38xxx/39xxx for the chinook/splunk/etc containers this file does not
@@ -46,6 +50,7 @@ const E2E_CLICKHOUSE_PORT = 35850;
 const E2E_SQLSERVER_PORT = 35860;
 const E2E_ORACLE_PORT = 35870;
 const E2E_GREENPLUM_PORT = 35880;
+const E2E_POSTGRESQL_PORT = 35890;
 // saphana/greenplum only actually run in CI (ubuntu-latest is a real amd64 Linux host) — both are
 // verified live against a real amd64 Docker host (saphana: a temporary Vultr instance, this
 // session; greenplum: amd64-only image, never runnable under this repo's arm64 local dev). Locally
@@ -72,7 +77,16 @@ function hasSqlServerOdbcDriver(): boolean {
 }
 const SQLSERVER_ODBC_AVAILABLE = hasSqlServerOdbcDriver();
 
-const SOURCES = ["mariadb", "tidb", "cockroachdb", "yugabytedb", "clickhouse", "sqlserver", "oracle"];
+const SOURCES = [
+  "mariadb",
+  "tidb",
+  "cockroachdb",
+  "yugabytedb",
+  "clickhouse",
+  "sqlserver",
+  "oracle",
+  "postgresql",
+];
 // CI-only: needs a real amd64 Linux host, see RUNNING_IN_CI's comment above.
 const CI_SOURCES = RUNNING_IN_CI ? ["saphana", "greenplum"] : [];
 
@@ -87,6 +101,7 @@ function provision(cmd: "up" | "down"): void {
     PROVISA_DEMO_SQLSERVER_PORT: String(E2E_SQLSERVER_PORT),
     PROVISA_DEMO_ORACLE_PORT: String(E2E_ORACLE_PORT),
     PROVISA_DEMO_GREENPLUM_PORT: String(E2E_GREENPLUM_PORT),
+    PROVISA_DEMO_POSTGRESQL_PORT: String(E2E_POSTGRESQL_PORT),
     PROVISA_DEMO_SAPHANA_PORT: String(E2E_SAPHANA_PORT),
     PROVISA_DEMO_SAPHANA_PASSWORD: E2E_SAPHANA_PASSWORD,
   };
@@ -141,6 +156,42 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
 
     await openRegisterForm(page, sourceId);
     await pickSchemaAndTable(page, "provisa_demo", "widgets");
+    await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+      timeout: 60000,
+    });
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    );
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toEqual(["1", "Widget A"]);
+    expect(rows[2]).toEqual(["3", "Widget C"]);
+  });
+
+  test("postgresql: add the source, register a table, query it on the SQL page", async ({
+    page,
+  }) => {
+    // REQ-1768: postgresql is the most-used SourceType in the product but had zero e2e coverage
+    // of its own registration flow — every other e2e test only exercised it indirectly via the
+    // pre-seeded pet_store baseline fixture.
+    test.setTimeout(180000);
+    const stamp = Date.now();
+    const sourceId = `e2e_postgresql_${stamp}`;
+
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("postgresql");
+    await page.getByLabel(/^Host/).fill("localhost");
+    await page.getByLabel(/^Port/).fill(String(E2E_POSTGRESQL_PORT));
+    await page.getByLabel(/^Username/).fill("provisa");
+    await page.getByLabel(/^Password/).fill("provisa");
+    await page.getByLabel(/^Database/).fill("provisa_demo");
+    await submitSourceAndExpectListed(page, sourceId);
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "public", "widgets");
     await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
       timeout: 60000,
     });

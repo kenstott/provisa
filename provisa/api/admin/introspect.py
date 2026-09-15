@@ -64,7 +64,16 @@ _SQLSERVER_SYSTEM_SCHEMAS = {
     "db_denydatareader",
     "db_denydatawriter",
 }
-_PG_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast", "public"}
+_PG_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast"}
+# REQ-1768: "public" was excluded here (2026-06-07) to hide Provisa's own control-plane schema when
+# its backing Postgres was registered as a "postgresql"-type data source. That rationale is now
+# stale: the 2026-06-26 multi-tenancy migration moved Provisa's own tables into "platform"/"audit"
+# and per-org "org_<id>" schemas, and is_provisa_internal() (below) already excludes those from
+# every native_schemas caller (schema_query.py). Excluding "public" unconditionally instead hid the
+# default schema of every genuine external PostgreSQL source — the schema real Postgres data lives
+# in for the overwhelming majority of installations — leaving the schema picker permanently empty
+# for any newly-registered postgresql source. Never caught before REQ-1768 added the first e2e test
+# that actually registers a plain postgresql source through the UI.
 _TRINO_SYSTEM_SCHEMAS = {"information_schema"}
 # REQ-1753: HANA's own catalog schemas (SYS.SCHEMAS), never a user's data. "SYSTEM" is
 # deliberately NOT here — it is the SYSTEM user's own default schema, exactly where an operator's
