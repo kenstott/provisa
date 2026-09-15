@@ -48,29 +48,40 @@ def _safe_type(data_type: str | None) -> str:  # REQ-337
     return dt if dt in _ALLOWED_TYPES else _DEFAULT_TYPE
 
 
-def generate_create_table(table_name: str, columns: list[dict]) -> str:  # REQ-332, REQ-333
+def generate_create_table(
+    table_name: str, columns: list[dict], *, sqlite: bool = False
+) -> str:  # REQ-332, REQ-333
     """Return CREATE TABLE IF NOT EXISTS DDL for an ingest backing table.
 
     Args:
         table_name: Target table name (already sanitised by caller).
         columns: List of ``{column_name, data_type}`` dicts from steward config.
+        sqlite: REQ-1745 -- a NO_CONNECTION ingest source mirrors state.tenant_db's own engine
+            verbatim, and that engine is SQLite on the e2e "core" lane and any local-dev
+            ``--demo`` install. SQLite has no ``SERIAL`` type (a Postgres-only auto-increment
+            sequence) -- its autoincrementing rowid alias is ``INTEGER PRIMARY KEY`` instead.
+            Every other declared type name here is accepted as-is by SQLite's type-affinity
+            rules, so only the id column needs a dialect branch.
 
     System columns injected automatically:
-        - ``id SERIAL PRIMARY KEY``
-        - ``_received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()``
-        - ``_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()``
+        - ``id SERIAL PRIMARY KEY`` (``id INTEGER PRIMARY KEY`` when ``sqlite``)
+        - ``_received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP``
+        - ``_updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP``
 
     The ``_updated_at`` column is the watermark used by the subscription provider.
     """
-    col_defs: list[str] = ["id SERIAL PRIMARY KEY"]
+    id_col = "id INTEGER PRIMARY KEY" if sqlite else "id SERIAL PRIMARY KEY"
+    col_defs: list[str] = [id_col]
     for col in columns:
         name = col.get("column_name") or col.get("name", "")
         if not name or name.startswith("_"):
             continue
         dtype = _safe_type(col.get("data_type"))
         col_defs.append(f"{name} {dtype.upper()}")
-    col_defs.append("_received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()")
-    col_defs.append("_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()")
+    # CURRENT_TIMESTAMP is standard SQL and valid as a column DEFAULT on both Postgres and
+    # SQLite (NOW() is Postgres-only syntax and is rejected by SQLite).
+    col_defs.append("_received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP")
+    col_defs.append("_updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP")
     joined = ",\n    ".join(col_defs)
     return f"CREATE TABLE IF NOT EXISTS {table_name} (\n    {joined}\n)"
 

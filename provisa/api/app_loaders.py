@@ -724,38 +724,47 @@ async def _init_ingest_engines() -> None:
         # assigned and ephemeral; REAL prod deployments dial a managed Cloud SQL host, never
         # localhost), so a UI-registered ingest source silently wrote rows nowhere reachable. The
         # only sensible default for "no connection configured" is the SAME tenant database
-        # Provisa itself is already connected to — read off state.tenant_db's own engine URL,
-        # which is exactly the DSN this process used to reach its own (org-scoped) postgres.
+        # Provisa itself is already connected to. On Postgres that means reading off
+        # state.tenant_db's own engine URL and opening a SEPARATE pool with it (ingest write
+        # traffic gets its own pool, isolated from the admin-plane one). On SQLite -- the e2e
+        # "core" lane and any local-dev ``--demo`` install both run PROVISA_DEMO's SQLite control
+        # plane -- host/port/username don't exist to decompose, AND a second engine opened
+        # against the SAME sqlite FILE deadlocks against state.tenant_db's own WAL-mode
+        # connection (SQLAlchemy's default rollback-journal pool has no busy_timeout of its own
+        # and never gets the WAL pragma _on_sqlite_connect sets on state.tenant_db's engine — see
+        # provisa/core/database.py). So the SQLite/embedded case reuses state.tenant_db.engine
+        # directly instead of opening a second engine at all -- "the SAME tenant database" taken
+        # literally, not a look-alike connection to the same file.
         _tenant_url = state.tenant_db.engine.url
         _tenant_is_pg = _tenant_url.get_backend_name() == "postgresql"
         for _isrc in _ingest_sources:
             _sid = _isrc["id"]
-            _pw = _resolve_secrets("")
             if _isrc["host"]:
-                _host, _port, _database, _username = (
-                    _isrc["host"],
-                    _isrc["port"] or 5432,
-                    _isrc["database"] or "",
-                    _isrc["username"] or "",
+                _pw = _resolve_secrets("")
+                _eng = _get_ingest_engine(
+                    source_id=_sid,
+                    dialect=_isrc["dialect"] or "postgresql+asyncpg",
+                    host=_isrc["host"],
+                    port=_isrc["port"] or 5432,
+                    database=_isrc["database"] or "",
+                    username=_isrc["username"] or "",
+                    password=_pw or "",
                 )
             elif _tenant_is_pg:
-                _host = _tenant_url.host or "localhost"
-                _port = _tenant_url.port or 5432
-                _database = _tenant_url.database or ""
-                _username = _tenant_url.username or ""
                 _pw = _resolve_secrets(_tenant_url.password or "")
+                _eng = _get_ingest_engine(
+                    source_id=_sid,
+                    dialect=_isrc["dialect"] or "postgresql+asyncpg",
+                    host=_tenant_url.host or "localhost",
+                    port=_tenant_url.port or 5432,
+                    database=_tenant_url.database or "",
+                    username=_tenant_url.username or "",
+                    password=_pw or "",
+                )
             else:
-                _host, _port, _database, _username = "localhost", 5432, "", ""
-            _eng = _get_ingest_engine(
-                source_id=_sid,
-                dialect=_isrc["dialect"] or "postgresql+asyncpg",
-                host=_host,
-                port=_port,
-                database=_database,
-                username=_username,
-                password=_pw or "",
-            )
+                _eng = state.tenant_db.engine
             state.ingest_engines[_sid] = _eng
+            _sqlite_backed = _eng.dialect.name == "sqlite"
             async with state.tenant_db.acquire() as _pg_conn:
                 _itables = [
                     dict(_r._mapping)
@@ -790,7 +799,7 @@ async def _init_ingest_engines() -> None:
                 )
             state.ingest_tables[_sid] = _tbl_map
             for _tn, _cols in _tbl_map.items():
-                _ddl = _gen_ddl(_tn, _cols)
+                _ddl = _gen_ddl(_tn, _cols, sqlite=_sqlite_backed)
                 with tolerate_startup_failure(f"ingest DDL for {_sid}.{_tn}"):
                     async with _eng.begin() as _conn:
                         await _conn.execute(__import__("sqlalchemy").text(_ddl))

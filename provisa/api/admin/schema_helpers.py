@@ -202,13 +202,9 @@ async def _govdata_columns(  # pyright: ignore[reportUnusedParameter]
 
 
 async def _rebuild_schemas():
-    import logging
-
-    logging.getLogger(__name__).warning("[DEBUG] _rebuild_schemas called")
     from provisa.api.app import _rebuild_schemas as rebuild
 
     await rebuild()
-    logging.getLogger(__name__).warning("[DEBUG] _rebuild_schemas completed")
 
 
 def _compute_can_deploy_to_db(

@@ -82,9 +82,17 @@ def _build_url(
         raise ValueError("ingest DB host is required")
     if not port:
         raise ValueError("ingest DB port is required")
-    if not password:
-        raise ValueError("ingest DB password is required")
     import urllib.parse
 
-    pw = urllib.parse.quote_plus(password)
+    # REQ-1745: an ingest source with no connection fields of its own mirrors state.tenant_db's
+    # own engine URL verbatim (app_loaders.py's _init_ingest_engines) -- and a trust/peer-auth
+    # control-plane postgres (a docker-assigned test instance, or any deployment relying on the
+    # OS's default postgres trust auth) legitimately has no password. Requiring one
+    # unconditionally raised ValueError for EVERY ingest source on such a deployment, silently
+    # swallowed by tolerate_startup_failure in _init_ingest_engines, which aborted that
+    # function's per-source loop before state.ingest_tables/state.ingest_engines were ever
+    # populated for that source -- every POST to /data/ingest then 404'd "source not found" no
+    # matter how many times the schema rebuilt. A DB that genuinely requires a password still
+    # fails, just at connect time from the driver's own auth error, not this pre-emptive guess.
+    pw = urllib.parse.quote_plus(password) if password else ""
     return f"{dialect}://{username}:{pw}@{host}:{port}/{database}"

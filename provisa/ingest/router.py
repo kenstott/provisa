@@ -123,9 +123,12 @@ async def _insert_row(engine: AsyncEngine, table: str, data: dict[str, Any]) -> 
         return
     cols = ", ".join(data.keys())
     placeholders = ", ".join(f":{k}" for k in data.keys())
+    # CURRENT_TIMESTAMP is standard SQL and valid on both Postgres and SQLite (NOW() is
+    # Postgres-only syntax and is rejected by SQLite) -- REQ-1745's tenant_db-mirroring default
+    # can land an ingest engine on either dialect.
     stmt = text(
         f"INSERT INTO {table} ({cols}, _received_at, _updated_at) "  # noqa: S608
-        f"VALUES ({placeholders}, NOW(), NOW())"
+        f"VALUES ({placeholders}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
     )
     async with engine.begin() as conn:
         await conn.execute(stmt, data)
