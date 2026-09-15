@@ -146,6 +146,10 @@ class DiscoverRequest(BaseModel):
     topic: str | None = None
     value_format: str | None = None
     schema_registry_url: str | None = None
+    # REQ-150: kafka SchemaSource.SAMPLE mode. Overrides the source's own host:port as the
+    # broker address to sample from when set; sample_limit (above, already generic) doubles as
+    # the max-records-to-consume bound for this mode.
+    bootstrap_servers: str | None = None
 
 
 @router.post("/discover/{source_id}", response_model=DiscoverResponse)
@@ -374,24 +378,53 @@ async def _call_discover(
         registry_url = hints.schema_registry_url or (row.get("federation_hints") or {}).get(
             "schema_registry_url"
         )
-        if not registry_url:
+        if registry_url:
+            value_format = (
+                ValueFormat(hints.value_format) if hints.value_format else ValueFormat.JSON
+            )
+            try:
+                columns = await discover_topic_columns(registry_url, topic, value_format)
+            except Exception as e:
+                raise ApiError(
+                    502,
+                    "discovery.kafka_schema_registry_failed",
+                    f"Failed to discover schema for topic {topic!r} from Schema Registry: {e}",
+                    topic=topic,
+                    error=str(e),
+                )
+            return adapter.discover_schema(columns)
+
+        # REQ-150: no Schema Registry URL (hint or source-stored) — SchemaSource.SAMPLE instead
+        # of SchemaSource.REGISTRY. Same architectural shape as mongodb's sample_documents branch
+        # above: consume real messages off the live topic and infer column types from their
+        # actual shape, rather than querying a registry. bootstrap_servers comes from a hint
+        # override, else the source's own host:port (provisa/events/push_wiring.py's own
+        # `f"{src.host}:{src.port}" if src.port else src.host` convention for this source type).
+        from provisa.kafka.source import infer_columns_from_records, sample_topic_records
+
+        bootstrap_servers = hints.bootstrap_servers or (
+            f"{row['host']}:{row['port']}" if row.get("port") else row.get("host")
+        )
+        if not bootstrap_servers:
             raise ApiError(
                 400,
-                "discovery.kafka_schema_registry_url_required",
-                "Kafka discovery requires a Schema Registry URL — pass a schema_registry_url "
-                "hint or set federation_hints.schema_registry_url on the source.",
+                "discovery.kafka_bootstrap_servers_required",
+                "Kafka sample-mode discovery requires a reachable broker — pass a "
+                "bootstrap_servers hint or set host/port on the source.",
             )
-        value_format = ValueFormat(hints.value_format) if hints.value_format else ValueFormat.JSON
         try:
-            columns = await discover_topic_columns(registry_url, topic, value_format)
+            records = await sample_topic_records(
+                bootstrap_servers, topic, max_records=hints.sample_limit
+            )
         except Exception as e:
             raise ApiError(
                 502,
-                "discovery.kafka_schema_registry_failed",
-                f"Failed to discover schema for topic {topic!r} from Schema Registry: {e}",
+                "discovery.kafka_sample_failed",
+                f"Failed to sample topic {topic!r} for schema inference: {e}",
                 topic=topic,
                 error=str(e),
             )
+        columns = infer_columns_from_records(records)
         return adapter.discover_schema(columns)
 
     # Fallback: try calling with no args

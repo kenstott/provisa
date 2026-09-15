@@ -18735,3 +18735,17 @@ provisa-ui/e2e/demo-source-containers.ts hardcoded its Docker Compose project pr
 **Code:** `provisa-ui/e2e/demo-source-containers.ts`, `provisa-ui/e2e/neo4j-container.ts`
 
 **Tests:** `provisa-ui/e2e/source-to-query.spec.ts`, `provisa-ui/e2e/neo4j-docker-export.spec.ts`
+
+## 4. Source Connectors
+
+### REQ-1773 · Feature {#REQ-1773}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+provisa/kafka/source.py's sample_topic_records/infer_columns_from_records ([REQ-150](#REQ-150), SchemaSource.SAMPLE — infer a topic's columns from real sampled messages instead of querying Confluent Schema Registry) had ZERO callers, the same starting shape schema_registry.py had before [REQ-1767](#REQ-1767) wired its REGISTRY-mode sibling. This closes the follow-up [REQ-1767](#REQ-1767) explicitly left open: "(a) provisa.kafka.source.sample_topic_records ... remains unwired." Wired into the SAME kafka branch of discovery_schema.py's _call_discover [REQ-1767](#REQ-1767) added: when no schema_registry_url is available (neither the hint nor the source's stored federation_hints.schema_registry_url), discovery falls through to sample mode instead of raising 400 — the empty registry-url field is itself the mode switch, no separate toggle. A new optional bootstrap_servers hint overrides the broker address used for sampling; default is the source's own host:port (push_wiring.py's existing `f"{src.host}:{src.port}" if src.port else src.host` convention). The already-generic sample_limit hint doubles as sample_topic_records' max_records bound. Calls sample_topic_records() then infer_columns_from_records(), through the same adapter.discover_schema() conversion the registry path already uses. SchemaDiscovery.tsx's kafka DiscoverHints branch gets a third field, "Bootstrap Servers (optional)", with a description telling the steward that leaving Schema Registry URL blank triggers sampling — reachable through the real UI, not backend-only.
+
+**Use case:** Discover a kafka topic's schema when no Confluent Schema Registry is in use at all — the ONLY way to discover such a topic, since [REQ-1767](#REQ-1767)'s registry path hard-requires a registry URL.
+
+**Code:** `provisa/api/admin/discovery_schema.py`, `provisa/kafka/source.py`, `provisa-ui/src/components/SchemaDiscovery.tsx`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/i18n/locales/en/schemaDiscovery.json`
+
+**Tests:** `provisa-ui/e2e/source-to-query-streaming.spec.ts`

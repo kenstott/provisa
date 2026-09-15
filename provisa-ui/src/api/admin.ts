@@ -588,6 +588,8 @@ export async function discoverSourceSchema(
     topic?: string;
     value_format?: string;
     schema_registry_url?: string;
+    // REQ-150: kafka SchemaSource.SAMPLE mode — used only when schema_registry_url is unset.
+    bootstrap_servers?: string;
   },
 ): Promise<DiscoverSchemaResponse> {
   const resp = await fetch(`${API_BASE_RAW}/admin/schema-discovery/discover/${sourceId}`, {
