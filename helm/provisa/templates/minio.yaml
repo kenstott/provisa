@@ -36,7 +36,9 @@ spec:
       {{- end }}
       containers:
         - name: minio
-          image: "minio/minio:{{ .Values.minio.tag }}"
+          # Docker Hub's minio/minio repo now denies anonymous pulls — see docker-compose.core.yml's
+          # minio service for the same fix and verification.
+          image: "quay.io/minio/minio:{{ .Values.minio.tag }}"
           args: ["server", "/data", "--console-address", ":9001"]
           securityContext:
             allowPrivilegeEscalation: false
