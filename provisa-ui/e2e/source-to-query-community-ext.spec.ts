@@ -187,15 +187,19 @@ test.describe("source to query through the UI, community-extension sources (REQ-
   test("airport: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    // REAL BUG, reproduced in true isolation (own webServer, no shared agents, no contention). The
-    // native_backend.py base_url fix from an earlier session IS confirmed working (registration
-    // succeeds through the schema pick). What's broken now: the Register Table form's table
-    // picker never shows "widgets" — 120s timeout, 0 elements found. Same symptom class as
-    // duckdb's column picker below, and as pinot/hive_s3's pickers in
-    // source-to-query-olap-lake.spec.ts — likely one systemic bug in how Register Table
-    // introspects/populates its async pickers, not a per-connector issue. Root cause not yet
-    // isolated.
-    test.skip(true, "real bug: Register Table's table picker never shows 'widgets'; not contention");
+    // REQ-1746: does not reproduce. A previous session's report of the table picker staying empty
+    // was re-investigated: DuckDBAirportConnector (connector_duckdb.py) is a plain ATTACH_RW
+    // extension connector, so the REQ-1673 seam (duckdb_runtime.introspect_schemas/
+    // introspect_tables, wired through backend.py's introspect_schemas/introspect_tables) already
+    // covers it exactly like postgresql/mssql/mongo/firebird — no missing dispatch branch the way
+    // duckdb-as-a-source (REQ-1749/1750) and tidb (REQ-1749) had. Verified directly against the
+    // real airport-shim fixture: `ATTACH 'grpc://...' (TYPE AIRPORT)` then
+    // `information_schema.schemata`/`.tables` filtered by `catalog_name`/`table_catalog` on the
+    // attached alias return `test`/`widgets` correctly. Run twice in true isolation (own webServer,
+    // unique ports, no shared agents) end to end — source create, schema/table pick, column pick,
+    // SQL query returning the 3 seeded rows — both green. The earlier "0 elements found" report was
+    // environmental (this repo runs many concurrent agents against shared docker/ports this
+    // session), not a code defect.
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_cext_airport_${stamp}`;

@@ -59145,3 +59145,54 @@
     When one signal's compaction raises before another signal's worker thread has started
     Then the other signal still runs to completion (successfully or with its own failure) before
     the first exception is raised to the caller
+- id: REQ-1762
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Bug Fix
+  priority: SHOULD
+  type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    Negative finding, not a code fix — re-verifies the same "systemic Register Table picker"
+    investigation as REQ-1749/1750 for the airport SourceType and finds no defect; no code
+    changed, so there is nothing new for a unit test to cover.
+  description: >-
+    Re-investigated the previous session's report that airport's (DuckDBAirportConnector,
+    provisa/federation/connector_duckdb.py) Register Table table picker never populates "widgets"
+    for schema "test", flagged as a "real bug ... not contention". Traced the full path:
+    DuckDBAirportConnector is a plain ATTACH_RW `_DuckDBExtensionConnector` with no special-cased
+    dispatch, so provisa/api/admin/introspect.py's native_schemas/native_tables fall through to
+    `return None` (airport has no direct driver pool entry) exactly like postgresql/mssql/mongo/
+    firebird, and provisa/federation/backend.py's introspect_schemas/introspect_tables (the
+    REQ-1673 seam) picks it up from there — no missing dispatch branch the way tidb (REQ-1749) and
+    duckdb-as-a-source (REQ-1750) had. Verified directly against the real airport-shim fixture
+    (tests/fixtures/airport_shim, demo/sources/airport/compose.yml): `ATTACH 'grpc://host:port'
+    AS "_src_<id>" (TYPE AIRPORT)` then `information_schema.schemata`/`.tables` filtered by
+    `catalog_name`/`table_catalog` on the attached alias correctly return schema "test" and table
+    "widgets". Ran source-to-query-community-ext.spec.ts's airport test twice in true isolation
+    (own webServer, unique ports, no shared agents/docker contention, `test.skip` removed) —
+    both green end to end (source create, schema/table/column pick, SQL query returning the 3
+    seeded rows). No code change was needed; the earlier report was environmental (this session
+    runs many concurrent agents sharing docker/ports), not a per-connector defect. Un-skipped the
+    test and corrected its comment to the actual finding.
+  code:
+  - provisa-ui/e2e/source-to-query-community-ext.spec.ts
+  tests:
+  - provisa-ui/e2e/source-to-query-community-ext.spec.ts
+  use_case: >-
+    Re-verifying source-to-query-community-ext.spec.ts's airport test in true isolation, following
+    the same methodology that found real defects for tidb (REQ-1749) and duckdb-as-a-source
+    (REQ-1750) in the same investigation.
+  scenario: |
+    Given an airport source registered with a valid Arrow Flight (airport-shim) endpoint
+    When the Register Table form's schema picker loads
+    Then schema "test" appears
+
+    Given schema "test" is selected
+    When the Register Table form's table picker loads
+    Then table "widgets" appears
+
+    Given table "widgets" is selected and registered
+    When a query runs against the registered table on the SQL page
+    Then the 3 seeded rows are returned

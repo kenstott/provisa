@@ -18597,3 +18597,17 @@ provisa/scheduler/jobs.py's compact_otel_signals() runs its three OTel signals (
 **Code:** `provisa/scheduler/jobs.py`
 
 **Tests:** `tests/unit/test_otel_compaction_fairness.py`
+
+## 4. Source Connectors
+
+### REQ-1762 · Bug Fix {#REQ-1762}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Re-investigated the previous session's report that airport's (DuckDBAirportConnector, provisa/federation/connector_duckdb.py) Register Table table picker never populates "widgets" for schema "test", flagged as a "real bug ... not contention". Traced the full path: DuckDBAirportConnector is a plain ATTACH_RW `_DuckDBExtensionConnector` with no special-cased dispatch, so provisa/api/admin/introspect.py's native_schemas/native_tables fall through to `return None` (airport has no direct driver pool entry) exactly like postgresql/mssql/mongo/ firebird, and provisa/federation/backend.py's introspect_schemas/introspect_tables (the [REQ-1673](#REQ-1673) seam) picks it up from there — no missing dispatch branch the way tidb ([REQ-1749](#REQ-1749)) and duckdb-as-a-source ([REQ-1750](#REQ-1750)) had. Verified directly against the real airport-shim fixture (tests/fixtures/airport_shim, demo/sources/airport/compose.yml): `ATTACH 'grpc://host:port' AS "_src_<id>" (TYPE AIRPORT)` then `information_schema.schemata`/`.tables` filtered by `catalog_name`/`table_catalog` on the attached alias correctly return schema "test" and table "widgets". Ran source-to-query-community-ext.spec.ts's airport test twice in true isolation (own webServer, unique ports, no shared agents/docker contention, `test.skip` removed) — both green end to end (source create, schema/table/column pick, SQL query returning the 3 seeded rows). No code change was needed; the earlier report was environmental (this session runs many concurrent agents sharing docker/ports), not a per-connector defect. Un-skipped the test and corrected its comment to the actual finding.
+
+**Use case:** Re-verifying source-to-query-community-ext.spec.ts's airport test in true isolation, following the same methodology that found real defects for tidb ([REQ-1749](#REQ-1749)) and duckdb-as-a-source ([REQ-1750](#REQ-1750)) in the same investigation.
+
+**Code:** `provisa-ui/e2e/source-to-query-community-ext.spec.ts`
+
+**Tests:** `provisa-ui/e2e/source-to-query-community-ext.spec.ts`
