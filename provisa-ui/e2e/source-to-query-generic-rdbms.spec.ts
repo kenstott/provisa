@@ -46,9 +46,14 @@ const E2E_CLICKHOUSE_PORT = 35850;
 const E2E_SQLSERVER_PORT = 35860;
 const E2E_ORACLE_PORT = 35870;
 const E2E_GREENPLUM_PORT = 35880;
-// saphana has no provision() entry (see the test's own comment below for why) — its host/port/
-// password are env-overridable so this file's own convention (a fixture this test spins up
-// itself) still holds when a real amd64 Docker host is available to point it at.
+// saphana/greenplum only actually run in CI (ubuntu-latest is a real amd64 Linux host) — both are
+// verified live against a real amd64 Docker host (saphana: a temporary Vultr instance, this
+// session; greenplum: amd64-only image, never runnable under this repo's arm64 local dev). Locally
+// (Docker Desktop's Apple Silicon VM) both still skip: saphana's hdbindexserver never starts there
+// (see compose.yml's module comment) and greenplum's from-scratch cluster boot under QEMU
+// emulation realistically exceeds a reasonable single e2e budget. process.env.CI is set to "true"
+// by ui-e2e-core.yml specifically (see that workflow's own env block).
+const RUNNING_IN_CI = process.env.CI === "true";
 const E2E_SAPHANA_HOST = process.env.PROVISA_DEMO_SAPHANA_HOST ?? "localhost";
 const E2E_SAPHANA_PORT = Number(process.env.PROVISA_DEMO_SAPHANA_PORT ?? 39041);
 const E2E_SAPHANA_PASSWORD = process.env.PROVISA_DEMO_SAPHANA_PASSWORD ?? "HXEHana1";
@@ -68,6 +73,8 @@ function hasSqlServerOdbcDriver(): boolean {
 const SQLSERVER_ODBC_AVAILABLE = hasSqlServerOdbcDriver();
 
 const SOURCES = ["mariadb", "tidb", "cockroachdb", "yugabytedb", "clickhouse", "sqlserver", "oracle"];
+// CI-only: needs a real amd64 Linux host, see RUNNING_IN_CI's comment above.
+const CI_SOURCES = RUNNING_IN_CI ? ["saphana", "greenplum"] : [];
 
 function provision(cmd: "up" | "down"): void {
   const env = {
@@ -79,9 +86,12 @@ function provision(cmd: "up" | "down"): void {
     PROVISA_DEMO_CLICKHOUSE_PORT: String(E2E_CLICKHOUSE_PORT),
     PROVISA_DEMO_SQLSERVER_PORT: String(E2E_SQLSERVER_PORT),
     PROVISA_DEMO_ORACLE_PORT: String(E2E_ORACLE_PORT),
+    PROVISA_DEMO_GREENPLUM_PORT: String(E2E_GREENPLUM_PORT),
+    PROVISA_DEMO_SAPHANA_PORT: String(E2E_SAPHANA_PORT),
+    PROVISA_DEMO_SAPHANA_PASSWORD: E2E_SAPHANA_PASSWORD,
   };
   try {
-    execFileSync(PYTHON, [PROVISION, cmd, "--prefix", PREFIX, ...SOURCES], {
+    execFileSync(PYTHON, [PROVISION, cmd, "--prefix", PREFIX, ...SOURCES, ...CI_SOURCES], {
       stdio: "inherit",
       env,
     });
@@ -93,6 +103,10 @@ function provision(cmd: "up" | "down"): void {
 
 test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", () => {
   test.beforeAll(() => {
+    // saphana's HXE tenant DB commonly takes 5-15 minutes past container-healthy before prime.py's
+    // own connect-retry loop (900s budget) succeeds — this beforeAll provisions every source in
+    // this file serially, so its own timeout must cover that worst case on top of the rest.
+    test.setTimeout(RUNNING_IN_CI ? 1200000 : 180000);
     provision("up");
   });
 
@@ -347,50 +361,74 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   });
 
   // Greenplum: datagrip/greenplum:6.8 (docker-compose.test.yml's own fixture) publishes an
-  // amd64-only manifest — under QEMU emulation on this arm64 host, the entrypoint's from-scratch
+  // amd64-only manifest — under QEMU emulation on an arm64 host, the entrypoint's from-scratch
   // GPDB cluster build realistically takes well beyond what is reasonable for a single e2e case
   // (docker-compose.test.yml itself budgets a 180s start_period plus 40 retries at 10s = up to
-  // ~580s just for the healthcheck, on top of Playwright's own webServer/test budgets). Skipped
-  // per this task's explicit allowance for a genuinely heavy/slow image rather than forcing a
-  // flaky fixture; demo/sources/greenplum/compose.yml + prime.py exist and mirror
-  // tests/integration/test_greenplum_source_e2e.py's working connection shape for whenever a
-  // native arm64 Greenplum image (or an amd64 CI runner) makes this practical.
+  // ~580s just for the healthcheck). Skipped locally for that reason; ui-e2e-core.yml's
+  // ubuntu-latest runner is a genuine amd64 host, so this runs for real there (RUNNING_IN_CI gate).
+  // Superuser gpadmin, trust auth (no password), default db postgres — same shape
+  // tests/integration/test_greenplum_source_e2e.py uses against the identical image.
   test("greenplum: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
     test.skip(
-      true,
+      !RUNNING_IN_CI,
       "datagrip/greenplum:6.8 is amd64-only; under QEMU emulation the from-scratch GPDB " +
-        "cluster boot realistically exceeds a reasonable single e2e budget (see comment above)",
+        "cluster boot realistically exceeds a reasonable single e2e budget locally — runs for " +
+        "real in CI (ubuntu-latest is a genuine amd64 host)",
     );
-    void page;
-    void E2E_GREENPLUM_PORT;
+    test.setTimeout(360000);
+    const stamp = Date.now();
+    const sourceId = `e2e_greenplum_${stamp}`;
+
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("greenplum");
+    await page.getByLabel(/^Host/).fill("localhost");
+    await page.getByLabel(/^Port/).fill(String(E2E_GREENPLUM_PORT));
+    await page.getByLabel(/^Username/).fill("gpadmin");
+    await page.getByLabel(/^Database/).fill("postgres");
+    await submitSourceAndExpectListed(page, sourceId);
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "public", "widgets");
+    await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+      timeout: 60000,
+    });
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    );
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toEqual(["1", "Widget A"]);
+    expect(rows[2]).toEqual(["3", "Widget C"]);
   });
 
-  // saphana (REQ-1753): no provision() entry — SAP HANA Express (saplabs/hanaexpress) is a full
-  // HANA instance (~6.4GB, needs 8GB+ RAM live, 5-15 min cold start) that genuinely fails to start
-  // its indexserver under Docker Desktop's Apple Silicon VM (verified live this session:
-  // hdbnameserver/hdbcompileserver/hdbpreprocessor/hdbwebdispatcher all start, the wrapper reports
-  // "Startup finished!", but hdbindexserver — the actual database engine — never launches;
-  // community reports, including SAP's own "Running Hana Express on M1 Macs" blog, confirm this is
-  // an unresolved Docker-Desktop-on-Apple-Silicon limitation, not a config issue). This test, its
-  // fixture (demo/sources/saphana/compose.yml + prime.py), and the product fix that makes a
-  // saphana SOURCE reachable at all (registry.py's _SQLALCHEMY_FALLBACK entry, REQ-1753 — saphana
-  // previously existed only as a whole ACTIVE ENGINE choice, never as a source registrable under
-  // another engine like every RDBMS type above) were all verified END TO END this session against
-  // a real x86_64 Linux Docker host (a temporary Vultr instance) — this test passed there,
-  // including the picker/registration/query round-trip below. Skipped here only because this
-  // machine cannot run the fixture; point PROVISA_DEMO_SAPHANA_HOST/PORT/PASSWORD at any real
-  // amd64 Docker host running demo/sources/saphana's compose.yml (already primed via its prime.py)
-  // to re-run it for real.
+  // saphana (REQ-1753): SAP HANA Express (saplabs/hanaexpress) is a full HANA instance (~6.4GB,
+  // needs 8GB+ RAM live, 5-15 min cold start) whose indexserver genuinely fails to start under
+  // Docker Desktop's Apple Silicon VM (verified live: hdbnameserver/hdbcompileserver/
+  // hdbpreprocessor/hdbwebdispatcher all start, the wrapper reports "Startup finished!", but
+  // hdbindexserver — the actual database engine — never launches; community reports, including
+  // SAP's own "Running Hana Express on M1 Macs" blog, confirm this is an unresolved
+  // Docker-Desktop-on-Apple-Silicon limitation, not a config issue). This test, its fixture
+  // (demo/sources/saphana/compose.yml + prime.py), and the product fix that makes a saphana SOURCE
+  // reachable at all (registry.py's _SQLALCHEMY_FALLBACK entry, REQ-1753 — saphana previously
+  // existed only as a whole ACTIVE ENGINE choice, never as a source registrable under another
+  // engine like every RDBMS type above) were all verified END TO END against a real x86_64 Linux
+  // Docker host (a temporary Vultr instance). ui-e2e-core.yml's ubuntu-latest runner is a genuine
+  // amd64 host too, so provision() above starts this fixture there and this test runs for real
+  // (RUNNING_IN_CI gate) — locally it still skips. PROVISA_DEMO_SAPHANA_HOST/PORT/PASSWORD remain
+  // env-overridable to point at any other real amd64 Docker host for a manual run.
   test("saphana: add the source, register a table, query it on the SQL page", async ({ page }) => {
     test.skip(
-      true,
+      !RUNNING_IN_CI,
       "saplabs/hanaexpress's indexserver does not start under Docker Desktop's Apple Silicon VM " +
-        "(verified live, not a config issue — see comment above); verified passing end-to-end " +
-        "this session against a real amd64 Docker host",
+        "(verified live, not a config issue — see comment above); runs for real in CI " +
+        "(ubuntu-latest is a genuine amd64 host)",
     );
-    test.setTimeout(180000);
+    test.setTimeout(900000);
     const stamp = Date.now();
     const sourceId = `e2e_saphana_${stamp}`;
 

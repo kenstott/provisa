@@ -18611,3 +18611,15 @@ Re-investigated the previous session's report that airport's (DuckDBAirportConne
 **Code:** `provisa-ui/e2e/source-to-query-community-ext.spec.ts`
 
 **Tests:** `provisa-ui/e2e/source-to-query-community-ext.spec.ts`
+
+### REQ-1763 · Test Coverage {#REQ-1763}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+saphana and greenplum (source-to-query-generic-rdbms.spec.ts) were both verified end to end against a real amd64 Docker host earlier this session (saphana: [REQ-1753](#REQ-1753), a temporary Vultr instance; greenplum: datagrip/greenplum:6.8 is amd64-only, never runnable under this repo's arm64 local dev) but both test cases carried an unconditional test.skip(true, ...) — meaning neither ever ran anywhere, including in CI, even though ui-e2e-core.yml's ubuntu-latest runner is itself a genuine amd64 Linux host and could run both for real. Replaced the unconditional skip with a `RUNNING_IN_CI = process.env.CI === "true"` gate (CI is set by ui-e2e-core.yml's own env block) on each: locally (Docker Desktop's Apple Silicon VM, where saphana's hdbindexserver never starts and greenplum's cluster boot under QEMU emulation is unreasonably slow) both still skip; in CI both provision for real via provision()'s existing SOURCES list (extended with a CI_SOURCES entry) and run their full source-create/register/query assertions. Added the `saphana` pyproject extra (hdbcli + sqlalchemy-hana) to ui-e2e-core.yml's Python install step — the fixture's own prime.py and the product's hana+hdbcli driver both need it, and it was previously only ever installed ad hoc on the Vultr verification host. Raised ui-e2e-core.yml's timeout-minutes from 60 to 90: saphana's HXE tenant DB can take up to 15 minutes past container-healthy before prime.py's own retry loop succeeds, serially on top of every other fixture this file's beforeAll already provisions.
+
+**Use case:** "wire all 5 into the github action" — closing the gap between fixtures that were built and verified against a real amd64 host this session (saphana, greenplum, plus hive/druid/exasol handled separately) and CI actually exercising them, rather than leaving verified-but-skipped tests as the permanent state.
+
+**Code:** `provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts`, `.github/workflows/ui-e2e-core.yml`
+
+**Tests:** `provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts`

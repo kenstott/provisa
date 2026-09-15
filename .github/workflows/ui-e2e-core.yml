@@ -46,11 +46,14 @@ jobs:
     runs-on: ubuntu-latest
     # Was 30: the core-lane suite has grown past that budget — every run since at least
     # 2026-09-12 was cancelled at the 30m mark mid-suite, not from a hang (the last log inspected
-    # was still making steady per-test progress at cancellation). Raised as an immediate unblock;
-    # the real fix (splitting/parallelizing this job, or trimming serial per-file container
-    # provisioning — several files stand up every fixture in one beforeAll even when most of that
-    # file's tests are skipped) is tracked separately, not done here.
-    timeout-minutes: 60
+    # was still making steady per-test progress at cancellation). Raised to 60 as an immediate
+    # unblock, then to 90: source-to-query-generic-rdbms.spec.ts's beforeAll now also provisions
+    # saphana, whose HXE tenant DB alone can take up to 15 minutes past container-healthy
+    # (demo/sources/saphana/prime.py's own retry budget), serially on top of every other fixture in
+    # that file. The real fix (splitting/parallelizing this job, or trimming serial per-file
+    # container provisioning — several files stand up every fixture in one beforeAll even when most
+    # of that file's tests are skipped) is tracked separately, not done here.
+    timeout-minutes: 90
     env:
       # playwright.config.ts keys `reuseExistingServer` off this: under CI every webServer must be
       # started by the harness, never adopted from a stale process.
@@ -69,9 +72,12 @@ jobs:
       # The `cassandra` extra is demo/sources/cassandra/prime.py's own dependency: this lane's
       # global setup provisions every DEMO_SOURCES entry (demo-source-containers.ts), cassandra
       # included, and prime.py imports cassandra-driver directly rather than through a lazy import
-      # a missing package could degrade gracefully around.
+      # a missing package could degrade gracefully around. `saphana` (hdbcli + sqlalchemy-hana) is
+      # demo/sources/saphana/prime.py's own dependency and the product's own hana+hdbcli driver —
+      # source-to-query-generic-rdbms.spec.ts's saphana case runs for real on this runner (a genuine
+      # amd64 host, see that spec's RUNNING_IN_CI gate).
       - name: Install Python deps
-        run: uv sync --frozen --extra dev --extra cassandra
+        run: uv sync --frozen --extra dev --extra cassandra --extra saphana
 
       - uses: actions/setup-node@v4
         with:

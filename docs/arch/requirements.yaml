@@ -59081,27 +59081,42 @@
     governance question. The goal is that a future mischief-motivated or accidental bypass has no
     quiet fourth path — every call must name and prove what authorizes it.
   implementation_scratchpad: >-
-    24 files call execute_engine directly today (provisa/cache/hot_tables.py,
-    provisa/cache/warm_tables.py, provisa/discovery/collector.py, provisa/discovery/catalog_cache.py,
-    provisa/federation/runtime.py, provisa/live/engine.py, provisa/nl/executor.py,
-    provisa/api/app_startup.py, provisa/api/_query_helpers.py,
-    provisa/api/admin/table_search_router.py, provisa/api/admin/schema_query.py,
-    provisa/api/admin/schema_mutation.py, provisa/api/admin/table_profile_router.py,
-    provisa/api/data/action_governance.py, provisa/api/data/endpoint_executors.py,
-    provisa/mv/preflight_eval.py, provisa/api/rest/cypher_exec.py, provisa/mv/input_signals.py,
-    provisa/mv/refresh.py, provisa/executor/ctas.py, provisa/events/app_wiring.py,
-    provisa/events/source_loader.py, provisa/pgwire/ddl_handler.py, provisa/pgwire/_pipeline.py).
-    Every one of these needs classifying into one of the three authorization types above and fixed
-    to pass it explicitly — none are exempt from having a typed authorization, even though most
-    (catalog/metadata reads, MV refresh) are exempt from the governed-plan-stamp check specifically.
-    Confirmed instances needing the response-path check: the admin test endpoint
-    (provisa/api/admin/actions_router.py). Confirmed instance needing the landing-authorization
-    check (SQL-matches-registered-definition): provisa/mv/refresh.py — currently executes select_sql
-    with no verification it matches mv.sql/mv.join_pattern as actually stored. Candidate shape:
-    execute_engine(sql, *, authorization: GovernedPlanAuth | PrivilegedLandingAuth |
-    CatalogReadAuth), each a small typed object carrying what it needs to verify (the stamp; the
-    mv_id plus a comparison against the stored definition; nothing beyond a read-only-statement
-    check) rather than a bare sql: str parameter with an optional bolt-on check.
+    IMPLEMENTED (2026-09-15): provisa/federation/execution_auth.py — GovernedPlanAuth, SystemAuth
+    (Trusted Subsystem pattern: the system authenticates as itself via mint_system_token/
+    _system_token_is_valid, never by impersonating a role), verify_execution_authorization().
+    EngineRuntime.execute_engine (provisa/federation/runtime.py) accepts authorization as an
+    OPTIONAL keyword-only parameter — verified when supplied, logged (not silently trusted) when
+    omitted. Left optional deliberately: ~45 call sites across 24 files predate this and cannot
+    all be migrated safely in one change without a dedicated test pass; making it required is a
+    separate follow-up once real call-site usage is inventoried from the debug log.
+    FULLY MIGRATED: provisa/mv/refresh.py — all 21 execute_engine call sites (refresh_mv,
+    _refresh_bitemporal, apply_bitemporal_append, _build_refresh_sql, _probe_source_count,
+    _read_target_rows/_snapshot_prev_rows/_post_refresh_delta_capture, reclaim_removed_mvs,
+    detect_orphans, drop_expired_orphans) now pass a SystemAuth minted per refresh/reclaim/orphan
+    operation, reason=f"mv_refresh:{mv.id}" etc. — AST-verified (every execute_engine call site in
+    the file carries an authorization keyword), pyright clean, imports clean.
+    CORRECTED: the admin test endpoint (provisa/api/admin/actions_router.py) does NOT call
+    execute_engine — it calls state.source_pools.execute (provisa/executor/pool.py:88), a
+    genuinely separate primitive for the DIRECT-mechanism dispatch path, not the ENGINE terminal.
+    It is out of scope for this requirement as literally scoped to execute_engine; SourcePool.execute
+    would need its own, analogous typed-authorization treatment as a separate follow-up if the same
+    hardening is wanted there. Separately (already resolved, not a REQ-1760 concern): its role_id-
+    optional path is an intentional, UI-labeled "No Governance" test/debug feature
+    (provisa-ui/src/pages/CommandsPage.tsx:909-919), not a silent gap — do not re-flag it.
+    NOT YET MIGRATED: the other 23 files listed in the earlier survey (cache/hot_tables.py,
+    cache/warm_tables.py, discovery/collector.py, discovery/catalog_cache.py, live/engine.py,
+    nl/executor.py, api/app_startup.py, api/_query_helpers.py, api/admin/table_search_router.py,
+    api/admin/schema_query.py, api/admin/schema_mutation.py, api/admin/table_profile_router.py,
+    api/data/action_governance.py, api/data/endpoint_executors.py, mv/preflight_eval.py,
+    api/rest/cypher_exec.py, mv/input_signals.py, executor/ctas.py, events/app_wiring.py,
+    events/source_loader.py, pgwire/ddl_handler.py, pgwire/_pipeline.py). This is the scope of the
+    dedicated follow-up migration. The SQL-matches-registered-definition check (expected_sql on
+    SystemAuth) exists in the mechanism but was not applied per-statement in mv/refresh.py — a
+    single per-refresh token was minted and reused across that operation's several statements
+    (CREATE SCHEMA, existence probe, DELETE/INSERT/CREATE, COUNT) rather than pinning expected_sql
+    on each, since select_sql is read fresh from the MV's own stored definition every refresh cycle
+    by construction (_build_refresh_sql), so the token-reuse risk expected_sql guards against is
+    narrower here than for a call site that could execute caller-influenced SQL under a system token.
 - id: REQ-1761
   status: complete
   since: 2026-09
@@ -59196,3 +59211,53 @@
     Given table "widgets" is selected and registered
     When a query runs against the registered table on the SQL page
     Then the 3 seeded rows are returned
+- id: REQ-1763
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Test Coverage
+  priority: SHOULD
+  type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    Playwright e2e CI-lane wiring, not unit-testable logic; the change is entirely in which
+    fixtures a workflow_dispatch/release-lane run provisions and which test.skip() conditions
+    gate on, verified by running the lane itself (REQ-1759's unit-tests.yml covers pure-logic
+    changes; this is CI/fixture wiring).
+  description: >-
+    saphana and greenplum (source-to-query-generic-rdbms.spec.ts) were both verified end to end
+    against a real amd64 Docker host earlier this session (saphana: REQ-1753, a temporary Vultr
+    instance; greenplum: datagrip/greenplum:6.8 is amd64-only, never runnable under this repo's
+    arm64 local dev) but both test cases carried an unconditional test.skip(true, ...) — meaning
+    neither ever ran anywhere, including in CI, even though ui-e2e-core.yml's ubuntu-latest runner
+    is itself a genuine amd64 Linux host and could run both for real. Replaced the unconditional
+    skip with a `RUNNING_IN_CI = process.env.CI === "true"` gate (CI is set by ui-e2e-core.yml's
+    own env block) on each: locally (Docker Desktop's Apple Silicon VM, where saphana's
+    hdbindexserver never starts and greenplum's cluster boot under QEMU emulation is unreasonably
+    slow) both still skip; in CI both provision for real via provision()'s existing SOURCES list
+    (extended with a CI_SOURCES entry) and run their full source-create/register/query assertions.
+    Added the `saphana` pyproject extra (hdbcli + sqlalchemy-hana) to ui-e2e-core.yml's Python
+    install step — the fixture's own prime.py and the product's hana+hdbcli driver both need it,
+    and it was previously only ever installed ad hoc on the Vultr verification host. Raised
+    ui-e2e-core.yml's timeout-minutes from 60 to 90: saphana's HXE tenant DB can take up to 15
+    minutes past container-healthy before prime.py's own retry loop succeeds, serially on top of
+    every other fixture this file's beforeAll already provisions.
+  code:
+  - provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts
+  - .github/workflows/ui-e2e-core.yml
+  tests:
+  - provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts
+  use_case: >-
+    "wire all 5 into the github action" — closing the gap between fixtures that were built and
+    verified against a real amd64 host this session (saphana, greenplum, plus hive/druid/exasol
+    handled separately) and CI actually exercising them, rather than leaving verified-but-skipped
+    tests as the permanent state.
+  scenario: |
+    Given ui-e2e-core.yml's Playwright core lane running on ubuntu-latest (a genuine amd64 host)
+    When source-to-query-generic-rdbms.spec.ts's saphana and greenplum tests run
+    Then RUNNING_IN_CI is true and both provision their real fixture and run their full
+    source-create/register-table/query assertions, rather than skipping
+
+    Given the same spec file running on a local Apple Silicon Docker Desktop host
+    When the same two tests run
+    Then RUNNING_IN_CI is false and both skip, unchanged from before
