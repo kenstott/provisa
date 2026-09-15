@@ -57262,11 +57262,27 @@
     createSource call was even made, which is what actually read as "the form submit silently
     fails." That was a test bug, not a product defect; fixed by filling Database with the
     fixture's seeded ``wh``.
+
+    (Amended 2026-09-15, hiveserver2 dialect gap:) with the two gaps above fixed, the live e2e
+    still failed one step further in: querying the registered table raised HS2 ParseException
+    "cannot recognize input near '\"wh\"'". ``hiveserver2`` was never added to
+    ``core/source_registry.py``'s ``SOURCE_TO_DIALECT`` map — only plain ``hive`` (the
+    Trino-scanned lake-storage type, a different SourceType, HS2 never involved) was. Missing from
+    that map, ``Source.dialect`` returned None, ``schema_mutation.py``'s REQ-1757 fix
+    (``model.dialect or ""``) stored dialect="", and ``pgwire/_pipeline.py``'s
+    ``decision.dialect or "postgres"`` fallback then compiled ANSI-double-quoted SQL
+    (``"wh"."widgets"``) for a server that only accepts backtick-quoted identifiers — the exact
+    same silent-wrong-dialect failure mode REQ-1757 fixed for mariadb/tidb, just for a source type
+    that was never in the map at all rather than one whose dialect field was hardcoded empty.
+    Fixed by mapping ``"hiveserver2": "hive"`` — sqlglot's ``hive`` dialect (already used by plain
+    ``hive``) emits the correct backtick quoting. Verified live: full hiveserver2 e2e case
+    (create source, register table, run a SQL-page query, see live rows) passes end to end.
   code:
   - provisa/executor/drivers/hive.py
   - provisa/executor/drivers/exasol.py
   - provisa/executor/drivers/registry.py
   - provisa/core/models.py
+  - provisa/core/source_registry.py
   - provisa/api/admin/introspect.py
   - docker-compose.test.yml
   - tests/conftest.py

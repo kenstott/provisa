@@ -48,6 +48,17 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     "fabric": "tsql",  # Microsoft Fabric Warehouse — T-SQL over TDS (REQ-986)
     "synapse": "tsql",  # Azure Synapse — T-SQL over TDS
     "hive": "hive",
+    # REQ-1731 gap: hiveserver2 (executor/drivers/hive.py's HiveDriver, direct over impyla) was
+    # never added here even though "hive" (the Trino-scanned lake-STORAGE type, HS2 never
+    # involved — see hive.py's own module doc) already was. Missing from this map, model.dialect
+    # (core/models.py) returned None for a hiveserver2 source, and schema_mutation.py's
+    # `model.dialect or ""` (REQ-1757) then stored dialect="", so decide_route's own
+    # `decision.dialect or "postgres"` fallback (pgwire/_pipeline.py) silently compiled ANSI
+    # double-quoted SQL (``"wh"."widgets"``) for HS2, which only accepts backtick-quoted
+    # identifiers — verified live: HS2 raised "ParseException ... cannot recognize input near
+    # '\"wh\"'" on exactly that SQL. Hive's own sqlglot dialect (shared with plain "hive" above)
+    # emits backticks and is what HiveDriver's SQL actually needs to speak.
+    "hiveserver2": "hive",
     "druid": "druid",
     "exasol": "exasol",
 }

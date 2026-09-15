@@ -195,18 +195,16 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
   test("hiveserver2: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    // REAL BUG, reproduced in isolation (not contention — confirmed by re-running this file alone
-    // on a self-created docker network, no shared stack, no concurrent agents). Two issues found:
-    // (1) this file's DOCKER_NETWORK defaults to "provisa_default", assuming a pre-existing
-    // co-located compose project rather than self-provisioning one — override with
-    // PROVISA_E2E_DOCKER_NETWORK to run this file in true isolation (fixed for this run, not yet
-    // fixed as a default). (2) With that worked around, the Sources form submit for hiveserver2
-    // silently fails: the form stays open, no error banner, the new source never appears in the
-    // table (submitSourceAndExpectListed times out at 60s). Root cause not yet isolated — the
-    // demo/sources/hiveserver2 fixture itself IS proven live (provision.py + prime.py: creates
-    // hive-metastore + hiveserver2, database `wh`, table `widgets`, reads back 3 seed rows via
-    // impyla) — the UI registration path itself is what's broken.
-    test.skip(true, "real bug: Sources form submit for hiveserver2 never lists the new source; not contention");
+    // Root cause (confirmed live, isolated network, no contention): hiveserver2 IS SIMPLE_RDBMS
+    // (constants.ts), and SourceFormFields.tsx renders the "Database" input `required` for every
+    // SIMPLE_RDBMS type but druid. This test never filled it, so the browser's native HTML5
+    // required-field validation silently blocked form submission on click — no submit event ever
+    // fired, so createSource never reached the backend (confirmed: zero GraphQL/server activity
+    // in the backend log for the whole span of the failing run). That is exactly why it read as a
+    // "silent" failure with no error banner: React's onSubmit handler, and the try/catch around
+    // it that would have shown one, never ran. Every other SIMPLE_RDBMS case in
+    // source-to-query.spec.ts fills Database for the same reason (see e.g. its redis/cassandra
+    // cases: "the form requires one"). Fixed here the same way, with the fixture's real database.
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_hiveserver2_${stamp}`;
@@ -216,6 +214,7 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
     await page.getByTestId("sources-type-select").selectOption("hiveserver2");
     await page.getByLabel(/^Host/).fill("localhost");
     await page.getByLabel(/^Port/).fill(String(E2E_HIVESERVER2_PORT));
+    await page.getByLabel(/^Database/).fill("wh"); // demo/sources/hiveserver2/prime.py's seeded db
     // auth_mechanism defaults to PLAIN (SourceFormFields.tsx), which is what demo/sources/
     // hiveserver2's stock HS2 speaks — left untouched.
     await submitSourceAndExpectListed(page, sourceId);

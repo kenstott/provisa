@@ -344,6 +344,19 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         )
         return sorted(row[0] for row in result.rows)
 
+    if t == "hiveserver2":
+        # REQ-1731 gap: hiveserver2 (executor/drivers/hive.py's HiveDriver) is a real DIRECT
+        # driver, so it lives in source_pools like postgresql/mysql above, but had no dispatch
+        # branch here — every RDBMS branch above it is an explicit `if t == ...`, so it fell to
+        # `return None` and the generic engine-catalog fallback in available_schemas, which has no
+        # ATTACH for hiveserver2 on a plain DuckDB core-lane engine. The Register Table schema
+        # picker stayed permanently empty pre-registration — same class of gap already fixed above
+        # for trino/snowflake/databricks/bigquery/saphana. Verified live against a stock HS2
+        # (apache/hive:4.0.0): `SHOW SCHEMAS` returns one `database_name` column, same rows as
+        # `SHOW DATABASES` (HS2 treats them as synonyms), no system schemas to exclude.
+        result = await pool.execute(source_id, "SHOW SCHEMAS")
+        return [row[0] for row in result.rows]
+
     if t in ("fabric", "synapse"):
         # T-SQL, same shape as the sqlserver branch above — the connection is already scoped to
         # the source's one warehouse database (mssql_warehouse.py's MssqlWarehouseDriver.connect).
@@ -885,6 +898,17 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
             )
             return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
+        # REQ-1731 gap: see native_schemas's hiveserver2 branch — same missing-dispatch-branch
+        # symptom, for tables. Verified live against a stock HS2: Hive has no information_schema
+        # (`SELECT ... FROM INFORMATION_SCHEMA.TABLES` raises "Table not found 'TABLES'"), so this
+        # uses `SHOW TABLES IN <schema>` (impyla's HiveDriver.execute has no identifier-binding
+        # paramstyle, same constraint as the snowflake/databricks/bigquery f-string branches in
+        # native_tables/native_columns below — schema_name here is always one native_schemas itself
+        # already returned from `SHOW SCHEMAS`, never raw user input).
+        if t == "hiveserver2":
+            result = await pool.execute(source_id, f"SHOW TABLES IN {schema_name}")
+            return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+
     except Exception:
         return None
 
@@ -998,6 +1022,14 @@ async def native_columns(  # REQ-1732
             f"SELECT column_name, data_type FROM `{project}`.`{schema_name}`.INFORMATION_SCHEMA.COLUMNS "
             f"WHERE table_name = '{table_name}' ORDER BY ordinal_position",
         )
+        return [(row[0], row[1]) for row in result.rows]
+    if t == "hiveserver2":
+        # REQ-1731 gap: see _native_tables_rdbms's hiveserver2 branch — same missing-dispatch
+        # symptom, for columns. `DESCRIBE <schema>.<table>` is Hive's own catalog command (no
+        # information_schema); returns (col_name, data_type, comment) rows. schema_name/table_name
+        # here are always values native_schemas/this same dispatch already returned from HS2 itself
+        # (SHOW SCHEMAS / SHOW TABLES IN), never raw user input — same constraint noted above.
+        result = await pool.execute(source_id, f"DESCRIBE {schema_name}.{table_name}")
         return [(row[0], row[1]) for row in result.rows]
     if t in ("fabric", "synapse"):
         result = await pool.execute(
