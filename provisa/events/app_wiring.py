@@ -385,12 +385,20 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             mv_bitemporal_append=mv_bitemporal_append,  # REQ-1162/1166/1167 append entry
         )
         processors = build_processors(specs, db=db, dependents_of=dependents_of)
+        # REQ-<NEW>: publish the live processors list AND which nodes already have a poll job so a
+        # later, per-node-scoped rewire (wire_new_poll_jobs, called from _rebuild_schemas_impl on an
+        # already-running runtime this function itself is never called from) can top up a NEWLY
+        # registered node without re-deriving/re-walking every source here again. Mutating this SAME
+        # list object is what lets a later-appended processor's pending work actually get drained by
+        # the tick job registered below — the tick job's closure holds this exact list, not a copy.
+        state.event_loop_processors = processors
         # register_runtime schedules the tick/reaper, each poll node's job, AND a one-shot boot-create
         # job: replicas are BUILT at boot (that job lands every source + fans out to its MVs), then
         # REFRESHED by the poll/push events.
         # REQ-1266: a non-default org wires under the org bound by build_org_runtime — its job ids get
         # an org suffix and each fire binds current_org. The default org (ContextVar unset) → None →
         # bare ids, unchanged single-org behavior. db/processors already carry this org's tenant plane.
+        from provisa.core.change_signal import is_push
         from provisa.core.request_context import current_org
 
         register_runtime(
@@ -401,6 +409,15 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             seed=seed,
             org_id=current_org.get(None),
         )
+        # A node recorded here already has its poll job registered (or is a push node, not this
+        # mechanism's job) — wire_new_poll_jobs skips anything in this set, mirroring
+        # wire_push_listeners' own state.push_listener_disconnects idempotency.
+        state.poll_jobs_registered = {
+            spec.node
+            for spec in specs
+            if is_push(spec.change_signal)
+            or (spec.poll_seconds is not None and spec.probe_factory is not None)
+        }
         log.info(
             "event loop wired: %d node(s) on the scheduler (boot-create + refresh scheduled)",
             len(processors),
@@ -408,4 +425,147 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         return len(processors)
     except Exception:
         log.exception("event loop wiring failed — the app runs without it")
+        return 0
+
+
+async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
+    """Per-node-scoped counterpart to :func:`wire_event_loop`, for a POLL source table (rss's poll
+    cadence is the current example) registered against an ALREADY-RUNNING runtime — the case
+    ``_rebuild_schemas_impl`` (provisa/api/app.py) hits on every ``registerTable``/table-edit
+    mutation, which never calls ``wire_event_loop`` itself (only ``register_runtime``'s own per-org
+    boot build does).
+
+    Mirrors ``wire_push_listeners``'s own per-node idempotency (``state.push_listener_disconnects``)
+    via ``state.poll_jobs_registered``: a node already in that set (seeded by ``wire_event_loop``'s
+    own initial wiring, topped up here after) is skipped. Registers a poll job ONLY for a node that
+    doesn't have one yet — it never re-derives ``build_adapter_loaders`` output against every other
+    registered source or re-walks their specs, unlike calling ``wire_event_loop`` again here (tried
+    and reverted: it re-derived adapter_loaders and re-walked EVERY registered source's poll-job
+    registration on every rebuild and broke an unrelated, already-registered sqlite source's live
+    queries — see the requirements entry for the account).
+
+    Returns the number of NEW poll jobs registered (0 when the event loop hasn't wired yet for this
+    runtime, or there is no new poll-only node to wire). Best-effort — never raises into the caller's
+    schema-rebuild path."""
+    try:
+        db = getattr(state, "tenant_db", None)
+        engine = getattr(state, "federation_engine", None)
+        config = getattr(state, "config", None)
+        scheduler = getattr(state, "_scheduler", None)
+        processors = getattr(state, "event_loop_processors", None)
+        if (
+            db is None
+            or engine is None
+            or config is None
+            or scheduler is None
+            or processors is None
+        ):
+            # The event loop has never wired for this runtime (wire_event_loop hasn't run yet, or
+            # its prerequisites weren't ready) — nothing to top up; its own next full wire covers it.
+            return 0
+        from provisa.federation.engine import MaterializeStoreUnconfigured
+
+        try:
+            store_dsn = engine.materialize_store_dsn()
+        except MaterializeStoreUnconfigured:
+            return 0
+
+        if not hasattr(state, "poll_jobs_registered"):
+            state.poll_jobs_registered = set()
+
+        from provisa.federation.registry_view import registered_sources, registered_tables
+
+        all_sources = await registered_sources(state)
+        registered_tables_ = await registered_tables(state)
+        src_by_id = {s.id: s for s in all_sources}
+
+        candidates = [
+            (src_by_id[tbl.source_id], tbl, f"{tbl.schema_name}.{tbl.table_name}")
+            for tbl in registered_tables_
+            if f"{tbl.schema_name}.{tbl.table_name}" not in state.poll_jobs_registered
+            and tbl.source_id in src_by_id
+        ]
+        if not candidates:
+            return 0
+
+        from provisa.core.request_context import active_env, current_org
+        from provisa.events import supervisor
+        from provisa.events.boot import build_processors, build_source_node_spec
+        from provisa.events.source_loader import SourceRowLoader, UnsupportedSourceFetch
+        from provisa.federation.store_scope import store_schema as _store_schema_for
+
+        store_schema = _store_schema_for(store_dsn, active_env())
+        _adapter_loaders = build_adapter_loaders(state, engine)
+        row_loader = SourceRowLoader(engine, adapter_loaders=_adapter_loaders)
+        _warned: set[str] = set()
+
+        def source_fetch(src: Any, tbl: Any) -> Any:
+            async def _fetch(_pending: list[dict]) -> list[dict]:
+                try:
+                    return await row_loader.load(src, tbl)
+                except UnsupportedSourceFetch:
+                    if src.id not in _warned:
+                        log.warning(
+                            "poll-job wiring: %s has no engine row-scan; adapter fetch not yet "
+                            "wired — landing skipped",
+                            src.id,
+                        )
+                        _warned.add(src.id)
+                    return []
+
+            return _fetch
+
+        def probe_scalar(_src: Any, _tbl: Any) -> Any:
+            async def _scalar(sql: str) -> Any:
+                result = await engine.execute_engine(sql)
+                return result.rows[0][0] if result.rows else None
+
+            return _scalar
+
+        registry = getattr(state, "mv_registry", None)
+        mvs = registry.get_enabled() if registry is not None else []
+        mv_sql = {
+            f"{m.target_schema}.{m.target_table}": m.sql for m in mvs if getattr(m, "sql", None)
+        }
+        try:
+            dependents_of = supervisor.dependents_of(mv_sql)
+        except ValueError:
+            log.warning("poll-job wiring: MV lineage has a cycle — skipping")
+            return 0
+
+        bare_engine = getattr(engine, "engine", engine)
+        org_id = current_org.get(None)
+        registered_count = 0
+        for src, tbl, node in candidates:
+            spec = build_source_node_spec(
+                tbl,
+                src,
+                engine=bare_engine,
+                engine_runtime=engine,
+                source_fetch=source_fetch,
+                store_schema=store_schema,
+                probe_scalar=probe_scalar,
+            )
+            if spec is None:
+                continue  # not a landed MATERIALIZED source (or not yet type-resolved) — skip for now
+            state.poll_jobs_registered.add(node)  # never revisit, whether wired below or not
+            if spec.poll_seconds is None or spec.probe_factory is None:
+                # push node (owned by wire_push_listeners) or no cadence configured yet.
+                continue
+            [new_processor] = build_processors([spec], db=db, dependents_of=dependents_of)
+            # Mutate the SAME list wire_event_loop's own register_runtime call closed over for the
+            # scheduled tick job — appending here is what makes the new node's landed events actually
+            # get drained, without touching (or re-registering) the tick job itself.
+            processors.append(new_processor)
+            new_processor.register_poll_job(
+                scheduler,
+                seconds=spec.poll_seconds,
+                probe_factory=spec.probe_factory,
+                org_id=org_id,
+            )
+            registered_count += 1
+            log.info("poll job wired for new node %s (source=%r)", node, src.id)
+        return registered_count
+    except Exception:
+        log.exception("poll-job wiring failed — a new poll-only node may be missing its cadence")
         return 0

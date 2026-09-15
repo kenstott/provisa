@@ -280,31 +280,82 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     expect(rows).toEqual([["abc-1", "hello-ingest"]]);
   });
 
-  // rss: SKIPPED. The Register Table flow through the real UI (source create → schema/table
-  // pick → column select → submit, all fixed by this file's REQ-1745 introspection branches) DOES
-  // work and was verified manually while developing this test. What's still missing is the
-  // LANDING side: rss is POLL, not push, so it lands through SourceRowLoader/build_adapter_loaders
-  // (make_rss_loader, added alongside this file), which only runs when wire_event_loop executes —
-  // and wire_event_loop is wired ONLY from register_runtime's per-org runtime build (provisa/api/
-  // app.py), never from `_rebuild_schemas()`, which is what registerTable's mutation actually
-  // calls on an already-running default/single-tenant runtime (the shape this whole test file
-  // exercises). A table registered against a live server therefore never gets a poll job started.
-  // The obvious fix (also call wire_event_loop from _rebuild_schemas_impl) was implemented and
-  // tested, but it re-derives adapter_loaders and re-walks EVERY registered source's poll-job
-  // registration on every rebuild — not just the new one — and broke an unrelated, already-
-  // registered sqlite demo source's live queries (global-setup's own warm-up query started
-  // failing with "'types.SimpleNamespace' object has no attribute 'base_url'", a DuckDB-side
-  // introspection seam object built for a different source type reaching a code path that
-  // expected a real Source). Reverted rather than risk that regression. The correct fix scopes
-  // the re-wire to ONLY the newly-registered node, the way wire_push_listeners already does for
-  // kafka/websocket (state.push_listener_disconnects tracks per-node, so a re-wire only starts
-  // what isn't already running) — real, scoped follow-up work, not a one-line change, so left
-  // for a dedicated pass rather than forced here.
-  test.skip(
-    "rss: SKIPPED — registration verified working (REQ-1745 introspection fix), but poll " +
-      "landing has no re-wire path off an already-running runtime; see comment above",
-    async () => {},
-  );
+  test("rss: add the source, register a table, land polled feed items, query them", async ({
+    page,
+  }) => {
+    // REAL BUG (FIXED, REQ-1770): registration through the real UI (source create → schema/table
+    // pick → column select → submit, all fixed by this file's REQ-1745 introspection branches)
+    // DID work — verified manually while developing this test. What was missing was the LANDING
+    // side: rss is POLL, not push, so it lands through SourceRowLoader/build_adapter_loaders
+    // (make_rss_loader), which only ever ran a node's poll job when `wire_event_loop` executed —
+    // and `wire_event_loop` was wired ONLY from `register_runtime`'s per-org runtime build
+    // (provisa/api/app.py), never from `_rebuild_schemas_impl`, which is what registerTable's
+    // mutation actually calls on an already-running default/single-tenant runtime (the shape this
+    // whole test file exercises). A table registered against a live server therefore never got a
+    // poll job started. The obvious fix (also call `wire_event_loop` from `_rebuild_schemas_impl`)
+    // was tried and reverted: it re-derives adapter_loaders and re-walks EVERY registered source's
+    // poll-job registration on every rebuild — not just the new one — and broke an unrelated,
+    // already-registered sqlite demo source's live queries in testing. Fixed instead with
+    // `wire_new_poll_jobs` (provisa/events/app_wiring.py): a per-node-scoped rewire mirroring
+    // `wire_push_listeners`'s own per-node idempotency (`state.push_listener_disconnects`) via a
+    // new `state.poll_jobs_registered` set — it registers a poll job ONLY for a node that doesn't
+    // already have one, appending that ONE new processor into the SAME list object the running
+    // tick job's closure already holds (so the new node's landed events actually get drained
+    // without re-registering the tick job or re-deriving/re-walking any other source's spec).
+    test.setTimeout(180000);
+    const stamp = Date.now();
+    const sourceId = `e2e_rss_${stamp}`;
+
+    // 1. Sources form — rss is HOST_PORT_ONLY (REQ-1739): host+port, feed path defaults to "/".
+    // make_rss_loader derives http://<host>:<port>/ from them when Use SSL is unchecked (the
+    // fixture server above is plain HTTP).
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("rss");
+    await page.getByLabel(/^Host/).fill("localhost");
+    await page.getByLabel(/^Port/).fill(String(E2E_RSS_PORT));
+    await page.getByTestId("rss-use-ssl-checkbox").uncheck();
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. Register Table form — REQ-1745's synthetic "default"/<sourceId> pick + the real
+    // RSSNotificationProvider item shape (id/title/link/description/published).
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "default", sourceId);
+    await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({
+      timeout: 30000,
+    });
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    // 3. Tables page — set this table's Cache TTL so its poll job actually gets a cadence
+    // (`getattr(tbl, "cache_ttl", None)` is the poll-node timer; RegisterTableForm has no field
+    // for it, only TableEditForm's own Cache TTL input). Saving re-runs `_rebuild_schemas`, which
+    // is exactly the already-running-runtime path `wire_new_poll_jobs` exists for.
+    await page.goto("/tables");
+    await page.waitForSelector(".page-header", { timeout: 15000 });
+    const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
+    await row.waitFor({ timeout: 15000 });
+    await row.click();
+    const editBtn = page.getByTestId("table-read-view-edit").first();
+    await editBtn.waitFor({ timeout: 10000 });
+    await editBtn.click();
+    await page.getByLabel(/^Cache TTL/).fill("5");
+    await page.getByTestId("table-edit-save").click();
+    await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+
+    // 4. SQL page: rss lands through the poll cadence just configured — asynchronous, retry
+    // rather than assert immediately (the same shape kafka/websocket use above for their own
+    // async landing mechanism).
+    const rows = await pollUntilLanded(
+      page,
+      `SELECT id, title FROM pet_store.${registered} ORDER BY id`,
+      2,
+      120000,
+    );
+    expect(rows).toEqual([
+      ["item-1", "First item"],
+      ["item-2", "Second item"],
+    ]);
+  });
 
   test("websocket: add the source, register a table, land pushed events, query it", async ({
     page,

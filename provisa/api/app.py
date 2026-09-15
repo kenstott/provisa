@@ -1922,18 +1922,24 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
         await _init_ingest_engines()
     except Exception:
         logging.getLogger(__name__).exception("_init_ingest_engines failed during schema rebuild")
-    # NOTE (REQ-1745): a table on a poll-only adapter-fetch source (rss is the current example)
-    # only gets its poll job (re)registered by wire_event_loop, which register_runtime calls but
-    # this function does not — a table registered against an already-running runtime (the common
-    # case outside a fresh per-org build) has no poll job until the next org-runtime rebuild.
-    # Calling wire_event_loop here too was tried and reverted: it re-derives adapter_loaders and
-    # re-walks every registered source's poll-job registration on EVERY schema rebuild (not just
-    # ones involving a new poll-only source), and broke an unrelated already-registered sqlite
-    # source's live queries in testing (a SimpleNamespace-based introspection seam object built
-    # for a different source type reached a code path expecting a real Source). Left as a known
-    # gap rather than risk a wider regression: see the requirements entry for the precise
-    # follow-up (scope the re-wire to ONLY the newly-registered node, the way wire_push_listeners
-    # already does for kafka/websocket, instead of a blanket rebuild).
+    # REQ-1770: a table on a poll-only adapter-fetch source (rss is the current example) only got
+    # its poll job (re)registered by wire_event_loop, which register_runtime calls but this
+    # function does not — a table registered against an already-running runtime (the common case
+    # outside a fresh per-org build) had no poll job until the next org-runtime rebuild. Calling
+    # wire_event_loop here too was tried and reverted: it re-derives adapter_loaders and re-walks
+    # every registered source's poll-job registration on EVERY schema rebuild (not just ones
+    # involving a new poll-only source), and broke an unrelated already-registered sqlite source's
+    # live queries in testing. Fixed instead with wire_new_poll_jobs (provisa/events/app_wiring.py):
+    # a per-node-scoped rewire mirroring wire_push_listeners' own state.push_listener_disconnects
+    # idempotency via state.poll_jobs_registered — it registers a poll job ONLY for a node that
+    # doesn't already have one, appending its processor into the SAME list object the running tick
+    # job's closure already holds, rather than re-deriving/re-walking every other source's spec.
+    from provisa.events.app_wiring import wire_new_poll_jobs
+
+    try:
+        await wire_new_poll_jobs(state=state, log=logging.getLogger(__name__))
+    except Exception:
+        logging.getLogger(__name__).exception("wire_new_poll_jobs failed during schema rebuild")
 
 
 class _DebugLogBufferHandler(logging.Handler):

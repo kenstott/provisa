@@ -125,6 +125,101 @@ def _resolve_mv_deadline(
     return source, expected, freshness_of, 0.0, None
 
 
+def build_source_node_spec(
+    tbl: Any,
+    src: Any,
+    *,
+    engine: Any,
+    engine_runtime: Any,
+    source_fetch: Callable[[Any, Any], Any],
+    store_schema: str,
+    probe_scalar: Callable[[Any, Any], Any] | None = None,
+) -> NodeSpec | None:
+    """One source table's :class:`NodeSpec` (REQ-941), or ``None`` when it doesn't federate
+    MATERIALIZED, is parameterized (no snapshot), or a column's type isn't resolved yet.
+
+    Factored out of :func:`specs_from_config`'s per-table loop so a scoped, single-node rewire
+    (``wire_new_poll_jobs``, provisa/events/app_wiring.py) can build exactly the ONE new node's spec
+    without re-deriving every other already-registered source's — the blanket re-wire that approach
+    replaces (calling ``wire_event_loop`` again on every schema rebuild) was tried and reverted; see
+    the requirements entry for the regression it caused."""
+    from provisa.events.handlers import make_source_land
+    from provisa.federation.engine import UnreachableSource
+    from provisa.federation.residency import resolve_landing_args
+    from provisa.federation.strategy import Strategy, federate
+
+    try:
+        if federate(src, engine) is not Strategy.MATERIALIZED:
+            return None  # live/scan federates in place — not landed, not a source processor
+    except UnreachableSource:
+        return None
+    # A parameterized source (native-filter query/path-param columns) is a function f(args) ->
+    # rows with no snapshot — fetched real-time at query time, never landed. Not a source node.
+    if any(getattr(c, "native_filter_type", None) is not None for c in tbl.columns):
+        return None
+    try:
+        args = resolve_landing_args(src, tbl, platform=engine.dialect)
+    except ValueError:
+        return None  # a column's type is not yet resolved — reconcile skips it too
+    node = f"{tbl.schema_name}.{tbl.table_name}"
+    # The engine owns the landing address: a native engine lands into the mangled ``mat`` name and
+    # exposes a physical-named view over it; Trino reads the store directly by physical name and so
+    # lands adapter-produced rows AT that name. Same address the backend's reconcile converges.
+    land_schema, land_table = engine.backend.landing_target(
+        store_schema=store_schema,
+        source_id=src.id,
+        source_type=src.type,
+        schema_name=tbl.schema_name,
+        table_name=tbl.table_name,
+    )
+    handle = make_source_land(
+        engine_runtime,
+        schema=land_schema,
+        table=land_table,
+        columns=args.columns,
+        change_signal=args.change_signal,
+        watermark_column=args.watermark_column,
+        pk_columns=args.pk_columns,
+        fetch=source_fetch(src, tbl),
+        probe_type=args.probe_type,  # REQ-982: authoritative landing-shape selector
+    )
+    # REQ-982: build the poll node's probe from its resolved probe_type. watermark/count read the
+    # source through the engine terminal (the SQL scalar runner + engine ref, injected); hash/none
+    # degrade to the TTL cadence (a None token) where the REQ-981 output hash gates the ripple.
+    from provisa.compiler.naming import source_to_catalog
+
+    ref = f'"{source_to_catalog(src.id)}"."{tbl.schema_name}"."{tbl.table_name}"'
+    factory = (
+        _probe_factory(
+            args.probe_type,
+            query_scalar=probe_scalar(src, tbl) if probe_scalar is not None else None,
+            ref=ref,
+            watermark_column=args.watermark_column,
+            sentinel_path=getattr(src, "sentinel_path", None),  # REQ-1148
+        )
+        if is_poll(args.change_signal)
+        else None
+    )
+    # REQ-957/1165: a landed source may also declare a preflight(streams, ctx) CHECK (run after
+    # fetch, before land). A source's own fetched rows ARE its single input — the gate runs the
+    # hook over ``{node: rows}`` (no engine streaming; the adapter already materialized to land).
+    from provisa.mv.preflight_eval import make_rows_evaluator
+
+    return NodeSpec(
+        node=node,
+        kind="source",
+        change_signal=args.change_signal,
+        watermark_column=args.watermark_column,
+        handle=handle,
+        poll_seconds=getattr(tbl, "cache_ttl", None),
+        # Poll sources refresh on their own cadence (register_runtime schedules the injector);
+        # push sources are driven by their listener. Boot lands the first copy either way.
+        probe_factory=factory,
+        probe_type=args.probe_type,
+        preprocess=make_rows_evaluator(getattr(tbl, "mv_preprocess", None), node),  # REQ-1165
+    )
+
+
 def specs_from_config(
     *,
     sources: list[Any],
@@ -153,11 +248,6 @@ def specs_from_config(
     the raw YAML — the landed replica name (``mat_table``) has to match what the schema-currency
     reconcile created. ``store_schema`` is where the replicas live in the store (``main`` on a
     schema-less sqlite store, ``mat`` otherwise) — never assume ``mat``."""
-    from provisa.events.handlers import make_mv_generate, make_source_land
-    from provisa.federation.engine import UnreachableSource
-    from provisa.federation.residency import resolve_landing_args
-    from provisa.federation.strategy import Strategy, federate
-
     src_by_id = {s.id: s for s in sources}
     specs: list[NodeSpec] = []
 
@@ -165,80 +255,17 @@ def specs_from_config(
         src = src_by_id.get(tbl.source_id)
         if src is None:
             continue
-        try:
-            if federate(src, engine) is not Strategy.MATERIALIZED:
-                continue  # live/scan federates in place — not landed, not a source processor
-        except UnreachableSource:
-            continue
-        # A parameterized source (native-filter query/path-param columns) is a function f(args) ->
-        # rows with no snapshot — fetched real-time at query time, never landed. Not a source node.
-        if any(getattr(c, "native_filter_type", None) is not None for c in tbl.columns):
-            continue
-        try:
-            args = resolve_landing_args(src, tbl, platform=engine.dialect)
-        except ValueError:
-            continue  # a column's type is not yet resolved — reconcile skips it too
-        node = f"{tbl.schema_name}.{tbl.table_name}"
-        # The engine owns the landing address: a native engine lands into the mangled ``mat`` name and
-        # exposes a physical-named view over it; Trino reads the store directly by physical name and so
-        # lands adapter-produced rows AT that name. Same address the backend's reconcile converges.
-        land_schema, land_table = engine.backend.landing_target(
+        spec = build_source_node_spec(
+            tbl,
+            src,
+            engine=engine,
+            engine_runtime=engine_runtime,
+            source_fetch=source_fetch,
             store_schema=store_schema,
-            source_id=src.id,
-            source_type=src.type,
-            schema_name=tbl.schema_name,
-            table_name=tbl.table_name,
+            probe_scalar=probe_scalar,
         )
-        handle = make_source_land(
-            engine_runtime,
-            schema=land_schema,
-            table=land_table,
-            columns=args.columns,
-            change_signal=args.change_signal,
-            watermark_column=args.watermark_column,
-            pk_columns=args.pk_columns,
-            fetch=source_fetch(src, tbl),
-            probe_type=args.probe_type,  # REQ-982: authoritative landing-shape selector
-        )
-        # REQ-982: build the poll node's probe from its resolved probe_type. watermark/count read the
-        # source through the engine terminal (the SQL scalar runner + engine ref, injected); hash/none
-        # degrade to the TTL cadence (a None token) where the REQ-981 output hash gates the ripple.
-        from provisa.compiler.naming import source_to_catalog
-
-        ref = f'"{source_to_catalog(src.id)}"."{tbl.schema_name}"."{tbl.table_name}"'
-        factory = (
-            _probe_factory(
-                args.probe_type,
-                query_scalar=probe_scalar(src, tbl) if probe_scalar is not None else None,
-                ref=ref,
-                watermark_column=args.watermark_column,
-                sentinel_path=getattr(src, "sentinel_path", None),  # REQ-1148
-            )
-            if is_poll(args.change_signal)
-            else None
-        )
-        # REQ-957/1165: a landed source may also declare a preflight(streams, ctx) CHECK (run after
-        # fetch, before land). A source's own fetched rows ARE its single input — the gate runs the
-        # hook over ``{node: rows}`` (no engine streaming; the adapter already materialized to land).
-        from provisa.mv.preflight_eval import make_rows_evaluator
-
-        specs.append(
-            NodeSpec(
-                node=node,
-                kind="source",
-                change_signal=args.change_signal,
-                watermark_column=args.watermark_column,
-                handle=handle,
-                poll_seconds=getattr(tbl, "cache_ttl", None),
-                # Poll sources refresh on their own cadence (register_runtime schedules the injector);
-                # push sources are driven by their listener. Boot lands the first copy either way.
-                probe_factory=factory,
-                probe_type=args.probe_type,
-                preprocess=make_rows_evaluator(
-                    getattr(tbl, "mv_preprocess", None), node
-                ),  # REQ-1165
-            )
-        )
+        if spec is not None:
+            specs.append(spec)
 
     for mv in mvs:
         cols = mv_columns(mv)
@@ -280,6 +307,8 @@ def specs_from_config(
                 persist=persist if persist != "replace" else "upsert",
             )
         else:
+            from provisa.events.handlers import make_mv_generate
+
             handle = make_mv_generate(
                 engine_runtime,
                 schema=mv.target_schema,
