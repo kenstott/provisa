@@ -254,21 +254,22 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       !(process.env.FABRIC_SQL_SERVER && process.env.FABRIC_DATABASE),
       "no live Fabric credentials in this environment (FABRIC_SQL_SERVER/FABRIC_DATABASE)",
     );
-    // Reproduced LIVE connection failure against this account's Fabric warehouse (not a missing-
-    // creds gap, and not something this spec's code caused): pyodbc raises
-    // "[28000] ... Couldn't complete the operation due to a system update. Close out this
-    // connection, sign in again, and retry the operation. (18456)" on every attempt, using the
-    // EXACT SAME connection code MssqlWarehouseRuntime/MssqlWarehouseDriver already use (verified
-    // directly with pyodbc.connect + a fresh DefaultAzureCredential token — az login is active,
-    // and the token itself is valid/unexpired). This reads as the Fabric capacity being paused/
-    // in a bad state on Microsoft's side, independent of Provisa. Skipping rather than blocking on
-    // an external outage this task cannot fix.
-    // Re-checked live 2026-09-15 by running cloud_warehouse_seed.py fabric directly: identical
-    // "system update (18456)" error, byte-for-byte the same as above — still an active Microsoft-
-    // side outage on this workspace/capacity, not resolved since it was first reproduced.
-    test.skip(true, "live Fabric warehouse unreachable right now (18456 'system update' on every " +
-      "connect attempt) — reproduced with the exact driver connection code, most recently " +
-      "2026-09-15; not a creds or code gap");
+    // The prior "18456 system update" failure (reproduced repeatedly through 2026-09-15) is
+    // consistent with the Fabric capacity backing this warehouse being paused/not provisioned,
+    // not a code or credentials gap — a paused capacity rejects the SQL connection outright.
+    // REQ-1775: tests/integration/fabric_capacity.py's ensure_capacity_resumed() now resumes the
+    // capacity before this seed connects (wired into cloud_warehouse_seed.py's _fabric("up")), so
+    // the test is un-skipped for that failure. It still needs the resource-group/capacity-name
+    // identifiers for the ARM capacity resource (the subscription id is resolved from the active
+    // `az login` session, same as tests/integration/synapse_provision.py — no separate env var),
+    // which are not yet configured in this environment (no capacity has been created — see
+    // fabric_capacity.py's docstring for the one-time `az fabric capacity create` command).
+    test.skip(
+      !(process.env.FABRIC_RESOURCE_GROUP && process.env.FABRIC_CAPACITY_NAME),
+      "no FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME configured — a Fabric capacity must be " +
+        "created once (a real-money Azure resource), see tests/integration/fabric_capacity.py's " +
+        "module docstring for the one-time az CLI command",
+    );
     test.setTimeout(300000);
     seed("fabric", "up");
     try {

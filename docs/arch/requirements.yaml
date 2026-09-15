@@ -60129,3 +60129,77 @@
     When the table is registered through the Sources → Register Table UI flow
     Then schema rebuild and GraphQL/proto generation succeed instead of raising "Unmapped ...
     type: 'int64'"
+
+- id: REQ-1775
+  status: in-progress
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Testing
+  priority: SHOULD
+  type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    The behavior being fixed (a paused Fabric capacity rejecting a SQL connection) is only
+    observable against a real ARM-managed Fabric capacity resource; no such capacity exists yet
+    in this environment (no FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME
+    configured), so live verification is pending a one-time manual capacity creation by whoever
+    owns the Azure subscription — not automated here.
+  description: >-
+    The fabric e2e test (provisa-ui/e2e/source-to-query-cloud-warehouse.spec.ts) was skipped on a
+    "[28000] ... system update ... (18456)" pyodbc error reproduced repeatedly against this
+    account's Fabric SQL warehouse. That failure is consistent with the underlying Microsoft
+    Fabric capacity (a paused-by-default, billable F-SKU compute unit) being Paused/Suspended
+    rather than an actual credentials or code defect: a SQL warehouse built on a non-Active
+    capacity rejects the connection outright, the same class of problem
+    tests/integration/databricks_warehouse.py's ensure_warehouse_running() already solves for a
+    suspended Databricks serverless warehouse.
+    Added tests/integration/fabric_capacity.py with ensure_capacity_resumed() (resumes the
+    capacity via the ARM control-plane API — Microsoft.Fabric/capacities resume/get, api-version
+    2023-11-01 — polling until properties.state is Active, retrying a resume call on 4xx while
+    the capacity is still settling out of a prior transition, mirroring
+    ensure_warehouse_running()'s retry-on-4xx shape) and suspend_capacity() (best-effort resume
+    of the paused state on teardown — a suspend failure is logged, never raised, since leaving a
+    capacity briefly running is a cost concern, not a correctness one). Both read
+    FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME from the environment (the subscription id is
+    resolved from the active `az login` session via `az account show`, the same lookup
+    tests/integration/synapse_provision.py already uses for its own ARM calls -- no separate
+    subscription-id env var) and raise a clear error if either is missing (no silent
+    fallback, per this repo's CLAUDE.md).
+    Auth is DefaultAzureCredential (az login / managed identity) against the
+    https://management.azure.com/.default ARM scope — a different scope from
+    fabric_shortcuts.py's own https://api.fabric.microsoft.com/.default data-plane Fabric API
+    scope used for OneLake shortcut provisioning, since capacity management is a control-plane
+    operation on a different resource.
+    Wired into provisa-ui/e2e/cloud_warehouse_seed.py's _fabric(): ensure_capacity_resumed() runs
+    before MssqlWarehouseRuntime connects on the "up" path, suspend_capacity() runs after
+    teardown on the "down" path, mirroring exactly where _databricks() calls
+    ensure_warehouse_running(). The e2e test's OLD "18456 system update" skip was removed; a NEW
+    skip was added instead, gated on FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME being configured
+    — neither exists in this environment yet (no Fabric capacity has been created), so the test
+    still skips cleanly today with a message
+    pointing at fabric_capacity.py's docstring, which documents the one-time `az fabric capacity
+    create` command for whoever creates the capacity. Live verification of
+    ensure_capacity_resumed()/suspend_capacity() against a real capacity is therefore pending
+    that one-time manual step — not performed here, since creating billable Azure infrastructure
+    is a subscription-owner decision, not this task's to make.
+  code:
+  - tests/integration/fabric_capacity.py
+  - provisa-ui/e2e/cloud_warehouse_seed.py
+  - provisa-ui/e2e/source-to-query-cloud-warehouse.spec.ts
+  tests:
+  - provisa-ui/e2e/source-to-query-cloud-warehouse.spec.ts
+  use_case: >-
+    Run the fabric e2e lane against a real Microsoft Fabric capacity without a human manually
+    resuming it in the Fabric portal beforehand, and without leaving billable compute running
+    between runs.
+  scenario: |
+    Given FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME are configured (subscription id resolved via `az account show`) and
+    the named Fabric capacity is Paused or Suspended
+    When cloud_warehouse_seed.py fabric up runs
+    Then ensure_capacity_resumed() resumes the capacity and blocks until it reports Active before
+    the SQL warehouse connection is attempted
+
+    Given those env vars are not configured
+    When the fabric e2e test runs
+    Then it skips cleanly with a message pointing at the one-time capacity-creation command,
+    rather than failing with a confusing connection error

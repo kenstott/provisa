@@ -146,6 +146,13 @@ def _bigquery(action: str) -> None:
 
 def _fabric(action: str) -> None:
     from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
+    from tests.integration.fabric_capacity import ensure_capacity_resumed, suspend_capacity
+
+    if action == "up":
+        # A paused/suspended Fabric capacity rejects the SQL warehouse connection outright
+        # (18456 "system update"), so it must be resumed BEFORE MssqlWarehouseRuntime ever
+        # connects — mirrors _databricks()'s ensure_warehouse_running() call above.
+        ensure_capacity_resumed()
 
     rt = MssqlWarehouseRuntime(
         server=os.environ["FABRIC_SQL_SERVER"],
@@ -169,6 +176,10 @@ def _fabric(action: str) -> None:
     finally:
         cur.close()
         rt.close()
+        if action == "down":
+            # Best-effort — leaving the capacity briefly running is a cost concern, not a
+            # correctness one, so a suspend failure must never fail the seed teardown.
+            suspend_capacity()
 
 
 _ENGINES = {
