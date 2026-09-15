@@ -36,6 +36,7 @@ interface ColumnRow {
   alias: string;
   description: string;
   sourcePath: string;
+  isPrimaryKey: boolean;
 }
 
 interface SchemaDiscoveryProps {
@@ -53,6 +54,7 @@ function toColumnRows(cols: DiscoveredColumn[]): ColumnRow[] {
     alias: "",
     description: c.description,
     sourcePath: c.source_path,
+    isPrimaryKey: false,
   }));
 }
 
@@ -116,9 +118,15 @@ function DiscoverHints({
     );
   }
   if (sourceType === "kafka") {
-    // REQ-1767: topic is required (subject naming convention "<topic>-value" in Schema
+    // REQ-1767/REQ-150: topic is required (subject naming convention "<topic>-value" in Schema
     // Registry); schemaRegistryUrl is optional — falls back to the source's own
     // federation_hints.schema_registry_url (discovery_schema.py's kafka branch) when unset.
+    // Leaving BOTH schemaRegistryUrl and the source's stored registry URL unset naturally falls
+    // through to SchemaSource.SAMPLE server-side: discovery consumes real messages off the live
+    // topic and infers column types from their shape instead of querying a registry. No
+    // registry-vs-sample toggle needed — the empty registry-url field itself is the switch.
+    // bootstrapServers is an optional override for that sample path (else the source's own
+    // host:port), surfaced here so sample mode is reachable without a stored/registered source.
     return (
       <>
         <TextInput
@@ -133,7 +141,16 @@ function DiscoverHints({
           value={hints.schema_registry_url ?? ""}
           onChange={(e) => setHints({ ...hints, schema_registry_url: e.currentTarget.value })}
           placeholder={t("schemaDiscovery.kafkaSchemaRegistryUrlPlaceholder")}
+          description={t("schemaDiscovery.kafkaSchemaRegistryUrlDescription")}
           data-testid="discover-kafka-registry-url"
+        />
+        <TextInput
+          label={t("schemaDiscovery.kafkaBootstrapServers")}
+          value={hints.bootstrap_servers ?? ""}
+          onChange={(e) => setHints({ ...hints, bootstrap_servers: e.currentTarget.value })}
+          placeholder={t("schemaDiscovery.kafkaBootstrapServersPlaceholder")}
+          description={t("schemaDiscovery.kafkaBootstrapServersDescription")}
+          data-testid="discover-kafka-bootstrap-servers"
         />
       </>
     );
@@ -211,6 +228,7 @@ export function SchemaDiscovery({
         alias: "",
         description: "",
         sourcePath: "",
+        isPrimaryKey: false,
       },
     ]);
   };
@@ -256,6 +274,10 @@ export function SchemaDiscovery({
           description: c.description || undefined,
           // Persist the steward's assigned canonical IR type (REQ-846).
           dataType: c.type || undefined,
+          // REQ-1769: without a declared PK, push_wiring.py's wire_push_listeners
+          // refuses to start a CDC listener for kafka/websocket sources registered
+          // through this flow — see source-to-query-streaming.spec.ts.
+          isPrimaryKey: c.isPrimaryKey || undefined,
         })),
       });
       if (!result.success) throw new Error(result.message);
@@ -316,6 +338,7 @@ export function SchemaDiscovery({
                   <Table.Th>{t("schemaDiscovery.colAlias")}</Table.Th>
                   <Table.Th>{t("schemaDiscovery.colDescription")}</Table.Th>
                   <Table.Th>{t("schemaDiscovery.colSourcePath")}</Table.Th>
+                  <Table.Th ta="center">{t("schemaDiscovery.colHeaderPk")}</Table.Th>
                   <Table.Th>
                     <Text span visibleFrom="xs" fz="sm" fw={600}>
                       {t("schemaDiscovery.colActions")}
@@ -374,6 +397,19 @@ export function SchemaDiscovery({
                     </Table.Td>
                     <Table.Td c="dimmed" fz="xs">
                       {col.sourcePath}
+                    </Table.Td>
+                    <Table.Td ta="center">
+                      <Checkbox
+                        checked={col.isPrimaryKey}
+                        onChange={(e) =>
+                          updateColumn(idx, { isPrimaryKey: e.currentTarget.checked })
+                        }
+                        title={t("schemaDiscovery.primaryKeyTitle")}
+                        aria-label={t("schemaDiscovery.primaryKeyAriaLabel", {
+                          name: col.name || idx + 1,
+                        })}
+                        data-testid={`discover-col-pk-${col.name || idx}`}
+                      />
                     </Table.Td>
                     <Table.Td>
                       <ActionIcon

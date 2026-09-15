@@ -527,15 +527,23 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
   // rather than inventing a new one: discovery_schema.py's kafka branch calls
   // discover_topic_columns() and returns real columns instead of a hardcoded id/value
   // placeholder. Proves the registry round-trip for real (register a schema, discover it through
-  // the UI, see the actual discovered columns, register, query) — NOT the CDC-landing round trip
-  // the plain kafka test above covers, since SchemaDiscovery's column editor has no primary-key
-  // UI and CDC landing hard-requires one (see the comment inside this test for the live-traced
-  // detail). Also caught, live-traced, and fixed while building this: SchemaDiscovery.tsx's
-  // handleRegister hardcoded visibleTo: ["*"] per column — neither of the two independent
-  // visibility-enforcement layers (schema_gen.py's compiler, stage2.py's V003 query-time gate)
-  // treats "*" as a wildcard, so every column (and therefore the whole table) was silently
-  // excluded from every compiled schema AND every query, for every role, permanently, for EVERY
-  // type using the Discover flow — not a kafka-specific bug.
+  // the UI, see the actual discovered columns, register, query) AND the CDC-landing round trip
+  // the plain kafka test above covers. Also caught, live-traced, and fixed while building this:
+  // SchemaDiscovery.tsx's handleRegister hardcoded visibleTo: ["*"] per column — neither of the
+  // two independent visibility-enforcement layers (schema_gen.py's compiler, stage2.py's V003
+  // query-time gate) treats "*" as a wildcard, so every column (and therefore the whole table)
+  // was silently excluded from every compiled schema AND every query, for every role,
+  // permanently, for EVERY type using the Discover flow — not a kafka-specific bug.
+  //
+  // REQ-1769 (FIXED): push_wiring.py's wire_push_listeners hard-requires a declared primary-key
+  // column before starting a CDC listener, but SchemaDiscovery.tsx's column editor had no
+  // primary-key selection UI at all — unlike RegisterTableForm's own
+  // register-table-col-pk-<name> checkboxes — so every column discovered/registered through this
+  // flow always registered with is_primary_key=false, and any kafka/websocket table registered
+  // via Discover could never receive live CDC data (registered fine, queryable, but
+  // wire_push_listeners silently skipped it forever: "no primary key column declared"). Fixed by
+  // adding an "Is PK" checkbox column (data-testid discover-col-pk-<name>) to SchemaDiscovery's
+  // column table, wired into handleRegister's registerTable call as `isPrimaryKey`.
   test("kafka: discover a topic's schema from Confluent Schema Registry, register it, query it", async ({
     page,
   }) => {
@@ -576,6 +584,10 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
       { timeout: 30000 },
     );
 
+    // REQ-1769: check the discovered "id" column's PK checkbox — CDC landing (push_wiring.py)
+    // hard-requires a declared primary key, same as the plain kafka/websocket tests above.
+    await page.getByTestId("discover-col-pk-id").check();
+
     await page.getByLabel(/^Domain ID/).fill("pet-store");
     await page.getByLabel(/^Table Name/).fill(tableName);
     await page.getByTestId("register-table-btn").click();
@@ -608,19 +620,11 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
 
     // 3. Prove the registry-discovered table is a real, queryable table (not just a UI display
     // artifact) — the SQL page accepts and runs a query against it, returning its real (empty,
-    // nothing produced) column shape correctly. NOT a full CDC-landing round trip like the
-    // plain kafka test above: push_wiring.py's wire_push_listeners hard-requires a declared
-    // primary-key column (pk_columns), and SchemaDiscovery.tsx's column editor — unlike
-    // RegisterTableForm's own register-table-col-pk-<name> checkboxes — has NO primary-key
-    // selection UI at all (verified: zero matches for is_primary_key/isPrimaryKey in that file).
-    // Every column registers with is_primary_key=false, so wire_push_listeners always skips this
-    // table ("no primary key column declared ... skipping") — a genuine, separate gap in the
-    // Discover-flow's column editor, not a kafka- or schema-registry-specific issue, and out of
-    // scope for "wire in the schema registry client."
+    // nothing produced) column shape correctly, before anything is produced.
     // runSqlOnPage (the shared helper) waits for download-csv-btn, which ResultsPanel.tsx only
     // renders for a non-empty result set — a genuinely empty table (correct here: nothing was
-    // ever produced) shows its own "No results." text instead, so this test drives the SQL page
-    // directly rather than reusing that helper.
+    // ever produced yet) shows its own "No results." text instead, so this test drives the SQL
+    // page directly rather than reusing that helper.
     await page.goto("/sql");
     await page.waitForSelector(".cm-content", { timeout: 30000 });
     const picker = page.getByTestId("sql-role");
@@ -638,5 +642,35 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
     const resp = await runResp;
     expect(resp.ok(), await resp.text()).toBeTruthy();
     await expect(page.getByText("No results.")).toBeVisible({ timeout: 30000 });
+
+    // 4. REQ-1769: now prove the FULL CDC-landing round trip on a Discover-flow-registered
+    // table — same Tables-page Change-Signal-kafka + live-delivery-enable + produce + poll steps
+    // the plain kafka test above uses, now reachable because the "id" column's PK checkbox was
+    // checked in step 2 above.
+    await page.goto("/tables");
+    await page.waitForSelector(".page-header", { timeout: 15000 });
+    const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
+    await row.waitFor({ timeout: 15000 });
+    await row.click();
+    const editBtn = page.getByTestId("table-read-view-edit").first();
+    await editBtn.waitFor({ timeout: 10000 });
+    await editBtn.click();
+
+    await page.getByRole("textbox", { name: /^Change Signal/ }).click();
+    await page.getByRole("option", { name: "kafka", exact: true }).click();
+    await page.getByTestId("live-delivery-enable").check();
+    await page.getByTestId("live-kafka-topic").fill(topic);
+    await page.getByTestId("table-edit-save").click();
+    await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+
+    produceKafkaMessage(topic, { id: "kafka-registry-1", value: "hello-kafka-registry" });
+
+    const landedRows = await pollUntilLanded(
+      page,
+      `SELECT id, value FROM pet_store.${registered} ORDER BY id`,
+      1,
+      180000,
+    );
+    expect(landedRows).toEqual([["kafka-registry-1", "hello-kafka-registry"]]);
   });
 });
