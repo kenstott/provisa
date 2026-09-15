@@ -23,6 +23,7 @@ import pytest
 
 from provisa.core.models import Source, SourceType
 from provisa.events.push_wiring import shutdown_push_listeners, wire_push_listeners
+from provisa.federation.runtime import EngineRuntime
 
 
 def _kafka_table(table_name: str = "orders", with_pk: bool = True) -> dict:
@@ -62,10 +63,15 @@ class _FakeState:
                 __aexit__=AsyncMock(return_value=False),
             )
         )
-        self.federation_engine = MagicMock()
+        # spec=EngineRuntime (REQ-1733/REQ-989 postmortem): a bare MagicMock() silently
+        # auto-creates ANY attribute accessed on it, including ones the real EngineRuntime class
+        # does not have (e.g. a stray `.materialize_store()`/`.backend` this fake used to carry) —
+        # which is exactly how wire_push_listeners shipped calling two nonexistent attributes on
+        # the real object and every push listener silently never started. Spec'ing to the real
+        # class makes an attribute typo/API drift fail the test instead of masking it.
+        self.federation_engine = MagicMock(spec=EngineRuntime)
         self.federation_engine.materialize_store_dsn = MagicMock(return_value="duckdb:///x")
-        self.federation_engine.materialize_store = MagicMock(return_value="duckdb:///x")
-        self.federation_engine.backend.landing_target = MagicMock(return_value=("mat", "orders__x"))
+        self.federation_engine.landing_target = MagicMock(return_value=("mat", "orders__x"))
 
 
 @pytest.mark.asyncio

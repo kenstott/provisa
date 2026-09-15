@@ -12,16 +12,17 @@
 """Unit tests for consume_cdc_into_store's debounce batching (REQ-1733).
 
 A fake provider yields ChangeEvents on a script of (event, delay-before-next) so tests control
-exactly how bursty or spread-out the stream is, without real network I/O. ``apply_cdc`` is
-patched to record each call's event list instead of touching a real store, so a test asserts on
-BATCH BOUNDARIES (how many apply_cdc calls, how many events per call) directly.
-"""
+exactly how bursty or spread-out the stream is, without real network I/O. ``land_fn`` (REQ-989:
+the caller's own write face — an embedded single-writer store lands through the engine's own
+connection, every other store opens its own per-batch connection; consume_cdc_into_store never
+holds a connection itself) is a plain async callable a test provides directly, recording each
+call's event list, so a test asserts on BATCH BOUNDARIES (how many land_fn calls, how many events
+per call) directly."""
 
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -60,28 +61,23 @@ def _events(n: int) -> list[_Event]:
 
 @pytest.mark.asyncio
 async def test_no_debounce_applies_each_event_individually():
-    """debounce_quiet=0 (default) — one apply_cdc call per event, no batching."""
+    """debounce_quiet=0 (default) — one land_fn call per event, no batching."""
     ev = _events(3)
     provider = _ScriptedProvider([(ev[0], 0), (ev[1], 0), (ev[2], 0)])
     disconnect = asyncio.Event()
     calls: list[list] = []
 
-    async def _fake_apply_cdc(conn, table, pk, events):
+    async def _land(events):
         calls.append(list(events))
         return {"upsert": len(events), "delete": 0}
 
-    with patch(
-        "provisa.subscriptions.cdc_landing.apply_cdc", AsyncMock(side_effect=_fake_apply_cdc)
-    ):
-        totals = await consume_cdc_into_store(
-            provider,
-            conn=None,
-            schema="s",
-            table="t",
-            columns=[("id", "integer")],
-            pk_columns=["id"],
-            disconnect=disconnect,
-        )
+    totals = await consume_cdc_into_store(
+        provider,
+        _land,
+        schema="s",
+        table="t",
+        disconnect=disconnect,
+    )
 
     assert len(calls) == 3
     assert [len(c) for c in calls] == [1, 1, 1]
@@ -91,7 +87,7 @@ async def test_no_debounce_applies_each_event_individually():
 
 @pytest.mark.asyncio
 async def test_debounce_batches_a_burst_into_one_flush():
-    """Events arriving faster than the quiet period collapse into one apply_cdc call."""
+    """Events arriving faster than the quiet period collapse into one land_fn call."""
     ev = _events(3)
     # All three arrive back-to-back (no gap), then the stream ends — the quiet period elapses
     # only after the last event, via the final flush (stream end), not a mid-stream timeout.
@@ -99,24 +95,19 @@ async def test_debounce_batches_a_burst_into_one_flush():
     disconnect = asyncio.Event()
     calls: list[list] = []
 
-    async def _fake_apply_cdc(conn, table, pk, events):
+    async def _land(events):
         calls.append(list(events))
         return {"upsert": len(events), "delete": 0}
 
-    with patch(
-        "provisa.subscriptions.cdc_landing.apply_cdc", AsyncMock(side_effect=_fake_apply_cdc)
-    ):
-        totals = await consume_cdc_into_store(
-            provider,
-            conn=None,
-            schema="s",
-            table="t",
-            columns=[("id", "integer")],
-            pk_columns=["id"],
-            disconnect=disconnect,
-            debounce_quiet=0.2,
-            debounce_max_delay=5.0,
-        )
+    totals = await consume_cdc_into_store(
+        provider,
+        _land,
+        schema="s",
+        table="t",
+        disconnect=disconnect,
+        debounce_quiet=0.2,
+        debounce_max_delay=5.0,
+    )
 
     assert len(calls) == 1
     assert len(calls[0]) == 3
@@ -134,24 +125,19 @@ async def test_debounce_quiet_period_flushes_mid_stream():
     disconnect = asyncio.Event()
     calls: list[list] = []
 
-    async def _fake_apply_cdc(conn, table, pk, events):
+    async def _land(events):
         calls.append(list(events))
         return {"upsert": len(events), "delete": 0}
 
-    with patch(
-        "provisa.subscriptions.cdc_landing.apply_cdc", AsyncMock(side_effect=_fake_apply_cdc)
-    ):
-        await consume_cdc_into_store(
-            provider,
-            conn=None,
-            schema="s",
-            table="t",
-            columns=[("id", "integer")],
-            pk_columns=["id"],
-            disconnect=disconnect,
-            debounce_quiet=0.05,
-            debounce_max_delay=5.0,
-        )
+    await consume_cdc_into_store(
+        provider,
+        _land,
+        schema="s",
+        table="t",
+        disconnect=disconnect,
+        debounce_quiet=0.05,
+        debounce_max_delay=5.0,
+    )
 
     assert len(calls) == 2
     assert [len(c) for c in calls] == [2, 2]
@@ -169,24 +155,19 @@ async def test_debounce_max_delay_caps_staleness_under_continuous_churn():
     disconnect = asyncio.Event()
     calls: list[list] = []
 
-    async def _fake_apply_cdc(conn, table, pk, events):
+    async def _land(events):
         calls.append(list(events))
         return {"upsert": len(events), "delete": 0}
 
-    with patch(
-        "provisa.subscriptions.cdc_landing.apply_cdc", AsyncMock(side_effect=_fake_apply_cdc)
-    ):
-        await consume_cdc_into_store(
-            provider,
-            conn=None,
-            schema="s",
-            table="t",
-            columns=[("id", "integer")],
-            pk_columns=["id"],
-            disconnect=disconnect,
-            debounce_quiet=0.2,
-            debounce_max_delay=0.08,
-        )
+    await consume_cdc_into_store(
+        provider,
+        _land,
+        schema="s",
+        table="t",
+        disconnect=disconnect,
+        debounce_quiet=0.2,
+        debounce_max_delay=0.08,
+    )
 
     assert len(calls) >= 2, "max_delay must force multiple flushes under continuous churn"
     assert sum(len(c) for c in calls) == 6
@@ -201,24 +182,19 @@ async def test_stream_end_flushes_partial_batch():
     disconnect = asyncio.Event()
     calls: list[list] = []
 
-    async def _fake_apply_cdc(conn, table, pk, events):
+    async def _land(events):
         calls.append(list(events))
         return {"upsert": len(events), "delete": 0}
 
-    with patch(
-        "provisa.subscriptions.cdc_landing.apply_cdc", AsyncMock(side_effect=_fake_apply_cdc)
-    ):
-        totals = await consume_cdc_into_store(
-            provider,
-            conn=None,
-            schema="s",
-            table="t",
-            columns=[("id", "integer")],
-            pk_columns=["id"],
-            disconnect=disconnect,
-            debounce_quiet=5.0,  # long enough that only stream-end triggers the flush
-            debounce_max_delay=5.0,
-        )
+    totals = await consume_cdc_into_store(
+        provider,
+        _land,
+        schema="s",
+        table="t",
+        disconnect=disconnect,
+        debounce_quiet=5.0,  # long enough that only stream-end triggers the flush
+        debounce_max_delay=5.0,
+    )
 
     assert len(calls) == 1
     assert len(calls[0]) == 2
@@ -229,33 +205,28 @@ async def test_stream_end_flushes_partial_batch():
 @pytest.mark.asyncio
 async def test_ack_called_with_exactly_the_flushed_batch_after_landing():
     """REQ-1734: ack() fires once per flush, with exactly that flush's events — never before
-    apply_cdc succeeds, and never with events from a later, still-unflushed batch."""
+    land_fn succeeds, and never with events from a later, still-unflushed batch."""
     ev = _events(4)
     provider = _ScriptedProvider(
         [(ev[0], 0), (ev[1], 0), (ev[2], 0.15), (ev[3], 0)]  # same mid-stream-quiet-flush shape
     )
+    from unittest.mock import AsyncMock
+
     provider.ack = AsyncMock()
     disconnect = asyncio.Event()
-    order: list[str] = []
 
-    async def _fake_apply_cdc(conn, table, pk, events):
-        order.append("land")
+    async def _land(events):
         return {"upsert": len(events), "delete": 0}
 
-    with patch(
-        "provisa.subscriptions.cdc_landing.apply_cdc", AsyncMock(side_effect=_fake_apply_cdc)
-    ):
-        await consume_cdc_into_store(
-            provider,
-            conn=None,
-            schema="s",
-            table="t",
-            columns=[("id", "integer")],
-            pk_columns=["id"],
-            disconnect=disconnect,
-            debounce_quiet=0.05,
-            debounce_max_delay=5.0,
-        )
+    await consume_cdc_into_store(
+        provider,
+        _land,
+        schema="s",
+        table="t",
+        disconnect=disconnect,
+        debounce_quiet=0.05,
+        debounce_max_delay=5.0,
+    )
 
     assert provider.ack.call_count == 2
     first_batch = provider.ack.call_args_list[0].args[0]
@@ -273,26 +244,21 @@ async def test_backpressure_bounded_queue_never_grows_unbounded():
     disconnect = asyncio.Event()
     calls: list[list] = []
 
-    async def _slow_apply_cdc(conn, table, pk, events):
+    async def _slow_land(events):
         # A deliberately slow "land" so the pump outruns it if nothing throttles it.
         await asyncio.sleep(0.01)
         calls.append(list(events))
         return {"upsert": len(events), "delete": 0}
 
-    with patch(
-        "provisa.subscriptions.cdc_landing.apply_cdc", AsyncMock(side_effect=_slow_apply_cdc)
-    ):
-        totals = await consume_cdc_into_store(
-            provider,
-            conn=None,
-            schema="s",
-            table="t",
-            columns=[("id", "integer")],
-            pk_columns=["id"],
-            disconnect=disconnect,
-            debounce_quiet=0.0,  # apply one at a time — the queue is the only thing throttling
-            queue_maxsize=3,
-        )
+    totals = await consume_cdc_into_store(
+        provider,
+        _slow_land,
+        schema="s",
+        table="t",
+        disconnect=disconnect,
+        debounce_quiet=0.0,  # apply one at a time — the queue is the only thing throttling
+        queue_maxsize=3,
+    )
 
     assert totals == {"upsert": 50, "delete": 0}
     assert sum(len(c) for c in calls) == 50

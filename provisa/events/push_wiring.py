@@ -135,7 +135,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[asyncio.Task]:
     if not hasattr(state, "push_listener_tasks"):
         state.push_listener_tasks = []
 
-    store_schema = _env_store_schema(engine.materialize_store())
+    store_schema = _env_store_schema(engine.materialize_store_dsn())
     started: list[asyncio.Task] = []
 
     for tbl in tables:
@@ -171,7 +171,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[asyncio.Task]:
             continue  # _build_provider already logged why
         provider, watch_target = built
 
-        land_schema, land_table = engine.backend.landing_target(
+        land_schema, land_table = engine.landing_target(
             store_schema=store_schema,
             source_id=src.id,
             source_type=src.type,
@@ -230,25 +230,33 @@ async def _run_listener(
     node: str,
     log: Any,
 ) -> None:
-    """One push table's whole lifetime: open a store connection, drain the provider into it,
-    never let an unhandled exception escape (this runs detached — nothing awaits its result)."""
-    from provisa.federation.store_writer import store_connection
+    """One push table's whole lifetime: drain the provider into the landed table through the
+    engine's own write face (``EngineRuntime.apply_cdc_events``, REQ-989/REQ-1733 — never a raw
+    ``store_connection()`` held here, which would open a SECOND connection onto an embedded
+    single-writer DuckDB store the engine already has ATTACHed and deadlock/error against it).
+    Never let an unhandled exception escape (this runs detached — nothing awaits its result)."""
     from provisa.subscriptions.cdc_landing import consume_cdc_into_store
 
+    async def _land(events: list) -> dict[str, int]:
+        return await engine.apply_cdc_events(
+            schema=land_schema,
+            table=land_table,
+            columns=columns,
+            pk_columns=pk_columns,
+            events=events,
+        )
+
     try:
-        async with store_connection(engine.materialize_store()) as conn:
-            await consume_cdc_into_store(
-                provider,
-                conn,
-                schema=land_schema,
-                table=land_table,
-                columns=columns,
-                pk_columns=pk_columns,
-                disconnect=disconnect,
-                watch_target=watch_target,
-                debounce_quiet=debounce_quiet,
-                debounce_max_delay=debounce_max_delay,
-            )
+        await consume_cdc_into_store(
+            provider,
+            _land,
+            schema=land_schema,
+            table=land_table,
+            disconnect=disconnect,
+            watch_target=watch_target,
+            debounce_quiet=debounce_quiet,
+            debounce_max_delay=debounce_max_delay,
+        )
     except asyncio.CancelledError:
         raise
     except Exception:

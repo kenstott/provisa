@@ -160,6 +160,50 @@ def persist_duckdb_native(
     return qualified
 
 
+def apply_cdc_duckdb_native(
+    con: Any,
+    *,
+    catalog: str,
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    pk_columns: list[str],
+    events: list,
+) -> dict[str, int]:
+    """Apply CDC change events (insert/update -> upsert by PK, delete -> tombstone) to the DuckDB
+    store's landing table through the engine's own connection (REQ-989/REQ-1733) — the duckdb-native
+    mirror of ``materialize_exec.apply_cdc`` for a store the engine itself holds the file handle for.
+
+    A primary key is REQUIRED — without one there is no identity to upsert or delete by. Each event
+    applies as its own DELETE-then-INSERT (upsert) or DELETE (tombstone) in stream order, so a
+    delete immediately followed by a re-insert of the same key within one debounced batch still
+    converges correctly."""
+    if not pk_columns:
+        raise ValueError(
+            f"CDC land into {_qualified(catalog, schema, table)} requires primary key columns "
+            "for upsert/delete"
+        )
+    dialect = _duckdb_dialect()
+    _ensure_schema(con, catalog, schema, dialect)
+    con.execute(_create_ddl(catalog, schema, table, columns))  # create-if-absent (first land)
+    qualified = _qualified(catalog, schema, table)
+    colnames = [name for name, _ in columns]
+    pk_where = " AND ".join(f'"{c}" = ?' for c in pk_columns)
+    counts = {"upsert": 0, "delete": 0}
+    for ev in events:
+        pk_vals = [ev.row.get(c) for c in pk_columns]
+        con.execute(f"DELETE FROM {qualified} WHERE {pk_where}", pk_vals)
+        if ev.operation.lower() == "delete":
+            counts["delete"] += 1
+            continue
+        collist = ", ".join(f'"{cn}"' for cn in colnames)
+        placeholders = ", ".join("?" * len(colnames))
+        data = [ev.row.get(cn) for cn in colnames]
+        con.execute(f"INSERT INTO {qualified} ({collist}) VALUES ({placeholders})", data)
+        counts["upsert"] += 1
+    return counts
+
+
 def land_duckdb_native(
     con: Any,
     *,

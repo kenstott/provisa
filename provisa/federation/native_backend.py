@@ -366,6 +366,37 @@ class NativeEngineBackend(EngineBackend):
             shape=shape,
         )
 
+    async def apply_cdc_events(
+        self,
+        state: Any,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str],
+        events: list,
+    ) -> dict[str, int]:
+        """Apply CDC events through the runtime when it holds the store's own connection (DuckDB,
+        REQ-989 — a second connection cannot open a file the engine already ATTACHed); otherwise the
+        base ``store_writer`` DSN path (every other native store) applies unchanged."""
+        runtime = self._runtime_for(state)
+        if hasattr(runtime, "apply_cdc_events"):
+            return await runtime.apply_cdc_events(
+                schema=schema,
+                table=table,
+                columns=columns,
+                pk_columns=pk_columns,
+                events=events,
+            )
+        return await super().apply_cdc_events(
+            state,
+            schema=schema,
+            table=table,
+            columns=columns,
+            pk_columns=pk_columns,
+            events=events,
+        )
+
     async def reconcile_mv_table(
         self,
         state: Any,

@@ -25,6 +25,7 @@ unchanged (REQ-840, REQ-841).
 
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -34,7 +35,10 @@ if TYPE_CHECKING:
 
     from provisa.executor.result import QueryResult, ResultStream
     from provisa.federation.engine import FederationEngine
+    from provisa.federation.execution_auth import ExecutionAuthorization
     from provisa.transpiler.router import RouteDecision
+
+log = logging.getLogger(__name__)
 
 
 class EngineCapability(str, Enum):  # REQ-825, REQ-840
@@ -119,13 +123,30 @@ class EngineRuntime:  # REQ-825, REQ-840
         conn_kwargs: dict | None = None,
         span_attrs: dict[str, str] | None = None,
         extra_table_attrs: list[dict[str, str]] | None = None,
+        authorization: "ExecutionAuthorization | None" = None,
     ) -> QueryResult:
         """ENGINE terminal (REQ-825): execute federated SQL on the bound engine.
 
         ``fresh=True`` requests a private, freshly-reconnected terminal connection instead of the
         shared one (used by concurrent API-cache materialization that must not share a session) —
         the engine supplies its own reconnection parameters, so callers never touch a raw
-        connection."""
+        connection.
+
+        ``authorization`` (REQ-1760): a GovernedPlanAuth or SystemAuth (provisa.federation.
+        execution_auth) naming what authorizes this call. Verified when supplied. Optional for
+        now — most of this terminal's ~45 call sites across the codebase predate REQ-1760 and
+        are not yet migrated; making it required is a separate, dedicated migration, not bundled
+        into this change. A caller with no authorization is logged, not silently normalized as
+        trusted, so real usage can be inventoried before that migration."""
+        if authorization is not None:
+            from provisa.federation.execution_auth import verify_execution_authorization
+
+            verify_execution_authorization(authorization, sql)
+        else:
+            log.debug(
+                "execute_engine called with no authorization (REQ-1760 migration pending): %s",
+                sql[:200],
+            )
         return await self._backend.execute(
             self._state,
             sql,
@@ -362,11 +383,54 @@ class EngineRuntime:  # REQ-825, REQ-840
             shape=shape,
         )
 
+    def landing_target(
+        self,
+        *,
+        store_schema: str,
+        source_id: str,
+        source_type: Any,
+        schema_name: str,
+        table_name: str,
+    ) -> tuple[str, str]:
+        """Where a MATERIALIZED source table's replica lives in the materialization store —
+        delegated to the backend (REQ-1733's push-listener wiring computes a table's landing
+        address without reaching into the backend directly, since ``EngineRuntime`` exposes no
+        public ``backend`` attribute of its own)."""
+        return self._backend.landing_target(
+            store_schema=store_schema,
+            source_id=source_id,
+            source_type=source_type,
+            schema_name=schema_name,
+            table_name=table_name,
+        )
+
     async def analyze_landed_table(self, *, catalog: str, schema: str, table: str) -> None:
         """Planner statistics on a landed table, collected where the table lives (REQ-1688) —
         delegated to the backend."""
         await self._backend.analyze_landed_table(
             self._state, catalog=catalog, schema=schema, table=table
+        )
+
+    async def apply_cdc_events(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str],
+        events: list,
+    ) -> dict[str, int]:
+        """Apply CDC change events (insert/update -> upsert by PK, delete -> tombstone) to a landed
+        table (REQ-1733) — delegated to the backend so an embedded single-connection store (DuckDB,
+        REQ-989) writes through the engine's own connection instead of a second connection onto the
+        same file."""
+        return await self._backend.apply_cdc_events(
+            self._state,
+            schema=schema,
+            table=table,
+            columns=columns,
+            pk_columns=pk_columns,
+            events=events,
         )
 
     async def reconcile_mv_table(

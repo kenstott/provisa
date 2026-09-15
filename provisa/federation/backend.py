@@ -323,6 +323,33 @@ class EngineBackend:
             shape=shape,
         )
 
+    async def apply_cdc_events(
+        self,
+        state: Any,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str],
+        events: list,
+    ) -> dict[str, int]:
+        """Apply CDC change events (insert/update -> upsert by PK, delete -> tombstone) to a landed
+        table (REQ-1733). Base default writes through ``store_writer``'s per-call connection against
+        the engine's own store DSN — the universal path every backend supports. A native engine
+        whose store is embedded and shares a single connection (DuckDB, REQ-989) overrides this to
+        write through that connection instead, mirroring ``land_source_table``'s own dispatch."""
+        del state
+        from sqlalchemy.schema import CreateSchema
+
+        from provisa.federation.materialize_exec import apply_cdc, build_table
+        from provisa.federation.store_writer import store_connection
+
+        tbl = build_table(schema, table, columns, tuple(pk_columns))
+        async with store_connection(self.engine.materialize_store()) as conn:
+            if schema and conn.capabilities.schemas:
+                await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+            return await apply_cdc(conn, tbl, pk_columns, events)
+
     async def analyze_landed_table(
         self, state: Any, *, catalog: str, schema: str, table: str
     ) -> None:  # REQ-280, REQ-1688

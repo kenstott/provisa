@@ -30,9 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
-
-from provisa.federation.materialize_exec import apply_cdc, build_table
+from typing import Any, Awaitable, Callable
 
 log = logging.getLogger(__name__)
 
@@ -41,24 +39,26 @@ _SENTINEL = object()  # marks a clean end-of-stream on the pump queue
 
 async def consume_cdc_into_store(
     provider,
-    conn: Any,
+    land_fn: Callable[[list[Any]], Awaitable[dict[str, int]]],
     *,
     schema: str,
     table: str,
-    columns: list[tuple[str, str]],
-    pk_columns: list[str],
     disconnect: asyncio.Event,
     watch_target: str | None = None,
     debounce_quiet: float = 0.0,
     debounce_max_delay: float = 5.0,
     queue_maxsize: int = 10_000,
 ) -> dict[str, int]:
-    """Drain ``provider.watch(watch_target)`` into the landed ``schema.table``, applying events by
-    PK. ``watch_target`` defaults to ``table`` (the common case: the CDC target and the landed
-    table share a name), but must be passed explicitly whenever they differ — e.g. Kafka, where
-    ``table`` is the LANDED table's physical (often mangled) name but ``provider.watch()`` needs
-    the Kafka TOPIC (KafkaNotificationProvider.watch() uses its argument directly as the topic
-    name), never the landed name.
+    """Drain ``provider.watch(watch_target)`` into the landed ``schema.table``, applying each batch
+    through ``land_fn(events) -> {"upsert": int, "delete": int}`` — the caller's own write face
+    (REQ-1733/REQ-989: an embedded single-writer store lands through the engine's own connection;
+    every other store opens its own per-batch connection), never a connection this function holds
+    itself. ``columns``/``schema``/``table`` are carried for logging only; the actual DDL/landing
+    shape lives behind ``land_fn``. ``watch_target`` defaults to ``table`` (the common case: the CDC
+    target and the landed table share a name), but must be passed explicitly whenever they differ —
+    e.g. Kafka, where ``table`` is the LANDED table's physical (often mangled) name but
+    ``provider.watch()`` needs the Kafka TOPIC (KafkaNotificationProvider.watch() uses its argument
+    directly as the topic name), never the landed name.
 
     ``debounce_quiet=0`` (default): every event is applied to the store as it arrives — no
     batching, one ``apply_cdc`` call per message, byte-identical to the pre-REQ-1733 behavior.
@@ -90,7 +90,6 @@ async def consume_cdc_into_store(
     stream ends (flushing any partial batch first); always closes the provider. A primary key is
     required (enforced downstream)."""
     totals = {"upsert": 0, "delete": 0}
-    landed = build_table(schema, table, columns, tuple(pk_columns))
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=queue_maxsize)
     target = watch_target if watch_target is not None else table
@@ -111,7 +110,7 @@ async def consume_cdc_into_store(
         nonlocal buffer, batch_started_at
         if not buffer:
             return
-        counts = await apply_cdc(conn, landed, pk_columns, buffer)
+        counts = await land_fn(buffer)
         totals["upsert"] += counts["upsert"]
         totals["delete"] += counts["delete"]
         # REQ-1734: ack ONLY after the batch is durably landed, and only the events in THIS batch —

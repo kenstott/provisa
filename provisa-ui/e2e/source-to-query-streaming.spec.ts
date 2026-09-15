@@ -131,7 +131,6 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     // the code path looks structurally correct on read. Most likely a rebuild-timing race
     // (registerTable's mutation may not await _rebuild_schemas() before returning success to the
     // client) rather than a missing wire-up, but not confirmed live. Root cause not yet isolated.
-    test.skip(true, "real bug: POST /data/ingest 404s 'source not found' immediately after successful registration; not contention");
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_ingest_${stamp}`;
@@ -202,14 +201,32 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
   test("websocket: add the source, register a table, land pushed events, query it", async ({
     page,
   }) => {
-    // REAL BUG, reproduced in isolation (docker-free, in-process WS fixture — not contention).
-    // Registration succeeds, but the pushed events (ws-1/ws-2) never land: every poll attempt in
-    // pollUntilLanded times out inside its own 120s runSqlOnPage wait for the results grid,
-    // suggesting the CDC/push-listener mechanism (wire_push_listeners, provisa/events/
-    // push_wiring.py) never actually starts a listener for a table registered against an
-    // already-running runtime — the same re-wire gap this file's rss test above documents for the
-    // poll-source case, but for the push-source case. Root cause not yet isolated live.
-    test.skip(true, "real bug: pushed websocket events never land (SQL page query never completes); not contention");
+    // FIXED (was: "pushed websocket events never land"). Root cause, isolated live with a manual
+    // backend + direct GraphQL/websocket fixture: `wire_push_listeners` (provisa/events/
+    // push_wiring.py) called two attributes that do not exist on `EngineRuntime` (provisa/
+    // federation/runtime.py) — `engine.materialize_store()` (only `materialize_store_dsn()`
+    // exists) and `engine.backend.landing_target(...)` (`EngineRuntime` exposes no public
+    // `backend` attribute, only the private `_backend`). Both raised AttributeError, swallowed by
+    // the broad `try/except Exception` every caller wraps `wire_push_listeners`/`_rebuild_schemas`
+    // in (app.py) — so a push listener was NEVER started for any kafka/websocket table, on any
+    // boot, ever; only a unit test using a loosely-typed `MagicMock()` (which silently
+    // auto-creates any attribute, real or not) ever exercised this path, masking the drift.
+    // Fixed: use the real `materialize_store_dsn()` name, and added `EngineRuntime.landing_target`
+    // to delegate to the backend properly. A second, latent bug surfaced once the first was fixed
+    // and CDC landing actually ran: `push_wiring._run_listener` held its OWN long-lived
+    // `store_connection()` for the whole listener lifetime — for the embedded DuckDB store (this
+    // "core" project's default), that is a SECOND connection onto a file the federation engine's
+    // own connection already has ATTACHed, which DuckDB refuses (single-writer-per-file, REQ-989;
+    // reproduced live as `IOException: Could not set lock on file ... Conflicting lock is held`).
+    // Every other landing/persistence write face (`land_source_table`, `attach_landed_source`,
+    // `persist_mv_table`) already dispatches through the engine's own connection for an embedded
+    // DuckDB store instead of opening a second one — CDC landing was the one path that didn't.
+    // Fixed by adding the same dispatch for CDC: `EngineRuntime.apply_cdc_events` ->
+    // `NativeEngineBackend.apply_cdc_events` -> `DuckDBFederationRuntime.apply_cdc_events` (new;
+    // writes through the engine's own `self._con` via `store_connection.apply_cdc_duckdb_native`,
+    // new), falling back to the base backend's per-call `store_connection()` for every non-DuckDB
+    // store. `consume_cdc_into_store` (provisa/subscriptions/cdc_landing.py) no longer holds a
+    // connection itself — it now applies each flushed batch through a caller-supplied `land_fn`.
     test.setTimeout(240000);
     const stamp = Date.now();
     const sourceId = `e2e_websocket_${stamp}`;
