@@ -101,19 +101,16 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   });
 
   test("mariadb: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    // REAL BUG, reproduced twice in isolation (not contention — confirmed by re-running this file
-    // alone with no other agents, no shared docker-compose stack): the SQL page's query against
-    // pet_store.<table> fails with a genuine MariaDB syntax error — "You have an error in your SQL
-    // syntax ... near '"provisa_demo"."widgets" AS "widgets" ORDER BY id LIMIT 100'". MariaDB
-    // rejects ANSI double-quoted identifiers by default (needs backticks or sql_mode=ANSI_QUOTES);
-    // somewhere in the governed-SQL/residency-landing pipeline a query destined for MariaDB is
-    // built with double quotes instead of the mariadb dialect's quoting. Root cause not yet
-    // isolated to an exact source line — multiple live-traceback attempts were defeated by this
-    // harness's own instability (globalSetup's DuckDB warm-up query intermittently hits a
-    // HeadersTimeoutError before any test runs; Playwright's webServer stdout capture silently
-    // drops content partway through a run). Leave skipped until a controlled repro (outside this
-    // Playwright harness) pins the exact call site.
-    test.skip(true, "real MariaDB identifier-quoting bug, reproduced twice — not contention; root cause not yet isolated");
+    // REQ-1757: ROOT CAUSE FOUND AND FIXED. The SQL page's query against pet_store.<table> was
+    // failing with a genuine MariaDB syntax error ("...near '"provisa_demo"."widgets" AS
+    // "widgets" ORDER BY id LIMIT 100'") because schema_mutation.py's create_source/update_source
+    // mutations hardcoded `state.source_dialects[input.id] = ""` for every dynamically-registered
+    // source, regardless of type. pgwire/_pipeline.py's DIRECT-route compile step then did
+    // `dialect = decision.dialect or "postgres"` — `""` is falsy, so it silently fell back to
+    // postgres dialect (ANSI double-quoted identifiers) for ANY UI-registered source, not just
+    // mariadb/tidb. Fixed by reading the real dialect (core/models.py's Source.dialect, backed by
+    // core/source_registry.py's SOURCE_TO_DIALECT — the same map app_loaders.py's config-load path
+    // already used) instead of hardcoding "".
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_mariadb_${stamp}`;
@@ -145,13 +142,11 @@ test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", 
   });
 
   test("tidb: add the source, register a table, query it on the SQL page", async ({ page }) => {
-    // REQ-1749: the schema/table/column picker bug is FIXED (introspect.py's native_schemas/
+    // REQ-1749: the schema/table/column picker bug is fixed (introspect.py's native_schemas/
     // _native_tables_rdbms/native_columns were missing "tidb" from their mysql/mariadb dispatch
-    // tuples — verified: registration now reaches the SQL page). What remains is the SAME real bug
-    // documented on the mariadb test above: TiDB (identical MySQL wire protocol) rejects the SQL
-    // page's ANSI-double-quoted identifiers with the identical SYNTAX_ERROR shape. Root cause not
-    // yet isolated for that part either — see the mariadb test's comment.
-    test.skip(true, "real bug shared with mariadb above: TiDB rejects the SQL page's ANSI-quoted identifiers; picker bug is fixed (REQ-1749)");
+    // tuples). REQ-1757: the SAME SQL-page dialect bug documented on the mariadb test above is
+    // also fixed (schema_mutation.py's hardcoded empty-string dialect, affecting any UI-registered
+    // source — see that test's comment for the full mechanism).
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_tidb_${stamp}`;

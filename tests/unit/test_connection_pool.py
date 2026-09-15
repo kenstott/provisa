@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import pytest
 
+from provisa.core.source_registry import SOURCE_TO_DIALECT
 from provisa.executor.drivers.base import DirectDriver
-from provisa.executor.pool import _SOURCE_DIALECT, SourcePool
+from provisa.executor.pool import SourcePool
 from provisa.executor.result import QueryResult
 
 
@@ -116,18 +117,19 @@ class TestSourcePoolPureLogic:
 
 
 class TestSourceDialectMap:
-    """REQ-1754: cockroachdb/yugabytedb/greenplum/tidb were missing from _SOURCE_DIALECT, so
-    dialect_for() fell back to their own (invalid) name via `.get(source_type, source_type)` —
-    none of "cockroachdb"/"yugabytedb"/"greenplum"/"tidb" are real SQLGlot dialects. Each is
-    wire-compatible with a base protocol (registry.py's _DRIVER_FACTORIES: the first three reuse
-    the postgres driver, tidb reuses mysql) and must resolve to that dialect instead."""
+    """REQ-1755: SourcePool.add() used to consult its own copy of the source-type -> SQLGlot-
+    dialect map, which had drifted from the canonical one (core/source_registry.py's
+    SOURCE_TO_DIALECT) — missing cockroachdb/yugabytedb/greenplum/tidb entirely (none of their
+    own names are real SQLGlot dialects) and mapping singlestore to "mysql" instead of its own
+    real dialect. Now delegates to SOURCE_TO_DIALECT directly; these tests exercise that map
+    through dialect_for(), not a second copy of it."""
 
     def test_dialect_for_wire_compatible_types(self):
         sp = SourcePool()
-        sp._dialects["cr"] = _SOURCE_DIALECT.get("cockroachdb", "cockroachdb")
-        sp._dialects["yb"] = _SOURCE_DIALECT.get("yugabytedb", "yugabytedb")
-        sp._dialects["gp"] = _SOURCE_DIALECT.get("greenplum", "greenplum")
-        sp._dialects["td"] = _SOURCE_DIALECT.get("tidb", "tidb")
+        sp._dialects["cr"] = SOURCE_TO_DIALECT.get("cockroachdb", "cockroachdb")
+        sp._dialects["yb"] = SOURCE_TO_DIALECT.get("yugabytedb", "yugabytedb")
+        sp._dialects["gp"] = SOURCE_TO_DIALECT.get("greenplum", "greenplum")
+        sp._dialects["td"] = SOURCE_TO_DIALECT.get("tidb", "tidb")
         assert sp.dialect_for("cr") == "postgres"
         assert sp.dialect_for("yb") == "postgres"
         assert sp.dialect_for("gp") == "postgres"
@@ -136,7 +138,7 @@ class TestSourceDialectMap:
     def test_every_mapped_dialect_is_a_real_sqlglot_dialect(self):
         import sqlglot
 
-        for source_type, dialect in _SOURCE_DIALECT.items():
+        for source_type, dialect in SOURCE_TO_DIALECT.items():
             try:
                 sqlglot.transpile("SELECT 1", write=dialect)
             except Exception as exc:  # pragma: no cover - failure path, asserted below

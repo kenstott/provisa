@@ -685,7 +685,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if _domains:
             state.source_allowed_domains[input.id] = _domains
         state.source_types[input.id] = input.type
-        state.source_dialects[input.id] = ""
+        # REQ-1757: was hardcoded "" for every dynamically-registered source regardless of type —
+        # decide_route's `dialect = decision.dialect or "postgres"` (pgwire/_pipeline.py) then
+        # silently fell back to postgres dialect for the DIRECT route of ANY source created here
+        # (mariadb/tidb included), compiling ANSI-double-quoted SQL for a MySQL-wire server that
+        # rejects it. model.dialect (core/models.py's Source.dialect) is the SAME
+        # SOURCE_TO_DIALECT-backed property app_loaders.py's config-load path already uses.
+        state.source_dialects[input.id] = model.dialect or ""
         if model.federation_hints:
             # Mirrors _populate_source_catalog_names in app_loaders.py: the config path publishes
             # the hints to runtime state, so the dynamic path must too.
@@ -829,7 +835,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     input.id,
                 )
         state.source_types[input.id] = input.type
-        state.source_dialects[input.id] = ""
+        # REQ-1757: see create_source's identical fix above — was hardcoded "" regardless of type.
+        from provisa.core.source_registry import SOURCE_TO_DIALECT
+
+        state.source_dialects[input.id] = SOURCE_TO_DIALECT.get(input.type, "")
         if input.allowed_domains is not None:
             state.source_allowed_domains[input.id] = list(input.allowed_domains)
 

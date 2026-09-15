@@ -58798,6 +58798,9 @@
     every _SOURCE_DIALECT value is a real SQLGlot dialect and that the four newly-added entries
     resolve correctly — no live database connection needed for this specific defect.
   description: >-
+    [SUPERSEDED by REQ-1755, 2026-09-15 -- patching pool.py's own copy of the map was treating
+    the symptom (this one copy was stale) not the cause (a second copy existed at all). Kept here
+    for history; do not implement against it.]
     provisa/executor/pool.py's _SOURCE_DIALECT map (SourcePool.dialect_for(), the SQLGlot dialect
     a per-source direct-driver query is compiled in) was missing cockroachdb/yugabytedb/greenplum/
     tidb entirely. `.get(source_type, source_type)` then fell back to each type's own literal name
@@ -58811,8 +58814,17 @@
     tests) was a SQLGlot dialect-resolution issue. It is NOT the same bug: dialect_for() has
     exactly one call site (schema_mutation_ops.py's cross-source view-materialization mutation),
     not the SQL page's own query pipeline, and mariadb was ALREADY correctly mapped here despite
-    still showing the SQL-page bug. This fix closes a real, separate, previously-undetected gap
-    for the other four types; the SQL-page bug's actual root cause is still unisolated.
+    still showing the SQL-page bug.
+    [END SUPERSEDED BLOCK]
+    (Amended 2026-09-15, dedup the map instead of patching the copy:) pool.py's _SOURCE_DIALECT
+    was itself a stale, hand-maintained DUPLICATE of the actual canonical map,
+    core/source_registry.py's SOURCE_TO_DIALECT (which already had all four of these entries
+    correct, plus more pool.py lacked, e.g. singlestore's own real dialect instead of "mysql").
+    Three near-identical source-type dialect registries existed in this codebase at once
+    (_SOURCE_DIALECT here, SOURCE_TO_DIALECT in core/source_registry.py, and the ad-hoc runtime
+    dict at state.source_dialects — see REQ-1757 for that third one's own defect). Deleted
+    pool.py's copy entirely; SourcePool.add() now reads SOURCE_TO_DIALECT directly. One registry,
+    not three drifting in parallel.
   code:
   - provisa/executor/pool.py
   tests:
@@ -58827,3 +58839,111 @@
     view path)
     Then the generated DDL is compiled in that source's real wire-protocol dialect (postgres or
     mysql), not an invalid dialect name that would raise inside SQLGlot
+- id: REQ-1756
+  status: proposed
+  target: "2026-Q4"
+  group: "4. Source Connectors"
+  category: Source Adapter Registry
+  priority: SHOULD
+  type: structural
+  description: >-
+    Exactly two contracts govern how a source type is reached, never three or four. ENGINE
+    CONTRACT: every op a federation engine performs on a source type — reachability, capability,
+    catalog registration — goes through that engine's own Connector(ABC) implementation (REQ-842),
+    one instance per (engine, source_type). An op that does not apply to a given engine is a no-op
+    on that engine's Connector, never a separate code path outside the contract. DATASOURCE
+    CONTRACT: every op Provisa performs to read a source directly (no engine reaches it live) —
+    connect, list tables, list columns, list primary/foreign keys, execute a query — goes through
+    that source type's own implementation of ONE interface (connect, fetch_tables, fetch_columns,
+    fetch_primary_keys, fetch_foreign_keys, execute_query), implemented once per source type and
+    reused by every engine's Connector for that mechanism. REQUIRED FIX: (1) name the datasource
+    contract as its own interface. (2) Every source type currently dispatched by hardcoded
+    special-casing instead of through a registry must be re-registered and dispatched generically
+    under the correct contract. (3) Every source type reimplementing datasource-contract logic
+    another source type already implements generically must migrate onto the shared
+    implementation instead of duplicating it. (4) Any engine-specific catalog-generation logic
+    living outside that engine's own Connector implementation must fold into it. (5) The registry
+    docstring must accurately describe both contracts once (1)-(4) make that description true.
+  use_case: >-
+    Two contracts cleanly separates "how does an engine reach this source" from "how does Provisa
+    itself read this source" — each gets exactly one implementation surface per source type.
+    Consolidating onto two contracts is what makes "add a new source type" or "add a new engine" a
+    bounded, reviewable change instead of a search for every place a source type's name is
+    hardcoded.
+  implementation_scratchpad: >-
+    Non-binding notes on the current state, for whoever picks this up — not part of the
+    requirement itself. provisa/source_adapters/registry.py's docstring claims a universal
+    contract ("each adapter module must expose generate_catalog_properties,
+    generate_table_definitions, discover_schema") that only actually applies to the engine
+    contract's catalog-descriptor shape (REQ-250/251/252) for mongodb/cassandra/elasticsearch/
+    redis/prometheus/kafka. govdata/source.py correctly implements the datasource contract's shape
+    (connect/fetch_tables/fetch_columns/fetch_primary_keys/fetch_foreign_keys/execute_query) but
+    is registered in _ADAPTER_MAP under the engine contract's shape instead, and is dispatched via
+    7+ scattered `if source_type == "govdata"` branches (provisa/api/admin/introspect.py,
+    schema_query.py, schema_mutation.py, schema_helpers.py, schema_common.py,
+    api/data/endpoint_dev.py, api/app_schema_build.py, api/app_startup.py) rather than through the
+    registry — this causes no live break today since provisa-ui/src/pages/sources/constants.ts's
+    DISCOVERABLE_TYPES excludes govdata from the UI path that would hit the mismatch. neo4j/sparql
+    already implement the datasource contract via a shared generic runner
+    (provisa/api_source/caller.py's call_api, with _call_grpc already present in the same file);
+    openapi/graphql_remote/grpc_remote each reimplement equivalent logic instead of using it
+    (openapi/executor.py duplicates caller.py's _apply_auth) — proving convergence is achievable,
+    not aspirational. Separately, provisa/core/trino_catalog_files.py hardcodes its own
+    per-source-type imports of generate_catalog_properties/generate_table_definitions to write
+    Trino's real .properties/table-def files, entirely disconnected from
+    provisa/federation/trino_connectors.py's TrinoMongoConnector/TrinoCassandraConnector/etc.
+    Connector classes, which REQ-842 designates as owning exactly this job via
+    catalog_add/catalog_entry — this logic should fold into trino_connectors.py's Connector
+    implementations as Trino's own engine-contract implementation of the catalog-write op.
+- id: REQ-1757
+  status: complete
+  since: 2026-09
+  group: "3. Source Registration & Data Modeling"
+  category: Bug Fix
+  priority: MUST
+  type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    The defect is in state population inside the create_source/update_source GraphQL mutation
+    resolvers (heavy fixture surface: DB, pool, StrawberryInfo); the router-level dialect
+    resolution it feeds is already unit-tested (tests/unit/test_routing.py) given correct input,
+    and Source.dialect's correctness is covered by tests/unit/test_connection_pool.py's
+    TestSourceDialectMap. The actual registration-to-query round trip is the real assertion,
+    verified live this session against a real mariadb and a real tidb instance.
+  description: >-
+    The SQL page's query against a mariadb or tidb source failed with a genuine server-side syntax
+    error ("...near '"provisa_demo"."widgets" AS "widgets" ORDER BY id LIMIT 100'") — MariaDB/TiDB
+    reject ANSI double-quoted identifiers by default. Root-caused by live-tracing the actual query
+    pipeline (pgwire/_pipeline.py's _govern_and_route -> _execute_plan -> _run_plan_terminal):
+    schema_mutation.py's create_source AND update_source mutations both hardcoded
+    `state.source_dialects[input.id] = ""` for every dynamically-registered source, regardless of
+    type. _pipeline.py's DIRECT-route compile step does `dialect = decision.dialect or "postgres"`
+    — `""` is falsy, so it silently fell back to postgres dialect (ANSI double-quoted identifiers)
+    for the physical SQL of ANY source registered through the UI admin mutations, not only
+    mariadb/tidb (every other SIMPLE_RDBMS type happened to not trip on it only because their
+    engines tolerate double-quoted identifiers, e.g. postgres/oracle/sqlserver/duckdb all accept
+    ANSI quoting natively). Fixed by reading the real per-type dialect instead: create_source now
+    uses `model.dialect` (core/models.py's Source.dialect property, already backed by
+    core/source_registry.py's SOURCE_TO_DIALECT); update_source (which has no Source model in
+    scope at that point) reads SOURCE_TO_DIALECT directly. This is the SAME canonical map
+    app_loaders.py's config-load path already populated state.source_dialects from — the admin
+    mutation path was the one place that never did.
+    This was the actual root cause the mariadb/tidb SQL-page bug (documented across multiple
+    earlier sessions as "root cause not yet isolated, multiple live-traceback attempts defeated by
+    harness instability") had been chasing. REQ-1755's dialect-map fix (SourcePool's own registry)
+    was a real but SEPARATE, adjacent defect found while investigating this one — it does not
+    touch the code path this fix does (see REQ-1755's own amendment).
+  code:
+  - provisa/api/admin/schema_mutation.py
+  tests:
+  - provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts
+  use_case: >-
+    mariadb and tidb's e2e tests had been skipped across multiple sessions with the SQL-page
+    syntax error documented but unexplained; live-tracing the actual governed-SQL pipeline (not
+    just the introspection/picker layer REQ-1749 already fixed) found the real defect and fixing
+    it un-skipped both tests for the first time.
+  scenario: |
+    Given a mariadb or tidb source registered through the Sources form (not config-file loaded)
+    When a table on it is registered and queried from the SQL page
+    Then the physical query is compiled in that source's own SQLGlot dialect (backtick-quoted for
+    MySQL-wire), not a silent postgres-dialect fallback

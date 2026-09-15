@@ -18,39 +18,12 @@ from __future__ import annotations
 
 import asyncio
 
+from provisa.core.source_registry import SOURCE_TO_DIALECT
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.drivers.registry import create_driver
 from provisa.executor.result import QueryResult
 
 # Requirements: REQ-027, REQ-031, REQ-052, REQ-053
-
-_SOURCE_DIALECT: dict[str, str] = {
-    "postgresql": "postgres",
-    "mysql": "mysql",
-    "singlestore": "mysql",
-    "mariadb": "mysql",
-    "duckdb": "duckdb",
-    "sqlserver": "tsql",
-    "oracle": "oracle",
-    # REQ-950/registry.py's _DRIVER_FACTORIES: wire-compatible RDBs reuse the base wire's native
-    # driver (cockroachdb/yugabytedb/greenplum -> _make_pg, tidb -> _make_mysql) but were missing
-    # here — none of their own names ("cockroachdb"/"yugabytedb"/"greenplum"/"tidb") are valid
-    # SQLGlot dialects (verified: sqlglot.transpile raises "Unknown dialect"), so a direct query
-    # against one of these sources fell through `.get(source_type, source_type)` to that invalid
-    # name. Map each to the SQLGlot dialect of the wire protocol it actually speaks.
-    "cockroachdb": "postgres",
-    "yugabytedb": "postgres",
-    "greenplum": "postgres",
-    "tidb": "mysql",
-    # Warehouse sources read directly then landed (REQ-986/987/988) — their SQLGlot dialect for the
-    # direct read SQL. Databricks reads via the Databricks/Spark SQL dialect.
-    "databricks": "databricks",
-    "snowflake": "snowflake",
-    "clickhouse": "clickhouse",
-    "bigquery": "bigquery",
-    "fabric": "tsql",  # Fabric/Synapse read via T-SQL over TDS
-    "synapse": "tsql",
-}
 
 
 class SourcePool:  # REQ-052, REQ-053
@@ -99,7 +72,7 @@ class SourcePool:  # REQ-052, REQ-053
             connect_port = pgbouncer_port if use_pgbouncer else port
             await driver.connect(host, connect_port, database, user, password, min_size, max_size)
             self._drivers[source_id] = driver
-            self._dialects[source_id] = _SOURCE_DIALECT.get(source_type, source_type)
+            self._dialects[source_id] = SOURCE_TO_DIALECT.get(source_type, source_type)
 
     def dialect_for(self, source_id: str) -> str | None:  # REQ-550
         """Return the sqlglot dialect string for a source, or None if unknown."""
