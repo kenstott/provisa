@@ -49,6 +49,18 @@ from provisa.transpiler.transpile import transpile
 _ARROW_STREAM_BATCH_ROWS = 65_536
 
 
+def _file_stat_pair(path: str) -> tuple[int, int] | None:
+    """(mtime_ns, size) for *path*, or None if it does not exist (e.g. no ``-wal`` sidecar yet —
+    a WAL-mode db has none until its first write). Used as the control-plane refresh canary; see
+    DuckDBFederationRuntime._refresh_control_plane_snapshot for why a kernel-level file stat
+    replaced PRAGMA data_version there."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
 def build_vss_index_connection(
     dim: int, rows: list[tuple[str, str, str | None, str | None, list[float]]]
 ) -> duckdb.DuckDBPyConnection:
@@ -166,16 +178,17 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._control_plane_attached = False  # provisa_admin catalog (native path only)
         # SQLite control plane only: the engine attaches a private snapshot of the tenant DB, never
         # the live file (see _refresh_control_plane_snapshot). These track that snapshot.
-        self._cp_probe: sqlite3.Connection | None = None  # read-only handle on the LIVE file
-        self._cp_snapshot_dir = ""  # created with the probe, on the first SQLite control plane
+        self._cp_snapshot_dir = ""  # created lazily, on the first SQLite control plane refresh
         self._cp_snapshot_path = ""
-        self._cp_data_version: int | None = None  # PRAGMA data_version at the last snapshot
+        # (main-file, wal-file) os.stat (mtime_ns, size) pair as of the last snapshot — see
+        # _refresh_control_plane_snapshot for why this replaced PRAGMA data_version (and why the
+        # backup source connection it drives is opened fresh every time, never kept long-lived).
+        self._cp_canary: tuple[tuple[int, int] | None, tuple[int, int] | None] | None = None
         # attach_control_plane runs on whatever worker thread serves the request, and its
         # DETACH -> os.replace -> ATTACH sequence leaves the catalog momentarily unbound. Two
         # threads interleaving there would query a detached alias, so the whole refresh is
-        # serialized. The same lock covers _cp_probe, whose PRAGMA data_version caching requires a
-        # single long-lived connection (a per-call probe would report a fresh version every time).
-        # It is taken BEFORE _catalog_gate on the refresh path; nothing takes them the other way.
+        # serialized. It is taken BEFORE _catalog_gate on the refresh path; nothing takes them the
+        # other way.
         self._cp_lock = threading.Lock()
         # ...and the rebuild is invisible to concurrent queries only if they are excluded from it —
         # see _CatalogGate. Held for read by every execution path, for write by the rebuild.
@@ -384,30 +397,49 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         original.
 
         ``sqlite3.Connection.backup`` is SQLite's supported online-backup API: it yields a
-        consistent point-in-time copy while a writer is active. ``PRAGMA data_version`` on the
-        long-lived reader changes exactly when another connection commits, so an unchanged value
-        means the existing snapshot is still current and no copy is needed."""
-        if self._cp_probe is None:
-            # check_same_thread=False: the probe outlives the request that created it and is read
-            # from whichever worker thread later serves a query. _cp_lock is what makes that safe —
-            # every use of the probe happens under it.
-            self._cp_probe = sqlite3.connect(
-                f"file:{db_path}?mode=ro", uri=True, check_same_thread=False
-            )
+        consistent point-in-time copy while a writer is active.
+
+        Change detection uses OS-level file metadata (mtime + size of the main db file and its
+        ``-wal`` sidecar) rather than ``PRAGMA data_version`` on the long-lived probe. That pragma
+        is SQLite's own documented signal and normally tracks external commits correctly, but a
+        long-lived ``mode=ro`` reader was observed (REQ-1771's ingest catalog wiring, which for the
+        first time made a query's CORRECTNESS — not just an admin dashboard's eventual consistency —
+        depend on this refresh firing on every single write) to simply STOP advancing after enough
+        external commits/checkpoints against this control-plane file: a WAL reader-snapshot edge
+        case, not something a plain ``sqlite3`` connection reconnect can safely paper over (a freshly
+        reopened reader's first ``PRAGMA data_version`` read reports a low session-relative baseline
+        regardless of the file's real history, so "reconnect and recheck" can't distinguish "nothing
+        changed" from "reconnected too late to see it"). Once data_version got stuck, every later
+        write was silently invisible forever — a landed ingest row (or ANY control-plane write) never
+        appeared under ``provisa_admin`` again for the life of the process. mtime/size are kernel
+        facts about the file itself; they cannot get stuck the way a reader's cached session state
+        can, and unlike data_version they stay meaningful across a reconnect.
+
+        The backup SOURCE connection is opened fresh for every copy, not reused (REQ-1771): a
+        single long-lived ``mode=ro`` reader's ``.backup()`` was ALSO observed going stale under
+        sustained write churn — after enough prior backups on the same connection, it kept copying
+        an old MVCC snapshot even once the mtime/size canary above correctly noticed the file had
+        changed and asked for a fresh copy, so the row a landed source had actually committed
+        stayed invisible no matter how many later writes triggered another rebuild attempt. A new
+        connection has no stale snapshot to be stuck on; the per-refresh cost of opening one is
+        negligible next to the backup + DROP/CREATE VIEW work already done on every real change."""
+        if self._cp_snapshot_dir == "":
             self._cp_snapshot_dir = tempfile.mkdtemp(prefix="provisa-control-plane-snapshot-")
             self._cp_snapshot_path = os.path.join(self._cp_snapshot_dir, "control_plane.sqlite")
-        version = self._cp_probe.execute("PRAGMA data_version").fetchone()[0]
-        if version == self._cp_data_version:
+        canary = (_file_stat_pair(db_path), _file_stat_pair(f"{db_path}-wal"))
+        if canary == self._cp_canary and self._cp_canary is not None:
             return None
         # The caller detaches the previous snapshot only after this returns, so write the new copy
         # to a scratch path for it to move into place — never overwrite a file DuckDB has open.
         scratch = f"{self._cp_snapshot_dir}/control_plane.sqlite.new"
+        src = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         dst = sqlite3.connect(scratch)
         try:
-            self._cp_probe.backup(dst)
+            src.backup(dst)
         finally:
             dst.close()
-        self._cp_data_version = version
+            src.close()
+        self._cp_canary = canary
         return scratch
 
     # The materialization store, attached under this backend-neutral alias. A store MUST exist (the
@@ -849,10 +881,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
     def close(self) -> None:
         self._con.close()
-        with self._cp_lock:  # never tear the probe/snapshot out from under a refresh in flight
-            if self._cp_probe is not None:
-                self._cp_probe.close()
-                self._cp_probe = None
+        with self._cp_lock:  # never tear the snapshot out from under a refresh in flight
             if self._cp_snapshot_dir:
                 shutil.rmtree(self._cp_snapshot_dir)
                 self._cp_snapshot_dir = ""

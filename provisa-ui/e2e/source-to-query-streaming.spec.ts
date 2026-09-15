@@ -218,27 +218,35 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     // deadlocks/misbehaves. Fixed: the SQLite/embedded case now reuses state.tenant_db.engine
     // directly instead of opening a second engine at all.
     //
-    // REMAINING GAP (test still fails here, NOT re-skipped for #1/#2 -- this is a separate,
-    // larger unimplemented feature, not a regression from this fix): once the POST succeeds and
-    // the row lands in the tenant SQLite file, the SQL page's `SELECT ... FROM pet_store.<table>`
-    // never resolves it. provisa/api/app_loaders.py's catalog_name_for_source gives every
-    // DuckDB-native source (the "core" lane's engine) its OWN per-source-id ATTACH catalog for
-    // physical resolution -- but nothing (native_backend.py/duckdb_runtime.py, grepped for
-    // "ingest": no hits) ever attaches or maps an ingest source's physical table into a catalog
-    // the compiler can reach. The tenant sqlite file IS already exposed read-only, per-table, as
-    // `provisa_admin.<org_schema>.<table>` by duckdb_runtime.py's _rebuild_control_plane (used
-    // for the control-plane's own admin tables) -- the likely fix is teaching
-    // catalog_name_for_source to route ingest (DuckDB-native, no live connector) to that same
-    // `provisa_admin` catalog, the way it already routes Trino's MATERIALIZE_ONLY sources to
-    // Trino's own materialize-store catalog. Needs its own task/REQ: this is new catalog-wiring
-    // work, not a fix to the two bugs above.
-    test.skip(
-      true,
-      "ingest 404 'source not found' (missing-password ValueError swallowed by " +
-        "tolerate_startup_failure) is fixed; POST now succeeds. Still blocked on a separate, " +
-        "unimplemented gap: no DuckDB-native catalog wiring exposes an ingest source's landed " +
-        "rows to the SQL-page compiler on the SQLite control plane. See comment above.",
-    );
+    // REAL BUG #3 (FIXED, REQ-1771): once the POST succeeded and the row landed in the tenant
+    // SQLite file, the SQL page's `SELECT ... FROM pet_store.<table>` still never resolved it.
+    // provisa/api/app_loaders.py's catalog_name_for_source gave every DuckDB-native source (the
+    // "core" lane's engine) its OWN per-source-id ATTACH catalog for physical resolution -- but
+    // nothing (native_backend.py/duckdb_runtime.py, grepped for "ingest": no hits) ever attached
+    // or mapped an ingest source's physical table into a catalog the compiler could reach.
+    // Fixed: catalog_name_for_source now routes ingest (no live connector on any engine) to the
+    // `provisa_admin` catalog, the same one duckdb_runtime.py's _rebuild_control_plane already
+    // exposes the tenant DB's tables under (and the one Trino's own control-plane catalog uses).
+    // That catalog exposes the tenant DB under the org's real control-plane schema
+    // (`org_<org_id>`), not the "default" schema the Register-Table picker offers for ingest (a
+    // REQ-1745 UI-symmetry placeholder, never a real physical location) -- so register_table
+    // (schema_mutation_ops.py) now overrides an ingest table's stored schema_name to the real
+    // control-plane schema at registration time, the same way it already overrides a
+    // materialized view's schema to its actual refresh target.
+    //
+    // REAL BUG #4 (FIXED, REQ-1771, found live-tracing #3 once catalog routing alone still failed
+    // intermittently): duckdb_runtime.py's control-plane refresh cached "has anything changed"
+    // via PRAGMA data_version on a long-lived read-only probe connection, and re-used that SAME
+    // connection as the online-backup SOURCE on every refresh. Under this test's real write
+    // volume (global-setup's many registered sources/tables, then this test's own create+
+    // register+ingest), that probe's PRAGMA data_version reading -- and separately, its
+    // `.backup()` snapshot content -- both got stuck on an old MVCC view of the file: every LATER
+    // write became permanently invisible under `provisa_admin`, verified live (ingest rows
+    // present in the sqlite file the whole time; `SHOW TABLES` on the attached snapshot never
+    // grew past whatever was current when the staleness set in). Fixed: change detection now
+    // uses the main db file's and its `-wal` sidecar's own mtime/size (kernel facts, immune to a
+    // reader's stuck session state), and the backup source connection is opened fresh for every
+    // snapshot instead of reused.
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_ingest_${stamp}`;
@@ -672,5 +680,112 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
       180000,
     );
     expect(landedRows).toEqual([["kafka-registry-1", "hello-kafka-registry"]]);
+  });
+
+  // REQ-150: SchemaSource.SAMPLE — the other half of the schema_source modes REQ-1767 above left
+  // unwired. provisa/kafka/source.py's sample_topic_records/infer_columns_from_records existed
+  // with zero callers, same starting shape as schema_registry.py before REQ-1767. Wired into
+  // discovery_schema.py's same kafka branch: when the Discover form's Schema Registry URL hint is
+  // left blank (and the source has none stored either), discovery consumes real messages off the
+  // live topic and infers columns from their actual JSON shape instead of querying a registry —
+  // the ONLY way to discover a topic that was never registered with Schema Registry at all, which
+  // this test proves by never calling registerJsonSchema for its topic.
+  test("kafka: discover a topic's schema by sampling live messages, no Schema Registry involved", async ({
+    page,
+  }) => {
+    test.setTimeout(240000);
+    const stamp = Date.now();
+    const sourceId = `e2e_kafka_sample_${stamp}`;
+    const topic = `e2e-kafka-sample-topic-${stamp}`;
+    const tableName = sourceId;
+
+    // No registerJsonSchema call — this topic never gets a Schema Registry subject. A real
+    // message is produced BEFORE discovery so sample_topic_records (reads from the earliest
+    // offset) has something to consume.
+    produceKafkaMessage(topic, { id: "sample-1", value: "hello-sample" });
+
+    // 1. Sources form — same HOST_PORT_ONLY shape as the other kafka tests above.
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("kafka");
+    await page.getByLabel(/^Host/).fill("localhost");
+    await page.getByLabel(/^Port/).fill(String(E2E_KAFKA_PORT));
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. Discover flow — topic filled, Schema Registry URL left BLANK (the trigger for sample
+    // mode server-side) and bootstrapServers filled explicitly to prove that field is genuinely
+    // reachable through the real UI, not just a backend default path.
+    await page.getByTestId(`sources-discover-${sourceId}`).click();
+    await expect(page.getByTestId("schema-discovery")).toBeVisible({ timeout: 10000 });
+    await page.getByTestId("discover-kafka-topic").fill(topic);
+    await page.getByTestId("discover-kafka-bootstrap-servers").fill(`localhost:${E2E_KAFKA_PORT}`);
+    await expect(page.getByTestId("discover-kafka-registry-url")).toHaveValue("");
+    await page.getByTestId("discover-schema-btn").click();
+    await expect(page.getByRole("textbox", { name: "Name", exact: true }).first()).toHaveValue(
+      "id",
+      { timeout: 30000 },
+    );
+    // The sampled message's real shape — {id, value}, both strings — matches what
+    // infer_columns_from_records maps a JSON string type to (VARCHAR -> IR "text").
+    const nameInputs = page.getByRole("textbox", { name: "Name", exact: true });
+    await expect(nameInputs).toHaveCount(2);
+    expect(await nameInputs.nth(0).inputValue()).toBe("id");
+    expect(await nameInputs.nth(1).inputValue()).toBe("value");
+
+    await page.getByTestId("discover-col-pk-id").check();
+    await page.getByLabel(/^Domain ID/).fill("pet-store");
+    await page.getByLabel(/^Table Name/).fill(tableName);
+    await page.getByTestId("register-table-btn").click();
+    await expect(page.getByTestId("schema-discovery")).toBeHidden({ timeout: 20000 });
+
+    // 3. Confirm the discovered columns match reality: resolve the registered physical name, same
+    // dqDataset-polling pattern as the registry-discovery test above.
+    let registered = "";
+    const deadline = Date.now() + 60000;
+    while (Date.now() < deadline) {
+      const tablesRes = await page.request.post("/admin/graphql", {
+        data: { query: "{ tables { sourceId dqDataset } }" },
+      });
+      expect(tablesRes.ok(), await tablesRes.text()).toBeTruthy();
+      const tables = (await tablesRes.json()).data.tables as {
+        sourceId: string;
+        dqDataset: string | null;
+      }[];
+      const mine = tables.find((t) => t.sourceId === sourceId);
+      if (mine?.dqDataset) {
+        registered = mine.dqDataset.split("/").pop()!;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    expect(registered, `no dataset name ever reported for ${sourceId}`).toBeTruthy();
+
+    // 4. Full CDC-landing round trip, same as the registry-discovery test's own step 4, to prove
+    // the sample-discovered columns are real and queryable, not just a UI display artifact.
+    await page.goto("/tables");
+    await page.waitForSelector(".page-header", { timeout: 15000 });
+    const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
+    await row.waitFor({ timeout: 15000 });
+    await row.click();
+    const editBtn = page.getByTestId("table-read-view-edit").first();
+    await editBtn.waitFor({ timeout: 10000 });
+    await editBtn.click();
+
+    await page.getByRole("textbox", { name: /^Change Signal/ }).click();
+    await page.getByRole("option", { name: "kafka", exact: true }).click();
+    await page.getByTestId("live-delivery-enable").check();
+    await page.getByTestId("live-kafka-topic").fill(topic);
+    await page.getByTestId("table-edit-save").click();
+    await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+
+    produceKafkaMessage(topic, { id: "sample-2", value: "hello-sample-2" });
+
+    const landedRows = await pollUntilLanded(
+      page,
+      `SELECT id, value FROM pet_store.${registered} ORDER BY id`,
+      1,
+      180000,
+    );
+    expect(landedRows).toEqual([["sample-2", "hello-sample-2"]]);
   });
 });

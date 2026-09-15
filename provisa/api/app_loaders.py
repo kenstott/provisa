@@ -247,6 +247,16 @@ def catalog_name_for_source(state: "AppState", source_type: str, source_id: str)
     fixed = fixed_catalog_for_engine(state)
     if fixed:
         return fixed
+    if source_type == "ingest":  # REQ-1771
+        # ingest has NO live connector on any engine (no TRINO_CONNECTORS entry, and the native/
+        # DuckDB tier's own ATTACH loop — native_backend.py's _attach_registered — never attaches
+        # one either): its rows land straight into the tenant control-plane DB (provisa/ingest/
+        # engine.py writes there directly), so the only catalog the compiler can ever reach them
+        # through is provisa_admin — the SAME catalog duckdb_runtime.py's _rebuild_control_plane
+        # exposes the tenant DB under on the native tier, and Trino's own control-plane catalog
+        # (PROVISA_ADMIN_CATALOG) on that tier. A per-source name here would resolve to a catalog
+        # nothing ever provisions for ingest, on either engine.
+        return "provisa_admin"
     engine_rt = state.federation_engine
     engine_name = getattr(getattr(engine_rt, "engine", None), "name", "")
     if engine_name == "trino":

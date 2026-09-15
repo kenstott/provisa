@@ -59908,3 +59908,78 @@
     When a new rss table is registered and its poll job is wired via the scoped rewire
     Then the sqlite source's live queries are unaffected (the prior blanket-rewire regression does
     not reproduce)
+
+- id: REQ-1771
+  status: complete
+  since: 2026-09
+  group: "9. Live Data & Events"
+  category: Bug Fix
+  priority: MUST
+  type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    Verified live end-to-end via the ingest e2e test against a real running server — both bugs
+    fixed here (catalog/schema routing, and the control-plane refresh staleness that only showed
+    up under the test's own real write volume) are query-time integration behavior across the
+    compiler, the DuckDB native runtime, and a real SQLite control-plane file; a unit test would
+    fake the exact layer whose interaction is what broke.
+  description: >-
+    An `ingest` source's landed rows (provisa/ingest/router.py, already fixed to write
+    successfully under REQ-1745) were never queryable from the SQL page: `SELECT ... FROM
+    pet_store.<table>` always 404'd "table not found," even though the row demonstrably existed in
+    the tenant SQLite file.
+
+    Root cause #1: provisa/api/app_loaders.py's `catalog_name_for_source` gave every DuckDB-native
+    source its own per-source-id ATTACH catalog for physical resolution, but nothing
+    (native_backend.py/duckdb_runtime.py have zero "ingest" references) ever attaches or maps an
+    ingest source's physical table into a catalog the compiler can reach — ingest has no live
+    connector on any engine (no TRINO_CONNECTORS entry either). Fixed: `catalog_name_for_source`
+    now routes `source_type == "ingest"` to the `provisa_admin` catalog — the same one
+    duckdb_runtime.py's `_rebuild_control_plane` already exposes the tenant DB's tables under on
+    the native tier, and the one Trino's own control-plane catalog (`PROVISA_ADMIN_CATALOG`) names
+    on that tier.
+
+    Root cause #2: `provisa_admin` exposes the tenant DB under the org's REAL control-plane
+    schema (`org_<org_id>`), but ingest's registered_tables row carried the "default" schema its
+    Register-Table picker offers (a REQ-1745 UI-symmetry placeholder mirroring redis/
+    elasticsearch/prometheus, never a real physical location) — a catalog/schema mismatch that
+    left the compiler emitting a physical reference nothing backed. Fixed: `register_table`
+    (provisa/api/admin/schema_mutation_ops.py) now overrides an ingest table's stored schema_name
+    to the org's real control-plane schema at registration time, the same way it already
+    overrides a materialized view's schema to its actual refresh target.
+
+    Root cause #3 (found live-tracing #1/#2 once the catalog/schema fix alone still failed
+    intermittently under the e2e suite's real write volume): duckdb_runtime.py's control-plane
+    refresh cached "has anything changed" via `PRAGMA data_version` on a long-lived read-only
+    probe connection, and reused that SAME connection as the online-backup source on every
+    refresh. Under sustained writes (global-setup's many registered sources/tables, then a test's
+    own creates), that probe's data_version reading — and separately, its `.backup()` snapshot
+    content — both got stuck on an old MVCC view of the file: every later write became
+    permanently invisible under `provisa_admin` for the life of the process, verified live (rows
+    present in the sqlite file throughout; `SHOW TABLES` on the attached snapshot never grew past
+    whatever was current when the staleness set in). Fixed: change detection now uses the main db
+    file's and its `-wal` sidecar's own mtime/size (kernel facts, immune to a reader's stuck
+    session state) instead of `PRAGMA data_version`, and the backup source connection is opened
+    fresh for every snapshot instead of kept long-lived.
+  code:
+  - provisa/api/app_loaders.py
+  - provisa/api/admin/schema_mutation_ops.py
+  - provisa/federation/duckdb_runtime.py
+  tests:
+  - provisa-ui/e2e/source-to-query-streaming.spec.ts
+  use_case: >-
+    A row POSTed to an ingest source's HTTP push endpoint must be queryable from the SQL page
+    immediately (ingest is a synchronous push receiver, not a poll/CDC source) — landing a row
+    that then silently never resolves defeats the entire point of a push-ingest source, on both a
+    fresh server and one that has already processed substantial write volume.
+  scenario: |
+    Given an ingest source and table registered through the Sources/Register Table UI
+    When a row is POSTed to /data/ingest/<sourceId>/<table> and the SQL page immediately queries it
+    Then the row is returned, resolved through the provisa_admin catalog under the org's real
+    control-plane schema
+
+    Given a server that has already registered many other sources/tables (global-setup's full
+    demo config) and this ingest source is the latest of several created in quick succession
+    When each one's row is POSTed and immediately queried
+    Then every one resolves correctly — the control-plane refresh does not silently go stale after
+    the first few writes

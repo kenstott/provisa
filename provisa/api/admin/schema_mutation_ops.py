@@ -221,6 +221,18 @@ async def register_table(
         model = _table_model_from_input(input, columns, presets, alias)
     except ValueError as _map_err:  # REQ-1318: view_sql+view_metrics conflict / invalid spec
         return MutationResult(success=False, message=str(_map_err))
+    from provisa.api.app import state as _reg_state
+
+    if _reg_state.source_types.get(input.source_id) == "ingest":  # REQ-1771
+        # ingest's Register-Table picker offers only a synthetic "default" schema (REQ-1745, a
+        # UI-symmetry placeholder mirroring redis/elasticsearch/prometheus) -- it is never a real
+        # physical location. ingest rows land straight into the tenant control-plane DB
+        # (provisa/ingest/engine.py), which the compiler reaches only through the provisa_admin
+        # catalog (catalog_name_for_source, app_loaders.py) under the org's real control-plane
+        # schema. Storing "default" here would resolve to a schema provisa_admin never exposes.
+        from provisa.core.environments import active_org_schema
+
+        model.schema_name = active_org_schema(_reg_state.org_id, "")
     _effective_view_sql = input.view_sql
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
