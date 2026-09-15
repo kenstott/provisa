@@ -65,14 +65,19 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
             return None
         if not src.host:
             log.warning(
-                "push listener %s: kafka source %r has no bootstrap_servers (Source.host) — "
-                "skipping",
+                "push listener %s: kafka source %r has no host configured — skipping",
                 node,
                 src.id,
             )
             return None
+        # REQ-1766: was `src.host` alone — the Sources form (now HOST_PORT_ONLY, see
+        # provisa-ui/src/pages/sources/constants.ts) captures host and port as SEPARATE fields,
+        # the same shape websocket's own ws://host:port derivation uses just below. Passing bare
+        # host as bootstrap_servers silently used aiokafka's default port (9092) regardless of
+        # what the user actually registered, rather than failing loudly or connecting correctly.
+        bootstrap_servers = f"{src.host}:{src.port}" if src.port else src.host
         provider = get_provider(
-            "kafka", {"bootstrap_servers": src.host, "group_id": f"provisa-{src.id}"}
+            "kafka", {"bootstrap_servers": bootstrap_servers, "group_id": f"provisa-{src.id}"}
         )
         return provider, topic
 

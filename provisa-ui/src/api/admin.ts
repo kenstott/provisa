@@ -584,6 +584,10 @@ export async function discoverSourceSchema(
     table?: string;
     metric?: string;
     sample_limit?: number;
+    // REQ-1767: kafka discovery hints.
+    topic?: string;
+    value_format?: string;
+    schema_registry_url?: string;
   },
 ): Promise<DiscoverSchemaResponse> {
   const resp = await fetch(`${API_BASE_RAW}/admin/schema-discovery/discover/${sourceId}`, {

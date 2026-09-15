@@ -1,0 +1,75 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: Kafka (start-ui-install.sh --demo --source=kafka). A single-node KRaft
+# broker (no zookeeper) — same shape/config already proven in docker-compose.test.yml's own kafka
+# service. push_wiring.py's kafka branch (REQ-1733/1766) combines Source.host + Source.port into
+# bootstrap_servers, so register the source with host="localhost" port=${PROVISA_DEMO_KAFKA_PORT}.
+#
+# schema-registry (REQ-1767): confluentinc/cp-schema-registry, same image/shape as
+# docker-compose.test.yml's own schema-registry service — backs
+# provisa.kafka.schema_registry.SchemaRegistryClient's topic-column discovery
+# (discovery_schema.py's kafka branch / SchemaDiscovery.tsx's "Discover" flow on the Sources page).
+#
+# No prime.py: unlike a pull source, there is nothing to pre-load — a kafka SOURCE is a live
+# listener, so the source-to-query e2e produces its own test message(s) and registers its own
+# topic schema after the source/table are registered (see source-to-query-streaming.spec.ts's
+# kafka case).
+services:
+  kafka:
+    hostname: kafka
+    restart: unless-stopped
+    image: confluentinc/cp-kafka:7.6.0
+    ports:
+      - "${PROVISA_DEMO_KAFKA_PORT:-39092}:${PROVISA_DEMO_KAFKA_PORT:-39092}"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,HOST://localhost:${PROVISA_DEMO_KAFKA_PORT:-39092}"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,HOST://0.0.0.0:${PROVISA_DEMO_KAFKA_PORT:-39092}"
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_PROCESS_ROLES: broker,controller
+      CLUSTER_ID: 3W4Vn7JTS4yUfx7dcvUlPg
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      # Same headroom rationale as docker-compose.test.yml's own kafka service: default 1G heap
+      # risks an OOM kill on a memory-constrained CI/dev Docker VM before health-check passes.
+      KAFKA_HEAP_OPTS: "-Xmx256m -Xms256m"
+    volumes:
+      - kafka_demo_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:${PROVISA_DEMO_KAFKA_PORT:-39092} || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 42
+      start_period: 120s
+
+  schema-registry:
+    hostname: schema-registry
+    restart: unless-stopped
+    image: confluentinc/cp-schema-registry:7.6.0
+    ports:
+      - "${PROVISA_DEMO_KAFKA_SCHEMA_REGISTRY_PORT:-39093}:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8081"
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/subjects || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+volumes:
+  kafka_demo_data:

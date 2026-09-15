@@ -18,11 +18,17 @@
 //
 // Port range: 378xx, distinct from source-to-query.spec.ts's mysql/trino (330xx), demo-source-
 // containers.ts's fixture ports (33xxx/35xxx/36xxx/37474/37687/37117/38xxx/39xxx), and the other
-// parallel agents' spec files. Both fixture servers below (RSS HTTP feed, WebSocket) are started
-// IN-PROCESS by this spec file itself (Node's own http module / the `ws` package) — no docker
-// container, no demo/sources/ provisioning needed for either.
+// parallel agents' spec files. The RSS/WebSocket fixture servers are started IN-PROCESS by this
+// spec file itself (Node's own http module / the `ws` package) — no docker container needed for
+// either. Kafka (REQ-1766) needs a real broker — demo/sources/kafka's compose fixture, started/
+// stopped via provision.py the same way source-to-query-generic-rdbms.spec.ts does for its own
+// heavier fixtures.
 
+import { execFileSync } from "node:child_process";
 import * as http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { WebSocketServer } from "ws";
 
 import { test, expect } from "./coverage";
@@ -33,10 +39,77 @@ import {
   runSqlOnPage,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
+  typeSql,
 } from "./source-to-query-helpers";
 
 const E2E_RSS_PORT = 37801;
 const E2E_WS_PORT = 37802;
+const E2E_KAFKA_PORT = 37803;
+const E2E_KAFKA_SCHEMA_REGISTRY_PORT = 37804;
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const PROVISION = path.join(ROOT, "demo", "sources", "provision.py");
+const PYTHON = path.join(ROOT, ".venv", "bin", "python");
+const KAFKA_PREFIX = "provisa-s2q-streaming";
+
+function provisionKafka(cmd: "up" | "down"): void {
+  const env = {
+    ...process.env,
+    PROVISA_DEMO_KAFKA_PORT: String(E2E_KAFKA_PORT),
+    PROVISA_DEMO_KAFKA_SCHEMA_REGISTRY_PORT: String(E2E_KAFKA_SCHEMA_REGISTRY_PORT),
+  };
+  try {
+    execFileSync(PYTHON, [PROVISION, cmd, "--prefix", KAFKA_PREFIX, "kafka"], {
+      stdio: "inherit",
+      env,
+    });
+  } catch (e) {
+    if (cmd === "down") return; // a project that was never started removes nothing
+    throw e;
+  }
+}
+
+/** Produce one JSON message to *topic* via aiokafka (the same client push_wiring.py's consumer
+ * side uses) — no Node kafka client dependency needed for a single one-shot produce. */
+function produceKafkaMessage(topic: string, row: Record<string, string>): void {
+  const script =
+    "import asyncio, json, sys\n" +
+    "from aiokafka import AIOKafkaProducer\n" +
+    "async def main():\n" +
+    `    p = AIOKafkaProducer(bootstrap_servers="localhost:${E2E_KAFKA_PORT}")\n` +
+    "    await p.start()\n" +
+    "    try:\n" +
+    `        await p.send_and_wait(${JSON.stringify(topic)}, json.dumps(json.loads(sys.argv[1])).encode())\n` +
+    "    finally:\n" +
+    "        await p.stop()\n" +
+    "asyncio.run(main())\n";
+  execFileSync(PYTHON, ["-c", script, JSON.stringify(row)], { stdio: "inherit" });
+}
+
+/** Register a JSON Schema for *topic* in Confluent Schema Registry (subject "<topic>-value",
+ * the same naming convention provisa.kafka.schema_registry.discover_topic_columns reads). */
+function registerJsonSchema(topic: string, properties: Record<string, string>): void {
+  const script =
+    "import json, sys, urllib.request\n" +
+    "schema = json.dumps({'type': 'object', 'properties': " +
+    "{k: {'type': 'string'} for k in json.loads(sys.argv[2])}})\n" +
+    "body = json.dumps({'schema': schema, 'schemaType': 'JSON'}).encode()\n" +
+    "req = urllib.request.Request(\n" +
+    "    sys.argv[1], data=body, method='POST',\n" +
+    "    headers={'Content-Type': 'application/vnd.schemaregistry.v1+json'},\n" +
+    ")\n" +
+    "urllib.request.urlopen(req, timeout=15).read()\n";
+  execFileSync(
+    PYTHON,
+    [
+      "-c",
+      script,
+      `http://localhost:${E2E_KAFKA_SCHEMA_REGISTRY_PORT}/subjects/${topic}-value/versions`,
+      JSON.stringify(Object.keys(properties)),
+    ],
+    { stdio: "inherit" },
+  );
+}
 
 // ---------------------------------------------------------------------------------------------
 // RSS fixture: a static feed served over plain HTTP. subscriptions/rss_provider.py polls it and
@@ -300,21 +373,219 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     ]);
   });
 
-  // kafka: SKIPPED. Landing goes through the same REQ-1733 CDC-listener mechanism verified above
-  // for websocket (both are wired by the same wire_push_listeners/_run_listener code path in
-  // provisa/events/push_wiring.py — websocket's pass is direct evidence the shared mechanism
-  // works), but proving it end-to-end needs a REAL Kafka broker: no demo/sources/kafka fixture
-  // exists yet (demo/sources/provision.py has no "kafka" directory), and the ONE kafka broker this
-  // repo already provisions (docker-compose.e2e.yml / docker-compose.test.yml, KAFKA_HOST_PORT)
-  // belongs to the separate tests/e2e (pytest) and tests/ (pytest integration) harnesses — the
-  // provisa-ui Playwright "core" project's own webServer only brings up docker-compose.core.yml
-  // (control-plane postgres), never docker-compose.e2e.yml. Standing up a NEW demo/sources/kafka
-  // compose fixture (broker + a way to produce a test message) is real, self-contained work
-  // deliberately out of scope for this file per this task's own instructions ("if kafka's broker
-  // setup proves too heavy/slow ... acceptable to document that clearly and skip it").
-  test.skip(
-    "kafka: SKIPPED — no kafka broker reachable from the provisa-ui Playwright 'core' project " +
-      "(see comment above); landing mechanism is shared with websocket, verified passing above",
-    async () => {},
-  );
+});
+
+// ---------------------------------------------------------------------------------------------
+// kafka (REQ-1766): landing goes through the same REQ-1733 CDC-listener mechanism verified above
+// for websocket, but registration itself was a SEPARATE real bug: kafka was in none of
+// SIMPLE_RDBMS/HOST_PORT_ONLY/NO_CONNECTION_TYPES (provisa-ui/src/pages/sources/constants.ts) —
+// the Sources form rendered ZERO connection fields for it, the same class of defect REQ-1753
+// fixed for saphana, so a kafka source could never even be filled in. Fixed by adding kafka to
+// HOST_PORT_ONLY (host+port fields, same shape as websocket). That in turn uncovered a second
+// bug: push_wiring.py's kafka branch built bootstrap_servers from `src.host` ALONE, discarding
+// `src.port` entirely — once registration was even possible, the listener would have silently
+// connected to aiokafka's default port (9092) regardless of what was actually registered. Fixed
+// to combine host:port, the same shape websocket's own ws://host:port derivation already used.
+// A demo/sources/kafka compose fixture (single-node KRaft broker, no zookeeper) is added
+// alongside this fix — the ONE kafka broker this repo previously provisioned
+// (docker-compose.e2e.yml/test.yml) belonged to the separate pytest harnesses, unreachable from
+// this Playwright "core" project's own webServer.
+// ---------------------------------------------------------------------------------------------
+test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766)", () => {
+  test.beforeAll(() => {
+    test.setTimeout(180000);
+    provisionKafka("up");
+  });
+
+  test.afterAll(() => {
+    provisionKafka("down");
+  });
+
+  test("kafka: add the source, register a table, land a produced message, query it", async ({
+    page,
+  }) => {
+    test.setTimeout(240000);
+    const stamp = Date.now();
+    const sourceId = `e2e_kafka_${stamp}`;
+    const topic = `e2e-kafka-topic-${stamp}`;
+
+    // 1. Sources form — kafka is HOST_PORT_ONLY (REQ-1766): bootstrap host+port, no
+    // username/password/database (push_wiring.py builds bootstrap_servers from these directly).
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("kafka");
+    await page.getByLabel(/^Host/).fill("localhost");
+    await page.getByLabel(/^Port/).fill(String(E2E_KAFKA_PORT));
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. Register Table form — same REQ-1745 synthetic "default"/<sourceId> pick + placeholder
+    // id/value columns as websocket above. CDC landing hard-requires a declared primary key.
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "default", sourceId);
+    await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({
+      timeout: 30000,
+    });
+    await page.getByTestId("register-table-col-pk-id").check();
+    const registered = await submitRegisterAndExpectListed(page, sourceId);
+
+    // 3. Tables page — set this table's Change Signal to "kafka" and its consume topic
+    // (push_wiring.py's _build_provider reads live.kafka.topic; RegisterTableForm has no field
+    // for it, only TableEditForm's LiveDeliveryFieldset does).
+    await page.goto("/tables");
+    await page.waitForSelector(".page-header", { timeout: 15000 });
+    const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
+    await row.waitFor({ timeout: 15000 });
+    await row.click();
+    const editBtn = page.getByTestId("table-read-view-edit").first();
+    await editBtn.waitFor({ timeout: 10000 });
+    await editBtn.click();
+
+    // getByLabel matches BOTH the Select's own input and its open listbox (Mantine wires
+    // aria-labelledby on both) — scope to the textbox role to avoid a strict-mode violation.
+    await page.getByRole("textbox", { name: /^Change Signal/ }).click();
+    await page.getByRole("option", { name: "kafka", exact: true }).click();
+    // LiveDeliveryFieldset.tsx: every outbound-delivery field (including the topic input) is
+    // gated behind its own "Enable Live Delivery" checkbox ({live && (...)}), a SEPARATE toggle
+    // from Change Signal — checking it AFTER Change Signal is set so defaultLive.strategy
+    // captures "kafka" (isPushSignal) at check time, not whatever ttl/probe default preceded it.
+    await page.getByTestId("live-delivery-enable").check();
+    await page.getByTestId("live-kafka-topic").fill(topic);
+    await page.getByTestId("table-edit-save").click();
+    await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+
+    // 4. Produce one message on the registered topic — push_wiring's listener (re-wired on save,
+    // same state.push_listener_disconnects idempotency websocket's test comment describes) picks
+    // it up asynchronously.
+    produceKafkaMessage(topic, { id: "kafka-1", value: "hello-kafka" });
+
+    // 5. SQL page: same REQ-1733 CDC-listener mechanism as websocket — asynchronous, retry rather
+    // than assert immediately.
+    const rows = await pollUntilLanded(
+      page,
+      `SELECT id, value FROM pet_store.${registered} ORDER BY id`,
+      1,
+      180000,
+    );
+    expect(rows).toEqual([["kafka-1", "hello-kafka"]]);
+  });
+
+  // REQ-1767: provisa.kafka.schema_registry.SchemaRegistryClient (REQ-116/147/150) existed with
+  // zero callers anywhere in the codebase — built, never wired to any mutation or UI entry point.
+  // Wired into the same discover/edit/register flow mongodb/elasticsearch/cassandra/prometheus
+  // already use (SourcesPage's "Discover" button -> SchemaDiscovery.tsx, DISCOVERABLE_TYPES),
+  // rather than inventing a new one: discovery_schema.py's kafka branch calls
+  // discover_topic_columns() and returns real columns instead of a hardcoded id/value
+  // placeholder. Proves the registry round-trip for real (register a schema, discover it through
+  // the UI, see the actual discovered columns, register, query) — NOT the CDC-landing round trip
+  // the plain kafka test above covers, since SchemaDiscovery's column editor has no primary-key
+  // UI and CDC landing hard-requires one (see the comment inside this test for the live-traced
+  // detail). Also caught, live-traced, and fixed while building this: SchemaDiscovery.tsx's
+  // handleRegister hardcoded visibleTo: ["*"] per column — neither of the two independent
+  // visibility-enforcement layers (schema_gen.py's compiler, stage2.py's V003 query-time gate)
+  // treats "*" as a wildcard, so every column (and therefore the whole table) was silently
+  // excluded from every compiled schema AND every query, for every role, permanently, for EVERY
+  // type using the Discover flow — not a kafka-specific bug.
+  test("kafka: discover a topic's schema from Confluent Schema Registry, register it, query it", async ({
+    page,
+  }) => {
+    test.setTimeout(240000);
+    const stamp = Date.now();
+    const sourceId = `e2e_kafka_registry_${stamp}`;
+    const topic = `e2e-kafka-registry-topic-${stamp}`;
+    // MUST equal sourceId — a MATERIALIZE_ONLY "default"-schema source (kafka/websocket/rss/
+    // ingest, REQ-1745) only ever compiles a table whose name is source_id itself (the "one
+    // table per source" placeholder the picker's own AvailableTableType(name=source_id, ...)
+    // enforces in RegisterTableForm's flow — see _native_tables_kafka's "default" branch). A
+    // custom table name registers a row (confirmed live: it exists, columns are correct) but
+    // never compiles into any role's context, so dq_dataset (used to resolve the physical name
+    // everywhere in this file) stays permanently null — verified by comparing this test's row
+    // against the plain kafka test's above with a live debug dump, not guessed.
+    const tableName = sourceId;
+    registerJsonSchema(topic, { id: "string", value: "string" });
+
+    // 1. Sources form — same HOST_PORT_ONLY shape as the plain kafka case above.
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("kafka");
+    await page.getByLabel(/^Host/).fill("localhost");
+    await page.getByLabel(/^Port/).fill(String(E2E_KAFKA_PORT));
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 2. Sources page's own "Discover" flow (DISCOVERABLE_TYPES) — topic + registry URL hints,
+    // then the REAL discovered columns (not the id/value placeholder), then register directly.
+    await page.getByTestId(`sources-discover-${sourceId}`).click();
+    await expect(page.getByTestId("schema-discovery")).toBeVisible({ timeout: 10000 });
+    await page.getByTestId("discover-kafka-topic").fill(topic);
+    await page
+      .getByTestId("discover-kafka-registry-url")
+      .fill(`http://localhost:${E2E_KAFKA_SCHEMA_REGISTRY_PORT}`);
+    await page.getByTestId("discover-schema-btn").click();
+    await expect(page.getByRole("textbox", { name: "Name", exact: true }).first()).toHaveValue(
+      "id",
+      { timeout: 30000 },
+    );
+
+    await page.getByLabel(/^Domain ID/).fill("pet-store");
+    await page.getByLabel(/^Table Name/).fill(tableName);
+    await page.getByTestId("register-table-btn").click();
+    await expect(page.getByTestId("schema-discovery")).toBeHidden({ timeout: 20000 });
+
+    // SchemaDiscovery's registerTable call, unlike submitRegisterAndExpectListed's flow, returns
+    // no physical name directly — resolve it the same way that helper does (dqDataset's last
+    // path segment). Registration rebuilds the schemas asynchronously (same reason
+    // submitRegisterAndExpectListed polls the tables list rather than querying once) — poll here
+    // too rather than assume the very next GraphQL read already sees it.
+    let registered = "";
+    const deadline = Date.now() + 60000;
+    while (Date.now() < deadline) {
+      const tablesRes = await page.request.post("/admin/graphql", {
+        data: { query: "{ tables { sourceId dqDataset } }" },
+      });
+      expect(tablesRes.ok(), await tablesRes.text()).toBeTruthy();
+      const tables = (await tablesRes.json()).data.tables as {
+        sourceId: string;
+        dqDataset: string | null;
+      }[];
+      const mine = tables.find((t) => t.sourceId === sourceId);
+      if (mine?.dqDataset) {
+        registered = mine.dqDataset.split("/").pop()!;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    expect(registered, `no dataset name ever reported for ${sourceId}`).toBeTruthy();
+
+    // 3. Prove the registry-discovered table is a real, queryable table (not just a UI display
+    // artifact) — the SQL page accepts and runs a query against it, returning its real (empty,
+    // nothing produced) column shape correctly. NOT a full CDC-landing round trip like the
+    // plain kafka test above: push_wiring.py's wire_push_listeners hard-requires a declared
+    // primary-key column (pk_columns), and SchemaDiscovery.tsx's column editor — unlike
+    // RegisterTableForm's own register-table-col-pk-<name> checkboxes — has NO primary-key
+    // selection UI at all (verified: zero matches for is_primary_key/isPrimaryKey in that file).
+    // Every column registers with is_primary_key=false, so wire_push_listeners always skips this
+    // table ("no primary key column declared ... skipping") — a genuine, separate gap in the
+    // Discover-flow's column editor, not a kafka- or schema-registry-specific issue, and out of
+    // scope for "wire in the schema registry client."
+    // runSqlOnPage (the shared helper) waits for download-csv-btn, which ResultsPanel.tsx only
+    // renders for a non-empty result set — a genuinely empty table (correct here: nothing was
+    // ever produced) shows its own "No results." text instead, so this test drives the SQL page
+    // directly rather than reusing that helper.
+    await page.goto("/sql");
+    await page.waitForSelector(".cm-content", { timeout: 30000 });
+    const picker = page.getByTestId("sql-role");
+    if ((await picker.inputValue()) !== "org_admin") {
+      await picker.click();
+      const option = page.getByRole("option", { name: "org_admin", exact: true });
+      if (await option.count()) await option.click();
+      else await page.keyboard.press("Escape");
+    }
+    await typeSql(page, `SELECT id, value FROM pet_store.${registered}`);
+    const runResp = page.waitForResponse(
+      (r) => r.url().includes("/data/sql") && r.request().method() === "POST",
+    );
+    await page.getByTestId("sql-run").click();
+    const resp = await runResp;
+    expect(resp.ok(), await resp.text()).toBeTruthy();
+    await expect(page.getByText("No results.")).toBeVisible({ timeout: 30000 });
+  });
 });

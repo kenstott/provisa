@@ -110,7 +110,7 @@ export async function registeredTableNames(page: Page, sourceId: string): Promis
   return tables.filter((t) => t.sourceId === sourceId).map((t) => t.tableName);
 }
 
-async function typeSql(page: Page, sql: string) {
+export async function typeSql(page: Page, sql: string) {
   const editor = page.locator(".cm-content").first();
   await editor.click();
   await page.keyboard.press("ControlOrMeta+a");

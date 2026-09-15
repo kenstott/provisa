@@ -153,7 +153,19 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         return ["grpc"]
 
     if t == "kafka":
-        return ["kafka"]
+        # REQ-147's kafka_topics/kafka_sources catalog is populated ONLY by _process_kafka_sources
+        # (app_loaders.py) at boot from static config — never by the dynamic Sources-form/
+        # Register-Table-form UI flow REQ-1739/1745 added for rss/websocket/ingest. A kafka source
+        # created through that UI flow has zero kafka_topics rows: this is a DATA state, not a
+        # different engine or a different source type — a source is engine-agnostic regardless of
+        # how it was provisioned, so the dispatch here reads that state instead of assuming every
+        # kafka source is config-declared. Pre-declared topics keep the "kafka" schema (unchanged,
+        # REQ-147); a source with none falls through to the same "default" placeholder pattern
+        # rss/websocket/ingest use (REQ-1766) — the picker isn't permanently empty either way.
+        has_topics = await config_conn.execute_core(
+            select(kafka_topics.c.id).where(kafka_topics.c.source_id == source_id).limit(1)
+        )
+        return ["kafka"] if has_topics.fetchone() else ["default"]
 
     if t == "neo4j":
         return ["neo4j"]
@@ -214,6 +226,9 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     # branch, available_schemas fell through to the introspect_schemas seam, which returns [] for a
     # source with no ATTACH/view_ddl connector detail — the picker never populated and no table
     # could ever be registered against these types at all.
+    # kafka deliberately excluded: it already has its own dispatch above this function's `t ==
+    # "kafka"` branch (REQ-147, backed by the kafka_topics/kafka_sources catalog tables) — a
+    # SEPARATE, Trino-connector-backed mechanism that always intercepts kafka regardless of engine.
     if t in ("rss", "websocket", "ingest"):
         return ["default"]
 
@@ -517,6 +532,11 @@ async def _native_tables_kafka(  # REQ-147
 ) -> "list[AvailableTableType] | None":
     from provisa.api.admin.types import AvailableTableType
 
+    # REQ-1766: native_schemas only ever returns "default" for THIS source when it has no
+    # kafka_topics rows (see that function's own comment) — mirror rss/websocket/ingest's
+    # one-table-per-source placeholder rather than an empty list for that data state.
+    if schema_name == "default":
+        return [AvailableTableType(name=source_id, comment=None)]
     if schema_name != "kafka":
         return []
     try:

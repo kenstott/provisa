@@ -151,6 +151,16 @@ def generate_topic_table_names(source: KafkaSourceConfig) -> list[str]:
     return [t.topic for t in source.topics]
 
 
+def discover_schema(columns: list[KafkaColumn]) -> list[dict]:  # REQ-1767
+    """Adapter contract entry point (provisa/source_adapters/registry.py): [KafkaColumn] -> the
+    generic discovery dict shape (SchemaDiscovery.tsx's DiscoveredColumn, name+type) every other
+    adapter's own discover_schema returns. The actual fetch (discovery_schema.py's kafka branch of
+    _call_discover, REQ-1767) already did the real work — provisa.kafka.schema_registry's
+    discover_topic_columns() — this is only the same raw-data-to-dict-shape mapping mongodb/
+    elasticsearch/cassandra/prometheus's own discover_schema functions each do for their fetch."""
+    return [{"name": c.name, "type": c.data_type} for c in columns]
+
+
 def map_avro_to_ir(avro_type: str | dict) -> tuple[str, bool]:
     """Map an Avro type to the engine column type.
 

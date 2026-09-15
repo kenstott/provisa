@@ -26,7 +26,7 @@ import {
 import { Trash2 } from "lucide-react";
 import { discoverSourceSchema, fetchIrTypes } from "../api/admin";
 import type { DiscoveredColumn } from "../api/admin";
-import { useRegisterTable } from "../hooks/useAdminQueries";
+import { useRegisterTable, useRoles } from "../hooks/useAdminQueries";
 import { IR_TYPES_FALLBACK, toIrType } from "../irTypes";
 
 interface ColumnRow {
@@ -115,6 +115,29 @@ function DiscoverHints({
       />
     );
   }
+  if (sourceType === "kafka") {
+    // REQ-1767: topic is required (subject naming convention "<topic>-value" in Schema
+    // Registry); schemaRegistryUrl is optional — falls back to the source's own
+    // federation_hints.schema_registry_url (discovery_schema.py's kafka branch) when unset.
+    return (
+      <>
+        <TextInput
+          label={t("schemaDiscovery.kafkaTopic")}
+          value={hints.topic ?? ""}
+          onChange={(e) => setHints({ ...hints, topic: e.currentTarget.value })}
+          placeholder={t("schemaDiscovery.kafkaTopicPlaceholder")}
+          data-testid="discover-kafka-topic"
+        />
+        <TextInput
+          label={t("schemaDiscovery.kafkaSchemaRegistryUrl")}
+          value={hints.schema_registry_url ?? ""}
+          onChange={(e) => setHints({ ...hints, schema_registry_url: e.currentTarget.value })}
+          placeholder={t("schemaDiscovery.kafkaSchemaRegistryUrlPlaceholder")}
+          data-testid="discover-kafka-registry-url"
+        />
+      </>
+    );
+  }
   return null;
 }
 
@@ -126,6 +149,14 @@ export function SchemaDiscovery({
 }: SchemaDiscoveryProps) {
   const { t } = useTranslation();
   const [columns, setColumns] = useState<ColumnRow[]>([]);
+  // REQ-1767: the full current role-id list, matching RegisterTableForm's own working
+  // convention (its column checkboxes default to ALL roles) — NOT `["*"]` (stage2.py's V003
+  // authorization gate treats only `visible_to === null` as unrestricted, never a literal "*"
+  // entry, so a column granted only to "*" is visible to no real role, ever) and NOT `[]` either
+  // (schema_gen.py's own compile-time filter treats an empty list as unrestricted, but that's
+  // inconsistent with stage2.py's stricter null-only check — matching the real role list sidesteps
+  // the inconsistency entirely rather than depending on either file's specific empty/null handling).
+  const { roles } = useRoles();
   // IR type vocabulary for the per-column type dropdown (REQ-846), from the backend.
   const [irTypes, setIrTypes] = useState<string[]>(IR_TYPES_FALLBACK);
   useEffect(() => {
@@ -208,7 +239,19 @@ export function SchemaDiscovery({
         tableName: regForm.tableName,
         columns: selected.map((c) => ({
           name: c.alias || c.name,
-          visibleTo: ["*"],
+          // REQ-1767: was `["*"]` — schema_gen.py's compile-time filter treats a NON-EMPTY
+          // visible_to as an explicit role-id allowlist; "*" is not a real role id, so no role
+          // ever matched at compile time and the table was silently excluded from every
+          // compiled GraphQL/SQL/Cypher schema, for every role, permanently (row existed in the
+          // DB, invisible everywhere). An empty list `[]` fixes compilation (schema_gen.py
+          // treats falsy visible_to as unrestricted) but NOT query-time authorization —
+          // stage2.py's V003 gate checks `visible_to is None` specifically, so `[]` still reads
+          // as "granted to nobody" there ("[V003] Column ... is not visible to this role" at
+          // query time, live-traced). The real role-id list satisfies BOTH checks unambiguously,
+          // matching RegisterTableForm's own already-working convention (its column checkboxes
+          // default to every role) — this bug affected every type using this Discover flow
+          // (mongodb/elasticsearch/cassandra/prometheus), not just kafka.
+          visibleTo: roles.map((r) => r.id),
           alias: c.alias || undefined,
           description: c.description || undefined,
           // Persist the steward's assigned canonical IR type (REQ-846).

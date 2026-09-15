@@ -19,7 +19,16 @@ export const CHANGE_SIGNAL_LABELS: Record<string, string> = {
 };
 
 /** Source types that support schema discovery via adapter. */
-export const DISCOVERABLE_TYPES = new Set(["mongodb", "elasticsearch", "cassandra", "prometheus"]);
+// REQ-1767: kafka discovers a topic's columns from Confluent Schema Registry
+// (provisa.kafka.schema_registry.discover_topic_columns) — same discover/edit/register flow as
+// the other types here.
+export const DISCOVERABLE_TYPES = new Set([
+  "mongodb",
+  "elasticsearch",
+  "cassandra",
+  "prometheus",
+  "kafka",
+]);
 
 /** Source types that need a table mapping builder (NoSQL / non-relational). */
 export const MAPPING_TYPES = new Set([
@@ -230,7 +239,11 @@ export const DATA_LAKE = new Set(["delta_lake", "iceberg", "hive", "hive_s3"]);
 // REQ-1740: Trino's pinot connector reaches the cluster through the controller's REST endpoint
 // (pinot.controller-urls, TrinoPinotConnector.details() in trino_connectors.py) — host:port only;
 // database/username/password rendered under SIMPLE_RDBMS were dead inputs nothing ever read.
-export const HOST_PORT_ONLY = new Set(["airport", "websocket", "rss", "pinot"]);
+// REQ-1766: kafka was in none of SIMPLE_RDBMS/HOST_PORT_ONLY/NO_CONNECTION_TYPES — the Sources
+// form rendered ZERO connection fields for it (the same class of bug REQ-1753 fixed for saphana),
+// so a kafka registration could never be filled in. push_wiring.py's kafka branch builds
+// bootstrap_servers from host+port (see that file), same shape as websocket's ws://host:port.
+export const HOST_PORT_ONLY = new Set(["airport", "websocket", "rss", "pinot", "kafka"]);
 
 // Source types needing no connection fields at all beyond id/description (REQ-1739): ingest is a
 // pure push receiver, soda/great_expectations are DQ checkers that scan through pgwire.

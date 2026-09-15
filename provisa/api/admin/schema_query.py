@@ -1495,6 +1495,17 @@ async def resolve_available_columns_metadata(
             AvailableColumnType(name="description", data_type="text", comment=None),
             AvailableColumnType(name="published", data_type="timestamp", comment=None),
         ]
+    if source_type == "kafka" and schema_name == "default":
+        # REQ-1766: same placeholder reasoning as websocket below — reached only for a kafka
+        # source with no kafka_topics rows (native_schemas's data-driven "kafka" vs "default"
+        # split, see that function). A source WITH pre-declared topics (schema_name="kafka",
+        # REQ-147) is provisioned entirely at boot from static config and never reaches this
+        # resolver through the dynamic Register Table UI flow, so that case is intentionally left
+        # alone here — no regression, nothing to reconcile.
+        return [
+            AvailableColumnType(name="id", data_type="text", comment=None),
+            AvailableColumnType(name="value", data_type="text", comment=None),
+        ]
     if source_type == "websocket":
         # REQ-1745: a websocket event's shape is whatever the remote socket happens to send —
         # there is no catalog to introspect. Genuine placeholder (id/value), not introspection; a

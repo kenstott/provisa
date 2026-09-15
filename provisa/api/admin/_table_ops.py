@@ -81,7 +81,7 @@ async def _discover_columns_for_registration(source_id: str, table_name: str) ->
     hints = DiscoverRequest(
         collection=table_name, index=table_name, keyspace=table_name, table=table_name
     )
-    return _call_discover(adapter, row["type"], row, hints)
+    return await _call_discover(adapter, row["type"], row, hints)
 
 
 async def _resolve_ref_schema(conn, ref_names: set[str]) -> dict[str, dict[str, str]]:

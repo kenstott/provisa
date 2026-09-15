@@ -138,6 +138,14 @@ class DiscoverRequest(BaseModel):
     schema_name: str | None = None  # REQ-1093: schema for UNIQUE-constraint introspection
     metric: str | None = None
     sample_limit: int = 100
+    # REQ-1767: kafka discovery hints. schema_registry_url overrides the source's own
+    # kafka_sources.schema_registry_url (REQ-147) when set — kafka_topics/kafka_sources currently
+    # have no writer anywhere in this codebase (verified), so a dynamically-registered kafka
+    # source never has one stored; the hint lets discovery work today without that separate,
+    # larger gap being closed first.
+    topic: str | None = None
+    value_format: str | None = None
+    schema_registry_url: str | None = None
 
 
 @router.post("/discover/{source_id}", response_model=DiscoverResponse)
@@ -197,7 +205,7 @@ async def discover_source_schema(
     hints = body or DiscoverRequest()
 
     # Build adapter-specific discovery args from source record + hints
-    raw_columns = _call_discover(adapter, source_type, row, hints)
+    raw_columns = await _call_discover(adapter, source_type, row, hints)
 
     columns = [
         DiscoveredColumn(
@@ -231,10 +239,14 @@ async def discover_source_schema(
     )
 
 
-def _call_discover(
+async def _call_discover(
     adapter, source_type: str, row, hints: DiscoverRequest
 ) -> list[dict]:  # REQ-017, REQ-252
-    """Dispatch to the correct adapter.discover_schema() signature."""
+    """Dispatch to the correct adapter.discover_schema() signature.
+
+    async (REQ-1767): kafka's branch below is the first adapter here whose real fetch is a
+    network call through an async client (httpx via schema_registry.py's SchemaRegistryClient) —
+    every other branch stays synchronous internally, only the function signature changed."""
     if source_type == "mongodb":
         # MongoDB discover_schema requires sample documents from a live connection.
         # Check source_pools for an active connection; raise 503 if none exists.
@@ -339,6 +351,48 @@ def _call_discover(
                 metric=metric,
                 error=str(e),
             )
+
+    if source_type == "kafka":
+        # REQ-1767: wires provisa.kafka.schema_registry's SchemaRegistryClient (REQ-116/147/150,
+        # previously built but with zero callers anywhere) into the same discover/edit/register
+        # flow mongodb/elasticsearch/cassandra/prometheus already use — a topic hint (required)
+        # and value_format/schema_registry_url hints (both optional). Does NOT write to
+        # kafka_topics/kafka_sources (REQ-147's catalog, which nothing in this codebase writes to
+        # at all today — a separate, larger gap, not closed by this task): the discovered columns
+        # flow straight into SchemaDiscovery.tsx's own edit-then-registerTable step, the same as
+        # every other adapter here.
+        from provisa.kafka.schema_registry import discover_topic_columns
+        from provisa.kafka.source import ValueFormat
+
+        topic = hints.topic
+        if not topic:
+            raise ApiError(
+                400,
+                "discovery.kafka_topic_hint_required",
+                "Kafka discovery requires a 'topic' hint.",
+            )
+        registry_url = hints.schema_registry_url or (row.get("federation_hints") or {}).get(
+            "schema_registry_url"
+        )
+        if not registry_url:
+            raise ApiError(
+                400,
+                "discovery.kafka_schema_registry_url_required",
+                "Kafka discovery requires a Schema Registry URL — pass a schema_registry_url "
+                "hint or set federation_hints.schema_registry_url on the source.",
+            )
+        value_format = ValueFormat(hints.value_format) if hints.value_format else ValueFormat.JSON
+        try:
+            columns = await discover_topic_columns(registry_url, topic, value_format)
+        except Exception as e:
+            raise ApiError(
+                502,
+                "discovery.kafka_schema_registry_failed",
+                f"Failed to discover schema for topic {topic!r} from Schema Registry: {e}",
+                topic=topic,
+                error=str(e),
+            )
+        return adapter.discover_schema(columns)
 
     # Fallback: try calling with no args
     try:

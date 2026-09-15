@@ -59505,3 +59505,156 @@
     When an ingest source mirrors state.tenant_db per REQ-1745's NO_CONNECTION default
     Then it reuses the SAME live engine rather than opening a second, file-locking engine of its
     own
+- id: REQ-1766
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Bug Fix
+  priority: MUST
+  type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    Playwright e2e UI wiring + backend dispatch fixes verified live against a real kafka broker
+    (demo/sources/kafka, single-node KRaft) — unit-level mocking of the introspection dispatch or
+    the CDC listener would not have caught the real defects here (a missing form-field set, a
+    missing host:port join, a data-model gap between two registration paths, a UI-only checkbox
+    gate), all only observable end to end.
+  description: >-
+    kafka was in none of the Sources form's three field-group sets (SIMPLE_RDBMS/HOST_PORT_ONLY/
+    NO_CONNECTION_TYPES, provisa-ui/src/pages/sources/constants.ts) — the form rendered ZERO
+    connection fields for it, the same class of defect REQ-1753 fixed for saphana, so a kafka
+    source could never even be filled in. Fixed by adding kafka to HOST_PORT_ONLY (host+port
+    fields, matching websocket's shape). That uncovered a second bug: push_wiring.py's kafka
+    branch built bootstrap_servers from Source.host ALONE, discarding Source.port entirely — once
+    registration was even possible, the listener would have silently used aiokafka's default port
+    (9092) regardless of what was actually registered. Fixed to combine host:port, the same shape
+    websocket's own ws://host:port derivation already used. A third, deeper issue: kafka already
+    had a separate, pre-existing dispatch in introspect.py's native_schemas/_native_tables_kafka
+    (REQ-147, backed by the kafka_topics/kafka_sources catalog tables) that unconditionally
+    intercepted every kafka source's schema/table picker — but that REQ-147 catalog is populated
+    ONLY by app_loaders.py's _process_kafka_sources at boot from static config, and nothing in the
+    codebase (verified: zero INSERT statements anywhere) ever writes to kafka_topics/kafka_sources
+    dynamically, so a UI-registered kafka source always had zero rows there and its picker stayed
+    permanently empty. Fixed DATA-DRIVEN, not engine-gated (an engine-gated fix was proposed and
+    explicitly rejected during review — a datasource must stay engine-agnostic; the correct
+    discriminant is real registration-path data, not which engine runs the query): native_schemas
+    now checks whether kafka_topics actually has rows for the source_id and falls through to the
+    same "default" placeholder schema rss/websocket/ingest already use (REQ-1745) when it doesn't;
+    _native_tables_kafka and schema_query.py's resolve_available_columns_metadata mirror the same
+    split. The REQ-147 pre-declared-topic path is untouched for when it eventually gets a real
+    writer (see REQ-1767's schema-registry-discovery note). Also found and fixed in the e2e test
+    itself while verifying live: LiveDeliveryFieldset.tsx gates every outbound-delivery field
+    (including the topic-to-consume input) behind its OWN separate "Enable Live Delivery"
+    checkbox ({live && (...)}), independent of the Change Signal selector — the test was filling
+    the topic field before ever checking that box, so the field genuinely did not exist in the
+    DOM yet (not a locator-naming issue, confirmed via a live DOM dump before changing anything).
+  code:
+  - provisa-ui/src/pages/sources/constants.ts
+  - provisa/events/push_wiring.py
+  - provisa/api/admin/introspect.py
+  - provisa/api/admin/schema_query.py
+  - demo/sources/kafka/compose.yml
+  tests:
+  - provisa-ui/e2e/source-to-query-streaming.spec.ts
+  use_case: >-
+    Registering a kafka source through the real Sources/Register Table UI and landing a produced
+    message through it on the SQL page — the same CDC-listener path websocket already proved
+    (REQ-1733/1764) — must actually work; kafka was the one push type never wired end to end.
+  scenario: |
+    Given the Sources form with type=kafka selected
+    When the steward fills in host and port
+    Then the source registers (HOST_PORT_ONLY connection fields render and submit correctly)
+
+    Given a kafka source registered dynamically through the UI (no pre-declared kafka_topics rows)
+    When the Register Table form's schema picker loads
+    Then the "default" synthetic schema/table pick appears, matching rss/websocket/ingest
+
+    Given that table is registered with a declared primary key, its Change Signal set to "kafka",
+    Live Delivery enabled, and a topic name
+    When a JSON message is produced on that topic
+    Then push_wiring.py's listener lands it and the SQL page's SELECT returns the row
+- id: REQ-1767
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Feature
+  priority: SHOULD
+  type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    A live wiring + a genuine cross-cutting authorization bug, both only observable end to end
+    against a real Confluent Schema Registry (demo/sources/kafka's new schema-registry service)
+    and the real compiled-schema/query-authorization pipeline — verified live, not unit-mockable.
+  description: >-
+    provisa/kafka/schema_registry.py's SchemaRegistryClient (REQ-116/147/150) — a complete,
+    functional Confluent Schema Registry HTTP client (fetch a subject's Avro/JSON/Protobuf schema,
+    map it to KafkaColumn definitions) — had ZERO callers anywhere in the codebase; built, never
+    wired to any mutation, loader, or UI entry point. Wired into the SAME discover/edit/register
+    flow mongodb/elasticsearch/cassandra/prometheus already use (SourcesPage's "Discover" button
+    -> SchemaDiscovery.tsx, DISCOVERABLE_TYPES) rather than inventing a new one: added "kafka" to
+    DISCOVERABLE_TYPES and source_adapters/registry.py's _ADAPTER_MAP; discovery_schema.py's
+    _call_discover (made async — the first adapter branch here whose real fetch is genuinely
+    async) gets a kafka branch taking topic/value_format/schema_registry_url hints and calling
+    discover_topic_columns(); provisa/kafka/source.py gets a discover_schema() adapter-contract
+    function mapping KafkaColumn -> the generic discovery dict shape; SchemaDiscovery.tsx gets a
+    kafka DiscoverHints branch (topic + optional registry URL, falling back to the source's own
+    federation_hints.schema_registry_url); demo/sources/kafka/compose.yml gets a schema-registry
+    service (confluentinc/cp-schema-registry, same shape as docker-compose.test.yml's own).
+
+    While verifying this live, found and fixed a genuine, SEPARATE, cross-cutting bug affecting
+    EVERY type that uses the Discover flow, not just kafka: SchemaDiscovery.tsx's handleRegister
+    hardcoded visibleTo: ["*"] on every registered column. Two independent visibility-enforcement
+    layers disagree on what "unrestricted" means and NEITHER treats "*" as a wildcard:
+    schema_gen.py's compile-time _build_visible_tables treats a falsy (empty-list) visible_to as
+    unrestricted, so a table registered with ["*"] was excluded from EVERY compiled GraphQL/SQL/
+    Cypher schema for every role at compile time (its own `if table_id not in si.column_types:
+    skip` branch fired, since no role's column set ever included a column visible only to the
+    literal non-existent role "*"). Setting visible_to to an empty list `[]` fixes THAT layer but
+    not query-time authorization: stage2.py's V003 gate checks `visible_to is None` specifically
+    (not falsy) to mean unrestricted, so `[]` still reads there as "granted to nobody" — live-
+    traced as "[V003] Column 'id' is not visible to this role" at query time even once the table
+    became compile-visible. The row always existed in the database; it was silently unqueryable
+    and absent from every schema, for every role, permanently, for every Discover-flow
+    registration ever made (mongodb/elasticsearch/cassandra/prometheus included) until this fix.
+    Fixed by passing the real current role-id list (via the existing useRoles() hook) instead of
+    either ambiguous sentinel — the same convention RegisterTableForm's own column-selection UI
+    already uses successfully, satisfying both enforcement layers unambiguously rather than
+    depending on either file's specific empty/null special-casing.
+
+    Two related, smaller gaps intentionally NOT addressed here, left as follow-ups: (a)
+    provisa.kafka.source.sample_topic_records (SchemaSource.SAMPLE — infer columns by consuming
+    live messages instead of querying the registry) remains unwired, the same way the registry
+    path was before this task; (b) SchemaDiscovery.tsx's column editor has no primary-key
+    selection UI at all (unlike RegisterTableForm's register-table-col-pk-<name> checkboxes), so
+    a table registered through Discover can never satisfy push_wiring.py's CDC-landing
+    requirement for a declared PK — Discover-flow tables are real and queryable but never receive
+    live CDC data regardless of source type; only column-shape discovery is covered here.
+  code:
+  - provisa/api/admin/discovery_schema.py
+  - provisa/kafka/source.py
+  - provisa/source_adapters/registry.py
+  - provisa-ui/src/pages/sources/constants.ts
+  - provisa-ui/src/components/SchemaDiscovery.tsx
+  - provisa-ui/src/api/admin.ts
+  - provisa-ui/src/i18n/locales/en/schemaDiscovery.json
+  - demo/sources/kafka/compose.yml
+  tests:
+  - provisa-ui/e2e/source-to-query-streaming.spec.ts
+  use_case: >-
+    "wire in the kafka schema registry client and test it e2e" — closing the gap between a fully-
+    built, zero-caller Confluent Schema Registry client and any actual product surface that uses
+    it, discovered while extending kafka's e2e coverage (REQ-1766).
+  scenario: |
+    Given a JSON Schema registered in Confluent Schema Registry for subject "<topic>-value"
+    When a steward clicks "Discover" on a kafka source and supplies the topic + registry URL
+    Then the real discovered columns appear (not the generic id/value placeholder)
+
+    Given those discovered columns are registered as a table via the Discover flow
+    When the SQL page queries that table
+    Then the query succeeds and returns the table's real (empty) shape — proving the row is both
+    compile-visible AND query-authorized, not silently excluded by either enforcement layer
+
+    Given any table registered through SchemaDiscovery.tsx's Discover flow (any source type)
+    When its columns are stored with visible_to set to the real role-id list
+    Then every role that should see the table's columns does, in both the compiled schema and at
+    query-authorization time
