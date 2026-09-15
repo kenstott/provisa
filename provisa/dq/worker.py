@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from abc import ABC, abstractmethod
 from typing import Any, NoReturn
 
 # Which diagnostic metric counts the FAILING rows, per soda check type. Explicit rather than
@@ -72,6 +73,28 @@ def _configure_logging() -> None:
     root.setLevel(logging.WARNING)
 
 
+class DQChecker(ABC):  # REQ-1443
+    """The one contract every data-quality checker backend satisfies — the same shape as
+    provisa.encryption.providers.MasterKeyProvider and provisa.core.secrets.SecretsProvider (one
+    ABC, one method, N concrete backends), formalizing what was previously two same-signature
+    functions dispatched by a string if/elif with nothing enforcing they stayed in sync."""
+
+    @abstractmethod
+    def run(self, payload: dict) -> dict: ...
+
+
+class SodaChecker(DQChecker):
+    def run(self, payload: dict) -> dict:
+        # Calls the module-level run_soda by name (not a bound reference captured earlier) so a
+        # test that monkeypatches provisa.dq.worker.run_soda is still honored.
+        return run_soda(payload)
+
+
+class GreatExpectationsChecker(DQChecker):
+    def run(self, payload: dict) -> dict:
+        return run_gx(payload)
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print("usage: python -m provisa.dq.worker <payload.json>", file=sys.stderr)
@@ -80,14 +103,18 @@ def main(argv: list[str]) -> int:
     with open(argv[1], encoding="utf-8") as f:
         payload = json.load(f)
     checker = payload["checker"]
+    # Built fresh per call (not module-level) so a monkeypatched run_soda/run_gx is picked up —
+    # SodaChecker/GreatExpectationsChecker look the module-level function up by name at call time.
+    checkers: dict[str, DQChecker] = {
+        "soda": SodaChecker(),
+        "great_expectations": GreatExpectationsChecker(),
+    }
+    impl = checkers.get(checker)
+    if impl is None:
+        print(f"unknown data-quality checker {checker!r}", file=sys.stderr)
+        return 2
     try:
-        if checker == "soda":
-            envelope = run_soda(payload)
-        elif checker == "great_expectations":
-            envelope = run_gx(payload)
-        else:
-            print(f"unknown data-quality checker {checker!r}", file=sys.stderr)
-            return 2
+        envelope = impl.run(payload)
     except ModuleNotFoundError as exc:
         # The one failure the operator can act on directly, so it travels as the message the parent
         # surfaces rather than as a traceback through a checker's own import chain.
