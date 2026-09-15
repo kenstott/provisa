@@ -92,6 +92,7 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         "varbinary": GraphQLString,
         "bytea": GraphQLString,  # postgres binary (REQ-686 encrypted-at-rest columns)
         "blob": GraphQLString,  # sqlite / mysql binary storage class
+        "bytes": GraphQLString,  # BigQuery's own binary column type name
         # REQ-1753: HANA's own SQL_TYPE_NAMEs, from SYS.TABLE_COLUMNS' DATA_TYPE_NAME (not an
         # ANSI/information_schema name) — hit live registering a saphana source's own NVARCHAR
         # column, the same class of gap array/list handling already covers for other engines.
@@ -109,14 +110,17 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         # Large integer
         "bigint": BigInt,
         "int8": BigInt,  # postgres bigint alias
+        "int64": BigInt,  # BigQuery's own INFORMATION_SCHEMA.COLUMNS data_type for integers
         # Floating point
         "real": GraphQLFloat,
         "float4": GraphQLFloat,  # postgres real alias
         "float": GraphQLFloat,  # canonical IR floating type (REQ-846)
         "double": GraphQLFloat,
         "float8": GraphQLFloat,  # postgres double precision alias
+        "float64": GraphQLFloat,  # BigQuery's own floating-point type name
         "decimal": GraphQLFloat,
         "numeric": GraphQLFloat,
+        "bignumeric": GraphQLFloat,  # BigQuery's extended-precision numeric type
         "number": GraphQLFloat,  # OpenAPI JSON-Schema "number" (provisa.openapi.register._OPENAPI_TYPE_MAP)
         # Boolean
         "boolean": GraphQLBoolean,

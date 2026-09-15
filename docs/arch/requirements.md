@@ -18749,3 +18749,15 @@ provisa/kafka/source.py's sample_topic_records/infer_columns_from_records ([REQ-
 **Code:** `provisa/api/admin/discovery_schema.py`, `provisa/kafka/source.py`, `provisa-ui/src/components/SchemaDiscovery.tsx`, `provisa-ui/src/api/admin.ts`, `provisa-ui/src/i18n/locales/en/schemaDiscovery.json`
 
 **Tests:** `provisa-ui/e2e/source-to-query-streaming.spec.ts`
+
+### REQ-1774 · Bug Fix {#REQ-1774}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+provisa/compiler/type_map.py's column_type_to_graphql and provisa/grpc/proto_gen.py's _physical_to_proto each maintain their own engine-type → target-type table, and neither one had BigQuery's own INFORMATION_SCHEMA.COLUMNS data_type names (int64, float64, bignumeric, bytes; bool was already present in type_map.py but missing from proto_gen.py). Registering a BigQuery table through the Sources → Register Table UI flow ([REQ-1747](#REQ-1747)) surfaced this live: an INT64 column raised "Unmapped the engine type: 'int64'" in type_map.py, and after that map was fixed, the identical class of gap in proto_gen.py surfaced next as "Unmapped column type for proto: 'int64'" — the same defect duplicated across two parallel type maps. Both maps now carry BigQuery's native type names alongside their existing bigint/int8, float8/double, decimal/numeric, and varbinary/bytea/blob entries.
+
+**Use case:** Register a BigQuery-backed table (or generate its .proto/gRPC surface) whose columns use BigQuery's own type names rather than generic SQL aliases.
+
+**Code:** `provisa/compiler/type_map.py`, `provisa/grpc/proto_gen.py`
+
+**Tests:** `tests/unit/test_type_map.py`, `tests/unit/test_proto_gen.py`, `provisa-ui/e2e/source-to-query-cloud-warehouse.spec.ts`

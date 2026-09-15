@@ -60094,3 +60094,38 @@
     declared primary key
     When a message is produced to the topic and the SQL page queries the table
     Then the row lands and is queryable, proving the sample-discovered columns are real
+
+- id: REQ-1774
+  status: complete
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Bug Fix
+  priority: SHOULD
+  type: behavioral
+  unit_test: true
+  description: >-
+    provisa/compiler/type_map.py's column_type_to_graphql and provisa/grpc/proto_gen.py's
+    _physical_to_proto each maintain their own engine-type → target-type table, and neither one
+    had BigQuery's own INFORMATION_SCHEMA.COLUMNS data_type names (int64, float64, bignumeric,
+    bytes; bool was already present in type_map.py but missing from proto_gen.py). Registering a
+    BigQuery table through the Sources → Register Table UI flow (REQ-1747) surfaced this live: an
+    INT64 column raised "Unmapped the engine type: 'int64'" in type_map.py, and after that map was
+    fixed, the identical class of gap in proto_gen.py surfaced next as "Unmapped column type for
+    proto: 'int64'" — the same defect duplicated across two parallel type maps. Both maps now
+    carry BigQuery's native type names alongside their existing bigint/int8, float8/double,
+    decimal/numeric, and varbinary/bytea/blob entries.
+  code:
+  - provisa/compiler/type_map.py
+  - provisa/grpc/proto_gen.py
+  tests:
+  - tests/unit/test_type_map.py
+  - tests/unit/test_proto_gen.py
+  - provisa-ui/e2e/source-to-query-cloud-warehouse.spec.ts
+  use_case: >-
+    Register a BigQuery-backed table (or generate its .proto/gRPC surface) whose columns use
+    BigQuery's own type names rather than generic SQL aliases.
+  scenario: |
+    Given a BigQuery table with an INT64 column
+    When the table is registered through the Sources → Register Table UI flow
+    Then schema rebuild and GraphQL/proto generation succeed instead of raising "Unmapped ...
+    type: 'int64'"

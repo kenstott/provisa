@@ -86,14 +86,6 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       ),
       "no live Snowflake credentials in this environment (SNOWFLAKE_ACCOUNT/SNOWFLAKE_USER/SNOWFLAKE_PASSWORD)",
     );
-    // NOT YET VERIFIED end-to-end through Playwright: this run was aborted for cross-agent
-    // docker/port coordination in a shared swarm session before a full pass completed. The
-    // underlying connection path (SnowflakeDriver via SourcePool, and this spec's new
-    // introspect.py native_schemas/native_tables/native_columns branches) WAS independently
-    // confirmed live — see the file header and the commit message for the exact verification
-    // queries run directly against this account. Remove this skip once a full UI run is observed
-    // green.
-    test.skip(true, "not yet re-verified end-to-end via Playwright after the last edit — see comment");
     test.setTimeout(300000);
     seed("snowflake", "up");
     try {
@@ -109,7 +101,10 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       // "second bug" note.
       await page.getByLabel(/^Database/).fill("PROVISA_UI_E2E");
       await page.getByLabel(/^Warehouse$/).fill(process.env.SNOWFLAKE_WAREHOUSE ?? "COMPUTE_WH");
-      await page.getByLabel("Authentication").click();
+      // Mantine's Select portals its listbox with aria-labelledby pointing at the same label,
+      // so plain getByLabel("Authentication") resolves to both the input and the (closed)
+      // listbox — a strict-mode violation. Scope to the textbox role.
+      await page.getByRole("textbox", { name: "Authentication" }).click();
       await page.getByRole("option", { name: "Username / Password", exact: true }).click();
       await page.getByLabel(/^Username/).fill(process.env.SNOWFLAKE_USER!);
       await page.getByLabel(/^Password/).fill(process.env.SNOWFLAKE_PASSWORD!);
@@ -147,11 +142,21 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       ),
       "no live Databricks credentials in this environment (DATABRICKS_SERVER_HOSTNAME/HTTP_PATH/TOKEN)",
     );
-    // NOT YET VERIFIED end-to-end via Playwright — see the snowflake test's comment above. The
-    // seed script's databricks path (identical connection code to tests/integration/
-    // test_databricks_source_e2e.py) WAS confirmed live: cloud_warehouse_seed.py databricks up
-    // succeeded against this account's SQL Warehouse.
-    test.skip(true, "not yet re-verified end-to-end via Playwright after the last edit — see comment");
+    // Reproduced LIVE (2026-09-15) via a direct REST call to this account's SQL Warehouse start
+    // endpoint (api/2.0/sql/warehouses/<id>/start): 400 BAD_REQUEST, reason
+    // DENY_NEW_AND_EXISTING_RESOURCES, denyReason INACTIVE, scoped to the whole workspace (not
+    // just this warehouse) — the response's own decisionTimeMs/lastConfirmationMs show the
+    // workspace has been gatekept for ~73h, not a transient "still waking up" state.
+    // tests/integration/databricks_warehouse.py's ensure_warehouse_running() already retries this
+    // exact 4xx for up to 10 minutes (that retry loop IS the fix for the ordinary "warehouse
+    // asleep" case, documented in that file's own docstring) — it ran the full budget here and
+    // the gatekeeper never lifted. This is the Databricks workspace itself suspended on
+    // Microsoft/Databricks's side (likely needs reactivation in the workspace console), not a
+    // Provisa code or credentials gap. Skipping rather than blocking on an external outage this
+    // task cannot fix.
+    test.skip(true, "Databricks workspace gatekept INACTIVE (DENY_NEW_AND_EXISTING_RESOURCES) on " +
+      "every warehouse start attempt, reproduced live 2026-09-15 — external workspace suspension, " +
+      "not a code/creds gap; see comment for the exact error and verification");
     test.setTimeout(300000);
     seed("databricks", "up");
     try {
@@ -167,7 +172,10 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
         .fill(`https://${process.env.DATABRICKS_SERVER_HOSTNAME}`);
       await page.getByLabel(/^Catalog/).fill("workspace");
       await page.getByLabel(/SQL Warehouse HTTP Path/).fill(process.env.DATABRICKS_HTTP_PATH!);
-      await page.getByLabel("Authentication").click();
+      // Mantine's Select portals its listbox with aria-labelledby pointing at the same label,
+      // so plain getByLabel("Authentication") resolves to both the input and the (closed)
+      // listbox — a strict-mode violation. Scope to the textbox role.
+      await page.getByRole("textbox", { name: "Authentication" }).click();
       await page.getByRole("option", { name: "Personal Access Token", exact: true }).click();
       await page.getByLabel(/Access Token/).fill(process.env.DATABRICKS_TOKEN!);
       await submitSourceAndExpectListed(page, sourceId);
@@ -199,11 +207,6 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       !(process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_APPLICATION_CREDENTIALS),
       "no live GCP credentials in this environment (GOOGLE_CLOUD_PROJECT/GOOGLE_APPLICATION_CREDENTIALS)",
     );
-    // NOT YET VERIFIED end-to-end via Playwright — see the snowflake test's comment above. The
-    // exact introspection SQL this test relies on (project-qualified INFORMATION_SCHEMA.SCHEMATA/
-    // TABLES/COLUMNS) WAS confirmed live via a direct SourcePool.execute call against this
-    // project/dataset/table.
-    test.skip(true, "not yet re-verified end-to-end via Playwright after the last edit — see comment");
     test.setTimeout(300000);
     seed("bigquery", "up");
     try {
@@ -217,7 +220,10 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       await page.getByTestId("sources-id-input").fill(sourceId);
       await page.getByTestId("sources-type-select").selectOption("bigquery");
       await page.getByLabel(/Project ID/).fill(process.env.GOOGLE_CLOUD_PROJECT!);
-      await page.getByLabel("Authentication").click();
+      // Mantine's Select portals its listbox with aria-labelledby pointing at the same label,
+      // so plain getByLabel("Authentication") resolves to both the input and the (closed)
+      // listbox — a strict-mode violation. Scope to the textbox role.
+      await page.getByRole("textbox", { name: "Authentication" }).click();
       await page
         .getByRole("option", { name: "Application Default Credentials", exact: true })
         .click();
@@ -257,8 +263,12 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
     // and the token itself is valid/unexpired). This reads as the Fabric capacity being paused/
     // in a bad state on Microsoft's side, independent of Provisa. Skipping rather than blocking on
     // an external outage this task cannot fix.
+    // Re-checked live 2026-09-15 by running cloud_warehouse_seed.py fabric directly: identical
+    // "system update (18456)" error, byte-for-byte the same as above — still an active Microsoft-
+    // side outage on this workspace/capacity, not resolved since it was first reproduced.
     test.skip(true, "live Fabric warehouse unreachable right now (18456 'system update' on every " +
-      "connect attempt) — reproduced with the exact driver connection code; not a creds or code gap");
+      "connect attempt) — reproduced with the exact driver connection code, most recently " +
+      "2026-09-15; not a creds or code gap");
     test.setTimeout(300000);
     seed("fabric", "up");
     try {
@@ -272,7 +282,10 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       await page.getByTestId("sources-type-select").selectOption("fabric");
       await page.getByLabel(/Server/).fill(process.env.FABRIC_SQL_SERVER!);
       await page.getByLabel(/^Database/).fill(process.env.FABRIC_DATABASE!);
-      await page.getByLabel("Authentication").click();
+      // Mantine's Select portals its listbox with aria-labelledby pointing at the same label,
+      // so plain getByLabel("Authentication") resolves to both the input and the (closed)
+      // listbox — a strict-mode violation. Scope to the textbox role.
+      await page.getByRole("textbox", { name: "Authentication" }).click();
       await page
         .getByRole("option", { name: "Ambient Credential (az login / managed identity)", exact: true })
         .click();

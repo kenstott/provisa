@@ -33,17 +33,22 @@ _PROTO_TYPE_MAP: dict[str, str] = {
     "integer": "int32",
     "int": "int32",
     "bigint": "int64",
+    "int64": "int64",  # BigQuery's own INFORMATION_SCHEMA.COLUMNS data_type for integers
     "varchar": "string",
     "char": "string",
     "varbinary": "bytes",
     "bytea": "bytes",
     "blob": "bytes",
+    "bytes": "bytes",  # BigQuery's own binary column type name
     "uuid": "string",
     "boolean": "bool",
+    "bool": "bool",  # BigQuery's own boolean type name
     "real": "double",
     "double": "double",
+    "float64": "double",  # BigQuery's own floating-point type name
     "decimal": "double",
     "numeric": "double",
+    "bignumeric": "double",  # BigQuery's extended-precision numeric type
     "number": "double",  # OpenAPI JSON-Schema "number" (provisa.openapi.register._OPENAPI_TYPE_MAP)
     "timestamp": "google.protobuf.Timestamp",
     "timestamp with time zone": "google.protobuf.Timestamp",
