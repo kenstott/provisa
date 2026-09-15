@@ -135,21 +135,29 @@ test.describe("source to query through the UI, community-extension sources (REQ-
   test("firebird: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
-    // STILL NOT CONFIRMED, but for a NEW reason: the old "cross-agent contention" explanation no
-    // longer applies (re-run this session on an isolated webServer with PROVISA_E2E_SKIP_SHARED_
-    // SOURCES=1, no other agents). One isolated attempt hit a stale docker volume from an earlier
-    // session leaving a "widgets" table already present (prime.py's CREATE TABLE isn't
-    // idempotent) — cleaned and retried. The retry then HUNG: 25 minutes at zero CPU, frozen mid-
-    // webServer-startup, before beforeAll's docker provisioning ever ran — no error, no progress,
-    // killed manually. This harness (Playwright's globalSetup + webServer sequence) has shown
-    // several distinct instability modes this session (a DuckDB warm-up query intermittently
-    // hitting HeadersTimeoutError before any test runs; webServer stdout capture silently going
-    // quiet partway through a run; and now this outright hang) — likely worth its own
-    // investigation, separate from firebird itself. The DuckDB ATTACH/DSN mechanism
-    // (DuckDBFirebirdConnector.details(), the exact firebird://user:pass@host:port/path DSN and
-    // DUCKDB_FIREBIRD_CLIENT_LIBRARY) was verified directly against a live container outside the
-    // UI harness in an earlier session. Re-run to get a real pass/fail once the harness hang is
-    // understood.
+    // CONFIRMED CLEAN, MECHANISM-WISE — the 25-minute frozen-webServer hang reported earlier this
+    // session did NOT reproduce. Re-run in true isolation (own PROVISA_E2E_DATA_DIR, unique UI/API/
+    // demo ports, PROVISA_E2E_SKIP_SHARED_SOURCES=1, --retries=0) via `timeout 480 npx playwright
+    // test --project=core -g firebird ...`: globalSetup, webServer boot, source creation (firebird
+    // host/port/user/pass/DSN path all accepted, source listed) and register-table navigation all
+    // progressed normally in ~2 minutes total — no freeze, no zero-CPU stall.
+    //
+    // The run still failed, but on a plain, deterministic timeout: openRegisterForm's
+    // `page.goto("/tables")` then `page.waitForSelector(".page-header", { timeout: 15000 })`
+    // (source-to-query-helpers.ts:35) exceeded 15s. At the moment this ran, `ps aux | grep -c
+    // "playwright test"` showed 17 concurrent Playwright processes on this machine and `uptime`
+    // reported a load average of 44.68 against 12 cores — a ~4x-oversubscribed host, from other
+    // agents' concurrent e2e runs sharing it. openSourcesForm gives the identical
+    // CapabilityGate/identity-bootstrap wait on first load a 60000ms budget
+    // (source-to-query-helpers.ts:21); openRegisterForm's later full navigation to /tables re-runs
+    // that same bootstrap but is budgeted only 15000ms — a tight window even without contention,
+    // and the one this run's CPU oversubscription pushed past. Not patched here: the DSN/ATTACH
+    // path itself (DuckDBFirebirdConnector.details(), DUCKDB_FIREBIRD_CLIENT_LIBRARY) worked in
+    // this very run (source creation succeeded), and source-to-query-helpers.ts is shared by every
+    // other passing spec in this suite — changing its timeout budget belongs to a separate,
+    // deliberate pass across all callers, not a one-off edit motivated by this single contended
+    // run. Re-run on a quiet machine (or after that shared-helper timeout is revisited) for a
+    // clean pass/fail.
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_cext_firebird_${stamp}`;
