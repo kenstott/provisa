@@ -20,10 +20,21 @@
 
 import { execSync, spawnSync } from "child_process";
 
+// REQ-1772: HTTP/BOLT ports and the container name were all fixed literals — two concurrent
+// core-lane runs on the same host (e.g. two agents each running an isolated e2e suite) raced the
+// SAME container name and ports regardless of their own PROVISA_E2E_UI_PORT/API_PORT isolation
+// (which none of this touches). PROVISA_E2E_DEMO_PREFIX (shared with demo-source-containers.ts)
+// overrides the container name; defaults are unchanged so every existing caller behaves exactly
+// as before. Ports stay fixed here deliberately — this fixture is only ever driven by
+// neo4j-docker-export.spec.ts's own globalSetup/globalTeardown, one instance per Playwright
+// config evaluation, so a port collision only happens under the SAME concurrent-run scenario the
+// container-name fix already addresses; widening port isolation too would ripple into every
+// caller of NEO4J_URL for no added benefit.
+const DEMO_PREFIX = process.env.PROVISA_E2E_DEMO_PREFIX ?? "provisa-e2e";
 export const NEO4J_HTTP_PORT = 17474;
 export const NEO4J_BOLT_PORT = 17687;
 export const NEO4J_URL = `http://localhost:${NEO4J_HTTP_PORT}`;
-export const CONTAINER_NAME = "e2e-neo4j-community-export";
+export const CONTAINER_NAME = `${DEMO_PREFIX}-neo4j-community-export`;
 
 export function startNeo4jContainer(): void {
   spawnSync("docker", ["rm", "-f", CONTAINER_NAME], { stdio: "pipe" });

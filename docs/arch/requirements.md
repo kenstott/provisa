@@ -18721,3 +18721,17 @@ An `ingest` source's landed rows (provisa/ingest/router.py, already fixed to wri
 **Code:** `provisa/api/app_loaders.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/federation/duckdb_runtime.py`
 
 **Tests:** `provisa-ui/e2e/source-to-query-streaming.spec.ts`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1772 · Bug Fix {#REQ-1772}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+provisa-ui/e2e/demo-source-containers.ts hardcoded its Docker Compose project prefix ("provisa-e2e") and provisa-ui/e2e/neo4j-container.ts hardcoded its container name ("e2e-neo4j-community-export") with no env override, unlike every other per-run fixture in this suite (which already parameterizes ports/data-dir/org-id via PROVISA_E2E_*). Two concurrent core-lane Playwright runs on the same host — the exact situation this session's own fanned-out agent swarm hit repeatedly while re-verifying source-to-query-cloud- warehouse.spec.ts and kafka SAMPLE-mode discovery — raced the SAME literal Docker project/ container/network names regardless of each run's own PROVISA_E2E_UI_PORT/API_PORT/DATA_DIR isolation, which never touched this shared demo-source fixture at all. Observed failures across many live attempts: container-name conflicts ("already in use by container ..."), network-already-exists races, an Elasticsearch index-already-exists race, "container is marked for removal and cannot be started" (two runs' docker rm -f + docker run interleaved), and demo containers OOM-killed under the combined memory load of several full core-lane fixture sets running at once. Fixed by adding PROVISA_E2E_DEMO_PREFIX, read by both files (shared so neo4j-container.ts's container name and demo-source-containers.ts's compose project use the same override consistently); default is the original hardcoded value, so every existing caller (CI, a single local run) behaves identically to before. This addresses the container/network-identity collision specifically; simultaneous runs can still contend for host memory and CPU (a separate, resource-budget concern, not an identity-collision one) and for the DEMO_SOURCE_ENV/NEO4J_*_PORT host ports if two runs both omit an override (left fixed deliberately — see neo4j-container.ts's own comment on why widening port isolation too was not worth the added blast radius for a fixture only ever driven by one spec file's own setup/teardown).
+
+**Use case:** Running multiple isolated core-lane e2e suites concurrently on one host (this session's own fanned-out multi-agent verification workflow) must not have them collide on shared Docker fixture identity, only on genuinely shared host resources (memory/CPU), which is a separate, expected constraint to budget around rather than eliminate.
+
+**Code:** `provisa-ui/e2e/demo-source-containers.ts`, `provisa-ui/e2e/neo4j-container.ts`
+
+**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`, `provisa-ui/e2e/neo4j-docker-export.spec.ts`

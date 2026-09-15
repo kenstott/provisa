@@ -10,10 +10,18 @@
 
 // The live sources the source-to-query e2e (REQ-1671) configures through the UI. Each is the same
 // demo/sources/<name> unit the --source flag of start-ui-install.sh provisions, through the same
-// entry point (demo/sources/provision.py), under the provisa-e2e project prefix on e2e-only ports so
-// a running demo and a running e2e never collide. Started in globalSetup and removed in globalTeardown, like the
+// entry point (demo/sources/provision.py), under the provisa-e2e project prefix (override via
+// PROVISA_E2E_DEMO_PREFIX, see below) on e2e-only ports so a running demo and a running e2e never
+// collide. Started in globalSetup and removed in globalTeardown, like the
 // Neo4j export target (neo4j-container.ts): a container start mid-run tears down a veth while
 // browsers are open, which is what that file exists to avoid.
+//
+// REQ-1772: the prefix (and neo4j-container.ts's own container name) was hardcoded, so two
+// concurrent core-lane runs on the same host — e.g. two agents/sessions each running their own
+// isolated e2e suite — raced the SAME literal Docker project/container/network names regardless
+// of their own PROVISA_E2E_UI_PORT/API_PORT/DATA_DIR isolation (which none of this touches).
+// PROVISA_E2E_DEMO_PREFIX overrides it; default is unchanged so every existing caller (CI,
+// local runs) behaves exactly as before.
 
 import { execSync } from "child_process";
 import path from "path";
@@ -70,10 +78,12 @@ const PYTHON = path.join(ROOT, ".venv", "bin", "python");
 const ENV_ARGS = Object.entries(DEMO_SOURCE_ENV)
   .map(([k, v]) => `--env ${k}=${v}`)
   .join(" ");
+// REQ-1772: see module comment above.
+export const DEMO_PREFIX = process.env.PROVISA_E2E_DEMO_PREFIX ?? "provisa-e2e";
 
 function provision(cmd: "up" | "down"): void {
   execSync(
-    `"${PYTHON}" "${PROVISION}" ${cmd} --prefix provisa-e2e ${ENV_ARGS} ${DEMO_SOURCES.join(" ")}`,
+    `"${PYTHON}" "${PROVISION}" ${cmd} --prefix ${DEMO_PREFIX} ${ENV_ARGS} ${DEMO_SOURCES.join(" ")}`,
     { stdio: "pipe", env: { ...process.env, ...DEMO_SOURCE_ENV } },
   );
 }
