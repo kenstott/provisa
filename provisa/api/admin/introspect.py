@@ -66,6 +66,23 @@ _SQLSERVER_SYSTEM_SCHEMAS = {
 }
 _PG_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast", "public"}
 _TRINO_SYSTEM_SCHEMAS = {"information_schema"}
+# REQ-1753: HANA's own catalog schemas (SYS.SCHEMAS), never a user's data. "SYSTEM" is
+# deliberately NOT here — it is the SYSTEM user's own default schema, exactly where an operator's
+# tables typically live (verified live this session), not a HANA-internal one.
+_SAPHANA_SYSTEM_SCHEMAS = {
+    "SYS",
+    "PUBLIC",
+    "_SYS_BI",
+    "_SYS_BIC",
+    "_SYS_REPO",
+    "_SYS_STATISTICS",
+    "_SYS_TASK",
+    "_SYS_XS",
+    "_SYS_AFL",
+    "_SYS_EPM",
+    "HANA_XS_BASE",
+    "SAP_REST_API",
+}
 
 PROVISA_INTERNAL_SCHEMAS: frozenset[str] = frozenset(
     {
@@ -242,6 +259,20 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         result = await pool.execute(
             source_id,
             f"SELECT name FROM sys.schemas WHERE name NOT IN ('{ss_exclude}') ORDER BY name",
+        )
+        return [row[0] for row in result.rows]
+
+    if t == "saphana":
+        # REQ-1753: saphana's direct driver is the generic SQLAlchemyDriver (registry.py's
+        # _SQLALCHEMY_FALLBACK), same as trino's — $1, not ? or %s. SYS.SCHEMAS is HANA's own
+        # catalog view (there is no information_schema); this branch was the missing piece that
+        # made a saphana source connectable at all (REQ-1753's registry.py fix) but its schema
+        # picker still empty without it.
+        hana_exclude = "','".join(sorted(_SAPHANA_SYSTEM_SCHEMAS))
+        result = await pool.execute(
+            source_id,
+            f"SELECT SCHEMA_NAME FROM SYS.SCHEMAS WHERE SCHEMA_NAME NOT IN ('{hana_exclude}') "
+            "ORDER BY SCHEMA_NAME",
         )
         return [row[0] for row in result.rows]
 
@@ -818,6 +849,17 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
             )
             return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
+        if t == "saphana":
+            # SYS.TABLES is HANA's own catalog view; TABLE_TYPE excludes views (COLUMN/ROW covers
+            # both HANA storage engines — a view's TABLE_TYPE is neither).
+            result = await pool.execute(
+                source_id,
+                "SELECT TABLE_NAME, COMMENTS FROM SYS.TABLES WHERE SCHEMA_NAME = $1 "
+                "AND TABLE_TYPE IN ('COLUMN', 'ROW') ORDER BY TABLE_NAME",
+                [schema_name],
+            )
+            return [AvailableTableType(name=row[0], comment=row[1] or None) for row in result.rows]
+
         if t == "duckdb":
             # REQ-1746: scoped to the attached file's own catalog for the same reason
             # native_schemas' "duckdb" branch is above — a DIRECT connection to the file also
@@ -882,6 +924,16 @@ async def native_columns(  # REQ-1732
             source_id,
             "SELECT column_name, data_type FROM information_schema.columns "
             "WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
+            [schema_name, table_name],
+        )
+        return [(row[0], row[1]) for row in result.rows]
+    if t == "saphana":
+        # REQ-1753: same "no ATTACH-mechanism seam" gap as trino above — saphana has no DuckDB
+        # ATTACH connector, so this is the only path. SYS.TABLE_COLUMNS is HANA's own catalog view.
+        result = await pool.execute(
+            source_id,
+            "SELECT COLUMN_NAME, DATA_TYPE_NAME FROM SYS.TABLE_COLUMNS "
+            "WHERE SCHEMA_NAME = $1 AND TABLE_NAME = $2 ORDER BY POSITION",
             [schema_name, table_name],
         )
         return [(row[0], row[1]) for row in result.rows]

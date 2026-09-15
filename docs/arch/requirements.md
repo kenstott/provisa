@@ -18489,3 +18489,17 @@ hive_s3's Register Table schema picker never showed 'wh' — root-cause isolated
 **Code:** `provisa-ui/src/pages/sources/SourceFormFields.tsx`
 
 **Tests:** `provisa-ui/e2e/source-to-query-olap-lake.spec.ts`
+
+## 4. Source Connectors
+
+### REQ-1753 · New Feature {#REQ-1753}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A saphana source could not actually be registered and queried through the UI before this, despite SourceType.saphana and its Sources-form dropdown entry already existing from earlier this session. Four separate gaps had to be closed, each found by live-tracing an actual registration against a real SAP HANA Express instance (a temporary Vultr amd64 host — SAP HANA Express's indexserver does not start under Docker Desktop's Apple Silicon VM, confirmed both locally and via community reports, so this could not be verified on this machine directly): (1) provisa-ui/src/pages/sources/constants.ts's SIMPLE_RDBMS set was missing "saphana" — the Sources form rendered zero connection fields (no Host/Port/Username/Password/Database) for it at all. (2) provisa/executor/drivers/registry.py had no DirectDriver factory or SQLAlchemy fallback for saphana — it existed only as a whole ACTIVE ENGINE choice (_RDB_KINDS, build_sqlalchemy_engine), never as a source registrable under another engine (the DuckDB core lane, same as mariadb/tidb/etc.) — pool.has() was always False. Added "saphana": "hana+hdbcli" to _SQLALCHEMY_FALLBACK. (3) provisa/api/admin/introspect.py's native_schemas/ _native_tables_rdbms/native_columns had no saphana branch — the same "picker stays empty forever, no visible error" class of bug fixed for tidb/duckdb ([REQ-1749](#REQ-1749)/1750) this session; added branches querying HANA's own SYS.SCHEMAS/SYS.TABLES/SYS.TABLE_COLUMNS catalog views (not information_schema — HANA has none), using $1/$2 placeholders (the generic SQLAlchemyDriver's paramstyle, same as trino's own branches). (4) provisa/compiler/type_map.py's engine-type map had no "nvarchar" (HANA's default unicode text type — every HANA text column uses it) or "nclob" entry, so introspecting any real HANA table failed "Unmapped the engine type: 'nvarchar'" the moment a column of that type was read.
+
+**Use case:** Adding SAP HANA e2e coverage (the last SourceType from this session's remaining-data-sources audit with none) surfaced that the feature added earlier this session was UI-selectable but non-functional in every real path — form, driver, introspection, and type mapping all had to be fixed, verified live against a real HANA Express instance on a temporary amd64 cloud host.
+
+**Code:** `provisa-ui/src/pages/sources/constants.ts`, `provisa/executor/drivers/registry.py`, `provisa/api/admin/introspect.py`, `provisa/compiler/type_map.py`
+
+**Tests:** `tests/unit/test_native_introspect.py`, `tests/unit/test_type_map.py`, `provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts`, `demo/sources/saphana/compose.yml`, `demo/sources/saphana/prime.py`

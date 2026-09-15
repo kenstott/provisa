@@ -212,6 +212,12 @@ export const SIMPLE_RDBMS = new Set([
   // REQ-1731: HiveServer2 over Thrift (impyla) — host/port/database/username/password, same shape
   // as any other generic RDB.
   "hiveserver2",
+  // REQ-1753: saphana (hana+hdbcli via sqlalchemy-hana) — host/port/username/password/database,
+  // same shape as any other generic RDB. Its SourceType enum member and dropdown entry were added
+  // earlier this session, but this set was never updated — the Sources form rendered zero
+  // connection fields for it, so a saphana registration could never even be filled in, let alone
+  // submitted. Verified live this session against a real HANA instance once added here.
+  "saphana",
 ]);
 
 // Data lake types

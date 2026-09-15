@@ -92,6 +92,11 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         "varbinary": GraphQLString,
         "bytea": GraphQLString,  # postgres binary (REQ-686 encrypted-at-rest columns)
         "blob": GraphQLString,  # sqlite / mysql binary storage class
+        # REQ-1753: HANA's own SQL_TYPE_NAMEs, from SYS.TABLE_COLUMNS' DATA_TYPE_NAME (not an
+        # ANSI/information_schema name) — hit live registering a saphana source's own NVARCHAR
+        # column, the same class of gap array/list handling already covers for other engines.
+        "nvarchar": GraphQLString,  # HANA unicode varchar — every HANA text column defaults to it
+        "nclob": GraphQLString,  # HANA unicode CLOB, HANA's unbounded-text equivalent of "text"
         "uuid": GraphQLString,
         "string": GraphQLString,  # OpenAPI JSON-Schema "string" (provisa.openapi.register._OPENAPI_TYPE_MAP)
         # Integer types

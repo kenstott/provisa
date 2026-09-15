@@ -320,6 +320,44 @@ async def test_native_columns_tidb():
     assert params == ["verify_db", "widgets"]
 
 
+# ── saphana-as-a-source (REQ-1753) ──────────────────────────────────────────────────────────────
+# saphana was reachable only as the whole active engine (_RDB_KINDS) before REQ-1753 added it to
+# registry.py's _SQLALCHEMY_FALLBACK; these three dispatch branches were the other half — without
+# them a registered saphana source's schema/table/column pickers stayed empty forever, same class
+# of bug as tidb/duckdb above (REQ-1749/1750).
+@pytest.mark.asyncio
+async def test_native_schemas_saphana_excludes_system_schemas_in_sql():
+    # The exclusion runs in the SQL text (a NOT IN clause), not a Python-side filter — this pool
+    # mock doesn't execute SQL, so it's given only what a real HANA's SYS.SCHEMAS would already
+    # have filtered, and the assertion is on the generated query text, not a re-filtered result.
+    pool = _pool([("SYSTEM",), ("MYAPP",)])
+    result = await native_schemas("src", "saphana", pool, None)
+    assert result == ["SYSTEM", "MYAPP"]
+    _, query = pool.execute.call_args[0]
+    assert "SYS.SCHEMAS" in query
+    assert "'SYS'" in query and "'PUBLIC'" in query
+
+
+@pytest.mark.asyncio
+async def test_native_tables_saphana_uses_dollar_placeholder():
+    pool = _pool([("WIDGETS", None)])
+    result = await native_tables("src", "saphana", "SYSTEM", pool, None, None)
+    assert [t.name for t in result] == ["WIDGETS"]
+    _, query, params = pool.execute.call_args[0]
+    assert "$1" in query and "?" not in query and "%s" not in query
+    assert params == ["SYSTEM"]
+
+
+@pytest.mark.asyncio
+async def test_native_columns_saphana():
+    pool = _pool([("ID", "INTEGER"), ("NAME", "NVARCHAR")])
+    result = await native_columns("src", "saphana", "SYSTEM", "WIDGETS", pool)
+    assert result == [("ID", "INTEGER"), ("NAME", "NVARCHAR")]
+    _, query, params = pool.execute.call_args[0]
+    assert "$1" in query and "$2" in query
+    assert params == ["SYSTEM", "WIDGETS"]
+
+
 # ── duckdb-as-a-source's column picker (REQ-1749) ──────────────────────────────────────────────
 # native_schemas/_native_tables_rdbms already had "duckdb" branches (REQ-1746) using the DIRECT
 # pool connection, scoped to current_database() so a fresh attached file's system/temp catalogs

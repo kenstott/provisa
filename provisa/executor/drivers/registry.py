@@ -137,6 +137,14 @@ _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
 # fills gaps, broadening the writable/readable set to any SQLAlchemy dialect whose DBAPI is installed.
 _SQLALCHEMY_FALLBACK: dict[str, str] = {
     "sqlite": "sqlite",
+    # REQ-1753: saphana was reachable ONLY as the whole active engine (_RDB_KINDS,
+    # build_sqlalchemy_engine) — registering it as a per-source landed RDB under another engine
+    # (the DuckDB core lane, same shape as mariadb/tidb/etc.) had no DirectDriver at all: pool.has()
+    # was always False and create_driver() raised KeyError. hana+hdbcli is the same dialect
+    # _RDB_KINDS already declares for the engine path; sqlalchemy-hana's create_connect_args maps
+    # the URL's database segment to hdbcli's databaseName kwarg, routing an MDC SYSTEMDB connection
+    # to the named tenant (verified live against a real HANA Express instance this session).
+    "saphana": "hana+hdbcli",
 }
 
 

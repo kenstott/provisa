@@ -1,0 +1,73 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Optional demo source: SAP HANA Express (start-ui-install.sh --demo --source=saphana). Generic
+# self-only landing engine over the hdbcli/sqlalchemy-hana dialect (REQ-1752's SourceType addition;
+# saphana was already present in provisa/federation/engine.py's _RDB_KINDS, just unreachable until
+# the SourceType enum member + UI dropdown entry existed). password.json ships a fixed, non-real
+# dev-only credential (matches every other demo fixture's plaintext test password) — HANA rejects
+# an inline-string password on its CLI, requiring the JSON-file form instead.
+#
+# HXE is a full HANA instance, not a lightweight test image: ~6.4GB, needs 8GB+ RAM live, and a
+# cold start commonly takes 5-15 minutes (tenant DB service startup, not just container boot) —
+# budget accordingly in any test that waits on it.
+#
+# REQUIRES A REAL amd64 LINUX HOST. Two separate issues were live-traced this session:
+#   1. SAP's reference `docker run` command's kernel.shmmax/shmmni/shmall sysctls are rejected by
+#      recent Docker/containerd/runc regardless of host — reproduced identically on both Docker
+#      Desktop's Apple Silicon VM AND a genuine x86_64 Ubuntu 24.04 cloud host ("failed to write
+#      sysctl kernel.shmmni ... invalid argument"). Orthogonal to arm64/emulation; simply omit
+#      these sysctls (a modern kernel's own defaults are already far above SAP's requested
+#      minimums) rather than chase it further.
+#   2. hdbindexserver (the actual database engine, distinct from the auxiliary services —
+#      hdbnameserver/hdbcompileserver/hdbpreprocessor/hdbwebdispatcher — that DO start) never
+#      launches under Docker Desktop's Apple Silicon VM even with issue 1 fixed, while the
+#      identical fixture (sysctls dropped) starts hdbindexserver cleanly on a real x86_64 host —
+#      this session's Vultr vhf-4c-16gb instance. This part IS arm64/emulation-specific; community
+#      reports (SAP Community, SAP's own "Running Hana Express on M1 Macs" blog) agree the only
+#      reliable path on Apple Silicon is a genuine x86_64 VM (UTM/QEMU or a real/cloud host), never
+#      Docker Desktop's own VM directly.
+services:
+  saphana:
+    image: saplabs/hanaexpress:latest
+    restart: unless-stopped
+    hostname: hxehost
+    command:
+      - --agree-to-sap-license
+      - --passwords-url
+      - file:///hana/secrets/password.json
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    # SAP's reference `docker run` command's kernel.* sysctls are DELIBERATELY omitted — see
+    # module comment above (issue 1): rejected by this runc/containerd regardless of host, and a
+    # modern kernel's own defaults already exceed SAP's requested minimums.
+    sysctls:
+      net.ipv4.ip_local_port_range: "40000 60999"
+    ports:
+      # 39041, not the commonly-documented 39015: verified live in this session — this HXE build's
+      # tenant (HXE) hdbindexserver binds 39040 on 127.0.0.1 (container-internal only) and 39041 on
+      # 0.0.0.0 (the one actually reachable from outside the container). 39013 (SYSTEMDB/nameserver,
+      # also 0.0.0.0) is exposed too but is NOT usable alone for an external client: connecting there
+      # for the HXE tenant triggers HANA's redirect protocol, which hands the client an address the
+      # client then dials itself — for an external client that address is only reachable if 39041
+      # (or whatever the tenant's own port turns out to be) is ALSO published, so publish it directly
+      # and connect to it instead of going through 39013's redirect.
+      - "${PROVISA_DEMO_SAPHANA_PORT:-39041}:39041"
+      - "${PROVISA_DEMO_SAPHANA_PORT_39013:-39013}:39013"
+      - "${PROVISA_DEMO_SAPHANA_PORT_39017:-39017}:39017"
+    volumes:
+      - saphana_demo_data:/hana/mounts
+      # A SEPARATE top-level mount, never a sub-path of /hana/mounts: HANA's own init script
+      # validates its mount table and refuses to start with "ERROR: Unsupported mount point" if
+      # anything is bind-mounted underneath /hana/mounts (confirmed live in this session).
+      - ./password.json:/hana/secrets/password.json:ro
+volumes:
+  saphana_demo_data:
