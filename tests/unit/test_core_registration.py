@@ -562,16 +562,19 @@ class TestReq400PKOrAKOnTargetColumnSave:
 class TestReq414DemoSchemaHasFKRelationship:
     def test_demo_create_files_script_exists(self):
         # REQ-414
-        import os
+        from pathlib import Path
 
-        demo_script = "/Volumes/main/Users/kennethstott/PycharmProjects/provisa/demo/files/create_demo_files.py"
-        assert os.path.isfile(demo_script), "Demo create_demo_files.py must exist"
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        demo_script = repo_root / "demo" / "files" / "create_demo_files.py"
+        assert demo_script.is_file(), "Demo create_demo_files.py must exist"
 
     def test_demo_script_references_fk_relationship(self):
         # REQ-414
-        demo_script = "/Volumes/main/Users/kennethstott/PycharmProjects/provisa/demo/files/create_demo_files.py"
-        with open(demo_script) as f:
-            content = f.read()
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        demo_script = repo_root / "demo" / "files" / "create_demo_files.py"
+        content = demo_script.read_text()
         # Demo schema exercises FK auto-discovery: REFERENCES keyword in DDL
         # or explicit relationship/foreign_key terms
         assert (

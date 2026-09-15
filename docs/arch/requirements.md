@@ -18541,3 +18541,31 @@ The SQL page's query against a mariadb or tidb source failed with a genuine serv
 **Code:** `provisa/api/admin/schema_mutation.py`
 
 **Tests:** `provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts`
+
+## 1. Access Governance & Security
+
+### REQ-1758 · Query Governance {#REQ-1758}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+
+No code path returns query or action-invocation rows without a role bound to them. There is no "no role_id" mode: a caller that wants unrestricted output MUST select a role that is itself unrestricted (no RLS rules, no masking rules attached), never omit the role entirely. Governance is therefore always exercised through the same one code path ([REQ-1679](#REQ-1679)'s apply_governance stage) for every response, including a deliberately unrestricted one — the difference between a restricted and unrestricted result is which role's rules were applied, never whether governance ran at all. An endpoint MUST NOT accept an optional role_id whose absence causes it to skip governance and return raw rows; if unrestricted test/debug output is a real need (e.g. comparing governed vs. effectively-ungoverned output), it is served by requiring selection of an unrestricted role, not by omitting the role.
+
+**Use case:** An actual "no role_id" branch is a standing invariant violation that only stays safe as long as every caller of it remembers to gate it — exactly the shape of bug that gets silently reused or misconfigured into a live path later. Modeling "unrestricted" as a role instead of an absence keeps "every response is governed" a real invariant rather than a convention, and keeps the audit trail recording which role produced an unrestricted result instead of "none."
+
+**Code:** —
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1759 · CI/CD {#REQ-1759}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+
+ui-e2e-core.yml and ui-e2e-trino.yml ran on every push/PR to main and each routinely took 30-60+ minutes (container-heavy Playwright suites, one with a 7g Trino coordinator cold boot) — expensive for the signal given on an ordinary commit. Both now trigger on push to release/** branches, v* tags, and workflow_dispatch (manual, via the Actions tab) only. Added unit-tests.yml as the fast per-commit gate: tests/unit/ (~12K tests, verified no Docker/live-service dependency — none carry an integration/e2e/requires_* marker) on every push/PR, parallelized with pytest-xdist (-n auto; ~2m13s locally on 12 cores vs. an ~50min projected single-process runtime). This closes a real, previously-undiscovered gap: tests/unit/ had NO CI coverage at all before this — Requirements CI only ever ran tests/features/'s BDD scenarios, never tests/unit/. Running the full suite in CI for the first time surfaced three real defects the never-run-in-CI state had hidden: (1) test_core_registration.py's [REQ-414](#REQ-414) tests had the maintainer's own local absolute path ("/Volumes/main/Users/kennethstott/PycharmProjects/provisa/...") hardcoded instead of a REPO_ROOT-relative one — fixed to match test_infra_requirements.py's own convention. (2) test_infra_requirements.py's [REQ-071](#REQ-071) test asserted .claude/agents/requirements-tracker.md exists unconditionally, but .claude/ is deliberately never committed to this repo (a separate private checkout, see claude-dir-separate-repo) — a CI clone can never have it. Changed to skip with an explanation instead of failing. (3) test_cassandra_fetch.py imports provisa.cassandra.fetch unconditionally (no importorskip) and hard-failed without cassandra-driver installed — declared it in the dev extras group, matching the existing aiomysql/oracledb/firebase-admin convention (comment: "declared so `uv sync` installs them and the driver tests run instead of skipping").
+
+**Use case:** The user asked for a way to run the expensive Playwright e2e suites separately from an always-on fast gate, so a routine push doesn't tie up CI (or a developer's own attention) for up to an hour; running the newly-added fast gate against the full unit suite for the first time in any CI context surfaced genuine hidden defects the gap itself had let ship unnoticed.
+
+**Code:** `.github/workflows/unit-tests.yml`, `.github/workflows/ui-e2e-core.yml`, `.github/workflows/ui-e2e-trino.yml`, `pyproject.toml`, `tests/unit/test_core_registration.py`, `tests/unit/test_infra_requirements.py`
+
+**Tests:** `tests/unit/test_core_registration.py`, `tests/unit/test_infra_requirements.py`

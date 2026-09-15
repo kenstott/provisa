@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 # Project root - all paths derived from here
@@ -149,9 +150,11 @@ class TestREQ071RequirementsTracker:
     """REQ-071"""
 
     def test_requirements_tracker_agent_exists(self):
-        # REQ-071. `.claude/` is a separate checkout living only in the PRIMARY
-        # working tree — a git worktree does not contain it. Resolve the primary
-        # checkout via the git common dir so the assertion holds from any worktree.
+        # REQ-071. `.claude/` is its own private checkout, never committed to this repo (see
+        # claude-dir-separate-repo convention) — present only on a maintainer's local primary
+        # working tree, absent from a git worktree AND from a plain clone (CI included). Skip
+        # rather than fail when it's genuinely not there instead of asserting content a CI
+        # checkout can never have.
         import subprocess
 
         common = subprocess.run(
@@ -163,6 +166,10 @@ class TestREQ071RequirementsTracker:
         ).stdout.strip()
         primary = (REPO_ROOT / common).resolve().parent
         tracker = primary / ".claude" / "agents" / "requirements-tracker.md"
+        if not primary.joinpath(".claude").is_dir():
+            pytest.skip(
+                ".claude/ not present in this checkout (private, not committed to this repo)"
+            )
         assert tracker.exists(), ".claude/agents/requirements-tracker.md must exist"
 
 

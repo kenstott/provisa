@@ -17,7 +17,7 @@ name: UI e2e (Trino lane)
 # resolves state.redis_url to None and both the response cache and the rate limiter (REQ-371)
 # run on embedded fakeredis.
 #
-# REQ-1758: like ui-e2e-core.yml, this lane is expensive (a 7g Trino coordinator cold boot) and no
+# REQ-1759: like ui-e2e-core.yml, this lane is expensive (a 7g Trino coordinator cold boot) and no
 # longer runs on every push/PR — unit-tests.yml is the fast per-commit gate. Runs on release
 # branches/tags and on-demand only.
 

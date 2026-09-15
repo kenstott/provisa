@@ -58947,3 +58947,101 @@
     When a table on it is registered and queried from the SQL page
     Then the physical query is compiled in that source's own SQLGlot dialect (backtick-quoted for
     MySQL-wire), not a silent postgres-dialect fallback
+- id: REQ-1758
+  status: proposed
+  target: "2026-Q4"
+  group: "1. Access Governance & Security"
+  category: Query Governance
+  priority: MUST
+  type: constraint
+  description: >-
+    No code path returns query or action-invocation rows without a role bound to them. There is
+    no "no role_id" mode: a caller that wants unrestricted output MUST select a role that is
+    itself unrestricted (no RLS rules, no masking rules attached), never omit the role entirely.
+    Governance is therefore always exercised through the same one code path (REQ-1679's
+    apply_governance stage) for every response, including a deliberately unrestricted one — the
+    difference between a restricted and unrestricted result is which role's rules were applied,
+    never whether governance ran at all. An endpoint MUST NOT accept an optional role_id whose
+    absence causes it to skip governance and return raw rows; if unrestricted test/debug output is
+    a real need (e.g. comparing governed vs. effectively-ungoverned output), it is served by
+    requiring selection of an unrestricted role, not by omitting the role.
+  scenario: |
+    Given an endpoint that returns query or tracked-action rows
+    When it is called with no role_id, or a role_id that resolves to nothing
+    Then the endpoint refuses the call (or a caller wanting unrestricted output must supply an
+    unrestricted role) — it never falls through to returning raw, ungoverned rows
+  use_case: >-
+    An actual "no role_id" branch is a standing invariant violation that only stays safe as long
+    as every caller of it remembers to gate it — exactly the shape of bug that gets silently
+    reused or misconfigured into a live path later. Modeling "unrestricted" as a role instead of
+    an absence keeps "every response is governed" a real invariant rather than a convention, and
+    keeps the audit trail recording which role produced an unrestricted result instead of "none."
+  implementation_scratchpad: >-
+    Known current instance to evaluate against this rule:
+    provisa/api/admin/actions_router.py's TestActionInput.role_id (str | None = None) and its
+    POST /admin/actions/test handler — an omitted role_id skips governance and returns raw rows in
+    both the function and webhook branches. The UI (provisa-ui/src/pages/CommandsPage.tsx:909-919)
+    exposes this deliberately as a labeled "No Governance" option in a role-selector dropdown,
+    defaulting to it (useState<string>("")) — this is the concrete case this requirement asks to
+    be replaced with an actual unrestricted role, not removed as a feature. The endpoint is
+    already gated to non-production (PROVISA_ENABLE_TEST_ENDPOINTS), so this is not an urgent live
+    exposure, but it is the pattern this requirement exists to close. Also worth checking:
+    provisa/api/data/action_exec.py's invoke_tracked_function/_governed(), which returns raw rows
+    when role_id is None — confirmed unreachable from live gRPC/Bolt traffic (both gate on a
+    truthy role_id before calling it), but its other callers (mutations.py, generator.py,
+    registered_call.py, endpoint_grpc_proxy.py, pgwire's two call sites) were not checked.
+- id: REQ-1759
+  status: complete
+  since: 2026-09
+  group: "11. Platform, Infrastructure & Delivery"
+  category: CI/CD
+  priority: SHOULD
+  type: structural
+  unit_test: false
+  unit_test_reason: >-
+    A CI workflow-trigger and test-gating policy; there is no in-process interface to unit test.
+    Verified by inspecting live GitHub Actions runs after the change (ui-e2e-core.yml/
+    ui-e2e-trino.yml no longer fired on an ordinary main push; Unit Tests fired and ran).
+  description: >-
+    ui-e2e-core.yml and ui-e2e-trino.yml ran on every push/PR to main and each routinely took
+    30-60+ minutes (container-heavy Playwright suites, one with a 7g Trino coordinator cold
+    boot) — expensive for the signal given on an ordinary commit. Both now trigger on push to
+    release/** branches, v* tags, and workflow_dispatch (manual, via the Actions tab) only.
+    Added unit-tests.yml as the fast per-commit gate: tests/unit/ (~12K tests, verified no
+    Docker/live-service dependency — none carry an integration/e2e/requires_* marker) on every
+    push/PR, parallelized with pytest-xdist (-n auto; ~2m13s locally on 12 cores vs. an ~50min
+    projected single-process runtime). This closes a real, previously-undiscovered gap: tests/unit/
+    had NO CI coverage at all before this — Requirements CI only ever ran tests/features/'s BDD
+    scenarios, never tests/unit/. Running the full suite in CI for the first time surfaced three
+    real defects the never-run-in-CI state had hidden: (1) test_core_registration.py's REQ-414
+    tests had the maintainer's own local absolute path
+    ("/Volumes/main/Users/kennethstott/PycharmProjects/provisa/...") hardcoded instead of a
+    REPO_ROOT-relative one — fixed to match test_infra_requirements.py's own convention. (2)
+    test_infra_requirements.py's REQ-071 test asserted .claude/agents/requirements-tracker.md
+    exists unconditionally, but .claude/ is deliberately never committed to this repo (a separate
+    private checkout, see claude-dir-separate-repo) — a CI clone can never have it. Changed to skip
+    with an explanation instead of failing. (3) test_cassandra_fetch.py imports
+    provisa.cassandra.fetch unconditionally (no importorskip) and hard-failed without
+    cassandra-driver installed — declared it in the dev extras group, matching the existing
+    aiomysql/oracledb/firebase-admin convention (comment: "declared so `uv sync` installs them and
+    the driver tests run instead of skipping").
+  code:
+  - .github/workflows/unit-tests.yml
+  - .github/workflows/ui-e2e-core.yml
+  - .github/workflows/ui-e2e-trino.yml
+  - pyproject.toml
+  - tests/unit/test_core_registration.py
+  - tests/unit/test_infra_requirements.py
+  tests:
+  - tests/unit/test_core_registration.py
+  - tests/unit/test_infra_requirements.py
+  use_case: >-
+    The user asked for a way to run the expensive Playwright e2e suites separately from an
+    always-on fast gate, so a routine push doesn't tie up CI (or a developer's own attention) for
+    up to an hour; running the newly-added fast gate against the full unit suite for the first
+    time in any CI context surfaced genuine hidden defects the gap itself had let ship unnoticed.
+  scenario: |
+    Given a push or PR to main
+    When CI runs
+    Then tests/unit/ runs and gates the commit in minutes; the Playwright e2e lanes do not run
+    automatically and are triggered only for a release branch/tag or by explicit manual dispatch
