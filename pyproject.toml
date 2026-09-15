@@ -185,6 +185,10 @@ dev = [
     "pytest-asyncio",
     "pytest-bdd",
     "pytest-cov",
+    # REQ-1758: tests/unit/ alone collects ~12K tests, single-process at ~1%/19s (~50min
+    # projected) — too slow for a per-push CI gate. -n auto (unit-tests.yml) parallelizes across
+    # the runner's cores.
+    "pytest-xdist",
     "hypothesis",
     "ruff",
     "black",
@@ -206,6 +210,10 @@ dev = [
     # Declared so `uv sync` installs them and the driver tests run instead of skipping.
     "aiomysql",
     "oracledb",
+    # REQ-1758: test_cassandra_fetch.py imports provisa.cassandra.fetch unconditionally (no
+    # importorskip) — undeclared, it hard-fails collection/the test itself rather than skipping,
+    # caught running the full unit suite for the first time in CI.
+    "cassandra-driver>=3.29",
     # REQ-1266: the Firebase auth-provider unit tests (test_auth_providers.py TestFirebaseProvider)
     # importorskip("firebase_admin.auth"); declared here so the test env always has it and those
     # tests RUN instead of skipping. Same rationale as the direct-driver libs above.

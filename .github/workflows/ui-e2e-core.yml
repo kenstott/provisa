@@ -13,18 +13,17 @@ name: UI e2e (core lane)
 #
 # The remaining two specs (sharepoint, splunk) need a Trino catalog and a networked control plane;
 # they live in ui-e2e-trino.yml. Together the two lanes run every spec — neither skips.
+#
+# REQ-1758: this lane's own container/service fixtures make it expensive — real-world runs
+# consistently ran 30-60+ minutes even after the timeout was raised to cover genuine (not
+# hung/contention) runtime. unit-tests.yml runs on every push/PR instead and is the fast per-commit
+# gate; this lane runs on release branches/tags and on-demand (Actions tab -> Run workflow), not on
+# every push to main.
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "provisa-ui/**"
-      - "provisa/**"
-      - "main.py"
-      - "config/provisa-install.yaml"
-      - "demo/**"
-      - ".github/workflows/ui-e2e-core.yml"
-  pull_request:
+    branches: ["release/**"]
+    tags: ["v*"]
     paths:
       - "provisa-ui/**"
       - "provisa/**"
