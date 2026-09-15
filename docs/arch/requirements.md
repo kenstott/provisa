@@ -18569,3 +18569,31 @@ ui-e2e-core.yml and ui-e2e-trino.yml ran on every push/PR to main and each routi
 **Code:** `.github/workflows/unit-tests.yml`, `.github/workflows/ui-e2e-core.yml`, `.github/workflows/ui-e2e-trino.yml`, `pyproject.toml`, `tests/unit/test_core_registration.py`, `tests/unit/test_infra_requirements.py`
 
 **Tests:** `tests/unit/test_core_registration.py`, `tests/unit/test_infra_requirements.py`
+
+## 1. Access Governance & Security
+
+### REQ-1760 · Query Governance {#REQ-1760}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+
+Every call to provisa/federation/runtime.py's execute_engine (and any other physical execution primitive) MUST pass an explicit, typed authorization argument — never a bare SQL string with no accountability. There is no unauthorized call, including internal/privileged ones: a call that lands data for later governed reads (e.g. MV refresh) still names what authorizes it and is still checked, just against a DIFFERENT test than a call returning rows to an external caller. At minimum three authorization types, each with its own verification: (a) a governed query response — requires a valid pipeline stamp (require_governed_plan, [REQ-1176](#REQ-1176)); (b) a privileged landing execution (MV refresh, cache warming) — requires the SQL being executed to be exactly the reviewed/registered definition it claims to run (e.g. the MV's own stored view_sql, not an arbitrary string a caller constructed), so authority to land data can never be reused to run a different query than the one that was actually registered and reviewed; (c) a metadata/catalog read — requires the statement to be read-only against catalog/information objects, never a table a role's data rights would otherwise gate. No fourth path exists: a call that fits none of these three is refused, not defaulted to trusted.
+
+**Use case:** require_governed_plan ([REQ-1176](#REQ-1176)) is a real, well-designed defense against a hand-built or side-door query reaching physical execution — but it only protects the _Plan abstraction, and "this call doesn't need per-role RLS/masking" is not the same claim as "this call needs no gate at all." An MV's view_sql is authored by whoever registers the MV and then runs with elevated, unrestricted privilege at refresh (correctly, per [REQ-1756](#REQ-1756)) — which makes MV registration itself a privilege-escalation surface if refresh will run whatever SQL is stored there unverified, or if execute_engine can be reached directly by something other than the real refresh job under the guise of "refresh." Typing every call site's authorization, and verifying the SQL executed under a privileged authorization actually matches what was registered and reviewed, closes that surface without applying an inappropriate per-role check to a call that was never a per-role governance question. The goal is that a future mischief-motivated or accidental bypass has no quiet fourth path — every call must name and prove what authorizes it.
+
+**Code:** —
+
+**Tests:** —
+
+## 9. Live Data & Events
+
+### REQ-1761 · Bug Fix {#REQ-1761}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+provisa/scheduler/jobs.py's compact_otel_signals() runs its three OTel signals (logs/metrics/ traces) concurrently via asyncio.gather() with the default return_exceptions=False. [REQ-1428](#REQ-1428)'s own comment states the reason this runs concurrently at all: "no signal's backlog can starve another's" — a prior sequential implementation let a stuck `logs`/`metrics` run starve `traces` of its turn entirely, losing 15k trace files. The concurrent version undermined that same guarantee in a different way: gather()'s default behavior returns/raises as soon as ANY task raises, without waiting for siblings to finish — each signal's _compact_signal runs via asyncio.to_thread(), so a fast-failing signal (e.g. metrics) could propagate its exception before a slower sibling's to_thread() call had even been scheduled a worker thread, silently skipping that signal's compaction for the tick. Caught by CI (not locally: a fast, lightly- loaded local machine schedules the three to_thread() calls close enough together that the race rarely loses) once [REQ-1759](#REQ-1759) ran the full unit suite in CI for the first time. Fixed by gathering with return_exceptions=True and re-raising only after every signal has genuinely run to completion — restoring the actual "no signal starves another" guarantee for the success/failure boundary, not just the scheduling-order one [REQ-1428](#REQ-1428) already covered.
+
+**Use case:** Wiring up a CI unit-test gate for the first time ([REQ-1759](#REQ-1759)) surfaced this real race between the previous session's own test intent and the implementation's actual gather() semantics — a CI-only, load-dependent failure, not a flake to relabel or work around.
+
+**Code:** `provisa/scheduler/jobs.py`
+
+**Tests:** `tests/unit/test_otel_compaction_fairness.py`

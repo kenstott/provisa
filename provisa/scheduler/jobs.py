@@ -171,7 +171,18 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
     # node's idle-stop — before `traces` ever got a turn. Traces stopped landing in Iceberg
     # entirely, so the queries report read an empty table while 15k trace files sat in the object
     # store. Running the three together means no signal's backlog can starve another's.
-    await asyncio.gather(*(_one(s) for s in ("logs", "metrics", "traces")))
+    #
+    # return_exceptions=True, not the default: gather() with the default returns as soon as ANY
+    # task raises, without waiting for its siblings — one signal failing fast (a bad row, a network
+    # blip) could starve a slower sibling exactly the way REQ-1428 exists to prevent, if that
+    # sibling's asyncio.to_thread() call hadn't yet gotten a worker thread. Every signal must
+    # genuinely run to completion (success or failure) before this raises anything.
+    results = await asyncio.gather(
+        *(_one(s) for s in ("logs", "metrics", "traces")), return_exceptions=True
+    )
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
 
 
 _DATE_SEG_RE = re.compile(r"year=(\d{4})/month=(\d{2})/day=(\d{2})/")
