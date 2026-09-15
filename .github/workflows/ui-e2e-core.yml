@@ -45,7 +45,13 @@ jobs:
   playwright:
     name: Playwright core lane
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Was 30: the core-lane suite has grown past that budget — every run since at least
+    # 2026-09-12 was cancelled at the 30m mark mid-suite, not from a hang (the last log inspected
+    # was still making steady per-test progress at cancellation). Raised as an immediate unblock;
+    # the real fix (splitting/parallelizing this job, or trimming serial per-file container
+    # provisioning — several files stand up every fixture in one beforeAll even when most of that
+    # file's tests are skipped) is tracked separately, not done here.
+    timeout-minutes: 60
     env:
       # playwright.config.ts keys `reuseExistingServer` off this: under CI every webServer must be
       # started by the harness, never adopted from a stale process.
