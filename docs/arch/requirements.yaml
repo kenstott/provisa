@@ -56899,6 +56899,12 @@
   category: API/Streaming
   priority: MUST
   type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    The bug was a REST registration endpoint bypassing the createSource/registerTable mutation
+    path's in-memory state population and reconcile step — verifiable only through the actual
+    registration-to-query round trip a real backend performs, already covered by
+    source-to-query.spec.ts.
   description: >-
     A graphql_remote source registered through the Sources form introspects, auto-registers its
     tables, and is immediately queryable. Its REST registration endpoint upserted the `sources` row
@@ -56931,6 +56937,11 @@
   category: API/Streaming
   priority: MUST
   type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    Same class of bug as REQ-1727 (a REST registration endpoint bypassing the mutation path's
+    state population) — verifiable only through the real registration-to-query round trip,
+    already covered by source-to-query.spec.ts.
   description: >-
     An openapi source registered through the Sources form (`POST /admin/openapi/register`) is
     immediately visible to the Register Table form's schema/table pickers. The registration
@@ -56962,6 +56973,11 @@
   category: API/Streaming
   priority: MUST
   type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    Same class of bug as REQ-1727/1728 (missing backfill in a startup-time reconcile step) —
+    verifiable only through the real registration-to-query round trip, already covered by
+    source-to-query.spec.ts.
   description: >-
     `_rebuild_schemas` backfills `state.source_types` for any DB-registered source missing from the
     map (a REST-router registration never sets it) but never backfilled `state.source_catalogs` —
@@ -57850,6 +57866,12 @@
   category: Correctness
   priority: SHOULD
   type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    No existing vitest scaffolding for SourceFormFields.tsx/SourcesPage.tsx (no provider/mock
+    harness for this form, same gap noted on REQ-1752); the dead/broken field fixes are a form
+    UI concern verified by manual UI audit and the source-to-query e2e suite's own registration
+    steps exercising these fields.
   description: >-
     Closes the remaining smaller findings from the Add-Source UI audit (REQ-1736 through REQ-1739),
     left open for a follow-up pass: dead/broken fields on redshift, pinot, druid, and sparql.
@@ -58143,6 +58165,11 @@
   category: Correctness
   priority: SHOULD
   type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    The gap this closes (introspect.py's schema-picker fix for these two types) is only
+    observable through the real Register-Table UI flow, already covered by
+    source-to-query-file-lake.spec.ts.
   description: >-
     delta_lake and iceberg gain real e2e coverage through the ordinary Sources-form →
     Register-Table-form → SQL-page UI flow, against the DuckDB federation engine — no docker, both
@@ -58198,6 +58225,11 @@
   category: Correctness
   priority: SHOULD
   type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    A live-stack registration/query round trip against each real database is the only meaningful
+    verification for e2e connectivity coverage across eight source types; already covered by
+    source-to-query-generic-rdbms.spec.ts.
   description: >-
     Adds live source-to-query e2e coverage (REQ-1671) for eight SIMPLE_RDBMS SourceTypes that had
     none before: mariadb, tidb, cockroachdb, yugabytedb, clickhouse, sqlserver, oracle, greenplum.
@@ -58449,6 +58481,10 @@
   category: Correctness
   priority: MUST
   type: behavioral
+  unit_test: false
+  unit_test_reason: >-
+    The registration-flow gap is only observable through the real Register-Table UI flow against
+    a live warehouse connection; already covered by source-to-query-cloud-warehouse.spec.ts.
   description: >-
     Fixes a registration-flow gap discovered while writing UI e2e coverage for the six cloud-
     warehouse SourceTypes (snowflake, bigquery, databricks, fabric, synapse, redshift) against the
