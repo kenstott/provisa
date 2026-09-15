@@ -59326,6 +59326,39 @@
     every instance's compose stack reads (three-instance-isolation: local-dev also boots from
     docker-compose.core.yml), not a self-contained new fixture directory. Deliberately not
     attempted blind in this session; left as the concrete next step for whoever picks it up.
+
+    (Amended 2026-09-15, hive wired without touching docker-compose.core.yml:) resolved the
+    deferred blocker above WITHOUT the risky path it flagged. docker-compose.core.yml already
+    declares `hive_warehouse` as a plain (non-external) named volume and mounts it into
+    `trino`/`trino-worker` — no change needed there, so local-dev's own
+    ./start-ui-install.sh --demo invocation of that file is untouched. The fix instead lives
+    entirely in demo/sources/hive/compose.yml (owned by this fixture, not shared infra): its
+    `hive_warehouse` volume is now declared `external: true`, naming the ACTUAL live volume
+    docker-compose.core.yml's `trino` container mounts at /opt/hive/data/warehouse — resolved at
+    provision time by `docker inspect`-ing that running container's own mounts
+    (resolveHiveWarehouseVolume() in provisa-ui/e2e/source-to-query-olap-lake.spec.ts), never
+    guessed or hardcoded (no fallback — an unresolved/wrong name would silently mount an
+    unshared volume, defeating the fix). Passed in as `PROVISA_HIVE_WAREHOUSE_VOLUME`, required
+    with no default (`${VAR:?message}` compose interpolation — fails loud if unset/unresolved).
+
+    Un-skipped the `hive` test the same RUNNING_IN_CI-gated way druid/exasol are, with one
+    difference their gate doesn't need: hive's beforeAll additionally needs a LIVE
+    docker-compose.core.yml `trino` container to resolve the volume from. KNOWN GAP surfaced
+    while doing this (pre-existing, not introduced here, and not fixed here — out of scope for
+    this REQ's volume-sharing fix): ui-e2e-core.yml sets `PROVISA_E2E_LANE=core`, which per
+    playwright.config.ts's `RUNS_TRINO` gate means docker-compose.core.yml is never started in
+    that workflow at all — the same unstated precondition hive_s3/pinot/druid above already carry
+    via `routeToTrinoBackend()`. Rather than hard-failing the core lane over a precondition this
+    describe block doesn't control, resolveHiveWarehouseVolume() failure is caught and degrades
+    to a real Playwright skip (never a CI error) — so today this still effectively skips under
+    ui-e2e-core.yml exactly as before, until that lane's Trino-container wiring is addressed
+    separately (affects hive_s3/pinot/druid identically, not unique to hive). Verified locally:
+    `docker compose -f demo/sources/hive/compose.yml config` fails loud without
+    PROVISA_HIVE_WAREHOUSE_VOLUME set and parses cleanly with it set; `npx playwright test
+    source-to-query-olap-lake --project=core --list` lists the new hive test correctly-placed;
+    `tsc --noEmit` and `eslint` clean on the spec file. NOT verified live end-to-end (arm64 host,
+    no live core Trino container in this session) — that requires the CI-lane gap above to be
+    closed first, same situation druid/exasol were left in.
   code:
   - provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts
   - provisa-ui/e2e/source-to-query-olap-lake.spec.ts
@@ -59333,6 +59366,7 @@
   - demo/sources/druid/prime.py
   - demo/sources/exasol/compose.yml
   - demo/sources/exasol/prime.py
+  - demo/sources/hive/compose.yml
   - provisa/executor/drivers/exasol.py
   - provisa/api/admin/introspect.py
   - .github/workflows/ui-e2e-core.yml

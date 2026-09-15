@@ -44,12 +44,14 @@
 //     amd64-only, unbootable under arm64 emulation, so they still skip on Apple Silicon local
 //     dev but run for real on ui-e2e-core.yml's ubuntu-latest runner (a genuine amd64 host). See
 //     each test.describe's own comment for the fixture-specific detail.
-//   - plain `hive` (Hadoop/local-storage lakehouse read) is SKIPPED unconditionally (including in
-//     CI), for a reason discovered only by actually trying it against a live shared Trino
-//     coordinator — see that test.skip() block. Unlike druid/exasol, this is not a resource/arch
-//     constraint the CI runner sidesteps: it needs a warehouse volume shared between hive-metastore
-//     and Trino's OWN container, which the shared docker-compose.core.yml stack does not mount
-//     (see that skip's comment for the full detail and the shape of the real fix).
+//   - plain `hive` (Hadoop/local-storage lakehouse read) is also RUNNING_IN_CI-gated (REQ-1763
+//     amendment), but not for an arch/resource reason: TrinoHiveConnector's local/Hadoop storage
+//     path reads table data through Trino's OWN filesystem at whatever path the metastore
+//     recorded, which only resolves when hive-metastore and docker-compose.core.yml's `trino`
+//     share one literal Docker volume. demo/sources/hive's own compose.yml now attaches to that
+//     live volume (resolved from the running core `trino` container's own mount, never
+//     guessed/hardcoded — see that compose.yml's comment), which requires docker-compose.core.yml
+//     actually running — see that test.describe's own beforeAll comment for when that's true.
 //   - hiveserver2, pinot, and hive_s3 were previously test.skip()'d for shared-fanout run-lock
 //     contention (six parallel agents sharing one advisory lock). Re-verified in isolation (no
 //     shared stack, no concurrent agents, PROVISA_E2E_SKIP_SHARED_SOURCES=1) — see each test's own
@@ -136,6 +138,41 @@ async function routeToTrinoBackend(page: Page): Promise<void> {
       route.continue({ url: route.request().url().replace(UI_URL, TRINO_BACKEND_URL) });
     });
   }
+}
+
+// REQ-1763 amendment: demo/sources/hive is its OWN compose project (provision.py isolates it from
+// docker-compose.core.yml on purpose), so its hive-metastore container cannot share a volume with
+// the core `trino` service just by declaring the same volume KEY — Docker Compose prefixes volume
+// names by project, so two different projects with a same-named volume key still get two different
+// physical volumes. Never guessed/hardcoded here (no fallback — CLAUDE.md): resolved from the
+// LIVE core Trino container's own mount, which is authoritative regardless of what project name
+// docker-compose.core.yml ends up running under (no consumer of that file passes `-p`, but this
+// makes the fix correct even if that ever changes).
+function resolveHiveWarehouseVolume(): string {
+  const cid = execFileSync(
+    "docker",
+    ["compose", "-f", path.join(ROOT, "docker-compose.core.yml"), "ps", "-q", "trino"],
+    { cwd: ROOT, encoding: "utf8" },
+  ).trim();
+  if (!cid) {
+    throw new Error(
+      "docker-compose.core.yml's trino container is not running — cannot resolve the live " +
+        "hive_warehouse volume to share with demo/sources/hive's hive-metastore",
+    );
+  }
+  const mounts = JSON.parse(
+    execFileSync("docker", ["inspect", cid, "--format", "{{json .Mounts}}"], {
+      encoding: "utf8",
+    }),
+  ) as { Destination: string; Name?: string }[];
+  const mount = mounts.find((m) => m.Destination === "/opt/hive/data/warehouse");
+  if (!mount?.Name) {
+    throw new Error(
+      "docker-compose.core.yml's trino container has no volume mounted at " +
+        "/opt/hive/data/warehouse — cannot share it with demo/sources/hive",
+    );
+  }
+  return mount.Name;
 }
 
 async function trinoGql(query: string, variables: Record<string, unknown> = {}) {
@@ -495,38 +532,141 @@ test.setTimeout(300000);
 });
 
 // ---------------------------------------------------------------------------------------------
-// hive (Hadoop/local-storage lakehouse read) — SKIPPED.
+// hive (Hadoop/local-storage lakehouse read) — Trino connector only (TrinoHiveConnector), routed
+// to the Trino-backed webServer, exactly like hive_s3/druid/pinot above. Gated like druid/exasol,
+// but NOT for an amd64/resource reason: docker-compose.core.yml's own `trino` container has to be
+// LIVE so resolveHiveWarehouseVolume() can read its actual hive_warehouse mount and hand it to
+// demo/sources/hive's own compose project (see that project's compose.yml module comment for the
+// full reasoning — REQ-1763 amendment).
+//
+// KNOWN GAP, not fixed here (out of scope for the volume-sharing fix this describe block exists
+// for): ui-e2e-core.yml sets PROVISA_E2E_LANE=core, which per playwright.config.ts's RUNS_TRINO
+// gate means docker-compose.core.yml is never started there at all — the same precondition
+// hive_s3/pinot/druid above already silently depend on via routeToTrinoBackend. Until that lane's
+// CI wiring is fixed separately, resolveHiveWarehouseVolume() below finds no live trino container
+// under ui-e2e-core.yml and this degrades to a skip (never a hard CI failure) exactly like it does
+// locally without an explicit `PROVISA_E2E_LANE=all`/`=trino` run against an already-running
+// docker-compose.core.yml.
 // ---------------------------------------------------------------------------------------------
-test("hive (local/Hadoop warehouse): skipped — requires a filesystem mount on the SHARED Trino coordinator this session cannot make", async () => {
-  // Verified live in this session (not assumed): a standalone hive-metastore fixture, joined to
-  // the Trino lane's network exactly like the hive_s3 fixture above, DOES let Trino
-  // create_catalog() succeed and DOES list schemas/tables. Seeding through Trino
-  // (CREATE SCHEMA/TABLE/INSERT — the same write path test_hive_source_e2e.py uses) then fails:
-  //
-  //   TrinoExternalError: HIVE_DATABASE_LOCATION_ERROR: Database 'wh' location does not exist:
-  //   file:/opt/hive/data/warehouse/wh.db
-  //
-  // TrinoHiveConnector's default (non-S3/ADLS) storage backend wires ONLY
-  // hive.metastore.uri + fs.hadoop.enabled — it reads table data through Trino's OWN local
-  // filesystem at whatever path the metastore recorded. docker-compose.test.yml's hive fixture
-  // works ONLY because Trino and hive-metastore are services in the SAME compose project, sharing
-  // one `hive_warehouse` volume mount at the same container path in both. This session's shared
-  // Trino coordinator (provisa-trino-1, reused by every parallel e2e agent right now — see the
-  // coordinator's contention notice) has no such volume: it is a long-running container this task
-  // must not recreate or reconfigure, since doing so would affect every other agent's in-flight
-  // tests against it (the exact cross-instance mutation CLAUDE.md's Three Instances rule forbids).
-  // hive_s3 above has no such requirement (Trino reads it through its NATIVE S3 filesystem, not
-  // the local one), which is why it passes and plain `hive` does not — this is a session-infra
-  // constraint on the local/Hadoop storage variant specifically, not a defect in
-  // TrinoHiveConnector or in demo/sources/hive (kept in the tree; a session with a Trino container
-  // that mounts a shared warehouse volume, e.g. docker-compose.test.yml's own stack, can use it
-  // as-is).
-  test.skip(
-    true,
-    "TrinoHiveConnector's local/Hadoop storage path needs a warehouse volume shared with Trino " +
-      "itself; this session's shared Trino coordinator has no such volume (verified live — see " +
-      "the comment above this test)",
-  );
+test.describe("source to query through the UI: hive (REQ-1763)", () => {
+  let hiveWarehouseVolume: string | null = null;
+
+  test.beforeAll(() => {
+    // See druid's identical beforeAll comment above for why this is a plain early return, not a
+    // test.skip() signal.
+    if (!RUNNING_IN_CI) return;
+    test.setTimeout(180000);
+    try {
+      hiveWarehouseVolume = resolveHiveWarehouseVolume();
+    } catch (e) {
+      // No live core `trino` container to resolve the shared volume from (see this describe's
+      // own KNOWN GAP comment above) — degrade to a skip below rather than failing the whole
+      // core lane over a precondition this describe block does not control.
+      console.log(`hive e2e: skipping, could not resolve hive_warehouse volume: ${e}`);
+      return;
+    }
+    provision("up", ["hive"], { PROVISA_HIVE_WAREHOUSE_VOLUME: hiveWarehouseVolume });
+  });
+
+  test.afterAll(() => {
+    if (!RUNNING_IN_CI || !hiveWarehouseVolume) return;
+    provision("down", ["hive"]);
+  });
+
+  test("hive: add the source, register a table, query it on the SQL page", async ({ page }) => {
+    test.skip(
+      !RUNNING_IN_CI || !hiveWarehouseVolume,
+      "needs docker-compose.core.yml's own live trino container to resolve the volume shared " +
+        "with demo/sources/hive's hive-metastore (REQ-1763 amendment) — runs for real once " +
+        "that container is live (see this describe's own KNOWN GAP comment for today's CI state)",
+    );
+    test.setTimeout(300000);
+    const stamp = Date.now();
+    const sourceId = `e2e_hive_${stamp}`;
+    await routeToTrinoBackend(page);
+
+    // Registered under the seed schema `wh`, same as the hive_s3/hiveserver2 siblings — seeds
+    // THROUGH Trino itself (write-then-read, the same pattern test_hive_source_e2e.py and the
+    // hive_s3 test above use), via a throwaway catalog dropped once seeding is done. The real
+    // source registered through the UI below points its OWN catalog at the same metastore, which
+    // sees the same physical warehouse data because hive-metastore and trino now share one volume.
+    const seed = await import("node:child_process");
+    seed.execFileSync(
+      PYTHON,
+      [
+        "-c",
+        "import time\n" +
+          "import trino.dbapi\n" +
+          "import trino.exceptions\n" +
+          "conn = trino.dbapi.connect(host='localhost', port=8080, user='itest', catalog='system')\n" +
+          "cur = conn.cursor()\n" +
+          "def ex(sql):\n" +
+          "    cur.execute(sql)\n" +
+          "    return cur.fetchall()\n" +
+          // Property KEYS are Trino <identifier>s, not string literals (see hive_s3's identical
+          // note above) — "hive.metastore"='thrift', not 'hive.metastore'='thrift'.
+          'props = \'"hive.metastore"=\\\'thrift\\\', "hive.metastore.uri"=\\\'thrift://hive:9083\\\', \' \\\n' +
+          '    \'"fs.hadoop.enabled"=\\\'true\\\'\'\n' +
+          "try:\n" +
+          "    ex('DROP CATALOG IF EXISTS e2e_olap_hive_seed')\n" +
+          "except Exception:\n" +
+          "    pass\n" +
+          "ex(f'CREATE CATALOG e2e_olap_hive_seed USING hive WITH ({props})')\n" +
+          // Retry CREATE SCHEMA while the freshly-created catalog's metastore connection warms up
+          // (test_hive_source_e2e.py's own pattern).
+          "deadline = time.monotonic() + 60\n" +
+          "last_exc = None\n" +
+          "while time.monotonic() < deadline:\n" +
+          "    try:\n" +
+          "        ex('CREATE SCHEMA IF NOT EXISTS e2e_olap_hive_seed.wh')\n" +
+          "        break\n" +
+          "    except trino.exceptions.TrinoQueryError as exc:\n" +
+          "        last_exc = exc\n" +
+          "        time.sleep(3)\n" +
+          "else:\n" +
+          "    raise RuntimeError(f'hive CREATE SCHEMA never succeeded: {last_exc!r}')\n" +
+          "ex('DROP TABLE IF EXISTS e2e_olap_hive_seed.wh.widgets')\n" +
+          "ex(\"CREATE TABLE e2e_olap_hive_seed.wh.widgets (id integer, name varchar) WITH (format='PARQUET')\")\n" +
+          "ex(\"INSERT INTO e2e_olap_hive_seed.wh.widgets VALUES (1, 'Widget A'), (2, 'Widget B'), (3, 'Widget C')\")\n" +
+          "ex('DROP CATALOG e2e_olap_hive_seed')\n",
+      ],
+      { stdio: "pipe" },
+    );
+
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("hive");
+    // isDataLake's "Metastore URI" field maps straight onto Source.host (same UI shape/quirk as
+    // hive_s3 above) — the bare network alias, not a thrift:// URL. "Warehouse Path" is required
+    // by the form for both hive and hive_s3 but TrinoHiveConnector.details() (trino_connectors.py)
+    // never reads Source.database for the local/Hadoop storage path — filled only to satisfy the
+    // required field.
+    await page.getByLabel(/Metastore URI/).fill("hive");
+    await page.getByLabel(/Warehouse Path/).fill("/opt/hive/data/warehouse");
+    // Storage Authentication defaults to "none" (instance-role/local) for plain hive, which is
+    // correct here — left untouched.
+    await submitSourceAndExpectListed(page, sourceId);
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "wh", "widgets");
+    await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+      timeout: 60000,
+    });
+    await page.getByTestId("register-table-submit").click();
+    const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
+    await expect(row).toBeVisible({ timeout: 120000 });
+
+    const registered = await trinoTableName(sourceId);
+    const rows = await runSqlOnPage(
+      page,
+      `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    );
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toEqual(["1", "Widget A"]);
+    expect(rows[2]).toEqual(["3", "Widget C"]);
+
+    await cleanupTrinoSource(sourceId);
+  });
 });
 
 // ---------------------------------------------------------------------------------------------

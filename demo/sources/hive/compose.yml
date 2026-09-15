@@ -11,9 +11,29 @@
 # (TrinoHiveConnector, provisa/federation/trino_connectors.py) — REQ-1097. provision.py's
 # --network flag joins this container to the shared trino/postgres/minio network under the
 # ALIAS "hive" (the directory name — see provision.py's _join_network), so Trino resolves the
-# Thrift metastore in-network at hive:9083 and reads table data from a warehouse volume via
-# Trino's Hadoop-native filesystem. Same image/shape already proven in docker-compose.test.yml's
-# `hive-metastore` service.
+# Thrift metastore in-network at hive:9083. Same image/shape already proven in
+# docker-compose.test.yml's `hive-metastore` service.
+#
+# REQ-1763 amendment: TrinoHiveConnector's default (non-S3/ADLS) storage backend reads table data
+# through Trino's OWN Hadoop-native filesystem at whatever path the metastore recorded
+# (fs.hadoop.enabled=true, no S3/ADLS filesystem override) — this only resolves when Trino and
+# this metastore share the SAME literal warehouse directory. docker-compose.test.yml proves the
+# shape (both services declared in that ONE compose file/project, sharing a plain named volume).
+# This directory is provisioned as its OWN compose project (provision.py's `<prefix>-hive`,
+# isolated from docker-compose.core.yml's own project on purpose — see provision.py's module doc)
+# so it cannot get that sharing for free the way docker-compose.test.yml does. Instead of marking
+# a volume `external: true` in the SHARED docker-compose.core.yml (which every other consumer —
+# local-dev's ./start-ui-install.sh --demo included — also reads, so a global external
+# declaration risks breaking `docker compose up` for whoever runs it first), this file's own
+# `hive_warehouse` volume is declared external, pointed at the ACTUAL live volume name docker-
+# compose.core.yml's `trino` service already mounts at this same path. That name is resolved at
+# provision time by inspecting the running Trino container's own mounts (see the e2e test's
+# resolveHiveWarehouseVolume() in source-to-query-olap-lake.spec.ts) and passed in as
+# PROVISA_HIVE_WAREHOUSE_VOLUME — required, no fallback: an unresolved/wrong volume name would
+# silently mount the wrong (or a brand-new, unshared) volume, defeating the whole point.
+# docker-compose.core.yml itself needs NO change: it already declares `hive_warehouse` as a plain
+# volume and mounts it into `trino`/`trino-worker` (see that file's own comment) — this is purely
+# additive, source-directory-local wiring.
 services:
   hive-metastore:
     image: apache/hive:4.0.0
@@ -22,7 +42,7 @@ services:
       SERVICE_NAME: metastore
       DB_DRIVER: derby
     volumes:
-      - hive_demo_warehouse:/opt/hive/data/warehouse
+      - hive_warehouse:/opt/hive/data/warehouse
     healthcheck:
       test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/9083' || exit 1"]
       interval: 10s
@@ -31,4 +51,6 @@ services:
       start_period: 90s
 
 volumes:
-  hive_demo_warehouse:
+  hive_warehouse:
+    external: true
+    name: ${PROVISA_HIVE_WAREHOUSE_VOLUME:?PROVISA_HIVE_WAREHOUSE_VOLUME must name the live docker-compose.core.yml trino container's own hive_warehouse volume — see this file's module comment}
