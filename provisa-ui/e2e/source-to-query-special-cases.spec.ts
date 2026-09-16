@@ -114,14 +114,10 @@ test.describe("google_sheets: source to query through the UI (REQ-1742)", () => 
     // KeyError on attach); it built no secret_ddl at all, so DuckDB's gsheets extension had no
     // credentials; and native_schemas/native_tables had no google_sheets case at all, so the
     // Register Table form's schema picker was always empty. All three are fixed on this branch.
-    // What remains unverified: the one full Playwright run that reached this test attaching a
-    // LIVE google_sheets source crashed the shared single-worker backend process outright
-    // partway through registration (~29s in, then every subsequent request in the same run
-    // failed with ERR_CONNECTION_REFUSED) — root cause not isolated within this session's time
-    // budget (flagged mid-session to stop debugging and wrap up with what's verified). Skipped
-    // rather than reported as a forced pass; a follow-up session should reproduce the crash with
-    // the backend run in the foreground (not via playwright's webServer) to get a stack trace.
-    test.skip(true, "backend crashes attaching a live google_sheets source — root cause not isolated within budget; see comment above");
+    // 2026-09-15: was unconditionally skipped here after a run attaching a live google_sheets
+    // source crashed the shared single-worker backend outright (~29s in, then every subsequent
+    // request ERR_CONNECTION_REFUSED). Un-skipped to re-isolate with the backend in the
+    // foreground.
     test.setTimeout(120000);
     const stamp = Date.now();
     const sourceId = `e2e_gsheets_${stamp}`;
@@ -161,13 +157,12 @@ test.describe("govdata: source to query through the UI (REQ-1742)", () => {
     // REQ-1742: the askamerica connection itself is real and works — verified directly (outside
     // Playwright) against the live API: fetch_tables/fetch_columns(GovDataSource(schemas=
     // ["weather"])) returned real NOAA/NWS tables (nws_stations among them) and typed columns in
-    // ~19s cold (JVM + catalog-credential fetch), then near-instant on cache hit. What's NOT
-    // independently confirmed: the browser-driven Register Table flow itself — the one full
-    // Playwright run that reached this test ran in the same single worker right after the
-    // google_sheets test crashed the shared backend process (see that test's comment), so every
-    // request after that point failed with ERR_CONNECTION_REFUSED regardless of this test's own
-    // correctness. Not re-run independently within this session's time budget.
-    test.skip(true, "not independently re-verified through the browser after the shared backend crash — see comment above");
+    // ~19s cold (JVM + catalog-credential fetch), then near-instant on cache hit.
+    // 2026-09-15: was unconditionally skipped here pending re-verification of the browser-driven
+    // flow after the google_sheets test crashed the shared backend in the same run (see that
+    // test's own history — fixed: attach_source's view_ddl branch never loaded a scanner
+    // connector's own DuckDB extension, and native_backend.py's query-time source merges never
+    // carried source.mapping). Un-skipped.
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_govdata_${stamp}`;
@@ -224,13 +219,10 @@ test.describe("grpc_remote: source to query through the UI (REQ-1742)", () => {
     // The full proto -> compile -> register -> query pipeline was verified end to end via an
     // isolated Python script exercising provisa.grpc_remote.{loader,mapper,executor} directly
     // against demo/grpc_remote_server's real server: real typed columns (name text, species
-    // text, avg_lifespan_years integer) and the 3 seeded rows came back correctly. What's NOT
-    // independently confirmed: the browser-driven flow — the one full Playwright run that reached
-    // this test ran in the same single worker after the google_sheets test crashed the shared
-    // backend process (see that test's comment), so this test's own request failed with
-    // ERR_CONNECTION_REFUSED regardless of whether the fix above is correct. Not re-run
-    // independently within this session's time budget.
-    test.skip(true, "not independently re-verified through the browser after the shared backend crash — the underlying pipeline IS verified end to end via a standalone script, see comment above");
+    // text, avg_lifespan_years integer) and the 3 seeded rows came back correctly.
+    // 2026-09-15: was unconditionally skipped here pending re-verification of the browser-driven
+    // flow after the google_sheets test crashed the shared backend in the same run (see that
+    // test's own history — root-caused and fixed). Un-skipped.
     test.setTimeout(120000);
     const stamp = Date.now();
     const sourceId = `e2e_grpc_${stamp}`;
@@ -303,13 +295,10 @@ for (const c of [
       // a queryable relation of their own — provisa/dq/contract.py). A narrower slice of this same
       // flow (using the shipped dq-checker/dq-soda baked sources, no dry run) already has its own
       // green coverage in tables-register-dq.spec.ts. What this test adds — creating the checker
-      // SOURCE itself via the Sources form, then dry-running a NEW contract on it — was NOT
-      // independently re-verified through the browser: the one full Playwright run that reached
-      // this test ran in the same single worker after the google_sheets test crashed the shared
-      // backend process (see that test's comment), so this test's own request failed with
-      // ERR_CONNECTION_REFUSED regardless of whether the flow below is correct. Not re-run
-      // independently within this session's time budget.
-      test.skip(true, "not independently re-verified through the browser after the shared backend crash — see comment above");
+      // SOURCE itself via the Sources form, then dry-running a NEW contract on it.
+      // 2026-09-15: was unconditionally skipped here pending re-verification of the browser-driven
+      // flow after the google_sheets test crashed the shared backend in the same run (see that
+      // test's own history — root-caused and fixed). Un-skipped.
       test.setTimeout(120000);
       const stamp = Date.now();
       const sourceId = `e2e_${c.type}_${stamp}`;

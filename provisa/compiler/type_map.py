@@ -111,6 +111,7 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         "bigint": BigInt,
         "int8": BigInt,  # postgres bigint alias
         "int64": BigInt,  # BigQuery's own INFORMATION_SCHEMA.COLUMNS data_type for integers
+        "long": BigInt,  # Databricks SQL's own name for BIGINT (DESCRIBE TABLE / INFORMATION_SCHEMA)
         # Floating point
         "real": GraphQLFloat,
         "float4": GraphQLFloat,  # postgres real alias

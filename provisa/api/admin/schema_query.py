@@ -1445,7 +1445,13 @@ async def resolve_available_columns_metadata(
     from provisa.api.app import state
 
     source_type = state.source_types.get(source_id, "")
-    if source_type == "graphql_remote":
+    if source_type in ("graphql_remote", "grpc_remote"):
+        # REQ-1742: grpc_remote has the exact same gap graphql_remote already has this branch
+        # for — no physical SQL catalog in the engine, column types live only in table_columns
+        # (written at registration time by _register_schema/register_table, grpc_remote_router.py)
+        # — so an updateTable grant call (columns supplied without data_type, as the UI's own
+        # grant flow does) must read them back from there instead of falling through to engine
+        # introspection and finding nothing ("no data type could be resolved from the source").
         # REQ-308/REQ-602: graphql_remote has no physical SQL catalog in the engine — its
         # column types live exclusively in table_columns, written at registration time by
         # _upsert_tables_to_semantic_layer. Read them back directly so that an updateTable

@@ -213,6 +213,24 @@ def decide_route(  # REQ-027, REQ-028, REQ-030, REQ-031, REQ-066, REQ-067, REQ-1
             reason=f"single rdbms source with direct driver ({stype})",
         )
 
+    # REQ-1742 gap: govdata has no registered direct driver (has_driver("govdata") is False —
+    # it appears in no _DRIVER_FACTORIES/_SQLALCHEMY_FALLBACK map) and no live engine connector
+    # either, so it fell through to the final Route.ENGINE default below. _pipeline.py's terminal
+    # dispatch has an `elif source_types[...] == "govdata"` bridge to the real askamerica/Calcite
+    # engine (_execute_govdata) specifically for this, but it is only ever reached when
+    # plan.route != Route.ENGINE — with no branch here, every govdata query got routed to
+    # Route.ENGINE and silently queried the federation engine's own (never populated) empty
+    # materialized copy instead: a well-formed, zero-row, 200 OK response, never touching the
+    # live JDBC engine at all. Any non-ENGINE route reaches that elif regardless of its value
+    # (it does not itself branch on plan.route), so DIRECT here is just "not ENGINE."
+    if stype == "govdata":
+        return RouteDecision(
+            route=Route.DIRECT,
+            source_id=sid,
+            dialect=None,
+            reason="govdata source (askamerica/Calcite bridge, not a pooled driver or the engine)",
+        )
+
     # RDBMS without direct driver → the engine
     return RouteDecision(
         route=Route.ENGINE,

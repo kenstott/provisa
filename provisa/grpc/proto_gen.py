@@ -34,6 +34,7 @@ _PROTO_TYPE_MAP: dict[str, str] = {
     "int": "int32",
     "bigint": "int64",
     "int64": "int64",  # BigQuery's own INFORMATION_SCHEMA.COLUMNS data_type for integers
+    "long": "int64",  # Databricks SQL's own name for BIGINT (DESCRIBE TABLE / INFORMATION_SCHEMA)
     "varchar": "string",
     "char": "string",
     "varbinary": "bytes",

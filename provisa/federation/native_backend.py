@@ -184,6 +184,11 @@ class NativeEngineBackend(EngineBackend):
                     # REQ-1695: the row's password reference is the source's password.
                     password=_rs_dict["password_ref"],
                     federation_hints={},
+                    # REQ-1742: forwarded so _attach_tbl's merged SimpleNamespace below (which reads
+                    # it via getattr(src, "mapping", {})) can actually see it — same gap base_url
+                    # above (REQ-1746) already documents and fixes for a different connector
+                    # attribute (DuckDBGsheetsConnector.details() reads mapping["credentials_json"]).
+                    mapping=_rs_dict.get("mapping") or {},
                 )
 
         def _rs(v: Any) -> Any:
@@ -217,6 +222,13 @@ class NativeEngineBackend(EngineBackend):
                 federation_hints={
                     k: _rs(v) for k, v in (getattr(src, "federation_hints", {}) or {}).items()
                 },
+                # REQ-1742: DuckDBGsheetsConnector.details() (connector_duckdb.py) reads
+                # source.mapping["credentials_json"] directly (not via getattr) — omitting it here
+                # raised AttributeError inside the connector at real query-time attach, the exact
+                # same failure mode this merge's base_url field above (REQ-1746) already documents
+                # and fixes for a different connector attribute. backend.py's introspection-time
+                # _merged_source already carries mapping; this query-time merge needed it too.
+                mapping=getattr(src, "mapping", {}) or {},
                 schema_name=schema_name,
                 table_name=table_name,
             )
@@ -388,7 +400,11 @@ class NativeEngineBackend(EngineBackend):
                 pk_columns=pk_columns,
                 events=events,
             )
-        return await super().apply_cdc_events(
+        # pyright reports this as an unresolved attribute on `object` despite EngineBackend
+        # (backend.py) defining apply_cdc_events and NativeEngineBackend.__mro__ resolving
+        # exactly as NativeEngineBackend -> EngineBackend -> object (confirmed live) — a static-
+        # analysis false positive, not a real gap.
+        return await super().apply_cdc_events(  # pyright: ignore[reportAttributeAccessIssue]
             state,
             schema=schema,
             table=table,
@@ -502,12 +518,18 @@ class NativeEngineBackend(EngineBackend):
         sql: str,
         params: list | None = None,
         *,
-        session_hints: dict[str, str] | None = None,
-        fresh: bool = False,
-        conn_kwargs: dict | None = None,
+        session_hints: dict[str, str] | None = None,  # pyright: ignore[reportUnusedParameter]
+        fresh: bool = False,  # pyright: ignore[reportUnusedParameter]
+        conn_kwargs: dict | None = None,  # pyright: ignore[reportUnusedParameter]
         span_attrs: dict[str, str] | None = None,
-        extra_table_attrs: list[dict[str, str]] | None = None,
+        extra_table_attrs: list[dict[str, str]] | None = None,  # pyright: ignore[reportUnusedParameter]
     ) -> QueryResult:
+        # session_hints/fresh/conn_kwargs/extra_table_attrs are part of the polymorphic execute()
+        # signature EngineBackend's callers share across engines (session_hints/conn_kwargs steer a
+        # per-connection driver session Trino's terminal needs; fresh/extra_table_attrs are cache-
+        # freshness and report-column hints other terminals consult) — a native engine has one
+        # single in-process connection with no such session to steer, so it accepts and ignores
+        # them rather than breaking the shared call site every engine's execute() must match.
         # The ops `queries` report reads spans named provisa.query.* and lifts their provisa.*
         # attributes into the trace table (TRACE_ATTR_COLS). The Trino terminal names its span
         # that way in execute_trino; a native engine has no such executor, so the terminal names

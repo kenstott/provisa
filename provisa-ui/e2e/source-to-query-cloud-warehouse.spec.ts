@@ -142,21 +142,10 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       ),
       "no live Databricks credentials in this environment (DATABRICKS_SERVER_HOSTNAME/HTTP_PATH/TOKEN)",
     );
-    // Reproduced LIVE (2026-09-15) via a direct REST call to this account's SQL Warehouse start
-    // endpoint (api/2.0/sql/warehouses/<id>/start): 400 BAD_REQUEST, reason
-    // DENY_NEW_AND_EXISTING_RESOURCES, denyReason INACTIVE, scoped to the whole workspace (not
-    // just this warehouse) — the response's own decisionTimeMs/lastConfirmationMs show the
-    // workspace has been gatekept for ~73h, not a transient "still waking up" state.
-    // tests/integration/databricks_warehouse.py's ensure_warehouse_running() already retries this
-    // exact 4xx for up to 10 minutes (that retry loop IS the fix for the ordinary "warehouse
-    // asleep" case, documented in that file's own docstring) — it ran the full budget here and
-    // the gatekeeper never lifted. This is the Databricks workspace itself suspended on
-    // Microsoft/Databricks's side (likely needs reactivation in the workspace console), not a
-    // Provisa code or credentials gap. Skipping rather than blocking on an external outage this
-    // task cannot fix.
-    test.skip(true, "Databricks workspace gatekept INACTIVE (DENY_NEW_AND_EXISTING_RESOURCES) on " +
-      "every warehouse start attempt, reproduced live 2026-09-15 — external workspace suspension, " +
-      "not a code/creds gap; see comment for the exact error and verification");
+    // 2026-09-15: was unconditionally skipped here after a live repro showed the workspace
+    // gatekept INACTIVE (DENY_NEW_AND_EXISTING_RESOURCES) on every warehouse start attempt for
+    // ~73h (external Databricks-side suspension, not a code/creds gap). Confirmed live-queryable
+    // again the same day — un-skipped.
     test.setTimeout(300000);
     seed("databricks", "up");
     try {
@@ -281,8 +270,12 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       await openSourcesForm(page);
       await page.getByTestId("sources-id-input").fill(sourceId);
       await page.getByTestId("sources-type-select").selectOption("fabric");
-      await page.getByLabel(/Server/).fill(process.env.FABRIC_SQL_SERVER!);
-      await page.getByLabel(/^Database/).fill(process.env.FABRIC_DATABASE!);
+      // The type <select> is wrapped in a bare <label>, so its accessible name is computed from
+      // its own subtree text — every <option>, including "SQL Server" and "HiveServer2" from
+      // SOURCE_TYPES — making plain getByLabel(/Server/) match the select too (strict-mode
+      // violation). Scope to the textbox role, as the Authentication field below already does.
+      await page.getByRole("textbox", { name: /Server/ }).fill(process.env.FABRIC_SQL_SERVER!);
+      await page.getByRole("textbox", { name: /^Database/ }).fill(process.env.FABRIC_DATABASE!);
       // Mantine's Select portals its listbox with aria-labelledby pointing at the same label,
       // so plain getByLabel("Authentication") resolves to both the input and the (closed)
       // listbox — a strict-mode violation. Scope to the textbox role.

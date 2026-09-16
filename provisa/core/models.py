@@ -1636,17 +1636,31 @@ class GovDataSubject(str, Enum):
 # Maps each subject to the GovData schema names it covers.
 # ALL expands to every schema at access-check time.
 # "ref" and "geo" are always included as linker schemas — not listed here.
+#
+# (Amended 2026-09-15: reconciled against askamerica-engine's actual DEFAULT_SCHEMAS list
+# (McpServer.java) — 9 real schemas (ag, banking, cftc, disasters, fiscal, housing, officials,
+# research, transport) were unmapped to any subject, so no per-subject GovDataSubscription could
+# reach them (only GovDataSubject.all could) even though the engine serves them; GovDataSubject
+# .demographics had zero schemas mapped at all. Added below with the closest-fit existing subject
+# — cftc alongside sec (both financial-markets regulators, COMMERCE); ag/banking/fiscal/housing/
+# transport under ECONOMY (economic-indicator data); disasters under PUBLIC_SAFETY alongside
+# crime; officials under GOVERNMENT alongside fedregister/fec; research under EDUCATION; census
+# added to DEMOGRAPHICS in addition to its existing EDUCATION mapping — a schema may serve more
+# than one subject, and this was the only way to give demographics ANY reachable schema. These
+# groupings are a reasonable first pass, not a verified product decision — revisit if a subject
+# boundary here turns out wrong.)
 GOVDATA_SUBJECT_SCHEMAS: dict[str, list[str]] = {
-    "COMMERCE": ["sec", "patents"],
-    "ECONOMY": ["econ", "econ_reference"],
-    "EDUCATION": ["census", "edu"],
+    "COMMERCE": ["sec", "patents", "cftc"],
+    "ECONOMY": ["econ", "econ_reference", "ag", "banking", "fiscal", "housing", "transport"],
+    "EDUCATION": ["census", "edu", "research"],
     "HEALTH": ["health"],
     "CYBER": ["cyber_threat", "cyber_vuln"],
-    "PUBLIC_SAFETY": ["crime"],
+    "PUBLIC_SAFETY": ["crime", "disasters"],
     "ENVIRONMENT": ["lands"],
     "WEATHER": ["weather"],
     "ENERGY": ["energy"],
-    "GOVERNMENT": ["fedregister", "fec"],
+    "GOVERNMENT": ["fedregister", "fec", "officials"],
+    "DEMOGRAPHICS": ["census"],
 }
 
 

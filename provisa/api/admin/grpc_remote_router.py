@@ -23,15 +23,35 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+import re
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from provisa.api.errors import ApiError
+from provisa.core.schema_org import domains, provisa_sources, sources
 from provisa.grpc_remote.executor import open_channel
+
+if TYPE_CHECKING:
+    from provisa.core.database import Database
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/grpc-remote", tags=["admin", "grpc-remote"])
+
+
+async def _ensure_provisa_sources_table(pool: "Database") -> None:
+    """Create provisa_sources (schema_org.py) in the org's own schema — see that table's own
+    definition comment for why this exists at all. Mirrors actions_router._ensure_tables'
+    enter-org-schema-then-create_all pattern exactly, scoped to just this one table."""
+    from sqlalchemy import text
+
+    from provisa.core.schema_org import metadata
+
+    async with pool.engine.begin() as conn:
+        if pool.search_path and (sql := pool.capabilities.enter_org_sql(pool.search_path)):
+            await conn.execute(text(sql))
+        await conn.run_sync(lambda sc: metadata.create_all(sc, tables=[provisa_sources]))
 
 
 class GrpcRemoteRegisterRequest(BaseModel):
@@ -85,9 +105,18 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
 
         proto_text = Path(proto_path).read_text()
 
+    # REQ-1742 gap: this used to name the compiled stub package after state.catalog_for(source_id)
+    # — the engine's PHYSICAL catalog name, which only resolves once the source is fully
+    # registered (state.source_catalogs is populated by a schema rebuild, itself triggered by the
+    # sources-table upsert below). proto_name is only ever used as a unique Python package name
+    # for the generated stubs (compile_proto_stubs defaults it to the literal "remote"), not a
+    # real catalog identifier, so calling catalog_for() here was an unnecessary, premature
+    # dependency that made every first-time registration fail before the source existed at all.
+    # A sanitized source_id is just as unique and needs nothing to exist first.
+    proto_pkg_name = re.sub(r"\W|^(?=\d)", "_", source_id)
     pb2_path, pb2_grpc_path = compile_proto_stubs(
         proto_text,
-        proto_name=state.catalog_for(source_id),
+        proto_name=proto_pkg_name,
         import_paths=import_paths or None,
     )
     pb2, _ = load_stubs(pb2_path, pb2_grpc_path)
@@ -97,12 +126,65 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
     if state.tenant_db is None:
         raise ApiError(503, "grpc_remote.database_not_connected", "Database not connected")
 
+    # REQ-1742: self-register the `sources` row here, the same pattern
+    # register_graphql_remote_source (graphql_remote_router.py) already uses — a generic
+    # createSource call from the UI would need to send SourceType.grpc_remote, but the Sources
+    # form's own internal type string for this connector is "grpc" (constants.ts), which is not a
+    # valid SourceType; the backend registering itself sidesteps that mismatch entirely, matching
+    # graphql_remote's own working design rather than requiring the frontend to reconcile two
+    # different vocabularies.
+    async with state.tenant_db.acquire() as conn:
+        await conn.upsert(
+            sources,
+            {
+                "id": source_id,
+                "type": "grpc_remote",
+                "host": server_address,
+                "port": 0,
+                "database": "",
+                "username": "",
+                "dialect": "",
+                "path": None,
+                "description": "",
+            },
+            index_elements=["id"],
+            update_columns=["host", "description"],
+        )
+        if domain_id:
+            await conn.upsert(domains, {"id": domain_id}, index_elements=["id"], update_columns=[])
+
     await _ensure_tables(state.tenant_db)
+    await _ensure_provisa_sources_table(state.tenant_db)
 
     async with state.tenant_db.acquire() as conn:
         n_tables, n_mutations = await _register_schema(
             source_id, queries, mutations, conn, namespace, domain_id
         )
+
+    # REQ-1742 gap: this used to call _rebuild_schemas() BEFORE _register_schema — but
+    # graphql_remote_router.py's own working order (which this now mirrors exactly) rebuilds
+    # AFTER its table registration, not before. Rebuilding first left state.tables/
+    # registered_tables reflecting a snapshot from before _register_schema's INSERTs, so the
+    # reconcile below (which reads state.tables) saw a source with a sources-table row but no
+    # tables yet, and never created the landing view — a query against the table still failed
+    # "no such table" even though _register_schema itself had already succeeded.
+    from provisa.api.app import _rebuild_schemas
+
+    try:
+        await _rebuild_schemas()
+    except Exception:
+        log.warning("Schema rebuild failed after grpc-remote registration", exc_info=True)
+
+    # REQ-1729/REQ-1742: same gap graphql_remote_router.py already fixed for itself — grpc_remote
+    # has no live connector (not in the pgwire-replica _OPERAND_BUILDERS set), so its tables are
+    # MATERIALIZED-only; this router upserts registered_tables/table_columns rows directly via
+    # _register_schema above and never reconciled, so a query against a freshly grpc-remote-
+    # registered table failed "no such table: grpc_remote.<table>" — the landing schema/view had
+    # never been created in the engine catalog.
+    try:
+        await state.federation_engine.reconcile_landed_tables()
+    except Exception:
+        log.exception("landed-table reconcile after grpc-remote registration failed")
 
     if relationships:
         from provisa.api.admin.graphql_remote_router import _upsert_relationships_to_semantic_layer

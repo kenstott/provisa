@@ -215,7 +215,24 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         entry = self._engine.resolve(source)  # picks the (duckdb, source_type) connector
         details = entry.details
         phys = self._phys_name(source)
-        if "view_ddl" in details:  # csv / parquet scanner
+        if "view_ddl" in details:  # csv / parquet scanner, or another view_ddl-based connector
+            # REQ-1742 gap: this branch only ever installed httpfs (needed by csv/parquet's own
+            # secret_ddl) — a scanner connector with its OWN DuckDB extension (e.g.
+            # DuckDBGsheetsConnector's `extension = "gsheets"`) never got that extension
+            # installed/loaded on THIS connection, so its view_ddl's table function (read_gsheet)
+            # raised a Catalog Error ("... does not exist") on a fresh runtime that never probed
+            # it — silently caught by introspect_columns' duckdb.Error handler, so the Register
+            # Table form's column list was just empty with no visible error. Mirrors _attach_raw's
+            # already-generic extension-loading below, for the view_ddl-based connectors too.
+            connector = self._engine.connector_for(source.type.value)
+            ext = getattr(connector, "extension", None)
+            if ext and ext not in self._ext_loaded:
+                if getattr(connector, "install_from_community", False):
+                    self._con.execute(f"INSTALL {ext} FROM community")
+                else:
+                    self._con.execute(f"INSTALL {ext}")
+                self._con.execute(f"LOAD {ext}")
+                self._ext_loaded.add(ext)
             secret_ddl = details.get("secret_ddl")
             if secret_ddl and not self._httpfs_loaded:
                 self._con.execute("INSTALL httpfs")

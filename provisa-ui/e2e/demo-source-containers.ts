@@ -81,22 +81,33 @@ const ENV_ARGS = Object.entries(DEMO_SOURCE_ENV)
 // REQ-1772: see module comment above.
 export const DEMO_PREFIX = process.env.PROVISA_E2E_DEMO_PREFIX ?? "provisa-e2e";
 
-function provision(cmd: "up" | "down"): void {
+function provision(cmd: "up" | "down", names: readonly DemoSource[]): void {
+  if (names.length === 0) return;
   execSync(
-    `"${PYTHON}" "${PROVISION}" ${cmd} --prefix ${DEMO_PREFIX} ${ENV_ARGS} ${DEMO_SOURCES.join(" ")}`,
+    `"${PYTHON}" "${PROVISION}" ${cmd} --prefix ${DEMO_PREFIX} ${ENV_ARGS} ${names.join(" ")}`,
     { stdio: "pipe", env: { ...process.env, ...DEMO_SOURCE_ENV } },
   );
 }
 
-/** Start and prime every demo source. Blocks until each is healthy. Core lane only. */
-export function startDemoSources(): void {
-  provision("up");
+/**
+ * Start and prime the given demo sources (default: every one). Blocks until each is healthy.
+ * Core lane only. Callers that only need a subset (see global-setup.ts's resolve-needed-
+ * sources.ts) should pass it explicitly rather than paying for containers nothing in the run
+ * will touch — each of these is real, sizable memory (Splunk ~1.6GB, Cassandra ~1.4GB,
+ * Elasticsearch ~1GB), not a rounding error next to the rest of a test run.
+ */
+export function startDemoSources(names: readonly DemoSource[] = DEMO_SOURCES): void {
+  provision("up", names);
 }
 
-/** Remove the containers and their volumes; a project that was never started removes nothing. */
-export function removeDemoSources(): void {
+/**
+ * Remove the given demo sources' containers and volumes (default: every one). A project that
+ * was never started removes nothing, so passing the full list here is always safe regardless of
+ * which subset startDemoSources() was actually called with.
+ */
+export function removeDemoSources(names: readonly DemoSource[] = DEMO_SOURCES): void {
   try {
-    provision("down");
+    provision("down", names);
   } catch {
     // Nothing to remove.
   }

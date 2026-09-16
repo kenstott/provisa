@@ -857,6 +857,27 @@ tracked_webhooks = Table(
     Column("kind", Text, nullable=False, server_default="mutation"),
 )
 
+# REQ-1742 gap: grpc_remote_router.py's _register_schema has always written its per-table
+# registration log here via a raw INSERT (ON CONFLICT (source_id, table_name)) — but this table
+# was never defined anywhere in the codebase (confirmed: no other file references
+# "provisa_sources" at all), so every grpc_remote registration that reached this INSERT failed
+# with "no such table: provisa_sources" before this was added. Nothing else in the codebase reads
+# from it; it exists purely as this router's own registration record.
+provisa_sources = Table(
+    "provisa_sources",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("source_id", Text, nullable=False),
+    Column("source_type", Text, nullable=False),
+    Column("table_name", Text, nullable=False),
+    Column("column_defs", Text, nullable=False, server_default=""),
+    Column("namespace", Text, nullable=False, server_default=""),
+    Column("domain_id", Text, nullable=False, server_default=""),
+    Column("extra", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("source_id", "table_name"),
+)
+
 table_meta_links = Table(
     "table_meta_links",
     metadata,

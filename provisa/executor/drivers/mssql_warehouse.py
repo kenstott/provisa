@@ -81,21 +81,40 @@ class MssqlWarehouseDriver(DirectDriver):
             # connect(timeout=) is the LOGIN timeout; a serverless Synapse/Fabric pool can be slow
             # to resume from auto-pause, so honor PROVISA_MSSQL_LOGIN_TIMEOUT (seconds).
             login_timeout = int(os.environ.get("PROVISA_MSSQL_LOGIN_TIMEOUT", "120"))
+            # autocommit=True: Fabric/Synapse Warehouses enforce SNAPSHOT isolation
+            # unconditionally (cannot be disabled), which pins a query's read view to the
+            # state at its transaction's first statement. Without autocommit, the first
+            # execute() on this long-lived pooled connection (SourcePool reuses one
+            # connection per source for its whole lifetime) opens an implicit transaction
+            # that is never committed, so every later query on this connection replays that
+            # same stale snapshot forever — newly created tables/rows never become visible,
+            # no matter how long a caller polls. This driver only ever runs governed reads
+            # (see execute()'s own comment), so there is no write to lose by auto-committing
+            # each statement.
             return pyodbc.connect(
                 conn_str,
                 attrs_before={_SQL_COPT_SS_ACCESS_TOKEN: token_struct},
                 timeout=login_timeout,
+                autocommit=True,
             )
 
         self._conn = await asyncio.to_thread(_open)
 
     async def execute(self, sql: str, params: list | None = None) -> QueryResult:
-        del params  # T-SQL read arrives fully formed from the governed pipeline
+        # Most T-SQL reads on this path arrive fully formed from the governed pipeline with no
+        # `?` markers, but not all — introspect.py's fabric/synapse table listing binds
+        # TABLE_SCHEMA via a `?` placeholder. Discarding params unconditionally (as this used to)
+        # left that placeholder unbound: pyodbc raises "COUNT field incorrect or syntax error"
+        # (07002) on a `?` with no parameter supplied, which was being swallowed upstream into a
+        # silently empty table list — never a staleness or caching issue.
 
         def _run() -> QueryResult:
             cur = self._conn.cursor()
             try:
-                cur.execute(sql)
+                if params:
+                    cur.execute(sql, params)
+                else:
+                    cur.execute(sql)
                 cols = [c[0] for c in cur.description] if cur.description else []
                 rows = [tuple(r) for r in cur.fetchall()] if cur.description else []
                 return QueryResult(rows=rows, column_names=cols)

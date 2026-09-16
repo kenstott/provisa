@@ -177,7 +177,12 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 visible_to = c.get("visible_to")
                 if visible_to is None:
                     visible.add(c["column_name"])
-                elif role_id in visible_to:
+                # REQ-1742 gap: "*" is the codebase's "everyone" sentinel (Metric.visible_to,
+                # core/models.py, defaults to it; schema_gen.py's metrics branch already
+                # special-cases it) but this column-visibility check never did — a literal
+                # `role_id in visible_to` treats ["*"] as "visible only to a role named '*'",
+                # silently rejecting every real role even after a successful grant.
+                elif "*" in visible_to or role_id in visible_to:
                     visible.add(c["column_name"])
                 else:
                     all_visible = False

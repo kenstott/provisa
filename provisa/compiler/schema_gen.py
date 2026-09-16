@@ -151,6 +151,12 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
             for c in table["columns"]
             if (
                 (not c["visible_to"] and table["domain_id"] not in _LOCKDOWN_DOMAINS)
+                # REQ-1742 gap: "*" is the codebase's "everyone" sentinel (the metrics branch
+                # just above already special-cases it, line 109) but this column-visibility
+                # check never did — a literal `role["id"] in c["visible_to"]` treats ["*"] as
+                # "visible only to a role named '*'", silently hiding every real role's columns
+                # even after a successful visible_to=["*"] grant.
+                or "*" in c["visible_to"]
                 or role["id"] in c["visible_to"]
                 or _lockdown_admin_override
             )

@@ -327,7 +327,15 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
             value={authType}
             onChange={(v) => {
               setAuthType(v ?? "");
-              setAuthFields({});
+              // warehouse/schema/role above are connection fields, not auth-type-specific — they
+              // stay mounted across an auth-type switch, so resetting the whole bucket silently
+              // wiped whatever the user had already typed there (same bug class as the Databricks
+              // http_path field below).
+              setAuthFields({
+                warehouse: authFields.warehouse,
+                schema: authFields.schema,
+                role: authFields.role,
+              });
             }}
             allowDeselect={false}
           />
@@ -448,7 +456,10 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
             value={authType}
             onChange={(v) => {
               setAuthType(v ?? "");
-              setAuthFields({});
+              // http_path above is a connection field, not auth-type-specific — it stays mounted
+              // across an auth-type switch, so resetting the whole bucket silently wiped whatever
+              // the user had already typed there before picking an auth method.
+              setAuthFields({ http_path: authFields.http_path });
             }}
             allowDeselect={false}
           />

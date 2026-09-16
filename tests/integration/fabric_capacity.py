@@ -39,8 +39,15 @@ to whoever owns the subscription):
         --resource-group <FABRIC_RESOURCE_GROUP> \\
         --capacity-name <FABRIC_CAPACITY_NAME (lowercase alphanumeric, starts with a letter, 3-63 chars)> \\
         --location <azure-region, e.g. eastus> \\
-        --sku "F2" \\
-        --admin-members <your-aad-object-id-or-upn>
+        --sku "{name:F2,tier:Fabric}" \\
+        --administration "{members:[<your-aad-object-id-or-upn>]}"
+
+    Or use scripts/create-fabric-capacity.sh, which wraps the above and also creates the resource
+    group and polls to Active. Note the resource group's region must have nonzero Fabric CU quota
+    (az rest --method get --url ".../providers/Microsoft.Fabric/locations/<region>/usages?api-
+    version=2023-11-01") and the capacity's region must match the Fabric tenant's workspace region
+    or workspace-to-capacity assignment fails — check with an existing capacity/workspace's region
+    in the Fabric portal before picking one.
 
 After creation, set FABRIC_RESOURCE_GROUP / FABRIC_CAPACITY_NAME in .env (with `az login` active
 for the target subscription) and the fabric e2e/integration lanes will resume it automatically
@@ -136,7 +143,17 @@ def ensure_capacity_resumed() -> None:
 
         if state in _RESUMABLE_STATES:
             while True:
-                resp = client.post(f"{url}/resume", params={"api-version": _API_VERSION})
+                # ARM's resume endpoint 411s a bodyless POST unless Content-Length is sent
+                # explicitly — httpx omits it when content= isn't passed. Without this, every
+                # resume call fails with a permanent 411, which the 4xx-retry logic below
+                # would otherwise mistake for "still transitioning" and burn the whole
+                # _RESUME_TIMEOUT_S budget on a request that could never succeed.
+                resp = client.post(
+                    f"{url}/resume",
+                    params={"api-version": _API_VERSION},
+                    content=b"",
+                    headers={"Content-Length": "0"},
+                )
                 if resp.status_code < 400:
                     break
                 # A capacity still settling out of Suspending/Resuming can reject a resume call
@@ -178,7 +195,12 @@ def suspend_capacity() -> None:
     try:
         url = _capacity_url()
         with _client() as client:
-            client.post(f"{url}/suspend", params={"api-version": _API_VERSION}).raise_for_status()
+            client.post(
+                f"{url}/suspend",
+                params={"api-version": _API_VERSION},
+                content=b"",
+                headers={"Content-Length": "0"},
+            ).raise_for_status()
     except Exception:
         logger.warning(
             "Fabric capacity suspend failed (best-effort, not test-failing)", exc_info=True

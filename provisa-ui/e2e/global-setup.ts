@@ -11,6 +11,7 @@ import { fileURLToPath } from "url";
 
 import { startNeo4jContainer } from "./neo4j-container";
 import { startDemoSources } from "./demo-source-containers";
+import { resolveNeededSources } from "./resolve-needed-sources";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.resolve(__dirname, "../../config/provisa-install.yaml");
@@ -169,19 +170,21 @@ async function bootstrapBackend(BACKEND_URL: string, yaml: string, orgId: string
 }
 
 export default async function globalSetup() {
-  // PROVISA_E2E_SKIP_SHARED_SOURCES=1 opts out of the two blocks below — for a run targeting a
-  // spec file that provisions its own fixtures (e.g. source-to-query-generic-rdbms.spec.ts) and
-  // needs neither the neo4j export container nor the shared 9-service demo-source-containers.ts
-  // stack (neo4j/mongodb/elasticsearch/redis/cassandra/sparql/prometheus/chinook/splunk). Default
-  // (unset) preserves prior behavior — every spec in the core lane still gets both.
-  const SKIP_SHARED = process.env.PROVISA_E2E_SKIP_SHARED_SOURCES === "1";
+  // Start exactly the shared-stack containers (and, separately, the neo4j export container)
+  // this invocation's own spec-file/-g arguments actually need — see resolve-needed-sources.ts.
+  // PROVISA_E2E_SKIP_SHARED_SOURCES=1 forces both to empty regardless, for a case the resolver
+  // can't see through (e.g. a custom testMatch pattern with no positional file arg).
+  const forceSkip = process.env.PROVISA_E2E_SKIP_SHARED_SOURCES === "1";
+  const needed = forceSkip ? { sources: [], neo4jExport: false } : resolveNeededSources();
   // Start the Neo4j export target now, before any browser exists — see neo4j-container.ts for why
   // it cannot start mid-run. `docker run -d` returns immediately; the spec still waits for the
   // engine to accept queries, and by then the container has had the whole bootstrap to boot.
   // The trino lane does not carry neo4j-docker-export.spec.ts, so it starts nothing.
-  if (process.env.PROVISA_E2E_LANE !== "trino" && !SKIP_SHARED) startNeo4jContainer();
+  if (process.env.PROVISA_E2E_LANE !== "trino" && needed.neo4jExport) startNeo4jContainer();
   // REQ-1671: the live sources source-to-query.spec.ts configures through the UI (core lane).
-  if (process.env.PROVISA_E2E_LANE !== "trino" && !SKIP_SHARED) startDemoSources();
+  if (process.env.PROVISA_E2E_LANE !== "trino" && needed.sources.length > 0) {
+    startDemoSources(needed.sources);
+  }
 
   const yaml = fs.readFileSync(CONFIG_PATH, "utf8");
   fs.writeFileSync(SNAPSHOT_PATH, yaml);

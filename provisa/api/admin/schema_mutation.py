@@ -14,6 +14,7 @@ from __future__ import annotations
 
 
 import logging
+import os
 from typing import TYPE_CHECKING, Optional, cast
 
 import strawberry
@@ -657,6 +658,27 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # into the org vault and the row keeps the reference that names it; the row never holds a
         # credential. Done after the validation so a rejected source leaves no vault entry behind.
         password_ref = await persist_source_password(info, input.id, input.password)
+        _mapping = _parse_mapping_json(input.mapping_json)
+        if not _mapping:
+            from provisa.dq.registration import is_checker_source_type
+
+            if is_checker_source_type(input.type):
+                # REQ-1742 gap: a checker source (soda/great_expectations) has NO connection
+                # fields in the Sources form (NO_CONNECTION_TYPES, constants.ts) — the checker
+                # doesn't connect to a remote system, it scans an already-registered table
+                # through PROVISA'S OWN pgwire endpoint (dq.runner.run_contract's `connection`
+                # arg). The shipped dq-checker/dq-soda demo sources (config/provisa-install.yaml)
+                # hardcode this mapping by hand; a source created THROUGH THE UI never got it at
+                # all, so its mapping stayed permanently empty and every dry-run/scan against it
+                # raised a raw KeyError('host') the first time run_contract indexed into it.
+                # Same env-var defaults provisa-install.yaml's own dq-checker/dq-soda entries use.
+                _mapping = {
+                    "host": os.environ.get("PROVISA_DQ_HOST", "localhost"),
+                    "port": os.environ.get("PROVISA_PGWIRE_PORT", "5439"),
+                    "database": "provisa",
+                    "user": os.environ.get("PROVISA_DQ_USER", "org_admin"),
+                    "password": os.environ.get("PROVISA_DQ_PASSWORD", "provisa"),
+                }
         model = SourceModel(
             id=input.id,
             type=SourceTypeEnum(input.type),
@@ -667,7 +689,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             password=password_ref,
             path=input.path,
             description=input.description,
-            mapping=_parse_mapping_json(input.mapping_json),
+            mapping=_mapping,
             federation_hints=_federation_hints_from_input(input),
             change_signal=input.change_signal,
             load_protected=input.load_protected,  # REQ-1141
@@ -1766,6 +1788,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         elif not input.materialize:
             _remove_view_mv(input.table_name)
         await _rebuild_schemas()
+        # REQ-1742: graphql_remote_router.py's/grpc_remote_router.py's own one-shot registration
+        # flows call reconcile_landed_tables() right after _rebuild_schemas() — the pass that
+        # actually creates a MATERIALIZED source's landing schema/view in the engine catalog
+        # (REQ-846/932). update_table (this mutation) never did, so a materialize-only table
+        # whose landing view didn't converge for any reason at registration time (e.g. a
+        # transient failure, or state not yet fully committed) had no other path to ever catch
+        # up — every later grant/edit through this mutation left it permanently stuck. Idempotent
+        # (attach_landed_source uses CREATE VIEW IF NOT EXISTS), so calling it unconditionally
+        # here is safe for every table type, not just materialize-only ones.
+        try:
+            from provisa.api.app import state as _state
+
+            await _state.federation_engine.reconcile_landed_tables()
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Landed-table reconcile failed after update_table", exc_info=True
+            )
         # Materialize + wire a (re)materialized view immediately — FRESH now, not STALE-until-restart.
         if input.view_sql and input.materialize:
             from provisa.api.admin.schema_common import activate_view_mv

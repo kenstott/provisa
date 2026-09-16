@@ -18773,3 +18773,43 @@ The fabric e2e test (provisa-ui/e2e/source-to-query-cloud-warehouse.spec.ts) was
 **Code:** `tests/integration/fabric_capacity.py`, `provisa-ui/e2e/cloud_warehouse_seed.py`, `provisa-ui/e2e/source-to-query-cloud-warehouse.spec.ts`
 
 **Tests:** `provisa-ui/e2e/source-to-query-cloud-warehouse.spec.ts`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1776 · Testing {#REQ-1776}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+provisa-ui/e2e/global-setup.ts auto-detects, from the Playwright invocation's positional spec-file arguments in process.argv, whether the run is scoped only to spec files that never touch the shared 9-service demo-source-containers.ts stack (neo4j/mongodb/elasticsearch/ redis/cassandra/sparql/prometheus/chinook/splunk) or the neo4j export container. [SUPERSEDED by REQ-1776, 2026-09-15 -- replaced by granular per-source resolution; the all-or-nothing per-file skip list no longer exists.] A literal array NO_SHARED_SOURCES_SPECS (currently source-to-query-cloud-warehouse.spec.ts, source-to-query-generic-rdbms.spec.ts, source-to-query-community-ext.spec.ts — each verified to have zero references to DEMO_SOURCE_ENV, the shared-stack's E2E_*_PORT constants, demo-source-containers, or neo4j-container) lists these files. If every positional spec-file arg matches this list, globalSetup skips starting the shared stack automatically, with no env var needed. [END SUPERSEDED BLOCK] PROVISA_E2E_SKIP_SHARED_SOURCES=1 remains as a manual override for cases the heuristic can't see through, e.g. a custom testMatch pattern with no positional file arg.  (Amended 2026-09-15, granular per-source resolution:) The all-or-nothing per-file heuristic is replaced by exact per-source resolution. A new module provisa-ui/e2e/resolve-needed-sources.ts::resolveNeededSources() derives the EXACT subset of the 9 demo sources (and whether the separate neo4j export container is needed) from the invocation's positional spec-file args and, for source-to-query.spec.ts specifically, the -g/--grep pattern too — by parsing that file's own test() titles (each named "<sourcename>: ...") and matching them against the grep pattern to find exactly which source(s) are actually needed for a scoped run like `-g "neo4j:"`. provisa-ui/e2e/demo-source-containers.ts::startDemoSources()/removeDemoSources() now take an optional `names: readonly DemoSource[]` parameter (default: the full DEMO_SOURCES list, preserving old behavior for whole-suite runs) instead of always operating on every source. provisa-ui/e2e/global-setup.ts no longer has the NO_SHARED_SOURCES_SPECS array at all — it calls resolveNeededSources() and passes the exact subset through. PROVISA_E2E_SKIP_SHARED_SOURCES=1 still works as a manual override forcing empty/skip. Mapping: engine-swap.spec.ts needs a fixed set (neo4j/mongodb/elasticsearch/redis/cassandra/ sparql/prometheus, no chinook/splunk); hasura-import.spec.ts needs only chinook; source-to-query.spec.ts's needed subset is derived per the -g pattern (or all of them if no -g given); any other file (including the three previously in NO_SHARED_SOURCES_SPECS, and new ones not yet written) contributes nothing unless it appears in one of these maps, so the hardcoded skip-list no longer needs updating when a new no-dependency spec file is added — it falls out of the design by default. global-teardown.ts is unchanged: removeDemoSources()/ removeNeo4jContainer() already unconditionally attempt removal of everything, a safe no-op for whatever subset was never started, so no new state needs to flow from setup to teardown.
+
+**Use case:** A run scoped to one of these files (e.g. `npx playwright test source-to-query-cloud-warehouse.spec.ts -g "fabric:"`) was starting all ~9 shared containers (~5-6GB RAM: Splunk 1.6GB, Cassandra 1.4GB, Elasticsearch 955MB, two Neo4j instances ~770MB combined) even though none of the tests in that file ever use them, requiring a human to remember to pass PROVISA_E2E_SKIP_SHARED_SOURCES=1 manually every time.
+
+**Code:** `provisa-ui/e2e/global-setup.ts`, `provisa-ui/e2e/resolve-needed-sources.ts`, `provisa-ui/e2e/demo-source-containers.ts`
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-1777 · GovData Access Control {#REQ-1777}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+GOVDATA_SUBJECT_SCHEMAS in provisa/core/models.py (~line 1652), the dict gating per-tenant GovDataSubscription access to GovData schemas by GovDataSubject, is reconciled against askamerica-engine's actual served schema list (McpServer.java's DEFAULT_SCHEMAS). Nine real schemas that were previously unmapped to any subject -- ag, banking, cftc, disasters, fiscal, housing, officials, research, transport -- are now mapped to the closest-fit existing subject: cftc to COMMERCE (alongside sec/patents); ag, banking, fiscal, housing, transport to ECONOMY; disasters to PUBLIC_SAFETY (alongside crime); officials to GOVERNMENT (alongside fedregister/fec); research to EDUCATION. census is additionally mapped to DEMOGRAPHICS (in addition to its existing EDUCATION mapping, since a schema may serve more than one subject), resolving DEMOGRAPHICS from a dead enum member with zero mapped schemas. This is a first-pass reconciliation, not a verified product/domain decision, and is flagged in the code's own comment as revisitable if a subject boundary is wrong.
+
+**Use case:** Without this fix, a tenant with a GovDataSubscription to a SPECIFIC subject (not GovDataSubject.all) could never reach the 9 unmapped schemas even though askamerica-engine actually serves them, silently under-granting access relative to the engine's real capability. GAP: no test currently asserts GOVDATA_SUBJECT_SCHEMAS stays in sync with the engine's real schema list, so this mapping can drift stale again without detection.
+
+**Code:** `provisa/core/models.py`
+
+**Tests:** —
+
+### REQ-1778 · Column Visibility Enforcement {#REQ-1778}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+"*" is the codebase's established "visible to everyone" sentinel for visible_to grants -- Metric.visible_to (provisa/core/models.py) defaults to ["*"], and schema_gen.py's metrics-visibility branch (~line 109) already special-cased "*" not in vt correctly -- but the COLUMN-visibility checks never got the same treatment. provisa/compiler/stage2.py's build_governance_context (~line 174-184) computed each role's visible-columns set via a literal `role_id in visible_to` membership test with no "*" case, so a column granted visible_to: ["*"] was treated as visible only to a role literally named "*" -- invisible to every real role. This is read by provisa/compiler/sql_validator.py's _check_column_visibility (V003 check), so a query against such a column was rejected with "Column ... is not visible to this role" even immediately after a successful grant. provisa/compiler/schema_gen.py's per-role visible-columns filter (~line 149-154, the GraphQL/other-surface schema projection) had the same gap: `role["id"] in c["visible_to"]` with no "*" case, so a ["*"]-granted column was silently omitted from the generated schema for every role. Both are fixed by adding "*" in visible_to (or "*" in c["visible_to"]) as an additional short-circuit alongside the existing membership check, mirroring the already-correct metrics-visibility pattern.
+
+**Use case:** Found via the grpc_remote e2e test ([REQ-1742](#REQ-1742)): grpc_remote_router.py's auto-registered columns start with visible_to: [] (zero-trust default) and the UI's own grant flow (updateTable mutation) sets visible_to: ["*"] -- the grant call itself succeeded and persisted ["*"] correctly (table_repo.upsert has no "*" mishandling), but the VERY NEXT query against that column was rejected by the V003 check, proving the read-side (not write-side) was broken. This bug was not specific to grpc_remote -- it affects ANY column anywhere in the app ever granted visible_to: ["*"] through the normal UI grant flow, a long-standing, broad-impact access-control correctness bug: columns granted "visible to everyone" were actually visible to no one. GAP: no dedicated regression test exists yet for either fixed code path (stage2.py's build_governance_context or schema_gen.py's per-role column filter); both fixes are currently exercised only incidentally by e2e coverage, not by a targeted unit or integration test asserting visible_to: ["*"] resolves correctly.
+
+**Code:** `provisa/compiler/stage2.py`, `provisa/compiler/schema_gen.py`
+
+**Tests:** —

@@ -1037,6 +1037,10 @@ export function SourcesPage() {
     e.preventDefault();
     setError(null);
     try {
+      // Registration is entirely server-side (grpc_remote_router.py upserts the `sources` row
+      // itself with the real SourceType, "grpc_remote" — the same pattern
+      // register_graphql_remote_source uses), so there is no separate createSource call here,
+      // matching handleGraphqlRegister just above.
       const resp = await fetch("/admin/grpc-remote/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1061,20 +1065,6 @@ export function SourcesPage() {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
         throw new Error(serverMessage(body, requestFailed("gRPC register", resp.status)));
       }
-      const genericPayload = {
-        id: form.id,
-        type: form.type,
-        host: form.host,
-        port: form.port,
-        database: form.database,
-        username: form.username,
-        password: form.password,
-        path: null,
-      };
-      const genericResult = editingSourceId
-        ? await updateSource(genericPayload)
-        : await createSource(genericPayload);
-      if (!genericResult.success) throw new Error(genericResult.message);
       handleCancelForm();
       load();
     } catch (err) {
