@@ -325,6 +325,13 @@ for (const c of [
       await expect(page.getByTestId("register-table-dq-results-table")).toHaveValue("vets_scan");
       await page.getByTestId("register-table-dq-results-table").fill(resultsTable);
 
+      // The alias field defaults to `${table}_quality` (RegisterTableForm.tsx) — "vets_quality"
+      // for pet_store.vets regardless of which checker source is scanning it, which collides
+      // with the shipped dq-soda demo source's own "vets_quality" alias on the same table
+      // (dq-soda.quality). Give this run's alias the same uniqueness stamp resultsTable already
+      // carries so it never collides with the baked demo data or another run of this test.
+      await page.getByTestId("register-table-alias").fill(`vets_quality_${stamp}`);
+
       // A dataset-scope row_count / row-count-between rule needs no column pick.
       await page.getByTestId("dq-check-type").click();
       await page.getByRole("option", { name: c.checkType, exact: true }).click();

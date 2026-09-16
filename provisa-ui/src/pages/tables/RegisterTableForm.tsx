@@ -698,6 +698,7 @@ export function RegisterTableForm({
         </>
       )}
       <TextInput
+        data-testid="register-table-alias"
         label={
           <>
             {t("registerTableForm.aliasLabel")}{" "}

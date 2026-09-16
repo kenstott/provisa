@@ -295,7 +295,16 @@ function sqliteControlPlaneEnv(dataDir: string): Record<string, string> {
   fs.mkdirSync(dataDir, { recursive: true });
   if (IS_RUNNER) {
     for (const f of fs.readdirSync(dataDir)) {
-      if (/\.db(-wal|-shm)?$/.test(f)) fs.rmSync(path.join(dataDir, f));
+      // The federation engine's own materialize store (materialize.duckdb[.wal]) is NOT a
+      // control-plane file, but it lives in the same dataDir and was never covered by this
+      // wipe — a backend killed non-gracefully (SIGKILL, a crashed prior run) never checkpoints
+      // its WAL, and DuckDB replays the WHOLE accumulated WAL on the next open. Across repeated
+      // kills in the same dataDir that WAL only grows, eventually taking minutes to replay and
+      // making the backend accept connections (uvicorn is up) but never answer a single request
+      // — even /health — because the replay runs on the event loop thread before the app can
+      // serve anything. A fresh run must start from a fresh store, same as it does for tenant/
+      // platform db.
+      if (/\.db(-wal|-shm)?$|\.duckdb(\.wal|\.tmp)?$/.test(f)) fs.rmSync(path.join(dataDir, f));
     }
   }
   return {

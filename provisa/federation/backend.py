@@ -85,14 +85,20 @@ async def landing_worklist(
                 continue  # live/scan → attached live, not eager-landed
         except UnreachableSource:
             continue
-        # A PARAMETERIZED source — one with native-filter (query/path-param) columns — is a
-        # function f(args) -> rows with no unparameterized snapshot. It is fetched real-time at
-        # query time (never materialized), so it never lands a replica.
-        if any(c["native_filter_type"] is not None for c in reg["columns"]):
-            continue
-        # Native-filter columns are synthetic query args, not landed data — excluded from the
-        # landing shape (defensive: none remain past the guard above).
+        # Native-filter columns are synthetic query args (LIMIT/path params, etc.), not landed
+        # data. REQ-1742 gap: this used to skip the WHOLE table the instant ANY column carried a
+        # native_filter_type, on the theory that such a table is a pure "function f(args) -> rows"
+        # with no unparameterized snapshot to land at all. That's true only when EVERY column is a
+        # parameter — grpc_remote's map_proto (provisa/grpc_remote/mapper.py) adds a synthetic
+        # "_nf_limit"-style column ALONGSIDE the method's real output columns, so a grpc_remote
+        # table with genuine data columns was being thrown out entirely instead of landing just
+        # the real ones: the landing view for e.g. AnimalCatalog.ListBreeds never got created at
+        # all, and every query against it failed "no such table" no matter how many times
+        # reconcile ran. Filter the parameter columns out FIRST, then only skip if nothing real
+        # is left to land.
         data_cols = [c for c in reg["columns"] if c["native_filter_type"] is None]
+        if not data_cols:
+            continue  # every column is a synthetic query arg — genuinely nothing to land
         if any(c["data_type"] is None for c in data_cols):
             _log.warning(
                 "%s: skip eager reconcile of %s.%s — a registered column has no resolved type",
@@ -101,15 +107,14 @@ async def landing_worklist(
                 reg["table_name"],
             )
             continue
-        work.append(
-            (
-                src,
-                reg["schema_name"],
-                reg["table_name"],
-                [(c["column_name"], to_ir(c["data_type"])) for c in data_cols],
-                [c["column_name"] for c in data_cols if c["is_primary_key"]],
-            )
+        _entry = (
+            src,
+            reg["schema_name"],
+            reg["table_name"],
+            [(c["column_name"], to_ir(c["data_type"])) for c in data_cols],
+            [c["column_name"] for c in data_cols if c["is_primary_key"]],
         )
+        work.append(_entry)
     return work
 
 

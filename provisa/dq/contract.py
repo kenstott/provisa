@@ -406,10 +406,11 @@ def _build_soda(dataset: str, checks: list[dict]) -> str:
         else:
             dataset_checks.append(body)
     contract: dict[str, Any] = {"dataset": dataset}
-    if by_column:
-        contract["columns"] = [
-            {"name": name, "checks": bodies} for name, bodies in by_column.items()
-        ]
+    # soda_core's Contract schema (contract_yaml.py::_parse_columns, columns_required=True for a
+    # Contract) requires the 'columns' key to be PRESENT even when every check is dataset-scoped
+    # (e.g. row_count) and there are no column-level checks at all — an empty list satisfies it,
+    # an absent key raises ContractParserException("missing the required 'columns' property").
+    contract["columns"] = [{"name": name, "checks": bodies} for name, bodies in by_column.items()]
     if dataset_checks:
         contract["checks"] = dataset_checks
     return yaml.safe_dump(contract, sort_keys=False, default_flow_style=False)
