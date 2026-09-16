@@ -14,13 +14,31 @@ import yaml
 
 from provisa.core.config_location import config_path as _config_path
 
+# Profiled live (REQ-1730 engine-swap investigation): a schema rebuild's landing loop calls
+# platform_config() -> read_config() once per materialized table (17-90+ times per rebuild,
+# depending on registered-table count), each a full disk read + yaml.safe_load of the SAME file.
+# Cached here, keyed by mtime, so a rebuild's N calls cost one real read — a config that changes
+# mid-process (PUT /admin/config writes the file, then always calls _rebuild_schemas itself) is
+# picked up on the next call because the mtime changed, so this never serves stale content.
+_read_config_cache: dict[str, tuple[float, dict]] = {}
+
 
 def read_config() -> dict:  # REQ-164
+    path = _config_path()
     try:
-        with open(_config_path()) as f:
-            return yaml.safe_load(f) or {}
+        mtime = path.stat().st_mtime
+    except OSError:
+        return {}
+    cached = _read_config_cache.get(str(path))
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    try:
+        with open(path) as f:
+            parsed = yaml.safe_load(f) or {}
     except Exception:
         return {}
+    _read_config_cache[str(path)] = (mtime, parsed)
+    return parsed
 
 
 def config_path() -> Path:

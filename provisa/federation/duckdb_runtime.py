@@ -290,13 +290,37 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         return self._attach_raw(source, details)
 
     def introspect_schemas(self, source: Any) -> list[str]:
-        """The schemas of the source's remote database, read from the attached catalog's
-        information_schema — what Register Table lists for a source with no table registered yet."""
+        """The schemas of the source's remote database, read from the attached catalog —
+        what Register Table lists for a source with no table registered yet.
+
+        Tries duckdb_schemas() first, not information_schema.schemata — profiled live (REQ-1730
+        engine-swap investigation, same cost store_connection.py::_existing_columns had):
+        information_schema's cross-catalog views scale with the TOTAL number of tables/schemas
+        across every attached catalog, not just the one being filtered for, so this call got
+        dramatically slower as more sources registered during a session, timing out a
+        not-yet-registered source's schema/table picker once enough OTHER sources had landed.
+        duckdb_schemas() doesn't have that cost — but it's blind to an extension-backed VIRTUAL
+        source (verified live against DuckDB's mongo extension: duckdb_tables() returns nothing
+        for an attached Mongo-style catalog, since that extension apparently only plumbs its
+        virtual collections through the information_schema compatibility view, not DuckDB's own
+        internal catalog table functions). An attached-but-genuinely-empty database is not a
+        real-world case for Register Table (nothing to pick would mean nothing to register), so
+        falling back to information_schema only when the fast path comes back empty gets the
+        speed win for real catalogs (firebird, airport, the SQL warehouses) without going wrong
+        for virtual ones (mongo, and presumably redis/elasticsearch/cassandra the same way).
+        """
         alias = self._attached_alias(source)
         if alias is None:
             return []
         cur = self._con.cursor()
         try:
+            fast = cur.execute(
+                "SELECT schema_name FROM duckdb_schemas() WHERE database_name = ? "
+                "AND schema_name NOT IN ('information_schema', 'pg_catalog') ORDER BY schema_name",
+                [alias],
+            ).fetchall()
+            if fast:
+                return [r[0] for r in fast]
             res = cur.execute(
                 "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = ? "
                 "AND schema_name NOT IN ('information_schema', 'pg_catalog') ORDER BY schema_name",
@@ -313,6 +337,13 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             return []
         cur = self._con.cursor()
         try:
+            fast = cur.execute(
+                "SELECT table_name FROM duckdb_tables() WHERE database_name = ? "
+                "AND schema_name = ? ORDER BY table_name",
+                [alias, schema_name],
+            ).fetchall()
+            if fast:
+                return [r[0] for r in fast]
             res = cur.execute(
                 "SELECT table_name FROM information_schema.tables WHERE table_catalog = ? "
                 "AND table_schema = ? ORDER BY table_name",

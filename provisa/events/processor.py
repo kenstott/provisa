@@ -221,8 +221,18 @@ class TableProcessor(ABC):
 
         REQ-1266: ``org_id`` (non-default org) namespaces the job id and binds the org's
         ``current_org`` ContextVar for the fire, so a per-org poll never clobbers another org's job
-        and its injector resolves the right runtime. ``None`` keeps the bare id and binds nothing."""
+        and its injector resolves the right runtime. ``None`` keeps the bare id and binds nothing.
+
+        REQ-1730 follow-up: every node registered in the same boot/registration pass shares the same
+        IntervalTrigger anchor (now), so with no jitter they all fire in lockstep at every multiple of
+        the cadence -- an org with many tables on the same cache TTL turns each tick into a thundering
+        herd, all serialized through the engine's single connection/lock, stalling a concurrent
+        registration's own rebuild for the full herd's real fetch+land work. Jitter desynchronizes
+        firings over time without touching cadence semantics; skipped for short (<10s) intervals used
+        by fast-poll/CDC-cadence tests that assert near-exact timing."""
         from apscheduler.triggers.interval import IntervalTrigger
+
+        jitter = min(seconds // 5, 30) if seconds >= 10 else None
 
         suffix = f":org_{org_id}" if org_id else ""
 
@@ -242,7 +252,7 @@ class TableProcessor(ABC):
 
         scheduler.add_job(
             _fire,
-            trigger=IntervalTrigger(seconds=seconds),
+            trigger=IntervalTrigger(seconds=seconds, jitter=jitter),
             id=f"poll:{self.node}{suffix}",
             replace_existing=True,
         )

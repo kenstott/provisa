@@ -71,11 +71,15 @@ export async function pickSchemaAndTable(page: Page, schema: string, table: stri
  * of the table's dataset name (`provisa/<domain>/<sql name>`) — read from the server rather than
  * re-derived here, so the test asserts against the name that is actually served.
  */
-export async function submitRegisterAndExpectListed(page: Page, sourceId: string): Promise<string> {
+export async function submitRegisterAndExpectListed(
+  page: Page,
+  sourceId: string,
+  timeoutMs = 120000,
+): Promise<string> {
   await page.getByTestId("register-table-submit").click();
   // Registration rebuilds the schemas; the row lands in the tables list when it is done.
   const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
-  await expect(row).toBeVisible({ timeout: 120000 });
+  await expect(row).toBeVisible({ timeout: timeoutMs });
   const res = await page.request.post("/admin/graphql", {
     data: { query: "{ tables { sourceId dqDataset } }" },
   });

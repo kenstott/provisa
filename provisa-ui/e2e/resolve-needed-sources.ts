@@ -30,22 +30,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // filter (each drives exactly one source per file, so there is no finer split to make) —
 // confirmed by grep for E2E_*_PORT usage in each.
 const FIXED_FILE_NEEDS: Record<string, readonly DemoSource[]> = {
-  "engine-swap.spec.ts": [
-    "neo4j",
-    "mongodb",
-    "elasticsearch",
-    "redis",
-    "cassandra",
-    "sparql",
-    "prometheus",
-  ],
   "hasura-import.spec.ts": ["chinook"],
 };
 
-// The one file whose tests are each scoped to a single source, named "<sourcename>: ..." —
-// parsing its own test titles (rather than hardcoding the same list a second time here) keeps
-// this in sync automatically as tests are added/renamed/removed there.
+// Files whose tests are each scoped to a single source, named "<sourcename>: ..." — parsing their
+// own test titles (rather than hardcoding the same list a second time here) keeps this in sync
+// automatically as tests are added/renamed/removed there.
 const SOURCE_TO_QUERY_FILE = "source-to-query.spec.ts";
+const TITLE_SCOPED_FILES = [SOURCE_TO_QUERY_FILE];
+// engine-swap.spec.ts needs NO entry anywhere in this module (REQ-1730, 2026-09-16 redesign):
+// every one of its 13 tests — including the 7 that used to ride the shared demo-source-
+// containers.ts fleet this module provisions — now starts and tears down its own container from
+// inside its own scoped test.describe (see that file's per-type beforeAll/afterAll). A run of
+// that file asks this resolver for nothing and gets nothing, by design: a single test creates the
+// resources it needs and tears them down, never depends on what global-setup/another test left
+// running.
 
 // The neo4j EXPORT container (a separate fixture from the "neo4j" demo source above) is used by
 // exactly this one file — see neo4j-container.ts's own module comment.
@@ -64,8 +63,8 @@ function grepPattern(): string | undefined {
   return undefined;
 }
 
-function sourceToQueryNeeds(grep: string | undefined): DemoSource[] {
-  const text = fs.readFileSync(path.resolve(__dirname, SOURCE_TO_QUERY_FILE), "utf8");
+function titleScopedNeeds(file: string, grep: string | undefined): DemoSource[] {
+  const text = fs.readFileSync(path.resolve(__dirname, file), "utf8");
   const titles = [...text.matchAll(/test\(\s*"([^"]+)"/g)].map((m) => m[1]);
   const matched = grep ? titles.filter((t) => new RegExp(grep).test(t)) : titles;
   const leadingNames = matched.map((t) => t.split(":")[0].trim());
@@ -90,8 +89,8 @@ export function resolveNeededSources(): NeededSources {
   const sourceSet = new Set<DemoSource>();
   let neo4jExport = false;
   for (const f of files) {
-    if (f === SOURCE_TO_QUERY_FILE) {
-      for (const s of sourceToQueryNeeds(grep)) sourceSet.add(s);
+    if (TITLE_SCOPED_FILES.includes(f)) {
+      for (const s of titleScopedNeeds(f, grep)) sourceSet.add(s);
     } else if (FIXED_FILE_NEEDS[f]) {
       for (const s of FIXED_FILE_NEEDS[f]) sourceSet.add(s);
     }

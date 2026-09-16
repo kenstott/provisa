@@ -48,18 +48,22 @@
 // outright under arm64 emulation, it does not even attempt to boot). Both are checked before
 // singlestore's container is even started, not just before its registration.
 //
-// Run: PROVISA_E2E_LANE=all PROVISA_E2E_CONTROL_PLANE=postgres PROVISA_E2E_WORKERS=1 \
-//      PROVISA_E2E_ORG_ID=e2e_swap PROVISA_E2E_TRINO_ORG_ID=e2e_swap \
-//      npx playwright test --project=swap
-// (The two env overrides put the DuckDB and Trino backends on the SAME org_<id> Postgres schema —
-// normally kept apart to prevent collision — which is exactly the sharing this harness needs.)
+// Run (whole file, every type — heavy, ~11 containers): PROVISA_E2E_LANE=all
+//     PROVISA_E2E_CONTROL_PLANE=postgres PROVISA_E2E_WORKERS=1 PROVISA_E2E_ORG_ID=e2e_swap \
+//     PROVISA_E2E_TRINO_ORG_ID=e2e_swap npx playwright test --project=swap
+// Run ONE type — provisions only that type's own container, per resolve-needed-sources.ts's
+// title parsing (same env vars as above, plus the file positionally and -g naming the type):
+//     npx playwright test e2e/engine-swap.spec.ts -g mongodb --project=swap
+// (The two ORG_ID env overrides put the DuckDB and Trino backends on the SAME org_<id> Postgres
+// schema — normally kept apart to prevent collision — which is exactly the sharing this harness
+// needs.)
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { test, expect, TRINO_BACKEND_URL, UI_URL } from "./coverage";
+import { test, expect, BACKEND_URL, TRINO_BACKEND_URL, UI_URL } from "./coverage";
 import {
   E2E_CASSANDRA_PORT,
   E2E_ES_PORT,
@@ -68,6 +72,8 @@ import {
   E2E_PROMETHEUS_PORT,
   E2E_REDIS_PORT,
   E2E_SPARQL_PORT,
+  startDemoSources,
+  removeDemoSources,
 } from "./demo-source-containers";
 import {
   existingSourcePath,
@@ -96,13 +102,11 @@ const E2E_SINGLESTORE_PORT = 33071;
 // wastes the harness's own boot budget on a doomed wait. See the module doc.
 const SINGLESTORE_AVAILABLE = process.arch === "x64" && !!process.env.SINGLESTORE_LICENSE;
 
-function provisionSwapSources(cmd: "up" | "down"): void {
-  const names = [
-    "firebird",
-    "airport",
-    ...(cmd === "up" && SINGLESTORE_AVAILABLE ? ["singlestore"] : []),
-  ];
-  if (cmd === "down") names.push("singlestore"); // always attempt teardown, even if up skipped it
+// One source = one test (REQ-1730 redesign, 2026-09-16): each of firebird/airport/singlestore
+// provisions and tears down its OWN container, scoped to the ONE test that needs it — not all
+// three every time any one of them runs. A single `--grep firebird` run now boots exactly one
+// container instead of the whole swap fleet.
+function provisionSwapSource(name: "firebird" | "airport" | "singlestore", cmd: "up" | "down"): void {
   const env = {
     ...process.env,
     PROVISA_DEMO_FIREBIRD_PORT: String(E2E_FIREBIRD_PORT),
@@ -111,7 +115,7 @@ function provisionSwapSources(cmd: "up" | "down"): void {
     PROVISA_DEMO_PREFIX: SWAP_PREFIX,
   };
   try {
-    execFileSync(PYTHON, [PROVISION, cmd, "--prefix", SWAP_PREFIX, ...names], {
+    execFileSync(PYTHON, [PROVISION, cmd, "--prefix", SWAP_PREFIX, name], {
       stdio: "pipe",
       env,
     });
@@ -153,6 +157,17 @@ const ENGINES: EngineTarget[] = [
   // route — no Docker image to stand up, unlike Trino's JVM cluster).
 ];
 
+// This harness runs the DuckDB-bound registration backend and the Trino-bound backend side by
+// side on the same box, sharing the same Postgres control-plane schema (REQ-1730's whole point).
+// A cold Trino coordinator can take a few minutes to become genuinely stable — not just accepting
+// connections, but no longer background-retrying its own startup work (system-catalog
+// registration, per-source MV introspection probes) — and that churn measurably slows the
+// CO-RESIDENT DuckDB backend's own schema rebuilds (shared CPU/DB, not a per-source-type bug: the
+// registration that randomly blows the default 120s timeout is a different one every run). Give
+// registration during this harness a longer runway than the default so a real Trino cold start
+// doesn't get misread as a registration failure.
+const SWAP_REGISTER_TIMEOUT_MS = 300000;
+
 async function registerNeo4j(page: Page): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_neo4j_${stamp}`;
@@ -178,7 +193,7 @@ async function registerNeo4j(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-neo4j-preview-rows")).toBeVisible({
     timeout: 60000,
   });
-  const registered = await submitRegisterAndExpectListed(page, sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
 
   return {
     label: "neo4j",
@@ -210,7 +225,7 @@ async function registerMongodb(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-col-selected-reviewer")).toBeVisible({
     timeout: 60000,
   });
-  const registered = await submitRegisterAndExpectListed(page, sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
 
   return {
     label: "mongodb",
@@ -241,7 +256,7 @@ async function registerElasticsearch(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-col-selected-ticket_id")).toBeVisible({
     timeout: 60000,
   });
-  const registered = await submitRegisterAndExpectListed(page, sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
 
   return {
     label: "elasticsearch",
@@ -273,7 +288,7 @@ async function registerRedis(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
     timeout: 60000,
   });
-  const registered = await submitRegisterAndExpectListed(page, sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
 
   return {
     label: "redis",
@@ -305,7 +320,7 @@ async function registerCassandra(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-col-selected-event_id")).toBeVisible({
     timeout: 60000,
   });
-  const registered = await submitRegisterAndExpectListed(page, sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
 
   return {
     label: "cassandra",
@@ -346,7 +361,7 @@ async function registerSparql(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-sparql-preview-rows")).toBeVisible({
     timeout: 60000,
   });
-  const registered = await submitRegisterAndExpectListed(page, sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
 
   return {
     label: "sparql",
@@ -376,7 +391,7 @@ async function registerPrometheus(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-col-selected-job")).toBeVisible({
     timeout: 60000,
   });
-  const registered = await submitRegisterAndExpectListed(page, sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
 
   return {
     label: "prometheus",
@@ -403,7 +418,7 @@ async function registerSqlite(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
     timeout: 60000,
   });
-  const registered = await submitRegisterAndExpectListed(page, sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
 
   return {
     label: "sqlite",
@@ -489,7 +504,7 @@ async function registerOpenapi(page: Page): Promise<Registration> {
 
   await openRegisterForm(page, sourceId);
   await pickSchemaAndTable(page, "openapi", "getInventory");
-  const registered = await submitRegisterAndExpectListed(page, sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
 
   return {
     label: "openapi",
@@ -524,7 +539,7 @@ async function registerFirebird(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
     timeout: 60000,
   });
-  const registered = await submitRegisterAndExpectListed(page, sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
 
   return {
     label: "firebird",
@@ -554,7 +569,7 @@ async function registerAirport(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
     timeout: 60000,
   });
-  const registered = await submitRegisterAndExpectListed(page, sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
 
   return {
     label: "airport",
@@ -587,7 +602,7 @@ async function registerSinglestore(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
     timeout: 60000,
   });
-  const registered = await submitRegisterAndExpectListed(page, sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
 
   return {
     label: "singlestore",
@@ -715,54 +730,217 @@ async function requeryOnEngine(page: Page, engine: EngineTarget, registrations: 
   for (const pattern of routes) await page.unroute(pattern);
 }
 
-test.describe("engine swap: one registration answers every engine (REQ-1730)", () => {
-  test.beforeAll(() => {
-    // firebird/airport/singlestore's demo fixtures are provisioned HERE, not through the shared
-    // demo-source-containers.ts DEMO_SOURCES list, so every other e2e project doesn't pay their
-    // boot cost on every run — only this harness needs them. singlestore is skipped outright
-    // (not attempted) when SINGLESTORE_AVAILABLE is false — see its module-doc note.
-    provisionSwapSources("up");
-  });
-
-  test.afterAll(() => {
-    provisionSwapSources("down");
-  });
-
-  test("cat1+cat2 sources register once under DuckDB, then answer identical queries under every other engine", async ({
-    page,
-  }) => {
-    // 12-13 registrations + one reload/requery pass per entry in ENGINES.
-    test.setTimeout((13 + 5 * ENGINES.length) * 60 * 1000);
-
-    const registrars = [
-      registerNeo4j,
-      registerMongodb,
-      registerElasticsearch,
-      registerRedis,
-      registerCassandra,
-      registerSparql,
-      registerPrometheus,
-      registerSqlite,
-      registerGraphqlRemote,
-      registerOpenapi,
-      registerFirebird,
-      registerAirport,
-      ...(SINGLESTORE_AVAILABLE ? [registerSinglestore] : []),
-    ];
-    if (!SINGLESTORE_AVAILABLE) {
-      console.log(
-        "skipping singlestore: needs SINGLESTORE_LICENSE and an amd64 host " +
-          "(singlestoredb-dev publishes no arm64 manifest) — see the module doc",
+/** Wait until the Trino-bound backend answers a trivial query reliably (3 consecutive successes,
+ * no retry needed on any of them) — not just that Trino is UP (the webServer's own /health gate
+ * already guarantees that), but that it has stopped the background churn a cold coordinator does
+ * on startup (system-catalog registration, per-source MV introspection probes against sources
+ * that can never resolve under Trino by design, like sqlite — REQ-1726). That churn runs in the
+ * SAME process as the one this harness swaps queries to, and measurably slows the CO-RESIDENT
+ * DuckDB backend's own schema rebuilds (shared CPU/DB) while it's happening — see
+ * SWAP_REGISTER_TIMEOUT_MS's comment. Waiting it out here, before the timed registration loop
+ * starts, keeps that cold-start window from landing on a random registration's own timeout.
+ * Real coordinators have taken up to a few minutes to settle; budget generously for that. */
+async function waitForTrinoStable(budgetMs = 240000): Promise<void> {
+  const deadline = Date.now() + budgetMs;
+  let consecutiveOk = 0;
+  while (consecutiveOk < 3) {
+    if (Date.now() > deadline) {
+      throw new Error(
+        `Trino backend never stabilized (3 consecutive clean SELECT 1s) within ${budgetMs}ms`,
       );
     }
-
-    const registrations: Registration[] = [];
-    for (const registrar of registrars) {
-      registrations.push(await registrar(page));
+    try {
+      const res = await fetch(`${TRINO_BACKEND_URL}/data/sql`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sql: "SELECT 1" }),
+        signal: AbortSignal.timeout(10000),
+      });
+      consecutiveOk = res.ok ? consecutiveOk + 1 : 0;
+    } catch {
+      consecutiveOk = 0;
     }
+    if (consecutiveOk < 3) await new Promise((r) => setTimeout(r, 3000));
+  }
+}
 
-    for (const engine of ENGINES) {
-      await requeryOnEngine(page, engine, registrations);
-    }
+// REQ-1730 redesign (2026-09-16, "one source = one test"): this used to be ONE test registering
+// all 12-13 types in sequence, sharing one beforeAll that booted every container (firebird +
+// airport + singlestore + the 7-container shared demo-source stack) regardless of which type
+// anyone actually wanted to check. That meant: a single type could not be targeted or debugged in
+// isolation (a `-g mongodb` run still paid for and waited on all thirteen), a failure on type #2
+// blocked ever finding out whether #3-13 worked, and the whole suite had to be rerun from zero on
+// every iteration. Splitting into one independent test per type fixes all three: `-g firebird`
+// now provisions and tears down ONLY firebird's own container (see resolve-needed-sources.ts's
+// title parsing, the same mechanism source-to-query.spec.ts already used), one type's failure
+// reports on its own and does not block the others, and each test can be rerun alone. The cost is
+// each type's own Trino reload/requery pass no longer amortizes across the batch — reloadEngineBackend
+// runs once per test instead of once for all thirteen. Given today's actual experience (isolating
+// one failure meant reruning the full 10+ minute batch, repeatedly), that trade is worth it.
+//
+// Trino cold-start stabilization is the one thing still shared file-wide: waitForTrinoStable()
+// runs ONCE per worker process (Playwright dedupes an outer-scope beforeAll across every test in
+// the file that runs in it), not once per type.
+test.beforeAll(async () => {
+  // Can take a few minutes on top of the default per-hook timeout — see
+  // source-to-query-olap-lake-trino.spec.ts's same pattern for its own multi-minute cold-init
+  // beforeAlls.
+  test.setTimeout(360000);
+  await waitForTrinoStable();
+});
+
+// Every registrar mints its own `e2e_swap_<type>_<Date.now()>` sourceId (see e.g.
+// registerMongodb/registerFirebird below) and container teardown in each type's beforeAll/
+// afterAll only ever tore down the CONTAINER, never the row that registration created — so every
+// run, pass or fail, left its source (and, via FK cascade, its registered table/relationships)
+// behind for good. Confirmed live (2026-09-16): 12 accumulated `mongodb` rows alone, each with a
+// poll job (wired by every schema rebuild) still trying to reach a container that no longer
+// existed, were the actual cause of the ~300s registration stalls this harness was chasing — not
+// per-source slowness. A per-registrar `finally` block (in runSwapCase, deleting just that run's
+// own sourceId) was tried first and rejected: it only runs once `registrar()` has RETURNED a
+// Registration, so a registrar that throws midway — its own source already created, e.g.
+// registerFirebird failing at pickSchemaAndTable — still leaked a row (reproduced live: 2 leaked
+// firebird rows from a genuinely-failing run). A single sweep run once at file scope, after every
+// test regardless of outcome or which registrar ran, closes both gaps at once. `fetch` direct to
+// BACKEND_URL (not the vite-proxied UI_URL via page.request): matches file-connector.spec.ts's
+// already-working admin/graphql pattern — /admin/graphql needs no session for this harness's
+// single-user dev auth mode, so the extra proxy hop buys nothing and (per page.request, tried
+// second) is one more thing that can silently misroute.
+test.afterAll(async () => {
+  const res = await fetch(`${BACKEND_URL}/admin/graphql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query: `{ sources { id } }` }),
+  });
+  const sources: Array<{ id: string }> = (await res.json()).data?.sources ?? [];
+  const zombies = sources.filter((s) => /^e2e_swap_[a-z0-9_]+_\d{10,}$/.test(s.id));
+  for (const { id } of zombies) {
+    await fetch(`${BACKEND_URL}/admin/graphql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `mutation D($id: String!) { deleteSource(id: $id) { success } }`,
+        variables: { id },
+      }),
+    });
+  }
+});
+
+/** One type's full proof: register under DuckDB, then answer identically under every engine its
+ * Registration declares reachableOn. Shared body for every per-type test below — see the
+ * file-scope afterAll above for how the source this creates gets cleaned up. */
+async function runSwapCase(page: Page, registrar: () => Promise<Registration>): Promise<void> {
+  test.setTimeout((1 + 5 * ENGINES.length) * 60 * 1000);
+  const registration = await registrar();
+  for (const engine of ENGINES) {
+    await requeryOnEngine(page, engine, [registration]);
+  }
+}
+
+test.describe("engine swap: one registration answers every engine (REQ-1730)", () => {
+  test.describe("neo4j", () => {
+    test.beforeAll(() => startDemoSources(["neo4j"]));
+    test.afterAll(() => removeDemoSources(["neo4j"]));
+
+    test("neo4j: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerNeo4j(page)));
+  });
+
+  test.describe("mongodb", () => {
+    test.beforeAll(() => startDemoSources(["mongodb"]));
+    test.afterAll(() => removeDemoSources(["mongodb"]));
+
+    test("mongodb: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerMongodb(page)));
+  });
+
+  test.describe("elasticsearch", () => {
+    test.beforeAll(() => startDemoSources(["elasticsearch"]));
+    test.afterAll(() => removeDemoSources(["elasticsearch"]));
+
+    test("elasticsearch: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerElasticsearch(page)));
+  });
+
+  test.describe("redis", () => {
+    test.beforeAll(() => startDemoSources(["redis"]));
+    test.afterAll(() => removeDemoSources(["redis"]));
+
+    test("redis: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerRedis(page)));
+  });
+
+  test.describe("cassandra", () => {
+    test.beforeAll(() => startDemoSources(["cassandra"]));
+    test.afterAll(() => removeDemoSources(["cassandra"]));
+
+    test("cassandra: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerCassandra(page)));
+  });
+
+  test.describe("sparql", () => {
+    test.beforeAll(() => startDemoSources(["sparql"]));
+    test.afterAll(() => removeDemoSources(["sparql"]));
+
+    test("sparql: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerSparql(page)));
+  });
+
+  test.describe("prometheus", () => {
+    test.beforeAll(() => startDemoSources(["prometheus"]));
+    test.afterAll(() => removeDemoSources(["prometheus"]));
+
+    test("prometheus: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerPrometheus(page)));
+  });
+
+  // sqlite/graphql_remote/openapi need no container of their own (a local file / the already-
+  // running graphql-demo and petstore-mock webServers respectively), so nothing to provision here.
+  test("sqlite: register once under DuckDB (no Trino leg — REQ-1726)", async ({ page }) =>
+    runSwapCase(page, () => registerSqlite(page)));
+
+  test("graphql_remote: register once under DuckDB, answer identical queries under every other engine", async ({
+    page,
+  }) => runSwapCase(page, () => registerGraphqlRemote(page)));
+
+  test("openapi: register once under DuckDB, answer identical queries under every other engine", async ({
+    page,
+  }) => runSwapCase(page, () => registerOpenapi(page)));
+
+  test.describe("firebird", () => {
+    test.beforeAll(() => provisionSwapSource("firebird", "up"));
+    test.afterAll(() => provisionSwapSource("firebird", "down"));
+
+    test("firebird: register once under DuckDB (no Trino leg — REQ-899)", async ({ page }) =>
+      runSwapCase(page, () => registerFirebird(page)));
+  });
+
+  test.describe("airport", () => {
+    test.beforeAll(() => provisionSwapSource("airport", "up"));
+    test.afterAll(() => provisionSwapSource("airport", "down"));
+
+    test("airport: register once under DuckDB (no Trino leg — REQ-899/1097)", async ({ page }) =>
+      runSwapCase(page, () => registerAirport(page)));
+  });
+
+  test.describe("singlestore", () => {
+    test.skip(
+      !SINGLESTORE_AVAILABLE,
+      "needs SINGLESTORE_LICENSE and an amd64 host (singlestoredb-dev publishes no arm64 manifest) " +
+        "— see the module doc",
+    );
+    test.beforeAll(() => provisionSwapSource("singlestore", "up"));
+    test.afterAll(() => provisionSwapSource("singlestore", "down"));
+
+    test("singlestore: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerSinglestore(page)));
   });
 });

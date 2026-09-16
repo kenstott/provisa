@@ -27,6 +27,28 @@ if (fs.existsSync(rootEnv)) {
   }
 }
 
+// Firebird's DuckDB community extension needs the native libfbclient at ATTACH time (no bundled
+// copy), and Playwright can only hand a webServer env that's already set before it boots — a spec
+// registering firebird mid-run can't inject it after the fact. scripts/resolve_firebird_client_lib.py
+// resolves the same cached path tests/integration/test_firebird_source_e2e.py self-provisions
+// (~/.cache/provisa-fdw/firebird-client-<version>-<arch>/), so running it here means a bare
+// `npx playwright test` Just Works for source-to-query-community-ext.spec.ts and engine-swap.spec.ts's
+// firebird case, instead of requiring every invoker to remember an undocumented manual export
+// (reproduced live 2026-09-16: engine-swap's firebird case failed for exactly this reason).
+// Best-effort — a run that touches no firebird spec pays nothing if this fails (offline, no
+// cached copy, unsupported platform); DuckDB's own ATTACH-time error is clear enough on its own.
+if (!process.env.DUCKDB_FIREBIRD_CLIENT_LIBRARY) {
+  try {
+    process.env.DUCKDB_FIREBIRD_CLIENT_LIBRARY = execFileSync(
+      path.resolve(__dirname, "../.venv/bin/python"),
+      [path.resolve(__dirname, "../scripts/resolve_firebird_client_lib.py")],
+      { encoding: "utf8" },
+    ).trim();
+  } catch {
+    // handled above
+  }
+}
+
 // REQ-1363: the e2e harness must never share ports, ports, or on-disk state with the
 // interactive dev environment (start-ui.sh). Every service the backend binds is
 // isolated: HTTP, UI, gRPC, Arrow Flight, bolt, MCP, pgwire, and the DuckDB
@@ -291,20 +313,32 @@ function resolveControlPlanePort(): string {
 // are no migrations, so a control plane left over from a run that predates a schema_org column
 // fails every write with "no such column". The lane bootstraps all of its state through
 // global-setup's PUT /admin/config, so nothing is lost by starting empty.
-function sqliteControlPlaneEnv(dataDir: string): Record<string, string> {
+// The federation engine's own materialize store (materialize.duckdb[.wal]) lives in every
+// backend's dataDir REGARDLESS of which database backs the control plane (sqlite or postgres) —
+// it is a separate concern from TENANT_DATABASE_URL/PLATFORM_DATABASE_URL below. A backend killed
+// non-gracefully (SIGKILL, a crashed prior run) never checkpoints its WAL, and DuckDB replays the
+// WHOLE accumulated WAL on the next open. Across repeated kills in the same dataDir that WAL only
+// grows, eventually taking minutes (or, past a few hundred KB, effectively forever under load) to
+// replay and making the backend accept connections (uvicorn is up) but never answer a single
+// request — even /health — because the replay runs on the event loop thread before the app can
+// serve anything. Originally only wired into the sqlite control-plane path; the postgres path
+// (E2E_CONTROL_PLANE=postgres, e.g. --project=swap) called mkdirSync but never wiped this store,
+// so repeated manual reruns against the same dataDir accumulated an unbounded WAL exactly as the
+// sqlite path used to — reproduced live (152KB WAL, backend accepting TCP but answering nothing).
+// A fresh run must start from a fresh store no matter which control plane it uses.
+function wipeStaleMaterializeStore(dataDir: string): void {
   fs.mkdirSync(dataDir, { recursive: true });
+  if (!IS_RUNNER) return;
+  for (const f of fs.readdirSync(dataDir)) {
+    if (/\.duckdb(\.wal|\.tmp)?$/.test(f)) fs.rmSync(path.join(dataDir, f));
+  }
+}
+
+function sqliteControlPlaneEnv(dataDir: string): Record<string, string> {
+  wipeStaleMaterializeStore(dataDir);
   if (IS_RUNNER) {
     for (const f of fs.readdirSync(dataDir)) {
-      // The federation engine's own materialize store (materialize.duckdb[.wal]) is NOT a
-      // control-plane file, but it lives in the same dataDir and was never covered by this
-      // wipe — a backend killed non-gracefully (SIGKILL, a crashed prior run) never checkpoints
-      // its WAL, and DuckDB replays the WHOLE accumulated WAL on the next open. Across repeated
-      // kills in the same dataDir that WAL only grows, eventually taking minutes to replay and
-      // making the backend accept connections (uvicorn is up) but never answer a single request
-      // — even /health — because the replay runs on the event loop thread before the app can
-      // serve anything. A fresh run must start from a fresh store, same as it does for tenant/
-      // platform db.
-      if (/\.db(-wal|-shm)?$|\.duckdb(\.wal|\.tmp)?$/.test(f)) fs.rmSync(path.join(dataDir, f));
+      if (/\.db(-wal|-shm)?$/.test(f)) fs.rmSync(path.join(dataDir, f));
     }
   }
   return {
@@ -313,7 +347,8 @@ function sqliteControlPlaneEnv(dataDir: string): Record<string, string> {
   };
 }
 
-function postgresControlPlaneEnv(port: string): Record<string, string> {
+function postgresControlPlaneEnv(dataDir: string, port: string): Record<string, string> {
+  wipeStaleMaterializeStore(dataDir);
   const pgPassword = process.env.PG_PASSWORD ?? "provisa";
   const url = `postgresql+asyncpg://provisa:${pgPassword}@localhost:${port}/provisa`;
   return { TENANT_DATABASE_URL: url, PLATFORM_DATABASE_URL: url };
@@ -323,7 +358,7 @@ function postgresControlPlaneEnv(port: string): Record<string, string> {
 // PROVISA_ENGINE_CONTROL_PLANE_PORT, and that webServer only exists when the control plane is PG.
 const pgPort = E2E_CONTROL_PLANE === "postgres" ? resolveControlPlanePort() : null;
 const controlPlaneEnvFor = (dataDir: string) =>
-  pgPort === null ? sqliteControlPlaneEnv(dataDir) : postgresControlPlaneEnv(pgPort);
+  pgPort === null ? sqliteControlPlaneEnv(dataDir) : postgresControlPlaneEnv(dataDir, pgPort);
 const controlPlaneEnv = controlPlaneEnvFor(E2E_DATA_DIR);
 
 export default defineConfig({

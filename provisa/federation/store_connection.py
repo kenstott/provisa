@@ -44,11 +44,24 @@ def _qualified(catalog: str, schema: str, table: str) -> str:
 
 
 def _existing_columns(con: Any, catalog: str, schema: str, table: str) -> list[str]:
-    """The store table's current column names in ordinal order, or ``[]`` if it does not exist."""
+    """The store table's current column names in ordinal order, or ``[]`` if it does not exist.
+
+    Profiled live (REQ-1730 engine-swap investigation): with the store schema holding a realistic
+    number of already-landed tables (~150), ``information_schema.columns`` costs ~30x what
+    ``duckdb_columns()`` does for the identical (catalog, schema, table) lookup — it appears to
+    build the full cross-catalog column list before filtering rather than pushing the predicate
+    down. Called once per landed table on every schema rebuild, that difference turned the whole
+    landing loop roughly quadratic in the total table count: a rebuild that should cost tens of
+    milliseconds per table instead cost multiple SECONDS per table once a few hundred were landed,
+    blowing well past any registration-visibility timeout a UI test could reasonably set.
+    duckdb_columns() is DuckDB's own catalog table function — same filter shape, same ordinal
+    guarantee via column_index — and isn't part of the SQL-standard information_schema surface
+    that has to stay engine-agnostic here, so it has none of that cost.
+    """
     rows = con.execute(
-        "SELECT column_name FROM information_schema.columns "
-        "WHERE table_catalog = ? AND table_schema = ? AND table_name = ? "
-        "ORDER BY ordinal_position",
+        "SELECT column_name FROM duckdb_columns() "
+        "WHERE database_name = ? AND schema_name = ? AND table_name = ? "
+        "ORDER BY column_index",
         [catalog, schema, table],
     ).fetchall()
     return [r[0] for r in rows]
