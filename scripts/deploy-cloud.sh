@@ -116,6 +116,39 @@ LEMONSQUEEZY_VARIANT_EGRESS_STARTER LEMONSQUEEZY_VARIANT_EGRESS_PRO_S \
 LEMONSQUEEZY_VARIANT_EGRESS_PRO_M LEMONSQUEEZY_VARIANT_EGRESS_PRO_L \
 LEMONSQUEEZY_API_KEY LEMONSQUEEZY_STORE_ID LEMONSQUEEZY_SIGNING_SECRET"
 
+# REQ-1455/REQ-1514 continued: provisa.env is the systemd EnvironmentFile first-launch.sh writes
+# ONCE, at first boot (ENV_FILE's own comment) -- but the GCE instance metadata startup-script
+# re-runs that ENTIRE first-boot install on every instance START, not just true first boot (this
+# node scales to zero on idle and wakes on the next hit), and that startup-script's own exported
+# env only covers the engine/auth/mail keys it was written with. Any key added to this deploy
+# AFTER a node's first boot -- exactly what LEMONSQUEEZY_* was -- gets silently regenerated away
+# every time the node idle-stops and restarts, so a preflight that only ASSERTS (and tells a human
+# to SSH in and fix it) turns into repeat manual surgery on every cold start. Verified live
+# 2026-09-17: a value set by hand via set_node_env was gone after the very next idle-stop/restart
+# cycle, mid-deploy. Self-heal from the repo .env instead, the same shape push_mail_env already
+# uses for PROVISA_EMAIL_API_KEY -- this is the fix, not a workaround: preflight_commerce below
+# stays a hard gate for the case this truly can't heal (the value is missing from .env too).
+push_commerce_env() {
+  echo "== commerce env"
+  local env_dump changed=""
+  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^(TEST_)?LEMONSQUEEZY' || true" | tr -d '\r')"
+  for k in $COMMERCE_KEYS LEMONSQUEEZY_MODE TEST_LEMONSQUEEZY_API_KEY; do
+    printf '%s\n' "$env_dump" | grep -q "^$k=." && continue
+    local want
+    want="$(sed -n "s/^$k=//p" "$REPO/.env" 2>/dev/null | tail -1)"
+    [ -n "$want" ] || continue
+    echo "== commerce env: $k -> <set>"
+    set_node_env "$k" "$want"
+    changed=1
+  done
+  if [ -n "$changed" ]; then
+    echo "== commerce env: recreating stack"
+    ssh_node "sudo systemctl restart provisa"
+  else
+    echo "== commerce env: up to date"
+  fi
+}
+
 preflight_commerce() {
   echo "== commerce preflight"
   local env_dump missing=""
@@ -697,18 +730,18 @@ case "$TARGET" in
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    preflight_engine; preflight_commerce; build_api; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_api; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    preflight_engine; preflight_commerce; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
   all)
-    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
-    preflight_engine; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    preflight_engine; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce ;;
 esac
 echo "== deployed $TARGET"
