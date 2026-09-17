@@ -699,6 +699,62 @@ export async function registerGraphqlRemote(page: Page): Promise<Registration> {
   };
 }
 
+// grpc_remote has no Trino connector — reachability runs through the same landing path as
+// graphql_remote/openapi (rows written into the Postgres-backed materialize store Trino reads via
+// its provisa_admin catalog), which REQ-1730's ensure_cache_schema fix made work. See
+// demo/grpc_remote_server for the proto-based fixture this registers against (REQ-1742).
+export async function registerGrpcRemote(page: Page, port: number): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_grpc_${stamp}`;
+  const namespace = `e2e_swap_grpc_${stamp}`;
+  const protoPath = path.join(ROOT, "demo", "grpc_remote_server", "animal_catalog.proto");
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("grpc");
+  await page.getByTestId("grpc-proto-path-input").fill(protoPath);
+  await page.getByTestId("grpc-server-address-input").fill(`localhost:${port}`);
+  await page.getByTestId("grpc-namespace-input").fill(namespace);
+  await submitSourceAndExpectListed(page, sourceId);
+
+  const tableNames = await registeredTableNames(page, sourceId);
+  const breedTable = tableNames.find((n) => n.includes("ListBreeds"));
+  expect(breedTable, `no ListBreeds table registered for ${sourceId}`).toBeTruthy();
+  const grant = await page.request.post("/admin/graphql", {
+    data: {
+      query: `mutation($t: TableInput!) { updateTable(input: $t) { success message } }`,
+      variables: {
+        t: {
+          sourceId,
+          domainId: "",
+          schemaName: "grpc_remote",
+          tableName: breedTable,
+          columns: [
+            { name: "name", visibleTo: ["*"] },
+            { name: "species", visibleTo: ["*"] },
+            { name: "avg_lifespan_years", visibleTo: ["*"] },
+          ],
+        },
+      },
+    },
+  });
+  expect(grant.ok(), await grant.text()).toBeTruthy();
+  const grantJson = await grant.json();
+  expect(grantJson.errors, JSON.stringify(grantJson.errors)).toBeUndefined();
+  expect(grantJson.data.updateTable.success, grantJson.data.updateTable.message).toBeTruthy();
+
+  return {
+    label: "grpc_remote",
+    sourceId,
+    sql: `SELECT name, species FROM grpc_remote.${breedTable} ORDER BY name`,
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(3);
+      expect(rows.map((r) => r[0])).toEqual(["Holland Lop", "Labrador Retriever", "Siamese"]);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
 export async function registerOpenapi(page: Page): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_openapi_${stamp}`;

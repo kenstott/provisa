@@ -16,6 +16,7 @@
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,6 +57,28 @@ export const E2E_EXASOL_FINGERPRINT_FILE = path.join(
   os.tmpdir(),
   "provisa-e2e-swap-exasol-fingerprint.txt",
 );
+// grpc_remote has no container fixture — demo/grpc_remote_server/server.py is a plain Python
+// process the test spawns itself (same as source-to-query-special-cases.spec.ts's REQ-1742 case),
+// not a demo-source-containers.ts entry or a provision.py-managed compose stack. Distinct port
+// range from every other E2E_*_PORT in this file, per three-instance-isolation.
+export const E2E_GRPC_REMOTE_PORT = 33091;
+export const GRPC_REMOTE_SERVER_MODULE = "demo.grpc_remote_server.server";
+
+export async function waitForPort(port: number, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const ok = await new Promise<boolean>((resolve) => {
+      const socket = net.connect({ host: "127.0.0.1", port }, () => {
+        socket.end();
+        resolve(true);
+      });
+      socket.on("error", () => resolve(false));
+    });
+    if (ok) return;
+    if (Date.now() > deadline) throw new Error(`nothing listening on 127.0.0.1:${port}`);
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
 
 // Both gates are checked BEFORE provisioning, not just before registration: an unlicensed or
 // arm64-emulated singlestoredb-dev container never becomes healthy (or, under arm64, never even

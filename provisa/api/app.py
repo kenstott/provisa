@@ -45,6 +45,7 @@ from provisa.api.app_loaders import (
     _init_ingest_engines,
     _init_meta_rls,
     _load_graphql_remote_sources_from_db,
+    _load_grpc_remote_sources_from_db,
     _load_masking_rules,
     _load_mv_and_views_config,
     _load_openapi_specs,
@@ -1007,6 +1008,7 @@ async def _load_and_build(
     _load_mv_and_views_config(raw_config)
 
     await _load_graphql_remote_sources_from_db()
+    await _load_grpc_remote_sources_from_db()
 
     # Retry config relationships deferred at load_config time (graphql_remote tables now available)
     if getattr(state, "config", None) is not None and state.tenant_db is not None:
@@ -1551,6 +1553,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
     # page) must be known to the landing loader before its tables are queryable; the loader skips
     # ids already registered, so this is idempotent across rebuilds.
     await _load_graphql_remote_sources_from_db()
+    await _load_grpc_remote_sources_from_db()
 
     async with state.tenant_db.acquire() as conn:
         _pg = cast("Connection", conn)

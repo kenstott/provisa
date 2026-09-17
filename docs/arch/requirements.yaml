@@ -57030,6 +57030,69 @@
     api/data/endpoint_executors.py, api_source/router_integration.py) — fixed to prefer
     `state.source_catalogs` (the same corrected resolution) ahead of the per-engine
     `cache_catalog()` default.
+
+    (Amended 2026-09-17, HARNESS GROWTH: the DuckDB->Trino swap harness (engine-swap.spec.ts, since
+    split into engine-swap.spec.ts/-helpers.ts/-registrars.ts to stay under the repo's max-lines
+    lint rule) grew from this REQ's original 9-type scope to 27 of 54 SourceTypes verified
+    Trino-reachable. For each new type the question was always one of two cases: does Trino have a
+    native connector (and is it correctly instantiated — delta_lake/iceberg/snowflake/csv/parquet/
+    files/bigquery each needed a real fix in provisa/federation/trino_connectors.py, see that
+    file's TrinoIcebergConnector/TrinoDeltaLakeConnector/TrinoSnowflakeConnector/TrinoCsvConnector/
+    TrinoParquetConnector/TrinoBigQueryConnector and the TrinoFilesConnector execution-engine fix),
+    or, with no native connector, is Provisa correctly landing rows into the Postgres-backed
+    materialize store Trino reads (grpc_remote/graphql_remote/openapi, unblocked by this REQ's own
+    ensure_cache_schema fix above). exasol proved Trino-reachable via its existing JDBC path, its
+    amd64-only demo image verified LIVE on a temporary Vultr VM after local arm64 emulation
+    conclusively failed. See source-e2e-coverage-audit project memory for the full running list and
+    per-type notes; this REQ's own status is not re-litigated per type here.)
+
+    (Amended 2026-09-17, GRPC-REMOTE: added to the swap harness, completing the 27th->28th type.
+    grpc_remote has no Trino connector (same landing path as graphql_remote/openapi), but reaching
+    that point exposed FOUR real, independent bugs in shared mechanisms this harness exercises for
+    every type — none specific to grpc_remote's own connector logic:
+
+    1. provisa/federation/store_writer.py's reconcile_table "drifted -> recreate" branch plain
+    DROP TABLE'd the landing table with no CASCADE — on Postgres, a table with a live FK from
+    another landed table (pet_store.pets, referenced by pet_companions/pet_visits/
+    playgroup_members) raised DependentObjectsStillExistError, silently aborting
+    TrinoBackend.reconcile_landed_tables' WHOLE per-entry loop with no exception ever logged
+    anywhere, dropping every worklist entry ordered after the failing one. Fixed: CASCADE the drop
+    on Postgres specifically (verified live it only drops the dependent FK CONSTRAINTS, not the
+    referencing tables).
+
+    2. state.grpc_remote_sources is pure in-process state built only by
+    grpc_remote_router.register_grpc_remote_source's own handler — a process that never itself
+    handled that POST (the Trino-bound backend under this harness; equally a fresh worker or a
+    restart in production) starts with it empty, so a query against an already-registered
+    grpc_remote table found no registration to read from and hung indefinitely with no error.
+    Fixed by persisting proto_path/namespace/tls/import_paths/cache_ttl on the source row
+    (`sources.path` + `federation_hints`, the same pattern exasol's tls_fingerprint uses) and
+    adding `_load_grpc_remote_sources_from_db` (app_loaders.py) — wired into both app.py boot and
+    the PUT /admin/config reload call sites, mirroring graphql_remote's own existing reload
+    function — which recompiles stubs and reopens the channel for every already-registered source
+    a process doesn't yet know about.
+
+    3. That reload function runs as part of _rebuild_schemas(), which _load_and_register already
+    calls INTERNALLY, before it used to populate state.grpc_remote_sources — so the ORIGINAL
+    registration recursed straight back into itself via the new reload path's "already known?"
+    guard, which couldn't see the in-flight registration yet. Fixed by reordering
+    grpc_remote_router.py to open the channel and populate state.grpc_remote_sources BEFORE
+    calling _rebuild_schemas(), not after.
+
+    4. provisa/compiler/stage2.py's GovernanceContext-building function (feeds the SQL validator's
+    V003 column-visibility check) treated an empty visible_to list as "nobody visible" — only a
+    true `None` counted as unrestricted — while provisa/compiler/schema_gen.py's own
+    _build_visible_tables, computing the identical per-role schema from the identical data, treats
+    empty visible_to as unrestricted (its own documented contract, in a non-lockdown domain). Since
+    `table_columns.visible_to` is a JSON NOT NULL column (schema_org.py), it is NEVER a true SQL
+    NULL — stage2.py's `None` check was effectively dead code against real data, and every
+    freshly-registered, not-yet-granted column failed V003 regardless of any later grant. Fixed to
+    match schema_gen.py's contract: empty visible_to is unrestricted outside `_LOCKDOWN_DOMAINS`.
+    This is a genuine pre-existing inconsistency between the two independent governance
+    implementations, not something introduced by grpc_remote's own registration path — it would
+    have surfaced for any adapter-fetched type whose grant never landed before this session's
+    reload work made the DDL-landing bug (#1) and the missing-registration-state bug (#2/#3)
+    visible enough to reach a real query.)
   code:
   - provisa/api/app_loaders.py
   - provisa/api/admin/schema_mutation.py
@@ -57047,11 +57110,14 @@
   - provisa/core/trino_catalog_files.py
   - provisa/transpiler/transpile.py
   - provisa-ui/e2e/engine-swap.spec.ts
+  - provisa-ui/e2e/engine-swap-helpers.ts
+  - provisa-ui/e2e/engine-swap-registrars.ts
   - provisa-ui/e2e/source-to-query-helpers.ts
   - provisa-ui/src/pages/SqlPage.tsx
   - provisa-ui/src/components/SqlModelingModal.tsx
   - provisa-ui/src/pages/sql/sqlHelpers.ts
   - provisa/federation/connector_duckdb.py
+  - provisa/federation/trino_connectors.py
   - provisa-ui/src/pages/sources/constants.ts
   - provisa-ui/src/pages/sources/SourceFormFields.tsx
   - demo/sources/firebird/compose.yml
@@ -57061,8 +57127,16 @@
   - demo/sources/airport/engine
   - demo/sources/singlestore/compose.yml
   - demo/sources/singlestore/prime.py
+  - demo/sources/exasol/compose.yml
+  - demo/sources/exasol/prime.py
+  - provisa/api/admin/grpc_remote_router.py
+  - provisa/federation/store_writer.py
+  - provisa/compiler/stage2.py
+  - provisa/compiler/schema_gen.py
   tests:
   - provisa-ui/e2e/engine-swap.spec.ts
+  - provisa-ui/e2e/engine-swap-helpers.ts
+  - provisa-ui/e2e/engine-swap-registrars.ts
   - tests/unit/test_ensure_cache_schema.py
   - tests/unit/test_create_source_catalog_registration.py
   - tests/unit/test_transpile.py
@@ -58169,6 +58243,18 @@
     via the Sources form, and actually running the dry-run scan against pet-store-sqlite's `vets`
     table — but neither was independently re-verified through the browser: the run that reached
     them also came after the google_sheets crash above.
+
+    (Amended 2026-09-17, GRPC-REMOTE ENGINE-SWAP: the reachability question for any source type
+    under Trino reduces to two cases — does Trino have a native connector for it (and is that
+    connector correctly instantiated), or, if not, is Provisa correctly landing its rows into the
+    Postgres-backed materialize store Trino reads (`provisa_admin` catalog)? grpc_remote has no
+    Trino connector, so it's the second case — the same landing path graphql_remote/openapi
+    already use, which REQ-1730's bug 3 fix (Trino `ensure_cache_schema` NOT_SUPPORTED) made work.
+    engine-swap.spec.ts now spawns this entry's demo/grpc_remote_server/server.py fixture itself
+    (same subprocess-and-waitForPort pattern as this REQ's own special-cases.spec.ts case) and adds
+    grpc_remote to the DuckDB->Trino swap harness — see REQ-1730's own code list and
+    source-e2e-coverage-audit memory for the harness-wide status. This is additive test coverage of
+    the SAME fixture and connector this REQ already covers, not a new investigation.)
   code:
   - provisa-ui/e2e/source-to-query-special-cases.spec.ts
   - demo/grpc_remote_server/animal_catalog.proto
@@ -58177,6 +58263,9 @@
   - provisa/api/admin/introspect.py
   - provisa/grpc_remote/loader.py
   - provisa/api/admin/grpc_remote_router.py
+  - provisa-ui/e2e/engine-swap.spec.ts
+  - provisa-ui/e2e/engine-swap-helpers.ts
+  - provisa-ui/e2e/engine-swap-registrars.ts
   use_case: >-
     User asked for e2e coverage proving google_sheets, govdata, grpc_remote, soda, and
     great_expectations work end to end through the real UI against the DuckDB federation engine,
@@ -60398,3 +60487,48 @@
     Given a column has visible_to: ["*"]
     When schema_gen.py builds the per-role GraphQL/other-surface schema projection for any role
     Then the column is included in that role's generated schema instead of being silently omitted
+- id: REQ-1779
+  status: proposed
+  target: "2026-Q4"
+  group: "11. Platform, Infrastructure & Delivery"
+  category: SaaS Front Door
+  priority: SHOULD
+  type: infrastructure
+  description: >-
+    The front-door proxy (terraform/gcp-saas/front-door/proxy.py, the always-on e2-micro that
+    owns the shared static IP and wakes/idle-stops the coordinator instance) is resilient to more
+    than a process crash. Process-level: already covered — a systemd unit with Restart=always
+    recovers the proxy itself. Host/VM-level: the instance recovers automatically from a host
+    failure or maintenance event without operator intervention, and — if replaced by a managed
+    instance group with health-check-triggered auto-healing — a replacement instance comes back
+    on the SAME shared static IP, since a front door that recreates itself onto a different IP
+    breaks the one thing DNS and every customer connection depends on.
+  use_case: >-
+    The front door is the sole entry point for cloud.provisa.dev: if it is unreachable, nothing
+    behind it — including the wake mechanism that would otherwise bring the coordinator back —
+    is reachable either. Today it is a single standalone google_compute_instance with no
+    auto-healing: a systemd Restart=always covers the proxy process dying, but a host-level
+    failure, a wedged VM that never technically stops, or a maintenance event has no automated
+    recovery path — someone has to notice and intervene by hand.
+  implementation_scratchpad: >-
+    Staged, not one change: (1) IMMEDIATE, safe, zero-risk — pin
+    scheduling { automatic_restart = true, on_host_maintenance = "MIGRATE" } explicitly on the
+    existing google_compute_instance.front_door. This matches GCE's own default for a non-Spot
+    instance, so applying it is a no-op against the live instance (no destroy/recreate, no IP
+    risk) but makes the guarantee explicit and drift-checked rather than implicit. Covers
+    host-crash/maintenance recovery. (2) FOLLOW-UP, higher risk, do not bundle into (1) — convert
+    to a single-instance zonal google_compute_instance_group_manager (size 1, matching var.zone)
+    with a conservative auto-healing health_check (REQ-1443-adjacent: an auto-healing check must
+    be more conservative than a load-balancing one, since a false positive destroys and recreates
+    the instance) wired via auto_healing_policies, and a stateful_external_ip block pinning the
+    existing google_compute_address.shared reservation so a recreated instance keeps the same
+    external IP. No load balancer needed or wanted — auto-healing health checks work standalone
+    on a MIG, which is why the ~$18/mo NLB this design already removed (see the front-door
+    resource's own comment) does not need to come back. Cost impact of (2): still effectively
+    free-tier for the VM itself; the standalone health-check resource is a small non-zero charge
+    (roughly $0.02-0.05/mo per current GCP pricing, not literally $0). Real risk in (2), the
+    reason it's staged separately: hashicorp/terraform-provider-google has open issues against
+    stateful_external_ip specifically (ordering bugs, incomplete support — #13430, #10908,
+    #11245) — test this conversion against a throwaway project before applying it to
+    provisa-test-473, since a broken stateful-IP config reproduces exactly the failure this
+    requirement exists to prevent.

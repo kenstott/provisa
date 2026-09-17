@@ -171,18 +171,29 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 if _has_view_gov or c["column_name"] not in GOVERNANCE_META_COLUMNS
             )
         else:
+            from provisa.compiler.schema_gen import _LOCKDOWN_DOMAINS
+
+            _tbl_domain = tbl.get("domain_id")
             visible: set[str] = set()
             all_visible = True
             for c in cols:
                 visible_to = c.get("visible_to")
-                if visible_to is None:
+                # REQ-1730 gap: the DB's visible_to column is JSON NOT NULL (schema_org.py), so a
+                # freshly-registered, ungranted column is an EMPTY LIST, never a true SQL NULL —
+                # `visible_to is None` never actually fires against real data, silently rejecting
+                # every such column instead of applying schema_gen.py's own documented contract
+                # ("visible_to=[] means unrestricted (visible to all roles)", _build_visible_tables
+                # above) — the two governance checks disagreed on the exact same input, verified
+                # live: schema_gen.py's precomputed schema correctly listed a grpc_remote table's
+                # columns as visible, while this function's V003 check rejected every one of them.
+                if not visible_to and _tbl_domain not in _LOCKDOWN_DOMAINS:
                     visible.add(c["column_name"])
                 # REQ-1742 gap: "*" is the codebase's "everyone" sentinel (Metric.visible_to,
                 # core/models.py, defaults to it; schema_gen.py's metrics branch already
                 # special-cases it) but this column-visibility check never did — a literal
                 # `role_id in visible_to` treats ["*"] as "visible only to a role named '*'",
                 # silently rejecting every real role even after a successful grant.
-                elif "*" in visible_to or role_id in visible_to:
+                elif visible_to and ("*" in visible_to or role_id in visible_to):
                     visible.add(c["column_name"])
                 else:
                     all_visible = False

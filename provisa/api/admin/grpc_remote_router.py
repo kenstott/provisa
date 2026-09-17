@@ -144,11 +144,26 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
                 "database": "",
                 "username": "",
                 "dialect": "",
-                "path": None,
+                # REQ-1730: proto_path/namespace/tls/import_paths persisted here (path +
+                # federation_hints — the same pattern exasol's tls_fingerprint and graphql_remote's
+                # own path/url use) so _load_grpc_remote_sources_from_db (app_loaders.py) can
+                # recompile stubs and reopen the channel on a process that never itself handled this
+                # POST — a fresh worker, a restart, or another engine's backend in the REQ-1730
+                # swap harness. Without this, `state.grpc_remote_sources` — pure in-memory, built
+                # only by THIS handler — stays empty on any other process, and every query against
+                # the table silently finds no registration to read from (verified live: a query
+                # hung waiting on results that never landed, no error surfaced anywhere).
+                "path": proto_path,
+                "federation_hints": {
+                    "namespace": namespace,
+                    "tls": "true" if tls else "false",
+                    "import_paths": ",".join(import_paths or []),
+                    "cache_ttl": str(cache_ttl),
+                },
                 "description": "",
             },
             index_elements=["id"],
-            update_columns=["host", "description"],
+            update_columns=["host", "description", "path", "federation_hints"],
         )
         if domain_id:
             await conn.upsert(domains, {"id": domain_id}, index_elements=["id"], update_columns=[])
@@ -161,37 +176,17 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
             source_id, queries, mutations, conn, namespace, domain_id
         )
 
-    # REQ-1742 gap: this used to call _rebuild_schemas() BEFORE _register_schema — but
-    # graphql_remote_router.py's own working order (which this now mirrors exactly) rebuilds
-    # AFTER its table registration, not before. Rebuilding first left state.tables/
-    # registered_tables reflecting a snapshot from before _register_schema's INSERTs, so the
-    # reconcile below (which reads state.tables) saw a source with a sources-table row but no
-    # tables yet, and never created the landing view — a query against the table still failed
-    # "no such table" even though _register_schema itself had already succeeded.
-    from provisa.api.app import _rebuild_schemas
-
-    try:
-        await _rebuild_schemas()
-    except Exception:
-        log.warning("Schema rebuild failed after grpc-remote registration", exc_info=True)
-
-    # REQ-1729/REQ-1742: same gap graphql_remote_router.py already fixed for itself — grpc_remote
-    # has no live connector (not in the pgwire-replica _OPERAND_BUILDERS set), so its tables are
-    # MATERIALIZED-only; this router upserts registered_tables/table_columns rows directly via
-    # _register_schema above and never reconciled, so a query against a freshly grpc-remote-
-    # registered table failed "no such table: grpc_remote.<table>" — the landing schema/view had
-    # never been created in the engine catalog.
-    try:
-        await state.federation_engine.reconcile_landed_tables()
-    except Exception:
-        log.exception("landed-table reconcile after grpc-remote registration failed")
-
-    if relationships:
-        from provisa.api.admin.graphql_remote_router import _upsert_relationships_to_semantic_layer
-
-        await _upsert_relationships_to_semantic_layer(relationships, state.tenant_db, state)
-
-    # Open gRPC channel
+    # Open gRPC channel and populate state.grpc_remote_sources BEFORE the rebuild/reconcile below
+    # (REQ-1730: moved ahead of _rebuild_schemas, was after it). _load_grpc_remote_sources_from_db
+    # (app_loaders.py) — wired into _rebuild_schemas so a process that never itself handled this
+    # POST can reconstruct this same state on reload — guards against re-entry with
+    # `if source_id in state.grpc_remote_sources: continue`. With the channel/state populated only
+    # AFTER _rebuild_schemas() (the original order), that guard could never see this registration
+    # yet, since _register_schema's INSERTs (just above) already made `sources`/`registered_tables`
+    # visible to that reload query before this source_id ever reached state.grpc_remote_sources —
+    # so _rebuild_schemas() recursed straight back into _load_and_register for the SAME source_id
+    # it was still in the middle of registering (verified live: registration hung past 60s, no
+    # error, no row ever listed).
     channel = open_channel(server_address, tls)
 
     if not hasattr(state, "grpc_remote_sources"):
@@ -225,6 +220,36 @@ async def _load_and_register(  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, RE
         "queries": queries,
         "mutations": mutations,
     }
+
+    # REQ-1742 gap: this used to call _rebuild_schemas() BEFORE _register_schema — but
+    # graphql_remote_router.py's own working order (which this now mirrors exactly) rebuilds
+    # AFTER its table registration, not before. Rebuilding first left state.tables/
+    # registered_tables reflecting a snapshot from before _register_schema's INSERTs, so the
+    # reconcile below (which reads state.tables) saw a source with a sources-table row but no
+    # tables yet, and never created the landing view — a query against the table still failed
+    # "no such table" even though _register_schema itself had already succeeded.
+    from provisa.api.app import _rebuild_schemas
+
+    try:
+        await _rebuild_schemas()
+    except Exception:
+        log.warning("Schema rebuild failed after grpc-remote registration", exc_info=True)
+
+    # REQ-1729/REQ-1742: same gap graphql_remote_router.py already fixed for itself — grpc_remote
+    # has no live connector (not in the pgwire-replica _OPERAND_BUILDERS set), so its tables are
+    # MATERIALIZED-only; this router upserts registered_tables/table_columns rows directly via
+    # _register_schema above and never reconciled, so a query against a freshly grpc-remote-
+    # registered table failed "no such table: grpc_remote.<table>" — the landing schema/view had
+    # never been created in the engine catalog.
+    try:
+        await state.federation_engine.reconcile_landed_tables()
+    except Exception:
+        log.exception("landed-table reconcile after grpc-remote registration failed")
+
+    if relationships:
+        from provisa.api.admin.graphql_remote_router import _upsert_relationships_to_semantic_layer
+
+        await _upsert_relationships_to_semantic_layer(relationships, state.tenant_db, state)
 
     return proto_text, n_tables, n_mutations
 

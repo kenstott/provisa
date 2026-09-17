@@ -198,7 +198,21 @@ async def reconcile_table(
         have_pk = [c["column_name"] for c in existing if c["is_primary_key"]]
         if have == want and sorted(have_pk) == sorted(pk_columns or ()):
             return "kept"
-        await conn.execute_core(DropTable(tbl, if_exists=True))
+        # A landing table this old can have picked up a dependent object over its lifetime (a FK
+        # from another landed table, a view) that a plain DROP refuses ("... because other objects
+        # depend on it") — verified live via a real DependentObjectsStillExistError reconciling
+        # pet_store.pets. The table and everything hanging off it are about to be recreated from
+        # the registered shape anyway ("landed data is re-landed on the next refresh" above), so
+        # cascading the drop is the correct move here, not a workaround: nothing downstream can
+        # still be valid against a table whose own shape just changed. Postgres is the only proven
+        # store dialect (materialize_stores' own docstring) and the only one CASCADE is applied
+        # for; other dialects keep the plain DROP behavior unchanged.
+        if conn.capabilities.dialect == "postgresql":
+            quoted_schema = schema.replace('"', '""')
+            quoted_table = table.replace('"', '""')
+            await conn.execute(f'DROP TABLE IF EXISTS "{quoted_schema}"."{quoted_table}" CASCADE')
+        else:
+            await conn.execute_core(DropTable(tbl, if_exists=True))
         await conn.execute_core(CreateTable(tbl))
         return "recreated"
 

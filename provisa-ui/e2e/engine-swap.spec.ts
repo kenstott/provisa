@@ -57,7 +57,7 @@
 // (The two ORG_ID env overrides put the DuckDB and Trino backends on the SAME org_<id> Postgres
 // schema — normally kept apart to prevent collision — which is exactly the sharing this harness
 // needs.)
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -67,14 +67,18 @@ import {
   CLOUD_WAREHOUSE_SEED,
   E2E_EXASOL_FINGERPRINT_FILE,
   E2E_EXASOL_PORT,
+  E2E_GRPC_REMOTE_PORT,
   FILE_LAKE_HOST_DIR,
+  GRPC_REMOTE_SERVER_MODULE,
   MAKE_FILE_LAKE_FIXTURES,
   PYTHON,
+  ROOT,
   RUNNING_IN_CI,
   SINGLESTORE_AVAILABLE,
   provisionSwapSource,
   runSwapCase,
   sweepZombieSwapSources,
+  waitForPort,
   waitForTrinoStable,
 } from "./engine-swap-helpers";
 import {
@@ -88,6 +92,7 @@ import {
   registerFiles,
   registerFirebird,
   registerGraphqlRemote,
+  registerGrpcRemote,
   registerMongodb,
   registerNeo4j,
   registerOpenapi,
@@ -250,6 +255,30 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
   test("openapi: register once under DuckDB, answer identical queries under every other engine", async ({
     page,
   }) => runSwapCase(page, () => registerOpenapi(page)));
+
+  // grpc_remote has no Trino connector — same landing path as graphql_remote/openapi above, just
+  // gated on a Python subprocess this harness spawns itself rather than a container or an
+  // already-running demo webServer (see demo/grpc_remote_server, REQ-1742).
+  test.describe("grpc_remote", () => {
+    let grpcServer: ChildProcess | null = null;
+
+    test.beforeAll(async () => {
+      grpcServer = spawn(PYTHON, ["-m", GRPC_REMOTE_SERVER_MODULE], {
+        cwd: ROOT,
+        env: { ...process.env, DEMO_GRPC_REMOTE_PORT: String(E2E_GRPC_REMOTE_PORT) },
+        stdio: "pipe",
+      });
+      await waitForPort(E2E_GRPC_REMOTE_PORT, 30000);
+    });
+    test.afterAll(async () => {
+      grpcServer?.kill();
+      await sweepZombieSwapSources();
+    });
+
+    test("grpc_remote: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerGrpcRemote(page, E2E_GRPC_REMOTE_PORT)));
+  });
 
   test.describe("firebird", () => {
     test.beforeAll(() => provisionSwapSource("firebird", "up"));

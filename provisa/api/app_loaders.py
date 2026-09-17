@@ -948,6 +948,76 @@ async def _load_graphql_remote_sources_from_db() -> None:
                 )
 
 
+async def _load_grpc_remote_sources_from_db() -> None:  # REQ-1730
+    """Rebuild ``state.grpc_remote_sources`` for every persisted grpc_remote source.
+
+    Unlike graphql_remote's reload (``_load_graphql_remote_sources_from_db`` above), a live
+    reconstruction here needs more than a stateless URL: it must recompile the proto stubs and
+    reopen a gRPC channel, since ``state.grpc_remote_sources`` — built only by
+    ``grpc_remote_router.register_grpc_remote_source`` — is pure in-process state that a process
+    which never itself handled that POST (a fresh worker, a restart, or another engine's own
+    backend under REQ-1730's DuckDB->Trino swap harness) starts with empty. Without this, a query
+    against an already-registered grpc_remote table on such a process silently finds no
+    registration to read from — verified live: the query hangs waiting on results that never land,
+    with no error surfaced anywhere.
+
+    Reuses ``_load_and_register`` (the exact logic the original POST ran) rather than duplicating
+    it — its own upserts into ``sources``/``registered_tables``/``table_columns`` are already
+    idempotent (ON CONFLICT DO UPDATE), so replaying it is safe. ``proto_path``/``namespace``/
+    ``tls``/``import_paths``/``cache_ttl`` are read back from ``sources.path`` and
+    ``sources.federation_hints`` (written by the original registration); ``auth_config``,
+    ``method_overrides``, and ``relationships`` are not persisted and are not reconstructed here —
+    best-effort, matching the reload's own framing elsewhere in this module."""
+    from provisa.api.app import state
+
+    if state.tenant_db is None:
+        log.warning("[GRPC REMOTE] tenant_db is None — skipping DB load")
+        return
+    with tolerate_startup_failure("grpc_remote sources from DB", exc_info=True):
+        async with state.tenant_db.acquire() as _conn:
+            src_rows = [
+                dict(_r._mapping)
+                for _r in (
+                    await _conn.execute_core(
+                        select(
+                            _sources_t.c.id,
+                            _sources_t.c.host,
+                            _sources_t.c.path,
+                            _sources_t.c.federation_hints,
+                        ).where(_sources_t.c.type == "grpc_remote")
+                    )
+                ).fetchall()
+            ]
+        for src in src_rows:
+            source_id = src["id"]
+            if source_id in getattr(state, "grpc_remote_sources", {}):
+                continue
+            proto_path = src["path"]
+            server_address = src["host"]
+            if not proto_path or not server_address:
+                continue  # a row from before this reload path existed — nothing to rebuild from
+            hints = src["federation_hints"] or {}
+            namespace = hints.get("namespace", "")
+            tls = hints.get("tls") == "true"
+            import_paths = [p for p in (hints.get("import_paths") or "").split(",") if p]
+            cache_ttl = int(hints.get("cache_ttl") or 300)
+            from provisa.api.admin.grpc_remote_router import _load_and_register
+
+            await _load_and_register(
+                source_id,
+                proto_path,
+                server_address,
+                namespace,
+                "",
+                import_paths,
+                tls,
+                None,
+                cache_ttl,
+                state,
+            )
+            log.warning("[GRPC REMOTE] Loaded source %s from DB", source_id)
+
+
 async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
     conn: Any,
     col_types_converted: dict[int, list[ColumnMetadata]],
