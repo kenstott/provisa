@@ -86,6 +86,7 @@ import {
   registerAirport,
   registerBigquery,
   registerCassandra,
+  registerDatabricks,
   registerElasticsearch,
   registerExasol,
   registerFileLake,
@@ -420,6 +421,28 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     test(`snowflake: register once under DuckDB, answer identical queries under every other engine`, async ({
       page,
     }) => runSwapCase(page, () => registerSnowflake(page)));
+  });
+
+  test.describe("databricks", () => {
+    test.skip(
+      !(
+        process.env.DATABRICKS_SERVER_HOSTNAME &&
+        process.env.DATABRICKS_HTTP_PATH &&
+        process.env.DATABRICKS_TOKEN
+      ),
+      "no live Databricks credentials in this environment (DATABRICKS_SERVER_HOSTNAME/DATABRICKS_HTTP_PATH/DATABRICKS_TOKEN)",
+    );
+    test.beforeAll(() => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "databricks", "up"], { stdio: "pipe" });
+    });
+    test.afterAll(async () => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "databricks", "down"], { stdio: "pipe" });
+      await sweepZombieSwapSources();
+    });
+
+    test(`databricks: register once under DuckDB, answer identical queries under every other engine`, async ({
+      page,
+    }) => runSwapCase(page, () => registerDatabricks(page)));
   });
 
   test.describe("bigquery", () => {

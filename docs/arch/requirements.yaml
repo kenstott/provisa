@@ -57093,6 +57093,20 @@
     have surfaced for any adapter-fetched type whose grant never landed before this session's
     reload work made the DDL-landing bug (#1) and the missing-registration-state bug (#2/#3)
     visible enough to reach a real query.)
+
+    (Amended 2026-09-17, DATABRICKS: added to the swap harness, 28th->29th type. Unlike
+    exasol/bigquery/grpc_remote earlier this session, databricks needed no new Trino connector or
+    landing-path fix — `"databricks": "delta_lake"` already sat in `_TRINO_JDBC_TYPES`
+    (trino_connectors.py), wired into `build_trino_connectors()`'s generic JDBC-family loop, and
+    `cloud_warehouse_seed.py`'s `_databricks()` already seeded/tore down a live `workspace.
+    provisa_ui_e2e.widgets` Delta table for the pre-existing source-to-query-cloud-warehouse.spec.ts
+    live test — a straightforward registrar-only addition (`registerDatabricks`, mirroring
+    `registerSnowflake`). `host` is the bare `DATABRICKS_SERVER_HOSTNAME` (no `https://` prefix,
+    per tests/integration/test_databricks_source_e2e.py's own proven SourcePool.add() shape, not
+    the form placeholder's URL-looking example); `http_path` rides via federation_hints like that
+    same integration test's `extra`. Verified passing live (a real Databricks SQL warehouse cold
+    wake made the full run ~8 minutes, not a hang — `ensure_warehouse_running()` in
+    cloud_warehouse_seed.py already accounts for this).)
   code:
   - provisa/api/app_loaders.py
   - provisa/api/admin/schema_mutation.py

@@ -413,6 +413,50 @@ export async function registerSnowflake(page: Page): Promise<Registration> {
   };
 }
 
+/** databricks: same cloud-warehouse-class pattern as registerSnowflake — a real workspace, not a
+ * container, seeded/torn down by cloud_warehouse_seed.py's `_databricks()`. Trino reaches it via
+ * the plain JDBC family (`"databricks": "delta_lake"` in trino_connectors.py's
+ * `_TRINO_JDBC_TYPES`), already wired — no new connector needed, unlike exasol/bigquery earlier
+ * this session. `host` is the bare workspace hostname (DATABRICKS_SERVER_HOSTNAME, no `https://`
+ * prefix) per tests/integration/test_databricks_source_e2e.py's own proven SourcePool.add() shape;
+ * the form's placeholder shows a URL but the field just wants the hostname. `http_path` rides via
+ * federation_hints (not a standard connection field), same as that integration test's `extra`. */
+export async function registerDatabricks(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_databricks_${stamp}`;
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("databricks");
+  await page.getByLabel(/Workspace URL/).fill(process.env.DATABRICKS_SERVER_HOSTNAME!);
+  await page.getByLabel(/^Catalog/).fill("workspace");
+  await page.getByLabel(/SQL Warehouse HTTP Path/).fill(process.env.DATABRICKS_HTTP_PATH!);
+  await page.getByRole("textbox", { name: "Authentication" }).click();
+  await page.getByRole("option", { name: "Personal Access Token", exact: true }).click();
+  await page.getByLabel(/Access Token/).fill(process.env.DATABRICKS_TOKEN!);
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+  await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({ timeout: 120000 });
+  await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible();
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "databricks",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toEqual([
+        ["1", "sprocket"],
+        ["2", "cog"],
+        ["3", "gear"],
+      ]);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
 /** bigquery: second cloud-warehouse-class type (see registerSnowflake's own comment for the
  * pattern). Auth is Application Default Credentials — the backend process's own
  * GOOGLE_APPLICATION_CREDENTIALS env var, which TrinoBigQueryConnector (trino_connectors.py)
