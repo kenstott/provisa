@@ -57124,6 +57124,9 @@
     capacity first (REQ-1775 — a paused capacity rejects the SQL connection outright) before
     seeding. Verified passing live on the first attempt, ~2 minutes total.)
 
+    [SUPERSEDED by this REQ's own 2026-09-17 SPLUNK FIXED amendment below -- the "not attempted
+    in this pass" / reachableOn:[] state this block describes was resolved the same day. Kept for
+    the diagnostic history (how the root cause was actually found), not as current status.]
     (Amended 2026-09-17, SPLUNK/SHAREPOINT: attempted, corrected the harness's OWN prior
     speculative exclusion reasoning with verified live evidence — does not add to the
     Trino-reachable count (still 30/54); both remain excluded, for a DIFFERENT and now-confirmed
@@ -57146,6 +57149,38 @@
     doc (engine-swap.spec.ts). A real fix needs physical schema names resolved per-engine at
     query-compile time — the same kind of indirection `catalog_name_for_source` already does for
     CATALOG names (this REQ's original bug 1) — not attempted in this pass.)
+    [END SUPERSEDED BLOCK]
+
+    (Amended 2026-09-17, SPLUNK FIXED: the schema-naming mismatch above is fixed for real, upstream
+    — 30th->31st Trino-reachable type. Two commits in the `kenstott/calcite` fork (a SEPARATE repo
+    this session's local checkout lives in at /Volumes/main/Users/kennethstott/IdeaProjects/calcite,
+    not tracked by provisa's own git history):
+    1. `28db96ca1` (splunk module) — `SplunkDriver` now registers its Calcite schema under a
+       configurable `schema`/`currentSchema` connection property (defaulting to "splunk"), instead
+       of the hardcoded literal it always used before, regardless of what was configured.
+    2. `4a042e872` (trino-splunk module) — the FIRST fix alone was not enough: Trino's Airlift-based
+       config binding rejects any catalog property its connector's Config class does not declare, so
+       passing `schema=...` from Provisa's own catalog properties silently failed `CREATE CATALOG`
+       (surfaced as `CATALOG_NOT_FOUND`, not a config error, since `_register_source_on_engine`
+       swallows the exception into a log warning) until `SplunkConfig`/`SplunkClientModule` gained
+       an explicit `@Config("schema")` field wired into the assembled `jdbc:splunk:` URL.
+    `provisa/federation/trino_connectors.py`'s `TrinoSplunkConnector.details()` now passes
+    `schema=pgwire_replica.schema_name(source)` — the exact same sql-normalized-source-id value
+    DuckDB's own bundled Calcite pgwire bridge already used — so a table registered once under
+    DuckDB addresses the identical physical schema under Trino. Verified passing live end-to-end
+    (4 rows, identical under both engines). Build note: the calcite repo has no configured Gradle
+    toolchain auto-download and no local Java 25 install; rather than trigger the real
+    `publish-trino` GitHub Actions workflow (which does a full public Maven Central + GitHub
+    Release publish — too consequential just to produce a local test jar), a Temurin JDK 25 was
+    downloaded directly from Adoptium into `~/.jdks/` and passed via
+    `-Porg.gradle.java.installations.paths=...` for a local `:trino-splunk:trinoPlugin` build, with
+    no changes to the repo's own committed Gradle config. `trino/plugins/trino-splunk/` in the
+    provisa repo is gitignored — a fresh provisa clone needs this plugin rebuilt from
+    `kenstott/calcite` (or eventually a real downloaded release artifact, per the trino-splunk
+    README's own documented `gh release download` path) before this specific type passes; every
+    other engine-swap type has no such cross-repo dependency. sharepoint has the identical root
+    cause (a fixed "sharepoint" schema) but lives in a different, not-yet-fixed plugin codebase —
+    still excluded, `reachableOn: []`, not attempted.)
   code:
   - provisa/api/app_loaders.py
   - provisa/api/admin/schema_mutation.py

@@ -22,20 +22,16 @@
 // the SAME mechanism regardless of engine — the app process's own Python driver fetches the
 // source and writes the replica into whichever engine's store is active (REQ-826's
 // `_MATERIALIZE_ONLY` set) — so neo4j/mongodb/elasticsearch/redis/cassandra/sparql/prometheus/
-// graphql_remote/openapi need nothing engine-specific to reach under Trino. splunk is registered
-// here (proves the DuckDB leg, `reachableOn: []`) but genuinely cannot requery under Trino —
-// verified LIVE, not assumed: DuckDB reaches it via the connector's bundled Calcite pgwire bridge
-// (schema = the source id); Trino reaches it via a DIFFERENT, standalone `trino-splunk` plugin
-// whose schema is the FIXED string "splunk", not the source id — a table registered under DuckDB
-// physically addresses a schema Trino's connector doesn't have
-// (`SCHEMA_NOT_FOUND: Schema '<source_id>' does not exist`, reproduced live). This is NOT a
-// registration-timing gap — `reprovisionSourceOnEngine`'s createSource replay runs fine and does
-// create the Trino catalog — it is a genuine physical-schema-naming mismatch between the two
-// ATTACH mechanisms; see registerSplunk's own doc (engine-swap-registrars.ts) for the full
-// evidence. sharepoint has the identical shape (its own trino connector also exposes a fixed
-// "sharepoint" schema) and is excluded for the same reason, not attempted here:
-//   - splunk/sharepoint: see the paragraph above — a real Trino connector exists for both, but
-//     its schema-naming convention is incompatible with what DuckDB's own registration records.
+// graphql_remote/openapi need nothing engine-specific to reach under Trino. splunk goes through
+// the full swap like the original 9 — DuckDB reaches it via the connector's bundled Calcite
+// pgwire bridge (schema = the source id, `pgwire_replica.schema_name()`); Trino reaches it via a
+// DIFFERENT, standalone `trino-splunk` plugin. That plugin used to always register its schema
+// under the fixed string "splunk" regardless of configuration — verified live via
+// `SCHEMA_NOT_FOUND: Schema '<source_id>' does not exist` before the fix — fixed upstream
+// (calcite/splunk's SplunkDriver now honors a `schema` connection property,
+// kenstott/calcite@28db96ca1) plus `TrinoSplunkConnector.details()` passing that same schema name
+// (trino_connectors.py). sharepoint has the identical root cause but its plugin is a separate
+// codebase, not yet fixed — not attempted here:
 //   - sqlite has no Trino connector or FDW path at all (only DuckDB natively and pg via
 //     sqlite_fdw per REQ-1726) — registered here to prove the DuckDB leg, never requeried.
 //
@@ -266,7 +262,7 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
       await sweepZombieSwapSources();
     });
 
-    test("splunk: register once under DuckDB (no Trino leg — physical schema-naming mismatch, see registerSplunk's own doc)", async ({
+    test("splunk: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
     }) => {
       test.setTimeout(900000);

@@ -707,25 +707,22 @@ export async function registerPrometheus(page: Page): Promise<Registration> {
   };
 }
 
-/** splunk: registers correctly under DuckDB (proves that leg) but is NOT requeried under Trino —
- * verified live, not assumed. DuckDB reaches it via the connector's bundled Calcite pgwire bridge,
- * a per-source JVM whose schema is the sql-normalized SOURCE ID (source-to-query.spec.ts's own
- * comment: "the schema is the sql-normalized source id"). Trino reaches it via a genuinely
- * DIFFERENT connector — `trino/plugins/trino-splunk/`, also wrapping Calcite's splunk adapter, but
- * as a STANDALONE Trino plugin whose schema is the FIXED string `"splunk"`
- * (tests/integration/test_splunk_source_e2e.py:371, `assert "splunk" in schemas`), not the source
- * id. A table registered under DuckDB records schema=<source_id> in `registered_tables`; swapped
- * to Trino, the compiler emits that SAME physical schema name, which Trino's connector simply does
- * not have — confirmed live: `FederationError(..., SCHEMA_NOT_FOUND, "Schema '<source_id>' does
- * not exist")`. This is NOT the registration-timing gap this harness's own module doc originally
- * guessed (`reprovisionSourceOnEngine`'s createSource replay runs fine and does create the Trino
- * catalog) — it is a genuine physical-schema-naming mismatch between DuckDB's per-source pgwire
- * bridge and Trino's fixed-schema native plugin, unrelated to catalog-creation timing. sharepoint
- * has the identical shape (tests/integration/test_sharepoint_source_e2e.py:28, fixed schema
- * `"sharepoint"`) — same blocker, not attempted here. Fixing this for real needs the physical
- * schema name to be resolved per-engine at query-compile time (the same kind of per-engine
- * indirection REQ-1730's `catalog_name_for_source` already does for CATALOG names), not attempted
- * in this pass. */
+/** splunk: DuckDB reaches it via the connector's bundled Calcite pgwire bridge, a per-source JVM
+ * whose schema is the sql-normalized SOURCE ID (`pgwire_replica.schema_name()`). Trino reaches it
+ * via a genuinely different, standalone plugin (`trino/plugins/trino-splunk/`, also wrapping
+ * Calcite's splunk adapter) that — until now — always registered its schema under the FIXED
+ * string `"splunk"` regardless of configuration, verified live via a real
+ * `FederationError(..., SCHEMA_NOT_FOUND, "Schema '<source_id>' does not exist")`: a table
+ * registered under DuckDB records schema=<source_id>, and swapped to Trino the compiler emits
+ * that SAME physical schema name, which the plugin's hardcoded schema never had. NOT the
+ * registration-timing gap this harness's module doc originally guessed
+ * (`reprovisionSourceOnEngine`'s createSource replay runs fine and does create the Trino catalog)
+ * — a genuine physical-schema-naming mismatch, fixed upstream: `calcite/splunk`'s `SplunkDriver`
+ * now honors a `schema` connection property (kenstott/calcite@28db96ca1), and
+ * `TrinoSplunkConnector.details()` (trino_connectors.py) passes the SAME
+ * `pgwire_replica.schema_name()` value Trino sees under both engines. sharepoint has the
+ * identical shape (tests/integration/test_sharepoint_source_e2e.py:28, fixed `"sharepoint"`
+ * schema) — same root cause, not yet fixed upstream (its plugin is a separate codebase). */
 export async function registerSplunk(page: Page): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_splunk_${stamp}`;
@@ -763,10 +760,7 @@ export async function registerSplunk(page: Page): Promise<Registration> {
         ["transfer", "2"],
       ]);
     },
-    // reachableOn: [] — see this function's own module doc: Trino's schema for this type is a
-    // fixed "splunk" string, not the source id DuckDB's registration recorded. Not a Trino
-    // connector gap (a real one exists); a physical-schema-naming mismatch, verified live.
-    reachableOn: [],
+    reachableOn: ["trino"],
   };
 }
 

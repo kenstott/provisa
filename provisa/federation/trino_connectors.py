@@ -742,6 +742,16 @@ class TrinoSharepointConnector(_TrinoConnector):
 
 
 class TrinoSplunkConnector(_TrinoConnector):
+    """REQ-1730: the underlying trino-splunk plugin (a standalone wrapper over Calcite's splunk
+    adapter, distinct from the bundled Calcite pgwire bridge DuckDB attaches through) used to
+    register its schema under the fixed literal "splunk" regardless of configuration — a table
+    registered under DuckDB (whose pgwire bridge exposes schema=<sql-normalized source id>,
+    pgwire_replica.schema_name()) physically addressed a schema Trino's connector never had,
+    verified live via SCHEMA_NOT_FOUND. Fixed upstream (calcite/splunk's SplunkDriver now honors a
+    'schema' connection property, kenstott/calcite@28db96ca1) — passing the SAME schema name here
+    keeps DuckDB and Trino addressing the identical physical schema for a table registered once
+    under either engine."""
+
     source_type = "splunk"
     trino_connector = "splunk"
 
@@ -757,7 +767,16 @@ class TrinoSplunkConnector(_TrinoConnector):
         host = resolve_secrets(source.host or "")
         port = source.port or 8089
         pw = resolve_secrets(source.password or "")
-        props: dict = {"url": resolve_secrets(source.base_url or f"https://{host}:{port}")}
+        props: dict = {
+            "url": resolve_secrets(source.base_url or f"https://{host}:{port}"),
+            # Same sql-normalization pgwire_replica.schema_name() applies — inlined rather than
+            # imported to avoid pulling this module (and its own strategy/engine/executor import
+            # chain) into trino_connectors.py's dependency graph (lint-imports' compiler/cypher
+            # must-not-import-executor contract; core.models -> trino_connectors is already on
+            # that path). Keep this literally in sync with pgwire_replica.schema_name() if it ever
+            # changes.
+            "schema": source.id.replace("-", "_"),
+        }
         if mapping.get("use_token", True) and pw:
             props["token"] = pw
         else:
