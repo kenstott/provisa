@@ -710,6 +710,14 @@ class TrinoDeltaLakeConnector(_TrinoConnector):
 
 
 class TrinoSharepointConnector(_TrinoConnector):
+    """REQ-1730: unlike splunk (kenstott/calcite@28db96ca1/@4a042e872), the underlying
+    trino-sharepoint plugin already had a fully working, correctly-wired `schema` catalog property
+    end to end (SharePointConfig -> SharePointClientModule -> SharePointListDriver's own model
+    builder) — verified by reading the source before assuming the same fix was needed, per this
+    session's own [[feedback-verify-old-exclusion-labels]] lesson. Only this connector needed to
+    pass it, so DuckDB (whose pgwire bridge exposes schema=<sql-normalized source id>) and Trino
+    address the identical physical schema for a table registered once."""
+
     source_type = "sharepoint"
     trino_connector = "sharepoint"
 
@@ -725,6 +733,11 @@ class TrinoSharepointConnector(_TrinoConnector):
         props: dict = {
             "site-url": resolve_secrets(source.base_url or source.host or ""),
             "auth-type": mapping.get("auth_type", "CLIENT_CREDENTIALS"),
+            # Same sql-normalization pgwire_replica.schema_name() applies — inlined rather than
+            # imported, same reasoning as TrinoSplunkConnector's own comment: keeps
+            # trino_connectors.py out of pgwire_replica's strategy/engine/executor import chain
+            # (lint-imports' compiler/cypher must-not-import-executor contract).
+            "schema": source.id.replace("-", "_"),
         }
         if source.username:
             props["client-id"] = resolve_secrets(source.username)

@@ -764,6 +764,57 @@ export async function registerSplunk(page: Page): Promise<Registration> {
   };
 }
 
+/** sharepoint: a real live tenant (SP_* in .env), not a container — same cloud-warehouse-class
+ * pattern as snowflake/databricks/fabric, just no seed/teardown step needed (reads an existing
+ * document library, writes nothing). UI flow copied verbatim from source-to-query.spec.ts's own
+ * proven sharepoint case (REQ-1747-adjacent). Unlike splunk (kenstott/calcite@28db96ca1/
+ * @4a042e872, a genuine upstream bug), the underlying trino-sharepoint plugin ALREADY had a fully
+ * working `schema` catalog property (verified by reading SharePointConfig.java/
+ * SharePointClientModule.java/SharePointListDriver.java before assuming the same fix was needed —
+ * see [[feedback-verify-old-exclusion-labels]]) — only TrinoSharepointConnector.details()
+ * (trino_connectors.py) needed to start passing it. */
+export async function registerSharepoint(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_sharepoint_${stamp}`;
+  const tableName = "documents";
+  // The Calcite pgwire server runs with its bundle directory as cwd, so a relative SP_CERT_PATH
+  // (.env authors it as ./sharepoint.pfx) has to be resolved here, same as source-to-query.spec.ts.
+  const certPath = path.resolve(ROOT, process.env.SP_CERT_PATH!);
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("sharepoint");
+  await page.getByTestId("sharepoint-site-url-input").fill(process.env.SP_SITE_URL!);
+  await page.getByTestId("sharepoint-tenant-id-input").fill(process.env.SP_TENANT_ID!);
+  await page.getByTestId("sharepoint-auth-type-select").click();
+  await page.getByRole("option", { name: "Certificate", exact: true }).click();
+  await page.getByTestId("sharepoint-client-id-input").fill(process.env.SP_CLIENT_ID!);
+  await page.getByTestId("sharepoint-cert-path-input").fill(certPath);
+  await page.getByTestId("sharepoint-cert-password-input").fill(process.env.SP_CERT_PASSWORD ?? "");
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, sourceId, tableName);
+  await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({ timeout: 120000 });
+  await expect(page.getByTestId("register-table-col-selected-title")).toBeVisible();
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "sharepoint",
+    sourceId,
+    // The tenant's document library contents are real and may legitimately be empty, so the
+    // aggregate's SHAPE is the assertion (matches source-to-query.spec.ts's own case) — same
+    // shape under both engines is exactly what this harness is proving, not a fixed row count.
+    sql: `SELECT COUNT(*) AS document_count FROM pet_store.${registered}`,
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toHaveLength(1);
+      expect(Number(rows[0][0])).toBeGreaterThanOrEqual(0);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
 export async function registerSqlite(page: Page): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_sqlite_${stamp}`;

@@ -57178,9 +57178,26 @@
     provisa repo is gitignored — a fresh provisa clone needs this plugin rebuilt from
     `kenstott/calcite` (or eventually a real downloaded release artifact, per the trino-splunk
     README's own documented `gh release download` path) before this specific type passes; every
-    other engine-swap type has no such cross-repo dependency. sharepoint has the identical root
-    cause (a fixed "sharepoint" schema) but lives in a different, not-yet-fixed plugin codebase —
-    still excluded, `reachableOn: []`, not attempted.)
+    other engine-swap type has no such cross-repo dependency.
+
+    (Amended 2026-09-17, SHAREPOINT FIXED: 31st->32nd Trino-reachable type. The "sharepoint has the
+    identical root cause... not yet fixed" claim just above was an UNVERIFIED assumption based on
+    surface similarity to splunk — wrong once actually checked (this session's own
+    [[feedback-verify-old-exclusion-labels]] lesson, again). Reading `SharePointConfig.java`/
+    `SharePointClientModule.java`/`SharePointListDriver.java` in the calcite repo BEFORE assuming a
+    fix was needed found the trino-sharepoint plugin already had a fully working, correctly-wired
+    `schema` catalog property end to end — no calcite-repo change needed at all. Only
+    `TrinoSharepointConnector.details()` (trino_connectors.py) needed to start passing
+    `schema=<sql-normalized source id>`, same value DuckDB's pgwire bridge already uses. A SECOND,
+    genuinely separate gap surfaced along the way: `docker-compose.core.yml` had no mount for the
+    CERTIFICATE_AUTH `.pfx` file — `SharePointAuthFactory.createCertificateAuth` (calcite's
+    sharepoint-list module) reads it from a host FILE PATH with no inline/base64 alternative
+    (unlike `TrinoBigQueryConnector`'s `credentials-key`), so Trino's container genuinely could not
+    see it — reproduced live via `docker logs`:
+    `java.io.FileNotFoundException: .../sharepoint.pfx (No such file or directory)`. Fixed with an
+    identity-mount volume line (same absolute host path both sides), matching the existing
+    `FILE_LAKE_HOST_DIR` precedent for delta_lake/iceberg. Verified passing live end to end after
+    both fixes.)
   code:
   - provisa/api/app_loaders.py
   - provisa/api/admin/schema_mutation.py
@@ -57221,6 +57238,7 @@
   - provisa/federation/store_writer.py
   - provisa/compiler/stage2.py
   - provisa/compiler/schema_gen.py
+  - docker-compose.core.yml
   tests:
   - provisa-ui/e2e/engine-swap.spec.ts
   - provisa-ui/e2e/engine-swap-helpers.ts

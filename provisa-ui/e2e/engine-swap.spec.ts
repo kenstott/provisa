@@ -30,8 +30,10 @@
 // `SCHEMA_NOT_FOUND: Schema '<source_id>' does not exist` before the fix — fixed upstream
 // (calcite/splunk's SplunkDriver now honors a `schema` connection property,
 // kenstott/calcite@28db96ca1) plus `TrinoSplunkConnector.details()` passing that same schema name
-// (trino_connectors.py). sharepoint has the identical root cause but its plugin is a separate
-// codebase, not yet fixed — not attempted here:
+// (trino_connectors.py). sharepoint goes through the full swap too, but needed NO calcite-repo
+// change — the trino-sharepoint plugin already had a fully working `schema` catalog property
+// end to end; only `TrinoSharepointConnector.details()` needed to start passing it (verified by
+// reading the plugin source before assuming the same upstream fix splunk needed):
 //   - sqlite has no Trino connector or FDW path at all (only DuckDB natively and pg via
 //     sqlite_fdw per REQ-1726) — registered here to prove the DuckDB leg, never requeried.
 //
@@ -108,6 +110,7 @@ import {
   registerSingleFile,
   registerSnowflake,
   registerSparql,
+  registerSharepoint,
   registerSplunk,
   registerSqlite,
 } from "./engine-swap-registrars";
@@ -267,6 +270,20 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     }) => {
       test.setTimeout(900000);
       await runSwapCase(page, () => registerSplunk(page));
+    });
+  });
+
+  test.describe("sharepoint", () => {
+    test.skip(
+      !process.env.SP_SITE_URL,
+      "no live SharePoint credentials: set the SP_* block in the root .env",
+    );
+
+    test("sharepoint: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => {
+      test.setTimeout(300000);
+      await runSwapCase(page, () => registerSharepoint(page));
     });
   });
 
