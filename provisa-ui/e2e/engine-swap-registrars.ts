@@ -25,6 +25,7 @@ import {
   E2E_PROMETHEUS_PORT,
   E2E_REDIS_PORT,
   E2E_SPARQL_PORT,
+  E2E_SPLUNK_PORT,
 } from "./demo-source-containers";
 import {
   existingSourcePath,
@@ -703,6 +704,69 @@ export async function registerPrometheus(page: Page): Promise<Registration> {
     sql: `SELECT job, CAST(MAX(value) AS INTEGER) AS healthy FROM pet_store.${registered} GROUP BY job ORDER BY job`,
     assertRows: (rows) => expect(rows).toEqual([["prometheus", "1"]]),
     reachableOn: ["trino"],
+  };
+}
+
+/** splunk: registers correctly under DuckDB (proves that leg) but is NOT requeried under Trino —
+ * verified live, not assumed. DuckDB reaches it via the connector's bundled Calcite pgwire bridge,
+ * a per-source JVM whose schema is the sql-normalized SOURCE ID (source-to-query.spec.ts's own
+ * comment: "the schema is the sql-normalized source id"). Trino reaches it via a genuinely
+ * DIFFERENT connector — `trino/plugins/trino-splunk/`, also wrapping Calcite's splunk adapter, but
+ * as a STANDALONE Trino plugin whose schema is the FIXED string `"splunk"`
+ * (tests/integration/test_splunk_source_e2e.py:371, `assert "splunk" in schemas`), not the source
+ * id. A table registered under DuckDB records schema=<source_id> in `registered_tables`; swapped
+ * to Trino, the compiler emits that SAME physical schema name, which Trino's connector simply does
+ * not have — confirmed live: `FederationError(..., SCHEMA_NOT_FOUND, "Schema '<source_id>' does
+ * not exist")`. This is NOT the registration-timing gap this harness's own module doc originally
+ * guessed (`reprovisionSourceOnEngine`'s createSource replay runs fine and does create the Trino
+ * catalog) — it is a genuine physical-schema-naming mismatch between DuckDB's per-source pgwire
+ * bridge and Trino's fixed-schema native plugin, unrelated to catalog-creation timing. sharepoint
+ * has the identical shape (tests/integration/test_sharepoint_source_e2e.py:28, fixed schema
+ * `"sharepoint"`) — same blocker, not attempted here. Fixing this for real needs the physical
+ * schema name to be resolved per-engine at query-compile time (the same kind of per-engine
+ * indirection REQ-1730's `catalog_name_for_source` already does for CATALOG names), not attempted
+ * in this pass. */
+export async function registerSplunk(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_splunk_${stamp}`;
+  const tableName = "shelter_alerts";
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("splunk");
+  await page.getByTestId("splunk-host-input").fill("localhost");
+  await page.getByTestId("splunk-port-input").fill(String(E2E_SPLUNK_PORT));
+  await page.getByTestId("splunk-auth-mode-select").click();
+  await page.getByRole("option", { name: "Username / Password" }).click();
+  await page.getByTestId("splunk-username-input").fill("admin");
+  await page.getByTestId("splunk-password-input").fill("Provisa_2026!");
+  await page.getByTestId("splunk-disable-ssl-checkbox").check();
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, sourceId, tableName);
+  await expect(page.getByTestId("register-table-col-selected-alert_id")).toBeVisible({
+    timeout: 120000,
+  });
+  await expect(page.getByTestId("register-table-col-selected-animal_name")).toBeVisible();
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "splunk",
+    sourceId,
+    sql: `SELECT alert_type, COUNT(*) AS alerts FROM pet_store.${registered} GROUP BY alert_type ORDER BY alert_type`,
+    assertRows: (rows) => {
+      expect(rows).toEqual([
+        ["adoption_hold", "1"],
+        ["intake", "2"],
+        ["medical", "2"],
+        ["transfer", "2"],
+      ]);
+    },
+    // reachableOn: [] — see this function's own module doc: Trino's schema for this type is a
+    // fixed "splunk" string, not the source id DuckDB's registration recorded. Not a Trino
+    // connector gap (a real one exists); a physical-schema-naming mismatch, verified live.
+    reachableOn: [],
   };
 }
 

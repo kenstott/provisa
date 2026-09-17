@@ -22,13 +22,20 @@
 // the SAME mechanism regardless of engine — the app process's own Python driver fetches the
 // source and writes the replica into whichever engine's store is active (REQ-826's
 // `_MATERIALIZE_ONLY` set) — so neo4j/mongodb/elasticsearch/redis/cassandra/sparql/prometheus/
-// graphql_remote/openapi need nothing engine-specific to reach under Trino. Three are excluded
-// from THIS harness, not because they're broken, but because they reach through a DIFFERENT
-// mechanism whose register-once/swap-engine behavior is unproven and out of scope here:
-//   - splunk/sharepoint ATTACH through the connector's bundled Calcite pgwire server as a real
-//     Trino catalog (TrinoBackend.register_source creates it; DuckDB's is a no-op) — that catalog
-//     creation happens INSIDE the registration mutation, which this harness only ever runs
-//     against DuckDB, so Trino never gets it built.
+// graphql_remote/openapi need nothing engine-specific to reach under Trino. splunk is registered
+// here (proves the DuckDB leg, `reachableOn: []`) but genuinely cannot requery under Trino —
+// verified LIVE, not assumed: DuckDB reaches it via the connector's bundled Calcite pgwire bridge
+// (schema = the source id); Trino reaches it via a DIFFERENT, standalone `trino-splunk` plugin
+// whose schema is the FIXED string "splunk", not the source id — a table registered under DuckDB
+// physically addresses a schema Trino's connector doesn't have
+// (`SCHEMA_NOT_FOUND: Schema '<source_id>' does not exist`, reproduced live). This is NOT a
+// registration-timing gap — `reprovisionSourceOnEngine`'s createSource replay runs fine and does
+// create the Trino catalog — it is a genuine physical-schema-naming mismatch between the two
+// ATTACH mechanisms; see registerSplunk's own doc (engine-swap-registrars.ts) for the full
+// evidence. sharepoint has the identical shape (its own trino connector also exposes a fixed
+// "sharepoint" schema) and is excluded for the same reason, not attempted here:
+//   - splunk/sharepoint: see the paragraph above — a real Trino connector exists for both, but
+//     its schema-naming convention is incompatible with what DuckDB's own registration records.
 //   - sqlite has no Trino connector or FDW path at all (only DuckDB natively and pg via
 //     sqlite_fdw per REQ-1726) — registered here to prove the DuckDB leg, never requeried.
 //
@@ -105,6 +112,7 @@ import {
   registerSingleFile,
   registerSnowflake,
   registerSparql,
+  registerSplunk,
   registerSqlite,
 } from "./engine-swap-registrars";
 
@@ -243,6 +251,27 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     test("prometheus: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
     }) => runSwapCase(page, () => registerPrometheus(page)));
+  });
+
+  test.describe("splunk", () => {
+    // amd64-only image (demo/sources/splunk/compose.yml), slow cold boot under emulation
+    // (~3 min native, longer emulated) — the same budget source-to-query.spec.ts's own splunk
+    // case uses, well past playwright.config.ts's 90s global default.
+    test.beforeAll(() => {
+      test.setTimeout(900000);
+      startDemoSources(["splunk"]);
+    });
+    test.afterAll(async () => {
+      await removeDemoSources(["splunk"]);
+      await sweepZombieSwapSources();
+    });
+
+    test("splunk: register once under DuckDB (no Trino leg — physical schema-naming mismatch, see registerSplunk's own doc)", async ({
+      page,
+    }) => {
+      test.setTimeout(900000);
+      await runSwapCase(page, () => registerSplunk(page));
+    });
   });
 
   // sqlite/graphql_remote/openapi need no container of their own (a local file / the already-

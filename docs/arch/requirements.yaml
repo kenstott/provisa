@@ -57123,6 +57123,29 @@
     principal fields) and reuses `cloud_warehouse_seed.py`'s `_fabric()`, which resumes the Fabric
     capacity first (REQ-1775 — a paused capacity rejects the SQL connection outright) before
     seeding. Verified passing live on the first attempt, ~2 minutes total.)
+
+    (Amended 2026-09-17, SPLUNK/SHAREPOINT: attempted, corrected the harness's OWN prior
+    speculative exclusion reasoning with verified live evidence — does not add to the
+    Trino-reachable count (still 30/54); both remain excluded, for a DIFFERENT and now-confirmed
+    reason. The module doc previously guessed these were excluded because Trino's per-source
+    catalog creation (inside `TrinoBackend.register_source`) never ran, since this harness only
+    ever called `createSource` against DuckDB. That guess was WRONG: `reprovisionSourceOnEngine`'s
+    createSource replay against Trino runs fine and DOES create the catalog, exactly as it already
+    does for mongodb/cassandra/redis/elasticsearch. The REAL, verified blocker: DuckDB reaches
+    splunk/sharepoint via the connector's bundled Calcite pgwire bridge, whose schema is the
+    SOURCE ID; Trino reaches them via a DIFFERENT, standalone plugin
+    (`trino/plugins/trino-splunk/`, similarly for sharepoint) whose schema is a FIXED string
+    ("splunk"/"sharepoint" — tests/integration/test_splunk_source_e2e.py:371's own
+    `assert "splunk" in schemas`; test_sharepoint_source_e2e.py:28 states the sharepoint
+    equivalent). A table registered under DuckDB physically addresses schema=<source_id>; swapped
+    to Trino, that schema genuinely does not exist on its connector — reproduced live:
+    `FederationError(..., SCHEMA_NOT_FOUND, "Schema '<source_id>' does not exist")`. splunk is now
+    registered in the harness proving the DuckDB leg only (`reachableOn: []`, matching
+    sqlite/firebird/airport's existing pattern), with this finding documented in
+    `registerSplunk`'s own module doc (engine-swap-registrars.ts) and the harness's top-of-file
+    doc (engine-swap.spec.ts). A real fix needs physical schema names resolved per-engine at
+    query-compile time — the same kind of indirection `catalog_name_for_source` already does for
+    CATALOG names (this REQ's original bug 1) — not attempted in this pass.)
   code:
   - provisa/api/app_loaders.py
   - provisa/api/admin/schema_mutation.py
