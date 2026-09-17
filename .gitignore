@@ -163,6 +163,9 @@ site/.wrangler/
 config/provisa-install.yaml.snapshot
 .playwright-trino-data/
 provisa-ui/.playwright-trino-data/
+# REQ-1730 engine-swap delta_lake/iceberg fixtures (make-file-lake-fixtures.py) — bind-mounted into
+# Trino/hive-metastore at this exact path (docker-compose.core.yml), regenerated per test run.
+/.e2e-file-lake/
 None
 
 .playwright*

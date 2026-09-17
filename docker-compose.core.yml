@@ -103,6 +103,19 @@ services:
       # TABLE_DESCRIPTION_DIR). Without the mount the catalog loads and every table has no columns.
       # Mounted on the worker too — splits read the same descriptions the coordinator planned with.
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/redis:/etc/trino/redis:ro
+      # REQ-1730 engine-swap: delta_lake/iceberg/csv/parquet/files are SCAN-mechanism sources
+      # DuckDB reads directly off a host path (no ATTACH, no network service) — the engine-swap
+      # harness's own registration backend runs natively and can read any host path, but Trino
+      # runs in this container and has no such access. Mounted at the SAME absolute path inside
+      # the container as on the host (an identity mount, not a translated one): Iceberg's
+      # register_table requires the table_location argument to match the location its own
+      # metadata.json recorded verbatim (verified live 2026-09-16, ICEBERG_INVALID_METADATA
+      # "differs from location provided"), and that metadata is written by pyiceberg running
+      # NATIVELY on the host — its recorded location is the host's own absolute path, which only
+      # Trino can also resolve if the same absolute path exists inside its container too. Default
+      # matches this repo's own checkout path; override via the env var for a different checkout
+      # (a different absolute path needs a different mount target, not just a different source).
+      - ${PROVISA_E2E_FILE_LAKE_HOST:-/Volumes/main/Users/kennethstott/PycharmProjects/provisa/.e2e-file-lake}:${PROVISA_E2E_FILE_LAKE_HOST:-/Volumes/main/Users/kennethstott/PycharmProjects/provisa/.e2e-file-lake}
       - trino_cache:/data/trino/cache
       - provisa_exchange:/data/provisa/exchange
       - ./observability/trino-otel:/etc/trino/otel:ro
@@ -122,6 +135,8 @@ services:
         condition: service_healthy
       trino-exchange-init:
         condition: service_completed_successfully
+      hive-metastore:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "trino --execute 'SELECT 1' || exit 1"]
       interval: 10s
@@ -164,6 +179,36 @@ services:
         condition: service_completed_successfully
     deploy:
       replicas: 0
+
+  # Shared Hive Thrift metastore for delta_lake/iceberg Trino catalogs (REQ-1730). Those two source
+  # types are bare-path sources (no host/port of their own, REQ-899) — DuckDB reads them straight off
+  # disk with no catalog at all, but Trino's real delta_lake/iceberg connectors require a metastore
+  # (iceberg.catalog.type=hive_metastore / hive.metastore.uri) to know a schema.table exists at all.
+  # This metastore is empty at boot; TrinoIcebergConnector/TrinoDeltaLakeConnector's post_create
+  # (provisa/federation/trino_connectors.py) calls the connector's own register_table procedure to
+  # attach each source's already-written table files (REQ-1743) the first time it is registered.
+  # Shares the same hive_warehouse volume Trino already mounts, same image as docker-compose.test.yml's
+  # hive-metastore (Derby-embedded, no external DB needed).
+  hive-metastore:
+    restart: unless-stopped
+    image: apache/hive:4.0.0
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: derby
+    volumes:
+      - hive_warehouse:/opt/hive/data/warehouse
+      # delta_lake's Trino connector validates/creates a registered table's location THROUGH the
+      # metastore process itself (not just through Trino's own filesystem access) — confirmed live
+      # 2026-09-16: register_table failed HIVE_METASTORE_ERROR "not a directory or unable to create
+      # one" until this same mount (already on trino) was added here too. Same identity-mount
+      # reasoning as trino's own mount above (see its comment) — same absolute path both sides.
+      - ${PROVISA_E2E_FILE_LAKE_HOST:-/Volumes/main/Users/kennethstott/PycharmProjects/provisa/.e2e-file-lake}:${PROVISA_E2E_FILE_LAKE_HOST:-/Volumes/main/Users/kennethstott/PycharmProjects/provisa/.e2e-file-lake}
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/9083' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 36
+      start_period: 90s
 
   zaychik:
     restart: unless-stopped

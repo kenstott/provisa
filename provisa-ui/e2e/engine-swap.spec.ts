@@ -91,6 +91,19 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const PROVISION = path.join(ROOT, "demo", "sources", "provision.py");
 const PYTHON = path.join(ROOT, ".venv", "bin", "python");
 const SWAP_PREFIX = "provisa-swap";
+const MAKE_FILE_LAKE_FIXTURES = path.join(ROOT, "provisa-ui", "e2e", "make-file-lake-fixtures.py");
+// delta_lake/iceberg (SCAN-mechanism, no ATTACH, no network service — connector_duckdb.py's
+// DuckDBDeltaConnector/DuckDBIcebergConnector read a host path directly) are the first engine-swap
+// types whose Trino leg needs a FILE the DuckDB-bound backend (native) and Trino (containerized)
+// both reach — every prior type needed only a host rewrite (localhost -> host.docker.internal).
+// docker-compose.core.yml mounts this exact directory into Trino's (and hive-metastore's)
+// container at the SAME absolute path it has on the host — an identity mount, no path rewrite
+// needed here the way `host` gets one: Iceberg's register_table requires its table_location
+// argument to match the location pyiceberg's own metadata.json recorded verbatim, and that
+// metadata is written by a NATIVE (host) process, so only an identical-path mount lets Trino
+// resolve the same location string too (verified live 2026-09-16, ICEBERG_INVALID_METADATA
+// "differs from location provided" when the two paths diverged).
+const FILE_LAKE_HOST_DIR = path.resolve(ROOT, ".e2e-file-lake");
 
 const E2E_FIREBIRD_PORT = 33051;
 const E2E_AIRPORT_PORT = 35061;
@@ -118,7 +131,14 @@ const RDB_WIDGETS_PORTS: Record<string, number> = {
   greenplum: 36071,
   tidb: 36081,
   clickhouse: 36091,
+  hiveserver2: 36101,
+  saphana: 36111,
 };
+
+// Mirrors source-to-query-generic-rdbms.spec.ts's own gate: saplabs/hanaexpress's indexserver
+// verified live not to start under Docker Desktop's Apple Silicon VM — a real amd64 Linux host is
+// required, which CI (ubuntu-latest) is and local arm64 dev is not.
+const RUNNING_IN_CI = process.env.CI === "true";
 
 // One source = one test (REQ-1730 redesign, 2026-09-16): every demo/sources/<name> this harness
 // uses provisions and tears down its OWN container, scoped to the ONE test that needs it — never
@@ -283,6 +303,12 @@ interface RdbWidgetsConfig {
    * (RegisterTableForm.tsx's column checkboxes use the raw introspected column name verbatim,
    * e.g. Oracle's own ALL_TAB_COLUMNS reports "NAME" for this unquoted column). */
   nameColumn?: string;
+  /** Defaults to ["trino"] — override for a type with no Trino connector (hiveserver2, saphana:
+   * DuckDB-only proof, like firebird/airport, see the module doc). */
+  reachableOn?: string[];
+  /** SAP HANA Express's indexserver verified live not to start under Docker Desktop's Apple
+   * Silicon VM — a real amd64 Linux host is required (RUNNING_IN_CI). */
+  needsCi?: boolean;
 }
 
 // KNOWN UNRESOLVED BUG (2026-09-16): oracle is deliberately NOT in RDB_WIDGETS_SOURCES below.
@@ -305,6 +331,14 @@ const RDB_WIDGETS_SOURCES: RdbWidgetsConfig[] = [
   { type: "greenplum", port: RDB_WIDGETS_PORTS.greenplum, username: "gpadmin", password: "", database: "postgres", schema: "public" },
   { type: "tidb", port: RDB_WIDGETS_PORTS.tidb, username: "root", password: "", database: "test", schema: "test" },
   { type: "clickhouse", port: RDB_WIDGETS_PORTS.clickhouse, username: "default", password: "provisa", database: "default", schema: "default" },
+  // hiveserver2: stock HS2 PLAIN auth takes no real credentials (demo/sources/hiveserver2/prime.py) —
+  // "Database" is HTML5-required for every SIMPLE_RDBMS type but druid (verified live in
+  // source-to-query-olap-lake.spec.ts's own hiveserver2 test), username/password are not.
+  { type: "hiveserver2", port: RDB_WIDGETS_PORTS.hiveserver2, username: "", password: "", database: "wh", schema: "wh", reachableOn: [] },
+  // saphana: CI-only (needsCi) — see source-to-query-generic-rdbms.spec.ts's own saphana test,
+  // whose exact schema/table/column casing (SYSTEM/WIDGETS/NAME) and password default
+  // (PROVISA_DEMO_SAPHANA_PASSWORD's own default, HXEHana1) this mirrors.
+  { type: "saphana", port: RDB_WIDGETS_PORTS.saphana, username: "SYSTEM", password: "HXEHana1", database: "HXE", schema: "SYSTEM", table: "WIDGETS", nameColumn: "NAME", reachableOn: [], needsCi: true },
 ];
 
 function registerRdbWidgets(cfg: RdbWidgetsConfig): (page: Page) => Promise<Registration> {
@@ -352,6 +386,40 @@ function registerRdbWidgets(cfg: RdbWidgetsConfig): (page: Page) => Promise<Regi
         expect(rows[0]).toEqual(["1", "Widget A"]);
         expect(rows[1]).toEqual(["2", "Widget B"]);
         expect(rows[2]).toEqual(["3", "Widget C"]);
+      },
+      reachableOn: cfg.reachableOn ?? ["trino"],
+    };
+  };
+}
+
+/** delta_lake and iceberg share this exact shape (SCAN-mechanism, one view per source named after
+ * the source id itself, fixed "main" placeholder schema — same as csv/parquet) — see
+ * source-to-query-file-lake.spec.ts's own registrars, which this mirrors. */
+function registerFileLake(sourceType: "delta_lake" | "iceberg", tablePath: () => string) {
+  return async (page: Page): Promise<Registration> => {
+    const stamp = Date.now();
+    const sourceId = `e2e_swap_${sourceType}_${stamp}`;
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption(sourceType);
+    await page.getByLabel(/Warehouse Path/).fill(tablePath());
+    await submitSourceAndExpectListed(page, sourceId);
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "main", sourceId);
+    await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+      timeout: 60000,
+    });
+    const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+    return {
+      label: sourceType,
+      sourceId,
+      sql: `SELECT id, name, species FROM pet_store.${registered} ORDER BY id`,
+      assertRows: (rows) => {
+        expect(rows).toHaveLength(4);
+        expect(rows[0]).toEqual(["1", "Fido", "dog"]);
+        expect(rows[3]).toEqual(["4", "Tweety", "bird"]);
       },
       reachableOn: ["trino"],
     };
@@ -824,6 +892,10 @@ async function reprovisionSourceOnEngine(engine: EngineTarget, sourceId: string)
   if (engine.name === "trino" && src!.host) {
     src!.host = src!.host.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal");
   }
+  // Unlike `host` above, a file-based source's `path` (delta_lake/iceberg/csv/parquet/files)
+  // needs NO rewrite here: docker-compose.core.yml mounts FILE_LAKE_HOST_DIR into Trino's
+  // container at that exact same absolute path (see FILE_LAKE_HOST_DIR's own comment for why an
+  // identity mount, not a translated one, is required for Iceberg specifically).
   const mutation = await fetch(`${engine.backendUrl}/admin/graphql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -924,6 +996,30 @@ test.beforeAll(async () => {
   // beforeAlls.
   test.setTimeout(360000);
   await waitForTrinoStable();
+});
+
+// Written ONCE per worker (like waitForTrinoStable above), under FILE_LAKE_HOST_DIR — the SAME
+// fixed directory docker-compose.core.yml mounts into Trino, not a random per-run temp dir
+// (source-to-query-file-lake.spec.ts's own os.tmpdir() approach doesn't work here precisely
+// because it's random: a static docker-compose volume mount can't follow it). Each run gets its
+// own never-before-seen subdirectory (a timestamp), and nothing under the mount is ever deleted:
+// Docker Desktop's VirtioFS attaches the bind mount to the directory's inode at container start,
+// and a delete+recreate cycle ANYWHERE beneath the mount point silently poisons its directory
+// cache for the WHOLE mount, not just the touched subpath (verified live 2026-09-16: rmSync+
+// mkdirSync of the mount root orphaned it outright; even rmSync+recreate of a child directory,
+// with the mount root itself left alone, broke live sync for the entire tree minutes later,
+// including previously-synced top-level files). Never rm anything here — old runs' subdirectories
+// are simply abandoned (an accepted, bounded amount of test-only disk growth), not cleaned up.
+let deltaTablePath = "";
+let icebergTablePath = "";
+test.beforeAll(() => {
+  fs.mkdirSync(FILE_LAKE_HOST_DIR, { recursive: true });
+  const runDir = path.join(FILE_LAKE_HOST_DIR, `run_${Date.now()}`);
+  fs.mkdirSync(runDir, { recursive: true });
+  const out = execFileSync(PYTHON, [MAKE_FILE_LAKE_FIXTURES, runDir], {
+    encoding: "utf8",
+  });
+  [deltaTablePath, icebergTablePath] = out.trim().split("\n");
 });
 
 // Every registrar mints its own `e2e_swap_<type>_<Date.now()>` sourceId (see e.g.
@@ -1133,15 +1229,46 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
   // credentials/schema differ (RDB_WIDGETS_SOURCES).
   for (const cfg of RDB_WIDGETS_SOURCES) {
     test.describe(cfg.type, () => {
-      test.beforeAll(() => provisionSwapSource(cfg.type, "up"));
+      // No test.skip() signal inside beforeAll/afterAll (a plain early return instead) — the
+      // per-test test.skip() below is what reports the actual skip; this only avoids
+      // provisioning a fixture (SAP HANA Express, 5-15min cold init) nothing will use locally.
+      test.beforeAll(() => {
+        if (cfg.needsCi && !RUNNING_IN_CI) return;
+        return provisionSwapSource(cfg.type, "up");
+      });
       test.afterAll(async () => {
+        if (cfg.needsCi && !RUNNING_IN_CI) return;
         await provisionSwapSource(cfg.type, "down");
         await sweepZombieSwapSources();
       });
 
       test(`${cfg.type}: register once under DuckDB, answer identical queries under every other engine`, async ({
         page,
-      }) => runSwapCase(page, () => registerRdbWidgets(cfg)(page)));
+      }) => {
+        test.skip(
+          cfg.needsCi === true && !RUNNING_IN_CI,
+          "saplabs/hanaexpress's indexserver does not start under Docker Desktop's Apple " +
+            "Silicon VM (verified live, not a config issue) — runs for real in CI " +
+            "(ubuntu-latest is a genuine amd64 host)",
+        );
+        await runSwapCase(page, () => registerRdbWidgets(cfg)(page));
+      });
     });
   }
+
+  // delta_lake/iceberg: no container (registerFileLake reads the file-level fixtures written by
+  // the beforeAll near waitForTrinoStable, above) — no per-type provisionSwapSource beforeAll/
+  // afterAll needed, just the source cleanup runSwapCase/sweepZombieSwapSources already give
+  // every other type here.
+  test.describe("delta_lake", () => {
+    test(`delta_lake: register once under DuckDB, answer identical queries under every other engine`, async ({
+      page,
+    }) => runSwapCase(page, () => registerFileLake("delta_lake", () => deltaTablePath)(page)));
+  });
+
+  test.describe("iceberg", () => {
+    test(`iceberg: register once under DuckDB, answer identical queries under every other engine`, async ({
+      page,
+    }) => runSwapCase(page, () => registerFileLake("iceberg", () => icebergTablePath)(page)));
+  });
 });

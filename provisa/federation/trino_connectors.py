@@ -50,6 +50,13 @@ class _TrinoConnector(Connector):
             predicate_pushdown=True, join_pushdown=True, aggregate_pushdown=True, write=True
         )
 
+    def post_create(self, conn, source: Source, catalog_name: str) -> None:
+        """Optional follow-up DDL after ``CREATE CATALOG`` succeeds. Default no-op — most
+        connectors expose their schemas/tables the moment the catalog exists. Lakehouse
+        connectors backed by a metastore that starts out empty (delta_lake/iceberg, REQ-1743)
+        override this to register the source's one table into the metastore."""
+        return
+
 
 class _TrinoJdbcConnector(_TrinoConnector):
     """Any JDBC-reachable relational/warehouse/lake source: a connection-url + credentials, built from
@@ -141,8 +148,6 @@ _TRINO_JDBC_TYPES: dict[str, str] = {
     "clickhouse": "clickhouse",
     "redshift": "redshift",
     "databricks": "delta_lake",
-    "delta_lake": "delta_lake",
-    "iceberg": "iceberg",
     "exasol": "exasol",
 }
 
@@ -439,6 +444,129 @@ class TrinoFilesConnector(_TrinoConnector):
         }
 
 
+def _lake_metastore_uri() -> str:
+    """The shared Hive Thrift metastore delta_lake/iceberg catalogs register their one table into
+    (REQ-1730). Unlike the ``hive``/``hive_s3`` types, a delta_lake/iceberg Source carries no
+    host/port of its own (REQ-899: it is a bare warehouse ``path``, matching DuckDB's own
+    catalog-less delta_scan/iceberg_scan reads) — the metastore is shared infrastructure, not a
+    per-source config choice, so its address is an environment override
+    (PROVISA_ENGINE_LAKEHOUSE_METASTORE_HOST/PORT), the same override-else-absent shape as
+    PROVISA_ENGINE_CONTROL_PLANE_HOST (trino_connectors.py's TrinoPostgresConnector). Unset in
+    production today (no metastore is deployed) — a delta_lake/iceberg catalog then gets no
+    properties and no catalog, same graceful no-op as every other empty-props connector here."""
+    import os
+
+    host = os.environ.get("PROVISA_ENGINE_LAKEHOUSE_METASTORE_HOST", "")
+    if not host:
+        return ""
+    port = os.environ.get("PROVISA_ENGINE_LAKEHOUSE_METASTORE_PORT", "9083")
+    return f"thrift://{host}:{port}"
+
+
+def _lake_post_create(conn, source: Source, catalog_name: str, *, is_iceberg: bool) -> None:
+    """Register the source's one table into the shared metastore (REQ-1730).
+
+    A fresh hive_metastore-backed delta_lake/iceberg catalog starts out with no databases/tables
+    at all — unlike ``hive``/``hive_s3``, whose metastore is populated ahead of time by an
+    external process, delta_lake/iceberg's fixture tables are written directly to disk (pyiceberg/
+    deltalake, REQ-1743) with no metastore entry. Trino's own ``register_table`` procedure is the
+    documented way to attach an existing table's files to a catalog without rewriting them;
+    schema "main" and table = source.id mirror exactly what DuckDBIcebergConnector/
+    DuckDBDeltaConnector name the view under DuckDB (connector_duckdb.py), so the SAME
+    schema.table the app recorded in ``registered_tables`` under DuckDB resolves under Trino too.
+    """
+    import re
+
+    from provisa.core.catalog import _validate_identifier
+    from provisa.core.secrets import resolve_secrets
+    from provisa.federation.trino_types import TrinoQueryError
+
+    path = resolve_secrets(source.path or "")
+    if not path:
+        return
+    table = _validate_identifier(source.id.replace("-", "_"))
+    cur = conn.cursor()
+    cur.execute(f"CREATE SCHEMA IF NOT EXISTS {catalog_name}.main")
+    cur.fetchall()
+    location = path if "://" in path else f"file://{path}"
+    register_sql = (
+        f"CALL {catalog_name}.system.register_table("
+        f"schema_name => 'main', table_name => '{table}', table_location => '{location}'"
+    )
+    try:
+        cur.execute(register_sql + ")")
+        cur.fetchall()
+    except TrinoQueryError as exc:
+        # A table whose metadata dir carries more than one same-generation metadata file (here:
+        # make-file-lake-fixtures.py's own v1.metadata.json, copied alongside the real
+        # 00001-<uuid>.metadata.json pyiceberg wrote, for a DuckDB iceberg_scan compatibility some
+        # older DuckDB builds needed) makes Trino's own latest-file auto-discovery ambiguous
+        # (ICEBERG_INVALID_METADATA: "More than one latest metadata file found ... are [file://.../
+        # 00001-<uuid>.metadata.json, file://.../v1.metadata.json]"). register_table's optional
+        # metadata_file_name disambiguates (trino#16363 documents the same case for Spark-written
+        # tables) — parsed straight out of Trino's own error rather than listed off the local
+        # filesystem, since this process may run somewhere that can't see the path it's given at
+        # all (e.g. a remote engine host); Trino's own error message names the real file either way.
+        if not is_iceberg or "More than one latest metadata file found" not in str(exc):
+            raise
+        candidates = re.findall(r"([^/\s,]+\.metadata\.json)", str(exc))
+        versioned = [f for f in candidates if not re.match(r"^v\d+\.metadata\.json$", f)]
+        if not versioned:
+            raise
+        cur.execute(register_sql + f", metadata_file_name => '{versioned[0]}')")
+        cur.fetchall()
+
+
+class TrinoIcebergConnector(_TrinoConnector):
+    """Apache Iceberg table read IN PLACE via a Hive Thrift metastore (SCAN, REQ-951/REQ-1730).
+    Trino's iceberg connector is not a JDBC connector — it needs iceberg.catalog.type +
+    hive.metastore.uri, not connection-url, so (like TrinoHiveConnector) it cannot reuse
+    _TrinoJdbcConnector. post_create registers the source's one table via CALL
+    iceberg.system.register_table since the shared metastore starts out empty."""
+
+    source_type = "iceberg"
+    trino_connector = "iceberg"
+    mechanism = Mechanism.SCAN
+
+    def details(self, source: Source) -> dict:
+        uri = _lake_metastore_uri()
+        if not uri:
+            return {}
+        return {
+            "iceberg.catalog.type": "hive_metastore",
+            "hive.metastore.uri": uri,
+            "fs.hadoop.enabled": "true",
+            "iceberg.register-table-procedure.enabled": "true",
+        }
+
+    def post_create(self, conn, source: Source, catalog_name: str) -> None:
+        _lake_post_create(conn, source, catalog_name, is_iceberg=True)
+
+
+class TrinoDeltaLakeConnector(_TrinoConnector):
+    """Delta Lake table read IN PLACE via a Hive Thrift metastore (SCAN, REQ-951/REQ-1730). Like
+    TrinoIcebergConnector, Trino's delta_lake connector needs hive.metastore.uri, not a JDBC
+    connection-url. post_create registers the source's one table via CALL
+    delta.system.register_table."""
+
+    source_type = "delta_lake"
+    trino_connector = "delta_lake"
+    mechanism = Mechanism.SCAN
+
+    def details(self, source: Source) -> dict:
+        uri = _lake_metastore_uri()
+        if not uri:
+            return {}
+        return {
+            "hive.metastore.uri": uri,
+            "fs.hadoop.enabled": "true",
+            "delta.register-table-procedure.enabled": "true",
+        }
+
+    def post_create(self, conn, source: Source, catalog_name: str) -> None:
+        _lake_post_create(conn, source, catalog_name, is_iceberg=False)
+
+
 class TrinoSharepointConnector(_TrinoConnector):
     source_type = "sharepoint"
     trino_connector = "sharepoint"
@@ -612,6 +740,8 @@ def build_trino_connectors() -> list[_TrinoConnector]:
         TrinoDruidConnector(),
         TrinoHiveConnector(),
         TrinoHiveS3Connector(),
+        TrinoIcebergConnector(),
+        TrinoDeltaLakeConnector(),
         TrinoFilesConnector(),
         TrinoSharepointConnector(),
         TrinoSplunkConnector(),

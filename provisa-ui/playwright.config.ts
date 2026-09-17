@@ -483,6 +483,13 @@ export default defineConfig({
               // s3://provisa-otel/... against a localhost:9000 that does not exist in Trino's
               // container, then fails ICEBERG_FILESYSTEM_ERROR and blows the 300 s webServer budget.
               PROVISA_ENGINE_OTEL_S3_ENDPOINT: "http://minio:9000",
+              // REQ-1730: delta_lake/iceberg catalogs need a Hive Thrift metastore Trino can dial
+              // from inside the compose network — same split as PROVISA_ENGINE_CONTROL_PLANE_HOST
+              // above. docker-compose.core.yml's hive-metastore service is the shared metastore
+              // TrinoIcebergConnector/TrinoDeltaLakeConnector's post_create registers each fixture
+              // table into (trino_connectors.py).
+              PROVISA_ENGINE_LAKEHOUSE_METASTORE_HOST: "hive-metastore",
+              PROVISA_ENGINE_LAKEHOUSE_METASTORE_PORT: "9083",
               // The SharePoint catalog enumerates its schemas through the Microsoft Graph REST API, and
               // the spec budgets 240 s for that. The default query_max_execution_time is 120 s, so Trino
               // killed every enumeration with EXCEEDED_TIME_LIMIT before it could return; catalog_cache

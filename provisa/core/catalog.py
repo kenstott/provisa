@@ -155,6 +155,11 @@ def create_catalog(
     cur.execute(f"CREATE CATALOG {catalog_name} USING {connector} WITH ({props_sql})")
     cur.fetchall()
 
+    # REQ-1730: delta_lake/iceberg's shared metastore starts out empty — post_create is where
+    # TrinoIcebergConnector/TrinoDeltaLakeConnector register the source's one table into it.
+    # Every other connector's default no-op keeps this a behavior change for exactly those two.
+    trino_connector.post_create(conn, source, catalog_name)
+
 
 def create_kafka_catalog(conn: TrinoConnection, kafka_source: dict) -> None:  # REQ-147
     """Register a ``kafka_sources[]`` entry as a Trino dynamic catalog.
