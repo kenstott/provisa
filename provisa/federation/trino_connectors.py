@@ -157,6 +157,41 @@ class TrinoSnowflakeConnector(_TrinoConnector):
         return props
 
 
+class TrinoBigQueryConnector(_TrinoConnector):
+    """BigQuery, read live via Trino's own dedicated bigquery connector (REQ-1730). Not a JDBC
+    connector at all (BigQuery has no JDBC wire) — needs bigquery.project-id plus a credentials
+    property, so the generic _TrinoJdbcConnector (empty jdbc_url() for this type, same gap
+    delta_lake/iceberg/snowflake/csv/parquet had) produced no working catalog (REQ-842).
+    Source.database is the GCP project id (SourceFormFields.tsx's "Project ID" field). Credentials:
+    service_account auth stores the key file path in federation_hints["credentials_path"]
+    (SourcesPage.tsx) — read and base64-encode it into bigquery.credentials-key, the same bytes
+    Trino's connector would read from a credentials-file path, just inlined so no new mount into
+    Trino's container is needed. application_default auth (no credentials_path) falls back to
+    GOOGLE_APPLICATION_CREDENTIALS on this (the app) process — the same key BigQueryDriver's own
+    Application Default Credentials resolution already uses."""
+
+    source_type = "bigquery"
+    trino_connector = "bigquery"
+
+    def details(self, source: Source) -> dict:
+        import base64
+        import os
+
+        from provisa.core.secrets import resolve_secrets
+
+        project = resolve_secrets(source.database or "")
+        if not project:
+            return {}
+        props = {"bigquery.project-id": project}
+        creds_path = source.federation_hints.get("credentials_path") or os.environ.get(
+            "GOOGLE_APPLICATION_CREDENTIALS"
+        )
+        if creds_path and os.path.exists(creds_path):
+            with open(creds_path, "rb") as f:
+                props["bigquery.credentials-key"] = base64.b64encode(f.read()).decode("ascii")
+        return props
+
+
 # Lake/object source types Trino reads IN PLACE via a lakehouse catalog (iceberg/hive/delta) — a SCAN
 # (no copy, freshness follows the files), not a live-DB VIRTUAL attach (REQ-951).
 _TRINO_SCAN_TYPES = frozenset({"hive", "delta_lake", "iceberg"})
@@ -182,7 +217,6 @@ _TRINO_JDBC_TYPES: dict[str, str] = {
     "yugabytedb": "postgresql",
     "greenplum": "postgresql",
     "tidb": "mysql",
-    "bigquery": "bigquery",
     "clickhouse": "clickhouse",
     "redshift": "redshift",
     "databricks": "delta_lake",
@@ -838,6 +872,7 @@ def build_trino_connectors() -> list[_TrinoConnector]:
         TrinoMysqlConnector(),
         TrinoSqlServerConnector(),
         TrinoSnowflakeConnector(),
+        TrinoBigQueryConnector(),
         TrinoSqliteConnector(),
         TrinoOpenapiConnector(),
         TrinoGraphqlRemoteConnector(),

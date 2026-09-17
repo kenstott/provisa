@@ -78,6 +78,7 @@ import {
 import {
   RDB_WIDGETS_SOURCES,
   registerAirport,
+  registerBigquery,
   registerCassandra,
   registerElasticsearch,
   registerFileLake,
@@ -357,6 +358,24 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     test(`snowflake: register once under DuckDB, answer identical queries under every other engine`, async ({
       page,
     }) => runSwapCase(page, () => registerSnowflake(page)));
+  });
+
+  test.describe("bigquery", () => {
+    test.skip(
+      !(process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_APPLICATION_CREDENTIALS),
+      "no live GCP credentials in this environment (GOOGLE_CLOUD_PROJECT/GOOGLE_APPLICATION_CREDENTIALS)",
+    );
+    test.beforeAll(() => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "bigquery", "up"], { stdio: "pipe" });
+    });
+    test.afterAll(async () => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "bigquery", "down"], { stdio: "pipe" });
+      await sweepZombieSwapSources();
+    });
+
+    test(`bigquery: register once under DuckDB, answer identical queries under every other engine`, async ({
+      page,
+    }) => runSwapCase(page, () => registerBigquery(page)));
   });
 
   test.describe("csv", () => {

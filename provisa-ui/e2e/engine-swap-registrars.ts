@@ -412,6 +412,43 @@ export async function registerSnowflake(page: Page): Promise<Registration> {
   };
 }
 
+/** bigquery: second cloud-warehouse-class type (see registerSnowflake's own comment for the
+ * pattern). Auth is Application Default Credentials — the backend process's own
+ * GOOGLE_APPLICATION_CREDENTIALS env var, which TrinoBigQueryConnector (trino_connectors.py)
+ * also reads server-side to build bigquery.credentials-key, so no path field needs filling here. */
+export async function registerBigquery(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_bigquery_${stamp}`;
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("bigquery");
+  await page.getByLabel(/Project ID/).fill(process.env.GOOGLE_CLOUD_PROJECT!);
+  await page.getByRole("textbox", { name: "Authentication" }).click();
+  await page.getByRole("option", { name: "Application Default Credentials", exact: true }).click();
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+  await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({ timeout: 120000 });
+  await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible();
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "bigquery",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toEqual([
+        ["1", "sprocket"],
+        ["2", "cog"],
+        ["3", "gear"],
+      ]);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
 export async function registerElasticsearch(page: Page): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_es_${stamp}`;
