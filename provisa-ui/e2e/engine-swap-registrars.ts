@@ -413,6 +413,54 @@ export async function registerSnowflake(page: Page): Promise<Registration> {
   };
 }
 
+/** fabric: unlike databricks (a real Trino JDBC connector, `"databricks": "delta_lake"`), fabric
+ * has NO entry in `_TRINO_JDBC_TYPES` — under Trino it falls through to the SAME generic
+ * `WarehouseNativeConnector` DIRECT-driver land-and-query path every engine gets from
+ * `FederationEngine.complete_reach()` (REQ-947, engine.py), the identical mechanism
+ * `_DRIVER_FACTORIES`-backed types use everywhere (mirrors grpc_remote/graphql_remote's landing,
+ * just via a direct DB driver — `MssqlWarehouseDriver`, Azure AD auth — instead of an API call).
+ * So this is the first swap-harness type proving that GENERIC land path under Trino specifically,
+ * not a native-connector ATTACH swap like databricks/snowflake/bigquery. UI flow copied verbatim
+ * from source-to-query-cloud-warehouse.spec.ts's own proven `fabric` case (REQ-1747): Ambient
+ * Credential auth (az login on this machine, no service-principal fields), seeded/torn down by
+ * cloud_warehouse_seed.py's `_fabric()`, which resumes the Fabric capacity first (REQ-1775) since
+ * a paused capacity rejects the SQL connection outright. */
+export async function registerFabric(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_fabric_${stamp}`;
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("fabric");
+  await page.getByRole("textbox", { name: /Server/ }).fill(process.env.FABRIC_SQL_SERVER!);
+  await page.getByRole("textbox", { name: /^Database/ }).fill(process.env.FABRIC_DATABASE!);
+  await page.getByRole("textbox", { name: "Authentication" }).click();
+  await page
+    .getByRole("option", { name: "Ambient Credential (az login / managed identity)", exact: true })
+    .click();
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+  await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({ timeout: 120000 });
+  await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible();
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "fabric",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toEqual([
+        ["1", "sprocket"],
+        ["2", "cog"],
+        ["3", "gear"],
+      ]);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
 /** databricks: same cloud-warehouse-class pattern as registerSnowflake — a real workspace, not a
  * container, seeded/torn down by cloud_warehouse_seed.py's `_databricks()`. Trino reaches it via
  * the plain JDBC family (`"databricks": "delta_lake"` in trino_connectors.py's

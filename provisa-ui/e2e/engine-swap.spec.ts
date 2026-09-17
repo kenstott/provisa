@@ -89,6 +89,7 @@ import {
   registerDatabricks,
   registerElasticsearch,
   registerExasol,
+  registerFabric,
   registerFileLake,
   registerFiles,
   registerFirebird,
@@ -443,6 +444,33 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     test(`databricks: register once under DuckDB, answer identical queries under every other engine`, async ({
       page,
     }) => runSwapCase(page, () => registerDatabricks(page)));
+  });
+
+  test.describe("fabric", () => {
+    test.skip(
+      !(process.env.FABRIC_SQL_SERVER && process.env.FABRIC_DATABASE),
+      "no live Fabric credentials in this environment (FABRIC_SQL_SERVER/FABRIC_DATABASE)",
+    );
+    // REQ-1775: a paused Fabric capacity rejects the SQL connection outright — needs the ARM
+    // capacity identifiers to resume it, same gate source-to-query-cloud-warehouse.spec.ts's own
+    // fabric case uses.
+    test.skip(
+      !(process.env.FABRIC_RESOURCE_GROUP && process.env.FABRIC_CAPACITY_NAME),
+      "no FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME configured — a Fabric capacity must be " +
+        "created once (a real-money Azure resource), see tests/integration/fabric_capacity.py's " +
+        "module docstring for the one-time az CLI command",
+    );
+    test.beforeAll(() => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "fabric", "up"], { stdio: "pipe" });
+    });
+    test.afterAll(async () => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "fabric", "down"], { stdio: "pipe" });
+      await sweepZombieSwapSources();
+    });
+
+    test(`fabric: register once under DuckDB, answer identical queries under every other engine`, async ({
+      page,
+    }) => runSwapCase(page, () => registerFabric(page)));
   });
 
   test.describe("bigquery", () => {
