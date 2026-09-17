@@ -92,6 +92,7 @@ const PROVISION = path.join(ROOT, "demo", "sources", "provision.py");
 const PYTHON = path.join(ROOT, ".venv", "bin", "python");
 const SWAP_PREFIX = "provisa-swap";
 const MAKE_FILE_LAKE_FIXTURES = path.join(ROOT, "provisa-ui", "e2e", "make-file-lake-fixtures.py");
+const CLOUD_WAREHOUSE_SEED = path.join(ROOT, "provisa-ui", "e2e", "cloud_warehouse_seed.py");
 // delta_lake/iceberg (SCAN-mechanism, no ATTACH, no network service — connector_duckdb.py's
 // DuckDBDeltaConnector/DuckDBIcebergConnector read a host path directly) are the first engine-swap
 // types whose Trino leg needs a FILE the DuckDB-bound backend (native) and Trino (containerized)
@@ -423,6 +424,48 @@ function registerFileLake(sourceType: "delta_lake" | "iceberg", tablePath: () =>
       },
       reachableOn: ["trino"],
     };
+  };
+}
+
+/** snowflake: the first cloud-warehouse-class type in this harness. No docker fixture (a real
+ * warehouse, not a container) — cloud_warehouse_seed.py (already proven by
+ * source-to-query-cloud-warehouse.spec.ts's own live-Snowflake test) seeds/tears down
+ * PROVISA_UI_E2E.PUBLIC.WIDGETS directly, and this mirrors that spec's exact UI flow so the same
+ * account/database quirks (unquoted Database field, upper-cased identifiers) apply identically. */
+async function registerSnowflake(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_snowflake_${stamp}`;
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("snowflake");
+  await page.getByLabel(/Account URL/).fill(process.env.SNOWFLAKE_ACCOUNT!);
+  await page.getByLabel(/^Database/).fill("PROVISA_UI_E2E");
+  await page.getByLabel(/^Warehouse$/).fill(process.env.SNOWFLAKE_WAREHOUSE ?? "COMPUTE_WH");
+  await page.getByRole("textbox", { name: "Authentication" }).click();
+  await page.getByRole("option", { name: "Username / Password", exact: true }).click();
+  await page.getByLabel(/^Username/).fill(process.env.SNOWFLAKE_USER!);
+  await page.getByLabel(/^Password/).fill(process.env.SNOWFLAKE_PASSWORD!);
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "PUBLIC", "WIDGETS");
+  await expect(page.getByTestId("register-table-col-selected-ID")).toBeVisible({ timeout: 120000 });
+  await expect(page.getByTestId("register-table-col-selected-NAME")).toBeVisible();
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "snowflake",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toEqual([
+        ["1", "sprocket"],
+        ["2", "cog"],
+        ["3", "gear"],
+      ]);
+    },
+    reachableOn: ["trino"],
   };
 }
 
@@ -1270,5 +1313,27 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     test(`iceberg: register once under DuckDB, answer identical queries under every other engine`, async ({
       page,
     }) => runSwapCase(page, () => registerFileLake("iceberg", () => icebergTablePath)(page)));
+  });
+
+  test.describe("snowflake", () => {
+    test.skip(
+      !(
+        process.env.SNOWFLAKE_ACCOUNT &&
+        process.env.SNOWFLAKE_USER &&
+        process.env.SNOWFLAKE_PASSWORD
+      ),
+      "no live Snowflake credentials in this environment (SNOWFLAKE_ACCOUNT/SNOWFLAKE_USER/SNOWFLAKE_PASSWORD)",
+    );
+    test.beforeAll(() => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "snowflake", "up"], { stdio: "pipe" });
+    });
+    test.afterAll(async () => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "snowflake", "down"], { stdio: "pipe" });
+      await sweepZombieSwapSources();
+    });
+
+    test(`snowflake: register once under DuckDB, answer identical queries under every other engine`, async ({
+      page,
+    }) => runSwapCase(page, () => registerSnowflake(page)));
   });
 });

@@ -118,6 +118,45 @@ class TrinoSqlServerConnector(_TrinoJdbcConnector):
     trino_connector = "sqlserver"
 
 
+class TrinoSnowflakeConnector(_TrinoConnector):
+    """Snowflake, read live via Trino's own dedicated snowflake connector (REQ-1730). Not a plain
+    JDBC connector: besides connection-url/user/password it needs snowflake.account/database/
+    warehouse/role as SEPARATE catalog properties — the generic _TrinoJdbcConnector (connection-url
+    only) produced no working catalog here, the same gap delta_lake/iceberg had (REQ-842).
+    Source.host is the full "<account>.snowflakecomputing.com" the Sources form's Account URL field
+    collects (SourceFormFields.tsx) — SnowflakeDriver.connect (the DIRECT driver) already passes
+    this same value straight to snowflake-connector-python's own `account` kwarg, so it's a proven
+    account identifier; warehouse/role come from federation_hints exactly like that driver reads
+    them (SourcesPage.tsx's federationHints only ever sets warehouse/schema/role for this type)."""
+
+    source_type = "snowflake"
+    trino_connector = "snowflake"
+
+    def details(self, source: Source) -> dict:
+        from provisa.core.secrets import resolve_secrets
+
+        host = resolve_secrets(source.host or "")
+        if not host:
+            return {}
+        suffix = ".snowflakecomputing.com"
+        account = host[: -len(suffix)] if host.endswith(suffix) else host
+        host_with_domain = host if host.endswith(suffix) else f"{host}{suffix}"
+        props = {
+            "connection-url": f"jdbc:snowflake://{host_with_domain}",
+            "connection-user": resolve_secrets(source.username or ""),
+            "connection-password": resolve_secrets(source.password or ""),
+            "snowflake.account": account,
+            "snowflake.database": resolve_secrets(source.database or ""),
+        }
+        warehouse = source.federation_hints.get("warehouse")
+        if warehouse:
+            props["snowflake.warehouse"] = warehouse
+        role = source.federation_hints.get("role")
+        if role:
+            props["snowflake.role"] = role
+        return props
+
+
 # Lake/object source types Trino reads IN PLACE via a lakehouse catalog (iceberg/hive/delta) — a SCAN
 # (no copy, freshness follows the files), not a live-DB VIRTUAL attach (REQ-951).
 _TRINO_SCAN_TYPES = frozenset({"hive", "delta_lake", "iceberg"})
@@ -143,7 +182,6 @@ _TRINO_JDBC_TYPES: dict[str, str] = {
     "yugabytedb": "postgresql",
     "greenplum": "postgresql",
     "tidb": "mysql",
-    "snowflake": "snowflake",
     "bigquery": "bigquery",
     "clickhouse": "clickhouse",
     "redshift": "redshift",
@@ -729,6 +767,7 @@ def build_trino_connectors() -> list[_TrinoConnector]:
         TrinoPostgresConnector(),
         TrinoMysqlConnector(),
         TrinoSqlServerConnector(),
+        TrinoSnowflakeConnector(),
         TrinoSqliteConnector(),
         TrinoOpenapiConnector(),
         TrinoGraphqlRemoteConnector(),
