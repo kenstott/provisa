@@ -446,7 +446,10 @@ export async function sweepZombieSwapSources(): Promise<void> {
     body: JSON.stringify({ query: `{ sources { id } }` }),
   });
   const sources: Array<{ id: string }> = (await res.json()).data?.sources ?? [];
-  const zombies = sources.filter((s) => /^e2e_swap_[a-z0-9_]+_\d{10,}$/.test(s.id));
+  // registerIngest's sourceId (engine-swap-registrars.ts) breaks the usual "_<stamp>" ending on
+  // purpose (a real ingest-only physical-table-naming gap — see that registrar's own comment), so
+  // the trailing underscore here is optional rather than required, matching both shapes.
+  const zombies = sources.filter((s) => /^e2e_swap_[a-z0-9_]+_?\d{10,}$/.test(s.id));
   for (const { id } of zombies) {
     await fetch(`${BACKEND_URL}/admin/graphql`, {
       method: "POST",

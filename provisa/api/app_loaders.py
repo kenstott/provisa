@@ -761,7 +761,21 @@ async def _init_ingest_engines() -> None:
                     password=_pw or "",
                 )
             elif _tenant_is_pg:
+                # REQ-1730: state.tenant_db.acquire() scopes every control-plane connection to the
+                # org's schema via a per-acquire `SET search_path` (core/database.py's
+                # Database.acquire) — this raw engine has no such wrapper, so without an explicit
+                # search_path its DDL/INSERT land wherever the role's own default resolves
+                # (typically "public"), not the org schema `register_table` already stamped onto
+                # this table's `registered_tables.schema_name` (schema_mutation_ops.py). Under a
+                # SQLite control plane this was invisible — DuckDB's own sqlite ATTACH flattens
+                # every schema into "main" regardless — but a Postgres control plane's real schema
+                # boundaries (DuckDB's postgres ATTACH respects them, and Trino's postgres
+                # connector requires them) exposed it: rows landed in "public", the compiled query
+                # asked provisa_admin.org_<id> for them, found the (empty) table, "No results."
+                from provisa.core.environments import active_org_schema
+
                 _pw = _resolve_secrets(_tenant_url.password or "")
+                _sp = active_org_schema(state.org_id, "")
                 _eng = _get_ingest_engine(
                     source_id=_sid,
                     dialect=_isrc["dialect"] or "postgresql+asyncpg",
@@ -770,6 +784,7 @@ async def _init_ingest_engines() -> None:
                     database=_tenant_url.database or "",
                     username=_tenant_url.username or "",
                     password=_pw or "",
+                    search_path=_sp,
                 )
             else:
                 _eng = state.tenant_db.engine
@@ -797,9 +812,28 @@ async def _init_ingest_engines() -> None:
                         )
                     ).fetchall()
                 ]
+            # NOTE (REQ-1730 investigation): the SQL page's compiler resolves a table through its
+            # OWN compiled semantic name (compiler.sql_rewrite.semantic_table_name), derived from a
+            # GraphQL field name -- and that round trip has no way to mark a word boundary right
+            # before a digit, so it silently drops an underscore immediately followed by digits
+            # (e.g. registered_tables.table_name "foo_123" compiles to the query-time name
+            # "foo123"). ingest is the one type whose physical DDL uses table_name verbatim rather
+            # than that same compiled name (every other type's landing/attach path creates its
+            # physical table via the compiled name already, so physical == query-time name by
+            # construction there) -- reproduced live via Trino: a row committed and was visible via
+            # a fresh Postgres connection immediately after the POST, yet the SQL page's compiled
+            # query always answered zero rows for a table_name containing "_<digits>". A fix
+            # sourcing the compiled name from state.contexts here was tried and reverted: that
+            # snapshot is only sometimes populated for this source_id at the moment a schema
+            # rebuild calls this function (this function runs multiple times per rebuild), landing
+            # on the WRONG table_name every other time and making the corruption non-deterministic
+            # instead of consistent. Filed as a real, narrow gap (never register an ingest table
+            # whose name contains an underscore immediately before a digit) rather than patched
+            # here; REQ-1730's own swap-harness registrar works around it by choosing a sourceId
+            # with no such boundary.
             _tbl_map: dict[str, list[dict]] = {}
             for _row in _itables:
-                _tn = _row["table_name"]
+                _tn = _row["table_name"] or ""
                 _tbl_map.setdefault(_tn, []).append(
                     {
                         "column_name": _row["column_name"],

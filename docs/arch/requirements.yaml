@@ -57246,6 +57246,56 @@
     field an operator fills in on the Sources form silently covered only Trino's discovery, not
     DuckDB's. `registry_url`'s resolution now falls back to `row.get("database")` last, so the
     single persistent field covers both engines. Verified passing live end to end.)
+
+    (Amended 2026-09-17, INGEST FIXED: 33rd->34th Trino-reachable type, and TWO real,
+    previously-undiscovered bugs found and fixed while getting it there — neither specific to this
+    harness; both would hit ingest in production on a Postgres control plane. (1)
+    `provisa/ingest/engine.py`'s tenant-DB-mirroring path (`app_loaders.py`'s
+    `_init_ingest_engines`, REQ-1745's default) opens a raw SQLAlchemy engine with no
+    org-scoping — unlike `core.database.Database.acquire()`, which issues a per-acquire
+    `SET search_path` for every OTHER control-plane connection, this one has no such wrapper, so
+    its DDL/INSERT landed wherever the role's own default search_path resolved (`public`), not the
+    org schema `register_table` already stamped onto `registered_tables.schema_name`. Invisible
+    under a SQLite control plane (DuckDB's own sqlite ATTACH flattens every schema into `main`
+    regardless) — first exposed by this harness's Postgres control plane, where DuckDB's postgres
+    ATTACH and Trino's postgres connector both enforce real schema boundaries. Fixed: `get_engine`
+    (`provisa/ingest/engine.py`) takes an optional `search_path`, applied via asyncpg's
+    `server_settings` at connect time; `_init_ingest_engines`'s tenant-mirroring branch passes
+    `active_org_schema(state.org_id, "")`. (2) A DEEPER, architectural conflict: `ingest` sits in
+    `strategy.py`'s `_MATERIALIZE_ONLY` set (no live/scan connector on any engine), which puts it
+    through `backend.py`'s `landing_worklist` on every engine reload — but unlike every OTHER
+    member of that set, ingest does not land through `store_writer` at all; its rows are written
+    directly into its own table by `provisa/ingest/router.py`, whose shape (`ddl.py`) always
+    includes an `id SERIAL PRIMARY KEY` and `_received_at`/`_updated_at` columns that the
+    registered `ext_id`/`value` columns alone never list. `store_writer.reconcile_table`'s drift
+    check compares the physical column set against the registered one verbatim, sees a permanent
+    "mismatch" for every ingest table on every single reconcile pass, and drops + recreates it —
+    silently discarding every row ingest had already written. Reproduced live, root-caused with
+    care (a POSTed row committed and was visible via a fresh Postgres connection immediately
+    afterward, confirmed present via three independent connections, then vanished specifically
+    the moment the next engine reload ran `landing_worklist`/`reconcile_table` against it — not a
+    landing delay, not a caching artifact, not this session's own probing). Fixed by excluding
+    `source.type == "ingest"` from `landing_worklist` (`backend.py`) — its own DDL/write path is
+    now the sole owner of its table, the same way it already was, by accident of never having its
+    reload path exercised, on the DuckDB-native tier. A THIRD, narrower gap was found and
+    DOCUMENTED rather than fixed: the SQL page's compiled query resolves a table through a
+    GraphQL-field-name round trip (`compiler.naming`/`sql_rewrite.semantic_table_name`) that has
+    no way to mark a word boundary immediately before a digit, so it silently drops an underscore
+    that directly precedes one (e.g. `table_name` "foo_123" compiles to the query-time name
+    "foo123"). Every OTHER type's physical table is created via that SAME compiled name already
+    (so physical == query-time name by construction there); ingest's physical DDL uses
+    `registered_tables.table_name` verbatim, so this is again ingest-specific. A fix sourcing the
+    compiled name from `state.contexts` inside `_init_ingest_engines` was tried and reverted: that
+    snapshot is only sometimes populated for a given source_id at the moment a schema rebuild
+    calls this function (which runs multiple times per rebuild), making the corruption
+    non-deterministic instead of consistent — worse than the narrow, well-understood gap it
+    replaced. `engine-swap-registrars.ts`'s `registerIngest` works around it by choosing a source
+    id with no "_<digit>" boundary (`e2e_swap_ingest_id<stamp>`, a letter between the underscore
+    and the digits) rather than every other registrar's bare "_<stamp>" ending; the zombie-cleanup
+    regex in `engine-swap-helpers.ts` was widened (trailing underscore now optional) to still
+    reach it. Never register a production ingest table whose name contains an underscore
+    immediately before a digit until this is fixed for real. Verified passing live end to end,
+    twice, after both real fixes.)
   code:
   - provisa/api/app_loaders.py
   - provisa/api/admin/schema_mutation.py

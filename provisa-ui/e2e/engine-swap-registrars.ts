@@ -960,6 +960,71 @@ export async function registerGrpcRemote(page: Page, port: number): Promise<Regi
   };
 }
 
+// ingest (REQ-1730): a NO_CONNECTION_TYPES push receiver (POST /data/ingest/<source>/<table>,
+// provisa/ingest/router.py) — no Sources-form connection fields, no adapter fetch. Rows land
+// SYNCHRONOUSLY into the SAME control-plane DB state.tenant_db mirrors (provisa/ingest/engine.py's
+// _init_ingest_engines), which under this harness's Postgres control plane is the identical
+// Postgres schema Trino's own `provisa_admin` catalog reads live — unlike grpc_remote/graphql_remote
+// (a materialize-store copy reconcile_landed_tables writes asynchronously), there is no landing
+// delay to wait out: the POST itself is the write. source-to-query-streaming.spec.ts's own proven
+// ingest case (REQ-1739/1771, 4 real bugs fixed there) is this registrar's exact template —
+// "default"-schema pick (source_id as the one table, REQ-1745), placeholder ext_id/value columns
+// with per-column JSON-path extraction (id/value), pet_store.<registered> as the query surface
+// (register_table already overrides ingest's stored schema_name to the real control-plane schema
+// at registration time — REAL BUG #3 in that file's own comment — so pet_store here is the same
+// logical-domain surface every plain pickSchemaAndTable registrar uses, not a literal physical one).
+//
+// sourceId deliberately has NO "_<digit>" boundary (every OTHER registrar's `_${stamp}` would
+// give it one): the SQL page's compiled query resolves a table through its own GraphQL-field-name
+// round trip (compiler.naming/sql_rewrite.semantic_table_name), which has no way to mark a word
+// boundary immediately before a digit and so silently drops an underscore that directly precedes
+// one — reproduced live via Trino with the `_${stamp}` form: the POSTed row committed and was
+// visible via a fresh Postgres connection immediately afterward, yet the SQL page's compiled query
+// always answered zero rows, because ingest's own physical DDL (app_loaders.py's
+// _init_ingest_engines) creates the table under the RAW registered_tables.table_name (with the
+// underscore), not the compiler's post-round-trip name (without it) — every OTHER type's physical
+// table is created via that SAME compiled name already, so this mismatch is specific to ingest.
+// "_id<stamp>" (a letter between the underscore and the digits, unlike every other registrar's
+// bare "_<stamp>") sidesteps the collision entirely for this registrar; the underlying naming gap
+// is real but narrow (any ingest source id containing "_<digit>") and is documented, not fixed,
+// in REQ-1730's own amendment. A literal hyphen was tried first and rejected: the "default"-schema
+// picker's physical table name IS the source id verbatim (REQ-1745), and an unquoted hyphen in
+// `CREATE TABLE IF NOT EXISTS <name>` parses as subtraction — a SQL syntax error, not a naming
+// mismatch — so the source id must stay a single valid unquoted SQL identifier throughout.
+export async function registerIngest(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_ingest_id${stamp}`;
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("ingest");
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "default", sourceId);
+  await expect(page.getByTestId("register-table-col-selected-ext_id")).toBeVisible({
+    timeout: 30000,
+  });
+  await page.getByTestId("register-table-col-path-ext_id").fill("id");
+  await page.getByTestId("register-table-col-path-value").fill("value");
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  const res = await page.request.post(`/data/ingest/${sourceId}/${sourceId}`, {
+    data: { id: "abc-1", value: "hello-ingest" },
+  });
+  expect(res.ok(), await res.text()).toBeTruthy();
+
+  return {
+    label: "ingest",
+    sourceId,
+    sql: `SELECT ext_id, value FROM pet_store.${registered} ORDER BY ext_id`,
+    assertRows: (rows) => {
+      expect(rows).toEqual([["abc-1", "hello-ingest"]]);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
 export async function registerOpenapi(page: Page): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_openapi_${stamp}`;

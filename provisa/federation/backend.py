@@ -85,6 +85,23 @@ async def landing_worklist(
                 continue  # live/scan → attached live, not eager-landed
         except UnreachableSource:
             continue
+        if src.type.value == "ingest":
+            # REQ-1730: ingest is in _MATERIALIZE_ONLY (strategy.py) because it has no live/scan
+            # connector on any engine, but unlike every OTHER member of that set it does not land
+            # through store_writer at all — its rows are written directly into its own table by
+            # provisa/ingest/router.py, whose shape (app_loaders.py's _init_ingest_engines/
+            # provisa/ingest/ddl.py) always includes an `id SERIAL PRIMARY KEY` and
+            # `_received_at`/`_updated_at` columns that reg["columns"] (the user-registered
+            # ext_id/value columns alone) never lists. reconcile_table's drift check (this
+            # function's only caller) compares the physical column set against reg["columns"]
+            # verbatim, sees a permanent "mismatch" for every single ingest table on every single
+            # reconcile pass, and DROPs + recreates it — silently discarding every row ingest had
+            # already written, reproduced live: a POSTed row committed and was visible via a fresh
+            # Postgres connection immediately afterward, then vanished the moment the next engine
+            # reload (or any other landing_worklist-triggering reconcile) ran reconcile_table on
+            # its "mismatched" shape. Excluding ingest here leaves its own DDL/write path as the
+            # sole owner of its table, the same way it already is for the DuckDB-native tier.
+            continue
         # Native-filter columns are synthetic query args (LIMIT/path params, etc.), not landed
         # data. REQ-1742 gap: this used to skip the WHOLE table the instant ANY column carried a
         # native_filter_type, on the theory that such a table is a pure "function f(args) -> rows"

@@ -103,6 +103,7 @@ import {
   registerFirebird,
   registerGraphqlRemote,
   registerGrpcRemote,
+  registerIngest,
   registerKafka,
   registerMongodb,
   registerNeo4j,
@@ -303,6 +304,12 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
   test("openapi: register once under DuckDB, answer identical queries under every other engine", async ({
     page,
   }) => runSwapCase(page, () => registerOpenapi(page)));
+
+  // ingest needs no container/webServer either — a NO_CONNECTION_TYPES push receiver, POST is the
+  // write itself (see registerIngest's own module doc in engine-swap-registrars.ts).
+  test("ingest: register once under DuckDB, answer identical queries under every other engine", async ({
+    page,
+  }) => runSwapCase(page, () => registerIngest(page)));
 
   // grpc_remote has no Trino connector — same landing path as graphql_remote/openapi above, just
   // gated on a Python subprocess this harness spawns itself rather than a container or an

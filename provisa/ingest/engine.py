@@ -38,12 +38,22 @@ def get_engine(  # REQ-331, REQ-332
     database: str,
     username: str,
     password: str,
+    search_path: str | None = None,
 ) -> AsyncEngine:
     """Return (or create) the AsyncEngine for *source_id*.
 
     ``dialect`` must be a SQLAlchemy async driver string, e.g.
     ``postgresql+asyncpg``, ``mysql+aiomysql``.  Defaults to
     ``postgresql+asyncpg`` when absent.
+
+    ``search_path`` (REQ-1730): scopes every connection this engine opens to a Postgres schema at
+    the driver level (asyncpg's ``server_settings``, applied on connect — unlike
+    ``core.database.Database.acquire()``'s per-acquire ``SET search_path``, there is no
+    application-level wrapper here to issue it per checkout). Only the tenant_db-mirroring caller
+    (``app_loaders.py``'s ``_init_ingest_engines``) passes this, with the org's own schema — an
+    ingest source with its OWN explicit host/database is a genuinely external DB and must keep
+    that connection's ordinary default search_path, never forced into an org schema that has
+    nothing to do with it.
     """
     cached = _engines.get(source_id)
     if cached is not None:
@@ -56,7 +66,14 @@ def get_engine(  # REQ-331, REQ-332
             return cached
         url = _build_url(dialect, host, port, database, username, password)
         log.info("Creating ingest engine for source=%s url=%s", source_id, url.split("@")[-1])
-        engine = create_async_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
+        connect_args = (
+            {"server_settings": {"search_path": search_path}}
+            if search_path and dialect.startswith("postgresql")
+            else {}
+        )
+        engine = create_async_engine(
+            url, pool_pre_ping=True, pool_size=5, max_overflow=10, connect_args=connect_args
+        )
         _engines[source_id] = engine
         return engine
 
