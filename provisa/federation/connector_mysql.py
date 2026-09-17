@@ -39,7 +39,20 @@ async def fetch_database_comment(  # REQ-012
     )
     try:
         async with conn.cursor() as cur:
-            await cur.execute(_COMMENT_SQL)
+            try:
+                await cur.execute(_COMMENT_SQL)
+            except aiomysql.Error as exc:
+                # SCHEMA_COMMENT is a MariaDB extension to information_schema.SCHEMATA — real
+                # MySQL has no such column on every version this connects to (verified live
+                # against mysql:8: error 1054 "Unknown column 'SCHEMA_COMMENT' in 'field list'",
+                # despite MySQL 8.0.23+ supporting CREATE SCHEMA ... COMMENT itself). The caller
+                # (source-meta/db-description) treats ANY exception here as a 422 connectivity
+                # failure, which was wrong for this one: the CONNECTION succeeded, only the
+                # dialect-specific comment lookup isn't there — degrade to no description rather
+                # than fail a reachable source's registration entirely.
+                if exc.args and exc.args[0] == 1054:
+                    return ""
+                raise
             row = await cur.fetchone()
             return (row[0] or "") if row else ""
     finally:

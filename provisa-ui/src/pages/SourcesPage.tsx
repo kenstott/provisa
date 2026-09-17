@@ -479,6 +479,8 @@ export function SourcesPage() {
           setAuthType("token");
         } else if (s.type === "exasol") {
           setAuthType(hints.tls_fingerprint ? "tls_fingerprint" : "none");
+        } else if (s.type === "sqlserver") {
+          setAuthType(hints.trust_server_certificate ? "trust_server_certificate" : "none");
         } else if (s.type === "fabric" || s.type === "synapse") {
           setAuthType(hints.tenant_id ? "service_principal" : "none");
         } else {
@@ -706,7 +708,12 @@ export function SourcesPage() {
                   // can't chain (models.py's Source.jdbc_url reads federation_hints["tls_fingerprint"]).
                   form.type === "exasol" && authType === "tls_fingerprint" && authFields.tls_fingerprint
                   ? { tls_fingerprint: authFields.tls_fingerprint }
-                  : // fabric/synapse: an optional Azure AD service-principal identity pinned per-source
+                  : // sqlserver: an optional flag trusting a self-signed/internal-CA cert the
+                    // truststore can't chain — common on internal/on-prem deployments (models.py's
+                    // Source.jdbc_url reads federation_hints["trust_server_certificate"]).
+                    form.type === "sqlserver" && authType === "trust_server_certificate"
+                    ? { trust_server_certificate: "true" }
+                    : // fabric/synapse: an optional Azure AD service-principal identity pinned per-source
                     // (mssql_warehouse.py's MssqlWarehouseDriver._token reads tenant_id/client_id/
                     // client_secret); absent, the driver falls back to the ambient credential.
                     (form.type === "fabric" || form.type === "synapse") &&

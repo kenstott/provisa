@@ -22,7 +22,16 @@ services:
     volumes:
       - mysql_demo_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pprovisa"]
+      # `mysqladmin ping` alone is a known-inadequate readiness check for the official mysql
+      # image: it can succeed against the entrypoint's TEMPORARY server (spun up to run init SQL,
+      # then shut down and replaced by the real one) during MySQL's internal restart-on-init,
+      # reporting "healthy" moments before the real server briefly refuses connections — caught
+      # live (2026-09-16): source-meta/db-description's connect (5s timeout) intermittently failed
+      # with a 422 in exactly this window despite `docker compose up --wait` already reporting
+      # healthy. A real query against the actual target database only succeeds once the FINAL
+      # server is up with that database created — mariadb's own healthcheck.sh --innodb_initialized
+      # check (no mysql equivalent tool exists) verifies the same thing a different way.
+      test: ["CMD", "mysql", "-h", "127.0.0.1", "-uroot", "-pprovisa", "provisa_demo", "-e", "SELECT 1"]
       interval: 5s
       timeout: 5s
       retries: 30

@@ -102,17 +102,41 @@ const E2E_SINGLESTORE_PORT = 33071;
 // wastes the harness's own boot budget on a doomed wait. See the module doc.
 const SINGLESTORE_AVAILABLE = process.arch === "x64" && !!process.env.SINGLESTORE_LICENSE;
 
-// One source = one test (REQ-1730 redesign, 2026-09-16): each of firebird/airport/singlestore
-// provisions and tears down its OWN container, scoped to the ONE test that needs it — not all
-// three every time any one of them runs. A single `--grep firebird` run now boots exactly one
-// container instead of the whole swap fleet.
-function provisionSwapSource(name: "firebird" | "airport" | "singlestore", cmd: "up" | "down"): void {
+// Every demo/sources/<name> whose compose.yml takes PROVISA_DEMO_<NAME>_PORT (uppercased) —
+// provision.py's own env-passthrough contract (see its module doc: "--env values apply to
+// both"). One dedicated block, distinct from both the default demo ports (start-ui-install.sh
+// --demo, which a maintainer's local-dev instance may have live) and every other E2E_*_PORT in
+// this file, so this harness never collides with either (three-instance-isolation).
+const RDB_WIDGETS_PORTS: Record<string, number> = {
+  postgresql: 36001,
+  mysql: 36011,
+  mariadb: 36021,
+  sqlserver: 36031,
+  oracle: 36041,
+  cockroachdb: 36051,
+  yugabytedb: 36061,
+  greenplum: 36071,
+  tidb: 36081,
+  clickhouse: 36091,
+};
+
+// One source = one test (REQ-1730 redesign, 2026-09-16): every demo/sources/<name> this harness
+// uses provisions and tears down its OWN container, scoped to the ONE test that needs it — never
+// the whole fleet just because one type is under test. A single `--grep mysql` run boots exactly
+// one container. Generalizes the original firebird/airport/singlestore-only helper: any
+// demo/sources/<name> directory works here as long as its compose.yml takes
+// PROVISA_DEMO_<NAME>_PORT (every RDBMS fixture prime.py checked live during this extension
+// does — see RDB_WIDGETS_PORTS).
+function provisionSwapSource(name: string, cmd: "up" | "down"): void {
   const env = {
     ...process.env,
     PROVISA_DEMO_FIREBIRD_PORT: String(E2E_FIREBIRD_PORT),
     PROVISA_DEMO_AIRPORT_PORT: String(E2E_AIRPORT_PORT),
     PROVISA_DEMO_SINGLESTORE_PORT: String(E2E_SINGLESTORE_PORT),
     PROVISA_DEMO_PREFIX: SWAP_PREFIX,
+    ...(name in RDB_WIDGETS_PORTS
+      ? { [`PROVISA_DEMO_${name.toUpperCase()}_PORT`]: String(RDB_WIDGETS_PORTS[name]) }
+      : {}),
   };
   try {
     execFileSync(PYTHON, [PROVISION, cmd, "--prefix", SWAP_PREFIX, name], {
@@ -237,6 +261,100 @@ async function registerMongodb(page: Page): Promise<Registration> {
       expect(rows[9]).toEqual(["7", "jack", "1"]);
     },
     reachableOn: ["trino"],
+  };
+}
+
+/** Connection + introspection shape for one demo/sources/<name> RDBMS fixture — every one of them
+ * primes the identical widgets(id, name) + 3 rows (see each prime.py, verified live 2026-09-16
+ * during this extension), so one registrar covers all of them; only what differs (type key,
+ * fixed port, credentials, the schema its rows land in, and int vs string id rendering) is data. */
+interface RdbWidgetsConfig {
+  type: string;
+  port: number;
+  username: string;
+  password: string;
+  database: string;
+  schema: string;
+  /** Defaults to "widgets" — override for a dialect whose unquoted CREATE TABLE folds case
+   * differently (Oracle upper-cases unquoted identifiers, matching source-to-query-generic-
+   * rdbms.spec.ts's own "SYSTEM"/"WIDGETS" precedent for this exact fixture). */
+  table?: string;
+  /** Defaults to "name" — same case-folding override as `table`, for the "name" COLUMN
+   * (RegisterTableForm.tsx's column checkboxes use the raw introspected column name verbatim,
+   * e.g. Oracle's own ALL_TAB_COLUMNS reports "NAME" for this unquoted column). */
+  nameColumn?: string;
+}
+
+// KNOWN UNRESOLVED BUG (2026-09-16): oracle is deliberately NOT in RDB_WIDGETS_SOURCES below.
+// Schema/table/column introspection all work now (the introspect.py dispatch-branch and
+// identifier-casing fixes this batch made), but registration itself then stalls at
+// submitRegisterAndExpectListed's own 300s SWAP_REGISTER_TIMEOUT_MS wait for the row to land in
+// the tables list — a genuine registration-commit/schema-rebuild slowness specific to oracle,
+// not yet root-caused. Re-add
+// `{ type: "oracle", port: RDB_WIDGETS_PORTS.oracle, username: "system", password: "provisa",
+// database: "FREEPDB1", schema: "SYSTEM", table: "WIDGETS", nameColumn: "NAME" }`
+// once that's fixed — the registrar/config shape is already correct and verified up to that
+// point.
+const RDB_WIDGETS_SOURCES: RdbWidgetsConfig[] = [
+  { type: "postgresql", port: RDB_WIDGETS_PORTS.postgresql, username: "provisa", password: "provisa", database: "provisa_demo", schema: "public" },
+  { type: "mysql", port: RDB_WIDGETS_PORTS.mysql, username: "root", password: "provisa", database: "provisa_demo", schema: "provisa_demo" },
+  { type: "mariadb", port: RDB_WIDGETS_PORTS.mariadb, username: "root", password: "provisa", database: "provisa_demo", schema: "provisa_demo" },
+  { type: "sqlserver", port: RDB_WIDGETS_PORTS.sqlserver, username: "sa", password: "Provisa_2026!", database: "master", schema: "dbo" },
+  { type: "cockroachdb", port: RDB_WIDGETS_PORTS.cockroachdb, username: "root", password: "", database: "defaultdb", schema: "public" },
+  { type: "yugabytedb", port: RDB_WIDGETS_PORTS.yugabytedb, username: "yugabyte", password: "yugabyte", database: "yugabyte", schema: "public" },
+  { type: "greenplum", port: RDB_WIDGETS_PORTS.greenplum, username: "gpadmin", password: "", database: "postgres", schema: "public" },
+  { type: "tidb", port: RDB_WIDGETS_PORTS.tidb, username: "root", password: "", database: "test", schema: "test" },
+  { type: "clickhouse", port: RDB_WIDGETS_PORTS.clickhouse, username: "default", password: "provisa", database: "default", schema: "default" },
+];
+
+function registerRdbWidgets(cfg: RdbWidgetsConfig): (page: Page) => Promise<Registration> {
+  return async (page: Page): Promise<Registration> => {
+    const stamp = Date.now();
+    const sourceId = `e2e_swap_${cfg.type}_${stamp}`;
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption(cfg.type);
+    await page.getByLabel(/^Host/).fill("localhost");
+    await page.getByLabel(/^Port/).fill(String(cfg.port));
+    await page.getByLabel(/^Username/).fill(cfg.username);
+    await page.getByLabel(/^Password/).fill(cfg.password);
+    await page.getByLabel(/^Database/).fill(cfg.database);
+    // The demo compose fixture (demo/sources/sqlserver/compose.yml) uses SQL Server's own
+    // self-signed cert — Trino's default (encrypt=true, trustServerCertificate=false) refuses it
+    // outright (JDBC_ERROR: PKIX path building failed), so the swap's Trino leg needs the same
+    // opt-in trust flag a real internal/on-prem deployment with a self-signed cert would use.
+    if (cfg.type === "sqlserver") {
+      // Mantine's Select renders a readonly <input> + listbox popup, never a native <select> —
+      // .selectOption() doesn't apply (same click-then-pick pattern every other Mantine Select in
+      // this suite uses, e.g. glossary.spec.ts's domain picker).
+      await page.getByTestId("sqlserver-cert-trust-select").click();
+      await page
+        .getByRole("option", { name: "Trust Server Certificate (self-signed / internal CA)" })
+        .click();
+    }
+    await submitSourceAndExpectListed(page, sourceId);
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, cfg.schema, cfg.table ?? "widgets");
+    await expect(
+      page.getByTestId(`register-table-col-selected-${cfg.nameColumn ?? "name"}`),
+    ).toBeVisible({
+      timeout: 60000,
+    });
+    const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+    return {
+      label: cfg.type,
+      sourceId,
+      sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+      assertRows: (rows) => {
+        expect(rows).toHaveLength(3);
+        expect(rows[0]).toEqual(["1", "Widget A"]);
+        expect(rows[1]).toEqual(["2", "Widget B"]);
+        expect(rows[2]).toEqual(["3", "Widget C"]);
+      },
+      reachableOn: ["trino"],
+    };
   };
 }
 
@@ -661,7 +779,21 @@ async function reprovisionSourceOnEngine(engine: EngineTarget, sourceId: string)
       // 251's write_table_definitions reads source.mapping.tables) — omitting it here recreates
       // the source on the target engine with an empty mapping, so its table-description file
       // comes out empty and every one of its registered tables 404s as TABLE_NOT_FOUND.
-      query: "{ sources { id type host port database username path description mappingJson } }",
+      // passwordRef: the ${secret:NAME} vault REFERENCE persist_source_password wrote (REQ-1695)
+      // — never the plaintext, which the vault holds unreadable by name. SourceInput.password
+      // already treats a value containing "${" as a reference and stores it verbatim (never
+      // re-vaults it), so round-tripping this through create_source resolves correctly on the
+      // target engine's own process via resolve_secrets(), sharing the same org vault. Omitting
+      // it silently registered every credentialed RDBMS type with an empty password (caught live
+      // 2026-09-16 registering postgresql: "password authentication failed").
+      // federationHintsJson: the "connection extras" channel (Snowflake warehouse/role,
+      // sqlserver's trust_server_certificate, exasol's tls_fingerprint, ...) — SourceType and
+      // SourceInput already share this exact field name, so it passes straight through the `...src`
+      // spread below with no renaming, unlike password/passwordRef. Omitting it silently dropped
+      // every such hint on replay (caught live 2026-09-16 registering sqlserver against a
+      // self-signed demo cert: JDBC_ERROR, PKIX path building failed).
+      query:
+        "{ sources { id type host port database username passwordRef path description mappingJson federationHintsJson } }",
     }),
   });
   const resText = await res.text();
@@ -673,9 +805,11 @@ async function reprovisionSourceOnEngine(engine: EngineTarget, sourceId: string)
     port: number;
     database: string;
     username: string;
+    passwordRef: string;
     path: string | null;
     description: string;
     mappingJson: string | null;
+    federationHintsJson: string | null;
   }>;
   const src = sources.find((s) => s.id === sourceId);
   expect(src, `source ${sourceId} not found on this engine's control-plane schema`).toBeTruthy();
@@ -695,7 +829,10 @@ async function reprovisionSourceOnEngine(engine: EngineTarget, sourceId: string)
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       query: `mutation($s: SourceInput!) { createSource(input: $s) { success message } }`,
-      variables: { s: src },
+      // SourceInput has no `passwordRef` field, only `password` (GraphQL input coercion rejects
+      // an unknown field outright) — drop it from the spread and carry the vault reference under
+      // the name SourceInput actually declares (see the query's own comment for why this is safe).
+      variables: { s: { ...src, passwordRef: undefined, password: src!.passwordRef } },
     }),
   });
   const mutationText = await mutation.text();
@@ -800,13 +937,25 @@ test.beforeAll(async () => {
 // own sourceId) was tried first and rejected: it only runs once `registrar()` has RETURNED a
 // Registration, so a registrar that throws midway — its own source already created, e.g.
 // registerFirebird failing at pickSchemaAndTable — still leaked a row (reproduced live: 2 leaked
-// firebird rows from a genuinely-failing run). A single sweep run once at file scope, after every
-// test regardless of outcome or which registrar ran, closes both gaps at once. `fetch` direct to
-// BACKEND_URL (not the vite-proxied UI_URL via page.request): matches file-connector.spec.ts's
-// already-working admin/graphql pattern — /admin/graphql needs no session for this harness's
-// single-user dev auth mode, so the extra proxy hop buys nothing and (per page.request, tried
-// second) is one more thing that can silently misroute.
-test.afterAll(async () => {
+// firebird rows from a genuinely-failing run).
+//
+// A single sweep run ONCE at file scope (after every test in the whole run) closed both of THOSE
+// gaps, but opened a third one, also confirmed live: within one multi-type invocation
+// (`-g "mysql:|sqlserver:|oracle:|..."`), a type's own container is torn down the moment ITS
+// describe block finishes, while its row survives — untouched — until the file-level afterAll at
+// the very end. Any later type's schema rebuild that reconciles/reconnects across EVERY
+// registered source (not just the one under test) then retries a live connection to that
+// already-gone container and blocks on it — 5 of 9 new RDBMS types (oracle, cockroachdb,
+// yugabytedb, greenplum, clickhouse) stalled ~2.1m each this exact way in a single `-g` run
+// covering all of them. Calling the sweep from EVERY type's own afterAll (in addition to the
+// file-level one, kept as a backstop for a registrar that throws before its own describe's
+// afterAll would even run) closes this: a type's row is gone by the time the next type starts.
+//
+// `fetch` direct to BACKEND_URL (not the vite-proxied UI_URL via page.request): matches
+// file-connector.spec.ts's already-working admin/graphql pattern — /admin/graphql needs no
+// session for this harness's single-user dev auth mode, so the extra proxy hop buys nothing and
+// (per page.request, tried second) is one more thing that can silently misroute.
+async function sweepZombieSwapSources(): Promise<void> {
   const res = await fetch(`${BACKEND_URL}/admin/graphql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -824,7 +973,9 @@ test.afterAll(async () => {
       }),
     });
   }
-});
+}
+
+test.afterAll(sweepZombieSwapSources);
 
 /** One type's full proof: register under DuckDB, then answer identically under every engine its
  * Registration declares reachableOn. Shared body for every per-type test below — see the
@@ -840,7 +991,10 @@ async function runSwapCase(page: Page, registrar: () => Promise<Registration>): 
 test.describe("engine swap: one registration answers every engine (REQ-1730)", () => {
   test.describe("neo4j", () => {
     test.beforeAll(() => startDemoSources(["neo4j"]));
-    test.afterAll(() => removeDemoSources(["neo4j"]));
+    test.afterAll(async () => {
+      await removeDemoSources(["neo4j"]);
+      await sweepZombieSwapSources();
+    });
 
     test("neo4j: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
@@ -849,7 +1003,10 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
 
   test.describe("mongodb", () => {
     test.beforeAll(() => startDemoSources(["mongodb"]));
-    test.afterAll(() => removeDemoSources(["mongodb"]));
+    test.afterAll(async () => {
+      await removeDemoSources(["mongodb"]);
+      await sweepZombieSwapSources();
+    });
 
     test("mongodb: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
@@ -858,7 +1015,10 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
 
   test.describe("elasticsearch", () => {
     test.beforeAll(() => startDemoSources(["elasticsearch"]));
-    test.afterAll(() => removeDemoSources(["elasticsearch"]));
+    test.afterAll(async () => {
+      await removeDemoSources(["elasticsearch"]);
+      await sweepZombieSwapSources();
+    });
 
     test("elasticsearch: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
@@ -867,7 +1027,10 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
 
   test.describe("redis", () => {
     test.beforeAll(() => startDemoSources(["redis"]));
-    test.afterAll(() => removeDemoSources(["redis"]));
+    test.afterAll(async () => {
+      await removeDemoSources(["redis"]);
+      await sweepZombieSwapSources();
+    });
 
     test("redis: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
@@ -876,7 +1039,10 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
 
   test.describe("cassandra", () => {
     test.beforeAll(() => startDemoSources(["cassandra"]));
-    test.afterAll(() => removeDemoSources(["cassandra"]));
+    test.afterAll(async () => {
+      await removeDemoSources(["cassandra"]);
+      await sweepZombieSwapSources();
+    });
 
     test("cassandra: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
@@ -885,7 +1051,10 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
 
   test.describe("sparql", () => {
     test.beforeAll(() => startDemoSources(["sparql"]));
-    test.afterAll(() => removeDemoSources(["sparql"]));
+    test.afterAll(async () => {
+      await removeDemoSources(["sparql"]);
+      await sweepZombieSwapSources();
+    });
 
     test("sparql: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
@@ -894,7 +1063,10 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
 
   test.describe("prometheus", () => {
     test.beforeAll(() => startDemoSources(["prometheus"]));
-    test.afterAll(() => removeDemoSources(["prometheus"]));
+    test.afterAll(async () => {
+      await removeDemoSources(["prometheus"]);
+      await sweepZombieSwapSources();
+    });
 
     test("prometheus: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
@@ -916,7 +1088,10 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
 
   test.describe("firebird", () => {
     test.beforeAll(() => provisionSwapSource("firebird", "up"));
-    test.afterAll(() => provisionSwapSource("firebird", "down"));
+    test.afterAll(async () => {
+      await provisionSwapSource("firebird", "down");
+      await sweepZombieSwapSources();
+    });
 
     test("firebird: register once under DuckDB (no Trino leg — REQ-899)", async ({ page }) =>
       runSwapCase(page, () => registerFirebird(page)));
@@ -924,7 +1099,10 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
 
   test.describe("airport", () => {
     test.beforeAll(() => provisionSwapSource("airport", "up"));
-    test.afterAll(() => provisionSwapSource("airport", "down"));
+    test.afterAll(async () => {
+      await provisionSwapSource("airport", "down");
+      await sweepZombieSwapSources();
+    });
 
     test("airport: register once under DuckDB (no Trino leg — REQ-899/1097)", async ({ page }) =>
       runSwapCase(page, () => registerAirport(page)));
@@ -937,10 +1115,33 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
         "— see the module doc",
     );
     test.beforeAll(() => provisionSwapSource("singlestore", "up"));
-    test.afterAll(() => provisionSwapSource("singlestore", "down"));
+    test.afterAll(async () => {
+      await provisionSwapSource("singlestore", "down");
+      await sweepZombieSwapSources();
+    });
 
     test("singlestore: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
     }) => runSwapCase(page, () => registerSinglestore(page)));
   });
+
+  // Every demo/sources/<name> RDBMS below primes the identical widgets(id, name) + 3 rows shape
+  // (verified live 2026-09-16) and has a native Trino connector (provisa/federation/
+  // trino_connectors.py's TRINO_CONNECTORS/_TRINO_JDBC_TYPES) — the SAME class of Trino reach as
+  // mongodb/cassandra/redis/elasticsearch above, not the adapter-fetch/materialize-only fallback
+  // neo4j/sparql need. registerRdbWidgets(cfg) is the shared registrar; only the type/port/
+  // credentials/schema differ (RDB_WIDGETS_SOURCES).
+  for (const cfg of RDB_WIDGETS_SOURCES) {
+    test.describe(cfg.type, () => {
+      test.beforeAll(() => provisionSwapSource(cfg.type, "up"));
+      test.afterAll(async () => {
+        await provisionSwapSource(cfg.type, "down");
+        await sweepZombieSwapSources();
+      });
+
+      test(`${cfg.type}: register once under DuckDB, answer identical queries under every other engine`, async ({
+        page,
+      }) => runSwapCase(page, () => registerRdbWidgets(cfg)(page)));
+    });
+  }
 });

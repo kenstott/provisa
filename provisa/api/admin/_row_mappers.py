@@ -116,6 +116,7 @@ def _source_from_row(row) -> SourceType:
         description=row.get("description") or "",
         mapping_json=mapping_json,
         federation_hints_json=federation_hints_json,
+        password_ref=row.get("password_ref") or "",  # REQ-1730: the vault reference, never a secret
         change_signal=row.get("change_signal") or "ttl",  # REQ-929
         cdc=_cdc_from_row(row),
     )

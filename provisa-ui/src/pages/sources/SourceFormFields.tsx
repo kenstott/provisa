@@ -589,6 +589,29 @@ export function SourceFormFields(props: SourceFormFieldsProps) {
           )}
         </>
       )}
+      {form.type === "sqlserver" && (
+        // host/port/username/password/database already rendered by isSimpleRdbms above
+        // (provisa/executor/drivers/mssql.py). This is the ONLY extra: an optional flag trusting
+        // a self-signed/internal-CA cert the truststore can't chain — common on internal/on-prem
+        // deployments (models.py's Source.jdbc_url, federation_hints["trust_server_certificate"])
+        // — absent, the driver validates against the truststore as usual (encrypt=true implies
+        // trustServerCertificate=false by default).
+        <Select
+          data-testid="sqlserver-cert-trust-select"
+          style={{ gridColumn: "1 / -1" }}
+          label={t("sourceFormFields.sqlserverCertTrust")}
+          data={[
+            { value: "none", label: t("sourceFormFields.sqlserverTrustStoreDefault") },
+            {
+              value: "trust_server_certificate",
+              label: t("sourceFormFields.sqlserverTrustServerCertificate"),
+            },
+          ]}
+          value={authType}
+          onChange={(v) => setAuthType(v ?? "none")}
+          allowDeselect={false}
+        />
+      )}
       {(form.type === "fabric" || form.type === "synapse") && (
         // T-SQL over TDS/ODBC (provisa/executor/drivers/mssql_warehouse.py's MssqlWarehouseDriver).
         // No username/password auth mode exists for this driver — it is Azure AD only: a service

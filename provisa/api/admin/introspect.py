@@ -93,6 +93,52 @@ _SAPHANA_SYSTEM_SCHEMAS = {
     "SAP_REST_API",
 }
 
+# Oracle's built-in accounts (a schema IS a user in Oracle). SYSTEM is deliberately NOT in this
+# set even though it's one of Oracle's own accounts: demo/sources/oracle/prime.py creates
+# widgets(id, name) directly under SYSTEM (matching source-to-query-generic-rdbms.spec.ts's own
+# REQ-1744 precedent, schema "SYSTEM"/table "WIDGETS") rather than a dedicated application user —
+# excluding it here would make the demo fixture's own table permanently unreachable through the
+# picker. A real deployment should still use its own dedicated user, but the picker has no way to
+# tell "SYSTEM used deliberately" from "SYSTEM used by convention" apart from this fixture's own
+# choice, so it stays visible. Non-exhaustive by design (an on-prem Oracle install accumulates
+# more of these via optional components) but covers every OTHER account a stock
+# gvenzl/oracle-free image ships.
+_ORACLE_SYSTEM_SCHEMAS = {
+    "SYS",
+    "OUTLN",
+    "XDB",
+    "ANONYMOUS",
+    "APPQOSSYS",
+    "AUDSYS",
+    "CTXSYS",
+    "DBSNMP",
+    "DBSFWUSER",
+    "DIP",
+    "DVSYS",
+    "DVF",
+    "GGSYS",
+    "GSMADMIN_INTERNAL",
+    "GSMCATUSER",
+    "GSMUSER",
+    "LBACSYS",
+    "MDDATA",
+    "MDSYS",
+    "OJVMSYS",
+    "OLAPSYS",
+    "ORACLE_OCM",
+    "ORDDATA",
+    "ORDPLUGINS",
+    "ORDSYS",
+    "REMOTE_SCHEDULER_AGENT",
+    "SI_INFORMTN_SCHEMA",
+    "SYSBACKUP",
+    "SYSDG",
+    "SYSKM",
+    "SYSRAC",
+    "WMSYS",
+    "XS$NULL",
+}
+
 PROVISA_INTERNAL_SCHEMAS: frozenset[str] = frozenset(
     {
         "platform",
@@ -260,13 +306,45 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
 
     # Let introspection errors propagate — swallowing them here masks a real
     # source failure as an empty schema list.
-    if t == "postgresql":
+    if t in ("postgresql", "cockroachdb", "yugabytedb", "greenplum"):
+        # cockroachdb/yugabytedb/greenplum speak the identical Postgres wire protocol (same
+        # grouping trino_connectors.py's _TRINO_JDBC_TYPES already uses for their Trino catalog) —
+        # were missing from this tuple, so each fell through to `return None`, then
+        # available_schemas' engine-catalog fallback silently returned [] (the catalog does not
+        # exist pre-registration, discovery_fallback swallows the failure) — the schema picker was
+        # permanently empty and Register Table could never complete for any of the three.
         pg_exclude = "','".join(sorted(_PG_SYSTEM_SCHEMAS))
         result = await pool.execute(
             source_id,
             f"SELECT schema_name FROM information_schema.schemata "
             f"WHERE schema_name NOT IN ('{pg_exclude}') "
             f"ORDER BY schema_name",
+        )
+        return [row[0] for row in result.rows]
+
+    if t == "oracle":
+        # Oracle has no information_schema; ALL_USERS is the schema-equivalent catalog (a schema
+        # IS a user in Oracle). Same fell-through-to-None gap as the postgres-wire group above —
+        # missing here left the Register Table schema picker permanently empty for oracle.
+        oracle_exclude = "','".join(sorted(_ORACLE_SYSTEM_SCHEMAS))
+        result = await pool.execute(
+            source_id,
+            f"SELECT username FROM all_users WHERE username NOT IN ('{oracle_exclude}') "
+            f"ORDER BY username",
+        )
+        return [row[0] for row in result.rows]
+
+    if t == "clickhouse":
+        # ClickHouse has no DuckDB ATTACH connector (connector_duckdb.py has none) and no
+        # information_schema-based path — system.databases is its own catalog (a "database" is a
+        # schema). Same fell-through-to-None gap as the postgres-wire/oracle groups above.
+        # ClickHouseDriver.execute always ignores params ("SQL arrives fully formed") — inline,
+        # same constraint as the snowflake/databricks/bigquery branches below.
+        result = await pool.execute(
+            source_id,
+            "SELECT name FROM system.databases "
+            "WHERE name NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema') "
+            "ORDER BY name",
         )
         return [row[0] for row in result.rows]
 
@@ -867,7 +945,13 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
 
     t = source_type.lower()
     try:
-        if t == "postgresql":
+        if t in ("postgresql", "cockroachdb", "yugabytedb", "greenplum"):
+            # cockroachdb/yugabytedb/greenplum: same wire-compatible grouping as
+            # native_schemas's postgres-wire branch — were missing from this tuple, so each fell
+            # through to the generic engine-catalog fallback (empty pre-registration), leaving the
+            # Register Table TABLE picker permanently empty even once the schema picker itself
+            # worked (verified live: cockroachdb's schema list resolves fine, but "widgets" never
+            # appeared in the table select without this).
             result = await pool.execute(
                 source_id,
                 "SELECT table_name, obj_description("
@@ -877,6 +961,32 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
                 [schema_name],
             )
             return [AvailableTableType(name=row[0], comment=row[1]) for row in result.rows]
+
+        if t == "oracle":
+            # Oracle has no per-table comment catalog as cheap as postgres's obj_description;
+            # ALL_TAB_COMMENTS carries it. Same fell-through-to-None gap as the postgres-wire
+            # group above.
+            result = await pool.execute(
+                source_id,
+                "SELECT t.table_name, c.comments FROM all_tables t "
+                "LEFT JOIN all_tab_comments c ON c.owner = t.owner AND c.table_name = t.table_name "
+                "WHERE t.owner = $1 ORDER BY t.table_name",
+                [schema_name],
+            )
+            return [AvailableTableType(name=row[0], comment=row[1]) for row in result.rows]
+
+        if t == "clickhouse":
+            # Same fell-through-to-None gap as native_schemas's clickhouse branch — system.tables
+            # is ClickHouse's own catalog. ClickHouseDriver.execute always ignores params (SQL
+            # arrives fully formed), so schema_name is inlined — always a value native_schemas's
+            # own clickhouse branch already returned from system.databases, never raw user input,
+            # same constraint noted for the snowflake/databricks/bigquery branches elsewhere here.
+            result = await pool.execute(
+                source_id,
+                f"SELECT name, comment FROM system.tables "
+                f"WHERE database = '{schema_name}' AND engine NOT LIKE '%View%' ORDER BY name",
+            )
+            return [AvailableTableType(name=row[0], comment=row[1] or None) for row in result.rows]
 
         if t in ("mysql", "mariadb", "tidb"):
             # REQ-1732: `%s`, not `?` — aiomysql's paramstyle (MySQLDriver.execute only rewrites
@@ -1006,6 +1116,40 @@ async def native_columns(  # REQ-1732
             source_id,
             "SELECT column_name, data_type FROM information_schema.columns "
             "WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
+            [schema_name, table_name],
+        )
+        return [(row[0], row[1]) for row in result.rows]
+    if t == "clickhouse":
+        # Same gap as native_schemas/_native_tables_rdbms's clickhouse branches — system.columns
+        # is ClickHouse's own catalog. ClickHouseDriver.execute always ignores params; schema_name/
+        # table_name are always values this same dispatch already returned from system.databases/
+        # system.tables, never raw user input, same constraint as the branches above.
+        result = await pool.execute(
+            source_id,
+            f"SELECT name, type FROM system.columns "
+            f"WHERE database = '{schema_name}' AND table = '{table_name}' "
+            f"ORDER BY position",
+        )
+        return [(row[0], row[1]) for row in result.rows]
+    if t in ("cockroachdb", "yugabytedb", "greenplum"):
+        # Same "no ATTACH-mechanism seam" gap as trino above — connector_duckdb.py has no ATTACH
+        # connector for any of these three (unlike postgresql itself, see this function's own
+        # docstring), so this direct-pool path is the only one, same postgres-wire query trino
+        # uses above (all three speak the identical wire protocol).
+        result = await pool.execute(
+            source_id,
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
+            [schema_name, table_name],
+        )
+        return [(row[0], row[1]) for row in result.rows]
+    if t == "oracle":
+        # Same gap, Oracle's own catalog view (no information_schema) — ALL_TAB_COLUMNS mirrors
+        # native_tables_rdbms's ALL_TABLES/ALL_TAB_COMMENTS pairing above.
+        result = await pool.execute(
+            source_id,
+            "SELECT column_name, data_type FROM all_tab_columns "
+            "WHERE owner = $1 AND table_name = $2 ORDER BY column_id",
             [schema_name, table_name],
         )
         return [(row[0], row[1]) for row in result.rows]

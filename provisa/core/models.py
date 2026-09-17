@@ -291,7 +291,17 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         if p is None:
             return ""
         if self.type == SourceType.sqlserver:
-            return f"{p}://{h}:{po};databaseName={self.database}"
+            # A self-signed or internal-CA certificate (common on on-prem/internal SQL Server
+            # deployments) fails Trino's default JDBC chain validation (encrypt=true implies
+            # trustServerCertificate=false unless stated) — trustServerCertificate=true, pinned
+            # per-source in federation_hints exactly like exasol's tls_fingerprint below, never a
+            # default: absent, the driver validates against the truststore as usual.
+            trust = (
+                ";trustServerCertificate=true"
+                if self.federation_hints.get("trust_server_certificate")
+                else ""
+            )
+            return f"{p}://{h}:{po};databaseName={self.database}{trust}"
         if self.type == SourceType.oracle:
             return f"{p}:@{h}:{po}/{self.database}"
         if self.type == SourceType.exasol:

@@ -19,7 +19,7 @@ Endpoints:
 from __future__ import annotations
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from provisa.federation import connector_mssql, connector_mysql, connector_postgres
@@ -40,11 +40,21 @@ class DbDescriptionRequest(BaseModel):
 
 @router.post("/db-description")
 async def get_db_description(body: DbDescriptionRequest) -> dict:  # REQ-012
-    """Connect to the DB and return the database-level comment, if any."""
+    """Connect to the DB and return the database-level comment, if any.
+
+    Best-effort autofill, never a validation gate: the actual connectivity check a source must
+    pass lives in create_source's _add_source_pool (schema_common.py), which runs later at submit
+    time with the source's full config (including federation_hints this preview never sees, e.g.
+    sqlserver's trust_server_certificate for a self-signed cert). A failure here — wrong
+    credentials typed so far, a cert this bare preview DSN doesn't trust, a source not listening
+    yet — means only "no free description to offer", which an empty string already says; raising
+    422 turned an expected, harmless outcome into a hard browser-console error for every caller
+    (verified live 2026-09-16: SourcesPage.tsx's own caller already treats a non-OK response as
+    "skip the autofill", so the 422 bought nothing but console noise no caller acted on)."""
     description = ""
 
-    if body.type == "postgresql":
-        try:
+    try:
+        if body.type == "postgresql":
             description = await connector_postgres.fetch_database_comment(
                 host=body.host,
                 port=body.port,
@@ -52,11 +62,7 @@ async def get_db_description(body: DbDescriptionRequest) -> dict:  # REQ-012
                 username=body.username,
                 password=body.password,
             )
-        except Exception as exc:
-            raise HTTPException(status_code=422, detail=f"Connection failed: {exc}") from exc
-
-    elif body.type in ("mysql", "mariadb"):
-        try:
+        elif body.type in ("mysql", "mariadb"):
             description = await connector_mysql.fetch_database_comment(
                 host=body.host,
                 port=body.port,
@@ -64,15 +70,7 @@ async def get_db_description(body: DbDescriptionRequest) -> dict:  # REQ-012
                 username=body.username,
                 password=body.password,
             )
-        except Exception as exc:
-            raise HTTPException(status_code=422, detail=f"Connection failed: {exc}") from exc
-
-    elif body.type == "sqlite":
-        # SQLite has no database-level comments
-        description = ""
-
-    elif body.type in ("mssql", "sqlserver"):
-        try:
+        elif body.type in ("mssql", "sqlserver"):
             description = await connector_mssql.fetch_database_comment(
                 host=body.host,
                 port=body.port,
@@ -80,7 +78,10 @@ async def get_db_description(body: DbDescriptionRequest) -> dict:  # REQ-012
                 username=body.username,
                 password=body.password,
             )
-        except Exception as exc:
-            raise HTTPException(status_code=422, detail=f"Connection failed: {exc}") from exc
+        # sqlite has no database-level comments; every other type falls through with description=""
+    except Exception:
+        log.debug(
+            "db-description preview failed for %r; no autofill offered", body.type, exc_info=True
+        )
 
     return {"description": description}
