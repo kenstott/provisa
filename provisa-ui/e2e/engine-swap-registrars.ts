@@ -12,6 +12,7 @@
 // rule as REQ-1730 grew to cover more source types — see engine-swap.spec.ts's own module doc for
 // the harness's actual design rationale and invocation instructions.
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -40,8 +41,11 @@ import {
   E2E_AIRPORT_PORT,
   E2E_EXASOL_PORT,
   E2E_FIREBIRD_PORT,
+  E2E_KAFKA_PORT,
+  E2E_KAFKA_SCHEMA_REGISTRY_PORT,
   E2E_SINGLESTORE_PORT,
   FILE_LAKE_HOST_DIR,
+  PYTHON,
   RDB_WIDGETS_PORTS,
   ROOT,
   SWAP_REGISTER_TIMEOUT_MS,
@@ -1126,6 +1130,114 @@ export async function registerExasol(page: Page, fingerprint: () => string): Pro
       expect(rows).toHaveLength(3);
       expect(rows[0]).toEqual(["1", "Widget A"]);
       expect(rows[2]).toEqual(["3", "Widget C"]);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
+/** Register an AVRO schema for *topic* in Confluent Schema Registry (subject "<topic>-value") and
+ * produce one Confluent-wire-format Avro message, in a single Python invocation (the schema id the
+ * registry assigns must prefix the message, so registration and production can't be split across
+ * two processes without round-tripping that id back into Node first).
+ *
+ * AVRO, not JSON: source-to-query-streaming.spec.ts's own registerJsonSchema/produceKafkaMessage
+ * pair (schemaType "JSON") only feeds provisa's OWN discovery client
+ * (provisa.kafka.schema_registry.discover_topic_columns) — verified LIVE that Trino's native kafka
+ * connector's CONFLUENT table-description-supplier rejects it outright
+ * (`FederationError(... NOT_SUPPORTED, message="Not supported schema: JSON")`), so this harness
+ * needs a real Avro-encoded message for Trino's own discovery/decode path. No avro/fastavro/
+ * confluent-kafka dependency exists in this repo (checked before writing this) — the record here
+ * is two flat string fields, simple enough to hand-encode (Avro string = zigzag-varint length +
+ * UTF-8 bytes; Confluent wire format = 0x00 magic byte + 4-byte big-endian schema id + Avro body). */
+function produceKafkaAvroMessage(topic: string, row: Record<string, string>): void {
+  const script =
+    "import asyncio, json, struct, sys, urllib.request\n" +
+    "from aiokafka import AIOKafkaProducer\n" +
+    "topic, registry_url, bootstrap, row = sys.argv[1], sys.argv[2], sys.argv[3], json.loads(sys.argv[4])\n" +
+    "schema = json.dumps({\n" +
+    "    'type': 'record', 'name': 'KafkaSwapValue',\n" +
+    "    'fields': [{'name': k, 'type': 'string'} for k in row],\n" +
+    "})\n" +
+    "req = urllib.request.Request(\n" +
+    "    f'{registry_url}/subjects/{topic}-value/versions',\n" +
+    "    data=json.dumps({'schema': schema}).encode(), method='POST',\n" +
+    "    headers={'Content-Type': 'application/vnd.schemaregistry.v1+json'},\n" +
+    ")\n" +
+    "schema_id = json.loads(urllib.request.urlopen(req, timeout=15).read())['id']\n" +
+    "def encode_str(s):\n" +
+    "    b = s.encode('utf-8')\n" +
+    "    n = len(b) << 1\n" +
+    "    varint = bytearray()\n" +
+    "    while True:\n" +
+    "        chunk = n & 0x7f\n" +
+    "        n >>= 7\n" +
+    "        varint.append(chunk | 0x80 if n else chunk)\n" +
+    "        if not n:\n" +
+    "            break\n" +
+    "    return bytes(varint) + b\n" +
+    "payload = b''.join(encode_str(row[k]) for k in row)\n" +
+    "message = b'\\x00' + struct.pack('>I', schema_id) + payload\n" +
+    "async def main():\n" +
+    "    p = AIOKafkaProducer(bootstrap_servers=bootstrap)\n" +
+    "    await p.start()\n" +
+    "    try:\n" +
+    "        await p.send_and_wait(topic, message)\n" +
+    "    finally:\n" +
+    "        await p.stop()\n" +
+    "asyncio.run(main())\n";
+  execFileSync(
+    PYTHON,
+    [
+      "-c",
+      script,
+      topic,
+      `http://localhost:${E2E_KAFKA_SCHEMA_REGISTRY_PORT}`,
+      `localhost:${E2E_KAFKA_PORT}`,
+      JSON.stringify(row),
+    ],
+    { stdio: "inherit" },
+  );
+}
+
+/** kafka (REQ-1730): unlike every other type here, Trino reaches kafka through its OWN native
+ * connector's CONFLUENT table-description-supplier mode — it auto-discovers every topic with a
+ * registered Confluent schema, with no per-topic static declaration (`TrinoKafkaConnector.
+ * details()`, trino_connectors.py). The DuckDB leg is proven by registration alone (this harness
+ * never requeries DuckDB for a type — see runSwapCase); only the Trino leg's assertion actually
+ * reads the message back, via a REAL live scan of the topic, not a materialized copy. topic MUST
+ * equal sourceId: DuckDB's own "default"-schema register-table convention (REQ-1745) compiles a
+ * table whose name is literally source_id, and Confluent's subject-name strategy ("<topic>-value")
+ * derives the discovered table name from the topic — setting them equal is what makes the same
+ * logical table name resolve under both engines. */
+export async function registerKafka(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_kafka_${stamp}`;
+  const topic = sourceId;
+  produceKafkaAvroMessage(topic, { id: "kafka-1", value: "hello-kafka" });
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("kafka");
+  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Port/).fill(String(E2E_KAFKA_PORT));
+  await page
+    .getByTestId("kafka-schema-registry-input")
+    .fill(`http://localhost:${E2E_KAFKA_SCHEMA_REGISTRY_PORT}`);
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "default", sourceId);
+  await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({
+    timeout: 30000,
+  });
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "kafka",
+    sourceId,
+    sql: `SELECT id, value FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toEqual([["kafka-1", "hello-kafka"]]);
     },
     reachableOn: ["trino"],
   };

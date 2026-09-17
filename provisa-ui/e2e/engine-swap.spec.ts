@@ -73,6 +73,9 @@ import {
   E2E_EXASOL_FINGERPRINT_FILE,
   E2E_EXASOL_PORT,
   E2E_GRPC_REMOTE_PORT,
+  DOCKER_NETWORK,
+  E2E_KAFKA_PORT,
+  E2E_KAFKA_SCHEMA_REGISTRY_PORT,
   FILE_LAKE_HOST_DIR,
   GRPC_REMOTE_SERVER_MODULE,
   MAKE_FILE_LAKE_FIXTURES,
@@ -100,6 +103,7 @@ import {
   registerFirebird,
   registerGraphqlRemote,
   registerGrpcRemote,
+  registerKafka,
   registerMongodb,
   registerNeo4j,
   registerOpenapi,
@@ -391,6 +395,29 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     test("exasol: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
     }) => runSwapCase(page, () => registerExasol(page, () => exasolFingerprint)));
+  });
+
+  test.describe("kafka", () => {
+    test.beforeAll(() => {
+      test.setTimeout(180000);
+      provisionSwapSource(
+        "kafka",
+        "up",
+        {
+          PROVISA_DEMO_KAFKA_PORT: String(E2E_KAFKA_PORT),
+          PROVISA_DEMO_KAFKA_SCHEMA_REGISTRY_PORT: String(E2E_KAFKA_SCHEMA_REGISTRY_PORT),
+        },
+        DOCKER_NETWORK,
+      );
+    });
+    test.afterAll(async () => {
+      await provisionSwapSource("kafka", "down");
+      await sweepZombieSwapSources();
+    });
+
+    test("kafka: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerKafka(page)));
   });
 
   // Every demo/sources/<name> RDBMS below primes the identical widgets(id, name) + 3 rows shape

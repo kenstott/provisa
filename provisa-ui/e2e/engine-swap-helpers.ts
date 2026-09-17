@@ -64,6 +64,14 @@ export const E2E_EXASOL_FINGERPRINT_FILE = path.join(
 export const E2E_GRPC_REMOTE_PORT = 33091;
 export const GRPC_REMOTE_SERVER_MODULE = "demo.grpc_remote_server.server";
 
+// REQ-1730: kafka needs its own broker + Confluent Schema Registry (demo/sources/kafka's compose
+// fixture — the same one source-to-query-streaming.spec.ts's 378xx-range provisionKafka() uses,
+// started here instead via provisionSwapSource so it tears down through the shared
+// sweepZombieSwapSources path). Distinct port range from every other E2E_*_PORT here AND from
+// source-to-query-streaming.spec.ts's own 378xx range, per three-instance-isolation.
+export const E2E_KAFKA_PORT = 33101;
+export const E2E_KAFKA_SCHEMA_REGISTRY_PORT = 33102;
+
 export async function waitForPort(port: number, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -111,6 +119,12 @@ export const RDB_WIDGETS_PORTS: Record<string, number> = {
 // required, which CI (ubuntu-latest) is and local arm64 dev is not.
 export const RUNNING_IN_CI = process.env.CI === "true";
 
+// Trino's own compose project's default network (docker-compose.core.yml, no explicit `networks:`
+// block — verified live: `docker inspect provisa-trino-1` shows it on `provisa_default`, already
+// aliased "trino"). Same default source-to-query-olap-lake-trino.spec.ts/splunk-connector.spec.ts
+// use for their own `--network`/`--network-alias` container joins.
+export const DOCKER_NETWORK = process.env.PROVISA_E2E_DOCKER_NETWORK ?? "provisa_default";
+
 // One source = one test (REQ-1730 redesign, 2026-09-16): every demo/sources/<name> this harness
 // uses provisions and tears down its OWN container, scoped to the ONE test that needs it — never
 // the whole fleet just because one type is under test. A single `--grep mysql` run boots exactly
@@ -118,10 +132,25 @@ export const RUNNING_IN_CI = process.env.CI === "true";
 // demo/sources/<name> directory works here as long as its compose.yml takes
 // PROVISA_DEMO_<NAME>_PORT (every RDBMS fixture prime.py checked live during this extension
 // does — see RDB_WIDGETS_PORTS).
+//
+// `network` (REQ-1730 kafka): provision.py's own `--network` join (joins the fixture's container
+// onto an existing network under an alias, e.g. "kafka") — every other type here reaches Trino
+// fine through reprovisionSourceOnEngine's plain host.docker.internal rewrite (a single-hop JDBC/
+// HTTP connection), but Kafka's wire protocol is two-hop: a client's bootstrap connection gets
+// handed back the broker's OWN advertised address for the listener it connected through, then
+// reconnects using THAT address for every subsequent request (metadata/split-listing). kafka's
+// compose fixture advertises its HOST listener as literally "localhost:<port>" (correct for the
+// host-side aiokafka/schema-registry scripts this harness's own registrar uses), which is exactly
+// as unreachable from inside Trino's container as a bare host.docker.internal rewrite would be —
+// confirmed live: `FederationError(... KAFKA_SPLIT_ERROR, "Cannot list splits for table ...")`.
+// Joining kafka's container onto Trino's OWN network instead gives Trino a route to the fixture's
+// existing internal PLAINTEXT listener (already advertised as "kafka:29092", matching its
+// `hostname: kafka` — no compose.yml change needed), which needs no redirect at all.
 export function provisionSwapSource(
   name: string,
   cmd: "up" | "down",
   extraEnv: Record<string, string> = {},
+  network?: string,
 ): void {
   const env = {
     ...process.env,
@@ -135,10 +164,18 @@ export function provisionSwapSource(
     ...extraEnv,
   };
   try {
-    execFileSync(PYTHON, [PROVISION, cmd, "--prefix", SWAP_PREFIX, name], {
-      stdio: "pipe",
-      env,
-    });
+    execFileSync(
+      PYTHON,
+      [
+        PROVISION,
+        cmd,
+        "--prefix",
+        SWAP_PREFIX,
+        ...(cmd === "up" && network ? ["--network", network] : []),
+        name,
+      ],
+      { stdio: "pipe", env },
+    );
   } catch (e) {
     if (cmd === "down") return; // a project that was never started removes nothing
     throw e;
@@ -271,8 +308,25 @@ export async function reprovisionSourceOnEngine(engine: EngineTarget, sourceId: 
   // rewrite); only the copy replayed against a Dockerized engine gets translated. `host` is not
   // always a bare hostname — prometheus stores a full URL there (e.g. "http://localhost:39090",
   // SourceFormFieldsExtended.tsx) — so replace the substring rather than requiring an exact match.
-  if (engine.name === "trino" && src!.host) {
+  if (engine.name === "trino" && src!.type === "kafka") {
+    // kafka's own wire protocol is two-hop (see provisionSwapSource's `network` param doc): a
+    // plain host.docker.internal rewrite of the HOST listener's port gets a bootstrap connection
+    // through, but every subsequent split-listing request reuses whatever address the broker
+    // advertises for that listener — "localhost:<port>", unreachable from inside Trino's
+    // container. registerKafka's caller joins the fixture onto Trino's OWN network under alias
+    // "kafka" (provisionSwapSource's `network`), so route Trino straight at the fixture's existing
+    // internal PLAINTEXT listener (already advertised as "kafka:29092") instead of the published
+    // HOST one.
+    src!.host = "kafka";
+    src!.port = 29092;
+  } else if (engine.name === "trino" && src!.host) {
     src!.host = src!.host.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal");
+  }
+  // kafka stores its Schema Registry URL in `database` (SourceFormFieldsExtended.tsx's isKafka
+  // block, TrinoKafkaConnector.details() reads it) — same host-unreachable-from-container problem
+  // as `host` above, and the regex is a no-op for every other type's non-URL `database` value.
+  if (engine.name === "trino" && src!.database) {
+    src!.database = src!.database.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal");
   }
   // Unlike `host` above, a file-based source's `path` (delta_lake/iceberg/csv/parquet/files)
   // needs NO rewrite here: docker-compose.core.yml mounts FILE_LAKE_HOST_DIR into Trino's

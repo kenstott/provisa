@@ -375,8 +375,16 @@ async def _call_discover(
                 "discovery.kafka_topic_hint_required",
                 "Kafka discovery requires a 'topic' hint.",
             )
-        registry_url = hints.schema_registry_url or (row.get("federation_hints") or {}).get(
-            "schema_registry_url"
+        # REQ-1730: source.database is the persistent Schema Registry URL field on the kafka
+        # Sources form (SourceFormFieldsExtended.tsx's isKafka block) — the same one
+        # TrinoKafkaConnector.details() reads to build its CONFLUENT catalog properties. Falling
+        # back to it here means the one field an operator fills in covers both engines' discovery,
+        # instead of requiring federation_hints.schema_registry_url (no persistent UI writer) or a
+        # transient per-Discover-call hint to be set again for DuckDB alone.
+        registry_url = (
+            hints.schema_registry_url
+            or (row.get("federation_hints") or {}).get("schema_registry_url")
+            or row.get("database")
         )
         if registry_url:
             value_format = (

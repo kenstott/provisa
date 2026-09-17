@@ -57198,6 +57198,54 @@
     identity-mount volume line (same absolute host path both sides), matching the existing
     `FILE_LAKE_HOST_DIR` precedent for delta_lake/iceberg. Verified passing live end to end after
     both fixes.)
+
+    (Amended 2026-09-17, KAFKA FIXED: 32nd->33rd Trino-reachable type, and the LAST of this
+    session's re-verified exclusions to actually need new integration work — the user's own
+    question ("does it derive its catalog from confluent kafka catalog?") identified the correct
+    mechanism. Unlike every other type here, kafka's static `kafka_sources[]`/
+    `register_kafka_catalog` path (app_loaders.py's `_process_kafka_sources`) writes a SEPARATE,
+    config-only `raw_config["tables"]` registry, never the dynamic `registered_tables` DB rows
+    every other type uses — genuinely incompatible with this harness's "register once" pattern.
+    The fix instead routes kafka through the SAME dynamic `create_catalog`/
+    `_register_source_on_engine` path every other type already uses:
+    `TrinoKafkaConnector.details()` (trino_connectors.py) now builds real Trino kafka connector
+    properties (`kafka.nodes`, `kafka.table-description-supplier=CONFLUENT`,
+    `kafka.confluent-schema-registry-url`) directly from the Source row instead of returning `{}`
+    unconditionally — using Trino's native kafka connector's CONFLUENT table-description-supplier
+    mode, which auto-discovers every topic with a registered Confluent schema, no per-topic static
+    declaration needed. With no schema registry URL set, `details()` still returns `{}` (kafka
+    stays Trino-unreachable, same as before) — a schema registry is a hard requirement for Trino
+    reach, not an enhancement. The registry URL travels through the Sources form's existing
+    "Schema Registry URL" kafka field (`SourceFormFieldsExtended.tsx`'s `isKafka` block, already
+    wired to `source.database` — no new UI or backend field needed, contrary to this session's
+    earlier assumption that one had to be added).
+
+    Two more gaps surfaced live, both fixed: (1) Trino's CONFLUENT supplier rejects a JSON-typed
+    Confluent schema outright (`NOT_SUPPORTED: Not supported schema: JSON`) — the swap harness's
+    kafka registrar hand-encodes a real Avro/Confluent-wire-format message instead (no avro/
+    fastavro/confluent-kafka dependency exists in this repo; the record is two flat string fields,
+    simple enough to hand-encode: Avro string = zigzag-varint length + UTF-8 bytes, Confluent wire
+    format = 0x00 magic byte + 4-byte big-endian schema id + Avro body). (2) kafka's wire protocol
+    is two-hop, unlike every other type's single-hop JDBC/HTTP connection: a client's bootstrap
+    connection is handed back the broker's OWN advertised address for the listener it connected
+    through, then reconnects using THAT address for every subsequent request — the demo fixture's
+    HOST listener advertises literally `localhost:<port>`, exactly as unreachable from inside
+    Trino's container as the harness's usual `host.docker.internal` rewrite would leave it
+    (reproduced live: `FederationError(... KAFKA_SPLIT_ERROR, "Cannot list splits for table
+    ...")`). Fixed by joining the kafka fixture onto Trino's OWN Docker network under alias
+    "kafka" (`provision.py`'s existing `--network`/`--network-alias` join, already used by
+    splunk-connector.spec.ts/source-to-query-olap-lake-trino.spec.ts for the same class of
+    problem) and routing the Trino-side replay straight at the fixture's existing internal
+    PLAINTEXT listener (already advertised as `kafka:29092`, matching its compose `hostname:
+    kafka` — no compose.yml change needed) instead of the published HOST port.
+
+    Also fixed along the way: `discovery_schema.py`'s kafka branch (REQ-1767's discover-schema
+    flow, DuckDB-side) read its Confluent registry URL only from a transient per-Discover-call
+    hint or `federation_hints.schema_registry_url` (which nothing persists via the UI) — never
+    from the SAME `source.database` field `TrinoKafkaConnector.details()` now reads, so the one
+    field an operator fills in on the Sources form silently covered only Trino's discovery, not
+    DuckDB's. `registry_url`'s resolution now falls back to `row.get("database")` last, so the
+    single persistent field covers both engines. Verified passing live end to end.)
   code:
   - provisa/api/app_loaders.py
   - provisa/api/admin/schema_mutation.py

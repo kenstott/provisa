@@ -888,11 +888,25 @@ class TrinoKafkaConnector(_TrinoConnector):
         return Capability(predicate_pushdown=True)
 
     def details(self, source: Source) -> dict:
-        # Kafka catalog props are built per ``kafka_sources[]`` entry, not from a Source row, by
-        # trino_catalog_files.kafka_catalog_props — Kafka registers via its own create_kafka_catalog
-        # path. This connector exists so Kafka is REACHABLE (in engine.connectors) for federate().
-        del source
-        return {}
+        # REQ-1730: Trino's native kafka connector needs a Confluent Schema Registry to discover
+        # topics (CONFLUENT table-description-supplier) — with none configured there is nothing for
+        # Trino to scan, so the source stays unreachable under Trino (create_catalog's `if not
+        # props: return` skips catalog creation) the same as before this connector built real
+        # properties. The Sources form's kafka "Schema Registry URL" field writes to source.database
+        # (SourceFormFieldsExtended.tsx's isKafka block); host/port combine into kafka.nodes the same
+        # way push_wiring.py's CDC listener builds bootstrap_servers (REQ-1766).
+        if not source.database:
+            return {}
+        from provisa.core.secrets import resolve_secrets
+
+        host = resolve_secrets(source.host or "")
+        bootstrap_servers = f"{host}:{source.port}" if source.port else host
+        return {
+            "kafka.nodes": bootstrap_servers,
+            "kafka.hide-internal-columns": "false",
+            "kafka.table-description-supplier": "CONFLUENT",
+            "kafka.confluent-schema-registry-url": resolve_secrets(source.database),
+        }
 
 
 def build_trino_connectors() -> list[_TrinoConnector]:
