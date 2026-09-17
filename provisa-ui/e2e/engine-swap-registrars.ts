@@ -37,6 +37,7 @@ import {
 } from "./source-to-query-helpers";
 import {
   E2E_AIRPORT_PORT,
+  E2E_EXASOL_PORT,
   E2E_FIREBIRD_PORT,
   E2E_SINGLESTORE_PORT,
   FILE_LAKE_HOST_DIR,
@@ -825,6 +826,50 @@ export async function registerSinglestore(page: Page): Promise<Registration> {
     // Materializable on DuckDB (executor/drivers/registry.py's `_make_mysql`, MySQL
     // wire-compatible) AND live-attached on Trino (a real JDBC connector) — the full swap, like
     // the original 9, not the DuckDB-only dead end firebird/airport are stuck in.
+    reachableOn: ["trino"],
+  };
+}
+
+/** exasol: same amd64-only/CI-gated shape as singlestore above, plus one more wrinkle —
+ * Exasol 8 always serves TLS with a self-signed certificate regenerated every container boot
+ * (demo/sources/exasol/prime.py's own module doc), so there is no fixed fingerprint to hardcode.
+ * The caller reads it back from PROVISA_DEMO_EXASOL_FINGERPRINT_FILE right after provisioning
+ * (mirrors source-to-query-olap-lake.spec.ts's own exasol case) and passes it in via this
+ * accessor, the same closure-over-a-file-scope-variable shape registerFileLake uses for
+ * deltaTablePath/icebergTablePath. Trino reaches exasol through the generic JDBC connector
+ * (models.py's jdbc_url() already has a real exasol branch, REQ-1097) — no connector fix needed
+ * here, unlike delta_lake/iceberg/snowflake/bigquery earlier this session. */
+export async function registerExasol(page: Page, fingerprint: () => string): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_exasol_${stamp}`;
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("exasol");
+  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Port/).fill(String(E2E_EXASOL_PORT));
+  await page.getByLabel(/^Username/).fill("sys");
+  await page.getByLabel(/^Password/).fill("exasol");
+  await page.getByLabel(/^Database/).fill("PROVISA");
+  await page.getByLabel(/^Authentication/).selectOption("tls_fingerprint");
+  await page.getByLabel(/TLS Fingerprint/).fill(fingerprint());
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "PROVISA", "WIDGETS");
+  await expect(page.getByTestId("register-table-col-selected-NAME")).toBeVisible({
+    timeout: 60000,
+  });
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "exasol",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(3);
+      expect(rows[0]).toEqual(["1", "Widget A"]);
+      expect(rows[2]).toEqual(["3", "Widget C"]);
+    },
     reachableOn: ["trino"],
   };
 }

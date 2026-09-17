@@ -65,6 +65,8 @@ import { test, expect } from "./coverage";
 import { startDemoSources, removeDemoSources } from "./demo-source-containers";
 import {
   CLOUD_WAREHOUSE_SEED,
+  E2E_EXASOL_FINGERPRINT_FILE,
+  E2E_EXASOL_PORT,
   FILE_LAKE_HOST_DIR,
   MAKE_FILE_LAKE_FIXTURES,
   PYTHON,
@@ -81,6 +83,7 @@ import {
   registerBigquery,
   registerCassandra,
   registerElasticsearch,
+  registerExasol,
   registerFileLake,
   registerFiles,
   registerFirebird,
@@ -285,6 +288,36 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     test("singlestore: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
     }) => runSwapCase(page, () => registerSinglestore(page)));
+  });
+
+  test.describe("exasol", () => {
+    test.skip(
+      !RUNNING_IN_CI,
+      "exasol/docker-db needs privileged mode + several GB RAM + a multi-minute cold init, and " +
+        "is amd64-only (unbootable under arm64 emulation) — runs for real in CI (ubuntu-latest " +
+        "is a genuine amd64 host); see source-to-query-olap-lake.spec.ts's identical gate",
+    );
+    let exasolFingerprint = "";
+    test.beforeAll(() => {
+      if (!RUNNING_IN_CI) return;
+      test.setTimeout(900000); // EXAStorage cold init genuinely takes minutes, not seconds
+      if (fs.existsSync(E2E_EXASOL_FINGERPRINT_FILE)) fs.rmSync(E2E_EXASOL_FINGERPRINT_FILE);
+      provisionSwapSource("exasol", "up", {
+        PROVISA_DEMO_EXASOL_PORT: String(E2E_EXASOL_PORT),
+        PROVISA_DEMO_EXASOL_FINGERPRINT_FILE: E2E_EXASOL_FINGERPRINT_FILE,
+      });
+      exasolFingerprint = fs.readFileSync(E2E_EXASOL_FINGERPRINT_FILE, "utf8").trim();
+    });
+    test.afterAll(async () => {
+      if (!RUNNING_IN_CI) return;
+      await provisionSwapSource("exasol", "down");
+      if (fs.existsSync(E2E_EXASOL_FINGERPRINT_FILE)) fs.rmSync(E2E_EXASOL_FINGERPRINT_FILE);
+      await sweepZombieSwapSources();
+    });
+
+    test("exasol: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerExasol(page, () => exasolFingerprint)));
   });
 
   // Every demo/sources/<name> RDBMS below primes the identical widgets(id, name) + 3 rows shape

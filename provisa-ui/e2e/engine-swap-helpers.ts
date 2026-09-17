@@ -16,6 +16,7 @@
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,6 +47,15 @@ export const FILE_LAKE_HOST_DIR = path.resolve(ROOT, ".e2e-file-lake");
 export const E2E_FIREBIRD_PORT = 33051;
 export const E2E_AIRPORT_PORT = 35061;
 export const E2E_SINGLESTORE_PORT = 33071;
+export const E2E_EXASOL_PORT = 33081;
+// Exasol's TLS certificate is regenerated every container boot (demo/sources/exasol/prime.py's own
+// module doc) — no fixed fingerprint to hardcode, so prime.py writes the one THIS run's container
+// actually presents to a file the test reads back after provisioning, same as
+// source-to-query-olap-lake.spec.ts's own exasol case.
+export const E2E_EXASOL_FINGERPRINT_FILE = path.join(
+  os.tmpdir(),
+  "provisa-e2e-swap-exasol-fingerprint.txt",
+);
 
 // Both gates are checked BEFORE provisioning, not just before registration: an unlicensed or
 // arm64-emulated singlestoredb-dev container never becomes healthy (or, under arm64, never even
@@ -85,7 +95,11 @@ export const RUNNING_IN_CI = process.env.CI === "true";
 // demo/sources/<name> directory works here as long as its compose.yml takes
 // PROVISA_DEMO_<NAME>_PORT (every RDBMS fixture prime.py checked live during this extension
 // does — see RDB_WIDGETS_PORTS).
-export function provisionSwapSource(name: string, cmd: "up" | "down"): void {
+export function provisionSwapSource(
+  name: string,
+  cmd: "up" | "down",
+  extraEnv: Record<string, string> = {},
+): void {
   const env = {
     ...process.env,
     PROVISA_DEMO_FIREBIRD_PORT: String(E2E_FIREBIRD_PORT),
@@ -95,6 +109,7 @@ export function provisionSwapSource(name: string, cmd: "up" | "down"): void {
     ...(name in RDB_WIDGETS_PORTS
       ? { [`PROVISA_DEMO_${name.toUpperCase()}_PORT`]: String(RDB_WIDGETS_PORTS[name]) }
       : {}),
+    ...extraEnv,
   };
   try {
     execFileSync(PYTHON, [PROVISION, cmd, "--prefix", SWAP_PREFIX, name], {
