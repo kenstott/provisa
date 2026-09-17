@@ -466,7 +466,8 @@ export function SourcesPage() {
     if (
       (s.type === "delta_lake" || s.type === "iceberg" ||
         s.type === "snowflake" || s.type === "databricks" || s.type === "bigquery" ||
-        s.type === "exasol" || s.type === "fabric" || s.type === "synapse") &&
+        s.type === "exasol" || s.type === "sqlserver" || s.type === "fabric" ||
+        s.type === "synapse") &&
       s.federationHintsJson
     ) {
       try {
