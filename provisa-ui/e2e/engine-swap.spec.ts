@@ -427,6 +427,67 @@ function registerFileLake(sourceType: "delta_lake" | "iceberg", tablePath: () =>
   };
 }
 
+/** csv/parquet: single-file sources (REQ-1732). Trino's `file` connector (TrinoCsvConnector/
+ * TrinoParquetConnector, trino_connectors.py) names a glob-matched file's table after the file's
+ * own basename, with no override — but DuckDB records this source's one table as "main".<source
+ * id> (matching delta_lake/iceberg's own fixed-schema convention), and the swap harness needs
+ * BOTH engines to resolve the identical schema.table pair. So this copies the shared demo fixture
+ * into a fresh, never-deleted subdirectory of FILE_LAKE_HOST_DIR under a filename that IS the
+ * source id — the resulting Trino table is then named exactly `sourceId`, matching DuckDB. Reuses
+ * the same identity-mounted directory delta_lake/iceberg already use (docker-compose.core.yml);
+ * no new mount needed since the `file` connector has no embedded-location check to satisfy.
+ *
+ * parquet initially looked unreachable (zero tables under the connector's LINQ4J default) — root
+ * cause turned out to be that connector's Parquet statistics extractor calling Hadoop's
+ * UserGroupInformation.getCurrentUser(), which throws on the JDK 25 Trino runs (JEP 486 removed
+ * the Security Manager API it depends on) and silently excludes the table rather than failing
+ * loud. execution-engine=DUCKDB (documented in the plugin's own config as reading "CSV/Parquet
+ * natively without Hadoop") sidesteps it entirely — verified live 2026-09-17 against both a
+ * single parquet file and a multi-file recursive glob. */
+function registerSingleFile(
+  sourceType: "csv" | "parquet",
+  demoFixture: string,
+  fieldLabel: RegExp,
+  query: (table: string) => string,
+  assertRows: (rows: string[][]) => void,
+) {
+  return async (page: Page): Promise<Registration> => {
+    const stamp = Date.now();
+    // NOT the usual "e2e_swap_" prefix every other registrar in this file uses: Trino's `file`
+    // connector derives a table name from the matched file's OWN basename by running it through
+    // some identifier-normalizing pass that splits a bare digit sandwiched between two letters
+    // with no separator — "e2e" (e-2-e, no underscore) comes back as "e2_e" (verified live
+    // 2026-09-17: a file literally named e2e_swap_csv_<stamp>.csv produced a table named
+    // e2_e_swap_csv_<stamp>, never matching the schema.table pair DuckDB recorded under the
+    // unmangled source id). "swap_" alone has no such digit-between-letters run, so it survives
+    // unmangled — verified against the same connector.
+    const sourceId = `swap_${sourceType}_${stamp}`;
+    const runDir = path.join(FILE_LAKE_HOST_DIR, `run_${stamp}`);
+    fs.mkdirSync(runDir, { recursive: true });
+    const ext = sourceType === "csv" ? "csv" : "parquet";
+    const filePath = path.join(runDir, `${sourceId}.${ext}`);
+    fs.copyFileSync(path.resolve(ROOT, demoFixture), filePath);
+
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption(sourceType);
+    await page.getByLabel(fieldLabel).fill(filePath);
+    await submitSourceAndExpectListed(page, sourceId);
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "main", sourceId);
+    const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+    return {
+      label: sourceType,
+      sourceId,
+      sql: query(registered),
+      assertRows,
+      reachableOn: ["trino"],
+    };
+  };
+}
+
 /** snowflake: the first cloud-warehouse-class type in this harness. No docker fixture (a real
  * warehouse, not a container) — cloud_warehouse_seed.py (already proven by
  * source-to-query-cloud-warehouse.spec.ts's own live-Snowflake test) seeds/tears down
@@ -1335,5 +1396,41 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     test(`snowflake: register once under DuckDB, answer identical queries under every other engine`, async ({
       page,
     }) => runSwapCase(page, () => registerSnowflake(page)));
+  });
+
+  test.describe("csv", () => {
+    test(`csv: register once under DuckDB, answer identical queries under every other engine`, async ({
+      page,
+    }) =>
+      runSwapCase(page, () =>
+        registerSingleFile(
+          "csv",
+          "demo/files/customers.csv",
+          /CSV File Path/,
+          (table) => `SELECT id, first_name, email FROM pet_store.${table} ORDER BY id`,
+          (rows) => {
+            expect(rows).toHaveLength(15);
+            expect(rows[0]).toEqual(["1", "Alice", "alice@example.com"]);
+          },
+        )(page),
+      ));
+  });
+
+  test.describe("parquet", () => {
+    test(`parquet: register once under DuckDB, answer identical queries under every other engine`, async ({
+      page,
+    }) =>
+      runSwapCase(page, () =>
+        registerSingleFile(
+          "parquet",
+          "demo/files/products.parquet",
+          /Parquet File Path/,
+          (table) => `SELECT id, sku, name, price FROM pet_store.${table} ORDER BY id`,
+          (rows) => {
+            expect(rows).toHaveLength(15);
+            expect(rows[0]).toEqual(["1", "WIDGET-A", "Widget Alpha", "9.99"]);
+          },
+        )(page),
+      ));
   });
 });

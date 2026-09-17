@@ -459,6 +459,19 @@ def _hive_adls_props(source: Source, props: dict) -> dict:
 
 
 class TrinoFilesConnector(_TrinoConnector):
+    """The ``file`` catalog's own config docstring (extracted from the bundled
+    calcite-trino-file plugin, trino/plugins/trino-file/) names the trade-off directly:
+    "execution engine: DUCKDB (default), PARQUET, LINQ4J or ARROW. DUCKDB reads CSV/Parquet
+    natively without Hadoop; PARQUET converts via Hadoop, which is incompatible with the JDK 25
+    that Trino requires." LINQ4J (the value this connector used before) turned out to have the
+    same problem transitively for any glob containing a .parquet file — its own Parquet
+    statistics extractor calls Hadoop's UserGroupInformation.getCurrentUser(), which throws
+    UnsupportedOperationException("getSubject is not supported") on JDK 25 (Security Manager
+    fully removed, JEP 486) and silently EXCLUDES the whole table rather than failing loud
+    (verified live 2026-09-17 via the container's own docker logs). DUCKDB has no such
+    dependency and was verified live against both a single file and this exact multi-file
+    recursive glob (REQ-842/REQ-1730)."""
+
     source_type = "files"
     trino_connector = "file"
     mechanism = Mechanism.SCAN  # the file catalog reads the glob in place — no copy (REQ-951)
@@ -477,9 +490,66 @@ class TrinoFilesConnector(_TrinoConnector):
             "glob": resolve_secrets(source.path),
             "recursive": "true",
             "schema-name": source.id.replace("-", "_"),
-            "execution-engine": "LINQ4J",
+            "execution-engine": "DUCKDB",
             "case-insensitive-name-matching": "true",
         }
+
+
+class _TrinoSingleFileConnector(_TrinoConnector):
+    """csv/parquet: a single-file instance of the same ``file`` catalog TrinoFilesConnector uses
+    for a glob of many (REQ-842/REQ-1730) — csv/parquet had no Trino connector class at all before
+    this (same empty-catalog-properties gap delta_lake/iceberg and snowflake had), so single-file
+    sources were never Trino-reachable. The ``file`` connector exposes one table per glob-matched
+    file, named after the file's own basename (verified live via a northwind glob, whose
+    customers.csv/orders.csv/products.csv become tables "customers"/"orders"/"products") — the
+    table name isn't otherwise configurable.
+
+    DuckDBCsvConnector/DuckDBParquetConnector (connector_duckdb.py) instead register ONE view
+    named after the SOURCE ID under a fixed "main" schema (REQ-1732) — the same schema/table pair
+    ``registered_tables`` records regardless of engine, so a source registered under DuckDB and
+    replayed under Trino (REQ-1730) must resolve to that exact "main".<source.id> pair here too.
+    schema-name is therefore fixed at "main" (isolated per-source already, since each source gets
+    its own Trino catalog); callers must point ``path`` at a file whose OWN basename already IS
+    the source id (a per-run copy — this class does not rename anything itself).
+
+    ``execution-engine: DUCKDB`` (see TrinoFilesConnector's own docstring for why) is what makes
+    parquet work here at all — the LINQ4J default this class started with silently excluded any
+    .parquet file (verified live 2026-09-17)."""
+
+    trino_connector = "file"
+    mechanism = Mechanism.SCAN
+
+    def capability(self) -> Capability:
+        return Capability()
+
+    def details(self, source: Source) -> dict:
+        import os
+
+        from provisa.core.secrets import resolve_secrets
+
+        if source.path is None:
+            raise ValueError(f"Source {source.id!r}: 'path' is required for {self.source_type}")
+        path = resolve_secrets(source.path)
+        # The literal single-file path is not itself a valid glob for this connector — verified
+        # live 2026-09-17: pointing `glob` straight at one file produced a catalog with zero
+        # tables. A wildcard matching within the file's own directory works (that directory holds
+        # exactly this one file, so the wildcard still resolves to exactly one table).
+        glob = f"{os.path.dirname(path)}/*"
+        return {
+            "glob": glob,
+            "recursive": "false",
+            "schema-name": "main",
+            "execution-engine": "DUCKDB",
+            "case-insensitive-name-matching": "true",
+        }
+
+
+class TrinoCsvConnector(_TrinoSingleFileConnector):
+    source_type = "csv"
+
+
+class TrinoParquetConnector(_TrinoSingleFileConnector):
+    source_type = "parquet"
 
 
 def _lake_metastore_uri() -> str:
@@ -782,6 +852,8 @@ def build_trino_connectors() -> list[_TrinoConnector]:
         TrinoIcebergConnector(),
         TrinoDeltaLakeConnector(),
         TrinoFilesConnector(),
+        TrinoCsvConnector(),
+        TrinoParquetConnector(),
         TrinoSharepointConnector(),
         TrinoSplunkConnector(),
         TrinoRedisConnector(),
