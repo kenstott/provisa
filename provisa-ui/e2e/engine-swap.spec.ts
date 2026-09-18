@@ -101,6 +101,7 @@ import {
   registerFileLake,
   registerFiles,
   registerFirebird,
+  registerGovdata,
   registerGraphqlRemote,
   registerGrpcRemote,
   registerIngest,
@@ -310,6 +311,17 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
   test("ingest: register once under DuckDB, answer identical queries under every other engine", async ({
     page,
   }) => runSwapCase(page, () => registerIngest(page)));
+
+  test.describe("govdata", () => {
+    test.skip(
+      !process.env.FREE_ASKAMERICA_KEY,
+      "no live AskAmerica/govdata credentials: set FREE_ASKAMERICA_KEY in the root .env",
+    );
+
+    test("govdata: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerGovdata(page)));
+  });
 
   // grpc_remote has no Trino connector — same landing path as graphql_remote/openapi above, just
   // gated on a Python subprocess this harness spawns itself rather than a container or an

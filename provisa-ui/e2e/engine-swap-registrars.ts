@@ -1051,6 +1051,39 @@ export async function registerOpenapi(page: Page): Promise<Registration> {
   };
 }
 
+// govdata (REQ-1730): no Trino connector (strategy.py's _MATERIALIZE_ONLY) — same landing path as
+// grpc_remote/graphql_remote/openapi above (rows written into the Postgres-backed materialize
+// store Trino reads via its provisa_admin catalog). A REAL external API (AskAmerica/US government
+// open data), no offline mock — same credential gate source-to-query-special-cases.spec.ts's own
+// govdata case uses (FREE_ASKAMERICA_KEY in .env). Unlike ingest, govdata's registered columns
+// come from live introspection (fetch_columns against the real API) so they already match its
+// landed shape — none of REQ-1730's ingest-specific landing_worklist/reconcile_table conflict
+// applies here.
+export async function registerGovdata(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_govdata_${stamp}`;
+  const apiKey = process.env.FREE_ASKAMERICA_KEY ?? "";
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("govdata");
+  await page.getByTestId("govdata-subject-WEATHER").check();
+  await page.getByTestId("govdata-api-key-input").fill(apiKey);
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "weather", "nws_stations");
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "govdata",
+    sourceId,
+    sql: `SELECT * FROM pet_store.${registered} LIMIT 5`,
+    assertRows: (rows) => expect(rows.length).toBeGreaterThan(0),
+    reachableOn: ["trino"],
+  };
+}
+
 export async function registerFirebird(page: Page): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_firebird_${stamp}`;

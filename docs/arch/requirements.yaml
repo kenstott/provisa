@@ -57296,6 +57296,18 @@
     reach it. Never register a production ingest table whose name contains an underscore
     immediately before a digit until this is fixed for real. Verified passing live end to end,
     twice, after both real fixes.)
+
+    (Amended 2026-09-17, GOVDATA ADDED: 34th->35th Trino-reachable type, clean registrar-only
+    add — no connector or landing-mechanism fix needed. govdata has no Trino connector
+    (strategy.py's `_MATERIALIZE_ONLY`), so it goes through the SAME `landing_worklist`/
+    `store_writer` path as grpc_remote/graphql_remote/openapi; unlike ingest, its registered
+    columns come from live introspection against the real AskAmerica/US-government-open-data API
+    (`fetch_columns`), so they already match its landed physical shape — none of ingest's
+    `reconcile_table` drift-mismatch conflict applies here. `registerGovdata`
+    (`engine-swap-registrars.ts`) mirrors `source-to-query-special-cases.spec.ts`'s own proven
+    govdata case verbatim (WEATHER subject, `weather.nws_stations`), gated the same way on
+    `FREE_ASKAMERICA_KEY` in `.env` — no offline mock exists for this type. Verified passing live
+    on the first attempt (~60s).)
   code:
   - provisa/api/app_loaders.py
   - provisa/api/admin/schema_mutation.py
