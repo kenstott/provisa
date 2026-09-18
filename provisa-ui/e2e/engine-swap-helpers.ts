@@ -913,6 +913,16 @@ export async function runRebootCase(
   registrar: (page: Page) => Promise<Registration>,
   hostRewriteTypes: Partial<Record<RebootEngineKind, string>> = { trino: "" },
   engineSequence: RebootEngineKind[] = ["trino"],
+  // kafka (REQ-1730, see registerKafka's own module doc): "the DuckDB leg is proven by
+  // registration alone... only the Trino leg's assertion actually reads the message back, via a
+  // REAL live scan of the topic, not a materialized copy" — DuckDB was NEVER meant to answer this
+  // type's query at all, unlike every other type here. runSwapCase (the original harness) never
+  // queries DuckDB for ANY type, so this gap was invisible until scenario 1 added a DuckDB
+  // baseline query as its OWN starting assertion. Reproduced live: kafka's baseline query came
+  // back `200 OK, []` even after a 60s poll-retry — not a timing issue, DuckDB genuinely has no
+  // row-level read path for kafka. Set true to skip the baseline query/assertion for a type with
+  // the same property; the reboot-and-query-under-the-target-engine loop below still runs.
+  skipDuckdbBaseline = false,
 ): Promise<void> {
   test.setTimeout(120000 + engineSequence.length * 180000);
   prepareRebootDataDir();
@@ -926,14 +936,13 @@ export async function runRebootCase(
       });
     }
     const registration = await withRebootApiRequest(page, () => registrar(page));
-    // A CDC-listener/push-wired type (kafka/websocket) needs its own wiring to catch up after
-    // EVERY reboot, not just after the original harness's replay — pollTimeoutMs is that type's
-    // own declared tolerance for that (see rss/websocket's own comment). queryRebootBackend's own
+    // A CDC-listener/push-wired type (websocket) needs its own wiring to catch up after EVERY
+    // reboot, not just after the original harness's replay — pollTimeoutMs is that type's own
+    // declared tolerance for that (see rss/websocket's own comment). queryRebootBackend's own
     // retry loop only retries on an HTTP failure, never on a successful-but-EMPTY response — the
-    // shape landing/CDC-wiring races actually take (reproduced live: kafka's own first query came
-    // back `200 OK, []`, never retried). When pollTimeoutMs is set, retry the WHOLE query call
-    // (fresh HTTP request each time, like trySqlOnPage's own poll loop) until rows are non-empty
-    // or the deadline passes.
+    // shape landing/CDC-wiring races actually take. When pollTimeoutMs is set, retry the WHOLE
+    // query call (fresh HTTP request each time, like trySqlOnPage's own poll loop) until rows are
+    // non-empty or the deadline passes.
     const pollFor = async (): Promise<string[][]> => {
       if (!registration.pollTimeoutMs) return queryRebootBackend(registration.sql);
       const deadline = Date.now() + registration.pollTimeoutMs;
@@ -944,8 +953,11 @@ export async function runRebootCase(
         await new Promise((r) => setTimeout(r, 3000));
       }
     };
-    let rows = await pollFor();
-    registration.assertRows(rows);
+    let rows: string[][] = [];
+    if (!skipDuckdbBaseline) {
+      rows = await pollFor();
+      registration.assertRows(rows);
+    }
 
     for (const engineKind of engineSequence) {
       const sourceType = hostRewriteTypes[engineKind];

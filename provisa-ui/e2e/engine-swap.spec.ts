@@ -1010,6 +1010,9 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
       page,
     }) => {
       test.setTimeout(180000);
+      // DuckDB DOES answer kafka through the materialize store (CDC landing, push_wiring.py) —
+      // it just needs the registered table's primary key declared, which registerKafka's own
+      // registrar was missing (fixed there, see its own comment) — no skipDuckdbBaseline needed.
       await runRebootCase(page, (p) => registerKafka(p), { trino: "kafka" });
     });
   });

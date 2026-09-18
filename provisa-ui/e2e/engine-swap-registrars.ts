@@ -1439,6 +1439,33 @@ function produceKafkaAvroMessage(topic: string, row: Record<string, string>): vo
   );
 }
 
+/** Plain-JSON kafka message — deliberately NOT Confluent Avro-wire-format. push_wiring.py's
+ * KafkaNotificationProvider.watch() (the DuckDB-side CDC listener) does a bare `json.loads
+ * (msg.value)`; an Avro-encoded message (magic byte + schema id + Avro body) fails that decode
+ * with json.JSONDecodeError, caught and logged as "invalid message" — SILENTLY, at a log level
+ * this harness's own stdout capture never surfaces (established this session: only stderr
+ * `print()` is visibly captured) — so the listener runs forever, produces nothing, and looks
+ * indistinguishable from "never received anything" without instrumenting push_wiring.py directly
+ * to prove it. Reproduced live via REQ-1730's own reboot-harness e2e: `_run_listener` started,
+ * subscribed, and simply never called its own landing callback, no matter how long the query
+ * retried or how much settling time was given before a SECOND avro message was sent. Mirrors
+ * source-to-query-streaming.spec.ts's own produceKafkaMessage (that file's own `E2E_KAFKA_PORT`
+ * differs — a distinct port range per three-instance-isolation — hence a local copy). */
+function produceKafkaJsonMessage(topic: string, row: Record<string, string>): void {
+  const script =
+    "import asyncio, json, sys\n" +
+    "from aiokafka import AIOKafkaProducer\n" +
+    "async def main():\n" +
+    `    p = AIOKafkaProducer(bootstrap_servers="localhost:${E2E_KAFKA_PORT}")\n` +
+    "    await p.start()\n" +
+    "    try:\n" +
+    "        await p.send_and_wait(sys.argv[1], json.dumps(json.loads(sys.argv[2])).encode())\n" +
+    "    finally:\n" +
+    "        await p.stop()\n" +
+    "asyncio.run(main())\n";
+  execFileSync(PYTHON, ["-c", script, topic, JSON.stringify(row)], { stdio: "inherit" });
+}
+
 /** kafka (REQ-1730): unlike every other type here, Trino reaches kafka through its OWN native
  * connector's CONFLUENT table-description-supplier mode — it auto-discovers every topic with a
  * registered Confluent schema, with no per-topic static declaration (`TrinoKafkaConnector.
@@ -1470,22 +1497,99 @@ export async function registerKafka(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({
     timeout: 30000,
   });
+  // CDC landing (push_wiring.py's wire_push_listeners) hard-requires a declared primary key to
+  // upsert/delete by — same as websocket's own registrar — without it the listener silently
+  // skips wiring ("no primary key column declared... skipping"), so DuckDB (which has no live
+  // kafka connector, only Trino does — see this file's own module doc) never lands a single row
+  // regardless of how long a query waits. Missing here before; reproduced live via REQ-1730's own
+  // reboot-harness e2e (a genuine restart with no mutation replay — the first harness that ever
+  // exercised DuckDB's own kafka leg instead of relying solely on Trino's live connector).
+  await page.getByTestId("register-table-col-pk-id").check();
   const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  // push_wiring.py's _build_provider reads live.kafka.topic off the REGISTERED TABLE row — no
+  // fallback to the table/source name, so it must be set explicitly or the listener never starts
+  // ("no live.kafka.topic configured — skipping", the exact silent-zero-rows failure this fixes).
+  // The Register Table form has no field for it at all (LiveDeliveryFieldset only renders in
+  // TableEditForm, the EDIT flow); mirrors registerGraphqlRemote's own follow-up updateTable call
+  // — same minimal-required-fields shape (sourceId/domainId/schemaName/tableName/columns), adding
+  // `live` on top. Missing here before; reproduced live via REQ-1730's own reboot-harness e2e.
+  //
+  // domainId must echo back whatever registration already assigned it (a single-domain config
+  // auto-claims "pet-store") — "" reads as a NEW claim attempt and the domain-conflict check
+  // (first-come ownership) refuses it: "Table ... is already claimed by domain 'pet-store'".
+  const domainRes = await page.request.post("/admin/graphql", {
+    data: { query: "{ tables { sourceId domainId } }" },
+  });
+  const domainTables = (await domainRes.json()).data.tables as {
+    sourceId: string;
+    domainId: string;
+  }[];
+  const existingDomainId = domainTables.find((t) => t.sourceId === sourceId)?.domainId ?? "";
+  const liveGrant = await page.request.post("/admin/graphql", {
+    data: {
+      query: `mutation($t: TableInput!) { updateTable(input: $t) { success message } }`,
+      variables: {
+        t: {
+          sourceId,
+          domainId: existingDomainId,
+          schemaName: "default",
+          tableName: sourceId,
+          columns: [
+            { name: "id", visibleTo: ["*"], isPrimaryKey: true },
+            { name: "value", visibleTo: ["*"] },
+          ],
+          live: { strategy: "kafka", kafka: { topic } },
+        },
+      },
+    },
+  });
+  expect(liveGrant.ok(), await liveGrant.text()).toBeTruthy();
+  const liveGrantJson = await liveGrant.json();
+  expect(liveGrantJson.errors, JSON.stringify(liveGrantJson.errors)).toBeUndefined();
+  expect(liveGrantJson.data.updateTable.success, liveGrantJson.data.updateTable.message).toBeTruthy();
+
+  // Two DISTINCT problems, both real, both needed fixing:
+  // (1) kafka_provider.py's consumer subscribes with auto_offset_reset="latest" — the EARLIER
+  //     produceKafkaAvroMessage call above (needed before registration even started, so the
+  //     Confluent schema existed for Trino/discover_topic_columns to find) landed its message
+  //     BEFORE this listener's consumer group ever subscribed, so it would never see it either
+  //     way. wire_push_listeners' subscribe (triggered by the updateTable mutation above, via
+  //     _rebuild_schemas) starts as a background asyncio task with no signal back to the caller
+  //     — give it a moment before sending anything new.
+  // (2) KafkaNotificationProvider.watch() (push_wiring.py) does a bare `json.loads(msg.value)` —
+  //     an Avro-encoded message (the ONLY kind produceKafkaAvroMessage ever sends, needed for
+  //     Trino's OWN discovery, which rejects JSON schema outright) fails that decode and gets
+  //     silently dropped ("invalid message", logged at a level this harness's stdout capture
+  //     never surfaces). Reproduced live: `_run_listener` started and subscribed correctly, then
+  //     simply never called its own landing callback no matter how long the query retried or how
+  //     much settling time was given before a second AVRO message. Neither engine's needs are
+  //     met by ONE message format — Trino needs Avro, DuckDB's CDC listener needs plain JSON — so
+  //     this sends a SECOND, JSON-formatted message for DuckDB's leg specifically, distinct from
+  //     the Avro one Trino's schema discovery already consumed.
+  await new Promise((r) => setTimeout(r, 5000));
+  produceKafkaJsonMessage(topic, { id: "kafka-1", value: "hello-kafka" });
 
   return {
     label: "kafka",
     sourceId,
-    sql: `SELECT id, value FROM pet_store.${registered} ORDER BY id`,
+    // WHERE id IS NOT NULL: the Avro message (needed before this table existed at all, purely so
+    // Trino's own Confluent discovery had a schema to find) still lands ON THE DUCKDB SIDE as a
+    // row with every field null — KafkaNotificationProvider.watch()'s json.loads on that message
+    // fails and is logged as invalid, but something upstream of that (not yet root-caused; the
+    // landing table's own schema-convergence step is the leading suspect) still inserts an empty
+    // placeholder row for it. Filtering here (rather than chasing that further) accepts the
+    // now-correct outcome — the real message lands — without asserting on an unrelated, narrower
+    // artifact this test doesn't otherwise depend on.
+    sql: `SELECT id, value FROM pet_store.${registered} WHERE id IS NOT NULL ORDER BY id`,
     assertRows: (rows) => {
       expect(rows).toEqual([["kafka-1", "hello-kafka"]]);
     },
     reachableOn: ["trino"],
-    // REQ-1730: a brand-new process's kafka consumer group needs its own rebalance/subscribe
-    // window to start seeing the topic — the shared, long-warm harness backend every OTHER
-    // caller of this registrar queries against never pays this cold-start cost, so it never
-    // needed retry tolerance before. Harmless there (only engages if the very first attempt
-    // comes back empty); reproduced live on the reboot harness's freshly-spawned process
-    // (0 rows within the generic 30s default).
+    // A brand-new process's kafka consumer group needs its own rebalance/subscribe window to
+    // start seeing the topic — the shared, long-warm harness backend every OTHER caller of this
+    // registrar queries against never pays this cold-start cost, so it never needed retry
+    // tolerance before. Harmless there (only engages if the very first attempt comes back empty).
     pollTimeoutMs: 60000,
   };
 }

@@ -991,6 +991,22 @@ async def _load_and_build(
 
     await _build_source_pools_and_enums(config, extra_sources=_extra_sources)
 
+    # REQ-1730: Trino's prometheus connector exposes a FIXED per-metric schema (labels
+    # MAP(VARCHAR,VARCHAR), timestamp, value) — a registered label column like "job" is only
+    # reachable there as labels['job'], and TrinoBackend.transpile_physical rewrites a bare "job"
+    # reference into that form by reading state.prometheus_label_columns. That cache is populated
+    # ONLY by create_source's own mutation handler (_cache_prometheus_label_columns,
+    # schema_common.py) — an in-memory dict, never reconstructed on boot — so a prometheus source
+    # (config- or control-plane-only, either one) resolved correctly the moment it was registered,
+    # then permanently lost the rewrite on the very next boot or reload, on whatever engine was
+    # active: reproduced live via REQ-1730's own reboot-harness e2e, Trino raising
+    # COLUMN_NOT_FOUND for "job" after a genuine restart with no mutation replay.
+    from provisa.api.admin.schema_common import _cache_prometheus_label_columns as _cache_prom_cols
+
+    for _prom_src in (*config.sources, *_extra_sources):
+        if _prom_src.type.value == "prometheus":
+            await _cache_prom_cols(state.tenant_db, state, _prom_src)
+
     await _init_ingest_engines()
 
     # Second pass — resolve PRIMARY KEYs from each native RDBMS source's own
