@@ -251,42 +251,56 @@ async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266, REQ-1730
     boot or reload — reproduced live: it is invisible to `config.sources`, so this function used
     to never re-provision it, regardless of which engine became active.
     """
+    from provisa.core.secrets_store import bound_to_request_org
+
     failed: list[str] = []
-    for src in config.sources:
-        await source_repo.upsert(conn, src)
-        # Provision the source on the bound engine through the abstraction (the engine makes a
-        # catalog; native engines attach lazily). No direct the engine reference here.
-        # REQ-1266: catalog_names supplies the org-prefixed physical catalog name for a non-default
-        # org so the source attaches under its own namespace, not the default org's.
+    # REQ-1730: a control-plane-only source's password is a ${secret:NAME} vault reference
+    # (persist_source_password writes it that way), which StoredSecretsProvider can only resolve
+    # with an org bound (see app_loaders.py's _build_source_pools_and_enums, which hit and fixed
+    # the identical gap for its own pool-building loop). Nothing bound an org around THIS loop
+    # either — reproduced live: splunk/sqlserver's own extra_sources catalog registration raised
+    # KeyError("no organization is bound to this context"), silently caught below and counted as
+    # "failed" (by design — an unreachable source must not brick boot), so Trino never got their
+    # catalog and every later query 404d with CATALOG_NOT_FOUND. A YAML source's password is
+    # typically a literal or ${env:...} (persist_source_password never touches config.sources), so
+    # that loop rarely needs the binding — wrapping both here anyway costs nothing when unneeded.
+    async with bound_to_request_org():
+        for src in config.sources:
+            await source_repo.upsert(conn, src)
+            # Provision the source on the bound engine through the abstraction (the engine makes
+            # a catalog; native engines attach lazily). No direct the engine reference here.
+            # REQ-1266: catalog_names supplies the org-prefixed physical catalog name for a
+            # non-default org so the source attaches under its own namespace, not the default
+            # org's.
+            if engine is not None:
+                try:
+                    engine.register_source(
+                        src,
+                        resolve_secrets(src.password),
+                        catalog_name=(catalog_names or {}).get(src.id),
+                    )
+                except Exception:
+                    log.exception(
+                        "registering source %r on the engine catalog %r failed",
+                        src.id,
+                        (catalog_names or {}).get(src.id) or src.id,
+                    )
+                    failed.append(src.id)
         if engine is not None:
-            try:
-                engine.register_source(
-                    src,
-                    resolve_secrets(src.password),
-                    catalog_name=(catalog_names or {}).get(src.id),
-                )
-            except Exception:
-                log.exception(
-                    "registering source %r on the engine catalog %r failed",
-                    src.id,
-                    (catalog_names or {}).get(src.id) or src.id,
-                )
-                failed.append(src.id)
-    if engine is not None:
-        for src in extra_sources or ():
-            try:
-                engine.register_source(
-                    src,
-                    resolve_secrets(src.password),
-                    catalog_name=(catalog_names or {}).get(src.id),
-                )
-            except Exception:
-                log.exception(
-                    "registering source %r on the engine catalog %r failed",
-                    src.id,
-                    (catalog_names or {}).get(src.id) or src.id,
-                )
-                failed.append(src.id)
+            for src in extra_sources or ():
+                try:
+                    engine.register_source(
+                        src,
+                        resolve_secrets(src.password),
+                        catalog_name=(catalog_names or {}).get(src.id),
+                    )
+                except Exception:
+                    log.exception(
+                        "registering source %r on the engine catalog %r failed",
+                        src.id,
+                        (catalog_names or {}).get(src.id) or src.id,
+                    )
+                    failed.append(src.id)
     return failed
 
 

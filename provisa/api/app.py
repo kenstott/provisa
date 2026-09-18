@@ -989,7 +989,7 @@ async def _load_and_build(
 
     state.source_dsns["provisa-admin"] = f"{pg_host}:{pg_port}/{pg_database}"
 
-    await _build_source_pools_and_enums(config)
+    await _build_source_pools_and_enums(config, extra_sources=_extra_sources)
 
     await _init_ingest_engines()
 

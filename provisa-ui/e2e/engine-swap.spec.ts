@@ -85,23 +85,18 @@ import {
   GRPC_REMOTE_SERVER_MODULE,
   MAKE_FILE_LAKE_FIXTURES,
   PYTHON,
-  REBOOT_BACKEND_URL,
+  REBOOT_GRAPHQL_DEMO_URL,
+  REBOOT_PETSTORE_OPENAPI_URL,
   ROOT,
   RUNNING_IN_CI,
   SINGLESTORE_AVAILABLE,
-  killRebootBackend,
-  prepareRebootDataDir,
   provisionSwapSource,
-  queryRebootBackend,
-  rewriteHostForContainerizedEngine,
   runFreshEngineCase,
+  runRebootCase,
   runSwapCase,
-  spawnRebootBackend,
-  sweepRebootZombieSources,
   sweepZombieSwapSources,
   waitForPort,
   waitForTrinoStable,
-  type RebootEngineKind,
 } from "./engine-swap-helpers";
 import {
   RDB_WIDGETS_SOURCES,
@@ -709,71 +704,451 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
   });
 });
 
-// REQ-1730 scenario 1 (2026-09-18): "if you changed engines, it required you to reboot the
-// backend" (the user's own design intent) — a source registered purely through the UI (no
-// `sources:` YAML entry) must survive an engine change + a genuine process reboot and remain
-// queryable, with no replay of its own createSource mutation. This is deliberately NOT the
-// reload-in-place trick every type above uses (reloadEngineBackend/reprovisionSourceOnEngine
-// PUT /admin/config against an already-running, already-differently-engined process) — that
-// proxy already found one real gap (extra_sources never reaching _replace_mode_cleanup) and, on
-// its own admission, is not what "reboot" means: it exercises one process's in-place reload path,
-// never a cold start. One dedicated backend process, owned entirely by this describe block,
-// is genuinely killed and respawned with PROVISA_ENGINE flipped; same port, same data dir, same
+// REQ-1730 scenario 1: "if you changed engines, it required you to reboot the backend" (the
+// user's own design intent) — a source registered purely through the UI (no `sources:` YAML
+// entry) must survive an engine change + a genuine process reboot and remain queryable, with no
+// replay of its own createSource mutation. This is deliberately NOT the reload-in-place trick
+// every type in the describe block above uses (reloadEngineBackend/reprovisionSourceOnEngine PUT
+// /admin/config against an already-running, already-differently-engined process) — that proxy
+// already found one real gap (extra_sources never reaching _replace_mode_cleanup) and, on its own
+// admission, is not what "reboot" means: it exercises one process's in-place reload path, never a
+// cold start. `runRebootCase` (engine-swap-helpers.ts) owns ONE dedicated backend process per
+// test, genuinely killed and respawned with PROVISA_ENGINE flipped; same port, same data dir, same
 // control-plane org row — as close to a real desktop engine-swap-then-restart as this harness
-// gets.
+// gets. One type per test (mirrors the "one source = one type" contract above) — add a type by
+// adding a test here, reusing its own existing register* function unchanged.
 test.describe("scenario 1: same source survives an engine change + reboot (REQ-1730)", () => {
-  let proc: ChildProcess | null = null;
+  // A genuine kill+respawn leaves a real (sub-second to low-single-digit-second) window where
+  // nothing listens on REBOOT_HTTP_PORT — any in-flight browser request from the STILL-MOUNTED
+  // page (e.g. an Apollo/schema-version poll) that lands in that window gets a real
+  // ERR_CONNECTION_REFUSED. That is exactly what "reboot" means here, not a bug to chase —
+  // reproduced live (rss's own case failed this way, coverage.ts's own blanket "no uncaught
+  // browser errors" check otherwise fails the whole test on it).
+  test.use({ allowedBrowserErrors: ["ERR_CONNECTION_REFUSED"] });
 
-  test.beforeAll(async () => {
-    await startDemoSources(["mongodb"]);
-    prepareRebootDataDir();
+  test.describe("mongodb", () => {
+    test.beforeAll(() => startDemoSources(["mongodb"]));
+    test.afterAll(() => removeDemoSources(["mongodb"]));
+
+    test("mongodb registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerMongodb(p), { trino: "mongodb" }));
   });
-  test.afterAll(async () => {
-    if (proc) await killRebootBackend(proc);
-    await removeDemoSources(["mongodb"]);
+
+  test.describe("neo4j", () => {
+    test.beforeAll(() => startDemoSources(["neo4j"]));
+    test.afterAll(() => removeDemoSources(["neo4j"]));
+
+    test("neo4j registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerNeo4j(p), { trino: "neo4j" }));
   });
 
-  // Every OTHER engine this harness ever reboots into, in order. duckdb itself is the initial
-  // boot (below, not in this list) — extend this list, not the test body, as swap-harness engines
-  // grow (mirrors ENGINES' own "add an entry, nothing else names an engine by hand" contract).
-  const REBOOT_ENGINE_SEQUENCE: RebootEngineKind[] = ["trino"];
+  test.describe("elasticsearch", () => {
+    test.beforeAll(() => startDemoSources(["elasticsearch"]));
+    test.afterAll(() => removeDemoSources(["elasticsearch"]));
 
-  test("mongodb registered once under DuckDB resolves under every rebooted engine, no replay", async ({
-    page,
-  }) => {
-    test.setTimeout(120000 + REBOOT_ENGINE_SEQUENCE.length * 180000);
-    const routes = ["/admin", "/data", "/query", "/health"].map((prefix) => `${UI_URL}${prefix}**`);
-    for (const pattern of routes) {
-      await page.route(pattern, (route) => {
-        route.continue({ url: route.request().url().replace(UI_URL, REBOOT_BACKEND_URL) });
+    test("elasticsearch registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerElasticsearch(p), { trino: "elasticsearch" }));
+  });
+
+  test.describe("redis", () => {
+    test.beforeAll(() => startDemoSources(["redis"]));
+    test.afterAll(() => removeDemoSources(["redis"]));
+
+    test("redis registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerRedis(p), { trino: "redis" }));
+  });
+
+  test.describe("cassandra", () => {
+    test.beforeAll(() => startDemoSources(["cassandra"]));
+    test.afterAll(() => removeDemoSources(["cassandra"]));
+
+    test("cassandra registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerCassandra(p), { trino: "cassandra" }));
+  });
+
+  test.describe("sparql", () => {
+    test.beforeAll(() => startDemoSources(["sparql"]));
+    test.afterAll(() => removeDemoSources(["sparql"]));
+
+    test("sparql registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerSparql(p), { trino: "sparql" }));
+  });
+
+  test.describe("prometheus", () => {
+    test.beforeAll(() => startDemoSources(["prometheus"]));
+    test.afterAll(() => removeDemoSources(["prometheus"]));
+
+    test("prometheus registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerPrometheus(p), { trino: "prometheus" }));
+  });
+
+  // Same RDB_WIDGETS_SOURCES config list the original describe block above loops over — every
+  // type here has a native Trino connector (reachableOn: ["trino"] unless overridden), so
+  // rebooting into Trino is meaningful; hiveserver2/saphana (reachableOn: []) are skipped — no
+  // Trino leg exists for them to prove a reboot restores.
+  for (const cfg of RDB_WIDGETS_SOURCES) {
+    if ((cfg.reachableOn ?? ["trino"]).length === 0) continue;
+    test.describe(cfg.type, () => {
+      test.beforeAll(() => {
+        if (cfg.needsCi && !RUNNING_IN_CI) return;
+        return provisionSwapSource(cfg.type, "up");
       });
-    }
+      test.afterAll(async () => {
+        if (cfg.needsCi && !RUNNING_IN_CI) return;
+        await provisionSwapSource(cfg.type, "down");
+      });
 
-    // Boot duckdb, configure the data source, register the table, query — the baseline every
-    // later reboot is checked against.
-    proc = await spawnRebootBackend("duckdb");
-    await sweepRebootZombieSources();
-    const registration = await registerMongodb(page, REBOOT_BACKEND_URL);
-    let rows = await queryRebootBackend(registration.sql);
-    registration.assertRows(rows);
+      test(`${cfg.type} registered once under DuckDB resolves under every rebooted engine, no replay`, async ({
+        page,
+      }) => {
+        test.skip(
+          cfg.needsCi === true && !RUNNING_IN_CI,
+          "saplabs/hanaexpress's indexserver does not start under Docker Desktop's Apple " +
+            "Silicon VM (verified live, not a config issue) — runs for real in CI " +
+            "(ubuntu-latest is a genuine amd64 host)",
+        );
+        await runRebootCase(page, registerRdbWidgets(cfg), { trino: cfg.type });
+      });
+    });
+  }
 
-    // For each engine: kill the current process, respawn the SAME port/data dir/org under it —
-    // same URL, different process behind it, exactly like a desktop restart with a new engine
-    // config — then query again with NO replay of the createSource mutation.
-    for (const engineKind of REBOOT_ENGINE_SEQUENCE) {
-      if (engineKind === "trino") {
-        // Docker-topology-only fix, applied to the row BEFORE the reboot (never a mutation
-        // replay) — see rewriteHostForContainerizedEngine's own comment.
-        await rewriteHostForContainerizedEngine(registration.sourceId, "mongodb");
-      }
-      await killRebootBackend(proc);
-      proc = await spawnRebootBackend(engineKind);
-      rows = await queryRebootBackend(registration.sql);
-      registration.assertRows(rows);
-    }
+  test.describe("splunk", () => {
+    test.beforeAll(() => {
+      test.setTimeout(900000);
+      return startDemoSources(["splunk"]);
+    });
+    test.afterAll(() => removeDemoSources(["splunk"]));
 
-    for (const pattern of routes) await page.unroute(pattern);
+    test("splunk registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(900000 + 180000);
+      await runRebootCase(page, (p) => registerSplunk(p), { trino: "splunk" });
+    });
   });
+
+  test.describe("sharepoint", () => {
+    test.skip(
+      !process.env.SP_SITE_URL,
+      "no live SharePoint credentials: set the SP_* block in the root .env",
+    );
+
+    test("sharepoint registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(300000 + 180000);
+      await runRebootCase(page, (p) => registerSharepoint(p), { trino: "sharepoint" });
+    });
+  });
+
+  test("graphql_remote registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+    page,
+  }) =>
+    runRebootCase(page, (p) => registerGraphqlRemote(p, REBOOT_GRAPHQL_DEMO_URL), {
+      trino: "graphql_remote",
+    }));
+
+  test("openapi registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+    page,
+  }) =>
+    runRebootCase(page, (p) => registerOpenapi(p, REBOOT_PETSTORE_OPENAPI_URL), {
+      trino: "openapi",
+    }));
+
+  test("ingest registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+    page,
+  }) => runRebootCase(page, (p) => registerIngest(p), { trino: "ingest" }));
+
+  test.describe("govdata", () => {
+    test.skip(
+      !process.env.FREE_ASKAMERICA_KEY,
+      "no live AskAmerica/govdata credentials: set FREE_ASKAMERICA_KEY in the root .env",
+    );
+
+    test("govdata registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerGovdata(p), { trino: "govdata" }));
+  });
+
+  test.describe("rss", () => {
+    const RSS_ITEMS = [
+      { guid: "item-1", title: "First item", link: "https://example.com/1", pubDate: "Mon, 01 Jan 2024 00:00:00 GMT" },
+      { guid: "item-2", title: "Second item", link: "https://example.com/2", pubDate: "Tue, 02 Jan 2024 00:00:00 GMT" },
+    ];
+    function rssFeedXml(): string {
+      const items = RSS_ITEMS.map(
+        (i) =>
+          `<item><guid>${i.guid}</guid><title>${i.title}</title><link>${i.link}</link>` +
+          `<description>desc-${i.guid}</description><pubDate>${i.pubDate}</pubDate></item>`,
+      ).join("");
+      return `<?xml version="1.0"?><rss version="2.0"><channel><title>Test Feed</title>${items}</channel></rss>`;
+    }
+    let rssServer: http.Server;
+    test.beforeAll(async () => {
+      rssServer = http.createServer((_req, res) => {
+        res.writeHead(200, { "Content-Type": "application/rss+xml" });
+        res.end(rssFeedXml());
+      });
+      await new Promise<void>((resolve) => rssServer.listen(E2E_RSS_PORT, resolve));
+    });
+    test.afterAll(async () => {
+      await new Promise<void>((resolve) => rssServer.close(() => resolve()));
+    });
+
+    test("rss registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerRss(p), { trino: "rss" }));
+  });
+
+  test.describe("websocket", () => {
+    let wsServer: WebSocketServer;
+    test.beforeAll(() => {
+      wsServer = new WebSocketServer({ port: E2E_WS_PORT });
+      wsServer.on("connection", (socket) => {
+        socket.send(JSON.stringify({ id: "ws-1", value: "hello" }));
+        socket.send(JSON.stringify({ id: "ws-2", value: "world" }));
+      });
+    });
+    test.afterAll(async () => {
+      for (const client of wsServer.clients) client.terminate();
+      await new Promise<void>((resolve, reject) =>
+        wsServer.close((err) => (err ? reject(err) : resolve())),
+      );
+    });
+
+    test("websocket registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerWebsocket(p), { trino: "websocket" }));
+  });
+
+  test.describe("grpc_remote", () => {
+    let grpcServer: ChildProcess | null = null;
+
+    test.beforeAll(async () => {
+      grpcServer = spawn(PYTHON, ["-m", GRPC_REMOTE_SERVER_MODULE], {
+        cwd: ROOT,
+        env: { ...process.env, DEMO_GRPC_REMOTE_PORT: String(E2E_GRPC_REMOTE_PORT) },
+        stdio: "pipe",
+      });
+      await waitForPort(E2E_GRPC_REMOTE_PORT, 30000);
+    });
+    test.afterAll(async () => {
+      grpcServer?.kill();
+    });
+
+    test("grpc_remote registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerGrpcRemote(p, E2E_GRPC_REMOTE_PORT), { trino: "grpc_remote" }));
+  });
+
+  test.describe("singlestore", () => {
+    test.skip(
+      !SINGLESTORE_AVAILABLE,
+      "needs SINGLESTORE_LICENSE and an amd64 host (singlestoredb-dev publishes no arm64 manifest) " +
+        "— see the module doc",
+    );
+    test.beforeAll(() => provisionSwapSource("singlestore", "up"));
+    test.afterAll(() => provisionSwapSource("singlestore", "down"));
+
+    test("singlestore registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerSinglestore(p), { trino: "singlestore" }));
+  });
+
+  test.describe("exasol", () => {
+    test.skip(
+      !RUNNING_IN_CI,
+      "exasol/docker-db needs privileged mode + several GB RAM + a multi-minute cold init, and " +
+        "is amd64-only (unbootable under arm64 emulation) — runs for real in CI (ubuntu-latest " +
+        "is a genuine amd64 host); see source-to-query-olap-lake.spec.ts's identical gate",
+    );
+    let exasolFingerprint = "";
+    test.beforeAll(() => {
+      if (!RUNNING_IN_CI) return;
+      test.setTimeout(900000);
+      if (fs.existsSync(E2E_EXASOL_FINGERPRINT_FILE)) fs.rmSync(E2E_EXASOL_FINGERPRINT_FILE);
+      provisionSwapSource("exasol", "up", {
+        PROVISA_DEMO_EXASOL_PORT: String(E2E_EXASOL_PORT),
+        PROVISA_DEMO_EXASOL_FINGERPRINT_FILE: E2E_EXASOL_FINGERPRINT_FILE,
+      });
+      exasolFingerprint = fs.readFileSync(E2E_EXASOL_FINGERPRINT_FILE, "utf8").trim();
+    });
+    test.afterAll(async () => {
+      if (!RUNNING_IN_CI) return;
+      await provisionSwapSource("exasol", "down");
+      if (fs.existsSync(E2E_EXASOL_FINGERPRINT_FILE)) fs.rmSync(E2E_EXASOL_FINGERPRINT_FILE);
+    });
+
+    test("exasol registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerExasol(p, () => exasolFingerprint), { trino: "exasol" }));
+  });
+
+  test.describe("kafka", () => {
+    test.beforeAll(() => {
+      test.setTimeout(180000);
+      return provisionSwapSource(
+        "kafka",
+        "up",
+        {
+          PROVISA_DEMO_KAFKA_PORT: String(E2E_KAFKA_PORT),
+          PROVISA_DEMO_KAFKA_SCHEMA_REGISTRY_PORT: String(E2E_KAFKA_SCHEMA_REGISTRY_PORT),
+        },
+        DOCKER_NETWORK,
+      );
+    });
+    test.afterAll(() => provisionSwapSource("kafka", "down"));
+
+    test("kafka registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(180000);
+      await runRebootCase(page, (p) => registerKafka(p), { trino: "kafka" });
+    });
+  });
+
+  test.describe("snowflake", () => {
+    test.skip(
+      !(
+        process.env.SNOWFLAKE_ACCOUNT &&
+        process.env.SNOWFLAKE_USER &&
+        process.env.SNOWFLAKE_PASSWORD
+      ),
+      "no live Snowflake credentials in this environment",
+    );
+    test.beforeAll(() => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "snowflake", "up"], { stdio: "pipe" });
+    });
+    test.afterAll(() => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "snowflake", "down"], { stdio: "pipe" });
+    });
+
+    test("snowflake registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerSnowflake(p), { trino: "snowflake" }));
+  });
+
+  test.describe("databricks", () => {
+    test.skip(
+      !(
+        process.env.DATABRICKS_SERVER_HOSTNAME &&
+        process.env.DATABRICKS_HTTP_PATH &&
+        process.env.DATABRICKS_TOKEN
+      ),
+      "no live Databricks credentials in this environment",
+    );
+    test.beforeAll(() => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "databricks", "up"], { stdio: "pipe" });
+    });
+    test.afterAll(() => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "databricks", "down"], { stdio: "pipe" });
+    });
+
+    test("databricks registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerDatabricks(p), { trino: "databricks" }));
+  });
+
+  test.describe("fabric", () => {
+    test.skip(
+      !(process.env.FABRIC_SQL_SERVER && process.env.FABRIC_DATABASE),
+      "no live Fabric credentials in this environment",
+    );
+    test.skip(
+      !(process.env.FABRIC_RESOURCE_GROUP && process.env.FABRIC_CAPACITY_NAME),
+      "no FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME configured",
+    );
+    test.beforeAll(() => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "fabric", "up"], { stdio: "pipe" });
+    });
+    test.afterAll(() => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "fabric", "down"], { stdio: "pipe" });
+    });
+
+    test("fabric registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerFabric(p), { trino: "fabric" }));
+  });
+
+  test.describe("bigquery", () => {
+    test.skip(
+      !(process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_APPLICATION_CREDENTIALS),
+      "no live GCP credentials in this environment",
+    );
+    test.beforeAll(() => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "bigquery", "up"], { stdio: "pipe" });
+    });
+    test.afterAll(() => {
+      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "bigquery", "down"], { stdio: "pipe" });
+    });
+
+    test("bigquery registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+      page,
+    }) => runRebootCase(page, (p) => registerBigquery(p), { trino: "bigquery" }));
+  });
+
+  test("csv registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+    page,
+  }) =>
+    runRebootCase(
+      page,
+      (p) =>
+        registerSingleFile(
+          "csv",
+          "demo/files/customers.csv",
+          /CSV File Path/,
+          (table) => `SELECT id, first_name, email FROM pet_store.${table} ORDER BY id`,
+          (rows) => {
+            expect(rows).toHaveLength(15);
+            expect(rows[0]).toEqual(["1", "Alice", "alice@example.com"]);
+          },
+        )(p),
+      { trino: "csv" },
+    ));
+
+  test("parquet registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+    page,
+  }) =>
+    runRebootCase(
+      page,
+      (p) =>
+        registerSingleFile(
+          "parquet",
+          "demo/files/products.parquet",
+          /Parquet File Path/,
+          (table) => `SELECT id, sku, name, price FROM pet_store.${table} ORDER BY id`,
+          (rows) => {
+            expect(rows).toHaveLength(15);
+            expect(rows[0]).toEqual(["1", "WIDGET-A", "Widget Alpha", "9.99"]);
+          },
+        )(p),
+      { trino: "parquet" },
+    ));
+
+  test("files registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+    page,
+  }) => runRebootCase(page, (p) => registerFiles()(p), { trino: "files" }));
+
+  test("delta_lake registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+    page,
+  }) =>
+    runRebootCase(page, (p) => registerFileLake("delta_lake", () => deltaTablePath)(p), {
+      trino: "delta_lake",
+    }));
+
+  test("iceberg registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+    page,
+  }) =>
+    runRebootCase(page, (p) => registerFileLake("iceberg", () => icebergTablePath)(p), {
+      trino: "iceberg",
+    }));
 });
 
 // REQ-1730 scenario 2: does the real Sources-form UI — create source, register table, query —
@@ -798,7 +1173,7 @@ test.describe("scenario 2: real UI flow works when a non-default engine is prima
     // "host.docker.internal", not "localhost" — Trino is primary from the very first
     // schema-introspection call here, made from INSIDE its own container.
     await runFreshEngineCase(page, "trino", (p) =>
-      registerMongodb(p, REBOOT_BACKEND_URL, "host.docker.internal"),
+      registerMongodb(p, "", "host.docker.internal"),
     );
   });
 });

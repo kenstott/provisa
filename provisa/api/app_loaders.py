@@ -328,55 +328,85 @@ def _populate_source_catalog_names(
             state.source_allowed_domains[src.id] = list(src.allowed_domains)
 
 
-async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-012, REQ-221
-    """Build direct source connection pools, register websocket/rss sources, and fetch enum types."""
+async def _build_source_pools_and_enums(
+    config: ProvisaConfig, extra_sources: list[Source] | None = None
+) -> None:  # REQ-012, REQ-221, REQ-1730
+    """Build direct source connection pools, register websocket/rss sources, and fetch enum types.
+
+    ``extra_sources`` (REQ-1730): control-plane-only sources ``config.sources`` doesn't declare —
+    see ``_populate_source_catalog_names``'s own doc for the general gap this closes. Without it, a
+    control-plane-only RDBMS source (postgresql/mysql/...) never got a direct connection pool built
+    on ANY boot or reload, so every query against it fell through to whatever fallback executor
+    handles a poolless source — reproduced live via REQ-1730's own reboot-harness e2e: DuckDB's own
+    catalog attach succeeded, but the query still failed with a raw asyncpg/SQLAlchemy error
+    naming a table that plainly existed, because the actual read path for these types is this
+    pool, not the engine's ATTACH.
+    """
     from provisa.api.app import state
     from provisa.executor.drivers.registry import has_driver
     from provisa.transpiler.router import VIRTUAL_SOURCES
     from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES
     from provisa.cache.warm_tables import DEFAULT_ICEBERG_CATALOG as _DEFAULT_ICE_CAT
+    from provisa.core.secrets_store import bound_to_request_org
 
     # Catalog names + source types must exist before pools/domains read them (idempotent — also
     # run before load_config so physical registration uses the org-prefixed name).
-    _populate_source_catalog_names(config)
+    _populate_source_catalog_names(config, extra_sources=extra_sources)
 
-    for src in config.sources:
-        # Engine-attached sources (NoSQL, lake) are reached only through the engine's ATTACH — they
-        # have no direct driver at all. FLAT_NAMESPACE_SOURCES (sqlite) DO have a direct driver (the
-        # generic SQLAlchemy fallback, REQ-031/REQ-1361: mutations always route direct, and the
-        # engine terminal takes no writes) — they just connect by file ``path``, not host/port, so
-        # they need the pool built from that field instead of skipping registration entirely.
-        _is_flat_file = src.type.value in FLAT_NAMESPACE_SOURCES
-        if has_driver(src.type.value) and (src.type.value not in VIRTUAL_SOURCES or _is_flat_file):
-            resolved_pw = resolve_secrets(src.password)
-            resolved_host = (
-                "" if _is_flat_file else (resolve_secrets(src.host) if src.host else "localhost")
-            )
-            resolved_database = (src.path or src.database) if _is_flat_file else src.database
-            state.source_dsns[src.id] = (
-                resolved_database if _is_flat_file else f"{resolved_host}:{src.port}/{src.database}"
-            )
-            # Best-effort: an unreachable/misconfigured source must not abort startup —
-            # the engine-routed path still works. See startup_resilience.
-            with tolerate_startup_failure(
-                f"direct pool for {src.id!r} ({resolved_database if _is_flat_file else f'{resolved_host}:{src.port}'})"
+    # REQ-1730: a control-plane-only source's password is a ${secret:NAME} vault reference
+    # (persist_source_password writes it that way — see StoredSecretsProvider), unlike a YAML
+    # source's password, which is a literal or a ${env:...} ref that needs no org binding at all.
+    # Nothing bound an org here before because nothing calling resolve_secrets during BOOT ever
+    # held a vault-backed reference until extra_sources started flowing through this loop —
+    # reproduced live: KeyError "no organization is bound to this context", uncaught, crashing the
+    # whole boot outright (Application startup failed) for the very first control-plane-only
+    # source with a real password. Resolves to state.org_id, the boot org, when nothing more
+    # specific is bound (see _request_org_for_secrets) — correct for this single-org boot path.
+    async with bound_to_request_org():
+        for src in (*config.sources, *(extra_sources or ())):
+            # Engine-attached sources (NoSQL, lake) are reached only through the engine's ATTACH —
+            # they have no direct driver at all. FLAT_NAMESPACE_SOURCES (sqlite) DO have a direct
+            # driver (the generic SQLAlchemy fallback, REQ-031/REQ-1361: mutations always route
+            # direct, and the engine terminal takes no writes) — they just connect by file
+            # ``path``, not host/port, so they need the pool built from that field instead of
+            # skipping registration entirely.
+            _is_flat_file = src.type.value in FLAT_NAMESPACE_SOURCES
+            if has_driver(src.type.value) and (
+                src.type.value not in VIRTUAL_SOURCES or _is_flat_file
             ):
-                await state.source_pools.add(
-                    source_id=src.id,
-                    source_type=src.type.value,
-                    host=resolved_host,
-                    port=src.port,
-                    database=resolved_database,
-                    user=src.username,
-                    password=resolved_pw,
-                    min_size=src.pool_min,
-                    max_size=src.pool_max,
-                    use_pgbouncer=src.use_pgbouncer,
-                    pgbouncer_port=src.pgbouncer_port,
-                    # Warehouse connection extras (Databricks http_path, Snowflake account/warehouse,
-                    # ClickHouse scheme) the standard args can't carry (REQ-986/987/988).
-                    extra={k: resolve_secrets(v) for k, v in src.federation_hints.items()},
+                resolved_pw = resolve_secrets(src.password)
+                resolved_host = (
+                    ""
+                    if _is_flat_file
+                    else (resolve_secrets(src.host) if src.host else "localhost")
                 )
+                resolved_database = (src.path or src.database) if _is_flat_file else src.database
+                state.source_dsns[src.id] = (
+                    resolved_database
+                    if _is_flat_file
+                    else f"{resolved_host}:{src.port}/{src.database}"
+                )
+                # Best-effort: an unreachable/misconfigured source must not abort startup —
+                # the engine-routed path still works. See startup_resilience.
+                with tolerate_startup_failure(
+                    f"direct pool for {src.id!r} ({resolved_database if _is_flat_file else f'{resolved_host}:{src.port}'})"
+                ):
+                    await state.source_pools.add(
+                        source_id=src.id,
+                        source_type=src.type.value,
+                        host=resolved_host,
+                        port=src.port,
+                        database=resolved_database,
+                        user=src.username,
+                        password=resolved_pw,
+                        min_size=src.pool_min,
+                        max_size=src.pool_max,
+                        use_pgbouncer=src.use_pgbouncer,
+                        pgbouncer_port=src.pgbouncer_port,
+                        # Warehouse connection extras (Databricks http_path, Snowflake account/
+                        # warehouse, ClickHouse scheme) the standard args can't carry (REQ-986/987/988).
+                        extra={k: resolve_secrets(v) for k, v in src.federation_hints.items()},
+                    )
 
     _known_engine_catalogs = set(state.source_catalogs.values()) | {
         _DEFAULT_ICE_CAT,
@@ -393,7 +423,7 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
         state.domain_write_targets[_dom.id] = (_ddl_cat, _ddl_schema)
 
     # WebSocket + RSS sources — register for SSE subscription dispatch
-    for _src in config.sources:
+    for _src in (*config.sources, *(extra_sources or ())):
         if _src.type.value == "websocket":
             state.websocket_sources[_src.id] = _src
         elif _src.type.value == "rss":
@@ -406,7 +436,7 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:  # REQ-0
     from provisa.compiler.enum_detect import build_enum_types
 
     _enum_registry: dict[str, list[str]] = {}
-    for _src in config.sources:
+    for _src in (*config.sources, *(extra_sources or ())):
         if _src.type.value == "postgresql" and state.source_pools.has(_src.id):
             _driver = state.source_pools.get(_src.id)
             if hasattr(_driver, "fetch_enums"):

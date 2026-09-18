@@ -864,11 +864,14 @@ export async function registerSqlite(page: Page): Promise<Registration> {
   };
 }
 
-export async function registerGraphqlRemote(page: Page): Promise<Registration> {
+export async function registerGraphqlRemote(page: Page, endpointOverride?: string): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_gql_${stamp}`;
   const namespace = `e2e_swap_gql_${stamp}`;
-  const endpoint = await existingSourcePath(page, "graphql-demo");
+  // REQ-1730 scenario 1 (test-only): the reboot harness's minimal config has no baked-in
+  // "graphql-demo" source for existingSourcePath to read a path off of — pass the already-running
+  // demo server's URL directly (spawnRebootBackend's own GRAPHQL_DEMO_URL env, same default port).
+  const endpoint = endpointOverride ?? (await existingSourcePath(page, "graphql-demo"));
 
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
@@ -1042,10 +1045,11 @@ export async function registerIngest(page: Page): Promise<Registration> {
   };
 }
 
-export async function registerOpenapi(page: Page): Promise<Registration> {
+export async function registerOpenapi(page: Page, specUrlOverride?: string): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_openapi_${stamp}`;
-  const specUrl = await existingSourcePath(page, "petstore-api");
+  // REQ-1730 scenario 1 (test-only): see registerGraphqlRemote's identical comment.
+  const specUrl = specUrlOverride ?? (await existingSourcePath(page, "petstore-api"));
   const baseUrl = specUrl.replace(/\/openapi\.json$/, "");
 
   await openSourcesForm(page);
@@ -1476,6 +1480,13 @@ export async function registerKafka(page: Page): Promise<Registration> {
       expect(rows).toEqual([["kafka-1", "hello-kafka"]]);
     },
     reachableOn: ["trino"],
+    // REQ-1730: a brand-new process's kafka consumer group needs its own rebalance/subscribe
+    // window to start seeing the topic — the shared, long-warm harness backend every OTHER
+    // caller of this registrar queries against never pays this cold-start cost, so it never
+    // needed retry tolerance before. Harmless there (only engages if the very first attempt
+    // comes back empty); reproduced live on the reboot harness's freshly-spawned process
+    // (0 rows within the generic 30s default).
+    pollTimeoutMs: 60000,
   };
 }
 

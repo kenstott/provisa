@@ -504,22 +504,35 @@ export async function waitForTrinoStable(budgetMs = 240000): Promise<void> {
 // so "reboot with a different engine" is a real OS-level restart, not an in-process reload.
 export type RebootEngineKind = "duckdb" | "trino";
 
+// Same defaults playwright.config.ts's own graphql-demo/petstore-mock webServer entries use.
+// Exported so registerGraphqlRemote/registerOpenapi callers (registrars have no baked-in
+// "graphql-demo"/"petstore-api" source to read a path off of in the reboot harness's minimal
+// config) can pass the exact URL those already-running demo servers answer on.
+export const REBOOT_GRAPHQL_DEMO_URL = `http://localhost:${process.env.PROVISA_E2E_GRAPHQL_DEMO_PORT ?? 8907}/graphql`;
+export const REBOOT_PETSTORE_OPENAPI_URL = `http://localhost:${process.env.PROVISA_E2E_PETSTORE_PORT ?? 8908}/api/v3/openapi.json`;
+
 // 8996-9001 (this block's original default) collided live with docker-compose.core.yml's MinIO
 // container (published on host 9000) and another already-bound service on the pgwire offset —
 // this range is nowhere near any other port this harness or its compose stack uses.
 const REBOOT_HTTP_PORT = Number(process.env.PROVISA_E2E_REBOOT_PORT ?? 18001);
 const REBOOT_DATA_DIR = path.resolve(ROOT, "provisa-ui", ".playwright-reboot-data");
 const REBOOT_CONFIG_PATH = path.join(REBOOT_DATA_DIR, "provisa.yaml");
-// Unique per test-file invocation (not a fixed name): NativeEngineBackend._attached (the DuckDB
+// Unique per TEST, not per test-file invocation: NativeEngineBackend._attached (the DuckDB
 // runtime's ATTACH dedup cache, native_backend.py) is keyed by "schema.table" ALONE, never source
 // id, and never invalidated for the life of the process. A leftover same-schema/table source from
-// an EARLIER run of this exact process (registerMongodb always uses "provisa"/"product_reviews")
-// would win that cache key at boot-time warmup — before this file's own zombie sweep even runs —
-// permanently starving every later registration under the SAME key of its own catalog attach.
-// Reproduced live: an accumulated "e2e_reboot" org left the CURRENT run's own mongodb source
-// unattachable ("Catalog ... does not exist" on its very first query) even after sweeping every
-// zombie row that predated it. A fresh org per run has no such leftover row to collide with.
-const REBOOT_ORG_ID = process.env.PROVISA_E2E_REBOOT_ORG_ID ?? `e2e_reboot_${Date.now()}`;
+// an EARLIER run/type — even a DIFFERENT type: mysql and mariadb's RDB_WIDGETS_SOURCES entries
+// both use schema "provisa_demo" and the same "widgets" table name — would win that cache key at
+// boot-time warmup, before this file's own zombie sweep even runs, permanently starving every
+// later registration under the SAME key of its own catalog attach. Reproduced live twice: once
+// across retries of the SAME type (mongodb, fixed by scoping the org per invocation), and again
+// across DIFFERENT types sharing one invocation (mysql vs. mariadb, same schema.table — a
+// per-invocation org was not enough). `resetRebootOrg()` (called from `prepareRebootDataDir`, at
+// the start of every `runRebootCase`/`runFreshEngineCase`) mints a fresh one per TEST instead.
+let REBOOT_ORG_ID = process.env.PROVISA_E2E_REBOOT_ORG_ID ?? `e2e_reboot_${Date.now()}`;
+function resetRebootOrg(): void {
+  if (process.env.PROVISA_E2E_REBOOT_ORG_ID) return; // explicit override always wins
+  REBOOT_ORG_ID = `e2e_reboot_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+}
 export const REBOOT_BACKEND_URL = `http://localhost:${REBOOT_HTTP_PORT}`;
 // Same fixed 32-byte key every other e2e backend in this file uses (see E2E_ENCRYPTION_KEY in
 // playwright.config.ts) — not a real credential, just a value the vault can always decrypt with.
@@ -568,6 +581,7 @@ function rebootControlPlaneEnv(): Record<string, string> {
  * the SAME test, or the materialize store and control-plane org row this is meant to carry across
  * the restart would be wiped along with it. */
 export function prepareRebootDataDir(): void {
+  resetRebootOrg();
   fs.rmSync(REBOOT_DATA_DIR, { recursive: true, force: true });
   fs.mkdirSync(REBOOT_DATA_DIR, { recursive: true });
   fs.copyFileSync(path.resolve(ROOT, "config/provisa-trino-e2e.yaml"), REBOOT_CONFIG_PATH);
@@ -591,6 +605,13 @@ export async function spawnRebootBackend(engineKind: RebootEngineKind): Promise<
     ORG_ID: REBOOT_ORG_ID,
     PROVISA_ENCRYPTION_KEY: REBOOT_ENCRYPTION_KEY,
     PROVISA_ENGINE: engineKind,
+    // graphql_remote/openapi read these from the APP PROCESS's own env (not a per-source URL
+    // field) — same defaults playwright.config.ts's own webServer entries use. No host rewrite is
+    // ever needed for them: the app process that reads this env is native on EITHER engine (only
+    // Trino's own JVM coordinator runs in a container), unlike a source whose driver connection
+    // really does originate inside that container.
+    GRAPHQL_DEMO_URL: REBOOT_GRAPHQL_DEMO_URL,
+    PETSTORE_BASE_URL: REBOOT_PETSTORE_OPENAPI_URL.replace(/\/openapi\.json$/, ""),
     ...rebootControlPlaneEnv(),
     ...(engineKind === "trino" ? REBOOT_TRINO_EXTRA_ENV : {}),
   };
@@ -672,12 +693,29 @@ export async function queryRebootBackend(sql: string, timeoutMs = 30000): Promis
     if (res.ok) {
       const body = await res.json();
       const rowObjects = body.data.sql as Record<string, unknown>[];
+      // Each SELECT item is either a bare column name (the row-object key itself) or an aliased
+      // expression ("... AS alias") — the row object is keyed by the ALIAS, not the raw
+      // expression (reproduced live: prometheus's own `CAST(MAX(value) AS INTEGER) AS healthy`
+      // read back as `row["CAST(MAX(value) AS INTEGER) AS healthy"]`, always undefined).
       const columns = sql
         .replace(/^SELECT\s+/i, "")
         .split(/\s+FROM\s+/i)[0]
         .split(",")
-        .map((c) => c.trim());
-      return rowObjects.map((row) => columns.map((c) => String(row[c])));
+        .map((c) => {
+          const trimmed = c.trim();
+          const asMatch = trimmed.match(/\s+AS\s+(\S+)\s*$/i);
+          return (asMatch ? asMatch[1] : trimmed).replace(/^"(.*)"$/, "$1");
+        });
+      // Snowflake (and some other warehouse drivers) return column names UPPERCASED regardless
+      // of how the SELECT list spelled them — an exact-key lookup on the lowercase SQL text
+      // silently reads undefined. Fall back to a case-insensitive match.
+      const lookup = (row: Record<string, unknown>, c: string): unknown => {
+        if (c in row) return row[c];
+        const lower = c.toLowerCase();
+        const found = Object.keys(row).find((k) => k.toLowerCase() === lower);
+        return found !== undefined ? row[found] : undefined;
+      };
+      return rowObjects.map((row) => columns.map((c) => String(lookup(row, c))));
     }
     lastError = await res.text();
     if (Date.now() > deadline) {
@@ -780,6 +818,46 @@ export async function rewriteHostForContainerizedEngine(sourceId: string, source
   expect(body.data.updateSource.success, body.data.updateSource.message).toBeTruthy();
 }
 
+/** Every registrar's own `page.request.post("/admin/graphql", ...)` calls (submitRegisterAndExpect
+ * Listed's dqDataset lookup, plus a handful of registrar-specific ones — graphql_remote/
+ * grpc_remote/ingest) are NOT intercepted by `page.route()` (a separate APIRequestContext — see
+ * reprovisionSourceOnEngine's own comment on this exact gotcha), so pointing `page`'s BROWSER
+ * traffic at the reboot-harness backend still leaves those calls hitting the default/Vite-proxied
+ * backend. Rather than thread a `baseUrl` param through every one of the 54 registrars, swap
+ * `page.request` for a plain-`fetch` shim pointed at `REBOOT_BACKEND_URL` for the duration of `fn`
+ * — every relative-path `page.request.post("/admin/graphql")` call anywhere in the registration
+ * flow then resolves correctly, registrar-agnostic. Only `.post(url, {data, headers})` is ever
+ * called through `page.request` anywhere in this codebase (confirmed by grep) — this shim
+ * implements only that, not the full `APIRequestContext` surface. (`request.newContext()`, the
+ * "real" way to mint a differently-scoped APIRequestContext, is a method on the top-level
+ * `playwright.request` MODULE export — not available as a standalone import in this Playwright
+ * version — and is NOT a method the per-test `request` FIXTURE instance itself exposes; confirmed
+ * live: "request.newContext is not a function". This shim sidesteps that entirely.) */
+function withRebootApiRequest<T>(page: Page, fn: () => Promise<T>): Promise<T> {
+  const shim = {
+    post: async (url: string, opts?: { data?: unknown; headers?: Record<string, string> }) => {
+      const fullUrl = /^https?:\/\//.test(url) ? url : `${REBOOT_BACKEND_URL}${url}`;
+      const res = await fetch(fullUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(opts?.headers ?? {}) },
+        body: opts?.data !== undefined ? JSON.stringify(opts.data) : undefined,
+      });
+      const bodyText = await res.text();
+      return {
+        ok: () => res.ok,
+        status: () => res.status,
+        text: async () => bodyText,
+        json: async () => JSON.parse(bodyText),
+      };
+    },
+  };
+  const original = page.request;
+  Object.defineProperty(page, "request", { value: shim, configurable: true });
+  return fn().finally(() => {
+    Object.defineProperty(page, "request", { value: original, configurable: true });
+  });
+}
+
 /** REQ-1730 scenario 2: with engine X primary from a COLD START (not DuckDB, the harness's usual
  * registration backend), does the real Sources-form UI still work end to end — create source,
  * register table, query — through the ordinary path, no replay? Boots ONE dedicated reboot-
@@ -804,9 +882,81 @@ export async function runFreshEngineCase(
         route.continue({ url: route.request().url().replace(UI_URL, REBOOT_BACKEND_URL) });
       });
     }
-    const registration = await registrar(page);
+    const registration = await withRebootApiRequest(page, () => registrar(page));
     const rows = await runSqlOnPage(page, registration.sql);
     registration.assertRows(rows);
+    for (const pattern of routes) await page.unroute(pattern);
+  } finally {
+    await killRebootBackend(proc);
+  }
+}
+
+/** REQ-1730 scenario 1, generalized: register `registrar` once under DuckDB (the reboot-harness's
+ * own dedicated process, not CORE_BACKENDS/ENGINES — same primitives scenario 2 uses), then for
+ * each engine in `engineSequence`, genuinely KILL and RESPAWN that same process with the engine
+ * flipped (same port/data dir/org) and query again — no replay of the registration mutation ever.
+ * `hostRewrites` (default {}): per-engine host override to apply (via
+ * `rewriteHostForContainerizedEngine`) before rebooting into that engine — pass e.g. `{ trino:
+ * "mongodb" }` when `registrar`'s type has a live connector reachable through the docker-topology
+ * host rewrite (see that function's own doc); omit an engine here for a type with no such
+ * dependency (a `LAND`-only source, a file path identity-mounted into the container, etc.) — a
+ * no-op call for a type with no connector is harmless either way (REQ-842), so default to calling
+ * it for every engine unless the caller has a reason not to.
+ *
+ * One registrar per test, matching runSwapCase's own "one type = one test" contract — see this
+ * file's module doc for why that split matters (isolating a single type's failure, targeted
+ * reruns). This is the primitive to reuse when extending REQ-1730 scenario 1 to more source
+ * types: `test("<type>: ...", ({ page }) => runRebootCase(page, () =>
+ * register<Type>(page), { trino: "<type>" }))`. */
+export async function runRebootCase(
+  page: Page,
+  registrar: (page: Page) => Promise<Registration>,
+  hostRewriteTypes: Partial<Record<RebootEngineKind, string>> = { trino: "" },
+  engineSequence: RebootEngineKind[] = ["trino"],
+): Promise<void> {
+  test.setTimeout(120000 + engineSequence.length * 180000);
+  prepareRebootDataDir();
+  let proc = await spawnRebootBackend("duckdb");
+  try {
+    await sweepRebootZombieSources();
+    const routes = ["/admin", "/data", "/query", "/health"].map((prefix) => `${UI_URL}${prefix}**`);
+    for (const pattern of routes) {
+      await page.route(pattern, (route) => {
+        route.continue({ url: route.request().url().replace(UI_URL, REBOOT_BACKEND_URL) });
+      });
+    }
+    const registration = await withRebootApiRequest(page, () => registrar(page));
+    // A CDC-listener/push-wired type (kafka/websocket) needs its own wiring to catch up after
+    // EVERY reboot, not just after the original harness's replay — pollTimeoutMs is that type's
+    // own declared tolerance for that (see rss/websocket's own comment). queryRebootBackend's own
+    // retry loop only retries on an HTTP failure, never on a successful-but-EMPTY response — the
+    // shape landing/CDC-wiring races actually take (reproduced live: kafka's own first query came
+    // back `200 OK, []`, never retried). When pollTimeoutMs is set, retry the WHOLE query call
+    // (fresh HTTP request each time, like trySqlOnPage's own poll loop) until rows are non-empty
+    // or the deadline passes.
+    const pollFor = async (): Promise<string[][]> => {
+      if (!registration.pollTimeoutMs) return queryRebootBackend(registration.sql);
+      const deadline = Date.now() + registration.pollTimeoutMs;
+      let rows: string[][] = [];
+      for (;;) {
+        rows = await queryRebootBackend(registration.sql);
+        if (rows.length > 0 || Date.now() > deadline) return rows;
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    };
+    let rows = await pollFor();
+    registration.assertRows(rows);
+
+    for (const engineKind of engineSequence) {
+      const sourceType = hostRewriteTypes[engineKind];
+      if (engineKind !== "duckdb" && sourceType !== undefined) {
+        await rewriteHostForContainerizedEngine(registration.sourceId, sourceType || registration.label);
+      }
+      await killRebootBackend(proc);
+      proc = await spawnRebootBackend(engineKind);
+      rows = await pollFor();
+      registration.assertRows(rows);
+    }
     for (const pattern of routes) await page.unroute(pattern);
   } finally {
     await killRebootBackend(proc);
