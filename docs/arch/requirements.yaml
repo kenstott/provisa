@@ -57308,6 +57308,36 @@
     govdata case verbatim (WEATHER subject, `weather.nws_stations`), gated the same way on
     `FREE_ASKAMERICA_KEY` in `.env` — no offline mock exists for this type. Verified passing live
     on the first attempt (~60s).)
+
+    (Amended 2026-09-17, RSS ATTEMPTED — one real bug found+fixed, NOT yet added to the harness.
+    rss lands through a background POLL job (`wire_new_poll_jobs`, REQ-1770), not synchronously on
+    the query like every other `_MATERIALIZE_ONLY` type attempted so far. Root-caused with live
+    debug tracing why that poll job never fired for a UI-registered rss table on a fresh backend:
+    `provisa/api/admin/db_queries.py`'s `fetch_tables()` never SELECTed `registered_tables
+    .cache_ttl` at all (a real, pre-existing column — `schema_mutation.py`'s `update_table`
+    writes it — simply never read back out), so `federation/registry_view.py`'s
+    `registered_tables()` fell back ENTIRELY to `state.config.tables` (the static YAML config) for
+    `cache_ttl` — always empty for a table that only ever exists as a control-plane row, never a
+    YAML entry. `wire_new_poll_jobs`'s `build_source_node_spec` therefore always saw
+    `poll_seconds=None` for such a table and skipped wiring a job — permanently:
+    `state.poll_jobs_registered` marks a node visited on its FIRST attempt whether a job was
+    wired or not, so this was not a timing race a retry could ever win. Fixed both functions (DB
+    query now selects `cache_ttl`; the registry prefers it over the static-config fallback) —
+    verified live the poll job now wires with the correct cadence (`poll_seconds=5` where it was
+    always `None` before). This fix is real and kept regardless of rss's harness status (verified
+    no regression on grpc_remote/govdata, which exercise the same `registered_tables()` path).
+
+    A SECOND, deeper issue remains open: even with the poll job correctly wired, rows still never
+    reached the SQL page query under Trino within a 120s poll window (a `pollTimeoutMs` extension
+    to `Registration`/`requeryOnEngine`, tried and then reverted along with the rss registrar
+    itself, since a red test may not ship). Not yet root-caused past confirming the wiring succeeds
+    — the next place to look is `TrinoBackend.landing_target`'s adapter-fetched branch (returns
+    `schema_name, table_name` UNCHANGED, no store-schema prefix) versus wherever the scheduled
+    poll job's actual write lands, to see whether the two disagree on rss's physical target the
+    same class of way `host.docker.internal` disagreed with kafka's two-hop protocol earlier in
+    this file. websocket was not attempted this round (a one-shot push with no persistent broker,
+    structurally harder than rss's re-pollable static feed — see `registerRss`'s own reasoning,
+    preserved in session memory even though the code was reverted). Harness stays at 35/54.)
   code:
   - provisa/api/app_loaders.py
   - provisa/api/admin/schema_mutation.py

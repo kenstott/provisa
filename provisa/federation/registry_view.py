@@ -103,7 +103,23 @@ async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  
                 live=getattr(cfg, "live", None),
                 change_signal=getattr(cfg, "change_signal", None),
                 watermark_column=getattr(cfg, "watermark_column", None),
-                cache_ttl=getattr(cfg, "cache_ttl", None),
+                # REQ-1730: a table registered dynamically (through the UI, no YAML `tables:`
+                # entry) has no `cfg` at all, so `getattr(cfg, "cache_ttl", None)` alone was ALWAYS
+                # None for it, regardless of the Cache TTL an operator saved on it — TableEditForm
+                # writes straight to `registered_tables.cache_ttl` (schema_mutation.py's
+                # update_table), which `rt` (fetch_tables' own row, above) already carries. Prefer
+                # that DB value; fall back to the static config only when the DB column is unset
+                # (a config-declared table with no per-table override, the ORIGINAL case this
+                # function's static-only lookup covered fine). Reproduced live: wire_new_poll_jobs
+                # (app_wiring.py) could never wire a poll job for a UI-registered rss/poll table on
+                # any backend it hadn't ALSO handled the Cache-TTL save on — `poll_seconds` came
+                # back None every time, permanently (state.poll_jobs_registered marks a node
+                # visited on the very first attempt, whether a job was actually wired or not).
+                cache_ttl=(
+                    rt["cache_ttl"]
+                    if rt.get("cache_ttl") is not None
+                    else getattr(cfg, "cache_ttl", None)
+                ),
                 probe_type=getattr(cfg, "probe_type", None),  # REQ-982
                 # REQ-1443: a checker table's rows are the results of running its contract, so
                 # the registered contract rides with the table into make_dq_loader.
