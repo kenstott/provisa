@@ -43,6 +43,7 @@ import {
   E2E_FIREBIRD_PORT,
   E2E_KAFKA_PORT,
   E2E_KAFKA_SCHEMA_REGISTRY_PORT,
+  E2E_RSS_PORT,
   E2E_SINGLESTORE_PORT,
   FILE_LAKE_HOST_DIR,
   PYTHON,
@@ -1081,6 +1082,81 @@ export async function registerGovdata(page: Page): Promise<Registration> {
     sql: `SELECT * FROM pet_store.${registered} LIMIT 5`,
     assertRows: (rows) => expect(rows.length).toBeGreaterThan(0),
     reachableOn: ["trino"],
+  };
+}
+
+// rss (REQ-1730): no Trino connector (strategy.py's _MATERIALIZE_ONLY) — but UNLIKE every other
+// type in this set, rss lands through a background POLL job (wire_new_poll_jobs, REQ-1770), not
+// synchronously on the query itself. Both DuckDB's own registration AND the Trino-side replay
+// (reprovisionSourceOnEngine's createSource call) trigger _rebuild_schemas, which starts a FRESH
+// poll job for whichever backend runs it — and since the feed fixture (engine-swap.spec.ts's own
+// beforeAll/afterAll, port E2E_RSS_PORT) re-serves the SAME static XML on every request, a poll
+// job started on Trino's backend AFTER the swap lands the identical items just fine. This is what
+// makes rss tractable where websocket (a one-shot push, never replayed) is not. `pollTimeoutMs` on
+// the returned Registration (requeryOnEngine, engine-swap-helpers.ts) retries the whole query
+// every 5s until the poll job's first tick lands something, instead of the single attempt every
+// other registration here gets.
+// sourceId deliberately has NO "_<digit>" boundary (registerIngest's own comment, REQ-1730's
+// documented naming gap): the SQL page's compiled query resolves a table through a GraphQL-
+// field-name round trip that silently drops an underscore immediately preceding a digit, so
+// ingest/rss's physical table name (created verbatim from the source id) and the compiled
+// query-time name can diverge for the usual `_${stamp}` ending every OTHER registrar here uses.
+// Reproduced live: the poll job landed the real 2 rows into "e2e_swap_rss_<stamp>" every 5s
+// (confirmed with direct store_writer.land() tracing) while the SQL page's compiled query for the
+// same registration always answered zero rows.
+export async function registerRss(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_rss_id${stamp}`;
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("rss");
+  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Port/).fill(String(E2E_RSS_PORT));
+  await page.getByTestId("rss-use-ssl-checkbox").uncheck();
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "default", sourceId);
+  await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({
+    timeout: 30000,
+  });
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  // Tables page: give the poll job an actual cadence (RegisterTableForm has no Cache TTL field,
+  // only TableEditForm's own) — the same step source-to-query-streaming.spec.ts's own rss case
+  // uses, and the reason wire_new_poll_jobs (REQ-1770) exists: saving here re-runs
+  // _rebuild_schemas on an already-running runtime, which is exactly the path that needs to start
+  // (or, on Trino's side after the swap, RE-start) this table's poll job.
+  await page.goto("/tables");
+  await page.waitForSelector(".page-header", { timeout: 15000 });
+  const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
+  await row.waitFor({ timeout: 15000 });
+  // Click the FIRST cell, not the row's own (default-center) point: TablesPage.tsx renders an
+  // actions column with its own `<Table.Td onClick={(e) => e.stopPropagation()}>` guard (so an
+  // action button click doesn't also toggle the row), and a row wide enough for that column to
+  // sit at the row's horizontal midpoint swallows a plain `row.click()` there — reproduced live
+  // (the row locator resolves and clicks with no error, but the row never expands).
+  await row.locator("td").first().click();
+  const editBtn = page.getByTestId("table-read-view-edit").first();
+  await editBtn.waitFor({ timeout: 10000 });
+  await editBtn.click();
+  await page.getByLabel(/^Cache TTL/).fill("5");
+  await page.getByTestId("table-edit-save").click();
+  await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+
+  return {
+    label: "rss",
+    sourceId,
+    sql: `SELECT id, title FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toEqual([
+        ["item-1", "First item"],
+        ["item-2", "Second item"],
+      ]);
+    },
+    reachableOn: ["trino"],
+    pollTimeoutMs: 120000,
   };
 }
 

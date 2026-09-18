@@ -175,7 +175,18 @@ class RSSNotificationProvider(NotificationProvider):  # REQ-342, REQ-343, REQ-34
             if pub <= watermark:
                 continue
             row = {k: v for k, v in item.items() if v is not None}
-            row["published"] = pub
+            # REQ-1730: the landed "published" column is inferred (at registration-time discovery)
+            # as a naive TIMESTAMP, not TIMESTAMPTZ — but every value this provider produces
+            # carries tzinfo=utc (both real parses and _UNPARSEABLE_DATE), and asyncpg's binary
+            # COPY path (store_writer.land -> materialize_exec._bulk_insert) cannot bind a
+            # timezone-aware datetime into a naive column: it raises
+            # `TypeError: can't subtract offset-naive and offset-aware datetimes` internally,
+            # which _bulk_insert never gets to (so `land()` appears to succeed — it reaches
+            # store_writer.land() and even store_writer.land_replace()'s own DELETE — while the
+            # subsequent INSERT silently never lands a single row, reproduced live). The watermark
+            # comparison above still needs a real tz-aware `pub` (kept as `pub`); only the STORED
+            # copy is normalized to match the naive column shape.
+            row["published"] = pub.astimezone(timezone.utc).replace(tzinfo=None)
             events.append(
                 ChangeEvent(
                     operation="insert",

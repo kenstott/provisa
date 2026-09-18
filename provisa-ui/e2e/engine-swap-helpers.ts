@@ -22,7 +22,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { test, expect, BACKEND_URL, TRINO_BACKEND_URL, UI_URL } from "./coverage";
-import { runSqlOnPage } from "./source-to-query-helpers";
+import { runSqlOnPage, typeSql } from "./source-to-query-helpers";
 import type { Page } from "./coverage";
 
 
@@ -71,6 +71,14 @@ export const GRPC_REMOTE_SERVER_MODULE = "demo.grpc_remote_server.server";
 // source-to-query-streaming.spec.ts's own 378xx range, per three-instance-isolation.
 export const E2E_KAFKA_PORT = 33101;
 export const E2E_KAFKA_SCHEMA_REGISTRY_PORT = 33102;
+
+// rss's feed fixture is a plain in-process Node http.Server (this file's own beforeAll/afterAll,
+// same shape as source-to-query-streaming.spec.ts's own — but a DISTINCT port from that file's
+// 378xx range, per three-instance-isolation) — it re-serves the SAME static feed content on every
+// request, which is exactly what makes rss (unlike websocket's one-shot push) tractable for this
+// harness's "register once, swap engine, requery" pattern: a poll job started fresh on the
+// Trino-bound backend after the swap re-polls and lands the identical items.
+export const E2E_RSS_PORT = 33111;
 
 export async function waitForPort(port: number, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -194,6 +202,15 @@ export interface Registration {
    * for. Absence means "registered to prove the DuckDB leg, never requeried on that engine" —
    * e.g. sqlite, which has no Trino connector or FDW path at all (REQ-1726). */
   reachableOn: string[];
+  /** REQ-1730 (rss): set for a POLL-cadence-landed source, where `sql`'s FIRST answer on a
+   * freshly-(re)registered engine can genuinely be zero rows — the poll job needs at least one
+   * tick, unlike every other MATERIALIZE_ONLY type here (grpc_remote/graphql_remote/openapi/
+   * govdata), which land synchronously on the query itself ("the first query on a
+   * materialize-only source lands it first", source-to-query-helpers.ts's own runSqlOnPage
+   * comment). When set, requeryOnEngine retries the WHOLE query (a fresh page load each time —
+   * the SQL page has no live-refresh) every 5s up to this many milliseconds, instead of the
+   * single attempt every other registration gets. */
+  pollTimeoutMs?: number;
 }
 
 /** One already-running backend process this harness can requery against, sharing the DuckDB
@@ -319,7 +336,17 @@ export async function reprovisionSourceOnEngine(engine: EngineTarget, sourceId: 
     // HOST one.
     src!.host = "kafka";
     src!.port = 29092;
-  } else if (engine.name === "trino" && src!.host) {
+  } else if (engine.name === "trino" && src!.host && src!.type !== "rss" && src!.type !== "websocket") {
+    // rss/websocket have no live Trino connector at all (strategy.py's _MATERIALIZE_ONLY) — their
+    // "Trino leg" is a background poll/push job the app's OWN process runs (provisa/events/
+    // push_wiring.py's make_rss_loader / websocket listener), and that process is NATIVE on both
+    // backends here (only Trino's JVM coordinator itself runs in a container) — unlike every
+    // OTHER MATERIALIZE_ONLY type reached through a real Trino connector (mongodb/redis/
+    // cassandra/...), where the JDBC/driver connection really does originate INSIDE that
+    // container and needs the host.docker.internal address. Reproduced live: rewriting rss's host
+    // here left its poll job trying (from a plain native process) to resolve
+    // "host.docker.internal", a Docker-Desktop-only DNS entry that means nothing outside a
+    // container — the poll job never landed a single row in 120s, not a slow-tick false negative.
     src!.host = src!.host.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal");
   }
   // kafka stores its Schema Registry URL in `database` (SourceFormFieldsExtended.tsx's isKafka
@@ -353,6 +380,38 @@ export async function reprovisionSourceOnEngine(engine: EngineTarget, sourceId: 
 /** Requery every DuckDB-registered source this engine can reach, on this SAME page — the route
  * rewrite (splunk-connector.spec.ts's pattern) sends every subsequent UI request at this origin
  * to the engine's own backend instead of the DuckDB one the page has been talking to. */
+/** One `sql` attempt on the SQL page — like `runSqlOnPage`, but returns `[]` instead of throwing
+ * when the query answers with no rows, so a caller can retry rather than fail on the very first
+ * attempt. Only used for `Registration.pollTimeoutMs` (rss's poll-cadence landing); every other
+ * registration keeps using `runSqlOnPage`'s single-shot, fail-fast behavior. */
+async function trySqlOnPage(page: Page, sql: string, role = "org_admin"): Promise<string[][]> {
+  await page.goto("/sql");
+  await page.waitForSelector(".cm-content", { timeout: 30000 });
+  const picker = page.getByTestId("sql-role");
+  if ((await picker.inputValue()) !== role) {
+    await picker.click();
+    const option = page.getByRole("option", { name: role, exact: true });
+    if (await option.count()) await option.click();
+    else await page.keyboard.press("Escape");
+  }
+  await typeSql(page, sql);
+  const runResp = page.waitForResponse(
+    (r) => r.url().includes("/data/sql") && r.request().method() === "POST",
+  );
+  await page.getByTestId("sql-run").click();
+  const resp = await runResp;
+  if (!resp.ok()) return [];
+  const landed = await page
+    .getByTestId("download-csv-btn")
+    .isVisible({ timeout: 5000 })
+    .catch(() => false);
+  if (!landed) return [];
+  const rows = page.locator(".sql-results-table tbody tr");
+  return rows.evaluateAll((trs) =>
+    trs.map((tr) => Array.from(tr.querySelectorAll("td")).map((td) => td.textContent?.trim() ?? "")),
+  );
+}
+
 export async function requeryOnEngine(page: Page, engine: EngineTarget, registrations: Registration[]) {
   await reloadEngineBackend(engine);
   // Only the API paths, never `${UI_URL}/**` whole — the SPA's own HTML/JS is served by Vite,
@@ -369,7 +428,26 @@ export async function requeryOnEngine(page: Page, engine: EngineTarget, registra
     await reprovisionSourceOnEngine(engine, reg.sourceId);
   }
   for (const reg of reachable) {
-    const rows = await runSqlOnPage(page, reg.sql);
+    if (!reg.pollTimeoutMs) {
+      const rows = await runSqlOnPage(page, reg.sql);
+      reg.assertRows(rows);
+      continue;
+    }
+    const deadline = Date.now() + reg.pollTimeoutMs;
+    let rows: string[][] = [];
+    for (;;) {
+      rows = await trySqlOnPage(page, reg.sql);
+      if (rows.length > 0 || Date.now() > deadline) break;
+      // rss/websocket's poll job is wired by wire_new_poll_jobs (app_wiring.py) inside
+      // _rebuild_schemas — a no-op if wire_event_loop's OWN async task hasn't finished populating
+      // state.event_loop_processors yet. reloadEngineBackend's reload right before this loop can
+      // race ahead of that completion, and a wire_new_poll_jobs call that loses this race is not
+      // automatically retried by anything: nothing re-triggers the wiring until another mutation
+      // calls _rebuild_schemas again. Re-issuing the (idempotent, upsert) createSource replay
+      // each retry gives that race another chance to resolve.
+      await reprovisionSourceOnEngine(engine, reg.sourceId);
+      await new Promise((r) => setTimeout(r, 5000));
+    }
     reg.assertRows(rows);
   }
   for (const pattern of routes) await page.unroute(pattern);

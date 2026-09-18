@@ -64,6 +64,7 @@
 // needs.)
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 
 import { test, expect } from "./coverage";
@@ -76,6 +77,7 @@ import {
   DOCKER_NETWORK,
   E2E_KAFKA_PORT,
   E2E_KAFKA_SCHEMA_REGISTRY_PORT,
+  E2E_RSS_PORT,
   FILE_LAKE_HOST_DIR,
   GRPC_REMOTE_SERVER_MODULE,
   MAKE_FILE_LAKE_FIXTURES,
@@ -103,6 +105,7 @@ import {
   registerFirebird,
   registerGovdata,
   registerGraphqlRemote,
+  registerRss,
   registerGrpcRemote,
   registerIngest,
   registerKafka,
@@ -321,6 +324,47 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     test("govdata: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
     }) => runSwapCase(page, () => registerGovdata(page)));
+  });
+
+  // rss's feed fixture is a plain in-process Node http.Server (same shape as source-to-query-
+  // streaming.spec.ts's own, distinct port — see E2E_RSS_PORT's own comment) that re-serves the
+  // SAME static feed on every request, scoped to just this describe block per the file's own
+  // "one source = one test" redesign.
+  test.describe("rss", () => {
+    // pubDate is REQUIRED, not decorative: rss_provider.py's _parse_date() maps a missing/
+    // unparseable pubDate to datetime.min, and poll_once()'s own watermark defaults to
+    // datetime.min for a fresh (per-call) provider too — `pub <= watermark` then reads
+    // datetime.min <= datetime.min (True), silently filtering out every single item. Reproduced
+    // live: an earlier version of this fixture omitted pubDate and the poll job wired, fired, and
+    // "landed" 0 rows every time, with no error anywhere in the pipeline (store_writer.land() was
+    // reached and executed a genuine 0-row replace) — this fixture must not regress that.
+    const RSS_ITEMS = [
+      { guid: "item-1", title: "First item", link: "https://example.com/1", pubDate: "Mon, 01 Jan 2024 00:00:00 GMT" },
+      { guid: "item-2", title: "Second item", link: "https://example.com/2", pubDate: "Tue, 02 Jan 2024 00:00:00 GMT" },
+    ];
+    function rssFeedXml(): string {
+      const items = RSS_ITEMS.map(
+        (i) =>
+          `<item><guid>${i.guid}</guid><title>${i.title}</title><link>${i.link}</link>` +
+          `<description>desc-${i.guid}</description><pubDate>${i.pubDate}</pubDate></item>`,
+      ).join("");
+      return `<?xml version="1.0"?><rss version="2.0"><channel><title>Test Feed</title>${items}</channel></rss>`;
+    }
+    let rssServer: http.Server;
+    test.beforeAll(async () => {
+      rssServer = http.createServer((_req, res) => {
+        res.writeHead(200, { "Content-Type": "application/rss+xml" });
+        res.end(rssFeedXml());
+      });
+      await new Promise<void>((resolve) => rssServer.listen(E2E_RSS_PORT, resolve));
+    });
+    test.afterAll(async () => {
+      await new Promise<void>((resolve) => rssServer.close(() => resolve()));
+    });
+
+    test("rss: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerRss(page)));
   });
 
   // grpc_remote has no Trino connector — same landing path as graphql_remote/openapi above, just

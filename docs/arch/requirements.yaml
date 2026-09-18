@@ -57327,17 +57327,72 @@
     always `None` before). This fix is real and kept regardless of rss's harness status (verified
     no regression on grpc_remote/govdata, which exercise the same `registered_tables()` path).
 
-    A SECOND, deeper issue remains open: even with the poll job correctly wired, rows still never
-    reached the SQL page query under Trino within a 120s poll window (a `pollTimeoutMs` extension
-    to `Registration`/`requeryOnEngine`, tried and then reverted along with the rss registrar
-    itself, since a red test may not ship). Not yet root-caused past confirming the wiring succeeds
-    — the next place to look is `TrinoBackend.landing_target`'s adapter-fetched branch (returns
-    `schema_name, table_name` UNCHANGED, no store-schema prefix) versus wherever the scheduled
-    poll job's actual write lands, to see whether the two disagree on rss's physical target the
-    same class of way `host.docker.internal` disagreed with kafka's two-hop protocol earlier in
-    this file. websocket was not attempted this round (a one-shot push with no persistent broker,
-    structurally harder than rss's re-pollable static feed — see `registerRss`'s own reasoning,
-    preserved in session memory even though the code was reverted). Harness stays at 35/54.)
+    [SUPERSEDED by the amendment below, 2026-09-17 -- the "landing_target mismatch" theory in this
+    paragraph was never confirmed and turned out to be wrong once actually traced end to end; kept
+    here for history, not as a lead to chase. A SECOND, deeper issue remains open: even with the
+    poll job correctly wired, rows still never reached the SQL page query under Trino within a
+    120s poll window (a `pollTimeoutMs` extension to `Registration`/`requeryOnEngine`, tried and
+    then reverted along with the rss registrar itself, since a red test may not ship). Not yet
+    root-caused past confirming the wiring succeeds — the next place to look is
+    `TrinoBackend.landing_target`'s adapter-fetched branch (returns `schema_name, table_name`
+    UNCHANGED, no store-schema prefix) versus wherever the scheduled poll job's actual write
+    lands, to see whether the two disagree on rss's physical target the same class of way
+    `host.docker.internal` disagreed with kafka's two-hop protocol earlier in this file. websocket
+    was not attempted this round (a one-shot push with no persistent broker, structurally harder
+    than rss's re-pollable static feed — see `registerRss`'s own reasoning, preserved in session
+    memory even though the code was reverted). Harness stays at 35/54.]
+    [END SUPERSEDED BLOCK]
+
+    (Amended 2026-09-17, RSS FIXED: 35th->36th Trino-reachable type. The "deeper landing_target
+    issue" above was chased with `store_writer.land()`/`materialize_exec.land_replace()`
+    instrumentation (added, verified, then fully reverted — no debug code shipped) and turned out
+    to be TWO SEPARATE, much narrower causes, neither a landing_target mismatch:
+
+    (1) This session's OWN test-fixture bug: `engine-swap.spec.ts`'s rss feed fixture omitted
+    `<pubDate>` (unlike `source-to-query-streaming.spec.ts`'s proven original). `rss_provider.py`'s
+    `_parse_date()` maps a missing/unparseable date to `_UNPARSEABLE_DATE = datetime.min`, and
+    `poll_once()`'s own watermark for a fresh (per-call) provider ALSO defaults to `datetime.min`
+    — `pub <= watermark` then reads `datetime.min <= datetime.min` (True), silently filtering out
+    every item before it ever reaches `store_writer.land()`. Fixed by restoring `pubDate` in the
+    fixture. Separately, `registerRss`'s `sourceId` used the SAME bare `_${stamp}` ending as every
+    other registrar, which per REQ-1730's own ingest amendment collides with the compiler's
+    field-name-round-trip naming gap — fixed the same way ingest was (`_id${stamp}`).
+
+    (2) A REAL, narrow Provisa bug, distinct from (1): even with real rows reaching
+    `store_writer.land_replace()`, asyncpg's binary COPY path
+    (`core/database.py Database.bulk_copy`) cannot bind a timezone-AWARE Python `datetime` into a
+    `TIMESTAMP WITHOUT TIME ZONE` column — raises `TypeError: can't subtract offset-naive and
+    offset-aware datetimes` INSIDE the COPY call, past `check_source_drift`'s own earlier check,
+    so `land()`/`land_replace()` both appear to run cleanly (the DELETE half of REPLACE executes)
+    while the INSERT half silently never lands a single row, reproduced live via direct
+    instrumentation. `rss_provider.py`'s `RSSNotificationProvider.poll_once()` always attaches
+    `tzinfo=timezone.utc` to `published` (every parse branch and `_UNPARSEABLE_DATE` alike), while
+    the column type an rss table's "published" registers as is a naive TIMESTAMP — a genuine type
+    mismatch between what this ONE provider always produces and what its own landed column
+    expects. Fixed at the source: the STORED `row["published"]` value is now normalized to naive
+    UTC (`.astimezone(timezone.utc).replace(tzinfo=None)`) before landing; the internal watermark
+    comparison keeps using the original tz-aware `pub`, unaffected. `tests/unit/test_rss_provider
+    .py` (16 tests) still passes unchanged.
+
+    Also fixed along the way, unrelated to rss's own data path: `TablesPage.tsx`'s row click
+    handler toggles expansion via the bare `<Table.Tr onClick={...}>`, but the SAME row also
+    carries an actions-column `<Table.Td onClick={(e) => e.stopPropagation()}>` guard (so an
+    action button click doesn't ALSO toggle the row) — Playwright's default `row.click()` targets
+    the row's bounding-box CENTER, which for this harness's specific column layout happened to
+    land on that guarded cell, silently swallowing the click (reproduced live: the click resolves
+    and executes with no error, the row simply never expands). `registerRss` now clicks the row's
+    FIRST cell instead, outside the guarded column.
+
+    `registerRss`/`pollTimeoutMs` (the `Registration`/`requeryOnEngine` retry extension for a
+    poll-cadence-landed type, `engine-swap-helpers.ts`) are back in the harness, this time passing
+    live, twice in a row. Verified no regression: `grpc_remote` (same `landing_worklist` path) and
+    `tests/unit/test_rss_provider.py` both still pass; two PRE-EXISTING, unrelated unit-test
+    failures (`test_reconcile_landed.py::test_reconciles_only_materialized_and_skips_untyped`,
+    `test_materialize_landing.py::test_cdc_landing_consumer_drains_provider`) were confirmed via
+    `git stash` to already fail identically at the prior commit, untouched by anything in this
+    amendment. **websocket remains the only unattempted `_MATERIALIZE_ONLY` type** — a one-shot
+    push with no persistent broker to re-poll after an engine swap, structurally harder than rss's
+    re-pollable static feed.)
   code:
   - provisa/api/app_loaders.py
   - provisa/api/admin/schema_mutation.py
