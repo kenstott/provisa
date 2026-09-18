@@ -43,7 +43,7 @@ from provisa.core.secrets import resolve_secrets
 from provisa.api._meta_views import _OPS_LOG_TABLE_ALIAS  # REQ-884
 from provisa.api.admin.db_queries import parse_mask_value as _parse_mask_value
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
-from provisa.core.models import ProvisaConfig  # noqa: F401
+from provisa.core.models import ProvisaConfig, Source  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 
 if TYPE_CHECKING:
@@ -274,7 +274,9 @@ def catalog_name_for_source(state: "AppState", source_type: str, source_id: str)
     )
 
 
-def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, REQ-1266
+def _populate_source_catalog_names(
+    config: ProvisaConfig, extra_sources: list[Source] | None = None
+) -> None:  # REQ-012, REQ-1266, REQ-1730
     """Populate the org-scoped engine-catalog name map (+ source types/dialects/cache/hints).
 
     Split out of :func:`_build_source_pools_and_enums` so it can run BEFORE ``load_config``: the
@@ -284,6 +286,18 @@ def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, R
     non-default org's source under the bare (default-org) catalog name — a cross-org collision in
     the one shared coordinator's catalog namespace. Idempotent; safe to call again from
     :func:`_build_source_pools_and_enums`.
+
+    ``extra_sources`` (REQ-1730): a source created purely through the ``createSource`` mutation
+    (no ``sources:`` entry in the YAML this boot/reload loaded) is invisible to ``config.sources``
+    — this function used to populate NOTHING for it, so a fresh boot or a live config reload left
+    ``state.source_catalogs``/``source_types``/etc. never knowing it existed, regardless of engine.
+    The one place that DID populate it correctly was `create_source`'s own mutation handler, at
+    the moment of registration — which is why this gap was invisible as long as the SAME process
+    that registered a source kept running: change the active engine and restart (or reload) that
+    process, and every source registered purely through the UI silently lost this state, on ANY
+    engine, not just a "different" one. Callers pass the control-plane's full source list here
+    (``registry_view.registered_sources``, already config-aware) filtered to just the ids
+    ``config.sources`` does not already cover.
     """
     from provisa.api.app import state
 
@@ -294,7 +308,7 @@ def _populate_source_catalog_names(config: ProvisaConfig) -> None:  # REQ-012, R
     if state.federation_engine.has_otel_catalog:
         state.source_catalogs["provisa-otel"] = "otel"
 
-    for src in config.sources:
+    for src in (*config.sources, *(extra_sources or ())):
         state.source_types[src.id] = src.type.value
         # Fixed-warehouse catalogs pin every source to one physical catalog (not org-scoped);
         # an adapter-fetched source under Trino resolves through Trino's OWN materialize-store

@@ -44,6 +44,7 @@ import {
   E2E_KAFKA_PORT,
   E2E_KAFKA_SCHEMA_REGISTRY_PORT,
   E2E_RSS_PORT,
+  E2E_WS_PORT,
   E2E_SINGLESTORE_PORT,
   FILE_LAKE_HOST_DIR,
   PYTHON,
@@ -93,14 +94,24 @@ export async function registerNeo4j(page: Page): Promise<Registration> {
   };
 }
 
-export async function registerMongodb(page: Page): Promise<Registration> {
+export async function registerMongodb(
+  page: Page,
+  baseUrl = "",
+  // REQ-1730 scenario 2 (test-only): "localhost" (the default, correct for the DuckDB-bound
+  // registration backend every other caller uses) is unreachable from INSIDE Trino's own
+  // container — a Trino-primary-from-boot registration needs "host.docker.internal" here instead,
+  // same class of docker-topology translation reprovisionSourceOnEngine/
+  // rewriteHostForContainerizedEngine already apply post-hoc; this parameter lets a caller apply
+  // it up front, before the schema-introspection call that a post-hoc rewrite is too late for.
+  host = "localhost",
+): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_mongodb_${stamp}`;
   const tableName = "product_reviews";
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("mongodb");
-  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Host/).fill(host);
   await page.getByLabel(/^Port/).fill(String(E2E_MONGO_PORT));
   await page.getByLabel(/^Database/).fill("provisa");
   await submitSourceAndExpectListed(page, sourceId);
@@ -110,7 +121,12 @@ export async function registerMongodb(page: Page): Promise<Registration> {
   await expect(page.getByTestId("register-table-col-selected-reviewer")).toBeVisible({
     timeout: 60000,
   });
-  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+  const registered = await submitRegisterAndExpectListed(
+    page,
+    sourceId,
+    SWAP_REGISTER_TIMEOUT_MS,
+    baseUrl,
+  );
 
   return {
     label: "mongodb",
@@ -1153,6 +1169,52 @@ export async function registerRss(page: Page): Promise<Registration> {
       expect(rows).toEqual([
         ["item-1", "First item"],
         ["item-2", "Second item"],
+      ]);
+    },
+    reachableOn: ["trino"],
+    pollTimeoutMs: 120000,
+  };
+}
+
+// websocket (REQ-1730): no Trino connector (strategy.py's _MATERIALIZE_ONLY) — lands through the
+// SAME REQ-1733 CDC-listener mechanism as kafka (push_wiring.py's wire_push_listeners), unlike
+// rss's poll cadence. Tractable for this harness for the same reason rss is: the fixture (the
+// `ws` package, source-to-query-streaming.spec.ts's own pattern) sends its fixed 2-event payload
+// on EVERY new connection, not just the first ever, so a fresh listener wire_push_listeners opens
+// on the Trino-bound backend after the swap (triggered the same way as rss's poll job — every
+// _rebuild_schemas call, including the createSource replay itself) receives the same 2 events
+// again. Unlike rss, wire_push_listeners' own per-node idempotency (state.push_listener_
+// disconnects) only marks a node visited on an ACTUAL successful listener start, not eagerly on
+// every attempt (no wire_new_poll_jobs-style permanent-exclusion risk) — but pollTimeoutMs is
+// still used since opening a live connection and landing its first events is asynchronous either
+// way. CDC landing hard-requires a declared primary key (register-table-col-pk-id), unlike rss.
+export async function registerWebsocket(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_ws_id${stamp}`;
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("websocket");
+  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Port/).fill(String(E2E_WS_PORT));
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "default", sourceId);
+  await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({
+    timeout: 30000,
+  });
+  await page.getByTestId("register-table-col-pk-id").check();
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "websocket",
+    sourceId,
+    sql: `SELECT id, value FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toEqual([
+        ["ws-1", "hello"],
+        ["ws-2", "world"],
       ]);
     },
     reachableOn: ["trino"],

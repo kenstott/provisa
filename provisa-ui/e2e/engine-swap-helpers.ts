@@ -14,7 +14,7 @@
 // harness's actual design rationale and invocation instructions; see engine-swap-registrars.ts
 // for the per-type register* functions this file's runSwapCase/ENGINES drive.
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -75,10 +75,16 @@ export const E2E_KAFKA_SCHEMA_REGISTRY_PORT = 33102;
 // rss's feed fixture is a plain in-process Node http.Server (this file's own beforeAll/afterAll,
 // same shape as source-to-query-streaming.spec.ts's own — but a DISTINCT port from that file's
 // 378xx range, per three-instance-isolation) — it re-serves the SAME static feed content on every
-// request, which is exactly what makes rss (unlike websocket's one-shot push) tractable for this
-// harness's "register once, swap engine, requery" pattern: a poll job started fresh on the
-// Trino-bound backend after the swap re-polls and lands the identical items.
+// request, which is what makes it tractable for this harness's "register once, swap engine,
+// requery" pattern: a poll job started fresh on the Trino-bound backend after the swap re-polls
+// and lands the identical items.
 export const E2E_RSS_PORT = 33111;
+// websocket's fixture (the `ws` package, same as source-to-query-streaming.spec.ts's own) sends
+// its fixed 2-event payload on EVERY new connection, not just the first ever — the same "re-serve
+// identical data to a fresh connection" property that makes rss tractable applies here too: Trino
+// backend's own wire_push_listeners (push_wiring.py) opens its OWN fresh connection after the
+// swap and receives the same 2 events again.
+export const E2E_WS_PORT = 33112;
 
 export async function waitForPort(port: number, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -487,6 +493,325 @@ export async function waitForTrinoStable(budgetMs = 240000): Promise<void> {
   }
 }
 
+// REQ-1730 scenario 1: "if you changed engines, it required you to reboot the backend" (the
+// user's own design intent) — every OTHER engine in this file is proven by replaying the
+// createSource mutation against an already-running, already-differently-engined process
+// (reprovisionSourceOnEngine/reloadEngineBackend). That is deliberately NOT a restart, and it
+// hid a real gap (REQ-1730's `_replace_mode_cleanup`/`_build_source_pools_and_enums` never seeing
+// a control-plane-only source) until a genuine reboot-based test was written. This section owns
+// ONE dedicated backend process, entirely separate from every ENGINES/CORE_BACKENDS process
+// above: it is killed and respawned with `PROVISA_ENGINE` flipped, on the SAME port/data dir/org,
+// so "reboot with a different engine" is a real OS-level restart, not an in-process reload.
+export type RebootEngineKind = "duckdb" | "trino";
+
+// 8996-9001 (this block's original default) collided live with docker-compose.core.yml's MinIO
+// container (published on host 9000) and another already-bound service on the pgwire offset —
+// this range is nowhere near any other port this harness or its compose stack uses.
+const REBOOT_HTTP_PORT = Number(process.env.PROVISA_E2E_REBOOT_PORT ?? 18001);
+const REBOOT_DATA_DIR = path.resolve(ROOT, "provisa-ui", ".playwright-reboot-data");
+const REBOOT_CONFIG_PATH = path.join(REBOOT_DATA_DIR, "provisa.yaml");
+// Unique per test-file invocation (not a fixed name): NativeEngineBackend._attached (the DuckDB
+// runtime's ATTACH dedup cache, native_backend.py) is keyed by "schema.table" ALONE, never source
+// id, and never invalidated for the life of the process. A leftover same-schema/table source from
+// an EARLIER run of this exact process (registerMongodb always uses "provisa"/"product_reviews")
+// would win that cache key at boot-time warmup — before this file's own zombie sweep even runs —
+// permanently starving every later registration under the SAME key of its own catalog attach.
+// Reproduced live: an accumulated "e2e_reboot" org left the CURRENT run's own mongodb source
+// unattachable ("Catalog ... does not exist" on its very first query) even after sweeping every
+// zombie row that predated it. A fresh org per run has no such leftover row to collide with.
+const REBOOT_ORG_ID = process.env.PROVISA_E2E_REBOOT_ORG_ID ?? `e2e_reboot_${Date.now()}`;
+export const REBOOT_BACKEND_URL = `http://localhost:${REBOOT_HTTP_PORT}`;
+// Same fixed 32-byte key every other e2e backend in this file uses (see E2E_ENCRYPTION_KEY in
+// playwright.config.ts) — not a real credential, just a value the vault can always decrypt with.
+const REBOOT_ENCRYPTION_KEY = Buffer.from(Array.from({ length: 32 }, (_, i) => i + 1)).toString(
+  "base64",
+);
+// Static docker-network addresses a Trino-engine boot needs so catalog specs it builds (and the
+// system catalogs register_system_catalogs creates at startup) resolve from INSIDE Trino's own
+// container — mirrors the "trino" webServer entry in playwright.config.ts verbatim; this process
+// is not itself in that container, it just needs to embed the same addresses Trino will dial.
+const REBOOT_TRINO_EXTRA_ENV: Record<string, string> = {
+  PROVISA_ENGINE_CONTROL_PLANE_HOST: "postgres",
+  PROVISA_ENGINE_CONTROL_PLANE_PORT: "5432",
+  PROVISA_ENGINE_OTEL_S3_ENDPOINT: "http://minio:9000",
+  PROVISA_ENGINE_LAKEHOUSE_METASTORE_HOST: "hive-metastore",
+  PROVISA_ENGINE_LAKEHOUSE_METASTORE_PORT: "9083",
+  PROVISA_ENGINE_QUERY_TIMEOUT: "300",
+};
+
+/** The compose-published host port for the shared control-plane postgres — same `docker compose
+ * port` lookup playwright.config.ts's own resolveControlPlanePort() does, called directly here
+ * rather than depending on its on-disk cache file (this section owns its own process lifecycle
+ * independent of the CORE_BACKENDS/ENGINES webServers). */
+function resolveSharedPgPort(): string {
+  const output = execFileSync(
+    "docker",
+    ["compose", "-f", path.resolve(ROOT, "docker-compose.core.yml"), "port", "postgres", "5432"],
+    { cwd: ROOT, encoding: "utf8" },
+  ).trim();
+  const port = output.split(":").pop();
+  if (!port) {
+    throw new Error(`Could not resolve control-plane postgres port from docker output: ${output}`);
+  }
+  return port;
+}
+
+function rebootControlPlaneEnv(): Record<string, string> {
+  const pgPassword = process.env.PG_PASSWORD ?? "provisa";
+  const url = `postgresql+asyncpg://provisa:${pgPassword}@localhost:${resolveSharedPgPort()}/provisa`;
+  return { TENANT_DATABASE_URL: url, PLATFORM_DATABASE_URL: url };
+}
+
+/** Fresh, empty data dir + a mutable copy of the domains-only Trino e2e config (no `sources:` —
+ * every source this test's process ever knows about is control-plane-only, which is the entire
+ * point). Call once per test, before the first spawnRebootBackend — never between two reboots of
+ * the SAME test, or the materialize store and control-plane org row this is meant to carry across
+ * the restart would be wiped along with it. */
+export function prepareRebootDataDir(): void {
+  fs.rmSync(REBOOT_DATA_DIR, { recursive: true, force: true });
+  fs.mkdirSync(REBOOT_DATA_DIR, { recursive: true });
+  fs.copyFileSync(path.resolve(ROOT, "config/provisa-trino-e2e.yaml"), REBOOT_CONFIG_PATH);
+}
+
+/** Spawn the dedicated reboot-harness backend under `engineKind`, on REBOOT_HTTP_PORT, and wait
+ * for it to answer /health. `PROVISA_ENGINE` (an explicit env var) outranks the config file's own
+ * `federation_engine: trino` — see engine.py's own precedence doc — so the same config file works
+ * for every engineKind unchanged, exactly as an operator flips engines in production by editing
+ * the env, not the config file (see provisa.env's PROVISA_ENGINE in a real deploy). */
+export async function spawnRebootBackend(engineKind: RebootEngineKind): Promise<ChildProcess> {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    GRPC_PORT: String(REBOOT_HTTP_PORT + 1),
+    FLIGHT_PORT: String(REBOOT_HTTP_PORT + 2),
+    PROVISA_BOLT_PORT: String(REBOOT_HTTP_PORT + 3),
+    PROVISA_MCP_PORT: String(REBOOT_HTTP_PORT + 4),
+    PROVISA_PGWIRE_PORT: String(REBOOT_HTTP_PORT + 5),
+    PROVISA_DATA_DIR: REBOOT_DATA_DIR,
+    PROVISA_CONFIG: REBOOT_CONFIG_PATH,
+    ORG_ID: REBOOT_ORG_ID,
+    PROVISA_ENCRYPTION_KEY: REBOOT_ENCRYPTION_KEY,
+    PROVISA_ENGINE: engineKind,
+    ...rebootControlPlaneEnv(),
+    ...(engineKind === "trino" ? REBOOT_TRINO_EXTRA_ENV : {}),
+  };
+  const proc = spawn(
+    path.join(ROOT, ".venv", "bin", "uvicorn"),
+    ["main:app", "--host", "0.0.0.0", "--port", String(REBOOT_HTTP_PORT)],
+    { cwd: ROOT, env, stdio: ["ignore", "pipe", "pipe"] },
+  );
+  let output = "";
+  proc.stdout?.on("data", (d) => {
+    output += d.toString();
+    process.stderr.write(`[reboot:${engineKind}] ${d}`);
+  });
+  proc.stderr?.on("data", (d) => {
+    output += d.toString();
+    process.stderr.write(`[reboot:${engineKind}] ${d}`);
+  });
+
+  const deadline = Date.now() + 180000;
+  for (;;) {
+    if (proc.exitCode !== null) {
+      throw new Error(
+        `reboot backend (${engineKind}) exited early (code ${proc.exitCode}):\n${output.slice(-4000)}`,
+      );
+    }
+    try {
+      const res = await fetch(`${REBOOT_BACKEND_URL}/health`, { signal: AbortSignal.timeout(2000) });
+      if (res.ok) return proc;
+    } catch {
+      // not accepting connections yet
+    }
+    if (Date.now() > deadline) {
+      proc.kill("SIGKILL");
+      throw new Error(
+        `reboot backend (${engineKind}) never became healthy within ${deadline}ms:\n${output.slice(-4000)}`,
+      );
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
+/** Terminate the reboot-harness process (SIGTERM, SIGKILL after a 10s grace period) and wait for
+ * it to actually exit — the next spawnRebootBackend binds the SAME port, so a lingering process
+ * would make that bind fail rather than boot the new engine. */
+export async function killRebootBackend(proc: ChildProcess): Promise<void> {
+  if (proc.exitCode !== null) return;
+  await new Promise<void>((resolve) => {
+    proc.once("exit", () => resolve());
+    proc.kill("SIGTERM");
+    setTimeout(() => {
+      if (proc.exitCode === null) proc.kill("SIGKILL");
+    }, 10000);
+  });
+}
+
+/** Query the reboot-harness backend directly (not through `page` — the browser's fetch stays
+ * routed at REBOOT_BACKEND_URL across a reboot via the SAME page.route rewrite the caller already
+ * installed for registration, but a raw fetch avoids re-typing SQL into the SQL Explorer editor
+ * for every post-reboot check). Returns rows in `sql`'s own column order, matching what every
+ * registrar's `assertRows` already expects from the UI table's own row-array rendering.
+ *
+ * Retries on failure for up to `timeoutMs`: a materialize-only source's first query on a FRESH
+ * process can race a background wiring step that every other test in this file never hits (its
+ * shared backend is already warm with 50+ sources by the time any single new one is queried) —
+ * reproduced live on this exact harness's very first successful registration (DuckDB Binder
+ * Error: catalog not yet attached), gone on the next attempt a few hundred ms later. */
+export async function queryRebootBackend(sql: string, timeoutMs = 30000): Promise<string[][]> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = "";
+  for (;;) {
+    const res = await fetch(`${REBOOT_BACKEND_URL}/data/sql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // "org_admin", not "admin" — the reboot harness's config (provisa-trino-e2e.yaml) declares
+      // only org_admin (auth.default_assignments), matching runSqlOnPage's own default role.
+      body: JSON.stringify({ sql, role: "org_admin" }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (res.ok) {
+      const body = await res.json();
+      const rowObjects = body.data.sql as Record<string, unknown>[];
+      const columns = sql
+        .replace(/^SELECT\s+/i, "")
+        .split(/\s+FROM\s+/i)[0]
+        .split(",")
+        .map((c) => c.trim());
+      return rowObjects.map((row) => columns.map((c) => String(row[c])));
+    }
+    lastError = await res.text();
+    if (Date.now() > deadline) {
+      expect(res.ok, lastError).toBeTruthy();
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
+/** Delete every leftover `e2e_swap_*` source under the reboot-harness org before a fresh case
+ * registers a new one. `prepareRebootDataDir` only wipes LOCAL state — the source/table rows
+ * themselves live in the shared Postgres control plane and survive across reboots (that
+ * persistence is the entire point). Without this, `_attach_tbl`'s dedup key is schema+table only
+ * (`native_backend.py`), not source id — a same-named leftover source from an earlier retry
+ * (this registrar always uses schema "provisa"/table "product_reviews") silently wins the attach
+ * for that key, and the CURRENT run's own source is left with a physical catalog that was never
+ * created, "Catalog ... does not exist" on the very first query. Reproduced live on this exact
+ * harness. Mirrors sweepZombieSwapSources' own regex, against REBOOT_BACKEND_URL instead of the
+ * shared CORE_BACKENDS one. */
+export async function sweepRebootZombieSources(): Promise<void> {
+  const res = await fetch(`${REBOOT_BACKEND_URL}/admin/graphql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query: `{ sources { id } }` }),
+  });
+  if (!res.ok) return; // nothing registered yet on a brand-new org — nothing to sweep
+  const sources: Array<{ id: string }> = (await res.json()).data?.sources ?? [];
+  const zombies = sources.filter((s) => /^e2e_swap_[a-z0-9_]+_?\d{10,}$/.test(s.id));
+  for (const { id } of zombies) {
+    await fetch(`${REBOOT_BACKEND_URL}/admin/graphql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `mutation D($id: String!) { deleteSource(id: $id) { success } }`,
+        variables: { id },
+      }),
+    });
+  }
+}
+
+/** Rewrite a source's host/database (Docker-unreachable "localhost"/"127.0.0.1") to
+ * "host.docker.internal" via `updateSource` — same host-reachability translation
+ * reprovisionSourceOnEngine applies on replay (see its own comment for the kafka two-hop special
+ * case and the rss/websocket exclusion), but as a one-time persisted UPDATE instead of a mutation
+ * replay: reboot's whole point is that NO mutation ever replays. `updateSource` does not itself
+ * (re)issue an engine catalog (confirmed: `update_source`'s mutation handler never calls
+ * `_register_source_on_engine`, unlike `create_source`'s) — it only fixes the row a LATER reboot's
+ * boot-time catalog provisioning (REQ-1730's `extra_sources` plumbing) will read. Call this on the
+ * DuckDB-registered source BEFORE rebooting into a containerized engine (currently just Trino);
+ * a no-op for a type with no live Trino connector (REQ-842) since its catalog is never issued
+ * either way. This is 100% test-harness Docker-topology plumbing, not anything a real deployment
+ * needs — Trino and the app process share one network there. */
+export async function rewriteHostForContainerizedEngine(sourceId: string, sourceType: string): Promise<void> {
+  const res = await fetch(`${REBOOT_BACKEND_URL}/admin/graphql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query:
+        "{ sources { id type host port database username passwordRef path description mappingJson federationHintsJson } }",
+    }),
+  });
+  const resText = await res.text();
+  expect(res.ok, resText).toBeTruthy();
+  const sources = JSON.parse(resText).data.sources as Array<{
+    id: string;
+    type: string;
+    host: string;
+    port: number;
+    database: string;
+    username: string;
+    passwordRef: string;
+    path: string | null;
+    description: string;
+    mappingJson: string | null;
+    federationHintsJson: string | null;
+  }>;
+  const src = sources.find((s) => s.id === sourceId);
+  expect(src, `source ${sourceId} not found on the reboot harness's control-plane schema`).toBeTruthy();
+  if (sourceType === "kafka") {
+    src!.host = "kafka";
+    src!.port = 29092;
+  } else if (src!.host && sourceType !== "rss" && sourceType !== "websocket") {
+    src!.host = src!.host.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal");
+  }
+  if (src!.database) {
+    src!.database = src!.database.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal");
+  }
+  const mutation = await fetch(`${REBOOT_BACKEND_URL}/admin/graphql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: `mutation($s: SourceInput!) { updateSource(input: $s) { success message } }`,
+      variables: { s: { ...src, passwordRef: undefined, password: src!.passwordRef } },
+    }),
+  });
+  const mutationText = await mutation.text();
+  expect(mutation.ok, mutationText).toBeTruthy();
+  const body = JSON.parse(mutationText);
+  expect(body.errors, JSON.stringify(body.errors)).toBeUndefined();
+  expect(body.data.updateSource.success, body.data.updateSource.message).toBeTruthy();
+}
+
+/** REQ-1730 scenario 2: with engine X primary from a COLD START (not DuckDB, the harness's usual
+ * registration backend), does the real Sources-form UI still work end to end — create source,
+ * register table, query — through the ordinary path, no replay? Boots ONE dedicated reboot-
+ * harness process under `engineKind`, points `page` at it for the WHOLE flow (registration
+ * included, unlike scenario 1's reboot-after-register), runs `registrar` against it, then queries
+ * through the real SQL Explorer (`runSqlOnPage`, not a raw fetch) — the UI itself is what's under
+ * test here, e.g. TrinoBackend-only affordances like the schema dropdown (playwright.config.ts's
+ * own sharepoint/splunk comment: "NativeBackend.register_source is a no-op so the schema dropdown
+ * never populates") that a DuckDB-registered-then-replayed flow would never exercise. */
+export async function runFreshEngineCase(
+  page: Page,
+  engineKind: RebootEngineKind,
+  registrar: (page: Page) => Promise<Registration>,
+): Promise<void> {
+  prepareRebootDataDir();
+  const proc = await spawnRebootBackend(engineKind);
+  try {
+    await sweepRebootZombieSources();
+    const routes = ["/admin", "/data", "/query", "/health"].map((prefix) => `${UI_URL}${prefix}**`);
+    for (const pattern of routes) {
+      await page.route(pattern, (route) => {
+        route.continue({ url: route.request().url().replace(UI_URL, REBOOT_BACKEND_URL) });
+      });
+    }
+    const registration = await registrar(page);
+    const rows = await runSqlOnPage(page, registration.sql);
+    registration.assertRows(rows);
+    for (const pattern of routes) await page.unroute(pattern);
+  } finally {
+    await killRebootBackend(proc);
+  }
+}
 
 // Every registrar mints its own `e2e_swap_<type>_<Date.now()>` sourceId (see e.g.
 // registerMongodb/registerFirebird below) and container teardown in each type's beforeAll/

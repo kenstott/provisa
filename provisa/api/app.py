@@ -940,11 +940,22 @@ async def _load_and_build(
         # (source passwords) are file-only by design — schema.sql never stores them — so every node must
         # parse this file for source pools; PG holds only the shared, primary-written schema.
         _replace_mode = config_replace_mode(os.environ)
+        # REQ-1730: a source registered purely through the UI (createSource mutation, no
+        # `sources:` entry in this config) is invisible to config.sources — without this, its
+        # engine catalog is never (re)issued on boot or on a PUT /admin/config reload, on
+        # whatever engine ends up configured. registered_sources unions config.sources with the
+        # control-plane rows; the ones config.sources doesn't already know about are the gap.
+        from provisa.federation.registry_view import registered_sources as _registered_sources
+
+        _config_source_ids = {s.id for s in config.sources}
+        _extra_sources = [
+            s for s in await _registered_sources(state, conn) if s.id not in _config_source_ids
+        ]
         # Populate the org-prefixed catalog-name map FIRST so load_config's physical registration
         # AND column introspection resolve each source under the name the compiler later emits
         # (state.catalog_for). build_org_runtime does the same before its load_config; the default
         # path must too, else introspect_columns → catalog_for raises KeyError (REQ-1266). Idempotent.
-        _populate_source_catalog_names(config)
+        _populate_source_catalog_names(config, extra_sources=_extra_sources)
         # REQ-1619: `engine=None` is load_config's own "register the metadata, issue no catalogs"
         # mode. With no coordinator every register_source would resolve an address that does not
         # exist and fail one source at a time; the catalogs are reissued from state.config by
@@ -954,6 +965,7 @@ async def _load_and_build(
             conn,
             None if engine_deferred else state.federation_engine,
             replace=_replace_mode,
+            extra_sources=_extra_sources,
         )
 
     _mark("load_config")

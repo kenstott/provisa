@@ -75,12 +75,19 @@ export async function submitRegisterAndExpectListed(
   page: Page,
   sourceId: string,
   timeoutMs = 120000,
+  // REQ-1730: `page.request` is a separate APIRequestContext that `page.route()` never intercepts
+  // (only browser-initiated requests are routed — see engine-swap-helpers.ts's own comment on
+  // reprovisionSourceOnEngine), so a caller that has routed `page`'s browser traffic at a NON-
+  // default backend (the reboot harness) still needs this one call redirected explicitly. Empty
+  // string (default) preserves the original relative-URL/Vite-proxied behavior for every other
+  // caller unchanged.
+  baseUrl = "",
 ): Promise<string> {
   await page.getByTestId("register-table-submit").click();
   // Registration rebuilds the schemas; the row lands in the tables list when it is done.
   const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
   await expect(row).toBeVisible({ timeout: timeoutMs });
-  const res = await page.request.post("/admin/graphql", {
+  const res = await page.request.post(`${baseUrl}/admin/graphql`, {
     data: { query: "{ tables { sourceId dqDataset } }" },
   });
   expect(res.ok(), await res.text()).toBeTruthy();

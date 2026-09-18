@@ -188,10 +188,24 @@ _SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel", DERIVED_SOURCE_ID]
 
 
 async def _replace_mode_cleanup(
-    conn: "Connection", config: ProvisaConfig
-) -> None:  # REQ-013, REQ-014
-    """Delete all rows not present in the new config (full replace semantics)."""
-    new_source_ids = list({src.id for src in config.sources} | set(_SYSTEM_SOURCE_IDS))
+    conn: "Connection", config: ProvisaConfig, extra_sources: list[Source] | None = None
+) -> None:  # REQ-013, REQ-014, REQ-1730
+    """Delete all rows not present in the new config (full replace semantics).
+
+    ``extra_sources`` (REQ-1730): control-plane-only sources (created purely through the
+    ``createSource`` mutation, no ``sources:`` YAML entry) are kept too. Without this, a full
+    replace — the CLI's own default (see ``PROVISA_CONFIG_REPLACE`` in cli.py) — permanently
+    deleted every UI-registered source and its registered tables on the very next boot or
+    ``PUT /admin/config`` reload, regardless of which engine was configured: reproduced live via
+    the REQ-1730 engine-swap harness, where a mongodb source registered purely through the UI was
+    gone (`registered_tables` row and all) after a single reload, before `_upsert_sources` even
+    ran.
+    """
+    new_source_ids = list(
+        {src.id for src in config.sources}
+        | {src.id for src in (extra_sources or ())}
+        | set(_SYSTEM_SOURCE_IDS)
+    )
     new_domain_ids = list({d.id for d in config.domains} | set(domain_policy.system_domain_ids()))
     # REQ-1297: the four system roles are seeded by schema.sql, not by any config file, so a full
     # replace must keep them the way it keeps system sources and domains. Deleting platform_admin
@@ -214,11 +228,12 @@ async def _replace_mode_cleanup(
     await conn.execute_core(_delete(tracked_webhooks))
 
 
-async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266
+async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266, REQ-1730
     conn: "Connection",
     engine: Any,
     config: ProvisaConfig,
     catalog_names: dict[str, str] | None = None,
+    extra_sources: list[Source] | None = None,
 ) -> list[str]:
     """Upsert each source and (re)issue its engine catalog. Returns the ids whose catalog failed.
 
@@ -226,6 +241,15 @@ async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266
     startup) but a wake does not, because on a wake this IS the catalog the next query reads —
     swallowing left a resumed coordinator short a catalog and the user saw a raw CATALOG_NOT_FOUND
     from their own query instead of the wake failure. The caller decides which it is.
+
+    ``extra_sources`` (REQ-1730): sources the control plane already holds that this config's own
+    ``sources:`` list does not declare (created purely through the ``createSource`` mutation).
+    Their catalog is (re)issued the same way, but their row is NOT re-upserted here — they are
+    already correctly persisted by the mutation that created them, and reconstructing an upsert
+    from a DB-read `Source` risks losing a field this loader was never meant to be the writer of.
+    Without this, a source registered only through the UI lost its engine catalog on any later
+    boot or reload — reproduced live: it is invisible to `config.sources`, so this function used
+    to never re-provision it, regardless of which engine became active.
     """
     failed: list[str] = []
     for src in config.sources:
@@ -235,6 +259,21 @@ async def _upsert_sources(  # REQ-012, REQ-250, REQ-1266
         # REQ-1266: catalog_names supplies the org-prefixed physical catalog name for a non-default
         # org so the source attaches under its own namespace, not the default org's.
         if engine is not None:
+            try:
+                engine.register_source(
+                    src,
+                    resolve_secrets(src.password),
+                    catalog_name=(catalog_names or {}).get(src.id),
+                )
+            except Exception:
+                log.exception(
+                    "registering source %r on the engine catalog %r failed",
+                    src.id,
+                    (catalog_names or {}).get(src.id) or src.id,
+                )
+                failed.append(src.id)
+    if engine is not None:
+        for src in extra_sources or ():
             try:
                 engine.register_source(
                     src,
@@ -742,17 +781,21 @@ async def _resolve_tag_assignment_table(
     return ta.model_copy(update={"table_id": resolved})
 
 
-async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-1266
+async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-1266, REQ-1730
     config: ProvisaConfig,
     conn: "Connection",
     engine: Any = None,
     replace: bool = False,
     catalog_names: dict[str, str] | None = None,
+    extra_sources: list[Source] | None = None,
 ) -> list[str]:
     """Upsert full config into PG within caller's transaction scope.
 
     When replace=True, all existing sources/tables/domains/roles/relationships
     not present in the new config are deleted first (full replace semantics).
+
+    ``extra_sources`` (REQ-1730): control-plane-only sources not in ``config.sources`` whose
+    engine catalog still needs (re)issuing — see ``_upsert_sources``.
 
     Returns the source ids whose engine catalog could not be (re)issued.
     """
@@ -770,10 +813,12 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     domains_before = await glossary_repo.term_domains(conn)
 
     if replace:
-        await _replace_mode_cleanup(conn, config)
+        await _replace_mode_cleanup(conn, config, extra_sources=extra_sources)
 
     # 1. Sources
-    failed_catalogs = await _upsert_sources(conn, engine, config, catalog_names=catalog_names)
+    failed_catalogs = await _upsert_sources(
+        conn, engine, config, catalog_names=catalog_names, extra_sources=extra_sources
+    )
 
     # 2. Domains
     if domain_policy.single_domain():
@@ -1144,12 +1189,13 @@ def config_replace_mode(environ: Mapping[str, str]) -> bool:  # REQ-1229
     )
 
 
-async def load_config(  # REQ-012, REQ-016, REQ-250, REQ-1266
+async def load_config(  # REQ-012, REQ-016, REQ-250, REQ-1266, REQ-1730
     config: ProvisaConfig,
     pg_conn: "Connection",
     engine: Any = None,
     replace: bool = False,
     catalog_names: dict[str, str] | None = None,
+    extra_sources: list[Source] | None = None,
 ) -> list[str]:
     """Upsert full config into PG within a transaction. Idempotent.
 
@@ -1163,12 +1209,24 @@ async def load_config(  # REQ-012, REQ-016, REQ-250, REQ-1266
     catalogs instead of colliding with the default org in the shared coordinator. ``None`` on the
     default-org/startup path → each source registers under its bare name (unchanged behavior).
 
+    ``extra_sources`` (REQ-1730): sources the control plane holds that ``config.sources`` does
+    not declare (registered purely through the ``createSource`` mutation, never through YAML).
+    Without this, boot and ``PUT /admin/config`` reload only ever provisioned engine catalogs for
+    ``config.sources`` — a source created only through the UI permanently lost its catalog on any
+    later boot or reload, on whatever engine was configured. Pass ``registered_sources(state,
+    conn)`` filtered to ids not already in ``config.sources``.
+
     Returns the source ids whose engine catalog could not be (re)issued — empty on a clean load.
     A wake MUST check it (see ``engine_wake.restore_shared_terminal``); boot logs and continues.
     """
     async with pg_conn.transaction():
         return await _load_config_in_txn(
-            config, pg_conn, engine, replace=replace, catalog_names=catalog_names
+            config,
+            pg_conn,
+            engine,
+            replace=replace,
+            catalog_names=catalog_names,
+            extra_sources=extra_sources,
         )
 
 

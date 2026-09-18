@@ -67,7 +67,9 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 
-import { test, expect } from "./coverage";
+import { WebSocketServer } from "ws";
+
+import { test, expect, UI_URL } from "./coverage";
 import { startDemoSources, removeDemoSources } from "./demo-source-containers";
 import {
   CLOUD_WAREHOUSE_SEED,
@@ -78,18 +80,28 @@ import {
   E2E_KAFKA_PORT,
   E2E_KAFKA_SCHEMA_REGISTRY_PORT,
   E2E_RSS_PORT,
+  E2E_WS_PORT,
   FILE_LAKE_HOST_DIR,
   GRPC_REMOTE_SERVER_MODULE,
   MAKE_FILE_LAKE_FIXTURES,
   PYTHON,
+  REBOOT_BACKEND_URL,
   ROOT,
   RUNNING_IN_CI,
   SINGLESTORE_AVAILABLE,
+  killRebootBackend,
+  prepareRebootDataDir,
   provisionSwapSource,
+  queryRebootBackend,
+  rewriteHostForContainerizedEngine,
+  runFreshEngineCase,
   runSwapCase,
+  spawnRebootBackend,
+  sweepRebootZombieSources,
   sweepZombieSwapSources,
   waitForPort,
   waitForTrinoStable,
+  type RebootEngineKind,
 } from "./engine-swap-helpers";
 import {
   RDB_WIDGETS_SOURCES,
@@ -106,6 +118,7 @@ import {
   registerGovdata,
   registerGraphqlRemote,
   registerRss,
+  registerWebsocket,
   registerGrpcRemote,
   registerIngest,
   registerKafka,
@@ -365,6 +378,36 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     test("rss: register once under DuckDB, answer identical queries under every other engine", async ({
       page,
     }) => runSwapCase(page, () => registerRss(page)));
+  });
+
+  // websocket's fixture (the `ws` package, same as source-to-query-streaming.spec.ts's own) sends
+  // its fixed 2-event payload on every NEW connection, not just the first ever — what makes it
+  // tractable the same way rss's re-pollable static feed is.
+  test.describe("websocket", () => {
+    let wsServer: WebSocketServer;
+    test.beforeAll(() => {
+      wsServer = new WebSocketServer({ port: E2E_WS_PORT });
+      wsServer.on("connection", (socket) => {
+        socket.send(JSON.stringify({ id: "ws-1", value: "hello" }));
+        socket.send(JSON.stringify({ id: "ws-2", value: "world" }));
+      });
+    });
+    test.afterAll(async () => {
+      // Unlike source-to-query-streaming.spec.ts's own single-backend version of this fixture,
+      // THIS harness has TWO backend processes (DuckDB-bound and Trino-bound) each holding their
+      // own persistent push_wiring.py listener connection open to this server — WebSocketServer
+      // .close() alone only stops accepting NEW connections; it does not force-close existing
+      // client sockets, so it never resolves while either backend's listener is still connected
+      // (reproduced live: the afterAll hook timed out at 90s). Terminate every open client first.
+      for (const client of wsServer.clients) client.terminate();
+      await new Promise<void>((resolve, reject) =>
+        wsServer.close((err) => (err ? reject(err) : resolve())),
+      );
+    });
+
+    test("websocket: register once under DuckDB, answer identical queries under every other engine", async ({
+      page,
+    }) => runSwapCase(page, () => registerWebsocket(page)));
   });
 
   // grpc_remote has no Trino connector — same landing path as graphql_remote/openapi above, just
@@ -663,5 +706,99 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
     test(`files: register once under DuckDB, answer identical queries under every other engine`, async ({
       page,
     }) => runSwapCase(page, () => registerFiles()(page)));
+  });
+});
+
+// REQ-1730 scenario 1 (2026-09-18): "if you changed engines, it required you to reboot the
+// backend" (the user's own design intent) — a source registered purely through the UI (no
+// `sources:` YAML entry) must survive an engine change + a genuine process reboot and remain
+// queryable, with no replay of its own createSource mutation. This is deliberately NOT the
+// reload-in-place trick every type above uses (reloadEngineBackend/reprovisionSourceOnEngine
+// PUT /admin/config against an already-running, already-differently-engined process) — that
+// proxy already found one real gap (extra_sources never reaching _replace_mode_cleanup) and, on
+// its own admission, is not what "reboot" means: it exercises one process's in-place reload path,
+// never a cold start. One dedicated backend process, owned entirely by this describe block,
+// is genuinely killed and respawned with PROVISA_ENGINE flipped; same port, same data dir, same
+// control-plane org row — as close to a real desktop engine-swap-then-restart as this harness
+// gets.
+test.describe("scenario 1: same source survives an engine change + reboot (REQ-1730)", () => {
+  let proc: ChildProcess | null = null;
+
+  test.beforeAll(async () => {
+    await startDemoSources(["mongodb"]);
+    prepareRebootDataDir();
+  });
+  test.afterAll(async () => {
+    if (proc) await killRebootBackend(proc);
+    await removeDemoSources(["mongodb"]);
+  });
+
+  // Every OTHER engine this harness ever reboots into, in order. duckdb itself is the initial
+  // boot (below, not in this list) — extend this list, not the test body, as swap-harness engines
+  // grow (mirrors ENGINES' own "add an entry, nothing else names an engine by hand" contract).
+  const REBOOT_ENGINE_SEQUENCE: RebootEngineKind[] = ["trino"];
+
+  test("mongodb registered once under DuckDB resolves under every rebooted engine, no replay", async ({
+    page,
+  }) => {
+    test.setTimeout(120000 + REBOOT_ENGINE_SEQUENCE.length * 180000);
+    const routes = ["/admin", "/data", "/query", "/health"].map((prefix) => `${UI_URL}${prefix}**`);
+    for (const pattern of routes) {
+      await page.route(pattern, (route) => {
+        route.continue({ url: route.request().url().replace(UI_URL, REBOOT_BACKEND_URL) });
+      });
+    }
+
+    // Boot duckdb, configure the data source, register the table, query — the baseline every
+    // later reboot is checked against.
+    proc = await spawnRebootBackend("duckdb");
+    await sweepRebootZombieSources();
+    const registration = await registerMongodb(page, REBOOT_BACKEND_URL);
+    let rows = await queryRebootBackend(registration.sql);
+    registration.assertRows(rows);
+
+    // For each engine: kill the current process, respawn the SAME port/data dir/org under it —
+    // same URL, different process behind it, exactly like a desktop restart with a new engine
+    // config — then query again with NO replay of the createSource mutation.
+    for (const engineKind of REBOOT_ENGINE_SEQUENCE) {
+      if (engineKind === "trino") {
+        // Docker-topology-only fix, applied to the row BEFORE the reboot (never a mutation
+        // replay) — see rewriteHostForContainerizedEngine's own comment.
+        await rewriteHostForContainerizedEngine(registration.sourceId, "mongodb");
+      }
+      await killRebootBackend(proc);
+      proc = await spawnRebootBackend(engineKind);
+      rows = await queryRebootBackend(registration.sql);
+      registration.assertRows(rows);
+    }
+
+    for (const pattern of routes) await page.unroute(pattern);
+  });
+});
+
+// REQ-1730 scenario 2: does the real Sources-form UI — create source, register table, query —
+// work when engine X is primary from a COLD START, not just after a DuckDB registration replayed
+// onto an already-running Trino process (every type above)? Deliberately NOT parameterized across
+// every source type: `runFreshEngineCase` already generalizes over (engine, registrar), so adding
+// a type here is a one-line addition, but each case pays a full Trino cold boot (minutes, see
+// spawnRebootBackend/waitForTrinoStable's own comments) for coverage `reprovisionSourceOnEngine`
+// already gets for free (it replays the SAME createSource mutation live against Trino for every
+// passing type) — the only thing a genuine cold start adds is UI-affordance behavior that only
+// shows up when Trino, not DuckDB, answers the very first schema/table introspection call. One
+// representative case (mongodb) is kept here to prove the mechanism works; add more only for a
+// type actually suspected of a first-boot-specific UI gap, not as a routine sweep.
+test.describe("scenario 2: real UI flow works when a non-default engine is primary from boot (REQ-1730)", () => {
+  test.beforeAll(() => startDemoSources(["mongodb"]));
+  test.afterAll(() => removeDemoSources(["mongodb"]));
+
+  test("mongodb: create source, register table, query — Trino primary from a cold start", async ({
+    page,
+  }) => {
+    test.setTimeout(240000);
+    // "host.docker.internal", not "localhost" — Trino is primary from the very first
+    // schema-introspection call here, made from INSIDE its own container.
+    await runFreshEngineCase(page, "trino", (p) =>
+      registerMongodb(p, REBOOT_BACKEND_URL, "host.docker.internal"),
+    );
   });
 });
