@@ -19,10 +19,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from provisa.core.models import DERIVED_SOURCE_ID
-from provisa.core.schema_org import registered_tables, sources, table_meta_links
+from provisa.core.schema_org import (
+    file_source_mtimes,
+    registered_tables,
+    sources,
+    table_meta_links,
+)
 from provisa.api.admin.types import MutationResult, TableInput
 from provisa.api.admin.schema_helpers import (
     _dataset_ownership_conflict,
@@ -525,6 +530,55 @@ async def deploy_view_to_db(info: StrawberryInfo, table_id: int) -> MutationResu
         message=f"View '{view_name}' deployed to {target_source_id!r} schema '{target_schema}'",
         code="schema.view_deployed",
         params={"view": view_name, "source": target_source_id, "schema": target_schema},
+    )
+
+
+async def invalidate_file_source(table_id: int) -> MutationResult:
+    """Force a sqlite file-connector table's next access to re-sync from disk.
+
+    Deletes the table's ``file_source_mtimes`` row (source_mtime/synced_at, REQ-252)
+    so the mtime comparison that would otherwise skip a re-sync sees no prior record.
+    Only meaningful for sqlite sources — csv/parquet are ATTACHed live by Trino/DuckDB
+    (no cached snapshot to invalidate) and every other source type is not a file
+    connector at all.
+    """
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        _res = await conn.execute_core(
+            select(registered_tables.c.id, registered_tables.c.source_id).where(
+                registered_tables.c.id == table_id
+            )
+        )
+        row = _res.fetchone()
+    if not row:
+        return MutationResult(
+            success=False,
+            message=f"Table {table_id} not found",
+            code="schema.table_not_found",
+            params={"table": table_id},
+        )
+
+    async with pool.acquire() as conn:
+        _sres = await conn.execute_core(select(sources.c.type).where(sources.c.id == row.source_id))
+        source_row = _sres.fetchone()
+    source_type = source_row.type if source_row else ""
+    if source_type != "sqlite":
+        return MutationResult(
+            success=False,
+            message=f"Source type {source_type!r} is not sqlite",
+            code="schema.not_sqlite_source",
+            params={"source_type": source_type},
+        )
+
+    async with pool.acquire() as conn:
+        await conn.execute_core(
+            delete(file_source_mtimes).where(file_source_mtimes.c.table_id == table_id)
+        )
+    return MutationResult(
+        success=True,
+        message=f"Invalidated file-source cache for table {table_id}",
+        code="schema.file_source_invalidated",
+        params={"table": table_id},
     )
 
 

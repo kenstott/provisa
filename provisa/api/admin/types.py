@@ -422,6 +422,35 @@ class AvailableTableType:  # REQ-533
 
 
 @strawberry.type
+class CrawledColumnType:  # REQ-1785
+    name: str
+    type: str
+    nullable: bool
+
+
+@strawberry.type
+class CrawledTableType:  # REQ-1785
+    name: str
+    columns: list[CrawledColumnType]
+
+
+@strawberry.type
+class CrawledFileType:  # REQ-1785
+    name: str
+    path: str
+    type: str
+    tables: list[CrawledTableType]
+
+
+@strawberry.type
+class CrawlResultType:  # REQ-1785
+    path: str
+    total_files: int
+    total_tables: int
+    discovered: list[CrawledFileType]
+
+
+@strawberry.type
 class AvailableColumnType:  # REQ-533
     name: str
     data_type: str

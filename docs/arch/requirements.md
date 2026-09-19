@@ -18813,3 +18813,92 @@ GOVDATA_SUBJECT_SCHEMAS in provisa/core/models.py (~line 1652), the dict gating 
 **Code:** `provisa/compiler/stage2.py`, `provisa/compiler/schema_gen.py`
 
 **Tests:** —
+## 4. Source Connectors
+
+### REQ-1780 · Kaggle Connector Architecture {#REQ-1780}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+
+Kaggle is a download-then-materialize source connector that follows the same pattern as openapi and graphql_remote sources: it is not a live query engine, but rather fetches dataset file bundles via the Kaggle REST API (datasets/list, datasets/view, datasets/download) and materializes them into PostgreSQL. The connector uses Mechanism.FETCH and extends TrinoPgBackedConnector, landing rows via land_replace for full-snapshot-only semantics (no CDC or watermark support).
+
+**Use case:** Kaggle datasets (stored as downloadable file bundles with no native SQL query interface) require a fetch-and-load pattern rather than live federation, similar to existing download-based sources like OpenAPI and GraphQL remote sources.
+
+**Code:** `provisa/federation/connectors.py`, `provisa/federation/trino_connectors.py`
+
+**Tests:** —
+
+### REQ-1781 · Kaggle Table Discovery {#REQ-1781}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+
+A Kaggle source config specifies one dataset bundle (owner/ref). Table config specifies a file within that bundle. The table registry discovery (generate_table_definitions) handles two cases: (1) a bundle with multiple files (CSV, JSON, Parquet, etc.), where each file becomes an independent table with no FKs or relational metadata between them, since Kaggle file listings carry no FK hints, and (2) a single SQLite file within a bundle, which has internal multi-table schema with FKs that map directly to Provisa tables (one internal table = one Provisa table).
+
+**Use case:** Kaggle datasets vary in structure: some are flat multi-file bundles (no schema), others are single SQLite databases with internal relational schema. Table discovery must support both without requiring manual enumeration of files.
+
+**Code:** `provisa/federation/connectors.py`, `provisa/source_adapters/registry.py`
+
+**Tests:** —
+
+### REQ-1782 · Kaggle Credentials {#REQ-1782}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Kaggle source credentials are resolved via KAGGLE_API_TOKEN, passed through the ${env:KAGGLE_API_TOKEN} token pattern and resolved by provisa/core/secrets.py's resolve_secrets(). Bearer authentication is used against the live Kaggle REST API.
+
+**Use case:** Kaggle API requires a valid token; secure credential handling via the secret-resolution pipeline ensures the token is not leaked in logs or configs.
+
+**Code:** `provisa/core/secrets.py`, `provisa/federation/connectors.py`
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-1783 · Kaggle Source Configuration {#REQ-1783}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+
+Admin UI for Kaggle source configuration must provide a searchable/browsable dataset picker interface showing dataset name and description, allowing users to discover and select datasets rather than manually entering owner/ref identifiers. (Amended 2026-09-19, TOKEN-GATED PICKER:) The dataset picker cannot function without a valid Kaggle API token, since Kaggle's datasets/list endpoint requires authentication. The form must therefore sequence as two steps, not one flat form: (1) token entry, validated live via a lightweight datasets/list call before proceeding; (2) dataset picker, enabled only after step 1 succeeds. On re-editing an existing Kaggle source whose token has expired or been revoked, the picker must show a "token invalid, re-enter to browse datasets" state rather than failing silently or rendering a stale or empty list.
+
+**Use case:** Users configuring a Kaggle source should not need to already know the exact owner/ref slug; they can search and browse available datasets by name and description via the Kaggle connector's dataset search endpoint backed by Kaggle's datasets/list API.
+
+**Code:** —
+
+**Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1784 · Data Discovery {#REQ-1784}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
+
+Provisa shall document and expose the HTML crawler capability from the underlying Calcite file adapter (org.apache.calcite.adapter.file.converters.HtmlCrawler) as a first-class, general-purpose source-discovery method for registering sources that expose only HTML index pages with linked data files (CSV, Parquet, etc.). This capability shall support crawling HTML pages to discover and automatically register linked files as tables, distinct from the Python file_source/crawler.py which only performs fsspec directory walks on local/S3/FTP/SFTP paths. (Amended 2026-09-19, ALREADY WIRED VIA FSSPEC:) Verified live: `http`/`https` are registered fsspec protocols (`fsspec.implementations.http.HTTPFileSystem`), and `requests`/`aiohttp` (its runtime deps) are already installed in this repo. `HTTPFileSystem.ls()` performs real HTML link-parsing to enumerate files at a URL. `provisa/file_source/crawler.py`'s existing `_is_fsspec_uri`/`_walk_fsspec` path already matches and routes `http://`/`https://` URIs through this behavior with zero code changes required — `_is_fsspec_uri` only excludes `file://`. The prior claim that this needs a bespoke Calcite/pgwire bridge is superseded: this requirement is now DOCUMENTATION + verification/test coverage of the existing fsspec http path through `crawl_directory`, not new integration code. The Calcite `HtmlCrawler`/pgwire_replica.py path remains the SharePoint/Splunk-specific mechanism and is unrelated to this general-purpose case. (Amended 2026-09-19, HTTP CRAWL SETTINGS GAP:) Verified live: depth control already works protocol-agnostically (`crawl_directory`'s `depth`/`recursive` params thread through `_walk_fsspec_recursive` regardless of scheme). But link-following control does not exist yet and is needed specifically for `http(s)://` roots: (1) `HTTPFileSystem`'s `simple_links` constructor option (default True regex-matches any http(s) URL string in the page, not just real `<a href>` anchors — noisy on real-world catalog pages) is never passed through by `_walk_fsspec`, which calls `fsspec.core.url_to_fs(root)` with no storage options at all; (2) `same_scheme` (http<->https link-following) is similarly not exposed; (3) `crawl_directory` has only a positive include `pattern` (fnmatch on basename), no exclude/deny-list and no same-domain restriction — `_ls_real` marks any linked URL ending in "/" as type "directory" to recurse into up to `max_depth`, so an unrestricted HTML crawl can wander into off-target subpaths/domains in a way a local/S3/FTP walk structurally cannot. Required: add `simple_links`, a same-domain (or explicit allow-list) restriction, and an exclude pattern as new `crawl_directory` parameters, threaded into `_walk_fsspec`'s `fsspec.core.url_to_fs` call. This will require a corresponding admin UI tweak: the file-connector datasource form needs additional optional fields (exposed only when the configured path is `http(s)://`) for these new crawl settings, alongside depth and the existing include pattern.
+
+**Use case:** Future source types that have no REST/API access and only expose HTML directory listings of linked data files (similar to how SharePoint and Splunk are currently handled internally via [REQ-954](#REQ-954)/955/956) can be registered using the HTML crawler without requiring source-type-specific connectors.
+
+**Code:** `provisa/federation/pgwire_replica.py`
+
+**Tests:** —
+
+### REQ-1785 · Data Discovery {#REQ-1785}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
+
+`crawl_directory` (provisa/file_source/crawler.py) shall accept `simple_links: bool = True`, `same_domain: bool = True`, and `exclude_pattern: str | None = None`, threaded through `_walk_fsspec`/`_walk_fsspec_recursive`. `simple_links` passes through as an `fsspec.core.url_to_fs` storage option. `same_domain` and `exclude_pattern` have no native fsspec equivalent and are implemented as explicit checks in `_walk_fsspec_recursive` (compare `urlparse(entry_path).netloc` against the root's netloc; fnmatch-skip links matching `exclude_pattern`). These three settings are only meaningful for `http(s)://` roots; the local walk ignores them. The admin GraphQL schema shall expose a `crawlSource` query (CrawlResultType/CrawledFileType/CrawledTableType/CrawledColumnType in provisa/api/admin/types.py) wrapping `crawl_directory`, since `provisa/api/admin/ crawl_router.py`'s existing `POST /admin/sources/crawl` REST endpoint has zero frontend consumers and every other admin operation goes through GraphQL. The admin UI's file-connector source form (provisa-ui/src/pages/sources/SourceFormFields.tsx, the `isFile` block) shall conditionally render fields for these three settings ONLY when the source's `type` is csv/parquet and its `path` begins with `http://` or `https://` — hidden for local/S3/FTP/SFTP paths and for sqlite. Persisted settings ride in `SourceInput.federation_hints_json` (no new typed columns), matching the existing convention for connector-specific extras.
+
+**Use case:** An admin registering a csv/parquet source backed by an HTML index page ([REQ-1784](#REQ-1784)) needs to control crawl scope: avoid following off-domain links from a scraped page, avoid picking up non-anchor-tag URL-like text via loose `simple_links` matching, and exclude known-irrelevant subpaths — none of which the current unrestricted-by-default HTTP crawl supports.
+
+**Code:** `provisa/file_source/crawler.py`, `provisa/api/admin/types.py`, `provisa/api/admin/schema_query.py`, `provisa-ui/src/pages/sources/SourceFormFields.tsx`
+
+**Tests:** —
+
+### REQ-1786 · Data Discovery {#REQ-1786}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+
+The create_source mutation (provisa/api/admin/schema_mutation.py) shall support an opt-in discover_tables_now flag that, when true, triggers an automatic background crawl_directory call immediately after source creation succeeds. The crawled table/file list is cached and presented to the admin on the source's Tables page as a pre-populated "discovered, not-yet-registered" state, eliminating blank-state friction of manually invoking crawl_directory per source. The flag defaults to false (disabled) to avoid unrequested remote fetch/schema-inference passes on every source creation, which could be slow or noisy for large HTTP-crawled directories ([REQ-1784](#REQ-1784)/1785). The source-creation form (SourceFormFields.tsx) shall conditionally render a "Discover tables now" checkbox for file-connector sources (csv/parquet/sqlite) that, when checked, passes discover_tables_now: true to the mutation.
+
+**Use case:** Admins registering file-connector sources (especially HTTP-crawled ones per [REQ-1784](#REQ-1784)) should not face a blank Tables page requiring a manual discovery step; opt-in automatic discovery provides convenience without imposing latency or unexpected remote fetches on all source creations.
+
+**Code:** `provisa/api/admin/schema_mutation.py`, `provisa/file_source/crawler.py`, `provisa-ui/src/pages/sources/SourceFormFields.tsx`
+
+**Tests:** —

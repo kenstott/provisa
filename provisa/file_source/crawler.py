@@ -22,6 +22,7 @@ import fnmatch
 import logging
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from provisa.file_source.source import FileSourceConfig, discover_schema
 
@@ -75,13 +76,41 @@ def _walk_local_recursive(
             _walk_local_recursive(root, entry, depth + 1, max_depth, results)
 
 
-def _walk_fsspec(root: str, max_depth: int | None) -> list[str]:
-    """Walk an fsspec URI and return matching file paths."""
+def _walk_fsspec(
+    root: str,
+    max_depth: int | None,
+    *,
+    simple_links: bool = True,
+    same_domain: bool = True,
+    exclude_pattern: str | None = None,
+) -> list[str]:
+    """Walk an fsspec URI and return matching file paths.
+
+    ``simple_links``, ``same_domain``, and ``exclude_pattern`` are only meaningful for
+    ``http(s)://`` roots (REQ-1785): ``simple_links`` is passed to
+    ``fsspec.implementations.http.HTTPFileSystem`` directly (loose regex link matching
+    vs. real ``<a href>`` anchors only); ``same_domain``/``exclude_pattern`` have no
+    native fsspec equivalent since plain HTTP has no directory concept — an unrestricted
+    crawl can otherwise wander into off-target subpaths/domains via arbitrary page links,
+    unlike a local/S3/FTP walk which is structurally confined to its root.
+    """
     import fsspec  # pyright: ignore[reportMissingImports]
 
-    fs, base_path = fsspec.core.url_to_fs(root)
+    fs, base_path = fsspec.core.url_to_fs(root, simple_links=simple_links)
     all_files: list[str] = []
-    _walk_fsspec_recursive(fs, base_path, base_path, 0, max_depth, all_files, root)
+    root_netloc = urlparse(root).netloc
+    _walk_fsspec_recursive(
+        fs,
+        base_path,
+        base_path,
+        0,
+        max_depth,
+        all_files,
+        root,
+        same_domain=same_domain,
+        root_netloc=root_netloc,
+        exclude_pattern=exclude_pattern,
+    )
     return all_files
 
 
@@ -93,6 +122,10 @@ def _walk_fsspec_recursive(
     max_depth: int | None,
     results: list[str],
     uri_prefix: str,
+    *,
+    same_domain: bool = True,
+    root_netloc: str = "",
+    exclude_pattern: str | None = None,
 ) -> None:
     if max_depth is not None and depth > max_depth:
         return
@@ -102,12 +135,30 @@ def _walk_fsspec_recursive(
     for entry in fs.ls(current, detail=True):
         entry_path: str = entry["name"]
         entry_type: str = entry.get("type", "")
+        entry_uri = f"{protocol}://{entry_path}"
+
+        if same_domain and root_netloc and urlparse(entry_uri).netloc != root_netloc:
+            continue
+        if exclude_pattern is not None and fnmatch.fnmatch(Path(entry_path).name, exclude_pattern):
+            continue
+
         if entry_type == "file":
             suffix = Path(entry_path).suffix.lower()
             if suffix in SUPPORTED_EXTENSIONS:
-                results.append(f"{protocol}://{entry_path}")
+                results.append(entry_uri)
         elif entry_type == "directory":
-            _walk_fsspec_recursive(fs, base, entry_path, depth + 1, max_depth, results, uri_prefix)
+            _walk_fsspec_recursive(
+                fs,
+                base,
+                entry_path,
+                depth + 1,
+                max_depth,
+                results,
+                uri_prefix,
+                same_domain=same_domain,
+                root_netloc=root_netloc,
+                exclude_pattern=exclude_pattern,
+            )
 
 
 def _introspect_file(file_path: str, source_type: str) -> list[dict]:  # REQ-252
@@ -168,7 +219,10 @@ def crawl_directory(
     *,
     pattern: str | None = None,
     recursive: bool = True,
-) -> list[dict]:  # REQ-012, REQ-016, REQ-250, REQ-788
+    simple_links: bool = True,
+    same_domain: bool = True,
+    exclude_pattern: str | None = None,
+) -> list[dict]:  # REQ-012, REQ-016, REQ-250, REQ-788, REQ-1785
     """Crawl *root* and return discovered table descriptors.
 
     Parameters
@@ -184,6 +238,13 @@ def crawl_directory(
         When ``False``, only the top-level directory is scanned (equivalent to
         ``depth=0``). When ``True`` (default), subdirectories are walked up to
         ``depth``.
+    simple_links, same_domain, exclude_pattern:
+        HTTP-crawl-only settings (REQ-1785), ignored for local/S3/FTP/SFTP roots.
+        ``simple_links`` (default True) controls whether ``HTTPFileSystem`` matches
+        any ``http(s)://`` URL-shaped text on the page or only real ``<a href>``
+        anchors. ``same_domain`` (default True) restricts link-following to the
+        root URL's own domain. ``exclude_pattern`` is an fnmatch glob applied to
+        each linked entry's basename to skip known-irrelevant subpaths/files.
 
     Returns
     -------
@@ -207,7 +268,13 @@ def crawl_directory(
     effective_depth = 0 if not recursive else depth
 
     if _is_fsspec_uri(root):
-        file_paths = _walk_fsspec(root, effective_depth)
+        file_paths = _walk_fsspec(
+            root,
+            effective_depth,
+            simple_links=simple_links,
+            same_domain=same_domain,
+            exclude_pattern=exclude_pattern,
+        )
     else:
         file_paths = _walk_local(root, effective_depth)
 

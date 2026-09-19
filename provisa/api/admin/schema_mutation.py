@@ -2697,6 +2697,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             logging.getLogger(__name__).exception("purge_cache_by_table %s failed", table_id)
             return MutationResult(success=False, message=str(e))
 
+    @strawberry.mutation
+    async def invalidate_file_source(self, table_id: int) -> MutationResult:
+        """Force a sqlite file-connector table's next access to re-sync from disk."""
+        return await _ops.invalidate_file_source(table_id)
+
     # ── Admin: Scheduled Task Management ──
 
     @strawberry.mutation

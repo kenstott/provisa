@@ -47,6 +47,10 @@ from provisa.api.admin.types import (
     CalendarType,
     ColumnDependentsType,
     ColumnDependentType,
+    CrawledColumnType,
+    CrawledFileType,
+    CrawledTableType,
+    CrawlResultType,
     DataProductType,
     DomainType,
     DqCheckBuildInput,
@@ -724,6 +728,65 @@ class Query:  # REQ-021, REQ-042
                 if row[0].lower() not in skip
             ]
         return tables
+
+    @strawberry.field
+    async def crawl_source(
+        self,
+        path: str,
+        depth: Optional[int] = None,
+        pattern: Optional[str] = None,
+        recursive: bool = True,
+        simple_links: bool = True,
+        same_domain: bool = True,
+        exclude_pattern: Optional[str] = None,
+    ) -> CrawlResultType:  # REQ-1785
+        """Preview a file-connector crawl before a source is created/registered.
+
+        Wraps ``provisa.file_source.crawler.crawl_directory``. The three HTTP-only
+        settings (``simple_links``, ``same_domain``, ``exclude_pattern``) are ignored
+        for local/S3/FTP/SFTP roots. Replaces the REST-only ``POST /admin/sources/crawl``
+        endpoint (crawl_router.py), which has no frontend consumer, for GraphQL-schema
+        consistency with every other admin operation.
+        """
+        from provisa.file_source.crawler import crawl_directory
+
+        discovered = crawl_directory(
+            path,
+            depth,
+            pattern=pattern,
+            recursive=recursive,
+            simple_links=simple_links,
+            same_domain=same_domain,
+            exclude_pattern=exclude_pattern,
+        )
+        total_tables = sum(len(entry["tables"]) for entry in discovered)
+        return CrawlResultType(
+            path=path,
+            total_files=len(discovered),
+            total_tables=total_tables,
+            discovered=[
+                CrawledFileType(
+                    name=entry["name"],
+                    path=entry["path"],
+                    type=entry["type"],
+                    tables=[
+                        CrawledTableType(
+                            name=tbl["name"],
+                            columns=[
+                                CrawledColumnType(
+                                    name=col["name"],
+                                    type=col["type"],
+                                    nullable=col.get("nullable", True),
+                                )
+                                for col in tbl["columns"]
+                            ],
+                        )
+                        for tbl in entry["tables"]
+                    ],
+                )
+                for entry in discovered
+            ],
+        )
 
     @strawberry.field
     async def available_functions(
