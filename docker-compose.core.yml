@@ -295,5 +295,15 @@ volumes:
   trino_logs:
   trino_worker_logs:
   minio_data:
-  # Local Hive warehouse shared between the itest hive-metastore and Trino (REQ-1097).
+  # Local Hive warehouse shared between the itest hive-metastore and Trino (REQ-1097). Stays a
+  # named volume (docker-compose.test.yml and demo/sources/hive/compose.yml both resolve/reference
+  # it BY NAME — the latter's resolveHiveWarehouseVolume() e2e helper inspects the live Trino
+  # container's mount and passes the name in as an external volume, see that file's module doc) but
+  # is now backed by a bind-mount driver so the same table files are also a real host directory —
+  # a host-side Provisa process can read them without a Hive Metastore Thrift client.
   hive_warehouse:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PROVISA_E2E_HIVE_WAREHOUSE_HOST:-/Volumes/main/Users/kennethstott/PycharmProjects/provisa/.e2e-hive-warehouse}

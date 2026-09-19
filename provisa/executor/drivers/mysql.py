@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import ssl
+
 import aiomysql  # pyright: ignore[reportMissingImports]
 
 from provisa.executor.drivers.base import DirectDriver
@@ -21,8 +23,14 @@ from provisa.executor.result import QueryResult
 
 
 class MySQLDriver(DirectDriver):  # REQ-052, REQ-068, REQ-229, REQ-550
-    def __init__(self) -> None:
+    def __init__(self, require_ssl: bool = False) -> None:
         self._pool: aiomysql.Pool | None = None
+        # SingleStore Cloud's shared-tier workspaces reject any connection without TLS (MySQL error
+        # 1251 "No SSL detected") — self-hosted mysql/mariadb/tidb/singlestoredb-dev have no such
+        # requirement, so this is per-source-type, not a generic toggle (see registry.py's
+        # _make_singlestore). The system default CA store already trusts SingleStore Cloud's cert
+        # (a public AWS-hosted endpoint) — no bundled CA file needed.
+        self._require_ssl = require_ssl
 
     async def connect(
         self,
@@ -42,6 +50,7 @@ class MySQLDriver(DirectDriver):  # REQ-052, REQ-068, REQ-229, REQ-550
             password=password,
             minsize=min_pool,
             maxsize=max_pool,
+            ssl=ssl.create_default_context() if self._require_ssl else None,
         )
 
     async def execute(self, sql: str, params: list | None = None) -> QueryResult:

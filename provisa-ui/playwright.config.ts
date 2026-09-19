@@ -23,7 +23,15 @@ if (fs.existsSync(rootEnv)) {
     if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
     const [k, ...rest] = trimmed.split("=");
     const key = k.trim();
-    if (!process.env[key]) process.env[key] = rest.join("=").trim();
+    let value = rest.join("=").trim();
+    if (
+      value.length >= 2 &&
+      ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'")))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (!process.env[key]) process.env[key] = value;
   }
 }
 

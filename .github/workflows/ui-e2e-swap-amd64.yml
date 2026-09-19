@@ -1,0 +1,156 @@
+name: UI e2e (swap lane, amd64-only sources)
+
+# engine-swap.spec.ts's "swap" Playwright project (playwright.config.ts's SWAP_SPECS) runs in NO
+# other workflow — ui-e2e-trino.yml runs only --project=trino and ui-e2e-core.yml only
+# --project=core. Its exasol and saphana cases are themselves gated on RUNNING_IN_CI (exasol:
+# exasol/docker-db never turns healthy under Apple Silicon's QEMU, same root cause as
+# amd64-engines.yml; saphana: HXE doesn't start under Docker Desktop's Apple Silicon VM either),
+# so before this workflow they never ran anywhere, CI or dev box. Scoped to just these two
+# sources for now (-g), not the full swap suite — see amd64-engines.yml's own module comment for
+# the same "only a genuine amd64 host runs this for real" reasoning.
+#
+# Needs the same core-service stack as ui-e2e-trino.yml (postgres/trino/minio/zaychik): the swap
+# Playwright project requires RUNS_TRINO (playwright.config.ts), and both exasol's and saphana's
+# swap tests query through the Trino engine after the DuckDB-registered source is swapped.
+
+on:
+  push:
+    branches: ["release/**"]
+    tags: ["v*"]
+    paths:
+      - "provisa-ui/e2e/engine-swap.spec.ts"
+      - "provisa-ui/e2e/engine-swap-registrars.ts"
+      - "provisa-ui/e2e/engine-swap-helpers.ts"
+      - "provisa-ui/playwright.config.ts"
+      - "provisa/federation/**"
+      - "demo/sources/exasol/**"
+      - "demo/sources/saphana/**"
+      - "main.py"
+      - "config/provisa-trino-e2e.yaml"
+      - "docker-compose.core.yml"
+      - ".github/workflows/ui-e2e-swap-amd64.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-e2e-swap-amd64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: Playwright swap lane (exasol, saphana)
+    runs-on: ubuntu-latest
+    # exasol's EXAStorage cold init and saphana's HXE tenant boot each budget up to 15m in their
+    # own beforeAll (engine-swap.spec.ts), and both run twice (swap describe + reboot describe) on
+    # this job's single worker, on top of the core stack's own Trino cold boot.
+    timeout-minutes: 90
+    env:
+      # playwright.config.ts keys `reuseExistingServer` off this: under CI every webServer must
+      # be started by the harness, never adopted from a stale process.
+      CI: "true"
+      # Declares the Trino webServer and keeps the control plane on the compose Postgres — the
+      # swap project requires RUNS_TRINO (playwright.config.ts rejects lane=trino on sqlite).
+      PROVISA_E2E_LANE: trino
+      PG_PORT: "5432"
+      TRINO_PORT: "8080"
+    steps:
+      - uses: actions/checkout@v4
+
+      # A skip caused by the wrong arch would be a green run that executed nothing — exactly what
+      # this workflow exists to prevent (both sources are gated on RUNNING_IN_CI, not arch, so a
+      # silent arm64 runner would still "pass" by running zero assertions).
+      - name: Assert the runner is amd64
+        run: |
+          arch="$(uname -m)"
+          echo "runner arch: $arch"
+          [ "$arch" = "x86_64" ] || { echo "::error::ui-e2e swap lane running on $arch"; exit 1; }
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      # saphana extra is demo/sources/saphana/prime.py's own dependency (hdbcli + sqlalchemy-hana)
+      # — same reasoning as ui-e2e-core.yml's saphana case.
+      - name: Install Python deps
+        run: uv sync --frozen --extra dev --extra saphana
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: provisa-ui/package-lock.json
+
+      - name: Install UI deps
+        working-directory: provisa-ui
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: provisa-ui
+        run: npx playwright install --with-deps chromium
+
+      # docker-compose.core.yml bind-mounts ./sharepoint.pfx into Trino unconditionally, whether
+      # or not this lane runs any sharepoint test. Neither exasol nor saphana authenticates
+      # through it — an empty placeholder is enough to let the mount (and Trino's boot) succeed,
+      # same approach as amd64-engines.yml.
+      - name: Placeholder for the gitignored SharePoint cert mount
+        run: touch sharepoint.pfx
+
+      # docker-compose.core.yml also mounts these plugin dirs into Trino unconditionally; Trino
+      # aborts with "No service providers of type io.trino.spi.Plugin" without them, surfacing
+      # only as an unhealthy container two minutes in — same requirement as ui-e2e-trino.yml even
+      # though this lane exercises neither sharepoint nor splunk.
+      - name: Download Calcite Trino plugins
+        run: |
+          MAVEN="https://repo1.maven.org/maven2/io/simpleishard"
+          VERSION="0.70.0"
+          for plugin in trino-sharepoint trino-splunk trino-file; do
+            mkdir -p "trino/plugins/$plugin"
+            curl -fsSL "$MAVEN/$plugin/$VERSION/$plugin-$VERSION.jar" \
+              -o "trino/plugins/$plugin/$plugin-$VERSION.jar"
+            ls "trino/plugins/$plugin"/*.jar >/dev/null
+          done
+
+      - name: Pre-pull service images
+        run: docker compose -f docker-compose.core.yml pull postgres trino minio minio-init
+
+      # zaychik is built, not pulled (build: ./zaychik, image: zaychik:latest).
+      - name: Build the Zaychik Flight SQL image
+        run: docker compose -f docker-compose.core.yml build zaychik
+
+      # trino-worker stays at replicas: 0 — same reasoning as ui-e2e-trino.yml. minio and zaychik
+      # are not optional: TrinoBackend.provision_infra dials both with no fallback at startup.
+      - name: Start core services
+        run: |
+          docker compose -f docker-compose.core.yml up -d --wait \
+            postgres trino minio zaychik
+          docker compose -f docker-compose.core.yml up minio-init
+
+      - name: Run Playwright swap lane (exasol, saphana only)
+        working-directory: provisa-ui
+        env:
+          PROVISA_OTEL_S3_ENDPOINT: http://localhost:9000
+        run: npx playwright test --project=swap -g "exasol|saphana" --reporter=list,html
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-swap-amd64
+          path: provisa-ui/playwright-report/
+          retention-days: 7
+
+      - name: Container state and logs on failure
+        if: failure()
+        run: |
+          docker ps -a
+          docker compose -f docker-compose.core.yml logs --tail=200
+          docker compose -f docker-compose.core.yml logs --no-color trino > trino-container.log
+
+      - name: Upload Trino container log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trino-container-log-swap-amd64
+          path: trino-container.log
+          retention-days: 7

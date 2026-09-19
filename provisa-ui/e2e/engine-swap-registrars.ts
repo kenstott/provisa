@@ -42,17 +42,27 @@ import {
   E2E_EXASOL_PORT,
   E2E_FIREBIRD_PORT,
   E2E_KAFKA_PORT,
+  E2E_DRUID_BROKER_PORT,
+  E2E_PINOT_BROKER_PORT,
+  E2E_PINOT_CONTROLLER_PORT,
   E2E_KAFKA_SCHEMA_REGISTRY_PORT,
   E2E_RSS_PORT,
   E2E_WS_PORT,
-  E2E_SINGLESTORE_PORT,
+  E2E_TRINO_SOURCE_PORT,
   FILE_LAKE_HOST_DIR,
   PYTHON,
   RDB_WIDGETS_PORTS,
   ROOT,
   SWAP_REGISTER_TIMEOUT_MS,
 } from "./engine-swap-helpers";
+import { REBOOT_BACKEND_URL } from "./engine-swap-helpers";
+import type { RedshiftConnection } from "./engine-swap-helpers";
 import type { Registration } from "./engine-swap-helpers";
+
+// REQ-1730: the duckdb-as-a-source fixture, generated (not committed — *.duckdb is gitignored)
+// by registerDuckdbSource's own caller before the test runs, same file
+// source-to-query-community-ext.spec.ts's own `duckdb` test uses.
+export const WIDGETS_DUCKDB_PATH = path.join(ROOT, "demo", "files", "widgets.duckdb");
 
 export async function registerNeo4j(page: Page): Promise<Registration> {
   const stamp = Date.now();
@@ -166,18 +176,30 @@ export interface RdbWidgetsConfig {
   /** SAP HANA Express's indexserver verified live not to start under Docker Desktop's Apple
    * Silicon VM — a real amd64 Linux host is required (RUNNING_IN_CI). */
   needsCi?: boolean;
+  /** Override for `test.setTimeout()` around this type's `beforeAll` provisioning hook. Defaults
+   * to Playwright's own global test timeout (90s, playwright.config.ts) when unset — fine for
+   * every RDBMS here except Oracle: gvenzl/oracle-free creates its database from scratch on first
+   * boot and its own compose healthcheck already documents this can take several minutes
+   * (demo/sources/oracle/compose.yml's start_period/retries). Verified live (2026-09-18):
+   * `docker inspect .State.Health.Status` went healthy at ~335s. `provisionSwapSource`'s
+   * `execFileSync(..., "up", "--wait")` call blocks for that whole duration with NO timeout of
+   * its own — the enclosing Playwright `beforeAll` hook is what was actually timing out at the
+   * default 90s, well before registration was ever attempted, not `submitRegisterAndExpectListed`'s
+   * later 300s wait as originally suspected. splunk's `beforeAll` already sets an explicit
+   * `test.setTimeout(900000)` for the identical reason (a slow fixture, not a slow app). */
+  bootTimeoutMs?: number;
 }
 
-// KNOWN UNRESOLVED BUG (2026-09-16): oracle is deliberately NOT in RDB_WIDGETS_SOURCES below.
-// Schema/table/column introspection all work now (the introspect.py dispatch-branch and
-// identifier-casing fixes this batch made), but registration itself then stalls at
-// submitRegisterAndExpectListed's own 300s SWAP_REGISTER_TIMEOUT_MS wait for the row to land in
-// the tables list — a genuine registration-commit/schema-rebuild slowness specific to oracle,
-// not yet root-caused. Re-add
-// `{ type: "oracle", port: RDB_WIDGETS_PORTS.oracle, username: "system", password: "provisa",
-// database: "FREEPDB1", schema: "SYSTEM", table: "WIDGETS", nameColumn: "NAME" }`
-// once that's fixed — the registrar/config shape is already correct and verified up to that
-// point.
+// RESOLVED (2026-09-18): oracle's earlier "registration stall" was misdiagnosed. Introspection
+// and registration both work fine — the real cause was `provisionSwapSource`'s blocking
+// `execFileSync(..., "up", "--wait")` call inside this loop's `beforeAll` never finishing before
+// Playwright's own default 90s test/hook timeout (playwright.config.ts:376) fired.
+// gvenzl/oracle-free creates its database from scratch on first boot; verified live via
+// `docker inspect .State.Health.Status` that this genuinely takes ~335s (matching
+// demo/sources/oracle/compose.yml's own documented start_period/retries), nowhere near 90s.
+// Every OTHER type in this array boots in well under 90s, which is why this was invisible for
+// them. Fixed with `bootTimeoutMs` below (splunk's own `beforeAll` already sets an explicit
+// `test.setTimeout(900000)` for the identical reason — a slow fixture, not a slow app).
 export const RDB_WIDGETS_SOURCES: RdbWidgetsConfig[] = [
   { type: "postgresql", port: RDB_WIDGETS_PORTS.postgresql, username: "provisa", password: "provisa", database: "provisa_demo", schema: "public" },
   { type: "mysql", port: RDB_WIDGETS_PORTS.mysql, username: "root", password: "provisa", database: "provisa_demo", schema: "provisa_demo" },
@@ -188,6 +210,7 @@ export const RDB_WIDGETS_SOURCES: RdbWidgetsConfig[] = [
   { type: "greenplum", port: RDB_WIDGETS_PORTS.greenplum, username: "gpadmin", password: "", database: "postgres", schema: "public" },
   { type: "tidb", port: RDB_WIDGETS_PORTS.tidb, username: "root", password: "", database: "test", schema: "test" },
   { type: "clickhouse", port: RDB_WIDGETS_PORTS.clickhouse, username: "default", password: "provisa", database: "default", schema: "default" },
+  { type: "oracle", port: RDB_WIDGETS_PORTS.oracle, username: "system", password: "provisa", database: "FREEPDB1", schema: "SYSTEM", table: "WIDGETS", nameColumn: "NAME", bootTimeoutMs: 480000 },
   // hiveserver2: stock HS2 PLAIN auth takes no real credentials (demo/sources/hiveserver2/prime.py) —
   // "Database" is HTML5-required for every SIMPLE_RDBMS type but druid (verified live in
   // source-to-query-olap-lake.spec.ts's own hiveserver2 test), username/password are not.
@@ -393,6 +416,166 @@ export function registerFiles(): (page: Page) => Promise<Registration> {
   };
 }
 
+/** soda / great_expectations (REQ-1730): data-quality checkers, not conventional data sources —
+ * per source-to-query-special-cases.spec.ts's own REQ-1742 investigation, a checker source has no
+ * remote table of its own to register+SELECT from; it connects back through Provisa's OWN pgwire
+ * endpoint (schema_mutation.py's create_source auto-fills that mapping for a checker type) and
+ * scans an ALREADY-governed table via a dq_contract. This registrar therefore first registers a
+ * small csv scan target (the exact registerSingleFile shape, inlined here for direct access to
+ * the compiled table name), then registers the checker source against it, adds one dataset-scope
+ * rule, dry-runs it for real, and submits — landing is POLL-cadence (provisa/dq/runner.py's
+ * run_contract via make_dq_loader, the SAME wire_new_poll_jobs mechanism as rss, watermarked by
+ * scan_time — REQ-1770), so registerRss's own "Cache TTL" edit-form step is reused verbatim to
+ * give the poll job a real cadence; RegisterTableForm has no Cache TTL field of its own. */
+function registerDqChecker(
+  checkerType: "soda" | "great_expectations",
+  checkType: string,
+): (page: Page) => Promise<Registration> {
+  return async (page: Page): Promise<Registration> => {
+    const stamp = Date.now();
+
+    // 1. Scan target: a plain csv source+table (same fixture/shape as registerSingleFile).
+    const scanSourceId = `swap_${checkerType}_scan_${stamp}`;
+    const runDir = path.join(FILE_LAKE_HOST_DIR, `run_${stamp}`);
+    fs.mkdirSync(runDir, { recursive: true });
+    const scanFilePath = path.join(runDir, `${scanSourceId}.csv`);
+    fs.copyFileSync(path.resolve(ROOT, "demo/files/customers.csv"), scanFilePath);
+
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(scanSourceId);
+    await page.getByTestId("sources-type-select").selectOption("csv");
+    await page.getByLabel(/CSV File Path/).fill(scanFilePath);
+    await submitSourceAndExpectListed(page, scanSourceId);
+
+    await openRegisterForm(page, scanSourceId);
+    await pickSchemaAndTable(page, "main", scanSourceId);
+    const scannedTable = await submitRegisterAndExpectListed(
+      page,
+      scanSourceId,
+      SWAP_REGISTER_TIMEOUT_MS,
+    );
+
+    // 2. The checker source itself — no connection fields (NO_CONNECTION_TYPES, constants.ts).
+    const sourceId = `e2e_swap_${checkerType}_${stamp}`;
+    const resultsTable = `e2e_swap_${checkerType}_scan_${stamp}`;
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption(checkerType);
+    await submitSourceAndExpectListed(page, sourceId);
+
+    // 3. Register Table form: no schema/table picker for a checker, only the DQ contract panel.
+    await openRegisterForm(page, sourceId);
+    await expect(page.getByTestId("register-table-dq")).toBeVisible();
+    await expect(page.getByTestId("register-table-schema-select")).toHaveCount(0);
+
+    await page.getByTestId("dq-dataset-table-select").click();
+    await page.getByRole("option", { name: `pet_store.${scannedTable}`, exact: true }).click();
+    await page.getByTestId("register-table-dq-results-table").fill(resultsTable);
+    await page.getByTestId("register-table-alias").fill(`${resultsTable}_quality`);
+
+    // A dataset-scope row_count / row-count-between rule needs no column pick (matches
+    // source-to-query-special-cases.spec.ts's own soda/great_expectations cases verbatim).
+    await page.getByTestId("dq-check-type").click();
+    await page.getByRole("option", { name: checkType, exact: true }).click();
+    if (await page.getByTestId("dq-comparator").isVisible()) {
+      await page.getByTestId("dq-comparator").click();
+      await page.getByRole("option", { name: "must_be_greater_than", exact: true }).click();
+      await page.getByTestId("dq-threshold").fill("0");
+    }
+    if (await page.getByTestId("dq-param-min_value").isVisible()) {
+      await page.getByTestId("dq-param-min_value").fill("0");
+      await page.getByTestId("dq-param-max_value").fill("1000000");
+    }
+    await page.getByTestId("dq-add-check").click();
+    await expect(page.getByTestId("dq-check-rows")).toContainText(checkType);
+
+    // Run the dry run for real before submitting — this checker type's genuine "query my data"
+    // analog (dryRunContract scans through sourceId + contractText directly).
+    await page.getByTestId("dq-dry-run").click();
+    await expect(page.getByTestId("dq-dry-run-result")).toBeVisible({ timeout: 30000 });
+    const outcomeBadge = page.getByTestId("dq-dry-run-result").locator(".mantine-Badge-root");
+    await expect(outcomeBadge.first()).toBeVisible();
+    await expect(outcomeBadge.first()).toHaveText(/pass|fail/);
+
+    const registered = await submitRegisterAndExpectListed(
+      page,
+      sourceId,
+      SWAP_REGISTER_TIMEOUT_MS,
+    );
+
+    // Give the poll job a real cadence — RegisterTableForm has no Cache TTL field, only
+    // TableEditForm's (registerRss's own established step for the identical poll-landed shape).
+    await page.goto("/tables");
+    await page.waitForSelector(".page-header", { timeout: 15000 });
+    const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
+    await row.waitFor({ timeout: 15000 });
+    await row.locator("td").first().click();
+    const editBtn = page.getByTestId("table-read-view-edit").first();
+    await editBtn.waitFor({ timeout: 10000 });
+    await editBtn.click();
+    await page.getByLabel(/^Cache TTL/).fill("5");
+    await page.getByTestId("table-edit-save").click();
+    await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+
+    return {
+      label: checkerType,
+      sourceId,
+      sql: `SELECT checker, outcome FROM pet_store.${registered} ORDER BY scan_time DESC LIMIT 1`,
+      assertRows: (rows) => {
+        expect(rows).toHaveLength(1);
+        // REQ-1730: contract.py's CHECKERS frozenset ({"soda", "great_expectations"}) is the
+        // canonical value the scan writes to this column — not a display label. The registrar
+        // previously asserted a separate Title Case string ("Soda"/"Great Expectations") that
+        // never matched, reproduced live (Received: "soda"/"great_expectations" against an
+        // Expected Title Case string) before this fix.
+        expect(rows[0][0]).toBe(checkerType);
+        expect(rows[0][1]).toMatch(/pass|fail/);
+      },
+      reachableOn: ["trino"],
+      pollTimeoutMs: 120000,
+    };
+  };
+}
+
+/** REQ-1730: google_sheets: SCAN-mechanism (one DuckDB view per source, fixed "main" schema, table named
+ * after the source id — DuckDBGsheetsConnector, introspect.py's google_sheets branch), Trino
+ * reaches it via a real ATTACH_R connector (TrinoGsheetsConnector, trino_connectors.py). No
+ * throwaway-sheet path exists (the service account has zero Drive quota, per gsheets-e2e-fixture
+ * project memory) — reads the SAME durable shared fixture sheet (GOOGLE_APPLICATION_CREDENTIALS +
+ * GSHEETS_TEST_SHEET_ID) source-to-query-special-cases.spec.ts's own google_sheets test already
+ * proved end to end; the caller test.skip()s when those env vars aren't set to it. */
+export async function registerGsheets(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_gsheets_${stamp}`;
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("google_sheets");
+  await page.getByTestId("google-sheets-credentials-input").fill(process.env.GOOGLE_APPLICATION_CREDENTIALS!);
+  await page.getByTestId("google-sheets-sheet-id-input").fill(process.env.GSHEETS_TEST_SHEET_ID!);
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "main", sourceId);
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "google_sheets",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(3);
+      expect(rows[0][1]).toBe("Widget A");
+    },
+    reachableOn: ["trino"],
+  };
+}
+
+export const registerSoda = registerDqChecker("soda", "row_count");
+export const registerGreatExpectations = registerDqChecker(
+  "great_expectations",
+  "expect_table_row_count_to_be_between",
+);
+
 /** snowflake: the first cloud-warehouse-class type in this harness. No docker fixture (a real
  * warehouse, not a container) — cloud_warehouse_seed.py (already proven by
  * source-to-query-cloud-warehouse.spec.ts's own live-Snowflake test) seeds/tears down
@@ -561,6 +744,50 @@ export async function registerBigquery(page: Page): Promise<Registration> {
       ]);
     },
     reachableOn: ["trino"],
+  };
+}
+
+/** redshift: unlike snowflake/databricks/bigquery/fabric (standing accounts this harness never
+ * provisions), Redshift Serverless is AWS-only and billable — the caller provisions it via
+ * `provisionRedshift("up")` (see engine-swap-helpers.ts) BEFORE calling this, and passes the
+ * resulting connection down. Trino reaches it through the plain JDBC family
+ * (`_TRINO_JDBC_TYPES["redshift"] = "redshift"` in trino_connectors.py, already wired — no new
+ * connector needed). Seeded table matches `tests/integration/test_redshift_source_e2e.py`'s own
+ * shape (`public.provisa_widgets_e2e`, (id, name) rows) via `scripts/redshift_e2e.py`'s `up`. */
+export function registerRedshift(conn: RedshiftConnection): (page: Page) => Promise<Registration> {
+  return async (page: Page): Promise<Registration> => {
+    const stamp = Date.now();
+    const sourceId = `e2e_swap_redshift_${stamp}`;
+
+    await openSourcesForm(page);
+    await page.getByTestId("sources-id-input").fill(sourceId);
+    await page.getByTestId("sources-type-select").selectOption("redshift");
+    await page.getByLabel(/^Host/).fill(conn.host);
+    await page.getByLabel(/^Port/).fill(String(conn.port));
+    await page.getByLabel(/^Database/).fill(conn.database);
+    await page.getByLabel(/^Username/).fill(conn.user);
+    await page.getByLabel(/^Password/).fill(conn.password);
+    await submitSourceAndExpectListed(page, sourceId);
+
+    await openRegisterForm(page, sourceId);
+    await pickSchemaAndTable(page, "public", "provisa_widgets_e2e");
+    await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({ timeout: 120000 });
+    await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible();
+    const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+    return {
+      label: "redshift",
+      sourceId,
+      sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+      assertRows: (rows) => {
+        expect(rows).toEqual([
+          ["1", "Widget A"],
+          ["2", "Widget B"],
+          ["3", "Widget C"],
+        ]);
+      },
+      reachableOn: ["trino"],
+    };
   };
 }
 
@@ -860,7 +1087,11 @@ export async function registerSqlite(page: Page): Promise<Registration> {
       expect(rows).toHaveLength(10);
       expect(rows[0]).toEqual(["1", "Alice Nguyen", "alice@example.com"]);
     },
-    reachableOn: [], // REQ-1726: no Trino connector or FDW path for sqlite
+    // REQ-1730: sqlite has no Trino connector, but IS reachable on Trino via landing (now that
+    // sqlite is in strategy.py's _MATERIALIZE_ONLY — events/source_loader.py's make_sqlite_loader
+    // already had a working, engine-independent row-fetch). Reachable on pg too, via
+    // SqliteFdwConnector — see the dedicated scenario-1 pg-reboot test in engine-swap.spec.ts.
+    reachableOn: ["trino"],
   };
 }
 
@@ -1261,7 +1492,11 @@ export async function registerFirebird(page: Page): Promise<Registration> {
       expect(rows[0]).toEqual(["1", "Widget A"]);
       expect(rows[2]).toEqual(["3", "Widget C"]);
     },
-    reachableOn: [], // REQ-899: DuckDB community extension only, no Trino connector or land path
+    // REQ-1730: firebird has no Trino connector, but now lands into the materialize store (added
+    // to strategy.py's _MATERIALIZE_ONLY, read via events/source_loader.py's new
+    // make_firebird_loader — a scratch DuckDB connection ATTACHed through the same `firebird`
+    // community extension the live engine itself uses).
+    reachableOn: ["trino"],
   };
 }
 
@@ -1291,25 +1526,105 @@ export async function registerAirport(page: Page): Promise<Registration> {
       expect(rows[0]).toEqual(["1", "Widget A"]);
       expect(rows[2]).toEqual(["3", "Widget C"]);
     },
-    reachableOn: [], // REQ-899/1097: DuckDB community extension only, no Trino connector or land path
+    // REQ-1730: same fix as firebird just above — airport now lands via the new
+    // make_airport_loader (a scratch DuckDB connection through the `airport` extension).
+    reachableOn: ["trino"],
   };
 }
 
-export async function registerSinglestore(page: Page): Promise<Registration> {
+// REQ-1730: duckdb-as-a-SOURCE — ATTACHing a SECOND local .duckdb file, distinct from DuckDB as
+// Provisa's own engine (source-to-query-community-ext.spec.ts's own `duckdb` test proves the
+// plain register+query path; this ports that same fixture into the reboot harness). Its
+// executor/drivers/registry.py `_make_duckdb` DirectDriver entry means FederationEngine.
+// complete_reach() (REQ-947) gives it a generic DIRECT connector on EVERY engine — federate()
+// resolves it to Strategy.MATERIALIZED universally, no strategy.py change needed (unlike
+// firebird/airport, whose gap was the missing _MATERIALIZE_ONLY membership itself).
+export async function registerDuckdbSource(page: Page): Promise<Registration> {
   const stamp = Date.now();
-  const sourceId = `e2e_swap_singlestore_${stamp}`;
+  const sourceId = `e2e_swap_duckdbsrc_${stamp}`;
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
-  await page.getByTestId("sources-type-select").selectOption("singlestore");
-  await page.getByLabel(/^Host/).fill("localhost");
-  await page.getByLabel(/^Port/).fill(String(E2E_SINGLESTORE_PORT));
-  await page.getByLabel(/^Username/).fill("root");
-  await page.getByLabel(/^Password/).fill("provisa");
-  await page.getByLabel(/^Database/).fill("provisa_demo");
+  await page.getByTestId("sources-type-select").selectOption("duckdb");
+  await page.getByLabel(/^File Path/).fill(WIDGETS_DUCKDB_PATH);
   await submitSourceAndExpectListed(page, sourceId);
 
   await openRegisterForm(page, sourceId);
-  await pickSchemaAndTable(page, "provisa_demo", "widgets");
+  await pickSchemaAndTable(page, "main", "widgets");
+  await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+    timeout: 60000,
+  });
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "duckdb-source",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(3);
+      expect(rows[0]).toEqual(["1", "Widget A"]);
+      expect(rows[2]).toEqual(["3", "Widget C"]);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
+// REQ-1730: trino-as-a-SOURCE (REQ-994) — Provisa reads a remote Trino/Presto coordinator
+// directly via the SQLAlchemy trino dialect (executor/drivers/registry.py's `_make_trino`),
+// distinct from Trino as the federation ENGINE. Same complete_reach()/DIRECT-driver reasoning as
+// duckdb-as-a-source above — already MATERIALIZED-reachable on every engine, no strategy.py
+// change needed. `tpch` is the fixture Trino coordinator's own built-in synthetic-data connector
+// (demo/sources/trino/catalog/tpch.properties) — zero seed step needed.
+export async function registerTrinoSource(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_trinosrc_${stamp}`;
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("trino");
+  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Port/).fill(String(E2E_TRINO_SOURCE_PORT));
+  await page.getByLabel(/^Username/).fill("provisa");
+  await page.getByLabel(/^Database/).fill("tpch");
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "tiny", "nation");
+  await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+    timeout: 60000,
+  });
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "trino-source",
+    sourceId,
+    sql: `SELECT nationkey, name FROM pet_store.${registered} ORDER BY nationkey LIMIT 5`,
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(5);
+      expect(rows[0]).toEqual(["0", "ALGERIA"]);
+      expect(rows[4]).toEqual(["4", "EGYPT"]);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
+/** Live SingleStore Cloud shared-tier workspace — SINGLESTORE_HOST/PORT/USERNAME/PASSWORD/DATABASE
+ * in .env, widgets(id, name) seeded once directly into it (no per-run provisioning: unlike the
+ * ephemeral redshift/synapse lanes, this workspace is standing infrastructure). */
+export async function registerSinglestore(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_singlestore_${stamp}`;
+  const database = process.env.SINGLESTORE_DATABASE!;
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("singlestore");
+  await page.getByLabel(/^Host/).fill(process.env.SINGLESTORE_HOST!);
+  await page.getByLabel(/^Port/).fill(process.env.SINGLESTORE_PORT!);
+  await page.getByLabel(/^Username/).fill(process.env.SINGLESTORE_USERNAME!);
+  await page.getByLabel(/^Password/).fill(process.env.SINGLESTORE_PASSWORD!);
+  await page.getByLabel(/^Database/).fill(database);
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, database, "widgets");
   await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
     timeout: 60000,
   });
@@ -1591,6 +1906,411 @@ export async function registerKafka(page: Page): Promise<Registration> {
     // registrar queries against never pays this cold-start cost, so it never needed retry
     // tolerance before. Harmless there (only engages if the very first attempt comes back empty).
     pollTimeoutMs: 60000,
+  };
+}
+
+async function rebootGql(query: string, variables: Record<string, unknown> = {}) {
+  const res = await fetch(`${REBOOT_BACKEND_URL}/admin/graphql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(120000),
+  });
+  return res.json();
+}
+
+/** pinot (REQ-1730): NO direct DuckDB driver at all — register_source() is a documented no-op for
+ * it on the native engine (see source-to-query-olap-lake-trino.spec.ts's own module doc), so this
+ * registrar only ever runs against a Trino-primary-from-boot reboot backend (runRebootCase's
+ * `startEngine: "trino"`). Trino's Pinot connector populates its table-list cache from the
+ * controller's own Helix external-view convergence, which can still be converging in the seconds
+ * right after `create_catalog()` runs for a freshly-loaded QuickStart fixture (REQ-1751, reproduced
+ * live in the sibling spec) — poll availableTables directly before driving the schema/table
+ * pickers, the same workaround that spec's own waitForTrinoTable uses. */
+export async function registerPinot(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_pinot_${stamp}`;
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("pinot");
+  // REQ-1730: "localhost"/the published controller port — DuckDB's own row-fetch loader
+  // (make_pinot_loader) now runs natively on the host, unlike the old Trino-only design this
+  // registrar used before pinot got a real materialization path. rewriteHostForContainerizedEngine
+  // (runRebootCase's default hostRewriteTypes={trino:"pinot"}) rewrites this to
+  // host.docker.internal before the Trino reboot, the same generic mechanism every other type
+  // here already uses.
+  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Port/).fill(String(E2E_PINOT_CONTROLLER_PORT));
+  await submitSourceAndExpectListed(page, sourceId);
+
+  // The broker's own query/sql endpoint lives on a DIFFERENT host-published port than the
+  // controller (see E2E_PINOT_BROKER_PORT's own comment) — federation_hints is the established
+  // channel for a connection detail the standard Source fields have no field for (same shape
+  // kafka's schema-registry-URL and exasol's tls_fingerprint already use this session).
+  const hintsRes = await page.request.post("/admin/graphql", {
+    data: {
+      query: `mutation($s: SourceInput!) { updateSource(input: $s) { success message } }`,
+      variables: {
+        s: {
+          id: sourceId,
+          type: "pinot",
+          host: "localhost",
+          port: E2E_PINOT_CONTROLLER_PORT,
+          federationHintsJson: JSON.stringify({
+            pinot_broker_url: `http://localhost:${E2E_PINOT_BROKER_PORT}`,
+          }),
+        },
+      },
+    },
+  });
+  expect(hintsRes.ok(), await hintsRes.text()).toBeTruthy();
+
+  // REQ-1730: QuickStart's own batch ingest/Helix convergence was observed live to take several
+  // minutes from a cold container start in this environment (not just "seconds" — the sibling
+  // spec's own 150s budget, source-to-query-olap-lake-trino.spec.ts, assumes a warmer host) — a
+  // direct manual debug session confirmed the controller's own /tables listing stayed empty for
+  // multiple minutes after the container reported "Healthy". Budget generously rather than retry
+  // blind.
+  const deadline = Date.now() + 300000;
+  for (;;) {
+    const res = await rebootGql(
+      `query($sourceId: String!, $schemaName: String!) {
+        availableTables(sourceId: $sourceId, schemaName: $schemaName) { name }
+      }`,
+      { sourceId, schemaName: "default" },
+    );
+    const names = (res.data?.availableTables ?? []) as { name: string }[];
+    if (names.some((t) => t.name === "airlineStats")) break;
+    if (Date.now() > deadline) {
+      throw new Error(`pinot: airlineStats never appeared for ${sourceId} within 300s`);
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "default", "airlineStats");
+  // "Origin" (mixed case, matching Pinot's own column name verbatim) — the checkbox testid is
+  // built from col.name directly (RegisterTableForm.tsx), not a lowercased/sql-normalized form.
+  await expect(page.getByTestId("register-table-col-selected-Origin")).toBeVisible({
+    timeout: 60000,
+  });
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "pinot",
+    sourceId,
+    sql: `SELECT count(*) AS cnt FROM pet_store.${registered}`,
+    // QuickStart's batch loader ingests airlineStats asynchronously (same Helix-convergence
+    // process the table-existence wait above works around) — the row count is not a fixed value
+    // (source-to-query-olap-lake-trino.spec.ts's own comment: live traces have seen 8468 and
+    // 9746 for the identical fixture). Assert real data landed, not a specific count.
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(1);
+      expect(Number(rows[0][0])).toBeGreaterThan(0);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
+/** hive_s3 (REQ-1730): NO direct DuckDB driver — same shape as pinot above, Trino-only from boot.
+ * The `wh.widgets` table is seeded through Trino itself (write-then-read via a throwaway catalog),
+ * mirroring source-to-query-olap-lake-trino.spec.ts's own hive_s3 seed exactly — that file's own
+ * comment documents two real bugs its seed script had to work around (unquoted WITH-property
+ * identifiers, and DROP TABLE not clearing the underlying S3 objects for a non-managed-writes
+ * table), both already fixed there; this seed is unchanged from that proven shape. */
+export async function registerHiveS3(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_hive_s3_${stamp}`;
+
+  execFileSync(
+    PYTHON,
+    [
+      "-c",
+      "import trino.dbapi\n" +
+        "conn = trino.dbapi.connect(host='localhost', port=8080, user='itest', catalog='system')\n" +
+        "cur = conn.cursor()\n" +
+        "def ex(sql):\n" +
+        "    cur.execute(sql)\n" +
+        "    return cur.fetchall()\n" +
+        'props = \'"hive.metastore"=\\\'thrift\\\', "hive.metastore.uri"=\\\'thrift://hive-s3:9083\\\', \' \\\n' +
+        '    \'"hive.non-managed-table-writes-enabled"=\\\'true\\\', "fs.native-s3.enabled"=\\\'true\\\', \' \\\n' +
+        '    \'"s3.endpoint"=\\\'http://minio:9000\\\', "s3.aws-access-key"=\\\'minioadmin\\\', \' \\\n' +
+        '    \'"s3.aws-secret-key"=\\\'minioadmin\\\', "s3.region"=\\\'us-east-1\\\', \' \\\n' +
+        '    \'"s3.path-style-access"=\\\'true\\\'\'\n' +
+        "try:\n" +
+        "    ex('DROP CATALOG IF EXISTS e2e_swap_hive_s3_seed')\n" +
+        "except Exception:\n" +
+        "    pass\n" +
+        "ex(f'CREATE CATALOG e2e_swap_hive_s3_seed USING hive WITH ({props})')\n" +
+        "ex('CREATE SCHEMA IF NOT EXISTS e2e_swap_hive_s3_seed.wh')\n" +
+        "ex('DROP TABLE IF EXISTS e2e_swap_hive_s3_seed.wh.widgets')\n" +
+        "import boto3\n" +
+        "from botocore.client import Config\n" +
+        "s3 = boto3.client('s3', endpoint_url='http://localhost:9000', " +
+        "aws_access_key_id='minioadmin', aws_secret_access_key='minioadmin', " +
+        "region_name='us-east-1', config=Config(signature_version='s3v4', " +
+        "s3={'addressing_style': 'path'}))\n" +
+        "existing = {b['Name'] for b in s3.list_buckets().get('Buckets', [])}\n" +
+        "if 'provisa-hive-s3' not in existing:\n" +
+        "    s3.create_bucket(Bucket='provisa-hive-s3')\n" +
+        "for pg in s3.get_paginator('list_objects_v2').paginate(" +
+        "Bucket='provisa-hive-s3', Prefix='warehouse/wh.db/widgets/'):\n" +
+        "    for obj in pg.get('Contents', []):\n" +
+        "        s3.delete_object(Bucket='provisa-hive-s3', Key=obj['Key'])\n" +
+        "ex(\"CREATE TABLE e2e_swap_hive_s3_seed.wh.widgets (id integer, name varchar) WITH (format='PARQUET')\")\n" +
+        "ex(\"INSERT INTO e2e_swap_hive_s3_seed.wh.widgets VALUES (1, 'Widget A'), (2, 'Widget B'), (3, 'Widget C')\")\n" +
+        "ex('DROP CATALOG e2e_swap_hive_s3_seed')\n",
+    ],
+    { stdio: "pipe" },
+  );
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("hive_s3");
+  await page.getByLabel(/Metastore URI/).fill("hive-s3");
+  await page.getByLabel(/Warehouse Path/).fill("s3a://provisa-hive-s3/warehouse");
+  await page.getByLabel(/Access Key ID/).fill("minioadmin");
+  await page.getByLabel(/Secret Access Key/).fill("minioadmin");
+  await page.getByLabel(/^Region/).fill("us-east-1");
+  // REQ-1730: "localhost", not the container-network "minio" alias this field used before —
+  // DuckDB's own row-fetch loader (make_hive_s3_loader) runs natively on the host and reads this
+  // straight out of mapping.s3_endpoint (no host-rewrite mechanism ever touched `mapping` before
+  // this type needed one — see rewriteHostForContainerizedEngine's own new comment for the
+  // Trino-side rewrite this now requires).
+  await page.getByLabel(/S3 Endpoint/).fill("http://localhost:9000");
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "wh", "widgets");
+  await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+    timeout: 60000,
+  });
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "hive_s3",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(3);
+      expect(rows[0]).toEqual(["1", "Widget A"]);
+      expect(rows[2]).toEqual(["3", "Widget C"]);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
+/** hive (REQ-1730): NO direct DuckDB driver — same shape as hive_s3 above, but local/Hadoop-native
+ * storage: TrinoHiveConnector's default filesystem reads table data at whatever path the
+ * metastore recorded, which only resolves when Trino and this fixture's metastore share the SAME
+ * literal warehouse directory (docker-compose.core.yml's `hive_warehouse` volume) — see
+ * source-to-query-olap-lake-trino.spec.ts's own resolveHiveWarehouseVolume() comment for why. */
+export async function registerHive(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_hive_${stamp}`;
+
+  execFileSync(
+    PYTHON,
+    [
+      "-c",
+      "import time\n" +
+        "import trino.dbapi\n" +
+        "import trino.exceptions\n" +
+        "conn = trino.dbapi.connect(host='localhost', port=8080, user='itest', catalog='system')\n" +
+        "cur = conn.cursor()\n" +
+        "def ex(sql):\n" +
+        "    cur.execute(sql)\n" +
+        "    return cur.fetchall()\n" +
+        'props = \'"hive.metastore"=\\\'thrift\\\', "hive.metastore.uri"=\\\'thrift://hive:9083\\\', \' \\\n' +
+        '    \'"fs.hadoop.enabled"=\\\'true\\\'\'\n' +
+        "try:\n" +
+        "    ex('DROP CATALOG IF EXISTS e2e_swap_hive_seed')\n" +
+        "except Exception:\n" +
+        "    pass\n" +
+        "ex(f'CREATE CATALOG e2e_swap_hive_seed USING hive WITH ({props})')\n" +
+        "deadline = time.monotonic() + 60\n" +
+        "last_exc = None\n" +
+        "while time.monotonic() < deadline:\n" +
+        "    try:\n" +
+        "        ex('CREATE SCHEMA IF NOT EXISTS e2e_swap_hive_seed.wh')\n" +
+        "        break\n" +
+        "    except trino.exceptions.TrinoQueryError as exc:\n" +
+        "        last_exc = exc\n" +
+        "        time.sleep(3)\n" +
+        "else:\n" +
+        "    raise RuntimeError(f'hive CREATE SCHEMA never succeeded: {last_exc!r}')\n" +
+        "ex('DROP TABLE IF EXISTS e2e_swap_hive_seed.wh.widgets')\n" +
+        "ex(\"CREATE TABLE e2e_swap_hive_seed.wh.widgets (id integer, name varchar) WITH (format='PARQUET')\")\n" +
+        "ex(\"INSERT INTO e2e_swap_hive_seed.wh.widgets VALUES (1, 'Widget A'), (2, 'Widget B'), (3, 'Widget C')\")\n" +
+        "ex('DROP CATALOG e2e_swap_hive_seed')\n",
+    ],
+    { stdio: "pipe" },
+  );
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("hive");
+  await page.getByLabel(/Metastore URI/).fill("hive");
+  await page.getByLabel(/Warehouse Path/).fill("/opt/hive/data/warehouse");
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "wh", "widgets");
+  await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+    timeout: 60000,
+  });
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "hive",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(3);
+      expect(rows[0]).toEqual(["1", "Widget A"]);
+      expect(rows[2]).toEqual(["3", "Widget C"]);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
+/** druid (REQ-1730): NO direct DuckDB driver — same shape as pinot/hive above. CI-only (apache/
+ * druid is amd64-only, unbootable under arm64 emulation, same gate
+ * source-to-query-olap-lake-trino.spec.ts's own druid case uses) — the caller is responsible for
+ * checking RUNNING_IN_CI before invoking this and provisioning the fixture; this registrar only
+ * drives the UI flow against an already-seeded broker. */
+export async function registerDruid(page: Page): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_druid_${stamp}`;
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("druid");
+  // REQ-1730: "localhost"/the published broker port — DuckDB's own row-fetch loader
+  // (make_druid_loader) now runs natively on the host, unlike the old Trino-only design this
+  // registrar used before druid got a real materialization path (same fix as pinot's own).
+  // rewriteHostForContainerizedEngine (runRebootCase's default hostRewriteTypes={trino:"druid"})
+  // rewrites this to host.docker.internal before the Trino reboot.
+  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Port/).fill(String(E2E_DRUID_BROKER_PORT));
+  await submitSourceAndExpectListed(page, sourceId);
+
+  // Same table-list convergence wait source-to-query-olap-lake-trino.spec.ts's own druid case
+  // takes before touching the picker (its waitForTrinoTable call) — Trino's druid connector
+  // populates its schema cache asynchronously, same class of race as pinot's Helix convergence.
+  {
+    const deadline = Date.now() + 60000;
+    for (;;) {
+      const res = await rebootGql(
+        `query($sourceId: String!, $schemaName: String!) {
+          availableTables(sourceId: $sourceId, schemaName: $schemaName) { name }
+        }`,
+        { sourceId, schemaName: "druid" },
+      );
+      const names = (res.data?.availableTables ?? []) as { name: string }[];
+      if (names.some((t) => t.name === "widgets")) break;
+      if (Date.now() > deadline) {
+        throw new Error(`druid: widgets never appeared for ${sourceId} within 60s`);
+      }
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+  }
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "druid", "widgets");
+  await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
+    timeout: 60000,
+  });
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "druid",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toHaveLength(3);
+      expect(rows[0]).toEqual(["1", "Widget A"]);
+      expect(rows[2]).toEqual(["3", "Widget C"]);
+    },
+    reachableOn: ["trino"],
+  };
+}
+
+/** synapse (REQ-1730): SourceType.synapse has a real DIRECT driver (`_make_mssql_warehouse`,
+ * executor/drivers/registry.py — same factory fabric uses) reachable from DuckDB, so this follows
+ * the standard "register under DuckDB first" shape every RDB/warehouse type here uses — no
+ * `startEngine` override needed, unlike pinot/hive/hive_s3/druid above.
+ *
+ * synapse_provision.py's `_provision()` seeds an ADLS Parquet (order_id/customer/amount) but
+ * creates no queryable SQL table — serverless Synapse has no plain managed tables (only CETAS/
+ * external). A `dbo.widgets` VIEW over OPENROWSET of that same Parquet is created here (raw
+ * pyodbc, mirroring test_synapse_federation_engine_e2e.py's own `attach_source`/CREATE VIEW
+ * shape) so the Sources-form schema/table picker has something to introspect, matching every
+ * other RDB registrar's widgets(id, name) contract. */
+export async function registerSynapse(
+  page: Page,
+  sqlServer: string,
+  database: string,
+  adlsUrl: string,
+): Promise<Registration> {
+  const stamp = Date.now();
+  const sourceId = `e2e_swap_synapse_${stamp}`;
+
+  execFileSync(
+    PYTHON,
+    [
+      "-c",
+      "import sys\n" +
+        "sys.path.insert(0, '.')\n" +
+        "from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime\n" +
+        "rt = MssqlWarehouseRuntime(server=sys.argv[1], database=sys.argv[2], engine_name='synapse')\n" +
+        "try:\n" +
+        "    cur = rt.connection.cursor()\n" +
+        "    try:\n" +
+        "        cur.execute(\n" +
+        "            \"CREATE OR ALTER VIEW dbo.widgets AS \"\n" +
+        "            \"SELECT order_id AS id, customer AS name \"\n" +
+        "            f\"FROM OPENROWSET(BULK '{sys.argv[3]}', FORMAT = 'PARQUET') AS r\"\n" +
+        "        )\n" +
+        "    finally:\n" +
+        "        cur.close()\n" +
+        "finally:\n" +
+        "    rt.close()\n",
+      sqlServer,
+      database,
+      adlsUrl,
+    ],
+    { stdio: "inherit", cwd: ROOT },
+  );
+
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption("synapse");
+  await page.getByRole("textbox", { name: /Server/ }).fill(sqlServer);
+  await page.getByRole("textbox", { name: /^Database/ }).fill(database);
+  await page.getByRole("textbox", { name: "Authentication" }).click();
+  await page
+    .getByRole("option", { name: "Ambient Credential (az login / managed identity)", exact: true })
+    .click();
+  await submitSourceAndExpectListed(page, sourceId);
+
+  await openRegisterForm(page, sourceId);
+  await pickSchemaAndTable(page, "dbo", "widgets");
+  await expect(page.getByTestId("register-table-col-selected-id")).toBeVisible({ timeout: 120000 });
+  await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible();
+  const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
+
+  return {
+    label: "synapse",
+    sourceId,
+    sql: `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
+    assertRows: (rows) => {
+      expect(rows).toEqual([
+        ["1", "ada"],
+        ["2", "grace"],
+        ["3", "alan"],
+      ]);
+    },
+    reachableOn: ["trino"],
   };
 }
 

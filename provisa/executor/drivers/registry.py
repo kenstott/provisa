@@ -34,6 +34,12 @@ def _make_mysql() -> DirectDriver:
     return MySQLDriver()
 
 
+def _make_singlestore() -> DirectDriver:
+    from provisa.executor.drivers.mysql import MySQLDriver
+
+    return MySQLDriver(require_ssl=True)  # SingleStore Cloud rejects non-TLS connections outright
+
+
 def _make_duckdb() -> DirectDriver:
     from provisa.executor.drivers.duckdb_driver import DuckDBDriver
 
@@ -104,7 +110,7 @@ def _make_exasol() -> DirectDriver:  # via pyexasol (Exasol's own WebSocket clie
 _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     "postgresql": _make_pg,
     "mysql": _make_mysql,
-    "singlestore": _make_mysql,  # MySQL wire-compatible
+    "singlestore": _make_singlestore,  # MySQL wire-compatible, but Cloud requires TLS
     "mariadb": _make_mysql,  # MySQL wire-compatible
     "duckdb": _make_duckdb,
     "sqlserver": _make_sqlserver,
@@ -145,6 +151,14 @@ _SQLALCHEMY_FALLBACK: dict[str, str] = {
     # the URL's database segment to hdbcli's databaseName kwarg, routing an MDC SYSTEMDB connection
     # to the named tenant (verified live against a real HANA Express instance this session).
     "saphana": "hana+hdbcli",
+    # REQ-1730: identical gap to saphana above — redshift was reachable ONLY as the whole active
+    # engine (engine.py's "redshift+psycopg2://..." generic-RDB family) but had no per-source
+    # DirectDriver, so `create_driver("redshift")` raised KeyError and `complete_reach()` (engine.py)
+    # never granted it a land-reach connector on any OTHER active engine — e.g. registered under
+    # DuckDB, Trino as the swap target, or vice versa. Every source type is reachable on every
+    # engine, by direct attach or by materializing through the store; redshift had neither for the
+    # non-Trino case. sqlalchemy-redshift (pyproject.toml) provides this dialect.
+    "redshift": "redshift+psycopg2",
 }
 
 

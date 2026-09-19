@@ -32,6 +32,18 @@ export const PYTHON = path.join(ROOT, ".venv", "bin", "python");
 export const SWAP_PREFIX = "provisa-swap";
 export const MAKE_FILE_LAKE_FIXTURES = path.join(ROOT, "provisa-ui", "e2e", "make-file-lake-fixtures.py");
 export const CLOUD_WAREHOUSE_SEED = path.join(ROOT, "provisa-ui", "e2e", "cloud_warehouse_seed.py");
+// redshift: unlike snowflake/databricks/bigquery/fabric (standing accounts, never provisioned by
+// this harness), Redshift Serverless is AWS-only and billable — `scripts/redshift_e2e.py` bridges
+// `tests/integration/redshift_cluster.py`'s pytest-scoped provision/teardown fixture into two
+// plain CLI calls this harness can make from beforeAll/afterAll (see that script's own module doc
+// for why a bridge, not a second implementation).
+export const REDSHIFT_E2E_SCRIPT = path.join(ROOT, "scripts", "redshift_e2e.py");
+// synapse: same ephemeral/billable-cloud shape as redshift above — Azure-only, self-provisioned
+// and torn down per run (tests/integration/synapse_provision.py's own module doc: "unlike every
+// self-provisioning source... it cannot live in docker-compose and must not be left standing
+// between runs"). scripts/synapse_e2e.py bridges that pytest-generator-shaped fixture into two
+// plain CLI calls the same way redshift_e2e.py bridges redshift_cluster.py.
+export const SYNAPSE_E2E_SCRIPT = path.join(ROOT, "scripts", "synapse_e2e.py");
 // delta_lake/iceberg (SCAN-mechanism, no ATTACH, no network service — connector_duckdb.py's
 // DuckDBDeltaConnector/DuckDBIcebergConnector read a host path directly) are the first engine-swap
 // types whose Trino leg needs a FILE the DuckDB-bound backend (native) and Trino (containerized)
@@ -86,6 +98,26 @@ export const E2E_RSS_PORT = 33111;
 // swap and receives the same 2 events again.
 export const E2E_WS_PORT = 33112;
 
+// REQ-1730: pinot/druid have NO direct DuckDB driver at all — register_source() is a no-op for
+// them on the native engine, so their scenario-1 reboot case must start already on Trino (see
+// runRebootCase's own `startEngine` doc). Host-published ports here are only for the
+// provisioning/seed process's own health probe; Trino itself always reaches these containers
+// in-network by their compose service alias (see each fixture's own compose.yml comment).
+export const E2E_PINOT_CONTROLLER_PORT = 33121;
+// REQ-1730: the broker's own query/sql endpoint — a SEPARATE host-published port from the
+// controller above (demo/sources/pinot/compose.yml publishes both), since DuckDB's own row-fetch
+// loader (make_pinot_loader, source_loader.py) queries the broker directly rather than going
+// through Trino's connector-style controller-discovers-broker indirection (see that loader's own
+// module doc, provisa/pinot/fetch.py, for why: a client just needs TCP reachability to the
+// broker's listening socket).
+export const E2E_PINOT_BROKER_PORT = 33122;
+export const E2E_DRUID_COORD_PORT = 33131;
+export const E2E_DRUID_BROKER_PORT = 33132;
+// REQ-1730: trino-as-a-SOURCE fixture (demo/sources/trino) — a standalone, throwaway Trino
+// coordinator distinct from either engine this harness swaps between. 33141, not 33081
+// (source-to-query.spec.ts's own E2E_TRINO_SOURCE_PORT), so both can provision concurrently.
+export const E2E_TRINO_SOURCE_PORT = 33141;
+
 export async function waitForPort(port: number, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -102,11 +134,10 @@ export async function waitForPort(port: number, timeoutMs: number): Promise<void
   }
 }
 
-// Both gates are checked BEFORE provisioning, not just before registration: an unlicensed or
-// arm64-emulated singlestoredb-dev container never becomes healthy (or, under arm64, never even
-// starts — `docker compose up` fails outright with "no matching manifest"), so attempting it
-// wastes the harness's own boot budget on a doomed wait. See the module doc.
-export const SINGLESTORE_AVAILABLE = process.arch === "x64" && !!process.env.SINGLESTORE_LICENSE;
+// singlestore now points at a live SingleStore Cloud shared-tier workspace (not the local
+// singlestoredb-dev container — no amd64/license gate needed anymore); this just checks the
+// workspace's connection env vars are present.
+export const SINGLESTORE_AVAILABLE = !!process.env.SINGLESTORE_HOST;
 
 // Every demo/sources/<name> whose compose.yml takes PROVISA_DEMO_<NAME>_PORT (uppercased) —
 // provision.py's own env-passthrough contract (see its module doc: "--env values apply to
@@ -194,6 +225,61 @@ export function provisionSwapSource(
     if (cmd === "down") return; // a project that was never started removes nothing
     throw e;
   }
+}
+
+export interface RedshiftConnection {
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password: string;
+}
+
+/** Provisions (or tears down) the ephemeral Redshift Serverless workgroup via
+ * `scripts/redshift_e2e.py` — see that script's own module doc. `up`'s stdout is the connection
+ * JSON; `down` is always safe to call (a no-op if `up` never ran or already tore down). */
+export function provisionRedshift(cmd: "up" | "down"): RedshiftConnection | undefined {
+  if (cmd === "down") {
+    try {
+      execFileSync(PYTHON, [REDSHIFT_E2E_SCRIPT, "down"], { stdio: "pipe" });
+    } catch {
+      // best-effort — the state file itself records what (if anything) needs deleting
+    }
+    return undefined;
+  }
+  const stdout = execFileSync(PYTHON, [REDSHIFT_E2E_SCRIPT, "up"], {
+    stdio: ["ignore", "pipe", "inherit"],
+    maxBuffer: 16 * 1024 * 1024,
+    timeout: 15 * 60 * 1000,
+  }).toString("utf8");
+  return JSON.parse(stdout.trim().split("\n").pop()!) as RedshiftConnection;
+}
+
+export interface SynapseConnection {
+  resource_group: string | null;
+  sql_server: string;
+  database: string;
+  adls_url: string;
+}
+
+/** Provisions (or tears down) the ephemeral Azure Synapse lane via `scripts/synapse_e2e.py` — see
+ * that script's own module doc. `up`'s stdout is the connection JSON; `down` is always safe to
+ * call (a no-op if `up` never ran or already tore down). */
+export function provisionSynapse(cmd: "up" | "down"): SynapseConnection | undefined {
+  if (cmd === "down") {
+    try {
+      execFileSync(PYTHON, [SYNAPSE_E2E_SCRIPT, "down"], { stdio: "pipe" });
+    } catch {
+      // best-effort — the state file itself records what (if anything) needs deleting
+    }
+    return undefined;
+  }
+  const stdout = execFileSync(PYTHON, [SYNAPSE_E2E_SCRIPT, "up"], {
+    stdio: ["ignore", "pipe", "inherit"],
+    maxBuffer: 16 * 1024 * 1024,
+    timeout: 30 * 60 * 1000,
+  }).toString("utf8");
+  return JSON.parse(stdout.trim().split("\n").pop()!) as SynapseConnection;
 }
 
 /** One source+table's proof: the SQL that reads it back, and the assertion every engine must
@@ -469,7 +555,14 @@ export async function requeryOnEngine(page: Page, engine: EngineTarget, registra
  * SWAP_REGISTER_TIMEOUT_MS's comment. Waiting it out here, before the timed registration loop
  * starts, keeps that cold-start window from landing on a random registration's own timeout.
  * Real coordinators have taken up to a few minutes to settle; budget generously for that. */
-export async function waitForTrinoStable(budgetMs = 240000): Promise<void> {
+// REQ-1730: was 240000 — a killed-then-restarted backend from a PRECEDING test in the same
+// sequential run (Playwright's retries:1 spins up a fresh worker per retry, re-triggering this
+// file-level beforeAll) sometimes needs longer than 4 minutes for provisa-trino-1 to actually
+// recover, reproduced live 3 times this session (each a genuine slow recovery, not a hang —
+// Trino settled every time given enough budget). Raised to align with this same beforeAll's own
+// outer `test.setTimeout(360000)` two lines below, leaving headroom before that outer timeout
+// would also fire.
+export async function waitForTrinoStable(budgetMs = 330000): Promise<void> {
   const deadline = Date.now() + budgetMs;
   let consecutiveOk = 0;
   while (consecutiveOk < 3) {
@@ -502,7 +595,13 @@ export async function waitForTrinoStable(budgetMs = 240000): Promise<void> {
 // ONE dedicated backend process, entirely separate from every ENGINES/CORE_BACKENDS process
 // above: it is killed and respawned with `PROVISA_ENGINE` flipped, on the SAME port/data dir/org,
 // so "reboot with a different engine" is a real OS-level restart, not an in-process reload.
-export type RebootEngineKind = "duckdb" | "trino";
+// REQ-1730: "pg" added for sqlite — reachable via SqliteFdwConnector (provisa/federation/
+// engine.py's build_pg_engine), the one type in this harness that needs a non-Trino swap target.
+// spawnRebootBackend needs no pg-specific extra env (unlike trino's REBOOT_TRINO_EXTRA_ENV): the
+// pg engine, with no explicit federation_engine_url configured, falls back to the platform
+// database (PgBackend._new_runtime) — the SAME control-plane postgres rebootControlPlaneEnv()
+// already points every engine kind at.
+export type RebootEngineKind = "duckdb" | "trino" | "pg";
 
 // Same defaults playwright.config.ts's own graphql-demo/petstore-mock webServer entries use.
 // Exported so registerGraphqlRemote/registerOpenapi callers (registrars have no baked-in
@@ -803,6 +902,18 @@ export async function rewriteHostForContainerizedEngine(sourceId: string, source
   if (src!.database) {
     src!.database = src!.database.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal");
   }
+  // REQ-1730: hive_s3's own S3 endpoint lives in `mapping.s3_endpoint`, not `host`/`database` —
+  // DuckDB's row-fetch loader (make_hive_s3_loader) needs it host-reachable ("localhost:9000",
+  // MinIO's published port), Trino's own hive connector needs the container-network alias
+  // ("minio:9000") once rebooted into Trino. A blind string replace across the whole raw JSON
+  // text (not a per-key rewrite) covers this and any future type storing a container-reachable
+  // URL in mapping, the same way host/database already get rewritten above.
+  if (src!.mappingJson) {
+    src!.mappingJson = src!.mappingJson.replace(
+      /\b(?:localhost|127\.0\.0\.1)\b/g,
+      "host.docker.internal",
+    );
+  }
   const mutation = await fetch(`${REBOOT_BACKEND_URL}/admin/graphql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -923,10 +1034,24 @@ export async function runRebootCase(
   // row-level read path for kafka. Set true to skip the baseline query/assertion for a type with
   // the same property; the reboot-and-query-under-the-target-engine loop below still runs.
   skipDuckdbBaseline = false,
+  // REQ-1730: druid/hive/hive_s3 have NO direct DuckDB driver at all — register_source() is a
+  // documented no-op for them on the native engine (EngineBackend.register_source,
+  // provisa/federation/backend.py; see source-to-query-olap-lake-trino.spec.ts's own module doc),
+  // so the schema picker never populates and `registrar` cannot even run against a DuckDB-booted
+  // process. (pinot no longer needs this — it has a real DuckDB row-fetch now, make_pinot_loader/
+  // _native_tables_pinot, provisa/pinot/.) For these, start the FIRST spawn already on the target
+  // engine — the "baseline" above then IS that engine's own query, and engineSequence's
+  // kill+respawn loop still proves the real thing REQ-1730 is about: does a control-plane-only
+  // source survive a genuine restart, not just whether the DuckDB leg can see it.
+  startEngine: RebootEngineKind = "duckdb",
 ): Promise<void> {
-  test.setTimeout(120000 + engineSequence.length * 180000);
+  // 420000 (not the original 120000) base: pinot's own Helix/QuickStart-batch convergence was
+  // observed live to take multiple minutes from a cold container start on this box — see
+  // registerPinot's own comment. A larger ceiling is harmless for every faster-registering type
+  // (it bounds worst-case wait, not actual time spent).
+  test.setTimeout(420000 + engineSequence.length * 180000);
   prepareRebootDataDir();
-  let proc = await spawnRebootBackend("duckdb");
+  let proc = await spawnRebootBackend(startEngine);
   try {
     await sweepRebootZombieSources();
     const routes = ["/admin", "/data", "/query", "/health"].map((prefix) => `${UI_URL}${prefix}**`);

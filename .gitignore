@@ -166,6 +166,9 @@ provisa-ui/.playwright-trino-data/
 # REQ-1730 engine-swap delta_lake/iceberg fixtures (make-file-lake-fixtures.py) — bind-mounted into
 # Trino/hive-metastore at this exact path (docker-compose.core.yml), regenerated per test run.
 /.e2e-file-lake/
+# REQ-1097 hive_warehouse volume's bind-mount device (docker-compose.core.yml) — makes the Hive
+# metastore's table files host-reachable; regenerated per test run.
+/.e2e-hive-warehouse/
 None
 
 .playwright*

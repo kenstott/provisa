@@ -65,6 +65,9 @@ _SQLSERVER_SYSTEM_SCHEMAS = {
     "db_denydatawriter",
 }
 _PG_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast"}
+# Redshift is a Postgres 8.0 fork — same wire protocol and catalog shape as _PG_SYSTEM_SCHEMAS,
+# plus its own pg_internal schema (holds temp tables), which upstream Postgres doesn't have.
+_REDSHIFT_SYSTEM_SCHEMAS = _PG_SYSTEM_SCHEMAS | {"pg_internal"}
 # REQ-1768: "public" was excluded here (2026-06-07) to hide Provisa's own control-plane schema when
 # its backing Postgres was registered as a "postgresql"-type data source. That rationale is now
 # stale: the 2026-06-26 multi-tenancy migration moved Provisa's own tables into "platform"/"audit"
@@ -240,6 +243,23 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t == "prometheus":
         return ["default"]  # REQ-1689: the connector's fixed schema; a metric is the table
 
+    if t == "pinot":
+        return ["default"]  # REQ-1730: Pinot tables live in Trino's implicit "default" schema too
+
+    if t == "druid":
+        return ["druid"]  # REQ-1730: Druid's own fixed INFORMATION_SCHEMA.TABLES schema name
+
+    if t == "hive_s3":
+        row = await _es_source_row(source_id, config_conn)
+        if row is None:
+            return None
+        import asyncio as _asyncio
+
+        from provisa.hive.fetch import HiveS3Connection, list_schemas
+
+        conn = HiveS3Connection.build(row.get("database"), row.get("mapping") or {})
+        return await _asyncio.to_thread(list_schemas, conn)
+
     if t == "openapi":
         return ["openapi"]
 
@@ -322,6 +342,22 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         )
         return [row[0] for row in result.rows]
 
+    if t == "redshift":
+        # Same fell-through-to-None gap as saphana/trino above — redshift's DIRECT driver is the
+        # generic SQLAlchemyDriver (registry.py's _SQLALCHEMY_FALLBACK), so it never had a
+        # dispatch branch here at all and the Register Table schema picker was permanently empty
+        # under any engine other than Trino (verified live). Separate branch from the postgres-
+        # wire group above because Redshift's own pg_internal schema (temp tables) isn't a
+        # upstream-Postgres concept, so it needs its own exclude set.
+        rs_exclude = "','".join(sorted(_REDSHIFT_SYSTEM_SCHEMAS))
+        result = await pool.execute(
+            source_id,
+            f"SELECT schema_name FROM information_schema.schemata "
+            f"WHERE schema_name NOT IN ('{rs_exclude}') "
+            f"ORDER BY schema_name",
+        )
+        return [row[0] for row in result.rows]
+
     if t == "oracle":
         # Oracle has no information_schema; ALL_USERS is the schema-equivalent catalog (a schema
         # IS a user in Oracle). Same fell-through-to-None gap as the postgres-wire group above —
@@ -348,7 +384,7 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         )
         return [row[0] for row in result.rows]
 
-    if t in ("mysql", "mariadb", "tidb"):
+    if t in ("mysql", "mariadb", "tidb", "singlestore"):
         # tidb speaks the identical MySQL wire protocol (REQ-950) — was missing from this tuple,
         # so a tidb source fell through to `return None` below, then available_schemas' engine-
         # catalog fallback silently returned [] (the catalog does not exist pre-registration,
@@ -753,7 +789,13 @@ def _es_connection_for(row: dict, state) -> "ESConnection":  # REQ-1672
 async def _es_source_row(source_id: str, config_conn: "Connection") -> dict | None:
     result = await config_conn.execute_core(
         select(
-            sources.c.id, sources.c.host, sources.c.port, sources.c.username, sources.c.mapping
+            sources.c.id,
+            sources.c.host,
+            sources.c.port,
+            sources.c.username,
+            sources.c.database,
+            sources.c.mapping,
+            sources.c.federation_hints,
         ).where(sources.c.id == source_id)
     )
     row = result.fetchone()
@@ -782,6 +824,66 @@ async def _native_tables_elasticsearch(  # REQ-1672
         return [AvailableTableType(name=n, comment=None) for n in declared]
     conn = _es_connection_for(row, state)
     names = await _asyncio.to_thread(list_indices, conn)
+    return [AvailableTableType(name=n, comment=None) for n in names]
+
+
+async def _native_tables_pinot(  # REQ-1730
+    source_id: str, schema_name: str, config_conn: "Connection"
+) -> "list[AvailableTableType] | None":
+    """Every table the controller knows — Pinot has one flat table namespace (no keyspace/index
+    grouping), so `schema_name` must be the fixed "default" `native_schemas` above returns."""
+    import asyncio as _asyncio
+
+    from provisa.api.admin.types import AvailableTableType
+    from provisa.pinot.fetch import PinotConnection, list_tables
+
+    if schema_name != "default":
+        return []
+    row = await _es_source_row(source_id, config_conn)
+    if row is None:
+        return None
+    conn = PinotConnection.build(
+        row.get("host"),
+        row.get("port"),
+        (row.get("federation_hints") or {}).get("pinot_broker_url"),
+    )
+    names = await _asyncio.to_thread(list_tables, conn)
+    return [AvailableTableType(name=n, comment=None) for n in names]
+
+
+async def _native_tables_druid(  # REQ-1730
+    source_id: str, schema_name: str, config_conn: "Connection"
+) -> "list[AvailableTableType] | None":
+    """Every datasource in Druid's fixed "druid" schema."""
+    import asyncio as _asyncio
+
+    from provisa.api.admin.types import AvailableTableType
+    from provisa.druid.fetch import DruidConnection, list_tables
+
+    if schema_name != "druid":
+        return []
+    row = await _es_source_row(source_id, config_conn)
+    if row is None:
+        return None
+    conn = DruidConnection.build(row.get("host"), row.get("port"))
+    names = await _asyncio.to_thread(list_tables, conn)
+    return [AvailableTableType(name=n, comment=None) for n in names]
+
+
+async def _native_tables_hive_s3(  # REQ-1730
+    source_id: str, schema_name: str, config_conn: "Connection"
+) -> "list[AvailableTableType] | None":
+    """Every "<table>" directory under the schema's warehouse prefix."""
+    import asyncio as _asyncio
+
+    from provisa.api.admin.types import AvailableTableType
+    from provisa.hive.fetch import HiveS3Connection, list_tables
+
+    row = await _es_source_row(source_id, config_conn)
+    if row is None:
+        return None
+    conn = HiveS3Connection.build(row.get("database"), row.get("mapping") or {})
+    names = await _asyncio.to_thread(list_tables, conn, schema_name)
     return [AvailableTableType(name=n, comment=None) for n in names]
 
 
@@ -945,13 +1047,14 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
 
     t = source_type.lower()
     try:
-        if t in ("postgresql", "cockroachdb", "yugabytedb", "greenplum"):
-            # cockroachdb/yugabytedb/greenplum: same wire-compatible grouping as
+        if t in ("postgresql", "cockroachdb", "yugabytedb", "greenplum", "redshift"):
+            # cockroachdb/yugabytedb/greenplum/redshift: same wire-compatible grouping as
             # native_schemas's postgres-wire branch — were missing from this tuple, so each fell
             # through to the generic engine-catalog fallback (empty pre-registration), leaving the
             # Register Table TABLE picker permanently empty even once the schema picker itself
             # worked (verified live: cockroachdb's schema list resolves fine, but "widgets" never
-            # appeared in the table select without this).
+            # appeared in the table select without this; redshift's regclass/pg_class support is
+            # identical to upstream Postgres's for this already-schema-scoped query).
             result = await pool.execute(
                 source_id,
                 "SELECT table_name, obj_description("
@@ -988,7 +1091,7 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
             )
             return [AvailableTableType(name=row[0], comment=row[1] or None) for row in result.rows]
 
-        if t in ("mysql", "mariadb", "tidb"):
+        if t in ("mysql", "mariadb", "tidb", "singlestore"):
             # REQ-1732: `%s`, not `?` — aiomysql's paramstyle (MySQLDriver.execute only rewrites
             # `$N`, never touches a literal `?`). Verified live: passing `?` here raises
             # "not all arguments converted during string formatting" inside pymysql's own escaping
@@ -1131,11 +1234,11 @@ async def native_columns(  # REQ-1732
             f"ORDER BY position",
         )
         return [(row[0], row[1]) for row in result.rows]
-    if t in ("cockroachdb", "yugabytedb", "greenplum"):
+    if t in ("cockroachdb", "yugabytedb", "greenplum", "redshift"):
         # Same "no ATTACH-mechanism seam" gap as trino above — connector_duckdb.py has no ATTACH
-        # connector for any of these three (unlike postgresql itself, see this function's own
+        # connector for any of these four (unlike postgresql itself, see this function's own
         # docstring), so this direct-pool path is the only one, same postgres-wire query trino
-        # uses above (all three speak the identical wire protocol).
+        # uses above (all four speak the identical wire protocol/information_schema shape).
         result = await pool.execute(
             source_id,
             "SELECT column_name, data_type FROM information_schema.columns "
@@ -1179,7 +1282,7 @@ async def native_columns(  # REQ-1732
             [schema_name, table_name],
         )
         return [(row[0], row[1]) for row in result.rows]
-    if t in ("mysql", "mariadb", "tidb"):
+    if t in ("mysql", "mariadb", "tidb", "singlestore"):
         # %s, not ?  — see _native_tables_rdbms's mysql/mariadb branch for why.
         result = await pool.execute(
             source_id,
@@ -1295,6 +1398,15 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
 
     if t == "prometheus":
         return await _native_tables_prometheus(source_id, schema_name, config_conn, state)
+
+    if t == "pinot":
+        return await _native_tables_pinot(source_id, schema_name, config_conn)
+
+    if t == "druid":
+        return await _native_tables_druid(source_id, schema_name, config_conn)
+
+    if t == "hive_s3":
+        return await _native_tables_hive_s3(source_id, schema_name, config_conn)
 
     if t == "sqlite":
         return await _native_tables_sqlite(source_id, schema_name, config_conn)
