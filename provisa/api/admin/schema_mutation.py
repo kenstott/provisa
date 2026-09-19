@@ -47,6 +47,9 @@ from provisa.api.admin.types import (
     EnforcementType,
     EntityInput,
     FactInput,
+    KaggleStageResultType,
+    KaggleStagedColumnType,
+    KaggleStagedFileType,
     MetricInput,
     MutationResult,
     RelationshipInput,
@@ -763,6 +766,71 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Source {input.id!r} created",
             code="schema.source_created",
             params={"source": input.id},
+        )
+
+    @strawberry.mutation
+    async def stage_kaggle_dataset(  # REQ-1780, REQ-1781, REQ-1782
+        self, info: StrawberryInfo, token: str, owner: str, ref: str, id_prefix: str
+    ) -> KaggleStageResultType:
+        """Download+unzip a Kaggle dataset bundle and enumerate its CSV/Parquet files (REQ-1780
+        v1 scope: SQLite bundles are rejected, not partially staged). Registration is deliberately
+        NOT done here: the caller creates one plain csv/parquet Source per returned file (same
+        SourceInput/createSource path a manually-added file source uses) and registers its table
+        from the returned columns — this mutation only does the one Kaggle-specific step neither
+        of those already knows how to do (fetching the bundle)."""
+        import re
+
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.core.models import _SAFE_ID_PATTERN
+        from provisa.file_source.crawler import crawl_directory
+        from provisa.kaggle.downloader import UnsupportedKaggleDataset, stage_dataset
+
+        require_capability(info, "source_registration")
+
+        try:
+            staged_root = await stage_dataset(token, owner, ref)
+        except UnsupportedKaggleDataset as exc:
+            return KaggleStageResultType(success=False, message=str(exc), files=[])
+
+        # REQ-1781: a raw CSV header is not necessarily a valid GraphQL field name (the register-
+        # table mutation rejects anything outside [_a-zA-Z][_a-zA-Z0-9]* — verified live 2026-09-19
+        # against sudalairajkumar/covid19-in-india's "State/UnionTerritory" column). Kaggle bundles
+        # are real-world CSVs the operator never authored, so this connector cannot ask them to
+        # rename columns by hand first; sanitize here, the one place every caller's column list
+        # passes through.
+        _ident_re = re.compile(r"[^a-zA-Z0-9_]")
+
+        def _sanitize_column_name(name: str) -> str:
+            sanitized = _ident_re.sub("_", name)
+            if not sanitized or not (sanitized[0].isalpha() or sanitized[0] == "_"):
+                sanitized = f"_{sanitized}"
+            return sanitized
+
+        discovered = crawl_directory(str(staged_root))
+        files: list[KaggleStagedFileType] = []
+        for entry in discovered:
+            for table in entry["tables"]:
+                suggested_id = f"{id_prefix}_{table['name']}"
+                if not _SAFE_ID_PATTERN.match(suggested_id):
+                    suggested_id = "s_" + re.sub(r"[^a-zA-Z0-9_-]", "_", suggested_id)
+                files.append(
+                    KaggleStagedFileType(
+                        suggested_source_id=suggested_id,
+                        table_name=table["name"],
+                        file_type=entry["type"],
+                        path=entry["path"],
+                        columns=[
+                            KaggleStagedColumnType(
+                                name=_sanitize_column_name(c["name"]), type=c["type"]
+                            )
+                            for c in table["columns"]
+                        ],
+                    )
+                )
+        return KaggleStageResultType(
+            success=True,
+            message=f"staged {len(files)} file(s) from {owner}/{ref}",
+            files=files,
         )
 
     @strawberry.mutation

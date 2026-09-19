@@ -1,0 +1,17 @@
+{
+  "kaggleFormSection": {
+    "domainLabel": "Domain",
+    "domainPlaceholder": "Select a domain for the registered table(s)",
+    "tokenLabel": "Kaggle API Token",
+    "tokenDescription": "Validated live against the Kaggle API before the dataset picker unlocks",
+    "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
+    "validateButton": "Validate Token",
+    "tokenValid": "Token valid",
+    "tokenInvalid": "Invalid Kaggle API token",
+    "datasetSearchLabel": "Search Kaggle Datasets",
+    "datasetSearchPlaceholder": "Search by name...",
+    "noDatasetsFound": "No datasets found",
+    "selectedDataset": "Selected: {{ref}}",
+    "registerButton": "Add Dataset"
+  }
+}

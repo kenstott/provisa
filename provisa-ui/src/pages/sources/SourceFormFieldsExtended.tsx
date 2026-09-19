@@ -34,6 +34,7 @@ import {
 } from "./constants";
 import { AuthUserPass } from "./AuthUserPass";
 import { OpenApiFormSection } from "./OpenApiFormSection";
+import { KaggleFormSection } from "./KaggleFormSection";
 import { PushFeedFormSection } from "./PushFeedFormSection";
 import { SparqlFormSection } from "./SparqlFormSection";
 import type { SourceFormFieldsProps } from "./SourceFormFields";
@@ -119,6 +120,7 @@ export function SourceFormFieldsExtended({
   setRssPollInterval,
   rssUseSsl,
   setRssUseSsl,
+  onKaggleSourcesRegistered,
 }: SourceFormFieldsProps) {
   const { t } = useTranslation();
   // REQ-1739: was `getCategory(form.type) === "Streaming"`, which was correct only while kafka was
@@ -211,6 +213,12 @@ export function SourceFormFieldsExtended({
           openapiPreviewing={openapiPreviewing}
           openapiPreviewError={openapiPreviewError}
           openapiPreview={openapiPreview}
+        />
+      )}
+      {form.type === "kaggle" && (
+        <KaggleFormSection
+          domains={domains}
+          onSourcesRegistered={onKaggleSourcesRegistered ?? (() => {})}
         />
       )}
       {form.type === "graphql" && (
