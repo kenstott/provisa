@@ -75,7 +75,10 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     // Matches the rest of this form's server-side-registration types (handleOpenapiRegister/
     // handleGrpcRegister): the form closes itself on success and the new row shows up in the
     // sources list below — that IS the success signal, there is no separate in-form banner.
-    const row = page.locator(".data-table td").filter({ hasText: /^kg_\d+_iris-flower-dataset_IRIS$/ });
+    // No "_IRIS" table-name suffix: iris-flower-dataset is single-file, and a single-file
+    // dataset now gets its id_prefix verbatim (schema_mutation.py's stage_kaggle_dataset) —
+    // the suffix exists only to disambiguate multiple files sharing one id_prefix.
+    const row = page.locator(".data-table td").filter({ hasText: /^kg_\d+_iris-flower-dataset$/ });
     await expect(row).toBeVisible({ timeout: 60000 });
     const sourceId = (await row.textContent())!.trim();
 
