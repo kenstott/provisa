@@ -821,10 +821,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return sanitized
 
         discovered = crawl_directory(str(staged_root))
+        # A multi-file dataset needs the "_<table_name>" suffix for per-file uniqueness under one
+        # id_prefix; a single-file dataset has nothing to disambiguate from, so honor the id the
+        # caller (KaggleFormSection's sourceIdHint, when the user typed one) actually asked for
+        # verbatim instead.
+        is_single_file = sum(len(entry["tables"]) for entry in discovered) == 1
         files: list[KaggleStagedFileType] = []
         for entry in discovered:
             for table in entry["tables"]:
-                suggested_id = f"{id_prefix}_{table['name']}"
+                suggested_id = id_prefix if is_single_file else f"{id_prefix}_{table['name']}"
                 if not _SAFE_ID_PATTERN.match(suggested_id):
                     suggested_id = "s_" + re.sub(r"[^a-zA-Z0-9_-]", "_", suggested_id)
                 files.append(
