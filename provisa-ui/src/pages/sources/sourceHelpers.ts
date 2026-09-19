@@ -40,6 +40,12 @@ export function reachInfoFor(
 ): ReachInfo {
   if (!engineState) return { tag: "live", selectable: true, liveEngines: [] };
   const t = backendType(uiValue);
+  // kaggle (REQ-1780) is a client-side staging/download step, not a federated source type — it
+  // has no connector and never appears in any engine's live/reachable_source_types, so this
+  // engine-reach classification (REQ-947) always marked it unreachable and disabled the dropdown
+  // option outright, on every engine including DuckDB (confirmed live). It creates ordinary
+  // csv/parquet Sources once staged, which get their own correct reach classification then.
+  if (t === "kaggle") return { tag: "live", selectable: true, liveEngines: [] };
   const current = engineState.engines.find((e) => e.key === engineState.current);
   const liveEngines = engineState.engines
     .filter((e) => (e.live_source_types ?? []).includes(t))
