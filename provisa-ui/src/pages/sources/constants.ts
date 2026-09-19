@@ -47,6 +47,7 @@ export const SOURCE_TYPES = [
     category: "Subscriptions",
     defaultPort: 0,
   },
+  { value: "kaggle", label: "Kaggle", category: "Subscriptions", defaultPort: 0 },
   // RDBMS
   { value: "postgresql", label: "PostgreSQL", category: "RDBMS", defaultPort: 5432 },
   { value: "mysql", label: "MySQL", category: "RDBMS", defaultPort: 3306 },

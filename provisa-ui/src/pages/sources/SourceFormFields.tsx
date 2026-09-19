@@ -131,6 +131,10 @@ export interface SourceFormFieldsProps {
   setRssPollInterval: (v: string) => void;
   rssUseSsl: boolean;
   setRssUseSsl: (v: boolean) => void;
+  // REQ-1780/1783: fires once KaggleFormSection has staged+registered its per-file csv/parquet
+  // Sources/Tables server-side — the outer form has no createSource of its own to run for
+  // "kaggle" (it is not a real SourceType), so this is how it learns to close/refresh instead.
+  onKaggleSourcesRegistered?: (sourceIds: string[]) => void;
 }
 
 export function SourceFormFields(props: SourceFormFieldsProps) {

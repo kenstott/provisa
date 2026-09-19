@@ -496,6 +496,18 @@ query AvailableTables($sourceId: String!, $schemaName: String!) {
   }
 }
 
+query KaggleTokenValid($token: String!) {
+  kaggleTokenValid(token: $token)
+}
+
+query KaggleDatasets($token: String!, $query: String, $page: Int) {
+  kaggleDatasets(token: $token, query: $query, page: $page) {
+    ref
+    title
+    subtitle
+  }
+}
+
 query AvailableColumns($sourceId: String!, $schemaName: String!, $tableName: String!) {
   availableColumns(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName)
 }
@@ -813,6 +825,23 @@ mutation CreateSource($input: SourceInput!) {
 mutation UpdateSource($input: SourceInput!) {
   updateSource(input: $input) {
     ...MutationResult
+  }
+}
+
+mutation StageKaggleDataset($token: String!, $owner: String!, $ref: String!, $idPrefix: String!) {
+  stageKaggleDataset(token: $token, owner: $owner, ref: $ref, idPrefix: $idPrefix) {
+    success
+    message
+    files {
+      suggestedSourceId
+      tableName
+      fileType
+      path
+      columns {
+        name
+        type
+      }
+    }
   }
 }
 

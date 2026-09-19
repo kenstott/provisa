@@ -65,6 +65,7 @@ from provisa.api.admin.types import (
     DqContractType,
     QueryPreviewType,
     HotTableStatType,
+    KaggleDatasetType,
     MaterializeStoreInfoType,
     MetricType,
     MVType,
@@ -787,6 +788,35 @@ class Query:  # REQ-021, REQ-042
                 for entry in discovered
             ],
         )
+
+    @strawberry.field
+    async def kaggle_token_valid(self, token: str) -> bool:  # REQ-1783
+        """Live check for the Kaggle source form's token-entry step: True only when the token
+        authenticates against the real Kaggle API. Backs the token-gate that unlocks the dataset
+        picker step, and re-editing an existing source whose token has since expired/revoked."""
+        from provisa.kaggle.client import validate_token
+
+        return await validate_token(token)
+
+    @strawberry.field
+    async def kaggle_datasets(  # REQ-1783
+        self, token: str, query: str = "", page: int = 1
+    ) -> list[KaggleDatasetType]:
+        """Live search over Kaggle's full public dataset catalog (wraps datasets/list) — backs
+        the token-gated picker step. Deliberately NOT available_schemas/available_tables: those
+        assume a fixed catalog belonging to an already-registered source; here there is no source
+        yet and the catalog is Kaggle's entire public listing, searched by free text."""
+        from provisa.kaggle.client import search_datasets
+
+        results = await search_datasets(token, query=query, page=page)
+        return [
+            KaggleDatasetType(
+                ref=d.get("ref", ""),
+                title=d.get("title", d.get("ref", "")),
+                subtitle=d.get("subtitle") or d.get("description") or "",
+            )
+            for d in results
+        ]
 
     @strawberry.field
     async def available_functions(

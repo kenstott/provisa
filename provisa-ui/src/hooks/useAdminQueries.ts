@@ -58,6 +58,9 @@ import {
   AllRelationshipsQuery as ALL_RELATIONSHIPS_QUERY,
   AvailableSchemas,
   AvailableTables,
+  KaggleTokenValid,
+  KaggleDatasets,
+  StageKaggleDataset,
   AvailableColumnsMetadata,
   AvailableFunctions,
   ColumnDependents,
@@ -846,6 +849,71 @@ export function useAvailableTables(sourceId: string | null, schemaName: string |
     fetchPolicy: "no-cache",
   });
   return { tables: data?.availableTables ?? [], loading };
+}
+
+// REQ-1783: the Kaggle source form's token-gate step. A live check, not client-side format
+// validation — Kaggle rejects invalid/expired tokens server-side and there is no other signal.
+export function useKaggleTokenValidLazy() {
+  const [run] = useLazyQuery<{ kaggleTokenValid: boolean }>(KaggleTokenValid, {
+    fetchPolicy: "no-cache",
+  });
+  return useCallback(
+    async (token: string): Promise<boolean> => {
+      const { data } = await run({ variables: { token } });
+      return data?.kaggleTokenValid ?? false;
+    },
+    [run],
+  );
+}
+
+// REQ-1783: search-as-you-type dataset picker, enabled only once the token step validates. A
+// fresh query per keystroke (debounced by the caller) — Kaggle's own datasets/list is the source
+// of truth, never cached client-side stale results a re-search should replace.
+export function useKaggleDatasetsLazy() {
+  const [run] = useLazyQuery<{ kaggleDatasets: { ref: string; title: string; subtitle: string }[] }>(
+    KaggleDatasets,
+    { fetchPolicy: "no-cache" },
+  );
+  return useCallback(
+    async (token: string, query: string) => {
+      const { data } = await run({ variables: { token, query } });
+      return data?.kaggleDatasets ?? [];
+    },
+    [run],
+  );
+}
+
+export interface KaggleStagedColumn {
+  name: string;
+  type: string;
+}
+
+export interface KaggleStagedFile {
+  suggestedSourceId: string;
+  tableName: string;
+  fileType: string;
+  path: string;
+  columns: KaggleStagedColumn[];
+}
+
+// REQ-1780/1781/1782: downloads+unzips the dataset bundle server-side and enumerates its
+// CSV/Parquet files via crawl_directory. Registration itself is NOT part of this call — the
+// caller creates one plain csv/parquet Source per returned file (useCreateSource, the same
+// mutation a manually-added file source uses) and registers its table from the returned columns
+// (useRegisterTable) — see KaggleFormSection's onDatasetConfirmed.
+export function useStageKaggleDataset() {
+  const [run, { loading }] = useMutation<{
+    stageKaggleDataset: { success: boolean; message: string; files: KaggleStagedFile[] };
+  }>(StageKaggleDataset);
+  return {
+    stageKaggleDataset: async (token: string, owner: string, ref: string, idPrefix: string) => {
+      const { data } = await run({ variables: { token, owner, ref, idPrefix } });
+      return (
+        data?.stageKaggleDataset ?? { success: false, message: "no response", files: [] }
+      );
+    },
+    loading,
+  };
 }
 
 export function useAvailableColumnsMetadataLazy() {

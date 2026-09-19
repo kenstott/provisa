@@ -1210,6 +1210,14 @@ export function SourcesPage() {
     setRssPollInterval,
     rssUseSsl,
     setRssUseSsl,
+    // REQ-1780/1783: kaggle has no createSource of its own to run on the outer form's submit (it
+    // is not a real SourceType) — KaggleFormSection stages+registers its own csv/parquet
+    // Sources/Tables and calls this when done, same close+refresh handleOpenapiRegister/
+    // handleGrpcRegister already do for their own server-side-registration types.
+    onKaggleSourcesRegistered: () => {
+      handleCancelForm();
+      load();
+    },
   };
 
   if (loading) return <PageLoading message={t("sourcesPage.loading")} />;
@@ -1272,7 +1280,13 @@ export function SourcesPage() {
                 ? handleGrpcRegister
                 : form.type === "graphql"
                   ? handleGraphqlRegister
-                  : handleCreate
+                  : // REQ-1780/1783: kaggle registers per-file through KaggleFormSection's own
+                    // "Add Dataset" button (each file needs its own createSource+registerTable
+                    // call, not one createSource for a single "kaggle" type — which does not
+                    // exist as a SourceType) — the outer submit has nothing of its own to do.
+                    form.type === "kaggle"
+                    ? (e: React.FormEvent) => e.preventDefault()
+                    : handleCreate
           }
         >
           <TextInput
@@ -1303,9 +1317,11 @@ export function SourcesPage() {
             </select>
           </label>
           <SourceFormFields {...sourceFormFieldsProps} />
-          <Button type="submit" loading={submitting} data-testid="sources-submit">
-            {submitting ? t("sourcesPage.creating") : t("sourcesPage.create")}
-          </Button>
+          {form.type !== "kaggle" && (
+            <Button type="submit" loading={submitting} data-testid="sources-submit">
+              {submitting ? t("sourcesPage.creating") : t("sourcesPage.create")}
+            </Button>
+          )}
         </form>
       )}
 

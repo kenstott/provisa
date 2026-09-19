@@ -60857,88 +60857,105 @@
     provisa-test-473, since a broken stateful-IP config reproduces exactly the failure this
     requirement exists to prevent.
 - id: REQ-1780
-  status: proposed
-  target: "2026-Q4"
+  status: in_progress
+  since: 2026-09
   group: "4. Source Connectors"
-  category: Kaggle Connector Architecture
+  category: Feature
   priority: SHOULD
-  type: structural
-  description: >-
-    Kaggle is a download-then-materialize source connector that follows the same pattern as
-    openapi and graphql_remote sources: it is not a live query engine, but rather fetches dataset
-    file bundles via the Kaggle REST API (datasets/list, datasets/view, datasets/download) and
-    materializes them into PostgreSQL. The connector uses Mechanism.FETCH and extends
-    TrinoPgBackedConnector, landing rows via land_replace for full-snapshot-only semantics (no
-    CDC or watermark support).
-  use_case: >-
-    Kaggle datasets (stored as downloadable file bundles with no native SQL query interface)
-    require a fetch-and-load pattern rather than live federation, similar to existing
-    download-based sources like OpenAPI and GraphQL remote sources.
-  code:
-    - provisa/federation/connectors.py
-    - provisa/federation/trino_connectors.py
-- id: REQ-1781
-  status: proposed
-  target: "2026-Q4"
-  group: "4. Source Connectors"
-  category: Kaggle Table Discovery
-  priority: SHOULD
-  type: structural
-  description: >-
-    A Kaggle source config specifies one dataset bundle (owner/ref). Table config specifies a
-    file within that bundle. The table registry discovery (generate_table_definitions) handles
-    two cases: (1) a bundle with multiple files (CSV, JSON, Parquet, etc.), where each file
-    becomes an independent table with no FKs or relational metadata between them, since Kaggle
-    file listings carry no FK hints, and (2) a single SQLite file within a bundle, which has
-    internal multi-table schema with FKs that map directly to Provisa tables (one internal table
-    = one Provisa table).
-  use_case: >-
-    Kaggle datasets vary in structure: some are flat multi-file bundles (no schema), others are
-    single SQLite databases with internal relational schema. Table discovery must support both
-    without requiring manual enumeration of files.
-  code:
-    - provisa/federation/connectors.py
-    - provisa/source_adapters/registry.py
-- id: REQ-1782
-  status: proposed
-  target: "2026-Q4"
-  group: "4. Source Connectors"
-  category: Kaggle Credentials
-  priority: MUST
   type: behavioral
   description: >-
-    Kaggle source credentials are resolved via KAGGLE_API_TOKEN, passed through the
-    ${env:KAGGLE_API_TOKEN} token pattern and resolved by provisa/core/secrets.py's
-    resolve_secrets(). Bearer authentication is used against the live Kaggle REST API.
+    Kaggle is a download-then-materialize source, following the existing openapi/graphql_remote
+    pattern: Mechanism.FETCH, TrinoKaggleConnector subclasses TrinoPgBackedConnector, rows land
+    into Postgres via land_replace only (full snapshot; Kaggle gives no CDC/watermark signal, so
+    land_append/apply_cdc are never implemented for this source). Kaggle has no live query API —
+    it is a file-download platform (CSV/JSON/SQLite/Parquet bundles via REST v1), so it cannot be
+    ATTACHed or SCANned in place by any engine.
   use_case: >-
-    Kaggle API requires a valid token; secure credential handling via the secret-resolution
-    pipeline ensures the token is not leaked in logs or configs.
+    An operator wants to federate a public or private Kaggle dataset (surveys, competition data,
+    reference tables) alongside their other sources without hand-downloading and loading it.
   code:
-    - provisa/core/secrets.py
-    - provisa/federation/connectors.py
-- id: REQ-1783
-  status: proposed
-  target: "2026-Q4"
-  group: "10. UI & Admin Surfaces"
-  category: Kaggle Source Configuration
+  - provisa/kaggle/client.py
+  - provisa/kaggle/executor.py
+  - provisa/kaggle/source.py
+  - provisa/federation/trino_connectors.py
+  - provisa/source_adapters/registry.py
+  - provisa/core/models.py
+  tests:
+  - tests/unit/test_kaggle_client.py
+- id: REQ-1781
+  status: in_progress
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Feature
   priority: SHOULD
-  type: ui
+  type: behavioral
   description: >-
-    Admin UI for Kaggle source configuration must provide a searchable/browsable dataset
-    picker interface showing dataset name and description, allowing users to discover
-    and select datasets rather than manually entering owner/ref identifiers.
-    (Amended 2026-09-19, TOKEN-GATED PICKER:) The dataset picker cannot function without
-    a valid Kaggle API token, since Kaggle's datasets/list endpoint requires authentication.
-    The form must therefore sequence as two steps, not one flat form: (1) token entry,
-    validated live via a lightweight datasets/list call before proceeding; (2) dataset
-    picker, enabled only after step 1 succeeds. On re-editing an existing Kaggle source
-    whose token has expired or been revoked, the picker must show a "token invalid,
-    re-enter to browse datasets" state rather than failing silently or rendering a stale
-    or empty list.
+    Source-level config for a kaggle source is one Kaggle dataset bundle (owner/ref). Table-level
+    config is one file within that bundle. A bundle's files carry no declared relational metadata,
+    so each file discovered via datasets/view/{owner}/{ref} becomes an independent Provisa table.
+    EXCEPTION: when the bundle is itself a single SQLite file, that file has real internal
+    multi-table schema (FKs included) — its internal tables map 1:1 to Provisa tables instead of
+    treating the whole file as one opaque table. Table-level file/internal-table selection is
+    stored in Table.query_template (reusing the free-text per-type field neo4j already uses for
+    its own per-type meaning — no new column, per V1's no-migrations rule).
   use_case: >-
-    Users configuring a Kaggle source should not need to already know the exact owner/ref
-    slug; they can search and browse available datasets by name and description via the
-    Kaggle connector's dataset search endpoint backed by Kaggle's datasets/list API.
+    A multi-file Kaggle dataset (e.g. orders.csv + customers.csv) registers as multiple queryable
+    tables; a single-file SQLite Kaggle dataset registers its real internal tables, not one blob.
+  code:
+  - provisa/kaggle/source.py
+  - provisa/kaggle/executor.py
+  tests:
+  - tests/unit/test_kaggle_client.py
+- id: REQ-1782
+  status: in_progress
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Feature
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A Kaggle source's token is resolved via provisa/core/secrets.py resolve_secrets
+    (${env:KAGGLE_API_TOKEN} token pattern in the source's password field), never a raw
+    os.environ read. Auth against the Kaggle v1 API is Authorization: Bearer {token} (verified
+    live against https://www.kaggle.com/api/v1/datasets/list, HTTP 200 with real dataset JSON).
+  use_case: >-
+    Kaggle credentials follow the same secrets-provider indirection every other source's
+    credentials do, so they are never hardcoded or read straight from process environment inside
+    the connector.
+  code:
+  - provisa/kaggle/executor.py
+  tests:
+  - tests/unit/test_kaggle_client.py
+- id: REQ-1783
+  status: in_progress
+  since: 2026-09
+  group: "4. Source Connectors"
+  category: Subscriptions
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Kaggle registers under the admin UI's "Subscriptions" source category
+    (provisa-ui/src/pages/sources/constants.ts SOURCE_TYPES). Its config form is two sequential
+    steps rather than a flat form, because Kaggle's dataset-search endpoint itself requires auth:
+    (1) token entry, validated live with a lightweight datasets/list?page=1&pageSize=1 call before
+    unlocking step 2, with a clear error on an invalid token; (2) a searchable (search-as-you-type)
+    dataset picker enabled only after step 1 succeeds, showing name + description per result,
+    backed by a NEW GraphQL query wrapping Kaggle's datasets/list with a search query param — the
+    fixed-schema-picker pattern (available_schemas/available_tables) does not fit Kaggle's live
+    full-catalog search and is not reused for it.
+  use_case: >-
+    An operator adding a Kaggle source cannot search datasets before entering a valid token
+    (Kaggle's own search endpoint requires it), so the form must gate the picker step on live
+    token validation rather than present both steps at once.
+  implementation_scratchpad: >-
+    (Amended 2026-09-19: on re-editing an existing Kaggle source whose token is no longer valid,
+    the picker must show a "token invalid, re-enter to browse" state, not silently fail or render
+    a stale/empty list — the token-gate sequencing applies on edit, not only on first create.)
+  code:
+  - provisa-ui/src/pages/sources/constants.ts
+  - provisa/api/admin/schema_query.py
+  tests:
+  - provisa-ui/e2e/kaggle-source.spec.ts
 - id: REQ-1784
   status: accepted
   target: "2026-Q4"

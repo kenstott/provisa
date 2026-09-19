@@ -451,6 +451,43 @@ class CrawlResultType:  # REQ-1785
 
 
 @strawberry.type
+class KaggleDatasetType:  # REQ-1783
+    """One Kaggle datasets/list search result — the token-gated picker's row shape (ref/id,
+    title, subtitle). Deliberately separate from AvailableTableType/AvailableSchema: those back
+    the fixed-schema-picker pattern (a source's OWN catalog), whereas this backs a live search
+    over Kaggle's entire public dataset catalog."""
+
+    ref: str  # "owner/dataset-slug", passed to stageKaggleDataset — no Source stores it directly
+    title: str
+    subtitle: str
+
+
+@strawberry.type
+class KaggleStagedColumnType:  # REQ-1780/1781
+    name: str
+    type: str
+
+
+@strawberry.type
+class KaggleStagedFileType:  # REQ-1780/1781
+    """One staged bundle file, ready to register as its own plain csv/parquet Source (v1 scope:
+    CSV/Parquet only — see KaggleStageResultType.rejected_reason for the SQLite-bundle case)."""
+
+    suggested_source_id: str
+    table_name: str
+    file_type: str  # "csv" | "parquet"
+    path: str  # local file path — becomes SourceInput.path verbatim
+    columns: list[KaggleStagedColumnType]
+
+
+@strawberry.type
+class KaggleStageResultType:  # REQ-1780/1781/1782
+    success: bool
+    message: str
+    files: list[KaggleStagedFileType]
+
+
+@strawberry.type
 class AvailableColumnType:  # REQ-533
     name: str
     data_type: str
