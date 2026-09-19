@@ -20,6 +20,8 @@
     "preview": "vite preview",
     "test:unit": "vitest run --coverage",
     "test:e2e": "npx playwright test",
+    "test:e2e:core": "PROVISA_E2E_LANE=core npx playwright test --project=core",
+    "test:e2e:trino": "PROVISA_E2E_LANE=trino npx playwright test --project=trino",
     "coverage:clean": "rm -rf .nyc_output .nyc_output_flat coverage",
     "coverage:merge": "mkdir -p .nyc_output_flat && cp .nyc_output/vitest/coverage-final.json .nyc_output_flat/vitest.json && cp .nyc_output/playwright/*.json .nyc_output_flat/ && nyc merge .nyc_output_flat coverage/merged.json",
     "coverage:report": "mkdir -p coverage/.nyc_output && cp coverage/merged.json coverage/.nyc_output/coverage-final.json && nyc report --temp-dir coverage/.nyc_output --reporter text --reporter html --report-dir coverage/html",

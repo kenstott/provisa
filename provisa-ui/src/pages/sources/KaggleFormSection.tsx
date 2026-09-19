@@ -10,14 +10,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Combobox, Group, Select, Text, TextInput, useCombobox } from "@mantine/core";
-import type { Domain } from "../../types/admin";
+import { Alert, Button, Combobox, Group, Text, TextInput, useCombobox } from "@mantine/core";
 import {
   useCreateSource,
   useKaggleDatasetsLazy,
   useKaggleTokenValidLazy,
-  useRegisterTable,
-  useRoles,
   useStageKaggleDataset,
 } from "../../hooks/useAdminQueries";
 
@@ -26,7 +23,6 @@ import {
 type Step = "token" | "picker";
 
 interface KaggleFormSectionProps {
-  domains: Domain[];
   // The shared "ID" field above this section (SourcesPage.tsx's form.id) -- previously ignored
   // entirely: every Kaggle-staged source got an opaque kg_<timestamp>_<dataset-ref> id regardless
   // of what the user typed there, which they'd naturally expect to be honored (confirmed live:
@@ -35,13 +31,8 @@ interface KaggleFormSectionProps {
   onSourcesRegistered: (sourceIds: string[]) => void;
 }
 
-export function KaggleFormSection({
-  domains,
-  sourceIdHint,
-  onSourcesRegistered,
-}: KaggleFormSectionProps) {
+export function KaggleFormSection({ sourceIdHint, onSourcesRegistered }: KaggleFormSectionProps) {
   const { t } = useTranslation();
-  const [domainId, setDomainId] = useState("");
   const [token, setToken] = useState("");
   const [step, setStep] = useState<Step>("token");
   const [tokenError, setTokenError] = useState<string | null>(null);
@@ -57,8 +48,6 @@ export function KaggleFormSection({
   const searchDatasets = useKaggleDatasetsLazy();
   const { stageKaggleDataset } = useStageKaggleDataset();
   const { createSource } = useCreateSource();
-  const { registerTable } = useRegisterTable();
-  const { roles } = useRoles();
   const combobox = useCombobox();
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -109,12 +98,10 @@ export function KaggleFormSection({
     setRegistering(true);
     setRegisterError(null);
     try {
-      // Honor the ID the user actually typed above -- stage_kaggle_dataset (schema_mutation.py)
-      // already appends "_<table_name>" per file for uniqueness regardless of the prefix's
-      // origin, so this needs no other change to stay collision-safe for a multi-file dataset.
-      // Falls back to the old opaque kg_<timestamp>_<ref> scheme only when the field was left
-      // blank -- the outer form's `required` on that input never actually gates this section's
-      // own "Register" button (type="button", bypasses native HTML5 validation).
+      // Honor the ID the user actually typed above; fall back to an opaque kg_<timestamp>_<ref>
+      // scheme only when the field was left blank -- the outer form's `required` on that input
+      // never actually gates this section's own "Add Dataset" button (type="button", bypasses
+      // native HTML5 validation).
       const idPrefix =
         sourceIdHint?.trim() || `kg_${Date.now()}_${ref.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
       const staged = await stageKaggleDataset(token, owner, ref, idPrefix);
@@ -122,39 +109,30 @@ export function KaggleFormSection({
         setRegisterError(staged.message);
         return;
       }
-      const ids: string[] = [];
-      for (const file of staged.files) {
-        const createResult = await createSource({
-          id: file.suggestedSourceId,
-          type: file.fileType,
-          path: file.path,
-          // owner/ref: no Source field carries this otherwise (KaggleDatasetType.ref's own
-          // comment) -- stashed here so a later "Refresh from Kaggle" (refreshKaggleSource
-          // mutation) can re-run stage_dataset for the SAME dataset without the user having to
-          // re-search it. stage_dataset's own docstring: re-running it is the (v1) refresh
-          // mechanism, each file overwritten in place at this exact path.
-          federationHintsJson: JSON.stringify({ kaggle_owner: owner, kaggle_ref: ref }),
-        });
-        if (!createResult.success) {
-          throw new Error(`${file.suggestedSourceId}: ${createResult.message}`);
-        }
-        const registerResult = await registerTable({
-          sourceId: file.suggestedSourceId,
-          domainId,
-          schemaName: "default",
-          tableName: file.tableName,
-          columns: file.columns.map((c) => ({
-            name: c.name,
-            visibleTo: roles.map((r) => r.id),
-            dataType: c.type,
-          })),
-        });
-        if (!registerResult.success) {
-          throw new Error(`${file.suggestedSourceId}: ${registerResult.message}`);
-        }
-        ids.push(file.suggestedSourceId);
+      // (Amended 2026-09-19) ONE `files`-type Source for the whole staged directory, single- or
+      // multi-file dataset alike -- the pgwire-file connector already discovers every file in a
+      // directory as its own table, recursively (REQ-1690), so there is nothing left for this
+      // form to enumerate per file. Only the SOURCE is created here; registering its table(s)
+      // (domain, alias, columns) is left to the normal Register Table screen, exactly like every
+      // other connector. Registering eagerly here (the pre-amendment design: one plain csv/parquet
+      // Source PER FILE, auto-registered) is what previously turned a same-named-table collision
+      // into a dead end with no alias field to fix it, and cluttered the Sources list with one row
+      // per file in an 11-file Kaggle dataset instead of one coherent source.
+      const createResult = await createSource({
+        id: staged.suggestedSourceId,
+        type: "files",
+        path: staged.directory,
+        // owner/ref: no Source field carries this otherwise (KaggleDatasetType.ref's own
+        // comment) -- stashed here so a later "Refresh from Kaggle" (refreshKaggleSource
+        // mutation) can re-run stage_dataset for the SAME dataset without the user having to
+        // re-search it. stage_dataset's own docstring: re-running it is the (v1) refresh
+        // mechanism, each file overwritten in place at this exact path.
+        federationHintsJson: JSON.stringify({ kaggle_owner: owner, kaggle_ref: ref }),
+      });
+      if (!createResult.success) {
+        throw new Error(`${staged.suggestedSourceId}: ${createResult.message}`);
       }
-      onSourcesRegistered(ids);
+      onSourcesRegistered([staged.suggestedSourceId]);
     } catch (e) {
       setRegisterError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -164,19 +142,6 @@ export function KaggleFormSection({
 
   return (
     <>
-      <Select
-        required
-        label={t("kaggleFormSection.domainLabel")}
-        // meta/ops (and the empty-string default) are system domains (domain_policy.py's
-        // _SYSTEM_DOMAIN_IDS) -- auto-generated, preserved across config reloads, never a target
-        // an end user picks for their own tables.
-        data={domains.filter((d) => !d.isSystem).map((d) => ({ value: d.id, label: d.id }))}
-        value={domainId}
-        onChange={(v) => setDomainId(v ?? "")}
-        placeholder={t("kaggleFormSection.domainPlaceholder")}
-        style={{ gridColumn: "1 / -1" }}
-        data-testid="kaggle-domain-select"
-      />
       <TextInput
         required
         label={t("kaggleFormSection.tokenLabel")}
@@ -269,7 +234,6 @@ export function KaggleFormSection({
                 type="button"
                 onClick={handleConfirmDataset}
                 loading={registering}
-                disabled={!domainId}
                 data-testid="kaggle-register-button"
               >
                 {t("kaggleFormSection.registerButton")}

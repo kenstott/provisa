@@ -833,16 +833,8 @@ mutation StageKaggleDataset($token: String!, $owner: String!, $ref: String!, $id
   stageKaggleDataset(token: $token, owner: $owner, ref: $ref, idPrefix: $idPrefix) {
     success
     message
-    files {
-      suggestedSourceId
-      tableName
-      fileType
-      path
-      columns {
-        name
-        type
-      }
-    }
+    directory
+    suggestedSourceId
   }
 }
 

@@ -48,8 +48,6 @@ from provisa.api.admin.types import (
     EntityInput,
     FactInput,
     KaggleStageResultType,
-    KaggleStagedColumnType,
-    KaggleStagedFileType,
     MetricInput,
     MutationResult,
     RelationshipInput,
@@ -786,17 +784,24 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def stage_kaggle_dataset(  # REQ-1780, REQ-1781, REQ-1782
         self, info: StrawberryInfo, token: str, owner: str, ref: str, id_prefix: str
     ) -> KaggleStageResultType:
-        """Download+unzip a Kaggle dataset bundle and enumerate its CSV/Parquet files (REQ-1780
-        v1 scope: SQLite bundles are rejected, not partially staged). Registration is deliberately
-        NOT done here: the caller creates one plain csv/parquet Source per returned file (same
-        SourceInput/createSource path a manually-added file source uses) and registers its table
-        from the returned columns — this mutation only does the one Kaggle-specific step neither
-        of those already knows how to do (fetching the bundle)."""
+        """Download+unzip a Kaggle dataset bundle onto local disk (REQ-1780 v1 scope: SQLite
+        bundles are rejected whole, not partially staged) and hand back the staged directory.
+
+        (Amended 2026-09-19, one `files` Source per dataset:) registration is deliberately NOT
+        done here, same as before, but the caller now creates exactly ONE Source — type `files`,
+        `path` = the staged directory — instead of one plain csv/parquet Source per bundle file.
+        The `files`/pgwire-file connector already discovers every file in a directory as its own
+        table (recursively, REQ-1690), single- or multi-file alike, so there is nothing left for
+        this mutation to enumerate: no per-file crawl, no per-column type/name sanitization (the
+        naming authority, REQ-471, already guarantees valid identifiers for whatever the Register
+        Table form discovers live). [SUPERSEDED by this amendment: the previous version crawled
+        the directory here and returned one KaggleStagedFileType per bundle file, each meant to
+        become its own plain csv/parquet Source — kept for history; do not implement against it.]
+        """
         import re
 
         from provisa.api.admin.capabilities import require_capability
         from provisa.core.models import _SAFE_ID_PATTERN
-        from provisa.file_source.crawler import crawl_directory
         from provisa.kaggle.downloader import UnsupportedKaggleDataset, stage_dataset
 
         require_capability(info, "source_registration")
@@ -804,52 +809,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         try:
             staged_root = await stage_dataset(token, owner, ref)
         except UnsupportedKaggleDataset as exc:
-            return KaggleStageResultType(success=False, message=str(exc), files=[])
+            return KaggleStageResultType(
+                success=False, message=str(exc), directory="", suggested_source_id=""
+            )
 
-        # REQ-1781: a raw CSV header is not necessarily a valid GraphQL field name (the register-
-        # table mutation rejects anything outside [_a-zA-Z][_a-zA-Z0-9]* — verified live 2026-09-19
-        # against sudalairajkumar/covid19-in-india's "State/UnionTerritory" column). Kaggle bundles
-        # are real-world CSVs the operator never authored, so this connector cannot ask them to
-        # rename columns by hand first; sanitize here, the one place every caller's column list
-        # passes through.
-        _ident_re = re.compile(r"[^a-zA-Z0-9_]")
-
-        def _sanitize_column_name(name: str) -> str:
-            sanitized = _ident_re.sub("_", name)
-            if not sanitized or not (sanitized[0].isalpha() or sanitized[0] == "_"):
-                sanitized = f"_{sanitized}"
-            return sanitized
-
-        discovered = crawl_directory(str(staged_root))
-        # A multi-file dataset needs the "_<table_name>" suffix for per-file uniqueness under one
-        # id_prefix; a single-file dataset has nothing to disambiguate from, so honor the id the
-        # caller (KaggleFormSection's sourceIdHint, when the user typed one) actually asked for
-        # verbatim instead.
-        is_single_file = sum(len(entry["tables"]) for entry in discovered) == 1
-        files: list[KaggleStagedFileType] = []
-        for entry in discovered:
-            for table in entry["tables"]:
-                suggested_id = id_prefix if is_single_file else f"{id_prefix}_{table['name']}"
-                if not _SAFE_ID_PATTERN.match(suggested_id):
-                    suggested_id = "s_" + re.sub(r"[^a-zA-Z0-9_-]", "_", suggested_id)
-                files.append(
-                    KaggleStagedFileType(
-                        suggested_source_id=suggested_id,
-                        table_name=table["name"],
-                        file_type=entry["type"],
-                        path=entry["path"],
-                        columns=[
-                            KaggleStagedColumnType(
-                                name=_sanitize_column_name(c["name"]), type=c["type"]
-                            )
-                            for c in table["columns"]
-                        ],
-                    )
-                )
+        suggested_id = id_prefix
+        if not _SAFE_ID_PATTERN.match(suggested_id):
+            suggested_id = "s_" + re.sub(r"[^a-zA-Z0-9_-]", "_", suggested_id)
         return KaggleStageResultType(
             success=True,
-            message=f"staged {len(files)} file(s) from {owner}/{ref}",
-            files=files,
+            message=f"staged {owner}/{ref}",
+            directory=str(staged_root),
+            suggested_source_id=suggested_id,
         )
 
     @strawberry.mutation
@@ -857,15 +828,21 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, source_id: str, token: str
     ) -> MutationResult:
         """Re-fetch a Kaggle-derived source's dataset in place. stage_dataset's own contract
-        (downloader.py) is idempotent -- re-running it overwrites each file at the SAME path
-        registerSource already points at, so this needs no re-registration: csv/parquet are SCAN
-        sources (read_csv_auto/read_parquet re-read the path fresh on every query, no persistent
-        engine-side cache to invalidate — confirmed by strategy.py's Mechanism.SCAN docstring and
-        this session's DuckDBFilesConnector/TrinoFilesConnector work, neither of which lands a
-        materialized copy). The Kaggle token is deliberately never persisted server-side
-        (REQ-1783) -- the caller re-enters it for this call, same as the original staging step."""
+        (downloader.py) is idempotent -- re-running it overwrites each file at the SAME directory
+        registerSource already points at.
+
+        (Amended 2026-09-19, one `files` Source per dataset:) unlike the pre-amendment plain
+        csv/parquet SCAN sources (which re-read the path fresh on every query, no cache to
+        invalidate), a `files` source is ATTACHed live through a per-source-id pgwire-file JVM
+        server that is started once and cached for the life of the process (REQ-1690). Re-staging
+        the directory on disk without also evicting that cache would silently keep serving
+        whatever schema the server saw at its first attach — the exact bug `stop_endpoint`
+        (pgwire_replica.py) was added THIS SESSION to close for delete+recreate; a refresh needs
+        the identical fix. The Kaggle token is deliberately never persisted server-side (REQ-1783)
+        -- the caller re-enters it for this call, same as the original staging step."""
         from provisa.api.admin.capabilities import require_capability
         from provisa.core.repositories import source as source_repo
+        from provisa.federation.pgwire_replica import stop_endpoint
         from provisa.kaggle.downloader import UnsupportedKaggleDataset, stage_dataset
 
         require_capability(info, "source_registration")
@@ -899,6 +876,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 message=str(exc),
                 code="schema.kaggle_refresh_failed",
                 params={"source": source_id},
+            )
+        try:
+            stop_endpoint(source_id)
+        except Exception as _pgwire_err:
+            logging.getLogger(__name__).warning(
+                "pgwire endpoint teardown for %r failed during Kaggle refresh: %s",
+                source_id,
+                _pgwire_err,
             )
         return MutationResult(
             success=True,
@@ -962,6 +947,25 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     .where(sources.c.id == input.id)
                     .values(allowed_domains=input.allowed_domains)
                 )
+
+        # REQ-1690: a pgwire-replica source (files/sharepoint/splunk) keeps its Calcite server
+        # running in pgwire_replica._ENDPOINTS, keyed by this same id, for the life of this
+        # process — delete_source already stops it (stop_endpoint), but an in-place edit (this
+        # mutation) never did, so changing a `files` source's path/mapping in place kept serving
+        # whatever schema the FIRST attach saw. Confirmed live: a `files` source's path edited
+        # from an empty/wrong directory to a real one still resolved zero tables afterward, same
+        # symptom as the delete+recreate bug this session already fixed, just reached by editing
+        # instead of deleting. No-ops when no server was ever started for this id.
+        from provisa.federation.pgwire_replica import stop_endpoint
+
+        try:
+            stop_endpoint(input.id)
+        except Exception as _pgwire_err:
+            logging.getLogger(__name__).warning(
+                "pgwire endpoint teardown for %r failed during update_source: %s",
+                input.id,
+                _pgwire_err,
+            )
 
         if input.type == "govdata" and input.username:
             import os as _os

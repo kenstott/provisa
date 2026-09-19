@@ -14,17 +14,32 @@
 // backend is what actually calls out to Kaggle, not the browser). No mocking of Kaggle itself.
 //
 // Kaggle has no live query API (download-only), so it does not register as its own SourceType —
-// each bundle file becomes a plain csv/parquet Source (Trino/DuckDB ATTACHes/reads it live like
-// any other file source), registered through KaggleFormSection's own two-step flow: token entry
-// (validated live) then a live dataset search/picker, backed by stageKaggleDataset (download +
-// crawl_directory) and the same createSource/registerTable calls a manual file source uses.
+// a whole staged bundle becomes ONE `files`-type Source (Amended 2026-09-19: was one plain
+// csv/parquet Source PER FILE — the pgwire-file connector's own recursive directory discovery,
+// REQ-1690, made that design strictly worse once it existed: an 11-file Kaggle dataset used to
+// produce 11 separate raw csv-typed Sources needing 11 separate Register Table trips, instead of
+// one `files` source whose Register Table screen lists every file as a table in one place),
+// created through KaggleFormSection's own two-step flow: token entry (validated live) then a
+// live dataset search/picker, backed by stageKaggleDataset (download+unzip only, no per-file
+// enumeration) and the same createSource call a manual `files` source uses. "Add Dataset" only
+// creates the Source — registering a table (domain, alias, columns) is a separate step through
+// the normal Register Table form, exactly like every other connector: a staged Kaggle directory
+// is introspected live via the same pgwire-file path any other files source uses, so there is
+// nothing Kaggle-specific left to verify past source creation, and pre-registering eagerly left
+// no alias field to resolve a same-name collision with.
 //
-// Fixture dataset: arshid/iris-flower-dataset — confirmed live via a real `datasets/list/
-// arshid/iris-flower-dataset` call before writing this test: a single file, IRIS.csv, ~4.6KB,
-// 150 rows, no SQLite file (this connector's v1 scope is CSV/Parquet only).
+// Fixture datasets: arshid/iris-flower-dataset (single file, IRIS.csv, ~4.6KB, 150 rows) and
+// sudalairajkumar/covid19-in-india (3 files, ~776KB compressed, last updated 2021 so its row data
+// cannot drift) — both confirmed live via real `datasets/list/{owner}/{ref}` calls before writing
+// this test, neither containing a SQLite file (this connector's v1 scope is CSV/Parquet only).
 
 import { test, expect } from "./coverage";
-import { DOMAIN, openSourcesForm, runSqlOnPage } from "./source-to-query-helpers";
+import {
+  openRegisterForm,
+  openSourcesForm,
+  runSqlOnPage,
+  submitRegisterAndExpectListed,
+} from "./source-to-query-helpers";
 
 const KAGGLE_TOKEN = process.env.KAGGLE_API_TOKEN;
 
@@ -36,7 +51,7 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
   // Playwright's auto-scroll (reproduced live), so the dataset-picker option is never clickable.
   test.use({ viewport: { width: 1280, height: 2200 } });
 
-  test("token gate, live dataset search, table registration, and a real query", async ({
+  test("single-file dataset: token gate, live search, add + register + a real query", async ({
     page,
   }) => {
     test.setTimeout(180000);
@@ -48,8 +63,6 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     // requires auth, so there is nothing it could search yet.
     await expect(page.getByTestId("kaggle-dataset-search-input")).toHaveCount(0);
 
-    await page.getByTestId("kaggle-domain-select").click();
-    await page.getByRole("option", { name: new RegExp(DOMAIN, "i") }).first().click();
     await page.getByTestId("kaggle-token-input").fill(KAGGLE_TOKEN!);
     await page.getByTestId("kaggle-validate-token-button").click();
     await expect(page.getByTestId("kaggle-token-valid")).toBeVisible({ timeout: 30000 });
@@ -75,35 +88,58 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     // Matches the rest of this form's server-side-registration types (handleOpenapiRegister/
     // handleGrpcRegister): the form closes itself on success and the new row shows up in the
     // sources list below — that IS the success signal, there is no separate in-form banner.
-    // No "_IRIS" table-name suffix: iris-flower-dataset is single-file, and a single-file
-    // dataset now gets its id_prefix verbatim (schema_mutation.py's stage_kaggle_dataset) —
-    // the suffix exists only to disambiguate multiple files sharing one id_prefix.
+    // The id_prefix is honored verbatim (schema_mutation.py's stage_kaggle_dataset) — one Source
+    // per dataset now, so there is no per-file "_<table_name>" suffix to disambiguate.
     const row = page.locator(".data-table td").filter({ hasText: /^kg_\d+_iris-flower-dataset$/ });
     await expect(row).toBeVisible({ timeout: 60000 });
     const sourceId = (await row.textContent())!.trim();
 
-    // Confirm it registered as a plain csv Source (not a bespoke Kaggle connector/type) and read
-    // back the SQL-plane name the server actually assigned the table (its dqDataset), the same
-    // way source-to-query-helpers.ts's own submitRegisterAndExpectListed does.
+    // Confirm it created exactly ONE `files`-type Source (not a bespoke Kaggle connector/type,
+    // and not one Source per file) — "Add Dataset" only creates the source; it must not also
+    // have registered a table (REQ-1783 amendment).
     const sourcesRes = await page.request.post("/admin/graphql", {
       data: { query: "{ sources { id type } }" },
     });
     expect(sourcesRes.ok(), await sourcesRes.text()).toBeTruthy();
     const sources = (await sourcesRes.json()).data.sources as { id: string; type: string }[];
     const registeredSource = sources.find((s) => s.id === sourceId);
-    expect(registeredSource?.type).toBe("csv");
+    expect(registeredSource?.type).toBe("files");
 
-    const tablesRes = await page.request.post("/admin/graphql", {
-      data: { query: "{ tables { sourceId dqDataset } }" },
+    const preTablesRes = await page.request.post("/admin/graphql", {
+      data: { query: "{ tables { sourceId } }" },
     });
-    expect(tablesRes.ok(), await tablesRes.text()).toBeTruthy();
-    const tables = (await tablesRes.json()).data.tables as {
-      sourceId: string;
-      dqDataset: string | null;
-    }[];
-    const registeredTable = tables.find((t) => t.sourceId === sourceId);
-    expect(registeredTable?.dqDataset, `no dataset name reported for ${sourceId}`).toBeTruthy();
-    const sqlTableName = registeredTable!.dqDataset!.split("/").pop()!;
+    expect(preTablesRes.ok(), await preTablesRes.text()).toBeTruthy();
+    const preTables = (await preTablesRes.json()).data.tables as { sourceId: string }[];
+    expect(
+      preTables.some((t) => t.sourceId === sourceId),
+      "Add Dataset must not also register a table — that's the normal Register Table form's job",
+    ).toBe(false);
+
+    // Register the file's table through the normal Register Table form — the pgwire-file
+    // connector discovers it live off the staged directory, schema = the sql-normalized source id
+    // (pgwire_replica.schema_name's convention). Table naming: downloader.py stages every file
+    // into its own "<file-stem>/<file-name>" subdirectory (even for a single-file dataset), and
+    // the pgwire-file connector's recursive discovery flattens a subdirectory into the table name
+    // as "<subdir>__<stem>" (REQ-1690, confirmed live in file-connector-multi-format.spec.ts) — so
+    // "IRIS.csv" staged under an "IRIS" subdirectory becomes "iris__iris", not a bare "IRIS".
+    const schemaName = sourceId.replace(/-/g, "_");
+    await openRegisterForm(page, sourceId);
+    const schemaSelect = page.getByTestId("register-table-schema-select");
+    await expect(schemaSelect.locator(`option[value='${schemaName}']`)).toHaveCount(1, {
+      timeout: 120000,
+    });
+    if ((await schemaSelect.inputValue()) !== schemaName) {
+      await schemaSelect.selectOption(schemaName);
+    }
+    const tableSelect = page.getByTestId("register-table-table-select");
+    await expect(tableSelect.locator(`option[value='iris__iris']`)).toHaveCount(1, {
+      timeout: 60000,
+    });
+    await tableSelect.selectOption("iris__iris");
+    await expect(
+      page.locator('[data-testid^="register-table-col-selected-"]').first(),
+    ).toBeVisible({ timeout: 30000 });
+    const sqlTableName = await submitRegisterAndExpectListed(page, sourceId);
 
     // Run a real query against the landed data and verify real Kaggle row data comes back —
     // the Iris dataset's first 3 rows are Iris-setosa with these exact measurements.
@@ -117,20 +153,16 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     }
   });
 
-  test("multi-file dataset registers one Source per file, and a real query works", async ({
+  test("multi-file dataset: one files Source, every file listed as a table, a real query works", async ({
     page,
   }) => {
     test.setTimeout(180000);
 
-    // Fixture: sudalairajkumar/covid19-in-india — confirmed live via a real `datasets/list/
-    // sudalairajkumar/covid19-in-india` call before writing this test: 3 files (no SQLite),
-    // StatewiseTestingDetails.csv (622,938 bytes), covid_19_india.csv (1,005,449 bytes),
-    // covid_vaccine_statewise.csv (1,108,819 bytes) — a ~776KB compressed download total. A
-    // well-known, stable, historical (last updated 2021) dataset, so its row data cannot drift.
+    // Fixture: sudalairajkumar/covid19-in-india — 3 files (no SQLite), StatewiseTestingDetails.csv
+    // (622,938 bytes), covid_19_india.csv (1,005,449 bytes), covid_vaccine_statewise.csv
+    // (1,108,819 bytes).
     await openSourcesForm(page);
     await page.getByTestId("sources-type-select").selectOption("kaggle");
-    await page.getByTestId("kaggle-domain-select").click();
-    await page.getByRole("option", { name: new RegExp(DOMAIN, "i") }).first().click();
     await page.getByTestId("kaggle-token-input").fill(KAGGLE_TOKEN!);
     await page.getByTestId("kaggle-validate-token-button").click();
     await expect(page.getByTestId("kaggle-token-valid")).toBeVisible({ timeout: 30000 });
@@ -147,51 +179,63 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     );
 
     await page.getByTestId("kaggle-register-button").click();
-    // One Source per bundle file (REQ-1781) — 3 rows, one per csv, all sharing the same
-    // "kg_<timestamp>_covid19-in-india_" prefix this run's stageKaggleDataset call generated.
-    const rowsLocator = page.locator(".data-table td").filter({
-      hasText: /^kg_\d+_covid19-in-india_/,
-    });
-    await expect(rowsLocator).toHaveCount(3, { timeout: 90000 });
-    const sourceIds = await rowsLocator.allTextContents();
-    expect(new Set(sourceIds.map((s) => s.trim()))).toEqual(
-      new Set(
-        ["StatewiseTestingDetails", "covid_19_india", "covid_vaccine_statewise"].map(
-          (t) => sourceIds.find((id) => id.trim().endsWith(`_${t}`))!.trim(),
-        ),
-      ),
-    );
+    // ONE Source for the whole dataset (Amended 2026-09-19) — was 3 (one per file) before.
+    const row = page.locator(".data-table td").filter({ hasText: /^kg_\d+_covid19-in-india$/ });
+    await expect(row).toBeVisible({ timeout: 60000 });
+    const sourceId = (await row.textContent())!.trim();
 
     const sourcesRes = await page.request.post("/admin/graphql", {
       data: { query: "{ sources { id type } }" },
     });
     expect(sourcesRes.ok(), await sourcesRes.text()).toBeTruthy();
     const sources = (await sourcesRes.json()).data.sources as { id: string; type: string }[];
-    for (const id of sourceIds) {
-      const src = sources.find((s) => s.id === id.trim());
-      expect(src?.type, `${id.trim()} should register as a plain csv Source`).toBe("csv");
-    }
+    expect(sources.find((s) => s.id === sourceId)?.type).toBe("files");
 
-    // Query the main covid_19_india table and verify real landed Kaggle row data.
-    const mainSourceId = sourceIds.find((id) => id.trim().endsWith("_covid_19_india"))!.trim();
-    const tablesRes = await page.request.post("/admin/graphql", {
-      data: { query: "{ tables { sourceId dqDataset } }" },
+    // Register Table lists all 3 files as separate tables, discovered live off the one directory.
+    const schemaName = sourceId.replace(/-/g, "_");
+    await openRegisterForm(page, sourceId);
+    const schemaSelect = page.getByTestId("register-table-schema-select");
+    await expect(schemaSelect.locator(`option[value='${schemaName}']`)).toHaveCount(1, {
+      timeout: 120000,
     });
-    expect(tablesRes.ok(), await tablesRes.text()).toBeTruthy();
-    const tables = (await tablesRes.json()).data.tables as {
-      sourceId: string;
-      dqDataset: string | null;
-    }[];
-    const registeredTable = tables.find((t) => t.sourceId === mainSourceId);
-    expect(registeredTable?.dqDataset, `no dataset name reported for ${mainSourceId}`).toBeTruthy();
-    const sqlTableName = registeredTable!.dqDataset!.split("/").pop()!;
+    if ((await schemaSelect.inputValue()) !== schemaName) {
+      await schemaSelect.selectOption(schemaName);
+    }
+    // downloader.py stages each file into its own "<file-stem>/<file-name>" subdirectory, and the
+    // pgwire-file connector's recursive discovery flattens that into "<subdir>__<stem>" — since
+    // subdir name and stem are always the same string here, every table doubles its own stem. The
+    // stem itself goes through Calcite's default SMART_CASING (table_name_casing), which inserts
+    // underscores between CamelCase words: "StatewiseTestingDetails" -> "statewise_testing_details"
+    // (verified live) — "covid_19_india"/"covid_vaccine_statewise" are already snake_case so
+    // SMART_CASING leaves them unchanged.
+    const covidTable = "covid_19_india__covid_19_india";
+    const tableSelect = page.getByTestId("register-table-table-select");
+    await expect(tableSelect.locator(`option[value='${covidTable}']`)).toHaveCount(1, {
+      timeout: 60000,
+    });
+    const discovered = await tableSelect
+      .locator("option")
+      .evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value).filter(Boolean));
+    expect(new Set(discovered)).toEqual(
+      new Set([
+        "statewise_testing_details__statewise_testing_details",
+        covidTable,
+        "covid_vaccine_statewise__covid_vaccine_statewise",
+      ]),
+    );
 
-    // Column names are the raw CSV header text (crawl_directory infers schema straight off the
-    // file), quoted exactly as Kaggle wrote them — except "State/UnionTerritory", whose slash the
-    // register-table mutation rejects as an invalid GraphQL field name (verified live: "Names
-    // must only contain [_a-zA-Z0-9]"); stageKaggleDataset sanitizes that one to
-    // "State_UnionTerritory" server-side, so it is skipped here rather than asserted against a
-    // physical CSV header the sanitized registration no longer matches by name.
+    // Register only the one table this test actually queries.
+    await tableSelect.selectOption(covidTable);
+    await expect(
+      page.locator('[data-testid^="register-table-col-selected-"]').first(),
+    ).toBeVisible({ timeout: 30000 });
+    const sqlTableName = await submitRegisterAndExpectListed(page, sourceId);
+
+    // Column names are the raw CSV header text (DuckDB's live introspection reads it straight off
+    // the file), quoted exactly as Kaggle wrote them — except "State/UnionTerritory", whose slash
+    // the naming authority (apply_gql_name, REQ-471) sanitizes to a valid GraphQL identifier, so
+    // it is skipped here rather than asserted against a raw CSV header the sanitized column no
+    // longer matches by name.
     const rows = await runSqlOnPage(
       page,
       `SELECT "Date", "Confirmed" FROM pet_store.${sqlTableName} ORDER BY "Sno" LIMIT 1`,
@@ -207,8 +251,6 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
 
     await openSourcesForm(page);
     await page.getByTestId("sources-type-select").selectOption("kaggle");
-    await page.getByTestId("kaggle-domain-select").click();
-    await page.getByRole("option", { name: new RegExp(DOMAIN, "i") }).first().click();
 
     await page.getByTestId("kaggle-token-input").fill("not-a-real-token");
     await page.getByTestId("kaggle-validate-token-button").click();

@@ -899,33 +899,32 @@ export function useKaggleDatasetsLazy() {
   );
 }
 
-export interface KaggleStagedColumn {
-  name: string;
-  type: string;
-}
-
-export interface KaggleStagedFile {
-  suggestedSourceId: string;
-  tableName: string;
-  fileType: string;
-  path: string;
-  columns: KaggleStagedColumn[];
-}
-
-// REQ-1780/1781/1782: downloads+unzips the dataset bundle server-side and enumerates its
-// CSV/Parquet files via crawl_directory. Registration itself is NOT part of this call — the
-// caller creates one plain csv/parquet Source per returned file (useCreateSource, the same
-// mutation a manually-added file source uses) and registers its table from the returned columns
-// (useRegisterTable) — see KaggleFormSection's onDatasetConfirmed.
+// (Amended 2026-09-19, one `files` Source per dataset:) downloads+unzips the dataset bundle
+// server-side and hands back its staged directory. Registration itself is NOT part of this call
+// — the caller creates exactly ONE `files`-type Source (useCreateSource, path = the returned
+// directory) and lets the normal Register Table screen discover its tables live through the
+// pgwire-file connector (REQ-1690), single- or multi-file alike — see KaggleFormSection's
+// handleConfirmDataset. [SUPERSEDED by this amendment: the previous shape returned one
+// KaggleStagedFile per bundle file, each meant to become its own plain csv/parquet Source.]
 export function useStageKaggleDataset() {
   const [run, { loading }] = useMutation<{
-    stageKaggleDataset: { success: boolean; message: string; files: KaggleStagedFile[] };
+    stageKaggleDataset: {
+      success: boolean;
+      message: string;
+      directory: string;
+      suggestedSourceId: string;
+    };
   }>(StageKaggleDataset);
   return {
     stageKaggleDataset: async (token: string, owner: string, ref: string, idPrefix: string) => {
       const { data } = await run({ variables: { token, owner, ref, idPrefix } });
       return (
-        data?.stageKaggleDataset ?? { success: false, message: "no response", files: [] }
+        data?.stageKaggleDataset ?? {
+          success: false,
+          message: "no response",
+          directory: "",
+          suggestedSourceId: "",
+        }
       );
     },
     loading,

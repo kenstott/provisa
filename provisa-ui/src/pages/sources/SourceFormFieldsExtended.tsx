@@ -217,7 +217,6 @@ export function SourceFormFieldsExtended({
       )}
       {form.type === "kaggle" && (
         <KaggleFormSection
-          domains={domains}
           sourceIdHint={form.id}
           onSourcesRegistered={onKaggleSourcesRegistered ?? (() => {})}
         />

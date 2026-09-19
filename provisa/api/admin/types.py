@@ -469,28 +469,16 @@ class KaggleDatasetType:  # REQ-1783
 
 
 @strawberry.type
-class KaggleStagedColumnType:  # REQ-1780/1781
-    name: str
-    type: str
-
-
-@strawberry.type
-class KaggleStagedFileType:  # REQ-1780/1781
-    """One staged bundle file, ready to register as its own plain csv/parquet Source (v1 scope:
-    CSV/Parquet only — see KaggleStageResultType.rejected_reason for the SQLite-bundle case)."""
-
-    suggested_source_id: str
-    table_name: str
-    file_type: str  # "csv" | "parquet"
-    path: str  # local file path — becomes SourceInput.path verbatim
-    columns: list[KaggleStagedColumnType]
-
-
-@strawberry.type
 class KaggleStageResultType:  # REQ-1780/1781/1782
+    """A staged dataset bundle, ready to register as ONE `files`-type Source pointed at
+    `directory` (Amended 2026-09-19: was one plain csv/parquet Source PER FILE — see
+    KaggleStageResultType's history in requirements.yaml for why that changed). v1 scope:
+    CSV/Parquet only; a SQLite/.db-bearing bundle is rejected whole (success=False)."""
+
     success: bool
     message: str
-    files: list[KaggleStagedFileType]
+    directory: str  # local directory path — becomes SourceInput.path verbatim (type "files")
+    suggested_source_id: str
 
 
 @strawberry.type
