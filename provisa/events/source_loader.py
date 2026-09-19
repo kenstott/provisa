@@ -239,6 +239,7 @@ def make_firebird_loader() -> AdapterLoader:
     all (no Trino/pg connector exists), so landing is the ONLY way any other engine ever sees a
     firebird source's rows — read through a scratch DuckDB connection ATTACHed via the same
     `firebird` community extension DuckDBFirebirdConnector uses at query time."""
+    from provisa.core.secrets import resolve_secrets
     from provisa.federation.connector_duckdb import DuckDBFirebirdConnector
 
     async def _load(source: Any, table: Any) -> list[dict]:
@@ -246,7 +247,20 @@ def make_firebird_loader() -> AdapterLoader:
         if not columns:
             return []
         connector = DuckDBFirebirdConnector()
-        details = connector.details(source)
+        # registered_sources() (registry_view.py) returns the PERSISTED password reference
+        # (REQ-1695), never plaintext — the live engine's own ATTACH resolves it separately before
+        # registering (schema_common.py's _register_source_on_engine), but this scratch read
+        # builds its own DSN straight from `source`, so it must resolve here too. Reproduced live:
+        # DuckDBFirebirdConnector.details() embeds `source.password` directly in the ATTACH DSN
+        # (`firebird://user:{password}@host:port/path`) — unresolved, the ATTACH authenticates
+        # with the literal "${secret:...}" string, which fails and lands zero rows with no
+        # surfaced error (airport has no such bug: its DSN carries no credential at all).
+        resolved_source = (
+            source.model_copy(update={"password": resolve_secrets(source.password)})
+            if source.password
+            else source
+        )
+        details = connector.details(resolved_source)
         select = ", ".join(f'"{c}"' for c in columns)
         sql = f'SELECT {select} FROM "{details["raw_alias"]}"."{table.schema_name}"."{table.table_name}"'
         details = {
