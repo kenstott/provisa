@@ -98,6 +98,15 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
         # column, the same class of gap array/list handling already covers for other engines.
         "nvarchar": GraphQLString,  # HANA unicode varchar — every HANA text column defaults to it
         "nclob": GraphQLString,  # HANA unicode CLOB, HANA's unbounded-text equivalent of "text"
+        # Oracle's own ALL_TAB_COLUMNS.DATA_TYPE names (introspect.py's oracle native_columns
+        # branch) — Oracle has no information_schema, so these never went through the ANSI
+        # varchar/text names above. Hit live registering oracle's WIDGETS.NAME (VARCHAR2): the
+        # Register Table form's column preview raised, blocking the row from ever appearing.
+        # Not adding Oracle's CLOB/RAW/LONG here too: LONG already maps to BigInt above for
+        # Databricks' BIGINT alias, and this is a single flat name->type map with no per-engine
+        # namespace — a collision would silently break Databricks. Add only names confirmed live.
+        "varchar2": GraphQLString,
+        "nvarchar2": GraphQLString,
         "uuid": GraphQLString,
         "string": GraphQLString,  # OpenAPI JSON-Schema "string" (provisa.openapi.register._OPENAPI_TYPE_MAP)
         # Integer types
