@@ -120,6 +120,16 @@ jobs:
 
       # trino-worker stays at replicas: 0 — same reasoning as ui-e2e-trino.yml. minio and zaychik
       # are not optional: TrinoBackend.provision_infra dials both with no fallback at startup.
+      # docker-compose.core.yml's hive_warehouse volume is a `local` driver bind (o: bind), not a
+      # plain service-level bind mount — unlike a plain bind, it does NOT auto-create a missing
+      # host directory, it fails the container outright ("no such file or directory"). The
+      # compose file's own default device path is this repo's maintainer's own machine, so CI
+      # must override it — same fix as ui-e2e-trino.yml.
+      - name: Create the hive_warehouse bind-mount device
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.e2e-hive-warehouse"
+          echo "PROVISA_E2E_HIVE_WAREHOUSE_HOST=$GITHUB_WORKSPACE/.e2e-hive-warehouse" >> "$GITHUB_ENV"
+
       - name: Start core services
         run: |
           docker compose -f docker-compose.core.yml up -d --wait \
