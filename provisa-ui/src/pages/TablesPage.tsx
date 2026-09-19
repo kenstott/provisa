@@ -619,40 +619,51 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       )}
 
       {/* REQ-1318: create-view flow with the definition-mode toggle. */}
+      {/* page-aux: `.page-sticky-head`'s overflow:hidden clips anything taller than the
+          viewport that isn't its own scrollport — this form's column table can easily be
+          that tall (confirmed live: mouse-wheel scroll did nothing over it, though Tab-driven
+          focus still nudged it into view, since focus-scroll can move an overflow:hidden
+          element's scrollTop even though wheel/scrollbar input can't). `.page-aux` gives it its
+          own `overflow: auto` scrollport, the same treatment RelationshipsPage's candidates
+          table already gets. */}
       {showViewForm && viewsOnly && (
-        <ViewDefinitionForm
-          editing={null}
-          tables={tables}
-          relationships={relationships}
-          domainHints={domainHints}
-          registerTable={registerTable}
-          updateTable={updateTable}
-          onSuccess={() => {
-            setShowViewForm(false);
-            reload();
-          }}
-          onCancel={() => setShowViewForm(false)}
-        />
+        <div className="page-aux">
+          <ViewDefinitionForm
+            editing={null}
+            tables={tables}
+            relationships={relationships}
+            domainHints={domainHints}
+            registerTable={registerTable}
+            updateTable={updateTable}
+            onSuccess={() => {
+              setShowViewForm(false);
+              reload();
+            }}
+            onCancel={() => setShowViewForm(false)}
+          />
+        </div>
       )}
 
       {showForm && !viewsOnly && (
-        <RegisterTableForm
-          sources={sources}
-          domainHints={domainHints}
-          domainAccess={domainAccess}
-          checkedDomains={checkedDomains}
-          domainsEnabled={domainsEnabled}
-          tables={tables}
-          roles={roles}
-          getAvailableColumnsMetadata={getAvailableColumnsMetadata}
-          suggestTableAlias={suggestTableAlias}
-          registerTable={registerTable}
-          onSuccess={() => {
-            setShowForm(false);
-            reload();
-          }}
-          setError={setError}
-        />
+        <div className="page-aux">
+          <RegisterTableForm
+            sources={sources}
+            domainHints={domainHints}
+            domainAccess={domainAccess}
+            checkedDomains={checkedDomains}
+            domainsEnabled={domainsEnabled}
+            tables={tables}
+            roles={roles}
+            getAvailableColumnsMetadata={getAvailableColumnsMetadata}
+            suggestTableAlias={suggestTableAlias}
+            registerTable={registerTable}
+            onSuccess={() => {
+              setShowForm(false);
+              reload();
+            }}
+            setError={setError}
+          />
+        </div>
       )}
 
       <div className="table-scroll">

@@ -1286,7 +1286,11 @@ export function SourcesPage() {
         </Alert>
       )}
 
+      {/* page-aux: `.page-sticky-head`'s overflow:hidden otherwise clips a tall form (many
+          source-type fields, or Kaggle's dataset picker) with no scrollport a mouse wheel can
+          act on — see TablesPage.tsx's RegisterTableForm wrapper for the full explanation. */}
       {showForm && !editingSourceId && (
+        <div className="page-aux">
         <form
           data-tour="sources-form"
           className="form-card"
@@ -1340,6 +1344,7 @@ export function SourcesPage() {
             </Button>
           )}
         </form>
+        </div>
       )}
 
       {/* REQ-1587: the page owns the vertical scroll, so the table's own scroller is the plain

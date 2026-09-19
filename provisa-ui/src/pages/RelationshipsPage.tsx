@@ -499,8 +499,12 @@ export function RelationshipsPage() {
         </Text>
       )}
 
+      {/* page-aux: `.page-sticky-head`'s overflow:hidden otherwise clips a tall form with no
+          scrollport a mouse wheel can act on — see TablesPage.tsx's RegisterTableForm wrapper
+          for the full explanation; same treatment this page's own candidates block already
+          gets below. */}
       {showForm && (
-        <div data-tour="rels-form">
+        <div data-tour="rels-form" className="page-aux">
           <AddRelationshipForm
             form={form}
             setForm={setForm}

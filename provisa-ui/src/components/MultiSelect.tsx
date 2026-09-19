@@ -48,6 +48,12 @@ export function MultiSelect({
       clearable
       size="sm"
       comboboxProps={{ withinPortal: true }}
+      // A selection with many values (e.g. every role, in a table cell like
+      // RegisterTableForm's per-column Visible To/Writable By) used to wrap pills onto as many
+      // lines as needed, inflating the row's height without bound and, on a table with dozens of
+      // columns, making the whole page's scroll feel stuck (confirmed live). Cap the pill area and
+      // let it scroll internally instead.
+      styles={{ pillsList: { maxHeight: 68, overflowY: "auto", flexWrap: "wrap" } }}
     />
   );
 }

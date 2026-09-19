@@ -10,7 +10,17 @@
 
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Checkbox, Select, Stack, Table, Text, TextInput, Textarea } from "@mantine/core";
+import {
+  Button,
+  Checkbox,
+  Select,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Textarea,
+  Tooltip,
+} from "@mantine/core";
 import { toSnakeCase } from "../../naming";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
@@ -807,7 +817,22 @@ export function RegisterTableForm({
                           />
                         </Table.Td>
                         <Table.Td ff="monospace" fz="sm">
-                          {col.name}
+                          {/* A raw source column name (a real-world CSV header, a Kaggle import,
+                              etc.) can run to 60+ characters and blow out this column's width —
+                              truncate with an ellipsis and expose the full name on hover rather
+                              than letting the table grow unbounded. */}
+                          <Text
+                            ff="monospace"
+                            fz="sm"
+                            truncate="end"
+                            maw={220}
+                            component="span"
+                            style={{ display: "inline-block", verticalAlign: "bottom" }}
+                          >
+                            <Tooltip label={col.name} disabled={col.name.length <= 28} openDelay={300}>
+                              <span>{col.name}</span>
+                            </Tooltip>
+                          </Text>
                         </Table.Td>
                         <Table.Td>
                           <Select

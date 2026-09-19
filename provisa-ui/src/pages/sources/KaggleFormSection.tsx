@@ -10,7 +10,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Combobox, Group, Text, TextInput, useCombobox } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Combobox,
+  Group,
+  ScrollArea,
+  Text,
+  TextInput,
+  useCombobox,
+} from "@mantine/core";
 import {
   useCreateSource,
   useKaggleDatasetsLazy,
@@ -201,26 +210,32 @@ export function KaggleFormSection({ sourceIdHint, onSourcesRegistered }: KaggleF
                 />
               </Combobox.Target>
               <Combobox.Dropdown>
-                <Combobox.Options data-testid="kaggle-dataset-options">
-                  {datasets.length === 0 ? (
-                    <Combobox.Empty>{t("kaggleFormSection.noDatasetsFound")}</Combobox.Empty>
-                  ) : (
-                    datasets.map((d) => (
-                      <Combobox.Option
-                        value={d.ref}
-                        key={d.ref}
-                        data-testid={`kaggle-dataset-${d.ref}`}
-                      >
-                        <Text size="sm" fw={500}>
-                          {d.title}
-                        </Text>
-                        <Text size="xs" c="dimmed">
-                          {d.subtitle}
-                        </Text>
-                      </Combobox.Option>
-                    ))
-                  )}
-                </Combobox.Options>
+                {/* Combobox is Mantine's low-level building block — unlike Select/MultiSelect
+                    (which default maxDropdownHeight to 220px), it has no height cap at all, so
+                    the live Kaggle search results grew the dropdown past the top of the viewport
+                    with no scrollbar (confirmed live: a 10+ result list ran off-screen). */}
+                <ScrollArea.Autosize mah={280} type="auto">
+                  <Combobox.Options data-testid="kaggle-dataset-options">
+                    {datasets.length === 0 ? (
+                      <Combobox.Empty>{t("kaggleFormSection.noDatasetsFound")}</Combobox.Empty>
+                    ) : (
+                      datasets.map((d) => (
+                        <Combobox.Option
+                          value={d.ref}
+                          key={d.ref}
+                          data-testid={`kaggle-dataset-${d.ref}`}
+                        >
+                          <Text size="sm" fw={500}>
+                            {d.title}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            {d.subtitle}
+                          </Text>
+                        </Combobox.Option>
+                      ))
+                    )}
+                  </Combobox.Options>
+                </ScrollArea.Autosize>
               </Combobox.Dropdown>
             </Combobox>
           </div>
