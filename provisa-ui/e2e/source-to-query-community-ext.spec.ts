@@ -18,9 +18,9 @@
 //     registerFirebird/registerAirport (that file only ever proved these as the DuckDB leg of a
 //     register-once/requery-under-every-engine harness — this file proves the plain
 //     register+query path standalone, with no engine swap involved).
-//   - singlestore: same port from registerSinglestore, gated exactly like engine-swap.spec.ts
-//     gates it (SINGLESTORE_LICENSE + amd64 host — the singlestoredb-dev image publishes no arm64
-//     manifest at all and never becomes healthy without a license).
+//   - singlestore: the same live SingleStore Cloud shared-tier workspace registerSinglestore uses
+//     in engine-swap.spec.ts (SINGLESTORE_HOST/PORT/USERNAME/PASSWORD/DATABASE in .env) — no local
+//     docker-db container, gated only on those creds being present.
 //   - duckdb (a SECOND local .duckdb file registered as a SOURCE, distinct from DuckDB as
 //     Provisa's own engine): no existing e2e precedent. DuckDBDuckdbConnector.details()
 //     (provisa/federation/connector_duckdb.py) ATTACHes `source.path`. Fixing this test surfaced a
@@ -44,16 +44,14 @@
 // Firebird's official macOS .pkg once, caches the patched libfbclient.dylib under
 // ~/.cache/provisa-fdw/firebird-client-<version>-<arch>/) to resolve that path.
 //
-// Ports: 34051 (firebird)/34061 (airport)/34071 (singlestore) — distinct from engine-swap.spec.ts's
-// 33051/33061/33071 and source-to-query.spec.ts's extra-RDBMS 33062/33081, so every file's demo
-// containers can run concurrently without a port clash.
+// Ports: 34051 (firebird)/34061 (airport) — distinct from engine-swap.spec.ts's 33051/33061 and
+// source-to-query.spec.ts's extra-RDBMS 33062/33081, so every file's demo containers can run
+// concurrently without a port clash. singlestore has no local port — it's the live cloud workspace.
 //
 // Run:
 //   cd provisa-ui && env PROVISA_E2E_LANE=core \
 //     DUCKDB_FIREBIRD_CLIENT_LIBRARY="$(cd .. && .venv/bin/python scripts/resolve_firebird_client_lib.py)" \
 //     npx playwright test source-to-query-community-ext --project=core --reporter=list
-// (singlestore additionally needs SINGLESTORE_LICENSE=<key> and an x64 host to run rather than
-// skip — see SINGLESTORE_AVAILABLE below.)
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -78,25 +76,13 @@ const CEXT_PREFIX = "provisa-s2q-cext";
 
 const E2E_FIREBIRD_PORT = 34051;
 const E2E_AIRPORT_PORT = 34061;
-const E2E_SINGLESTORE_PORT = 34071;
-
-// Same gate engine-swap.spec.ts uses, checked before provisioning: an unlicensed or
-// arm64-emulated singlestoredb-dev container never becomes healthy (or, under arm64, never even
-// starts — `docker compose up` fails outright with "no matching manifest").
-const SINGLESTORE_AVAILABLE = process.arch === "x64" && !!process.env.SINGLESTORE_LICENSE;
 
 function provisionSources(cmd: "up" | "down"): void {
-  const names = [
-    "firebird",
-    "airport",
-    ...(cmd === "up" && SINGLESTORE_AVAILABLE ? ["singlestore"] : []),
-  ];
-  if (cmd === "down") names.push("singlestore"); // always attempt teardown, even if up skipped it
+  const names = ["firebird", "airport"];
   const env = {
     ...process.env,
     PROVISA_DEMO_FIREBIRD_PORT: String(E2E_FIREBIRD_PORT),
     PROVISA_DEMO_AIRPORT_PORT: String(E2E_AIRPORT_PORT),
-    PROVISA_DEMO_SINGLESTORE_PORT: String(E2E_SINGLESTORE_PORT),
     PROVISA_DEMO_PREFIX: CEXT_PREFIX,
   };
   try {
@@ -238,27 +224,31 @@ test.describe("source to query through the UI, community-extension sources (REQ-
   test("singlestore: add the source, register a table, query it on the SQL page", async ({
     page,
   }) => {
+    // Live SingleStore Cloud shared-tier workspace (SINGLESTORE_HOST/PORT/USERNAME/PASSWORD/
+    // DATABASE in .env), same standing infrastructure engine-swap.spec.ts's registerSinglestore
+    // uses — no local docker-db container, no skip gate: this is the only singlestore source Provisa
+    // now tests against (REQ-1746).
     test.skip(
-      !SINGLESTORE_AVAILABLE,
-      "needs SINGLESTORE_LICENSE and an amd64 host (singlestoredb-dev publishes no arm64 " +
-        "manifest) — see the module doc",
+      !process.env.SINGLESTORE_HOST,
+      "needs SINGLESTORE_HOST/USERNAME/PASSWORD/DATABASE for the SingleStore Cloud workspace",
     );
     test.setTimeout(180000);
     const stamp = Date.now();
     const sourceId = `e2e_cext_singlestore_${stamp}`;
+    const database = process.env.SINGLESTORE_DATABASE!;
 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("singlestore");
-    await page.getByLabel(/^Host/).fill("localhost");
-    await page.getByLabel(/^Port/).fill(String(E2E_SINGLESTORE_PORT));
-    await page.getByLabel(/^Username/).fill("root");
-    await page.getByLabel(/^Password/).fill("provisa");
-    await page.getByLabel(/^Database/).fill("provisa_demo");
+    await page.getByLabel(/^Host/).fill(process.env.SINGLESTORE_HOST!);
+    await page.getByLabel(/^Port/).fill(process.env.SINGLESTORE_PORT!);
+    await page.getByLabel(/^Username/).fill(process.env.SINGLESTORE_USERNAME!);
+    await page.getByLabel(/^Password/).fill(process.env.SINGLESTORE_PASSWORD!);
+    await page.getByLabel(/^Database/).fill(database);
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
-    await pickSchemaAndTable(page, "provisa_demo", "widgets");
+    await pickSchemaAndTable(page, database, "widgets");
     await expect(page.getByTestId("register-table-col-selected-name")).toBeVisible({
       timeout: 60000,
     });
