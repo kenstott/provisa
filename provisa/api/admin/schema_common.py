@@ -57,6 +57,7 @@ __all__ = [
     "_build_column_models",
     "_configure_govdata_env",
     "_ensure_view_column_types",
+    "_drop_source_on_engine",
     "_fire_catalog_indexing",
     "_prime_govdata_cache",
     "_queue_creation_request",
@@ -359,6 +360,27 @@ def _register_source_on_engine(state, model, input: SourceInput) -> None:
     except Exception as _cat_err:
         logging.getLogger(__name__).warning(
             "engine source provisioning for %r failed: %s", input.id, _cat_err
+        )
+
+
+def _drop_source_on_engine(state, source_id: str) -> None:
+    """Deprovision a source's dynamic catalog on the bound engine — the exact mirror of
+    ``_register_source_on_engine`` for deletion, which ``delete_source`` never had at all (REQ-1730).
+    Confirmed live: a deleted source's Trino catalog was NEVER dropped, so every ephemeral e2e
+    source ever created (this reboot-harness's own tests, hundreds of runs) accumulated forever in
+    Trino's persistent dynamic-catalog store — reproduced directly via ``docker logs
+    provisa-trino-1``, which showed dozens of long-orphaned per-source catalogs (many pointing at
+    containers that no longer exist, spamming `Connection refused`) still being reloaded on every
+    coordinator restart, and `docker inspect`'s RestartCount at 42. Best-effort and non-fatal, the
+    same posture as registration: a source with no catalog (never provisioned, or already gone)
+    just no-ops (``DROP CATALOG IF EXISTS``, core/catalog.py's own `drop_catalog`)."""
+    try:
+        state.federation_engine.drop_source(
+            source_id, catalog_name=state.source_catalogs.get(source_id)
+        )
+    except Exception as _cat_err:
+        logging.getLogger(__name__).warning(
+            "engine source deprovisioning for %r failed: %s", source_id, _cat_err
         )
 
 

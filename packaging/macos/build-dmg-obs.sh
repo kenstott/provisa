@@ -11,7 +11,11 @@ DMG_NAME="Provisa-Obs.dmg"
 DMG_PATH="${OUT_DIR}/${DMG_NAME}"
 
 OBS_IMAGES=(
-  "minio/minio:latest"
+  # Docker Hub's minio/minio repo now denies anonymous pulls ("pull access denied ... may
+  # require 'docker login'") — verified live, and CI's "UI e2e (Trino lane)" has failed on this
+  # exact error since at least 2026-09-12. quay.io/minio/minio is MinIO's own current public
+  # distribution (verified pullable).
+  "quay.io/minio/minio:latest"
   "ghcr.io/smithclay/otlp2parquet:latest"
   "otel/opentelemetry-collector-contrib:0.99.0"
   "prom/prometheus:v2.51.2"

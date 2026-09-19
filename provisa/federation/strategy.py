@@ -108,6 +108,36 @@ _MATERIALIZE_ONLY = frozenset(
         # the materialization store like any other produced dataset.
         "soda",
         "great_expectations",
+        # REQ-1730: sqlite/firebird/airport are DuckDB-ATTACH-only (no Trino/pg connector exists for
+        # any of them) — before this, an engine with no connector raised UnreachableSource outright
+        # rather than falling back to landing, the ONLY of Provisa's DIRECT/FETCH-shaped source
+        # types this was true for. Each now has a working row-fetch wired in
+        # events/source_loader.py's build_adapter_loaders (sqlite: stdlib sqlite3; firebird/airport:
+        # a scratch DuckDB connection ATTACHed via their own community extension).
+        "sqlite",
+        "firebird",
+        "airport",
+        # REQ-1730: pinot/druid/hive_s3 have real Trino ATTACH connectors
+        # (TrinoPinotConnector/TrinoDruidConnector/TrinoHiveS3Connector) but no DuckDB driver at
+        # all — same "no connector means UnreachableSource" gap sqlite/firebird/airport closed
+        # above, just for a type Trino DOES attach live (so `engine_attaches` correctly stays
+        # False only for the engines that actually lack one). Each has a working row-fetch wired
+        # in events/source_loader.py's build_adapter_loaders (pinot/druid: the broker's own
+        # SQL-over-HTTP query API; hive_s3: a direct S3 Parquet read by Hive's own conventional
+        # table-directory layout — see provisa.hive.fetch's own module doc for why this is a
+        # documented narrowing, not a full Hive Metastore reader).
+        #
+        # Plain `hive` (Hadoop-local storage, not S3) is DELIBERATELY NOT here: its warehouse
+        # lives in a Docker named volume shared only between the metastore and Trino containers
+        # (docker-compose.core.yml's `hive_warehouse`), with no host-reachable path for a native
+        # DuckDB-side process to read it directly, and no Hive Metastore Thrift client exists
+        # anywhere in this codebase's dependencies to resolve a real table location generically
+        # either way. Genuinely un-reachable from DuckDB today, not a missed wiring step — adding
+        # it here without a working loader would trade a clean UnreachableSource for a confusing
+        # "catalog not found" once query execution actually tried to read it.
+        "pinot",
+        "druid",
+        "hive_s3",
     }
 )
 

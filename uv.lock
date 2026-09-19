@@ -3203,6 +3203,7 @@ dependencies = [
     { name = "snowflake-connector-python", extra = ["pandas"] },
     { name = "snowflake-sqlalchemy" },
     { name = "sqlalchemy" },
+    { name = "sqlalchemy-redshift" },
     { name = "sqlglot" },
     { name = "strawberry-graphql", extra = ["fastapi"] },
     { name = "trino" },
@@ -3440,6 +3441,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2" },
     { name = "sqlalchemy-hana", marker = "extra == 'all-drivers'" },
     { name = "sqlalchemy-hana", marker = "extra == 'saphana'" },
+    { name = "sqlalchemy-redshift" },
     { name = "sqlglot" },
     { name = "strawberry-graphql", extras = ["fastapi"] },
     { name = "syrupy", marker = "extra == 'dev'" },
@@ -4486,6 +4488,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f1/3c/b940cdbb8aadae31666aab6913c3cf70b8099a4cf9cb9d8a299b128e9c9d/sqlalchemy_hana-4.6.1.tar.gz", hash = "sha256:b79ef522562e18b616e47d3bed56032c3d26a6f46ff2b03432268a265d5bb657", size = 46826, upload-time = "2026-07-17T11:07:50.916Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/67/6d/6066815a6ebc9dff9daf2da00e2e109be738ac4a2c7446c07c8c263e7d80/sqlalchemy_hana-4.6.1-py3-none-any.whl", hash = "sha256:1edeab5d389be8b583aacc44eaee7b01a021e17b2597c0adfc249e427b060a84", size = 30666, upload-time = "2026-07-17T11:07:49.583Z" },
+]
+
+[[package]]
+name = "sqlalchemy-redshift"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/78/0d/d5e7dd863b6f7a445cd7c929373e71e71c819f95e56ab8ea3ed4776b2f69/sqlalchemy_redshift-1.0.0.tar.gz", hash = "sha256:882964d42184604ef653ab770501e942e7f9296b537d3b138551f609d1c52860", size = 56060, upload-time = "2026-04-28T00:31:25.922Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/2d/1206bc07d7333624694576366bb158a66e314755b10439d634c2ceea4484/sqlalchemy_redshift-1.0.0-py3-none-any.whl", hash = "sha256:8b3a946401148b9443eb623f84a64bb30fa99ddc873c17d6a9e70cc0e5ea8dd1", size = 39103, upload-time = "2026-04-28T00:31:24.491Z" },
 ]
 
 [[package]]

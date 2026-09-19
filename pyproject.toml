@@ -68,6 +68,7 @@ dependencies = [
     # host (GitPython shells out) and no native build (pygit2 needs libgit2), which REQ-294's
     # airgap-capable distribution cannot carry a compiler for.
     "psycopg2-binary",
+    "sqlalchemy-redshift",  # REQ-1730: redshift+psycopg2 dialect — generic-RDB land driver
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
     "opentelemetry-exporter-otlp-proto-http",

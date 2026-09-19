@@ -916,7 +916,11 @@ services:
       start_period: 60s
   minio:
     restart: unless-stopped
-    image: minio/minio:latest
+    # Docker Hub's minio/minio repo now denies anonymous pulls ("pull access denied ... may
+    # require 'docker login'") — verified live, and CI's "UI e2e (Trino lane)" has failed on this
+    # exact error since at least 2026-09-12. quay.io/minio/minio is MinIO's own current public
+    # distribution (verified pullable); same for minio/mc below.
+    image: quay.io/minio/minio:latest
     # Published, but only on the VPC address: the engine pods run outside this VM and read
     # the OTel Iceberg tables straight from here, so the port has to leave the compose
     # network. Binding to the node's internal IP rather than 0.0.0.0 keeps it off the
@@ -942,7 +946,7 @@ services:
       retries: 30
       start_period: 60s
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     depends_on:
       minio:
         condition: service_healthy

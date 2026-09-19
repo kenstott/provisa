@@ -60857,57 +60857,71 @@
     provisa-test-473, since a broken stateful-IP config reproduces exactly the failure this
     requirement exists to prevent.
 - id: REQ-1780
-  status: in_progress
+  status: in-progress
   since: 2026-09
   group: "4. Source Connectors"
   category: Feature
   priority: SHOULD
   type: behavioral
   description: >-
-    Kaggle is a download-then-materialize source, following the existing openapi/graphql_remote
-    pattern: Mechanism.FETCH, TrinoKaggleConnector subclasses TrinoPgBackedConnector, rows land
-    into Postgres via land_replace only (full snapshot; Kaggle gives no CDC/watermark signal, so
-    land_append/apply_cdc are never implemented for this source). Kaggle has no live query API —
-    it is a file-download platform (CSV/JSON/SQLite/Parquet bundles via REST v1), so it cannot be
-    ATTACHed or SCANned in place by any engine.
+    (Amended 2026-09-19, FINAL DESIGN — no bespoke Connector/SourceType:) Kaggle is not a live
+    query engine and not its own federation SourceType. A dataset bundle is downloaded and
+    unzipped server-side (provisa/kaggle/downloader.py), its CSV/Parquet members discovered via
+    the EXISTING provisa/file_source/crawler.py, and each file registers as a plain csv/parquet
+    Source, ATTACHed live by the existing TrinoCsvConnector/TrinoParquetConnector — zero changes
+    to federation/trino_connectors.py, strategy.py, source_loader.py, app_wiring.py,
+    source_adapters/registry.py, or core/models.py. A dataset bundle containing a .sqlite/.db
+    file is rejected whole (UnsupportedKaggleDataset) — v1 scope is CSV/Parquet only.
+    [SUPERSEDED by this amendment: the original TrinoKaggleConnector/Mechanism.FETCH/land_replace
+    design below was reverted before implementation — never built.]
   use_case: >-
-    An operator wants to federate a public or private Kaggle dataset (surveys, competition data,
-    reference tables) alongside their other sources without hand-downloading and loading it.
+    An operator wants to federate a public Kaggle dataset (surveys, competition data, reference
+    tables) alongside their other sources without hand-downloading and loading it.
   code:
   - provisa/kaggle/client.py
-  - provisa/kaggle/executor.py
-  - provisa/kaggle/source.py
-  - provisa/federation/trino_connectors.py
-  - provisa/source_adapters/registry.py
-  - provisa/core/models.py
+  - provisa/kaggle/downloader.py
+  - provisa/file_source/crawler.py
   tests:
   - tests/unit/test_kaggle_client.py
+  - provisa-ui/e2e/kaggle-source.spec.ts
+  scenario: |
+    Given a public Kaggle dataset reference (owner/ref)
+    When an admin selects it via the Kaggle source form
+    Then its CSV/Parquet files are downloaded, staged locally, and each registers as a plain
+    csv/parquet Source that Trino/DuckDB ATTACHes live, with no Kaggle-specific federation code
 - id: REQ-1781
-  status: in_progress
+  status: in-progress
   since: 2026-09
   group: "4. Source Connectors"
   category: Feature
   priority: SHOULD
   type: behavioral
   description: >-
-    Source-level config for a kaggle source is one Kaggle dataset bundle (owner/ref). Table-level
-    config is one file within that bundle. A bundle's files carry no declared relational metadata,
-    so each file discovered via datasets/view/{owner}/{ref} becomes an independent Provisa table.
-    EXCEPTION: when the bundle is itself a single SQLite file, that file has real internal
-    multi-table schema (FKs included) — its internal tables map 1:1 to Provisa tables instead of
-    treating the whole file as one opaque table. Table-level file/internal-table selection is
-    stored in Table.query_template (reusing the free-text per-type field neo4j already uses for
-    its own per-type meaning — no new column, per V1's no-migrations rule).
+    (Amended 2026-09-19, FINAL DESIGN:) Source-level config for a Kaggle source is one Kaggle
+    dataset bundle (owner/ref). Table-level config is one file within that bundle. A bundle's
+    files carry no declared relational metadata, so each CSV/Parquet file discovered via
+    datasets/list/{owner}/{ref} (NOT datasets/view, which always returns an empty file list —
+    verified live) becomes an independent Provisa csv/parquet Source. A bundle containing a
+    .sqlite/.db file is rejected whole by provisa/kaggle/downloader.py's stage_dataset
+    (UnsupportedKaggleDataset) — v1 scope cut, not implemented.
+    [SUPERSEDED by this amendment: the original "SQLite-bundle maps to internal Provisa tables"
+    exception below was never built — scope-cut to CSV/Parquet only before implementation.]
   use_case: >-
     A multi-file Kaggle dataset (e.g. orders.csv + customers.csv) registers as multiple queryable
-    tables; a single-file SQLite Kaggle dataset registers its real internal tables, not one blob.
+    csv Sources, one per file.
   code:
-  - provisa/kaggle/source.py
-  - provisa/kaggle/executor.py
+  - provisa/kaggle/downloader.py
+  - provisa/kaggle/client.py
   tests:
   - tests/unit/test_kaggle_client.py
+  - provisa-ui/e2e/kaggle-source.spec.ts
+  scenario: |
+    Given a Kaggle dataset bundle with 3 CSV files
+    When it is staged and registered
+    Then 3 independent csv Sources are created, one per file, each queryable and verified live
+    against real landed rows (sudalairajkumar/covid19-in-india, 3/3 e2e-verified)
 - id: REQ-1782
-  status: in_progress
+  status: in-progress
   since: 2026-09
   group: "4. Source Connectors"
   category: Feature
@@ -60915,19 +60929,27 @@
   type: behavioral
   description: >-
     A Kaggle source's token is resolved via provisa/core/secrets.py resolve_secrets
-    (${env:KAGGLE_API_TOKEN} token pattern in the source's password field), never a raw
-    os.environ read. Auth against the Kaggle v1 API is Authorization: Bearer {token} (verified
-    live against https://www.kaggle.com/api/v1/datasets/list, HTTP 200 with real dataset JSON).
+    (${env:KAGGLE_API_TOKEN} token pattern), never a raw os.environ read. Auth against the
+    Kaggle v1 API is Authorization: Bearer {token} (verified live against
+    https://www.kaggle.com/api/v1/datasets/list, HTTP 200 with real dataset JSON).
+    (Amended 2026-09-19, TOKEN VALIDATION ENDPOINT CORRECTED:) datasets/list returns HTTP 200 for
+    ANY token including garbage or a missing Authorization header — it cannot validate a token.
+    Token validation instead uses POST /datasets/create/new with an empty body (401 on bad auth;
+    a harmless payload-validation error on good auth, nothing ever created) — verified live.
   use_case: >-
     Kaggle credentials follow the same secrets-provider indirection every other source's
-    credentials do, so they are never hardcoded or read straight from process environment inside
-    the connector.
+    credentials do, so they are never hardcoded or read straight from process environment.
   code:
-  - provisa/kaggle/executor.py
+  - provisa/kaggle/client.py
   tests:
   - tests/unit/test_kaggle_client.py
+  scenario: |
+    Given an invalid or missing Kaggle token
+    When the form's token-validate step calls kaggleTokenValid
+    Then POST /datasets/create/new returns 401 and the picker step stays locked; a valid token
+    unlocks it (both paths e2e-verified live)
 - id: REQ-1783
-  status: in_progress
+  status: in-progress
   since: 2026-09
   group: "4. Source Connectors"
   category: Subscriptions
@@ -60937,12 +60959,14 @@
     Kaggle registers under the admin UI's "Subscriptions" source category
     (provisa-ui/src/pages/sources/constants.ts SOURCE_TYPES). Its config form is two sequential
     steps rather than a flat form, because Kaggle's dataset-search endpoint itself requires auth:
-    (1) token entry, validated live with a lightweight datasets/list?page=1&pageSize=1 call before
-    unlocking step 2, with a clear error on an invalid token; (2) a searchable (search-as-you-type)
-    dataset picker enabled only after step 1 succeeds, showing name + description per result,
-    backed by a NEW GraphQL query wrapping Kaggle's datasets/list with a search query param — the
+    (1) token entry, validated live via kaggleTokenValid before unlocking step 2, with a clear
+    error on an invalid token; (2) a searchable (search-as-you-type) dataset picker enabled only
+    after step 1 succeeds, showing name + description per result, backed by the kaggleDatasets
+    GraphQL query wrapping Kaggle's datasets/list with a search query param — the
     fixed-schema-picker pattern (available_schemas/available_tables) does not fit Kaggle's live
-    full-catalog search and is not reused for it.
+    full-catalog search and is not reused for it. On select, KaggleFormSection.tsx stages the
+    dataset (stageKaggleDataset mutation) then registers each returned file via the EXISTING
+    useCreateSource/useRegisterTable hooks — no new bulk-registration mutation.
   use_case: >-
     An operator adding a Kaggle source cannot search datasets before entering a valid token
     (Kaggle's own search endpoint requires it), so the form must gate the picker step on live
@@ -60950,12 +60974,21 @@
   implementation_scratchpad: >-
     (Amended 2026-09-19: on re-editing an existing Kaggle source whose token is no longer valid,
     the picker must show a "token invalid, re-enter to browse" state, not silently fail or render
-    a stale/empty list — the token-gate sequencing applies on edit, not only on first create.)
+    a stale/empty list — the token-gate sequencing applies on edit, not only on first create;
+    e2e-verified.)
   code:
   - provisa-ui/src/pages/sources/constants.ts
+  - provisa-ui/src/pages/sources/KaggleFormSection.tsx
   - provisa/api/admin/schema_query.py
+  - provisa/api/admin/schema_mutation.py
   tests:
   - provisa-ui/e2e/kaggle-source.spec.ts
+  scenario: |
+    Given a Kaggle source form with no token entered
+    When the admin has not yet validated a token
+    Then the dataset picker is absent; after live token validation it appears, search returns
+    real results, and re-entering an invalid token after a prior valid one shows a clear error
+    rather than a stale picker (both cases e2e-verified live)
 - id: REQ-1784
   status: accepted
   target: "2026-Q4"

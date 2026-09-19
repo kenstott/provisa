@@ -356,6 +356,87 @@ async def _call_discover(
                 error=str(e),
             )
 
+    if source_type == "pinot":
+        # REQ-1730: a table hint (required) plus a live query against the broker — see
+        # provisa.pinot.fetch's own module doc for the controller-vs-broker address split.
+        from provisa.pinot.fetch import PinotConnection, table_columns
+
+        table = hints.table
+        if not table:
+            raise ApiError(
+                400,
+                "discovery.pinot_table_hint_required",
+                "Pinot discovery requires a 'table' hint.",
+            )
+        try:
+            conn = PinotConnection.build(
+                row.get("host"),
+                row.get("port"),
+                (row.get("federation_hints") or {}).get("pinot_broker_url"),
+            )
+            columns = table_columns(conn, table)
+        except Exception as e:
+            raise ApiError(
+                502,
+                "discovery.pinot_metadata_failed",
+                f"Failed to read Pinot schema for table {table!r}: {e}",
+                table=table,
+                error=str(e),
+            )
+        return adapter.discover_schema(columns)
+
+    if source_type == "druid":
+        # REQ-1730: a table hint (required) plus a live INFORMATION_SCHEMA.COLUMNS query — see
+        # provisa.druid.fetch's own module doc.
+        from provisa.druid.fetch import DruidConnection, table_columns
+
+        table = hints.table
+        if not table:
+            raise ApiError(
+                400,
+                "discovery.druid_table_hint_required",
+                "Druid discovery requires a 'table' hint.",
+            )
+        try:
+            conn = DruidConnection.build(row.get("host"), row.get("port"))
+            columns = table_columns(conn, table)
+        except Exception as e:
+            raise ApiError(
+                502,
+                "discovery.druid_metadata_failed",
+                f"Failed to read Druid schema for table {table!r}: {e}",
+                table=table,
+                error=str(e),
+            )
+        return adapter.discover_schema(columns)
+
+    if source_type == "hive_s3":
+        # REQ-1730: schema + table hints (required) plus a live DESCRIBE over read_parquet — see
+        # provisa.hive.fetch's own module doc.
+        from provisa.hive.fetch import HiveS3Connection, table_columns
+
+        schema, table = hints.schema_name, hints.table
+        if not schema or not table:
+            raise ApiError(
+                400,
+                "discovery.hive_s3_hints_required",
+                "hive_s3 discovery requires 'schema_name' and 'table' hints.",
+            )
+        try:
+            mapping = row.get("mapping") or {}
+            conn = HiveS3Connection.build(row.get("database"), mapping)
+            columns = table_columns(conn, schema, table)
+        except Exception as e:
+            raise ApiError(
+                502,
+                "discovery.hive_s3_metadata_failed",
+                f"Failed to read hive_s3 schema for {schema}.{table}: {e}",
+                schema=schema,
+                table=table,
+                error=str(e),
+            )
+        return adapter.discover_schema(columns)
+
     if source_type == "kafka":
         # REQ-1767: wires provisa.kafka.schema_registry's SchemaRegistryClient (REQ-116/147/150,
         # previously built but with zero callers anywhere) into the same discover/edit/register

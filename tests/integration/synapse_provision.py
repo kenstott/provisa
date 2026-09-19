@@ -249,18 +249,12 @@ def _teardown(resource_group: str) -> None:
     print(f"== teardown done: {resource_group} ==", flush=True)
 
 
-@contextmanager
-def synapse_lane():
-    """Yield ``(sql_server, database, adls_url)``, destroying every resource on exit.
-
-    A pre-set ``SYNAPSE_SQL_SERVER`` pins a standing workspace: nothing is created, so nothing is
-    deleted either -- this must never delete a workspace it did not create.
-    """
-    pinned = os.environ.get("SYNAPSE_SQL_SERVER")
-    if pinned:
-        yield pinned, os.environ["SYNAPSE_DATABASE"], os.environ["SYNAPSE_ADLS_URL"]
-        return
-
+def _provision() -> tuple[str, str, str, str]:
+    """Create a whole stamped lane and return ``(resource_group, sql_server, database,
+    adls_url)``. Split out of ``synapse_lane`` so a caller outside a single pytest generator's
+    lifetime -- ``scripts/synapse_e2e.py``'s CLI bridge, mirroring ``redshift_e2e.py``'s own split
+    of ``redshift_cluster.py`` -- can provision in one process and tear down in another, persisting
+    only ``resource_group`` (the one thing ``_teardown`` needs) to a state file in between."""
     stamp = datetime.now(timezone.utc).strftime("%y%m%d%H%M%S")
     resource_group = f"provisa-syn-e2e-{stamp}"
     workspace = f"provisa-syn-e2e-{stamp}"
@@ -466,6 +460,29 @@ def synapse_lane():
         _create_database(sql_server)
         _wait_for_openrowset(sql_server, adls_url)
         print(f"== synapse lane ready: {sql_server} ==", flush=True)
-        yield sql_server, _DATABASE, adls_url
+    except Exception:
+        # A partial-provisioning failure must not leak -- there is no caller yet to hold a
+        # resource_group for a later `down` (the CLI bridge only learns it from THIS call's
+        # return, which an exception never produces), so this is the only place that can free it.
+        _teardown(resource_group)
+        raise
+    return resource_group, sql_server, _DATABASE, adls_url
+
+
+@contextmanager
+def synapse_lane():
+    """Yield ``(sql_server, database, adls_url)``, destroying every resource on exit.
+
+    A pre-set ``SYNAPSE_SQL_SERVER`` pins a standing workspace: nothing is created, so nothing is
+    deleted either -- this must never delete a workspace it did not create.
+    """
+    pinned = os.environ.get("SYNAPSE_SQL_SERVER")
+    if pinned:
+        yield pinned, os.environ["SYNAPSE_DATABASE"], os.environ["SYNAPSE_ADLS_URL"]
+        return
+
+    resource_group, sql_server, database, adls_url = _provision()
+    try:
+        yield sql_server, database, adls_url
     finally:
         _teardown(resource_group)

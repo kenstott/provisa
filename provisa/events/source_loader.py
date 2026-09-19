@@ -59,6 +59,16 @@ _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
         # was ever registered against a DuckDB backend and then queried under Trino.
         "neo4j",
         "sparql",
+        # REQ-1730: same gap as neo4j/sparql above — firebird/airport rows are produced by a
+        # scratch DuckDB connection ATTACHed via their own community extension
+        # (make_firebird_loader/make_airport_loader), not scanned from a relation Trino can reach
+        # directly (no Trino connector for either type). Missing from this set left
+        # TrinoBackend.landing_target mangling their landing name while the query compiler expects
+        # the raw registered address — reproduced live: SCHEMA_NOT_FOUND for the registered schema
+        # after an engine-swap replay onto Trino, because the landed table was created under the
+        # mangled name instead.
+        "firebird",
+        "airport",
     }
 )
 
@@ -190,6 +200,132 @@ def make_sqlite_loader() -> AdapterLoader:
         select = ", ".join(f'"{c}"' for c in columns)
         return await asyncio.to_thread(
             connector_sqlite.execute_sync, path, f'SELECT {select} FROM "{table.table_name}"'
+        )
+
+    return _load
+
+
+def _duckdb_extension_scratch_read(connector_details: dict, select_sql: str) -> list[dict]:
+    """Read rows through a THROWAWAY in-memory DuckDB connection ATTACHed via a community
+    extension's own ``details()`` DDL (REQ-1730) — for a source type DuckDB reaches only by
+    extension (firebird, airport) and no other engine reaches at all, this is the only available
+    reader: there is no separate Python client library for either wire protocol in this codebase
+    (unlike sqlite's stdlib ``sqlite3``). Reusing the connector's own ``details()`` output (rather
+    than re-deriving the ATTACH DSN here) means this can never drift from what the live federation
+    engine actually runs. One-shot: opened, queried, closed — never shared with the app's own
+    engine connection, so this can run regardless of which engine is currently active."""
+    import duckdb
+
+    conn = duckdb.connect(":memory:")
+    try:
+        install_from_community = connector_details.get("install_from_community", True)
+        extension = connector_details["extension"]
+        conn.execute(
+            f"INSTALL {extension} FROM community"
+            if install_from_community
+            else f"INSTALL {extension}"
+        )
+        conn.execute(f"LOAD {extension}")
+        conn.execute(connector_details["attach"])
+        cursor = conn.execute(select_sql)
+        columns = [d[0] for d in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def make_firebird_loader() -> AdapterLoader:
+    """Build the firebird row-fetch (REQ-1730): no engine other than DuckDB reaches firebird at
+    all (no Trino/pg connector exists), so landing is the ONLY way any other engine ever sees a
+    firebird source's rows — read through a scratch DuckDB connection ATTACHed via the same
+    `firebird` community extension DuckDBFirebirdConnector uses at query time."""
+    from provisa.federation.connector_duckdb import DuckDBFirebirdConnector
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not columns:
+            return []
+        connector = DuckDBFirebirdConnector()
+        details = connector.details(source)
+        select = ", ".join(f'"{c}"' for c in columns)
+        sql = f'SELECT {select} FROM "{details["raw_alias"]}"."{table.schema_name}"."{table.table_name}"'
+        details = {
+            **details,
+            "extension": connector.extension,
+            "install_from_community": connector.install_from_community,
+        }
+        return await asyncio.to_thread(_duckdb_extension_scratch_read, details, sql)
+
+    return _load
+
+
+def make_airport_loader() -> AdapterLoader:
+    """Build the airport row-fetch (REQ-1730): same rationale as firebird's own loader above — no
+    engine but DuckDB reaches an Arrow Flight (airport) source live, so landing through a scratch
+    DuckDB connection ATTACHed via the `airport` extension is the only reader available to any
+    other engine."""
+    from provisa.federation.connector_duckdb import DuckDBAirportConnector
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not columns:
+            return []
+        connector = DuckDBAirportConnector()
+        details = connector.details(source)
+        select = ", ".join(f'"{c}"' for c in columns)
+        sql = f'SELECT {select} FROM "{details["raw_alias"]}"."{table.schema_name}"."{table.table_name}"'
+        details = {
+            **details,
+            "extension": connector.extension,
+            "install_from_community": connector.install_from_community,
+        }
+        return await asyncio.to_thread(_duckdb_extension_scratch_read, details, sql)
+
+    return _load
+
+
+def make_pinot_loader() -> AdapterLoader:
+    """Build the Pinot row-fetch (REQ-1730): a live SQL query over the broker's own query/sql
+    endpoint, the same reader `native_tables`/discover-schema use for the picker. Wired only on an
+    engine with no live Pinot connector (see build_adapter_loaders' `engine_attaches` gate) —
+    Trino keeps scanning through TrinoPinotConnector."""
+    from provisa.pinot.fetch import PinotConnection, fetch_rows
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        hints = getattr(source, "federation_hints", None) or {}
+        conn = PinotConnection.build(source.host, source.port, hints.get("pinot_broker_url"))
+        return await asyncio.to_thread(fetch_rows, conn, table.table_name, columns)
+
+    return _load
+
+
+def make_druid_loader() -> AdapterLoader:
+    """Build the Druid row-fetch (REQ-1730): a live SQL query over the broker's own /druid/v2/sql
+    endpoint, the same reader `native_tables`/discover-schema use for the picker. Wired only on an
+    engine with no live Druid connector — Trino keeps scanning through TrinoDruidConnector."""
+    from provisa.druid.fetch import DruidConnection, fetch_rows
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        conn = DruidConnection.build(source.host, source.port)
+        return await asyncio.to_thread(fetch_rows, conn, table.table_name, columns)
+
+    return _load
+
+
+def make_hive_s3_loader() -> AdapterLoader:
+    """Build the hive_s3 row-fetch (REQ-1730): a direct S3 Parquet read by Hive's own
+    conventional table-directory layout — see provisa.hive.fetch's own module doc for why this is
+    a documented narrowing, not a full Hive Metastore reader. Wired only on an engine with no live
+    hive_s3 connector — Trino keeps scanning through TrinoHiveS3Connector."""
+    from provisa.hive.fetch import HiveS3Connection, fetch_rows
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        conn = HiveS3Connection.build(getattr(source, "database", None), source.mapping or {})
+        return await asyncio.to_thread(
+            fetch_rows, conn, table.schema_name, table.table_name, columns
         )
 
     return _load

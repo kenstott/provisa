@@ -37,6 +37,9 @@ _ADAPTER_MAP: dict[str, str] = {
     "csv": "provisa.file_source.source",
     "parquet": "provisa.file_source.source",
     "kafka": "provisa.kafka.source",  # REQ-1767
+    "pinot": "provisa.pinot.source",  # REQ-1730
+    "druid": "provisa.druid.source",  # REQ-1730
+    "hive_s3": "provisa.hive.source",  # REQ-1730
 }
 
 _loaded: dict[str, ModuleType] = {}

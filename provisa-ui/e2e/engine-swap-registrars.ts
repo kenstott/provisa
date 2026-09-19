@@ -1666,7 +1666,11 @@ export async function registerExasol(page: Page, fingerprint: () => string): Pro
   await page.getByLabel(/^Username/).fill("sys");
   await page.getByLabel(/^Password/).fill("exasol");
   await page.getByLabel(/^Database/).fill("PROVISA");
-  await page.getByLabel(/^Authentication/).selectOption("tls_fingerprint");
+  // Mantine's Select renders a readonly <input> + listbox popup, never a native <select> —
+  // .selectOption() doesn't apply (same click-then-pick pattern registerSnowflake's identical
+  // "Authentication" field already uses).
+  await page.getByRole("textbox", { name: "Authentication" }).click();
+  await page.getByRole("option", { name: "TLS Fingerprint Pin", exact: true }).click();
   await page.getByLabel(/TLS Fingerprint/).fill(fingerprint());
   await submitSourceAndExpectListed(page, sourceId);
 

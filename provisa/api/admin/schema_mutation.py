@@ -83,6 +83,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _analyze_source_on_engine,
     _configure_govdata_env,
     _fire_catalog_indexing,
+    _drop_source_on_engine,
     _prime_govdata_cache,
     _queue_creation_request,
     _rebuild_relationship_input,
@@ -760,6 +761,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # on every call; create_source alone never did, because a brand-new source has no
         # registered tables yet to rebuild for. An upserted one can.
         await _rebuild_schemas()
+        # Same gap update_table's own reconcile call (below, this file) already closed: a
+        # materialize-only table replayed onto a new engine here has an EXISTING registered_tables
+        # row (from its original registration) but no landed replica on THIS engine yet — nothing
+        # else creates it. Reproduced live: airport/firebird (is_adapter_fetched's raw-schema
+        # landing_target, backend.py) SCHEMA_NOT_FOUND on Trino after a swap replay, because
+        # reconcile_landed_tables() never ran for this engine's process against the
+        # just-reprovisioned source.
+        try:
+            await state.federation_engine.reconcile_landed_tables()
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Landed-table reconcile failed after create_source", exc_info=True
+            )
 
         return MutationResult(
             success=True,
@@ -1008,6 +1022,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             assert _existing is not None  # delete reported a row, so get found one
             await forget_source_password(id, _existing["password_ref"])
             state.graphql_remote_sources.pop(id, None)
+            # REQ-1730: was never called here at all — see _drop_source_on_engine's own comment for
+            # the exact orphaned-catalog accumulation this closes.
+            _drop_source_on_engine(state, id)
+            state.source_catalogs.pop(id, None)
             await _rebuild_schemas()
             return MutationResult(
                 success=True,

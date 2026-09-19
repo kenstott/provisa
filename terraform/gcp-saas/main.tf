@@ -597,6 +597,19 @@ resource "google_compute_instance" "front_door" {
   tags         = ["provisa-saas-node"]
   labels       = merge(local.all_labels, { role = "front-door" })
 
+  # REQ-1779: this is the sole entry point for cloud.provisa.dev — if it is unreachable, the
+  # wake mechanism that would bring the coordinator back is unreachable too. Pinned explicitly
+  # (rather than left as GCE's implicit default for a non-Spot instance) so drift here is
+  # visible in a plan instead of silent. Recovers the instance automatically after a host
+  # crash or GCP-initiated maintenance; does not cover a wedged-but-technically-running VM —
+  # that gap needs health-check-triggered auto-healing (a managed-instance-group conversion,
+  # staged separately per REQ-1779's scratchpad, since it also needs a stateful external IP and
+  # the Terraform provider has open issues in exactly that feature).
+  scheduling {
+    automatic_restart   = true
+    on_host_maintenance = "MIGRATE"
+  }
+
   boot_disk {
     initialize_params {
       image = "ubuntu-os-cloud/ubuntu-2204-lts"

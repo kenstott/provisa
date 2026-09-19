@@ -285,13 +285,18 @@ class FederationEngine:  # REQ-840
         strategy). After this, ``connectors`` is the complete reach and the source-creation dropdown is
         a PURE PROJECTION of it (no parallel-map union). A live-attach connector always wins — a land
         connector is added only where the engine has none for that type. Idempotent."""
-        from provisa.executor.drivers.registry import _DRIVER_FACTORIES
+        from provisa.executor.drivers.registry import available_drivers
         from provisa.source_adapters.registry import _ADAPTER_MAP
         from provisa.federation.connector import WarehouseNativeConnector
         from provisa.federation.connector_base import Mechanism
         from provisa.federation.strategy import _CONNECTOR_PGWIRE_REPLICA, _MATERIALIZE_ONLY
 
-        direct = frozenset(_DRIVER_FACTORIES)
+        # REQ-1730: was `frozenset(_DRIVER_FACTORIES)` alone — silently excluded every type reachable
+        # only through registry.py's OWN `_SQLALCHEMY_FALLBACK` (saphana, and now redshift): each had
+        # a genuinely working `create_driver()` path but complete_reach() never saw it, so no engine
+        # other than the type's own native ATTACH (or none at all) ever got a land-reach connector for
+        # them. `available_drivers()` is the union of both registries, dependency-checked.
+        direct = frozenset(available_drivers())
         fetch = frozenset(_ADAPTER_MAP) | _MATERIALIZE_ONLY | _CONNECTOR_PGWIRE_REPLICA
         for source_type in sorted(direct | fetch):
             if source_type in self.connectors:

@@ -143,11 +143,16 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
     sharepoint and splunk on an engine with NO connector for them are landed through the
     connector's bundled Calcite pgwire server (REQ-954)."""
     from provisa.events.source_loader import (
+        make_airport_loader,
         make_cassandra_loader,
         make_dq_loader,
+        make_druid_loader,
         make_elasticsearch_loader,
+        make_firebird_loader,
         make_graphql_remote_loader,
+        make_hive_s3_loader,
         make_openapi_loader,
+        make_pinot_loader,
         make_prometheus_loader,
         make_redis_loader,
         make_rss_loader,
@@ -174,6 +179,11 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
     loaders["soda"] = dq_loader
     loaders["great_expectations"] = dq_loader
     loaders["sqlite"] = make_sqlite_loader()
+    # REQ-1730: no engine but DuckDB reaches firebird/airport at all (no Trino/pg connector for
+    # either) — same unconditional shape as sqlite above, not gated by engine_attaches (there is
+    # nothing for any OTHER engine to attach).
+    loaders["firebird"] = make_firebird_loader()
+    loaders["airport"] = make_airport_loader()
     # REQ-1745: rss has no engine connector on ANY engine (it's poll-only, _MATERIALIZE_ONLY with
     # no ATTACH/SCAN mechanism) — unconditional, matching sqlite/dq above rather than the
     # engine_attaches-gated entries below (which exist for types some engine DOES attach live).
@@ -192,6 +202,12 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
         loaders["cassandra"] = make_cassandra_loader()
     if not engine_attaches(bare_engine, "prometheus"):  # REQ-1689
         loaders["prometheus"] = make_prometheus_loader()
+    if not engine_attaches(bare_engine, "pinot"):  # REQ-1730
+        loaders["pinot"] = make_pinot_loader()
+    if not engine_attaches(bare_engine, "druid"):  # REQ-1730
+        loaders["druid"] = make_druid_loader()
+    if not engine_attaches(bare_engine, "hive_s3"):  # REQ-1730
+        loaders["hive_s3"] = make_hive_s3_loader()
     allocator = PortAllocator()
     config = getattr(state, "config", None)
     for src in getattr(config, "sources", None) or []:

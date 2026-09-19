@@ -42,6 +42,16 @@ services:
           - pinot
     ports:
       - "${PROVISA_DEMO_PINOT_CONTROLLER_PORT:-23200}:9000"
+      # REQ-1730: a host-native reader (DuckDB's own row-fetch loader, make_pinot_loader in
+      # events/source_loader.py) queries the broker's plain query/sql REST endpoint directly, over
+      # a straightforward top-level HTTP call — unlike the split-listing/inter-component lookups
+      # the module comment above describes, a client just needs TCP reachability to the broker's
+      # own listening socket, which this container-port publish provides regardless of whatever
+      # address the broker self-registered in ZooKeeper. 8000, not Pinot's docs-cited default of
+      # 8099: this QuickStart command's own bundled broker config binds it there (confirmed live
+      # via `docker logs` — "Started listener bound to [0.0.0.0:8000]" — and by exec'ing a query
+      # against it directly inside the container; 8099 has nothing listening).
+      - "${PROVISA_DEMO_PINOT_BROKER_PORT:-23201}:8000"
     environment:
       JAVA_OPTS: "-Xms256M -Xmx1G"
     healthcheck:

@@ -1467,6 +1467,74 @@ async def _prometheus_columns(source_id: str, table_name: str) -> list[Available
     ]
 
 
+async def _pinot_columns(source_id: str, table_name: str) -> list[AvailableColumnType]:
+    """REQ-1730: a live query's own ``dataSchema`` — Pinot has no separate DESCRIBE call (see
+    provisa.pinot.fetch's own module doc) — typed in the IR vocabulary, engine-independent."""
+    import asyncio as _asyncio
+
+    from provisa.api.admin.introspect import _es_source_row
+    from provisa.pinot.fetch import PinotConnection, table_columns
+
+    pool = await _get_pool()
+    async with pool.acquire() as _conn:
+        row = await _es_source_row(source_id, cast("Connection", _conn))
+    if row is None:
+        return []
+    conn = PinotConnection.build(
+        row.get("host"),
+        row.get("port"),
+        (row.get("federation_hints") or {}).get("pinot_broker_url"),
+    )
+    cols = await _asyncio.to_thread(table_columns, conn, table_name)
+    return [
+        AvailableColumnType(name=c["name"], data_type=str(c["type"]).lower(), comment=None)
+        for c in cols
+    ]
+
+
+async def _druid_columns(source_id: str, table_name: str) -> list[AvailableColumnType]:
+    """REQ-1730: Druid's own INFORMATION_SCHEMA.COLUMNS, typed in the IR vocabulary."""
+    import asyncio as _asyncio
+
+    from provisa.api.admin.introspect import _es_source_row
+    from provisa.druid.fetch import DruidConnection, table_columns
+
+    pool = await _get_pool()
+    async with pool.acquire() as _conn:
+        row = await _es_source_row(source_id, cast("Connection", _conn))
+    if row is None:
+        return []
+    conn = DruidConnection.build(row.get("host"), row.get("port"))
+    cols = await _asyncio.to_thread(table_columns, conn, table_name)
+    return [
+        AvailableColumnType(name=c["name"], data_type=str(c["type"]).lower(), comment=None)
+        for c in cols
+    ]
+
+
+async def _hive_s3_columns(
+    source_id: str, schema_name: str, table_name: str
+) -> list[AvailableColumnType]:
+    """REQ-1730: a live DESCRIBE over a direct S3 Parquet read, typed in the IR vocabulary — see
+    provisa.hive.fetch's own module doc."""
+    import asyncio as _asyncio
+
+    from provisa.api.admin.introspect import _es_source_row
+    from provisa.hive.fetch import HiveS3Connection, table_columns
+
+    pool = await _get_pool()
+    async with pool.acquire() as _conn:
+        row = await _es_source_row(source_id, cast("Connection", _conn))
+    if row is None:
+        return []
+    conn = HiveS3Connection.build(row.get("database"), row.get("mapping") or {})
+    cols = await _asyncio.to_thread(table_columns, conn, schema_name, table_name)
+    return [
+        AvailableColumnType(name=c["name"], data_type=str(c["type"]).lower(), comment=None)
+        for c in cols
+    ]
+
+
 async def _redis_columns(source_id: str, table_name: str) -> list[AvailableColumnType]:
     """REQ-1675: a mapping-DSL table's declared columns, else the key column plus the fields of the
     prefix's hashes — engine-independent."""
@@ -1580,6 +1648,12 @@ async def resolve_available_columns_metadata(
         return await _cassandra_columns(source_id, schema_name, table_name)
     if source_type == "prometheus":
         return await _prometheus_columns(source_id, table_name)
+    if source_type == "pinot":
+        return await _pinot_columns(source_id, table_name)
+    if source_type == "druid":
+        return await _druid_columns(source_id, table_name)
+    if source_type == "hive_s3":
+        return await _hive_s3_columns(source_id, schema_name, table_name)
     if source_type == "rss":
         # REQ-1745: an rss/Atom feed has no catalog to introspect at all (native_schemas/
         # native_tables give it a synthetic single "default"/<source_id> pick so the picker isn't
