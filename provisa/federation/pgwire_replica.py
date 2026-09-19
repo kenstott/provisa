@@ -97,20 +97,41 @@ def schema_name(source: Any) -> str:
 
 def _files_operand(source: Any) -> dict:
     """files → ``directory`` (local crawl) OR ``storageType`` + ``storageConfig`` (S3, AWS env vars).
-    executionEngine defaults to PARQUET. Neither a directory nor a storageType is a config error."""
+    executionEngine defaults to DUCKDB — verified live: PARQUET (the prior default) silently
+    discovered zero tables for a plain csv directory (demo/files/northwind), and TrinoFilesConnector
+    already avoids PARQUET for the same reason its own comment gives (Hadoop's
+    UserGroupInformation.getCurrentUser() throws under JDK 25's removed Security Manager). DUCKDB
+    also reproduces LINQ4J's camelCase-header → snake_case-column convention Provisa's column
+    naming relies on elsewhere (customerID -> customer_id), which PARQUET does not."""
     mapping = {k: _rs(v) if isinstance(v, str) else v for k, v in (source.mapping or {}).items()}
-    operand: dict = {"executionEngine": mapping.get("execution_engine", "PARQUET")}
+    operand: dict = {"executionEngine": mapping.get("execution_engine", "DUCKDB")}
     storage_type = mapping.get("storage_type")
     if storage_type:
         operand["storageType"] = storage_type
         operand["storageConfig"] = mapping.get("storage_config", {})
         return operand
-    directory = _rs(source.path)
-    if not directory:
+    raw_path = _rs(source.path)
+    if not raw_path:
         raise MissingConnectorConfig(
             f"files source {source.id!r}: requires 'path' (directory) or mapping.storage_type (S3)"
         )
-    operand["directory"] = directory
+    # Calcite's FileSchemaFactory ``directory`` operand is a plain directory, not a glob — verified
+    # live: a trailing ``**`` (or any wildcard) passed through literally makes Calcite look for a
+    # subdirectory actually named "**", finding nothing. The Sources form's "Path / Glob" field
+    # still accepts a glob (kept for parity with TrinoFilesConnector, which DOES glob-match), so
+    # strip any wildcard segment here the same way the pre-REQ-1690 DuckDB connector used to.
+    parts = PurePath(raw_path).parts
+    dir_parts: list[str] = []
+    for part in parts:
+        if any(c in part for c in ("*", "?", "[")):
+            break
+        dir_parts.append(part)
+    directory = str(PurePath(*dir_parts)) if dir_parts else raw_path
+    # Also verified live: a relative directory resolves against the bundled Calcite child JVM's OWN
+    # cwd (its bundle cache directory), not this process's — an unqualified "demo/files/northwind"
+    # found nothing even with the glob already stripped. Absolute-ize against this process's cwd,
+    # which is where a source's ``path`` is meant to be interpreted from everywhere else in Provisa.
+    operand["directory"] = str(Path(directory).resolve())
     return operand
 
 

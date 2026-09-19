@@ -73,9 +73,9 @@ test("file connector: add northwind source and query customers", async ({ page }
 
   await page.getByTestId("sources-id-input").fill(SOURCE_ID);
   await page.getByTestId("sources-type-select").selectOption("files");
-  await page.waitForSelector('label:has-text("Directory Glob")', { timeout: 5000 });
+  await page.waitForSelector('[data-testid="files-path-input"]', { timeout: 5000 });
 
-  await page.locator("label").filter({ hasText: /Directory Glob/ }).locator("input").fill(GLOB);
+  await page.getByTestId("files-path-input").fill(GLOB);
 
   await page.locator('.form-card button[type="submit"]').click();
 

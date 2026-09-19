@@ -387,7 +387,7 @@ export function registerFiles(): (page: Page) => Promise<Registration> {
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("files");
-    await page.getByLabel(/Directory Glob/).fill(`${runDir}/**`);
+    await page.getByTestId("files-path-input").fill(`${runDir}/**`);
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);

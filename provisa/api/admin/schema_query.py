@@ -1701,48 +1701,14 @@ async def resolve_available_columns_metadata(
             AvailableColumnType(name="ext_id", data_type="text", comment=None),
             AvailableColumnType(name="value", data_type="text", comment=None),
         ]
-    if source_type == "files":
-        # Files sources use the engine abstraction (EngineRuntime.introspect_columns) which
-        # dispatches to the bound engine's backend — DuckDB, ClickHouse, etc. — and resolves
-        # secrets on path/host/database/username/password. Callers must never reference a
-        # concrete engine type from outside provisa/federation/. (Architectural rule.)
-        pool = await _get_pool()
-        async with pool.acquire() as _fc:
-            _path_res = await _fc.execute_core(
-                select(sources.c.path).where(sources.c.id == source_id)
-            )
-            _path_row = _path_res.fetchone()
-        if _path_row is None:
-            return []
-        from types import SimpleNamespace
-
-        _src = SimpleNamespace(
-            id=source_id,
-            type=SimpleNamespace(value=source_type),
-            path=_path_row[0],  # secret templates (${env:…}) resolved by backend
-            host=None,
-            port=None,
-            database=None,
-            username=None,
-            password=None,
-            schema_name=schema_name,
-            table_name=table_name,
-        )
-        try:
-            col_dict = state.federation_engine.introspect_columns(_src, schema_name, table_name)
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "introspect_columns failed for files source %r %s.%s",
-                source_id,
-                schema_name,
-                table_name,
-                exc_info=True,
-            )
-            return []
-        return [
-            AvailableColumnType(name=name, data_type=dtype, comment=None)
-            for name, dtype in col_dict.items()
-        ]
+    # "files" had its own hand-rolled SimpleNamespace + introspect_columns call here, predating
+    # REQ-1690's conversion of DuckDBFilesConnector to _DuckDBPgwireConnector (same live ATTACH
+    # mechanism sharepoint/splunk already use). It built an incomplete synthetic Source (no
+    # mapping/federation_hints), which _files_operand now needs — verified live: raised
+    # AttributeError, silently caught, reported as "no data type could be resolved" for every
+    # column. Removed rather than patched: "files" now falls through to the same generic
+    # _source_for_introspection + introspect_columns path below that sharepoint/splunk already
+    # use correctly, instead of maintaining a second, divergent construction of the same call.
     if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
         from provisa.openapi.mapper import parse_spec
         from provisa.openapi.register import _schema_to_columns

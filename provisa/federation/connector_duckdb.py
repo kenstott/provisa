@@ -102,59 +102,6 @@ class DuckDBCsvConnector(Connector):
         }
 
 
-class DuckDBFilesConnector(Connector):
-    """Expose a files-type source (directory of CSVs) as per-table DuckDB views.
-
-    The source ``path`` is a glob such as ``demo/files/northwind/**``.  The
-    non-glob directory prefix is resolved and each ``<table_name>.csv`` file
-    is read via ``read_csv_auto``.  CSV headers are aliased to snake_case
-    (via apply_convention) so they match Provisa's registered column names.
-    """
-
-    engine = "duckdb"
-    source_type = "files"
-    mechanism = Mechanism.SCAN
-
-    def capability(self) -> Capability:
-        return Capability()
-
-    def details(self, source: "Source") -> dict:
-        import csv as _csv
-        from pathlib import Path as _Path
-
-        from provisa.compiler.naming import apply_convention as _apply_convention
-
-        glob_path: str = getattr(source, "path", None) or ""
-        table_name: str = getattr(source, "table_name", getattr(source, "id", ""))
-
-        # Strip glob metacharacters to find the base directory.
-        parts = _Path(glob_path).parts
-        dir_parts: list[str] = []
-        for p in parts:
-            if any(c in p for c in ("*", "?", "[")):
-                break
-            dir_parts.append(p)
-        directory = (
-            _Path(*dir_parts) if len(dir_parts) > 1 else _Path(dir_parts[0] if dir_parts else ".")
-        )
-        csv_path = directory / f"{table_name}.csv"
-
-        try:
-            with open(csv_path, newline="") as fh:
-                headers = next(_csv.reader(fh))
-            col_exprs = ", ".join(
-                f'"{h}" AS "{_apply_convention(h, "snake")}"'
-                if _apply_convention(h, "snake") != h
-                else f'"{h}"'
-                for h in headers
-            )
-            scan = f"SELECT {col_exprs} FROM read_csv_auto('{csv_path}')"
-        except (OSError, StopIteration):
-            scan = f"SELECT * FROM read_csv_auto('{csv_path}')"
-
-        return {"view_ddl": f"CREATE VIEW __placeholder__ AS {scan}"}
-
-
 def _s3_secret_ddl(source: "Source") -> str | None:
     """``CREATE SECRET`` DDL for an S3-compatible object store (e.g. Cloudflare R2), so DuckDB's
     httpfs client targets the real endpoint/credentials instead of defaulting to AWS S3. Returns
@@ -356,6 +303,19 @@ class DuckDBSharepointConnector(_DuckDBPgwireConnector):  # REQ-1690
 
 class DuckDBSplunkConnector(_DuckDBPgwireConnector):  # REQ-1690
     source_type = "splunk"
+
+
+class DuckDBFilesConnector(_DuckDBPgwireConnector):  # REQ-1690
+    """A hand-rolled Python ``read_csv_auto`` scanner here (hardcoded to ``<table_name>.csv``,
+    ignoring the source's actual file format) predates REQ-1690's pgwire bridge and was never
+    converted — verified live: an xlsx-only ``files`` source silently only ever matched/read csv,
+    because the extension in ``source.path`` was never consulted. ``files`` is one of
+    ``strategy.py``'s ``_CONNECTOR_PGWIRE_REPLICA`` types (with sharepoint/splunk): its only real
+    reader is the bundled Calcite ``FileSchemaFactory`` (POI-backed — csv, json, and xlsx/xls all
+    supported natively), attached live via ``_DuckDBPgwireConnector`` exactly like those two.
+    """
+
+    source_type = "files"
 
 
 class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
