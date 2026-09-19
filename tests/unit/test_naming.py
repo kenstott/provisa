@@ -175,6 +175,34 @@ class TestNamingConvention:
         assert mutation_style("apollo_graphql") == "camel"
 
 
+class TestApplyGqlName:
+    """REQ-471: apply_gql_name is the sole naming authority for GraphQL identifiers — its output
+    must always satisfy the Name grammar ([_A-Za-z][_0-9A-Za-z]*), even for a raw external name
+    apply_convention's casing alone cannot fix. Reproduced live: a health-domain CSV column header
+    verbatim as its physical name ("1844YearsDosesAdministered") crashed GraphQLEnumType's own
+    name assertion in the distinct_on enum builder, taking the whole schema down at startup."""
+
+    def test_leading_digit_gets_prefixed(self):
+        from provisa.compiler.naming import apply_gql_name
+
+        assert apply_gql_name("1844YearsDosesAdministered") == "_1844YearsDosesAdministered"
+
+    def test_invalid_characters_become_underscores(self):
+        from provisa.compiler.naming import apply_gql_name
+
+        assert apply_gql_name("Weird Column! Name") == "weird_Column__Name"
+
+    def test_empty_name_does_not_crash(self):
+        from provisa.compiler.naming import apply_gql_name
+
+        assert apply_gql_name("") == "_"
+
+    def test_already_valid_name_is_unchanged_by_sanitization(self):
+        from provisa.compiler.naming import apply_gql_name
+
+        assert apply_gql_name("order_items") == "orderItems"
+
+
 class TestJunctionFieldName:
     """REQ-1586: a junction-backed edge is named for its nomination, not its target table."""
 

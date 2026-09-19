@@ -104,7 +104,15 @@ def _files_operand(source: Any) -> dict:
     also reproduces LINQ4J's camelCase-header → snake_case-column convention Provisa's column
     naming relies on elsewhere (customerID -> customer_id), which PARQUET does not."""
     mapping = {k: _rs(v) if isinstance(v, str) else v for k, v in (source.mapping or {}).items()}
-    operand: dict = {"executionEngine": mapping.get("execution_engine", "DUCKDB")}
+    # recursive=True unconditionally, matching TrinoFilesConnector.details() (trino_connectors.py)
+    # exactly — REQ-1730 engine parity: a files source registered once must answer the same query
+    # under either engine. Without this, DuckDB's ATTACH silently stopped at the top level of the
+    # directory (Calcite's FileSchemaFactory default is non-recursive), so a source with files
+    # nested even one subdirectory deep listed fewer tables here than the same source on Trino.
+    operand: dict = {
+        "executionEngine": mapping.get("execution_engine", "DUCKDB"),
+        "recursive": True,
+    }
     storage_type = mapping.get("storage_type")
     if storage_type:
         operand["storageType"] = storage_type

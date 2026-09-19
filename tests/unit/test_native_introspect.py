@@ -430,7 +430,7 @@ async def test_native_tables_sqlite_reads_file(tmp_path):
 
 @pytest.mark.asyncio
 async def test_native_tables_sqlite_wrong_schema_returns_empty():
-    result = await native_tables("src", "sqlite", "other", _empty_pool(), None, MagicMock())
+    result = await native_tables("src", "sqlite", "other", _empty_pool(), _no_conn(), MagicMock())
     assert result == []
 
 
@@ -465,26 +465,28 @@ async def test_native_tables_files_falls_through_to_engine_seam(tmp_path):  # RE
 
 @pytest.mark.asyncio
 async def test_native_tables_neo4j_returns_empty():
-    result = await native_tables("src", "neo4j", "neo4j", _empty_pool(), None, MagicMock())
+    result = await native_tables("src", "neo4j", "neo4j", _empty_pool(), _no_conn(), MagicMock())
     assert result == []
 
 
 @pytest.mark.asyncio
 async def test_native_tables_sparql_returns_empty():
-    result = await native_tables("src", "sparql", "sparql", _empty_pool(), None, MagicMock())
+    result = await native_tables("src", "sparql", "sparql", _empty_pool(), _no_conn(), MagicMock())
     assert result == []
 
 
 @pytest.mark.asyncio
 async def test_native_tables_no_driver_returns_none():
-    result = await native_tables("src", "postgresql", "public", _empty_pool(), None, MagicMock())
+    result = await native_tables(
+        "src", "postgresql", "public", _empty_pool(), _no_conn(), MagicMock()
+    )
     assert result is None
 
 
 @pytest.mark.asyncio
 async def test_native_tables_postgresql():
     pool = _pool([("orders", "Customer orders"), ("pets", None)])
-    result = await native_tables("src", "postgresql", "public", pool, None, MagicMock())
+    result = await native_tables("src", "postgresql", "public", pool, _no_conn(), MagicMock())
     assert result is not None
     assert len(result) == 2
     assert result[0].name == "orders"
@@ -506,7 +508,7 @@ async def test_native_tables_kafka():
 
 @pytest.mark.asyncio
 async def test_native_tables_kafka_wrong_schema():
-    result = await native_tables("src", "kafka", "other", _empty_pool(), None, MagicMock())
+    result = await native_tables("src", "kafka", "other", _empty_pool(), _no_conn(), MagicMock())
     assert result == []
 
 
@@ -525,7 +527,7 @@ async def test_native_tables_openapi_filters_non_array():
 
     with patch("provisa.openapi.mapper.parse_spec", return_value=([q_array, q_single], [])):
         state.openapi_specs = {"src": {"spec": {}}}
-        result = await native_tables("src", "openapi", "openapi", _empty_pool(), None, state)
+        result = await native_tables("src", "openapi", "openapi", _empty_pool(), _no_conn(), state)
 
     assert result is not None
     assert len(result) == 2
@@ -545,7 +547,7 @@ async def test_native_tables_openapi_pagination_wrapper_included():
 
     with patch("provisa.openapi.mapper.parse_spec", return_value=([q], [])):
         state.openapi_specs = {"src": {"spec": {}}}
-        result = await native_tables("src", "openapi", "openapi", _empty_pool(), None, state)
+        result = await native_tables("src", "openapi", "openapi", _empty_pool(), _no_conn(), state)
 
     assert result is not None
     assert len(result) == 1
@@ -611,7 +613,7 @@ async def test_native_tables_grpc_streaming_only():
         ],
     }
     with patch("provisa.grpc_remote.loader.parse_proto_text", return_value=proto_dict):
-        result = await native_tables("src", "grpc", "grpc", _empty_pool(), None, state)
+        result = await native_tables("src", "grpc", "grpc", _empty_pool(), _no_conn(), state)
 
     assert result is not None
     names = [t.name for t in result]

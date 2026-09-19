@@ -312,8 +312,25 @@ def active_gql_convention() -> str:  # REQ-471
     return _gql_convention
 
 
+_GQL_NAME_RE = re.compile(r"^[_A-Za-z][_0-9A-Za-z]*$")
+
+
 def apply_gql_name(name: str, override: str | None = None) -> str:  # REQ-194, REQ-411, REQ-412
-    return apply_convention(name, override or _gql_convention)
+    converted = apply_convention(name, override or _gql_convention)
+    if _GQL_NAME_RE.match(converted):
+        return converted
+    # apply_convention only re-cases an already-valid identifier — a raw external name (a CSV/API
+    # column header verbatim, e.g. "1844YearsDosesAdministered") can still violate the GraphQL
+    # Name grammar after conversion: any non [_0-9A-Za-z] character, or (unchanged by casing) a
+    # leading digit. This module is the sole naming authority (REQ-471) — every caller building a
+    # GraphQL field/enum-value/type name from a physical name goes through here, so the guarantee
+    # belongs here, not at each call site. Confirmed live: schema_gen.py's distinct_on enum builder
+    # crashed GraphQLEnumType's own name assertion on exactly this input, unrecovered, taking the
+    # whole schema (and therefore every org's whole app) down at startup.
+    sanitized = re.sub(r"[^0-9A-Za-z_]", "_", converted)
+    if not sanitized or sanitized[0].isdigit():
+        sanitized = f"_{sanitized}"
+    return sanitized
 
 
 def apply_sql_name(name: str, override: str | None = None) -> str:  # REQ-194
