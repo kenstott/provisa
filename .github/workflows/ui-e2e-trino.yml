@@ -178,6 +178,16 @@ jobs:
       # (zaychik, 8480) and ensure_results_bucket (minio) with no fallback, so without them the
       # app's lifespan aborts with "dial tcp [::1]:8480: connect: connection refused" and
       # Playwright reports "Process from config.webServer was not able to start".
+      # docker-compose.core.yml's hive_warehouse volume is a `local` driver bind (o: bind), not a
+      # plain service-level bind mount — unlike a plain bind, it does NOT auto-create a missing
+      # host directory, it fails the container outright ("no such file or directory"). The
+      # compose file's own default device path is this repo's maintainer's own machine (matches
+      # every other *_HOST default in this file, e.g. SP_CERT_PATH), so CI must override it.
+      - name: Create the hive_warehouse bind-mount device
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.e2e-hive-warehouse"
+          echo "PROVISA_E2E_HIVE_WAREHOUSE_HOST=$GITHUB_WORKSPACE/.e2e-hive-warehouse" >> "$GITHUB_ENV"
+
       - name: Start core services
         run: |
           docker compose -f docker-compose.core.yml up -d --wait \
