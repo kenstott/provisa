@@ -382,6 +382,20 @@ def _drop_source_on_engine(state, source_id: str) -> None:
         logging.getLogger(__name__).warning(
             "engine source deprovisioning for %r failed: %s", source_id, _cat_err
         )
+    # REQ-1690 (Amended 2026-09-19, delete-time stop): a pgwire-replica source (files/sharepoint/
+    # splunk) keeps its Calcite server running in pgwire_replica._ENDPOINTS, keyed by this same
+    # source_id, for the life of this process — untouched by drop_source above (that's the
+    # Trino/dynamic-catalog seam, not this one). Confirmed live: a `files` source deleted and
+    # recreated under the same id kept serving the FIRST server's model.json, so the "new" source
+    # never picked up a changed path or format. No-ops when no server was ever started.
+    from provisa.federation.pgwire_replica import stop_endpoint
+
+    try:
+        stop_endpoint(source_id)
+    except Exception as _pgwire_err:
+        logging.getLogger(__name__).warning(
+            "pgwire endpoint teardown for %r failed: %s", source_id, _pgwire_err
+        )
 
 
 async def _analyze_source_on_engine(state, pool, model, input: SourceInput) -> None:

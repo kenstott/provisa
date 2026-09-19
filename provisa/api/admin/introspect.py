@@ -671,38 +671,6 @@ async def _native_tables_kafka(  # REQ-147
         return None
 
 
-async def _native_tables_files(
-    source_id: str,
-    schema_name: str,
-    config_conn: "Connection",
-) -> "list[AvailableTableType] | None":
-    from pathlib import Path as _Path
-
-    from provisa.api.admin.types import AvailableTableType
-
-    result = await config_conn.execute_core(select(sources.c.path).where(sources.c.id == source_id))
-    row = result.fetchone()
-    if not row or not row[0]:
-        return None
-
-    glob_path: str = row[0]
-    # Derive the directory by taking the non-glob prefix of the path.
-    parts = _Path(glob_path).parts
-    dir_parts: list[str] = []
-    for p in parts:
-        if any(c in p for c in ("*", "?", "[")):
-            break
-        dir_parts.append(p)
-    if not dir_parts:
-        return None
-    directory = _Path(*dir_parts) if len(dir_parts) > 1 else _Path(dir_parts[0])
-    if not directory.is_dir():
-        return None
-
-    stems = sorted(p.stem for p in directory.rglob("*.csv") if p.is_file())
-    return [AvailableTableType(name=stem, comment=None) for stem in stems]
-
-
 async def _native_tables_sqlite(
     source_id: str,
     schema_name: str,
@@ -1441,9 +1409,6 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
         if schema_name != "default":
             return []
         return [AvailableTableType(name=source_id, comment=None)]
-
-    if t == "files":
-        return await _native_tables_files(source_id, schema_name, config_conn)
 
     if t == "govdata":
         return await _native_tables_govdata(source_id, schema_name, config_conn)

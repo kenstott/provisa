@@ -41,6 +41,19 @@ def _empty_pool() -> MagicMock:
     return pool
 
 
+def _no_conn() -> MagicMock:
+    """A stand-in ``Connection`` for a branch that never touches it (unused by the source type
+    under test) — keeps the mock's static type matching the real (required) parameter.
+
+    Plain ``AsyncMock()`` makes every attribute access an ``AsyncMock`` too, so an unconfigured
+    ``config_conn.execute_core(...).fetchone()`` (kafka's branch: sync ``fetchone`` on the awaited
+    result) returns an un-awaited coroutine instead of a value — pin ``execute_core`` to the real
+    shape (async call, sync ``Result``) instead."""
+    conn = MagicMock()
+    conn.execute_core = AsyncMock(return_value=MagicMock())
+    return conn
+
+
 # ── _openapi_is_table ─────────────────────────────────────────────────────────
 
 
@@ -120,75 +133,75 @@ def test_gql_field_returns_scalar():
 
 @pytest.mark.asyncio
 async def test_native_schemas_graphql():
-    result = await native_schemas("src", "graphql", _empty_pool(), None)
+    result = await native_schemas("src", "graphql", _empty_pool(), _no_conn())
     assert result == ["graphql"]
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_graphql_remote():
-    result = await native_schemas("src", "graphql_remote", _empty_pool(), None)
+    result = await native_schemas("src", "graphql_remote", _empty_pool(), _no_conn())
     assert result == ["graphql"]
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_grpc():
-    result = await native_schemas("src", "grpc", _empty_pool(), None)
+    result = await native_schemas("src", "grpc", _empty_pool(), _no_conn())
     assert result == ["grpc"]
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_grpc_remote():
-    result = await native_schemas("src", "grpc_remote", _empty_pool(), None)
+    result = await native_schemas("src", "grpc_remote", _empty_pool(), _no_conn())
     assert result == ["grpc"]
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_kafka():
-    result = await native_schemas("src", "kafka", _empty_pool(), None)
+    result = await native_schemas("src", "kafka", _empty_pool(), _no_conn())
     assert result == ["kafka"]
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_neo4j():
-    result = await native_schemas("src", "neo4j", _empty_pool(), None)
+    result = await native_schemas("src", "neo4j", _empty_pool(), _no_conn())
     assert result == ["neo4j"]
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_sparql():
-    result = await native_schemas("src", "sparql", _empty_pool(), None)
+    result = await native_schemas("src", "sparql", _empty_pool(), _no_conn())
     assert result == ["sparql"]
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_openapi():
-    result = await native_schemas("src", "openapi", _empty_pool(), None)
+    result = await native_schemas("src", "openapi", _empty_pool(), _no_conn())
     assert result == ["openapi"]
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_postgresql():
     pool = _pool([("pet_store",)])
-    result = await native_schemas("src", "postgresql", pool, None)
+    result = await native_schemas("src", "postgresql", pool, _no_conn())
     assert result == ["pet_store"]
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_no_driver_returns_none():
-    result = await native_schemas("src", "postgresql", _empty_pool(), None)
+    result = await native_schemas("src", "postgresql", _empty_pool(), _no_conn())
     assert result is None
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_mysql():
     pool = _pool([("mydb",), ("information_schema",), ("mysql",), ("sys",)])
-    result = await native_schemas("src", "mysql", pool, None)
+    result = await native_schemas("src", "mysql", pool, _no_conn())
     assert result == ["mydb"]
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_unknown_type_returns_none():
-    result = await native_schemas("src", "bigquery", _empty_pool(), None)
+    result = await native_schemas("src", "bigquery", _empty_pool(), _no_conn())
     assert result is None
 
 
@@ -202,20 +215,21 @@ async def test_native_schemas_unknown_type_returns_none():
 @pytest.mark.asyncio
 async def test_native_schemas_trino():
     pool = _pool([("tiny",), ("information_schema",)])
-    result = await native_schemas("src", "trino", pool, None)
+    result = await native_schemas("src", "trino", pool, _no_conn())
     assert result == ["tiny"]
 
 
 @pytest.mark.asyncio
 async def test_native_schemas_trino_no_driver_returns_none():
-    result = await native_schemas("src", "trino", _empty_pool(), None)
+    result = await native_schemas("src", "trino", _empty_pool(), _no_conn())
     assert result is None
 
 
 @pytest.mark.asyncio
 async def test_native_tables_trino():
     pool = _pool([("nation",), ("orders",)])
-    result = await native_tables("src", "trino", "tiny", pool, None, None)
+    result = await native_tables("src", "trino", "tiny", pool, _no_conn(), None)
+    assert result is not None
     assert [t.name for t in result] == ["nation", "orders"]
 
 
@@ -254,7 +268,8 @@ async def test_native_tables_mysql_uses_percent_s_placeholder():
     function's `except Exception: return None` and never surfaced as an error, just an empty
     picker. Asserting the query text catches a regression without a live mysql server."""
     pool = _pool([("widgets", None)])
-    result = await native_tables("src", "mysql", "verify_db", pool, None, None)
+    result = await native_tables("src", "mysql", "verify_db", pool, _no_conn(), None)
+    assert result is not None
     assert [t.name for t in result] == ["widgets"]
     _, query, params = pool.execute.call_args[0]
     assert "%s" in query and "?" not in query
@@ -296,14 +311,15 @@ async def test_native_columns_mysql_no_driver_returns_none():
 @pytest.mark.asyncio
 async def test_native_schemas_tidb():
     pool = _pool([("mydb",), ("information_schema",), ("mysql",), ("sys",)])
-    result = await native_schemas("src", "tidb", pool, None)
+    result = await native_schemas("src", "tidb", pool, _no_conn())
     assert result == ["mydb"]
 
 
 @pytest.mark.asyncio
 async def test_native_tables_tidb_uses_percent_s_placeholder():
     pool = _pool([("widgets", None)])
-    result = await native_tables("src", "tidb", "verify_db", pool, None, None)
+    result = await native_tables("src", "tidb", "verify_db", pool, _no_conn(), None)
+    assert result is not None
     assert [t.name for t in result] == ["widgets"]
     _, query, params = pool.execute.call_args[0]
     assert "%s" in query and "?" not in query
@@ -331,7 +347,7 @@ async def test_native_schemas_saphana_excludes_system_schemas_in_sql():
     # mock doesn't execute SQL, so it's given only what a real HANA's SYS.SCHEMAS would already
     # have filtered, and the assertion is on the generated query text, not a re-filtered result.
     pool = _pool([("SYSTEM",), ("MYAPP",)])
-    result = await native_schemas("src", "saphana", pool, None)
+    result = await native_schemas("src", "saphana", pool, _no_conn())
     assert result == ["SYSTEM", "MYAPP"]
     _, query = pool.execute.call_args[0]
     assert "SYS.SCHEMAS" in query
@@ -341,7 +357,8 @@ async def test_native_schemas_saphana_excludes_system_schemas_in_sql():
 @pytest.mark.asyncio
 async def test_native_tables_saphana_uses_dollar_placeholder():
     pool = _pool([("WIDGETS", None)])
-    result = await native_tables("src", "saphana", "SYSTEM", pool, None, None)
+    result = await native_tables("src", "saphana", "SYSTEM", pool, _no_conn(), None)
+    assert result is not None
     assert [t.name for t in result] == ["WIDGETS"]
     _, query, params = pool.execute.call_args[0]
     assert "$1" in query and "?" not in query and "%s" not in query
@@ -381,7 +398,7 @@ async def test_native_schemas_sqlite_returns_main():
     # Regression: SQLite was falling through to Trino which returned internal PG
     # schemas (e.g. "pet_store", "analytics") — implementation-layer details unknown
     # to the user. SQLite's physical schema is "main"; return that directly.
-    result = await native_schemas("src", "sqlite", _empty_pool(), None)
+    result = await native_schemas("src", "sqlite", _empty_pool(), _no_conn())
     assert result == ["main"]
 
 
@@ -422,43 +439,24 @@ async def test_native_tables_sqlite_wrong_schema_returns_empty():
 
 @pytest.mark.asyncio
 async def test_native_schemas_files_returns_normalised_source_id():
-    result = await native_schemas("e2e-northwind", "files", _empty_pool(), None)
+    result = await native_schemas("e2e-northwind", "files", _empty_pool(), _no_conn())
     assert result == ["e2e_northwind"]
 
 
 @pytest.mark.asyncio
-async def test_native_tables_files_reads_csv_stems(tmp_path):
-    # Write two CSV files into a temp directory
-    (tmp_path / "customers.csv").write_text("id,name\n1,Alice\n")
-    (tmp_path / "orders.csv").write_text("id,customer_id\n1,1\n")
-
+async def test_native_tables_files_falls_through_to_engine_seam(tmp_path):  # REQ-1690
+    """``native_tables`` must return ``None`` for ``files`` (no dispatch branch at all) so
+    ``available_tables`` (schema_query.py) falls through to the generic engine seam — the
+    Calcite pgwire ATTACH REQ-1690 describes. A hand-rolled ``directory.rglob("*.csv")`` branch
+    used to live here (pre-REQ-1690), always returning a list and never ``None``: Register Table
+    for a `files` source never once reached the ATTACH, regardless of how correct
+    DuckDBFilesConnector/_files_operand were, so a directory of xlsx files always showed empty
+    (or, if any .csv happened to share the directory, ONLY those) — confirmed live by the total
+    absence of a `.aperio/debug-model-<schema>.json` for a freshly created `files` source
+    (FileSchemaFactory.create() was never invoked)."""
     config_conn = AsyncMock()
     _res = MagicMock()
     _res.fetchone.return_value = (str(tmp_path / "**"),)
-    config_conn.execute_core = AsyncMock(return_value=_res)
-
-    result = await native_tables("src", "files", "src", _empty_pool(), config_conn, MagicMock())
-    assert result is not None
-    names = {t.name for t in result}
-    assert names == {"customers", "orders"}
-
-
-@pytest.mark.asyncio
-async def test_native_tables_files_missing_path_returns_none():
-    config_conn = AsyncMock()
-    _res = MagicMock()
-    _res.fetchone.return_value = (None,)
-    config_conn.execute_core = AsyncMock(return_value=_res)
-
-    result = await native_tables("src", "files", "src", _empty_pool(), config_conn, MagicMock())
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_native_tables_files_nonexistent_dir_returns_none():
-    config_conn = AsyncMock()
-    _res = MagicMock()
-    _res.fetchone.return_value = ("/no/such/directory/**",)
     config_conn.execute_core = AsyncMock(return_value=_res)
 
     result = await native_tables("src", "files", "src", _empty_pool(), config_conn, MagicMock())

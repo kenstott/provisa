@@ -56439,17 +56439,41 @@
     bundle resolver fetches the release's per-OS/arch tarball (`pgwire-<connector>-<ver>-<variant>`),
     fails closed on a platform the release does not build, and unnests the tarball so the bundle
     root carries `bin/pgwire-<connector>`.
+
+    (Amended 2026-09-19, delete-time stop:) the per-source server started once when the engine
+    first resolves it is also stopped, and forgotten, when that source is deleted
+    (`pgwire_replica.stop_endpoint`, called from `delete_source`'s engine-deprovisioning step).
+    Without this, a source recreated under the same id (delete + re-add with the same name) kept
+    reusing the first server's already-running JVM and its `model.json` from whenever it was first
+    started — confirmed live with a `files` source: deleting and recreating it with the same
+    name/path never re-scanned the directory, because the cached server never restarted to notice.
+
+    (Amended 2026-09-19, Register Table never reached this ATTACH for `files`:) `available_tables`
+    (schema_query.py) tries `native_tables` (introspect.py) FIRST and only falls through to the
+    generic engine seam — the one this requirement's ATTACH lives behind — when `native_tables`
+    returns `None`. `native_tables` had its own `files` branch, `_native_tables_files`, a leftover
+    hand-rolled `directory.rglob("*.csv")` scan that predated this requirement entirely and was
+    never removed when `DuckDBFilesConnector` was converted: it always returned a (possibly empty)
+    list, never `None`, so Register Table for a `files` source never once reached the Calcite
+    ATTACH this requirement describes, regardless of `DuckDBFilesConnector`/`_files_operand` being
+    correct — confirmed live by the complete absence of a `.aperio/debug-model-<schema>.json` for a
+    freshly created `files` source (`FileSchemaFactory.create()` was never invoked). Removed the
+    branch (and the now-dead `_native_tables_files`) so `files` falls through exactly like
+    sharepoint/splunk (neither has ever had a `native_tables` branch) to the ATTACH-backed seam.
   code:
   - provisa/federation/connector_duckdb.py
   - provisa/federation/pgwire_replica.py
   - provisa/federation/engine.py
   - provisa/runtime_deps/pgwire_bundles.py
   - provisa/api/app.py
+  - provisa/api/admin/schema_common.py
+  - provisa/api/admin/introspect.py
   tests:
   - tests/unit/test_replica_strategy.py
   - tests/unit/test_federation_strategy.py
   - tests/integration/test_duckdb_attach_calcite_pgwire.py
   - tests/integration/test_splunk_duckdb_attach.py
+  - tests/integration/test_files_pgwire_replica.py
   notes: >-
     Server lifecycle. The spawned server is a JVM in its OWN session -- it has to be, so that
     stopping it signals its own process group and not the spawning process's -- and the cost of

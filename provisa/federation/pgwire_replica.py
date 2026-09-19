@@ -681,6 +681,21 @@ def stop_all_servers() -> None:
     _ENDPOINTS.clear()
 
 
+def stop_endpoint(source_id: str) -> None:
+    """Stop and forget one source's pgwire server, if one was ever started (REQ-1690 delete gap).
+
+    ``ensure_endpoint`` starts a server ONCE per source id and caches it in ``_ENDPOINTS`` for the
+    life of this process — every later ATTACH (a fresh DuckDB introspection call, a recreated
+    source reusing the same id, an edited path/mapping) reuses that same already-running JVM
+    without ever rebuilding ``model.json``. Deleting a source must drop this too, or a source
+    recreated under the same id keeps serving whatever schema the first server was started with,
+    however stale (confirmed live: a deleted-and-recreated `files` source, same name/id/path,
+    that was never re-scanned for its new format because the old server was still answering)."""
+    replica = _ENDPOINTS.pop(source_id, None)
+    if replica is not None:
+        replica.close()
+
+
 def make_pgwire_loader(
     *,
     resolver: BundleResolver | None = None,
