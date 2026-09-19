@@ -27714,9 +27714,23 @@
   category: Replica Strategy
   priority: MUST
   type: infrastructure
-  description: Pgwire bundles (pgwire-file, pgwire-sharepoint, pgwire-splunk) are fetched on demand from
+  description: >-
+    Pgwire bundles (pgwire-file, pgwire-sharepoint, pgwire-splunk) are fetched on demand from
     github.com/kenstott/calcite release engine-v0.28.0 at runtime and cached locally; they are not bundled
     with Provisa. Version pinning and artifact download are managed via runtime_deps system.
+
+
+    (Amended 2026-09-19, jackson jar conflict:) bumped the pin from engine-v0.82.1 to engine-v0.94.4.
+    The 0.82.1 pgwire-file bundle shipped two conflicting versions of jackson-core (2.17.1 AND
+    2.18.4.1, plus jackson-annotations/jackson-databind duplicated the same way) on one classpath,
+    with jackson-dataformat-yaml only in 2.18.4 — the classloader resolved YAMLParser against the
+    older jackson-core, which is missing the method jackson-dataformat-yaml calls. Confirmed live
+    via pgwire-server.log: CalciteBackend._connect()'s DriverManager.getConnection("jdbc:calcite:", ...)
+    failed with NoSuchMethodError on every server start, so the JVM never established its Calcite
+    connection at all — the TCP health check still passed (it only probes the port), so Register
+    Table waited through a full JVM boot and then silently returned an empty table list for every
+    pgwire-replica source (files/sharepoint/splunk), REQ-1690's ATTACH included. Confirmed fixed in
+    engine-v0.94.4's bundle: single 2.18.4.x line for every jackson-* jar, no duplicates.
   use_case: Decouples Provisa release cycles from pgwire connector releases, and keeps the Provisa distribution
     lean by fetching connector bundles on-demand.
   code:
@@ -56474,6 +56488,8 @@
   - tests/integration/test_duckdb_attach_calcite_pgwire.py
   - tests/integration/test_splunk_duckdb_attach.py
   - tests/integration/test_files_pgwire_replica.py
+  - provisa-ui/e2e/file-connector-multi-format.spec.ts
+  - provisa-ui/e2e/make-multi-format-fixtures.py
   notes: >-
     Server lifecycle. The spawned server is a JVM in its OWN session -- it has to be, so that
     stopping it signals its own process group and not the spawning process's -- and the cost of
