@@ -34,7 +34,7 @@ from typing import IO, Callable, cast
 
 # The pinned upstream release the whole bundle set is fetched from (REQ-956). One version knob — a
 # bundle path is always namespaced by this tag, so a version bump caches side by side, never in place.
-RELEASE_TAG = "engine-v0.82.1"
+RELEASE_TAG = "engine-v0.94.4"
 GITHUB_REPO = "kenstott/calcite"
 
 # The release ships one tarball per OS/arch (REQ-1690): ``pgwire-<connector>-<ver>-<variant>.tar.gz``

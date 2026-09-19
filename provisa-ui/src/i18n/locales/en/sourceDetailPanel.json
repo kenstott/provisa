@@ -24,6 +24,10 @@
     "navigateTitle": "View registered tables",
     "deleteTitle": "Delete source \"{{id}}\"?",
     "deleteTitleShort": "Delete",
-    "deleteConsequence": "This will remove the data source \"{{id}}\" and may break tables that reference it."
+    "deleteConsequence": "This will remove the data source \"{{id}}\" and may break tables that reference it.",
+    "refreshKaggleTitle": "Refresh from Kaggle",
+    "refreshKaggleHint": "Re-download {{owner}}/{{ref}} from Kaggle, overwriting the staged file(s) in place. Your Kaggle token is not stored — enter it again for this refresh.",
+    "kaggleTokenLabel": "Kaggle API token",
+    "refreshKaggleSubmit": "Refresh"
   }
 }

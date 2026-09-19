@@ -112,6 +112,12 @@ export function KaggleFormSection({ domains, onSourcesRegistered }: KaggleFormSe
           id: file.suggestedSourceId,
           type: file.fileType,
           path: file.path,
+          // owner/ref: no Source field carries this otherwise (KaggleDatasetType.ref's own
+          // comment) -- stashed here so a later "Refresh from Kaggle" (refreshKaggleSource
+          // mutation) can re-run stage_dataset for the SAME dataset without the user having to
+          // re-search it. stage_dataset's own docstring: re-running it is the (v1) refresh
+          // mechanism, each file overwritten in place at this exact path.
+          federationHintsJson: JSON.stringify({ kaggle_owner: owner, kaggle_ref: ref }),
         });
         if (!createResult.success) {
           throw new Error(`${file.suggestedSourceId}: ${createResult.message}`);
@@ -145,7 +151,10 @@ export function KaggleFormSection({ domains, onSourcesRegistered }: KaggleFormSe
       <Select
         required
         label={t("kaggleFormSection.domainLabel")}
-        data={domains.map((d) => ({ value: d.id, label: d.id }))}
+        // meta/ops (and the empty-string default) are system domains (domain_policy.py's
+        // _SYSTEM_DOMAIN_IDS) -- auto-generated, preserved across config reloads, never a target
+        // an end user picks for their own tables.
+        data={domains.filter((d) => !d.isSystem).map((d) => ({ value: d.id, label: d.id }))}
         value={domainId}
         onChange={(v) => setDomainId(v ?? "")}
         placeholder={t("kaggleFormSection.domainPlaceholder")}

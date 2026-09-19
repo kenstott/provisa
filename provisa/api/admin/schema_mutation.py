@@ -848,6 +848,61 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
+    async def refresh_kaggle_source(  # REQ-1780/1781/1782/1783
+        self, info: StrawberryInfo, source_id: str, token: str
+    ) -> MutationResult:
+        """Re-fetch a Kaggle-derived source's dataset in place. stage_dataset's own contract
+        (downloader.py) is idempotent -- re-running it overwrites each file at the SAME path
+        registerSource already points at, so this needs no re-registration: csv/parquet are SCAN
+        sources (read_csv_auto/read_parquet re-read the path fresh on every query, no persistent
+        engine-side cache to invalidate — confirmed by strategy.py's Mechanism.SCAN docstring and
+        this session's DuckDBFilesConnector/TrinoFilesConnector work, neither of which lands a
+        materialized copy). The Kaggle token is deliberately never persisted server-side
+        (REQ-1783) -- the caller re-enters it for this call, same as the original staging step."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.core.repositories import source as source_repo
+        from provisa.kaggle.downloader import UnsupportedKaggleDataset, stage_dataset
+
+        require_capability(info, "source_registration")
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            row = await source_repo.get(cast("Connection", conn), source_id)
+        if row is None:
+            return MutationResult(
+                success=False,
+                message=f"Source {source_id!r} not found",
+                code="schema.source_not_found",
+                params={"source": source_id},
+            )
+        hints = row.get("federation_hints") or {}
+        owner = hints.get("kaggle_owner")
+        ref = hints.get("kaggle_ref")
+        if not owner or not ref:
+            return MutationResult(
+                success=False,
+                message=f"Source {source_id!r} was not created from a Kaggle dataset "
+                "(no kaggle_owner/kaggle_ref recorded)",
+                code="schema.not_a_kaggle_source",
+                params={"source": source_id},
+            )
+        try:
+            await stage_dataset(token, owner, ref)
+        except UnsupportedKaggleDataset as exc:
+            return MutationResult(
+                success=False,
+                message=str(exc),
+                code="schema.kaggle_refresh_failed",
+                params={"source": source_id},
+            )
+        return MutationResult(
+            success=True,
+            message=f"Refreshed {owner}/{ref} for source {source_id!r}",
+            code="schema.kaggle_source_refreshed",
+            params={"source": source_id},
+        )
+
+    @strawberry.mutation
     async def update_source(
         self, info: StrawberryInfo, input: SourceInput
     ) -> MutationResult:  # REQ-012

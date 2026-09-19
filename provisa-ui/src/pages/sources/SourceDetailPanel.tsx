@@ -8,14 +8,25 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React from "react";
+import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Group, Stack, Text, Tooltip } from "@mantine/core";
-import { Pencil, Trash2, ArrowRight } from "lucide-react";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Group,
+  Modal,
+  PasswordInput,
+  Stack,
+  Text,
+  Tooltip,
+} from "@mantine/core";
+import { Pencil, Trash2, ArrowRight, RefreshCw } from "lucide-react";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import type { Source } from "../../types/admin";
 import { SOURCE_TYPES } from "./constants";
 import { uiType } from "./sourceHelpers";
+import { useRefreshKaggleSource } from "../../hooks/useAdminQueries";
 
 const API_TYPES = new Set(["graphql_remote", "grpc_remote", "openapi"]);
 const PATH_TYPES = new Set(["sqlite", "csv", "parquet", "files"]);
@@ -38,9 +49,38 @@ export function SourceDetailPanel({
   onDelete,
 }: SourceDetailPanelProps) {
   const { t } = useTranslation();
+  const { refreshKaggleSource, loading: refreshing } = useRefreshKaggleSource();
+  const [refreshModalOpen, setRefreshModalOpen] = useState(false);
+  const [refreshToken, setRefreshToken] = useState("");
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const isApiType = API_TYPES.has(s.type);
   const isPathType = PATH_TYPES.has(s.type);
+  // REQ-1780/1781/1782/1783: kaggle_owner/kaggle_ref are stashed in federation_hints at creation
+  // (KaggleFormSection.tsx) -- no other Source field records a Kaggle origin, so this is the only
+  // way to know a "Refresh from Kaggle" action applies to this row.
+  let kaggleOrigin: { owner: string; ref: string } | null = null;
+  if (s.federationHintsJson) {
+    try {
+      const hints = JSON.parse(s.federationHintsJson) as Record<string, string>;
+      if (hints.kaggle_owner && hints.kaggle_ref) {
+        kaggleOrigin = { owner: hints.kaggle_owner, ref: hints.kaggle_ref };
+      }
+    } catch {
+      // Not JSON, or no kaggle_* keys -- not a Kaggle-derived source.
+    }
+  }
+
+  const handleRefresh = async () => {
+    setRefreshError(null);
+    const result = await refreshKaggleSource(s.id, refreshToken);
+    if (result.success) {
+      setRefreshModalOpen(false);
+      setRefreshToken("");
+    } else {
+      setRefreshError(result.message);
+    }
+  };
 
   const rows: [string, string | number][] = [
     ["description", s.description || "—"],
@@ -123,6 +163,22 @@ export function SourceDetailPanel({
             </ActionIcon>
           </Tooltip>
         )}
+        {kaggleOrigin && (
+          <Tooltip label={t("sourceDetailPanel.refreshKaggleTitle")}>
+            <ActionIcon
+              variant="subtle"
+              aria-label={t("sourceDetailPanel.refreshKaggleTitle")}
+              data-testid="source-detail-refresh-kaggle"
+              onClick={(e) => {
+                e.stopPropagation();
+                setRefreshError(null);
+                setRefreshModalOpen(true);
+              }}
+            >
+              <RefreshCw size={14} />
+            </ActionIcon>
+          </Tooltip>
+        )}
         <ConfirmDialog
           title={t("sourceDetailPanel.deleteTitle", { id: s.id })}
           consequence={t("sourceDetailPanel.deleteConsequence", { id: s.id })}
@@ -146,6 +202,44 @@ export function SourceDetailPanel({
           )}
         </ConfirmDialog>
       </Group>
+      {kaggleOrigin && (
+        <Modal
+          opened={refreshModalOpen}
+          onClose={() => setRefreshModalOpen(false)}
+          title={t("sourceDetailPanel.refreshKaggleTitle")}
+        >
+          <Stack gap="sm">
+            <Text size="sm" c="dimmed">
+              {t("sourceDetailPanel.refreshKaggleHint", {
+                owner: kaggleOrigin.owner,
+                ref: kaggleOrigin.ref,
+              })}
+            </Text>
+            <PasswordInput
+              label={t("sourceDetailPanel.kaggleTokenLabel")}
+              value={refreshToken}
+              onChange={(e) => setRefreshToken(e.currentTarget.value)}
+              data-testid="source-detail-refresh-kaggle-token"
+            />
+            {refreshError && (
+              <Alert color="red" variant="light" py={4} px="sm">
+                {refreshError}
+              </Alert>
+            )}
+            <Group justify="flex-end">
+              <Button
+                type="button"
+                loading={refreshing}
+                disabled={!refreshToken}
+                onClick={handleRefresh}
+                data-testid="source-detail-refresh-kaggle-submit"
+              >
+                {t("sourceDetailPanel.refreshKaggleSubmit")}
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
+      )}
     </Stack>
   );
 }

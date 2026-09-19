@@ -95,6 +95,13 @@ export function SourcesPage() {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  // Only the type-specific branches below (snowflake/databricks/.../sparql) rebuild
+  // federation_hints on submit -- any OTHER type's hints (e.g. kaggle_owner/kaggle_ref, stashed on
+  // create by KaggleFormSection with no UI field of its own to reconstruct them from) fell through
+  // to {} on every edit, silently wiping them. Stashed here on edit-open, merged back in on submit
+  // only for a type with no dedicated branch -- never overrides a branch's own intentional {} (e.g.
+  // hiveserver2 omitting the default PLAIN auth_mechanism on purpose).
+  const [editingSourceHintsJson, setEditingSourceHintsJson] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(() => searchParams.get("expanded"));
   const [error, setError] = useState<string | null>(null);
   const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
@@ -607,6 +614,7 @@ export function SourcesPage() {
       setGovdataSubjects([]);
     }
     setEditingSourceId(s.id);
+    setEditingSourceHintsJson(s.federationHintsJson ?? null);
     updateExpanded(s.id);
     setShowForm(false);
   };
@@ -614,6 +622,7 @@ export function SourcesPage() {
   const handleCancelForm = () => {
     setShowForm(false);
     setEditingSourceId(null);
+    setEditingSourceHintsJson(null);
     setForm({
       id: "",
       type: "postgresql",
@@ -759,7 +768,15 @@ export function SourcesPage() {
                             // optional, restricts queries to one named graph.
                             form.type === "sparql" && authFields.default_graph_uri?.trim()
                             ? { default_graph_uri: authFields.default_graph_uri.trim() }
-                            : {};
+                            : // A type with no dedicated branch above has no UI field this form could
+                              // ever reconstruct its federation_hints from -- falling through to {}
+                              // unconditionally wiped them on every edit (confirmed: kaggle_owner/
+                              // kaggle_ref, stashed on create by KaggleFormSection, silently lost on
+                              // the next edit of that same csv/parquet source). Preserve verbatim
+                              // instead when editing such a type; a brand-new source has nothing yet.
+                              editingSourceId && editingSourceHintsJson
+                              ? (JSON.parse(editingSourceHintsJson) as Record<string, string>)
+                              : {};
       const federationHintsJson =
         Object.keys(federationHints).length > 0 ? JSON.stringify(federationHints) : undefined;
       // password auth (Snowflake) / personal-access-token auth (Databricks) collect into authFields,

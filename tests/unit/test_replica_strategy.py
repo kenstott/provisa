@@ -265,10 +265,10 @@ def test_port_allocation_exhaustion_is_loud():
 
 def test_bundle_spec_version_pin():
     spec = rd.bundle_spec_for("files")
-    assert spec.version == "engine-v0.82.1"
+    assert spec.version == rd.RELEASE_TAG
     assert spec.connector == "file"
     assert spec.artifact_name == "pgwire-file"
-    assert "engine-v0.82.1" in spec.download_url
+    assert rd.RELEASE_TAG in spec.download_url
     assert spec.download_url.startswith("https://github.com/kenstott/calcite/releases/download/")
 
 
@@ -349,7 +349,7 @@ def test_bundle_resolve_downloads_then_caches(tmp_path):
     spec = rd.bundle_spec_for("files")
     assert not resolver.is_cached(spec)
     path = resolver.resolve(spec)
-    assert path == tmp_path / "engine-v0.82.1" / "pgwire-file"
+    assert path == tmp_path / rd.RELEASE_TAG / "pgwire-file"
     assert resolver.is_cached(spec)
     # second resolve is a cache HIT — downloader not called again
     resolver.resolve(spec)
@@ -752,7 +752,8 @@ def test_pgwire_connector_probe_reports_cached_bundle(tmp_path, monkeypatch):
     result = asyncio.run(DuckDBSplunkConnector().probe(_fetch_ok))
     assert result.available is True
     assert "fetched on first use" in result.reason
-    assert "pgwire-splunk-0.82.1-linux-x86_64.tar.gz" in result.reason
+    pinned_version = rd.RELEASE_TAG.removeprefix("engine-v")
+    assert f"pgwire-splunk-{pinned_version}-linux-x86_64.tar.gz" in result.reason
     _lay_down_bundle(
         rd.bundle_spec_for("splunk"), rd.BundleResolver().cached_path(rd.bundle_spec_for("splunk"))
     )

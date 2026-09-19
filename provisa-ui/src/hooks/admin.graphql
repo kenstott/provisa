@@ -845,6 +845,12 @@ mutation StageKaggleDataset($token: String!, $owner: String!, $ref: String!, $id
   }
 }
 
+mutation RefreshKaggleSource($sourceId: String!, $token: String!) {
+  refreshKaggleSource(sourceId: $sourceId, token: $token) {
+    ...MutationResult
+  }
+}
+
 mutation DeleteSource($id: String!) {
   deleteSource(id: $id) {
     ...MutationResult

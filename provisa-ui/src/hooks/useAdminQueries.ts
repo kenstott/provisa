@@ -61,6 +61,7 @@ import {
   KaggleTokenValid,
   KaggleDatasets,
   StageKaggleDataset,
+  RefreshKaggleSource,
   AvailableColumnsMetadata,
   AvailableFunctions,
   ColumnDependents,
@@ -606,6 +607,21 @@ export function useCreateSource() {
     createSource: async (input: Record<string, unknown>) => {
       const result = await createSource({ variables: { input } });
       return (result.data?.createSource ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useRefreshKaggleSource() {
+  const [refreshKaggleSource, { loading }] = useMutation<{
+    refreshKaggleSource: MutationResult;
+  }>(RefreshKaggleSource);
+  return {
+    refreshKaggleSource: async (sourceId: string, token: string) => {
+      const result = await refreshKaggleSource({ variables: { sourceId, token } });
+      return (
+        result.data?.refreshKaggleSource ?? { success: false, message: "" }
+      ) as MutationResult;
     },
     loading,
   };
