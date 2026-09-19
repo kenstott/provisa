@@ -27,10 +27,19 @@ type Step = "token" | "picker";
 
 interface KaggleFormSectionProps {
   domains: Domain[];
+  // The shared "ID" field above this section (SourcesPage.tsx's form.id) -- previously ignored
+  // entirely: every Kaggle-staged source got an opaque kg_<timestamp>_<dataset-ref> id regardless
+  // of what the user typed there, which they'd naturally expect to be honored (confirmed live:
+  // typed "c", got "kg_1789848538582_spotify-global-chart-totals-and-lyrics_data" instead).
+  sourceIdHint?: string;
   onSourcesRegistered: (sourceIds: string[]) => void;
 }
 
-export function KaggleFormSection({ domains, onSourcesRegistered }: KaggleFormSectionProps) {
+export function KaggleFormSection({
+  domains,
+  sourceIdHint,
+  onSourcesRegistered,
+}: KaggleFormSectionProps) {
   const { t } = useTranslation();
   const [domainId, setDomainId] = useState("");
   const [token, setToken] = useState("");
@@ -100,7 +109,14 @@ export function KaggleFormSection({ domains, onSourcesRegistered }: KaggleFormSe
     setRegistering(true);
     setRegisterError(null);
     try {
-      const idPrefix = `kg_${Date.now()}_${ref.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+      // Honor the ID the user actually typed above -- stage_kaggle_dataset (schema_mutation.py)
+      // already appends "_<table_name>" per file for uniqueness regardless of the prefix's
+      // origin, so this needs no other change to stay collision-safe for a multi-file dataset.
+      // Falls back to the old opaque kg_<timestamp>_<ref> scheme only when the field was left
+      // blank -- the outer form's `required` on that input never actually gates this section's
+      // own "Register" button (type="button", bypasses native HTML5 validation).
+      const idPrefix =
+        sourceIdHint?.trim() || `kg_${Date.now()}_${ref.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
       const staged = await stageKaggleDataset(token, owner, ref, idPrefix);
       if (!staged.success) {
         setRegisterError(staged.message);
