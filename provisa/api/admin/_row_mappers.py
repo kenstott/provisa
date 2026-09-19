@@ -123,11 +123,14 @@ def _source_from_row(row) -> SourceType:
 
 
 def _domain_from_row(row) -> DomainType:
+    from provisa.core.domain_policy import system_domain_ids
+
     return DomainType(
         id=row["id"],
         description=row["description"],
         steward=row["steward"],  # REQ-609
         graphql_alias=row["graphql_alias"],
+        is_system=row["id"] in system_domain_ids(),
     )
 
 

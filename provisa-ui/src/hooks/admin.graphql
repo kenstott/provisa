@@ -94,6 +94,7 @@ query DomainsQuery {
     description
     graphqlAlias
     steward
+    isSystem
   }
 }
 

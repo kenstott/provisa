@@ -38,6 +38,7 @@ declare module "*.graphql" {
   export const KaggleTokenValid: DocumentNode;
   export const KaggleDatasets: DocumentNode;
   export const StageKaggleDataset: DocumentNode;
+  export const RefreshKaggleSource: DocumentNode;
   export const AvailableColumns: DocumentNode;
   export const AvailableColumnsMetadata: DocumentNode;
   export const AvailableFunctions: DocumentNode;
@@ -137,6 +138,7 @@ declare module "*.gql" {
   export const KaggleTokenValid: DocumentNode;
   export const KaggleDatasets: DocumentNode;
   export const StageKaggleDataset: DocumentNode;
+  export const RefreshKaggleSource: DocumentNode;
   export const AvailableColumns: DocumentNode;
   export const AvailableColumnsMetadata: DocumentNode;
   export const AvailableFunctions: DocumentNode;

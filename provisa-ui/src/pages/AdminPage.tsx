@@ -408,7 +408,7 @@ export function AdminPage() {
                   placeholder={
                     newDomainId.trim()
                       ? t("adminPage.domainAliasPlaceholderDefault", {
-                          alias: domainGqlAlias({ id: newDomainId.trim(), description: "" }),
+                          alias: domainGqlAlias({ id: newDomainId.trim(), graphqlAlias: null }),
                         })
                       : t("adminPage.domainAliasPlaceholder")
                   }

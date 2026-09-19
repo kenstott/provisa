@@ -113,6 +113,12 @@ class DomainType:  # REQ-533, REQ-609
     description: str
     steward: str | None = None  # REQ-609: None = pending, no designated steward
     graphql_alias: str | None = None
+    # domain_policy.system_domain_ids() (meta/ops/"") -- auto-generated, preserved across
+    # config replace-mode reloads, never a target an end user picks for their own tables. Was
+    # entirely absent from this type, so every domain picker in the UI (KaggleFormSection's
+    # included) had no way to exclude them -- confirmed live, both still listed on a real domain
+    # dropdown.
+    is_system: bool = False
 
 
 @strawberry.type

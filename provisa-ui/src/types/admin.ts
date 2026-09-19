@@ -54,6 +54,7 @@ export interface Domain {
   description: string;
   graphqlAlias?: string | null;
   steward?: string | null; // REQ-609: role or user id; null means PENDING
+  isSystem: boolean; // domain_policy.system_domain_ids() (meta/ops/"") -- never end-user-picked
 }
 
 // REQ-1634/REQ-1660: a first-class DataProduct entity; a table joins one via product_id.
@@ -147,7 +148,7 @@ export interface TagAssignment {
   expiresOn?: string | null;
 }
 
-export function domainGqlAlias(domain: Domain): string {
+export function domainGqlAlias(domain: Pick<Domain, "id" | "graphqlAlias">): string {
   if (domain.graphqlAlias) return domain.graphqlAlias.toLowerCase();
   if (!domain.id) return "";
   const parts = domain.id.split(/[^a-zA-Z0-9]+/);
