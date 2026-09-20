@@ -139,11 +139,18 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
             for t in tables_by_source.get(source.id, []):
                 await held.enter_async_context(land_lock(_node(t.schema_name, t.table_name)))
             try:
+                clock_stale = is_stale_of(sources, stamps, oks, now)
+                # REQ-1730: OR in this backend INSTANCE's own first-touch signal — see
+                # EngineBackend._landed_this_process's own doc for why the persisted, per-NODE
+                # freshness clock alone under-reports staleness for an engine with no live reach for
+                # this source type (a genuine reboot onto an engine that has never held this row
+                # reads as "fresh" purely because a DIFFERENT engine landed it recently).
+                is_stale = lambda sid: clock_stale(sid) or backend.is_first_touch(sid)  # noqa: E731
                 landed += await backend.materialize_pending(
                     state,
                     loader=loader,
                     source_ids={source.id},
-                    is_stale=is_stale_of(sources, stamps, oks, now),
+                    is_stale=is_stale,
                     prefer_materialized_of=lambda sid: bool(
                         getattr(by_id[sid], "prefer_materialized", False)
                     ),
@@ -160,6 +167,7 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
                     ),
                     now=now,
                 )
+                backend.mark_landed(source.id)
                 ok = True
             except Exception:  # noqa: BLE001 - the adapter's error type is its own
                 log.exception(
