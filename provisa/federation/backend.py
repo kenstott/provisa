@@ -144,6 +144,21 @@ class EngineBackend:
     raises until an engine wires it, rather than silently falling back to another engine.
     """
 
+    # `native_store` (engine.py's generic `_RDB_KINDS` loop) is the SQLAlchemy URL scheme name —
+    # the identity used for landing/storage-backend comparisons (materialization.py,
+    # query_residency.py) — which is not always SQLGlot's own dialect name for that same product
+    # (SUPPORTED_DIALECTS in transpiler/transpile.py enumerates SQLGlot's actual names). Verified
+    # live (REQ-1730 engine-swap harness, 2026-09-20): registering the generic "mssql" engine and
+    # querying it raised `sqlglot.errors.ParseError: Unknown dialect 'mssql'. Did you mean mysql?`
+    # — SQLGlot names Microsoft SQL Server's dialect "tsql", not "mssql". Translate only at this
+    # transpile-target seam, never `native_store` itself, so every other native_store comparison
+    # keeps naming the actual storage backend. Only mssql is mapped here (the one mismatch actually
+    # reproduced); the other generic `_RDB_KINDS` entries whose SQLAlchemy scheme differs from any
+    # SQLGlot dialect name (mariadb/greenplum/cockroachdb/yugabytedb/opengauss/tidb/vertica/
+    # saphana/sapase/sqlanywhere/monetdb/db2/firebird) are tracked, not guessed at, in a filed
+    # issue — SQLGlot compatibility per product needs verifying, not assuming.
+    _SQLGLOT_DIALECT_ALIASES: dict[str, str] = {"mssql": "tsql"}
+
     def __init__(self, engine: FederationEngine) -> None:
         self.engine = engine
 
@@ -151,7 +166,8 @@ class EngineBackend:
     def dialect(self) -> str:
         """The physical SQL dialect the engine speaks (transpile target). Named by native_store
         for native engines (duckdb → ``duckdb``); falls back to the engine name."""
-        return self.engine.native_store or self.engine.name
+        store = self.engine.native_store or self.engine.name
+        return self._SQLGLOT_DIALECT_ALIASES.get(store, store)
 
     def transpile_physical(self, pg_sql: str) -> str:
         """Transpile governed PostgreSQL-dialect SQL to the engine's physical dialect. Native

@@ -118,7 +118,16 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
 
         def _run() -> QueryResult:
             cur = self._con.cursor()
-            cur.execute(sql, params or None)
+            # pyodbc's cursor.execute (unlike SQLAlchemy Core's own statement execution, used
+            # elsewhere in this file) treats an explicitly-passed `None` second argument as ONE
+            # parameter whose value is NULL, not "no parameters" — verified live (REQ-1730
+            # engine-swap harness, 2026-09-20): a parameterless "SELECT 1" warmup probe against the
+            # mssql engine raised `pyodbc.ProgrammingError: The SQL contains 0 parameter markers,
+            # but 1 parameters were supplied`. Omit the argument entirely when there are none.
+            if params:
+                cur.execute(sql, params)
+            else:
+                cur.execute(sql)
             cols = [d[0] for d in cur.description] if cur.description else []
             rows = list(cur.fetchall()) if cur.description else []
             self._con.commit()
