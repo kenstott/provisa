@@ -108,8 +108,12 @@ export const test = base.extend<{
   // which routes the proxied API paths accordingly (vite.config.ts). One Vite server serves all
   // workers — the alternative, one dev server per worker, costs a 4 GB Node heap each.
   // Overriding the built-in option this way rather than calling test.use(): test.use() is
-  // illegal outside a spec/describe body, and this module is imported by every spec.
-  extraHTTPHeaders: [{ "x-e2e-worker": String(PARALLEL_INDEX) }, { option: true }],
+  // illegal outside a spec/describe body, and this module is imported by every spec. No
+  // `{ option: true }` tuple wrapper here (unlike allowedBrowserErrors above, a fixture THIS file
+  // declares): Playwright's own Fixtures type only accepts that marker for a custom fixture — a
+  // built-in PlaywrightTestOptions key like this one is already option-shaped, so a bare value
+  // assignment is both the correct override and the type-valid form.
+  extraHTTPHeaders: { "x-e2e-worker": String(PARALLEL_INDEX) },
   page: async ({ page, allowedBrowserErrors }, use) => {
     // A fresh profile is offered the guided tour, and that offer is a modal whose overlay swallows
     // every click a spec tries to make. No spec here is testing the offer, so each page starts
