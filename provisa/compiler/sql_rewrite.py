@@ -393,6 +393,34 @@ def strip_catalog(sql: str) -> str:  # REQ-863
     return tree.sql(dialect="postgres")
 
 
+def fold_catalog_into_schema(sql: str) -> str:  # REQ-1730
+    """Merge the catalog segment into the schema name: "cat"."schema"."table" -> "cat_schema".
+    "table" — for an engine whose SQL dialect cannot express a catalog-qualified reference at all
+    (verified live: real PostgreSQL has no cross-database queries, so ``pg`` declares
+    ``catalog_qualified=False``, FederationEngine's own doc has the reproduction) but where the
+    catalog still carries REAL per-source disambiguating information a plain drop
+    (``strip_catalog``) would lose — two different sources whose registered tables happen to share
+    a native ``schema_name`` (e.g. two elasticsearch-type sources both reporting "default") would
+    otherwise collide once the catalog segment vanished. ``strip_catalog`` stays safe for its own
+    callers (the DIRECT route's single live-attached source, where the catalog is genuinely
+    redundant, not disambiguating); this is for the ENGINE route on a catalog-INCAPABLE engine,
+    where the information must be preserved, just relocated to the one addressable dimension left.
+    A table ref with no catalog (already source-less, e.g. a VALUES-CTE relation) is untouched."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    for tbl in tree.find_all(exp.Table):
+        catalog = tbl.args.get("catalog")
+        if catalog is None:
+            continue
+        schema = tbl.args.get("db")
+        merged = f"{catalog.name}_{schema.name}" if schema is not None else catalog.name
+        tbl.set("catalog", None)
+        tbl.set("db", exp.to_identifier(merged, quoted=True))
+    return tree.sql(dialect="postgres")
+
+
 # Source types with no real schema namespace: the DIRECT connection is already scoped to one
 # specific physical file/database, so a schema qualifier is purely Provisa's own catalog
 # convention and has nothing to resolve against on the wire (REQ-1361).

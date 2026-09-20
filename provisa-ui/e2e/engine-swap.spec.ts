@@ -1893,6 +1893,85 @@ test.describe("scenario 1 extended: same source survives an engine change to a w
   });
 });
 
+// REQ-1730 extended, continued: mssql and pg as the PRIMARY (registration) engine — the reverse
+// direction of the block above, completing the matrix cell every other engine in this file already
+// has both ways (duckdb/trino). Neither mssql nor pg is containerized from this app process's own
+// perspective (mssql is a plain published TCP port same as any other native-process target; pg is
+// the SAME control-plane Postgres this whole harness already runs on — PgBackend._new_runtime falls
+// back to it when no $PROVISA_ENGINE_URL is set, per rebootControlPlaneEnv's own comment), so no
+// host rewrite applies in either direction — `hostRewriteTypes: {}` throughout, `host="localhost"`
+// (the registrar's own default) needs no override either. pg is a per-source-catalog FEDERATOR
+// (`_PER_SOURCE_CATALOG_ENGINES` in engine.py), the same class as duckdb/trino, not a self-only
+// warehouse like mssql/snowflake/databricks/bigquery — piloted here for the first time in this
+// harness to find out whether its own landing/reconcile path for a MATERIALIZE_ONLY source (no FDW
+// reaches elasticsearch) already works or has the same gap mssql needed five fixes for.
+test.describe("scenario 1 extended: mssql and pg as the primary engine (REQ-1730)", () => {
+  test.use({ allowedBrowserErrors: ["ERR_CONNECTION_REFUSED"] });
+
+  test.describe("mssql -> duckdb", () => {
+    test.beforeAll(() => provisionSwapSource("sqlserver", "up"));
+    test.afterAll(async () => {
+      await provisionSwapSource("sqlserver", "down");
+    });
+    test.beforeAll(() => startDemoSources(["elasticsearch"]));
+    test.afterAll(() => removeDemoSources(["elasticsearch"]));
+
+    test("elasticsearch registered once under mssql resolves after rebooting into DuckDB, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(300000);
+      await runRebootCase(page, (p) => registerElasticsearch(p), {}, ["duckdb"], false, "mssql");
+    });
+  });
+
+  test.describe("pg -> duckdb", () => {
+    test.beforeAll(() => startDemoSources(["elasticsearch"]));
+    test.afterAll(() => removeDemoSources(["elasticsearch"]));
+
+    test("elasticsearch registered once under pg resolves after rebooting into DuckDB, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(300000);
+      await runRebootCase(page, (p) => registerElasticsearch(p), {}, ["duckdb"], false, "pg");
+    });
+  });
+
+  test.describe("duckdb -> pg", () => {
+    test.beforeAll(() => startDemoSources(["elasticsearch"]));
+    test.afterAll(() => removeDemoSources(["elasticsearch"]));
+
+    test("elasticsearch registered once under DuckDB resolves after rebooting into pg, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(300000);
+      await runRebootCase(page, (p) => registerElasticsearch(p), {}, ["pg"]);
+    });
+  });
+
+  // LIVE ATTACH, not materialize-only: pg's own postgres_fdw reaches a real postgresql source
+  // in place (per pg's `_PER_SOURCE_CATALOG_ENGINES` federator class — the same reach model as
+  // duckdb/trino's own native connectors, unlike mssql/snowflake/databricks/bigquery's self-only
+  // land-everything model). The elasticsearch cases above prove pg's MATERIALIZE_ONLY landing
+  // path; this proves the DIFFERENT, opposite path — a source pg can actually scan live through
+  // its own FDW, no landing involved at all — reusing the same postgresql RDB widget fixture
+  // duckdb/trino's own native-connector tests already use.
+  test.describe("postgresql (live attach via postgres_fdw) -> pg", () => {
+    const _pgCfg = RDB_WIDGETS_SOURCES.find((c) => c.type === "postgresql")!;
+    test.beforeAll(() => provisionSwapSource(_pgCfg.type, "up"));
+    test.afterAll(async () => {
+      await provisionSwapSource(_pgCfg.type, "down");
+      await sweepZombieSwapSources();
+    });
+
+    test("postgresql registered once under DuckDB resolves after rebooting into pg via live ATTACH, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(300000);
+      await runRebootCase(page, (p) => registerRdbWidgets(_pgCfg)(p), {}, ["pg"]);
+    });
+  });
+});
+
 // REQ-1730 scenario 2: does the real Sources-form UI — create source, register table, query —
 // work when engine X is primary from a COLD START, not just after a DuckDB registration replayed
 // onto an already-running Trino process (every type above)? Deliberately NOT parameterized across

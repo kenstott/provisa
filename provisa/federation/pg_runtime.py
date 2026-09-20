@@ -77,6 +77,200 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             f"AS SELECT * FROM {remote}"
         )
 
+    # -- landing (MATERIALIZE_ONLY sources — no live FDW reach) -----------------
+
+    def _existing_columns(self, cur: Any, schema: str, table: str) -> list[str]:
+        cur.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = %s AND table_name = %s ORDER BY ordinal_position",
+            (schema, table),
+        )
+        return [r[0] for r in cur.fetchall()]
+
+    def _existing_pk(self, cur: Any, schema: str, table: str) -> list[str]:
+        cur.execute(
+            """
+            SELECT a.attname
+            FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = %s::regclass AND i.indisprimary
+            """,
+            (f'"{schema}"."{table}"',),
+        )
+        return [r[0] for r in cur.fetchall()]
+
+    def _create_table_ddl(
+        self, schema: str, table: str, columns: list[tuple[str, str]], pk_columns: list[str]
+    ) -> str:
+        from provisa.core.ir_types import to_physical
+
+        pk = set(pk_columns)
+        col_defs = [f'"{name}" {to_physical(sql_type, "postgresql")}' for name, sql_type in columns]
+        if pk:
+            col_defs.append(f"PRIMARY KEY ({', '.join(f'"{c}"' for c in pk)})")
+        return f'CREATE TABLE "{schema}"."{table}" ({", ".join(col_defs)})'
+
+    def attach_landed_source(
+        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+    ) -> str:
+        """Eager reconcile (boot/registration, REQ-846/REQ-1651): converge the source's landed
+        table to ``columns`` + ``pk_columns`` (DDL only, no rows — the refresh's job is
+        ``land_table``) — the sync mirror of ``SqlAlchemyFederationRuntime.attach_landed_source``,
+        raw psycopg2 SQL instead of SQLAlchemy Core since this runtime never uses SQLAlchemy.
+        Returns ``created`` | ``kept`` | ``recreated`` (drift = column set/order or PK mismatch).
+
+        The schema is ``{catalog}_{schema_name}``, not bare ``schema_name`` — MUST match
+        ``PgBackend.landing_target``'s own fold exactly (its own docstring has the full reasoning:
+        this engine's ``catalog_qualified=False`` means the compiler folds the catalog into the
+        schema rather than stripping it, since two MATERIALIZED sources can otherwise share a
+        native ``schema_name`` and collide once catalog qualification is gone). This method is
+        reached independently of ``landing_target`` (``reconcile_landed_tables`` calls it directly
+        off the registered-table row, not through the backend's ``landing_target`` seam), so it
+        must recompute the SAME fold here rather than trust a value threaded through."""
+        from provisa.compiler.naming import source_to_catalog
+
+        schema = f"{source_to_catalog(source.id)}_{source.schema_name}"
+        table = source.table_name
+        want_cols = [name for name, _ in columns]
+        want_pk = list(pk_columns or ())
+        cur = self._con.cursor()
+        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+        cur.execute("SELECT to_regclass(%s)", (f'"{schema}"."{table}"',))
+        row = cur.fetchone()
+        assert row is not None  # to_regclass is a scalar function — always exactly one row
+        if row[0] is None:
+            cur.execute(self._create_table_ddl(schema, table, columns, want_pk))
+            return "created"
+        have_cols = self._existing_columns(cur, schema, table)
+        have_pk = self._existing_pk(cur, schema, table)
+        if have_cols == want_cols and sorted(have_pk) == sorted(want_pk):
+            return "kept"
+        cur.execute(f'DROP TABLE "{schema}"."{table}"')
+        cur.execute(self._create_table_ddl(schema, table, columns, want_pk))
+        return "recreated"
+
+    def _ensure_table(
+        self,
+        cur: Any,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str],
+    ) -> None:
+        cur.execute("SELECT to_regclass(%s)", (f'"{schema}"."{table}"',))
+        row = cur.fetchone()
+        assert row is not None  # to_regclass is a scalar function — always exactly one row
+        if row[0] is None:
+            cur.execute(self._create_table_ddl(schema, table, columns, pk_columns))
+
+    def land_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        change_signal: str = "ttl",
+        watermark_column: str | None = None,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+        shape: str | None = None,
+    ) -> str:
+        """Land ``rows`` into ``schema.table`` of THIS engine's own store (REQ-1730) — create-if-
+        absent only (drift is ``attach_landed_source``'s job), then REPLACE (delete+insert) or
+        APPEND (insert, or upsert-by-key via Postgres's native ``ON CONFLICT`` when ``pk_columns``
+        is given)."""
+        from provisa.core.change_signal import APPEND, CDC, REPLACE, select_landing_shape
+
+        del match_floor
+        pk = list(pk_columns or ())
+        landing_shape = shape or select_landing_shape(change_signal, watermark_column)
+        names = [name for name, _ in columns]
+        cur = self._con.cursor()
+        self._ensure_table(cur, schema, table, columns, pk)
+        if landing_shape == REPLACE:
+            cur.execute(f'DELETE FROM "{schema}"."{table}"')
+            self._insert_rows(cur, schema, table, names, rows)
+        elif landing_shape == APPEND:
+            if pk:
+                self._upsert_rows(cur, schema, table, names, pk, rows)
+            else:
+                self._insert_rows(cur, schema, table, names, rows)
+        elif landing_shape == CDC:
+            if not pk:
+                raise ValueError(f"CDC land into {schema}.{table} requires primary key columns")
+            self._upsert_rows(cur, schema, table, names, pk, rows)
+        else:
+            raise ValueError(f"unhandled landing shape {landing_shape!r}")
+        return f"{schema}.{table}"
+
+    def _insert_rows(
+        self, cur: Any, schema: str, table: str, names: list[str], rows: list[dict]
+    ) -> None:
+        if not rows:
+            return
+        cols_sql = ", ".join(f'"{n}"' for n in names)
+        placeholders = ", ".join(["%s"] * len(names))
+        values = [tuple(r.get(n) for n in names) for r in rows]
+        cur.executemany(
+            f'INSERT INTO "{schema}"."{table}" ({cols_sql}) VALUES ({placeholders})', values
+        )
+
+    def _upsert_rows(
+        self,
+        cur: Any,
+        schema: str,
+        table: str,
+        names: list[str],
+        pk: list[str],
+        rows: list[dict],
+    ) -> None:
+        if not rows:
+            return
+        cols_sql = ", ".join(f'"{n}"' for n in names)
+        placeholders = ", ".join(["%s"] * len(names))
+        conflict_cols = ", ".join(f'"{c}"' for c in pk)
+        update_cols = [n for n in names if n not in pk]
+        set_sql = ", ".join(f'"{n}" = EXCLUDED."{n}"' for n in update_cols)
+        do_update = f"DO UPDATE SET {set_sql}" if update_cols else "DO NOTHING"
+        values = [tuple(r.get(n) for n in names) for r in rows]
+        cur.executemany(
+            f'INSERT INTO "{schema}"."{table}" ({cols_sql}) VALUES ({placeholders}) '
+            f"ON CONFLICT ({conflict_cols}) {do_update}",
+            values,
+        )
+
+    async def apply_cdc_events(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str],
+        events: list,
+    ) -> dict[str, int]:
+        """Apply CDC change events (insert/update -> upsert by PK, delete -> tombstone) to a table
+        already landed in this engine's own store (REQ-1733) — the raw-psycopg2 mirror of
+        ``SqlAlchemyFederationRuntime.apply_cdc_events``."""
+        if not pk_columns:
+            raise ValueError(f"CDC land into {schema}.{table} requires primary key columns")
+        names = [name for name, _ in columns]
+        cur = self._con.cursor()
+        self._ensure_table(cur, schema, table, columns, pk_columns)
+        counts = {"upsert": 0, "delete": 0}
+        for ev in events:
+            if ev.operation.lower() == "delete":
+                where = " AND ".join(f'"{c}" = %s' for c in pk_columns)
+                cur.execute(
+                    f'DELETE FROM "{schema}"."{table}" WHERE {where}',
+                    tuple(ev.row.get(c) for c in pk_columns),
+                )
+                counts["delete"] += 1
+            else:
+                self._upsert_rows(cur, schema, table, names, pk_columns, [ev.row])
+                counts["upsert"] += 1
+        return counts
+
     # -- materialization store -------------------------------------------------
 
     def ensure_materialize_attached(self) -> str:

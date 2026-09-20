@@ -838,6 +838,20 @@ async def _govern_and_route_planned(
                     )
         except ValueError:
             raise
+        # REQ-1730: this ENGINE route's own catalog-qualification (unlike Route.DIRECT's own
+        # `strip_catalog`, applied unconditionally a few lines below in the other branch) was never
+        # engine-aware — every engine got a catalog.schema.table physical reference regardless of
+        # whether its own SQL dialect can express one at all. Verified live: PostgreSQL genuinely
+        # cannot (no cross-database queries, full stop), so `pg`'s own declared
+        # `catalog_qualified=False` (FederationEngine's own doc has the reproduction) folds the
+        # catalog into the schema name here instead of a bare `strip_catalog` — the catalog still
+        # carries REAL per-source disambiguating information on this route (two sources sharing a
+        # native schema_name would otherwise collide), unlike Route.DIRECT's single live-attached
+        # source, where the catalog is genuinely redundant and a plain drop is safe.
+        if not state.federation_engine.engine.catalog_qualified:
+            from provisa.compiler.sql_rewrite import fold_catalog_into_schema
+
+            _qualified = fold_catalog_into_schema(_qualified)
         physical_sql = state.federation_engine.transpile_physical(_qualified)
         if explain is not None:
             # REQ-1519: the ONE pipeline's own EXPLAIN — the engine describes the federated

@@ -32,6 +32,43 @@ class PgBackend(NativeEngineBackend):
     # unrelated later query's attach pass (see duckdb_backend.py for the observed failure mode).
     _attach_errors = (psycopg2.Error, KeyError, UnreachableSource)
 
+    def landing_target(
+        self,
+        *,
+        store_schema: str,
+        source_id: str,
+        source_type: Any,
+        schema_name: str,
+        table_name: str,
+    ) -> tuple[str, str]:
+        """EVERY MATERIALIZED source's replica lands at its REGISTERED address — same reasoning and
+        same fix as ``SqlAlchemyBackend``'s own override (REQ-1730): there is no DuckDB-style
+        mangled-name+separate-view indirection to redirect a MATERIALIZE_ONLY source through here,
+        so the landing address is the physical address. Verified live (2026-09-20): the base
+        ``EngineBackend`` default (a mangled ``source_id__schema__table`` name under
+        ``store_schema``) left the compiler querying a schema/table that was never created.
+
+        UNLIKE ``SqlAlchemyBackend`` (a genuinely fixed, single catalog), the schema here is
+        ``{catalog}_{schema_name}``, not bare ``schema_name``: this engine's own
+        ``catalog_qualified=False`` makes the compiler's ENGINE route fold the catalog into the
+        schema (``sql_rewrite.fold_catalog_into_schema``) instead of stripping it, because — unlike
+        the DIRECT route's single live-attached source (``PgFederationRuntime.attach_source``,
+        genuinely redundant catalog there) — the catalog here is the ONLY thing that keeps two
+        MATERIALIZED sources sharing the same native ``schema_name`` (e.g. two elasticsearch-type
+        sources both reporting "default") from colliding once real Postgres's single schema
+        namespace is all that's left to address with. Must produce EXACTLY what
+        ``fold_catalog_into_schema`` derives for the compiled query to resolve.
+
+        KNOWN GAP: recomputes the bare per-source catalog (``source_to_catalog``), not the actual
+        org-scoped one (``state.source_catalogs``, potentially ``org_prefixed_catalog``-wrapped) —
+        this function has no ``state``/org context to read that from. Correct for the default org
+        (where org-prefixing is a no-op, verified live); a non-default org would need this plumbed
+        through, same class of limitation as the schema-collision risk itself — not fixed here."""
+        del store_schema, source_type  # never chooses a different table, only the schema prefix
+        from provisa.compiler.naming import source_to_catalog
+
+        return f"{source_to_catalog(source_id)}_{schema_name}", table_name
+
     def transpile_physical(self, pg_sql: str) -> str:  # REQ-902
         """Postgres physical SQL, then collapse JSON_OBJECT colon syntax into flat json_build_object so
         nested-relationship queries survive pg_duckdb's transparent DuckDB execution path (REQ-902).

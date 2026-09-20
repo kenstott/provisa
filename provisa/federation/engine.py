@@ -131,12 +131,32 @@ class FederationEngine:  # REQ-840
         file_native: bool | None = None,
         pooled: bool | None = None,
         transactional: bool | None = None,
+        catalog_qualified: bool = True,
         backend_factory: Any = None,
         capabilities: Any = None,
         default_materialize_store: Any = None,
         supported_materialize_stores: frozenset[str] | None = None,
     ) -> None:
         self.name = name
+        # DECLARED (REQ-1730), defaults True (every engine already exercised through this harness
+        # supports it): whether this engine's own SQL dialect can express a catalog-qualified
+        # (catalog.schema.table, 3-part) physical reference at all. Trino/DuckDB genuinely need
+        # per-source catalog qualification (a Trino catalog IS a real per-source connector
+        # registration; DuckDB genuinely ATTACHes multiple databases); Snowflake/Databricks/BigQuery
+        # also use real 3-part addressing natively. A self-only engine's catalog is either constant
+        # across every source (mssql/snowflake-as-self-only — qualifying with it adds no
+        # disambiguating information) or, for genuine PostgreSQL specifically, PHYSICALLY IMPOSSIBLE
+        # — verified live (REQ-1730 engine-swap harness, 2026-09-20): registering elasticsearch
+        # under DuckDB then rebooting into the `pg` engine raised Postgres's own native
+        # ``cross-database references are not implemented`` error on the very first query, since
+        # real Postgres has no cross-database queries at all, regardless of what the catalog name
+        # is. Only ``pg`` is declared False here; the postgres-WIRE-COMPATIBLE generic `_RDB_KINDS`
+        # engines (greenplum/cockroachdb/yugabytedb/opengauss) are NOT changed — their actual
+        # cross-database support varies by product and version and has not been verified either
+        # way, so guessing here would be exactly the kind of unverified assumption this project's
+        # own conventions rule out; they keep today's default (True) until someone actually tests
+        # one live.
+        self.catalog_qualified = catalog_qualified
         # The _ENGINE_BUILDERS key this instance was selected under. build_engine — the one place the
         # runtime picks an engine — stamps the key it resolved, which is what the admin API reports as
         # the LIVE engine. It is not always self.name: "trino"/"trino-byo" and
@@ -653,6 +673,9 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         file_native=True,  # pg_duckdb / file_fdw scan csv/parquet/iceberg in place (REQ-897)
         pooled=True,  # server-side connection pooling
         transactional=True,  # PostgreSQL is ACID
+        # REQ-1730: real PostgreSQL has no cross-database queries at all — verified live, see
+        # FederationEngine.__init__'s own doc on this trait for the exact reproduction.
+        catalog_qualified=False,
         backend_factory=PgBackend,  # in-process terminal driving PgFederationRuntime
         default_materialize_store=_platform_db_materialize_default,
         capabilities=frozenset(
