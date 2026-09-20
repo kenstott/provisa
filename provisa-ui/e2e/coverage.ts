@@ -10,6 +10,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { TOUR_SEEN_KEY, TOUR_DEMO_RESET_KEY } from "../src/tour/tourKeys";
 
 export { expect } from "playwright/test";
+export type { Page };
 
 // Single source of truth for the isolated e2e backend's URL — matches
 // playwright.config.ts's PROVISA_E2E_API_PORT. Specs must reference this instead

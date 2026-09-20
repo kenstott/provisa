@@ -84,6 +84,7 @@ import {
   E2E_PINOT_CONTROLLER_PORT,
   E2E_KAFKA_SCHEMA_REGISTRY_PORT,
   E2E_RSS_PORT,
+  E2E_TRINO_SOURCE_PORT,
   E2E_WS_PORT,
   FILE_LAKE_HOST_DIR,
   GRPC_REMOTE_SERVER_MODULE,
@@ -94,6 +95,9 @@ import {
   ROOT,
   RUNNING_IN_CI,
   SINGLESTORE_AVAILABLE,
+  SNOWFLAKE_ENGINE_AVAILABLE,
+  DATABRICKS_ENGINE_AVAILABLE,
+  BIGQUERY_ENGINE_AVAILABLE,
   provisionRedshift,
   provisionSynapse,
   provisionSwapSource,
@@ -1715,6 +1719,176 @@ test.describe("scenario 1: same source survives an engine change + reboot (REQ-1
     }) => {
       test.setTimeout(300000);
       await runRebootCase(page, (p) => registerTrinoSource(p), { trino: "trino-source" });
+    });
+  });
+});
+
+// REQ-1730 scenario 1, reversed direction: the opposite starting engine from the block above —
+// register Trino-primary (the real Sources-form UI, host.docker.internal from the very first
+// call, same as scenario 2's own mongodb case), then genuinely kill+respawn the SAME reboot-
+// harness process back onto DuckDB and requery, with no replay of the registration mutation
+// either way. Proves the swap is symmetric: it is not only "register on DuckDB, survive a swap to
+// Trino" (every case above) but also "register on Trino, survive a swap back to DuckDB" — the
+// direction a user who set up a source under a Trino-primary deployment and later downgraded to
+// DuckDB would actually hit. `runRebootCase`'s `startEngine`/direction-aware
+// `rewriteHostForContainerizedEngine` (see its own doc) already generalize to this; only
+// `hostRewriteTypes` needs to key the REWRITE OFF the engine being entered ("duckdb" here, not
+// "trino") to trigger the containerized → native inverse. Four MATERIALIZE_ONLY types piloted
+// here (mongodb/redis/cassandra/elasticsearch — the ones whose own register* already exposes a
+// `host` param and whose row-landing mechanism this file's own module doc already establishes as
+// "nothing engine-specific", i.e. independent of which engine's own Python driver does the
+// fetch) — widen to more types only after confirming a given type's registrar tolerates being
+// driven against a containerized backend from its very first call, same caveat scenario 2's own
+// module doc raises for cold-start-primary registration in general.
+test.describe("scenario 1 reversed: same source survives an engine change + reboot, Trino first (REQ-1730)", () => {
+  // See the forward-direction describe block's own comment for why this specific browser error is
+  // allowed — identical reboot-window race, same cause.
+  test.use({ allowedBrowserErrors: ["ERR_CONNECTION_REFUSED"] });
+
+  test.describe("mongodb", () => {
+    test.beforeAll(() => startDemoSources(["mongodb"]));
+    test.afterAll(() => removeDemoSources(["mongodb"]));
+
+    test("mongodb registered once under Trino resolves after rebooting into DuckDB, no replay", async ({
+      page,
+    }) =>
+      runRebootCase(
+        page,
+        (p) => registerMongodb(p, "", "host.docker.internal"),
+        { duckdb: "mongodb" },
+        ["duckdb"],
+        false,
+        "trino",
+      ));
+  });
+
+  test.describe("redis", () => {
+    test.beforeAll(() => startDemoSources(["redis"]));
+    test.afterAll(() => removeDemoSources(["redis"]));
+
+    test("redis registered once under Trino resolves after rebooting into DuckDB, no replay", async ({
+      page,
+    }) =>
+      runRebootCase(
+        page,
+        (p) => registerRedis(p, "host.docker.internal"),
+        { duckdb: "redis" },
+        ["duckdb"],
+        false,
+        "trino",
+      ));
+  });
+
+  test.describe("cassandra", () => {
+    test.beforeAll(() => startDemoSources(["cassandra"]));
+    test.afterAll(() => removeDemoSources(["cassandra"]));
+
+    test("cassandra registered once under Trino resolves after rebooting into DuckDB, no replay", async ({
+      page,
+    }) =>
+      runRebootCase(
+        page,
+        (p) => registerCassandra(p, "host.docker.internal"),
+        { duckdb: "cassandra" },
+        ["duckdb"],
+        false,
+        "trino",
+      ));
+  });
+
+  test.describe("elasticsearch", () => {
+    test.beforeAll(() => startDemoSources(["elasticsearch"]));
+    test.afterAll(() => removeDemoSources(["elasticsearch"]));
+
+    test("elasticsearch registered once under Trino resolves after rebooting into DuckDB, no replay", async ({
+      page,
+    }) =>
+      runRebootCase(
+        page,
+        (p) => registerElasticsearch(p, "host.docker.internal"),
+        { duckdb: "elasticsearch" },
+        ["duckdb"],
+        false,
+        "trino",
+      ));
+  });
+});
+
+// REQ-1730 extended: engines beyond duckdb/trino. provisa/federation/engine.py's `_ENGINE_BUILDERS`
+// registers ~30 selectable `PROVISA_ENGINE` values — Snowflake/Databricks/BigQuery/mssql among them
+// are first-class SELF_ONLY/PARTIAL warehouse engines, not merely SOURCE TYPES (registerSnowflake/
+// registerDatabricks/registerBigquery above register them as a federated SOURCE reached via
+// duckdb/trino — a different model, even though the physical driver underneath is the same product
+// — see rebootEngineExtraEnv's own doc for the DSN each engine's OWN config needs, distinct from
+// SourceInput's fields). This block proves the reboot harness generalizes to these too: register
+// once under DuckDB (the standard start), reboot the SAME process into the warehouse engine, requery
+// with no replay. No host rewrite applies (none of these are containerized from this app process's
+// perspective — snowflake/databricks/bigquery are external SaaS APIs, mssql is a plain published
+// TCP port) — `hostRewriteTypes: {}` throughout. One MATERIALIZE_ONLY type piloted per engine
+// (reusing this file's own established "nothing engine-specific to land" types); snowflake/
+// databricks/bigquery gate on the same live-credential env vars source-to-query-cloud-warehouse.spec
+// .ts's own tests already require, mssql needs only the local demo/sources/sqlserver fixture.
+test.describe("scenario 1 extended: same source survives an engine change to a warehouse engine (REQ-1730)", () => {
+  test.use({ allowedBrowserErrors: ["ERR_CONNECTION_REFUSED"] });
+
+  test.describe("mongodb -> snowflake", () => {
+    test.skip(!SNOWFLAKE_ENGINE_AVAILABLE, "no live Snowflake credentials (SNOWFLAKE_ACCOUNT/USER/PASSWORD)");
+    test.beforeAll(() => startDemoSources(["mongodb"]));
+    test.afterAll(() => removeDemoSources(["mongodb"]));
+
+    test("mongodb registered once under DuckDB resolves after rebooting into Snowflake, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(300000);
+      await runRebootCase(page, (p) => registerMongodb(p), {}, ["snowflake"]);
+    });
+  });
+
+  test.describe("redis -> databricks", () => {
+    test.skip(
+      !DATABRICKS_ENGINE_AVAILABLE,
+      "no live Databricks credentials (DATABRICKS_SERVER_HOSTNAME/HTTP_PATH/TOKEN)",
+    );
+    test.beforeAll(() => startDemoSources(["redis"]));
+    test.afterAll(() => removeDemoSources(["redis"]));
+
+    test("redis registered once under DuckDB resolves after rebooting into Databricks, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(300000);
+      await runRebootCase(page, (p) => registerRedis(p), {}, ["databricks"]);
+    });
+  });
+
+  test.describe("cassandra -> bigquery", () => {
+    test.skip(
+      !BIGQUERY_ENGINE_AVAILABLE,
+      "no live GCP credentials (GOOGLE_CLOUD_PROJECT/GOOGLE_APPLICATION_CREDENTIALS)",
+    );
+    test.beforeAll(() => startDemoSources(["cassandra"]));
+    test.afterAll(() => removeDemoSources(["cassandra"]));
+
+    test("cassandra registered once under DuckDB resolves after rebooting into BigQuery, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(300000);
+      await runRebootCase(page, (p) => registerCassandra(p), {}, ["bigquery"]);
+    });
+  });
+
+  test.describe("elasticsearch -> mssql", () => {
+    test.beforeAll(() => provisionSwapSource("sqlserver", "up"));
+    test.afterAll(async () => {
+      await provisionSwapSource("sqlserver", "down");
+    });
+    test.beforeAll(() => startDemoSources(["elasticsearch"]));
+    test.afterAll(() => removeDemoSources(["elasticsearch"]));
+
+    test("elasticsearch registered once under DuckDB resolves after rebooting into mssql, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(300000);
+      await runRebootCase(page, (p) => registerElasticsearch(p), {}, ["mssql"]);
     });
   });
 });

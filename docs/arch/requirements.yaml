@@ -57665,6 +57665,35 @@
   # immediately; resolve_available_columns_metadata gained a graphql_remote branch reading types
   # back from table_columns. Regression test: tests/unit/test_graphql_remote_update_table_columns.py
 
+    (Amended 2026-09-19, REVERSED-DIRECTION SWAP: the harness's runRebootCase primitive (a single
+    backend process genuinely killed and respawned with PROVISA_ENGINE flipped) is extended to
+    cover the reverse of its original DuckDB-first direction — registering a source against the
+    Trino-primary backend from a cold start, then rebooting that SAME process back into DuckDB and
+    requerying, with no mutation replay either direction. This required generalizing
+    rewriteHostForContainerizedEngine (engine-swap-helpers.ts) to take a toContainerized boolean so
+    the docker-topology host rewrite (localhost <-> host.docker.internal, kafka's container alias)
+    works in both directions, and generalizing runRebootCase's host-rewrite trigger to fire whenever
+    the engine being entered crosses the native/containerized boundary, not only "whenever entering
+    trino". Piloted for the four MATERIALIZE_ONLY source types mongodb/redis/cassandra/
+    elasticsearch, each of whose register* function gained an optional host param for this. New
+    coverage: "scenario 1 reversed: same source survives an engine change + reboot, Trino first
+    (REQ-1730)" in engine-swap.spec.ts.)
+
+    (Amended 2026-09-19, WAREHOUSE ENGINES BEYOND DUCKDB/TRINO: provisa/federation/engine.py's
+    _ENGINE_BUILDERS registry defines roughly 30 selectable PROVISA_ENGINE values, not just
+    duckdb/trino/pg — snowflake, databricks, bigquery, and mssql (generic sqlalchemy) among them.
+    RebootEngineKind (engine-swap-helpers.ts) is extended to include these four, and
+    rebootEngineExtraEnv() builds each engine's own PROVISA_ENGINE_URL DSN (snowflake://,
+    databricks://, bigquery via ambient GOOGLE_CLOUD_PROJECT/ADC with no DSN, mssql+pyodbc://
+    against the local demo/sources/sqlserver fixture). This is a different model from registering
+    the same product as a SOURCE TYPE (registerSnowflake/registerDatabricks/registerBigquery
+    already existed for that, reached via duckdb/trino as the federation engine) — this instead
+    makes Snowflake/Databricks/BigQuery/mssql themselves the federation engine. Availability gates
+    SNOWFLAKE_ENGINE_AVAILABLE/DATABRICKS_ENGINE_AVAILABLE/BIGQUERY_ENGINE_AVAILABLE are env-var
+    presence checks, the same vars the existing cloud-warehouse source tests gate on. New coverage:
+    "scenario 1 extended: same source survives an engine change to a warehouse engine (REQ-1730)",
+    piloting mongodb->snowflake, redis->databricks, cassandra->bigquery, elasticsearch->mssql.)
+
 - id: REQ-1731
   status: complete
   since: 2026-09

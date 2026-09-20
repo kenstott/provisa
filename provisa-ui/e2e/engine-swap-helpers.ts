@@ -601,7 +601,85 @@ export async function waitForTrinoStable(budgetMs = 330000): Promise<void> {
 // pg engine, with no explicit federation_engine_url configured, falls back to the platform
 // database (PgBackend._new_runtime) — the SAME control-plane postgres rebootControlPlaneEnv()
 // already points every engine kind at.
-export type RebootEngineKind = "duckdb" | "trino" | "pg";
+// REQ-1730 extended: engines beyond duckdb/trino/pg are, per provisa/federation/engine.py's
+// `_ENGINE_BUILDERS`, first-class SELF_ONLY/PARTIAL warehouse engines in their own right (Snowflake/
+// Databricks/BigQuery/mssql among ~30 selectable `PROVISA_ENGINE` values) — NOT the same model as
+// registering that same product as a SOURCE TYPE (registerSnowflake et al. above), even though both
+// share the same physical driver underneath. Only these four are wired into the reboot harness so
+// far (the ones with either live e2e credentials already in .env — snowflake/databricks/bigquery,
+// same creds source-to-query-cloud-warehouse.spec.ts's own tests gate on — or a fully local Docker
+// fixture — mssql, reusing demo/sources/sqlserver, no cloud dependency at all).
+export type RebootEngineKind = "duckdb" | "trino" | "pg" | "snowflake" | "databricks" | "bigquery" | "mssql";
+
+// Per-engine live-credential/fixture availability, mirroring the exact env vars this file's own
+// source-type tests already gate on (SINGLESTORE_AVAILABLE's own pattern) — reused here unchanged
+// so "is this warehouse usable as a SOURCE" and "is it usable as an ENGINE" read the same signal,
+// since it's the same underlying account/credentials either way.
+export const SNOWFLAKE_ENGINE_AVAILABLE = Boolean(
+  process.env.SNOWFLAKE_ACCOUNT && process.env.SNOWFLAKE_USER && process.env.SNOWFLAKE_PASSWORD,
+);
+export const DATABRICKS_ENGINE_AVAILABLE = Boolean(
+  process.env.DATABRICKS_SERVER_HOSTNAME &&
+    process.env.DATABRICKS_HTTP_PATH &&
+    process.env.DATABRICKS_TOKEN,
+);
+export const BIGQUERY_ENGINE_AVAILABLE = Boolean(
+  process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_APPLICATION_CREDENTIALS,
+);
+// mssql needs no live-credential gate — it targets the same local demo/sources/sqlserver Docker
+// fixture RDB_WIDGETS_SOURCES's own "sqlserver" SOURCE-type case already provisions (self-signed
+// cert, sa/Provisa_2026!), just used as the engine's OWN landing store instead of a federated
+// source this time.
+
+/** Build the `PROVISA_ENGINE_URL` DSN `configured_engine_url()` (engine.py) reads for a
+ * self-only warehouse engine, plus any other env that engine's backend needs — the
+ * `REBOOT_TRINO_EXTRA_ENV` pattern generalized past Trino's single hardcoded case. Each DSN shape
+ * is copied verbatim from that engine's own runtime module doc (snowflake_runtime.py/
+ * databricks_runtime.py/bigquery_runtime.py) — NOT from registerSnowflake/registerDatabricks/
+ * registerBigquery's own SourceInput fields above, a genuinely different model (per-engine
+ * `federation_engine_url` config vs. a per-source connection row) that happens to read the same
+ * account/credentials. Returns {} for duckdb/trino/pg (unaffected, existing behavior). */
+function rebootEngineExtraEnv(engineKind: RebootEngineKind): Record<string, string> {
+  switch (engineKind) {
+    case "trino":
+      return REBOOT_TRINO_EXTRA_ENV;
+    case "snowflake": {
+      // snowflake://user:pass@account/database/schema?warehouse=WH — reserved chars in
+      // credentials must be percent-encoded (SnowflakeFederationRuntime unquotes them back).
+      const user = encodeURIComponent(process.env.SNOWFLAKE_USER ?? "");
+      const password = encodeURIComponent(process.env.SNOWFLAKE_PASSWORD ?? "");
+      const account = process.env.SNOWFLAKE_ACCOUNT ?? "";
+      const database = process.env.SNOWFLAKE_DATABASE ?? "PROVISA_UI_E2E";
+      const warehouse = process.env.SNOWFLAKE_WAREHOUSE ?? "COMPUTE_WH";
+      return {
+        PROVISA_ENGINE_URL: `snowflake://${user}:${password}@${account}/${database}/PUBLIC?warehouse=${warehouse}`,
+      };
+    }
+    case "databricks": {
+      // databricks://token:TOKEN@host?http_path=/sql/1.0/warehouses/...&catalog=main
+      const token = encodeURIComponent(process.env.DATABRICKS_TOKEN ?? "");
+      const host = process.env.DATABRICKS_SERVER_HOSTNAME ?? "";
+      const httpPath = encodeURIComponent(process.env.DATABRICKS_HTTP_PATH ?? "");
+      return {
+        PROVISA_ENGINE_URL: `databricks://token:${token}@${host}?http_path=${httpPath}&catalog=main`,
+      };
+    }
+    case "bigquery":
+      // BigQueryFederationRuntime falls back to $GOOGLE_CLOUD_PROJECT/ADC when no URL is given —
+      // no DSN needed, just the ambient credentials env (already inherited via ...process.env).
+      return {};
+    case "mssql":
+      // mssql+pyodbc DSN at demo/sources/sqlserver's own fixed port/credentials (RDB_WIDGETS_PORTS
+      // .sqlserver, RDB_WIDGETS_SOURCES's "sqlserver" entry) — Trino's own trust-cert opt-in for
+      // this self-signed cert doesn't apply here (no Trino JDBC involved), but the ODBC driver
+      // needs the equivalent TrustServerCertificate flag against the same cert.
+      return {
+        PROVISA_ENGINE_URL: `mssql+pyodbc://sa:Provisa_2026!@localhost:${RDB_WIDGETS_PORTS.sqlserver}/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes`,
+      };
+    default:
+      return {};
+  }
+}
 
 // Same defaults playwright.config.ts's own graphql-demo/petstore-mock webServer entries use.
 // Exported so registerGraphqlRemote/registerOpenapi callers (registrars have no baked-in
@@ -712,7 +790,7 @@ export async function spawnRebootBackend(engineKind: RebootEngineKind): Promise<
     GRAPHQL_DEMO_URL: REBOOT_GRAPHQL_DEMO_URL,
     PETSTORE_BASE_URL: REBOOT_PETSTORE_OPENAPI_URL.replace(/\/openapi\.json$/, ""),
     ...rebootControlPlaneEnv(),
-    ...(engineKind === "trino" ? REBOOT_TRINO_EXTRA_ENV : {}),
+    ...rebootEngineExtraEnv(engineKind),
   };
   const proc = spawn(
     path.join(ROOT, ".venv", "bin", "uvicorn"),
@@ -866,8 +944,20 @@ export async function sweepRebootZombieSources(): Promise<void> {
  * DuckDB-registered source BEFORE rebooting into a containerized engine (currently just Trino);
  * a no-op for a type with no live Trino connector (REQ-842) since its catalog is never issued
  * either way. This is 100% test-harness Docker-topology plumbing, not anything a real deployment
- * needs — Trino and the app process share one network there. */
-export async function rewriteHostForContainerizedEngine(sourceId: string, sourceType: string): Promise<void> {
+ * needs — Trino and the app process share one network there.
+ *
+ * `toContainerized` (default true, matching every pre-existing native-first caller): direction of
+ * the transition being rewritten FOR. true = native → containerized (localhost/127.0.0.1 →
+ * host.docker.internal, the original one-directional behavior). false = containerized → native
+ * (the inverse — host.docker.internal → localhost, kafka's container alias back to its published
+ * host port) — needed once a source can be registered Trino-primary (REQ-1730 scenario 1,
+ * reversed: `startEngine: "trino"`, then rebooting INTO duckdb) and its row's host/database/
+ * mappingJson values are already container-side. */
+export async function rewriteHostForContainerizedEngine(
+  sourceId: string,
+  sourceType: string,
+  toContainerized = true,
+): Promise<void> {
   const res = await fetch(`${REBOOT_BACKEND_URL}/admin/graphql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -894,13 +984,22 @@ export async function rewriteHostForContainerizedEngine(sourceId: string, source
   const src = sources.find((s) => s.id === sourceId);
   expect(src, `source ${sourceId} not found on the reboot harness's control-plane schema`).toBeTruthy();
   if (sourceType === "kafka") {
-    src!.host = "kafka";
-    src!.port = 29092;
+    if (toContainerized) {
+      src!.host = "kafka";
+      src!.port = 29092;
+    } else {
+      src!.host = "localhost";
+      src!.port = E2E_KAFKA_PORT;
+    }
   } else if (src!.host && sourceType !== "rss" && sourceType !== "websocket") {
-    src!.host = src!.host.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal");
+    src!.host = toContainerized
+      ? src!.host.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal")
+      : src!.host.replace(/\bhost\.docker\.internal\b/g, "localhost");
   }
   if (src!.database) {
-    src!.database = src!.database.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal");
+    src!.database = toContainerized
+      ? src!.database.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal")
+      : src!.database.replace(/\bhost\.docker\.internal\b/g, "localhost");
   }
   // REQ-1730: hive_s3's own S3 endpoint lives in `mapping.s3_endpoint`, not `host`/`database` —
   // DuckDB's row-fetch loader (make_hive_s3_loader) needs it host-reachable ("localhost:9000",
@@ -909,10 +1008,9 @@ export async function rewriteHostForContainerizedEngine(sourceId: string, source
   // text (not a per-key rewrite) covers this and any future type storing a container-reachable
   // URL in mapping, the same way host/database already get rewritten above.
   if (src!.mappingJson) {
-    src!.mappingJson = src!.mappingJson.replace(
-      /\b(?:localhost|127\.0\.0\.1)\b/g,
-      "host.docker.internal",
-    );
+    src!.mappingJson = toContainerized
+      ? src!.mappingJson.replace(/\b(?:localhost|127\.0\.0\.1)\b/g, "host.docker.internal")
+      : src!.mappingJson.replace(/\bhost\.docker\.internal\b/g, "localhost");
   }
   const mutation = await fetch(`${REBOOT_BACKEND_URL}/admin/graphql`, {
     method: "POST",
@@ -1007,18 +1105,29 @@ export async function runFreshEngineCase(
  * each engine in `engineSequence`, genuinely KILL and RESPAWN that same process with the engine
  * flipped (same port/data dir/org) and query again — no replay of the registration mutation ever.
  * `hostRewrites` (default {}): per-engine host override to apply (via
- * `rewriteHostForContainerizedEngine`) before rebooting into that engine — pass e.g. `{ trino:
+ * `rewriteHostForContainerizedEngine`) whenever ENTERING that engine crosses the native/
+ * containerized boundary from wherever the row's host currently is — pass e.g. `{ trino:
  * "mongodb" }` when `registrar`'s type has a live connector reachable through the docker-topology
  * host rewrite (see that function's own doc); omit an engine here for a type with no such
  * dependency (a `LAND`-only source, a file path identity-mounted into the container, etc.) — a
  * no-op call for a type with no connector is harmless either way (REQ-842), so default to calling
- * it for every engine unless the caller has a reason not to.
+ * it for every engine unless the caller has a reason not to. Keyed by the engine being ENTERED,
+ * not by direction — `{ duckdb: "mongodb" }` triggers the INVERSE (containerized → native)
+ * rewrite when `engineSequence` reboots FROM trino back INTO duckdb (REQ-1730 scenario 1,
+ * reversed direction: `startEngine: "trino"`).
  *
  * One registrar per test, matching runSwapCase's own "one type = one test" contract — see this
  * file's module doc for why that split matters (isolating a single type's failure, targeted
  * reruns). This is the primitive to reuse when extending REQ-1730 scenario 1 to more source
  * types: `test("<type>: ...", ({ page }) => runRebootCase(page, () =>
- * register<Type>(page), { trino: "<type>" }))`. */
+ * register<Type>(page), { trino: "<type>" }))`.
+ *
+ * Reversed direction (register Trino-primary, reboot into duckdb — same REQ-1730 scenario 1
+ * intent, opposite starting engine): `test("<type>: ...", ({ page }) => runRebootCase(page, (p) =>
+ * register<Type>(p, "host.docker.internal"), { duckdb: "<type>" }, ["duckdb"], false, "trino"))`
+ * — `register<Type>`'s own `host` param (registerMongodb/registerRedis/registerCassandra/
+ * registerElasticsearch) supplies the container-reachable address a Trino-primary-from-boot
+ * registration needs; `reprovisionSourceOnEngine`'s post-hoc rewrite is too late for it. */
 export async function runRebootCase(
   page: Page,
   registrar: (page: Page) => Promise<Registration>,
@@ -1084,13 +1193,24 @@ export async function runRebootCase(
       registration.assertRows(rows);
     }
 
+    // Only "trino" is containerized today (duckdb is native; "pg" — RebootEngineKind's third,
+    // not-yet-wired member — would be native too, an embedded process like duckdb) — this
+    // stand-in should become a real per-engine `containerized` flag if a containerized "pg" or
+    // similar engine ever joins this harness.
+    const isContainerized = (e: RebootEngineKind) => e === "trino";
+    let currentEngine = startEngine;
     for (const engineKind of engineSequence) {
       const sourceType = hostRewriteTypes[engineKind];
-      if (engineKind !== "duckdb" && sourceType !== undefined) {
-        await rewriteHostForContainerizedEngine(registration.sourceId, sourceType || registration.label);
+      if (sourceType !== undefined && isContainerized(engineKind) !== isContainerized(currentEngine)) {
+        await rewriteHostForContainerizedEngine(
+          registration.sourceId,
+          sourceType || registration.label,
+          isContainerized(engineKind),
+        );
       }
       await killRebootBackend(proc);
       proc = await spawnRebootBackend(engineKind);
+      currentEngine = engineKind;
       rows = await pollFor();
       registration.assertRows(rows);
     }

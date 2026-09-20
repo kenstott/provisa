@@ -791,14 +791,18 @@ export function registerRedshift(conn: RedshiftConnection): (page: Page) => Prom
   };
 }
 
-export async function registerElasticsearch(page: Page): Promise<Registration> {
+export async function registerElasticsearch(
+  page: Page,
+  // See registerMongodb's own `host` param doc — same Trino-primary-from-boot need.
+  host = "localhost",
+): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_es_${stamp}`;
   const tableName = "support_tickets";
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("elasticsearch");
-  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Host/).fill(host);
   await page.getByLabel(/^Port/).fill(String(E2E_ES_PORT));
   await submitSourceAndExpectListed(page, sourceId);
 
@@ -822,14 +826,18 @@ export async function registerElasticsearch(page: Page): Promise<Registration> {
   };
 }
 
-export async function registerRedis(page: Page): Promise<Registration> {
+export async function registerRedis(
+  page: Page,
+  // See registerMongodb's own `host` param doc — same Trino-primary-from-boot need.
+  host = "localhost",
+): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_redis_${stamp}`;
   const tableName = "support_agent";
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("redis");
-  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Host/).fill(host);
   await page.getByLabel(/^Port/).fill(String(E2E_REDIS_PORT));
   await page.getByLabel(/^Database/).fill("0");
   await submitSourceAndExpectListed(page, sourceId);
@@ -854,14 +862,18 @@ export async function registerRedis(page: Page): Promise<Registration> {
   };
 }
 
-export async function registerCassandra(page: Page): Promise<Registration> {
+export async function registerCassandra(
+  page: Page,
+  // See registerMongodb's own `host` param doc — same Trino-primary-from-boot need.
+  host = "localhost",
+): Promise<Registration> {
   const stamp = Date.now();
   const sourceId = `e2e_swap_cassandra_${stamp}`;
   const tableName = "intake_events";
   await openSourcesForm(page);
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("cassandra");
-  await page.getByLabel(/^Host/).fill("localhost");
+  await page.getByLabel(/^Host/).fill(host);
   await page.getByLabel(/^Port/).fill(String(E2E_CASSANDRA_PORT));
   await page.getByLabel(/^Database/).fill("shelter_ops");
   await submitSourceAndExpectListed(page, sourceId);
