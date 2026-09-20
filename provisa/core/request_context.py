@@ -128,6 +128,27 @@ def session_vars_for(role: dict | None) -> dict[str, str]:
     return out
 
 
+# REQ-1620: the full set of roles the caller is acting as for this request — every active role
+# under the UI's "Role: All" (X-Provisa-Role may carry a comma-separated set), a single entry
+# otherwise. Bound by the HTTP chokepoint alongside the session vars above. Read by the ONE
+# governance injection point (``pgwire._pipeline``'s role resolution) so every surface that
+# reaches it — Cypher, GraphQL, REST, bolt, gRPC, Flight — answers a domain_access V001 check
+# with the UNION of what the acting roles may see, not whichever single role the middleware
+# elected as request.state.role for RLS/masking/capability purposes (those stay single-role;
+# only the read-scope union follows the full claim set, per REQ-1530).
+current_role_claims: ContextVar[tuple[str, ...] | None] = ContextVar(
+    "current_role_claims", default=None
+)
+
+
+def set_role_claims(claims: list[str] | None) -> Token[tuple[str, ...] | None]:
+    return current_role_claims.set(tuple(claims) if claims else None)
+
+
+def reset_role_claims(token: Token[tuple[str, ...] | None]) -> None:
+    current_role_claims.reset(token)
+
+
 # --- providers the API layer registers so lower layers never import it (REQ-1678) ---
 
 _active_engine_url_provider: Callable[[], str | None] | None = None

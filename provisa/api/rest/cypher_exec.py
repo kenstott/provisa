@@ -53,10 +53,18 @@ def _resolve_role_id(request: Request, state: AppState) -> str:  # noqa: ARG001
 
 
 def _build_label_map(ctx: CompilationContext, role_id: str, state: AppState) -> CypherLabelMap:
-    """Build CypherLabelMap with cross-domain traversal nodes for the given role."""
-    from provisa.cypher.label_map import CypherLabelMap
+    """Build CypherLabelMap with cross-domain traversal nodes for the given role.
 
-    role = getattr(state, "roles", {}).get(role_id, {})
+    REQ-1620: domain_access is resolved through ``effective_domain_access_role``, which widens
+    it to the union of every role the caller is acting as ("Role: All") — read off the
+    ``current_role_claims`` context bound by AuthMiddleware, the same context the shared
+    governed pipeline reads (``pgwire._pipeline``), so a graph traversal's visibility and its
+    SQL-level V001 check agree.
+    """
+    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.security.rights import effective_domain_access_role
+
+    role = effective_domain_access_role(role_id, getattr(state, "roles", {}))
     cache = getattr(state, "schema_build_cache", {})
     return CypherLabelMap.from_schema(
         ctx,

@@ -528,7 +528,13 @@ async def _govern_and_route_planned(
 
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    role = state.roles.get(role_id)
+    # REQ-1620: domain_access follows the UNION of every role the caller is acting as ("Role:
+    # All"); role_id/RLS/masking/capabilities stay single-role. See
+    # security.rights.effective_domain_access_role — the one place this is computed, so every
+    # surface that reaches this pipeline resolves "All" identically.
+    from provisa.security.rights import effective_domain_access_role
+
+    role = effective_domain_access_role(role_id, state.roles)
 
     raw_sql, embedded_params = extract_params_comment(sql)
     raw_sql, sql_opts_out = extract_relationship_guard_comment(raw_sql)

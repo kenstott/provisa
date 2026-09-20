@@ -44,7 +44,11 @@ import { buildDropExpansion } from "./graph-drop";
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function GraphPage() {
   const { t } = useTranslation();
-  const { role, loading: authLoading } = useAuth();
+  const { role, selectedRoles, loading: authLoading } = useAuth();
+  // REQ-1620: under "Role: All" the acting set is every active role, sent as one
+  // comma-separated X-Provisa-Role so the server unions their domain_access — sending only
+  // role.id (the first of the set) silently narrowed every graph-page request to one role.
+  const roleHeaderValue = selectedRoles.length > 0 ? selectedRoles.map((r) => r.id).join(",") : role?.id;
   const { checkedDomains } = useDomainFilter();
   const location = useLocation();
   // A query forwarded from NL "Open in Cypher" or the guided tour, captured ONCE at mount.
@@ -172,7 +176,7 @@ export function GraphPage() {
   useEffect(() => {
     setSchemaLoading(true);
     const headers: Record<string, string> = {};
-    if (role) headers["X-Provisa-Role"] = role.id;
+    if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
     fetch("/data/graph-schema", { headers })
       .then((r) => r.json())
       .then((data) => {
@@ -247,14 +251,12 @@ export function GraphPage() {
       })
       .catch(() => {})
       .finally(() => setSchemaLoading(false));
-    /* eslint-disable-next-line react-hooks/exhaustive-deps --
-       keyed on role.id only; the full role object identity changes on unrelated auth refreshes and must not refetch the graph schema */
-  }, [role?.id]);
+  }, [roleHeaderValue]);
 
   useEffect(() => {
     if (schemaNodeLabels.length === 0 && schemaRels.length === 0) return;
     const headers: Record<string, string> = {};
-    if (role) headers["X-Provisa-Role"] = role.id;
+    if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
     const domainsKey = [...checkedDomains].sort().join(",");
     const countsKey = `provisa.graph.counts.${role?.id ?? "default"}.${domainsKey}`;
     try {
@@ -326,7 +328,7 @@ export function GraphPage() {
       });
       try {
         const hdrs: Record<string, string> = { "Content-Type": "application/json" };
-        if (role) hdrs["X-Provisa-Role"] = role.id;
+        if (roleHeaderValue) hdrs["X-Provisa-Role"] = roleHeaderValue;
         hdrs["X-Provisa-Stats"] = "true";
         const res = await fetch("/data/cypher", {
           method: "POST",
@@ -387,7 +389,7 @@ export function GraphPage() {
         });
       }
     },
-    [role],
+    [roleHeaderValue],
   );
 
   // Auto-execute a query forwarded from another page (e.g. NL "Open in Cypher", or the Cypher panel).
@@ -462,7 +464,7 @@ export function GraphPage() {
       });
       try {
         const hdrs2: Record<string, string> = { "Content-Type": "application/json" };
-        if (role) hdrs2["X-Provisa-Role"] = role.id;
+        if (roleHeaderValue) hdrs2["X-Provisa-Role"] = roleHeaderValue;
         hdrs2["X-Provisa-Stats"] = "true";
         const res = await fetch("/data/cypher", {
           method: "POST",
@@ -523,7 +525,7 @@ export function GraphPage() {
         });
       }
     },
-    [role],
+    [roleHeaderValue],
   );
 
   const framesRef = useRef(frames);

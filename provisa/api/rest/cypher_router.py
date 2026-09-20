@@ -637,7 +637,9 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     # Stage 3: Semantic conversion + access validation (transport responsibility)
     semantic_sql = make_semantic_sql(sql_str, ctx)
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    _role_dict = state.roles.get(role_id) or {}
+    from provisa.security.rights import effective_domain_access_role
+
+    _role_dict = effective_domain_access_role(role_id, state.roles)
     _gov_ctx_for_validate = build_governance_context(
         role_id,
         rls,

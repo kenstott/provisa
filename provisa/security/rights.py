@@ -196,6 +196,29 @@ def domain_access_for_claims(  # REQ-1530
     return out
 
 
+def effective_domain_access_role(role_id: str, roles: dict[str, dict] | None) -> dict:  # REQ-1620
+    """``roles[role_id]``, with domain_access widened to the union of every role the caller is
+    currently acting as (``request_context.current_role_claims`` — the UI's "Role: All").
+
+    THE one place ``role_id``'s single-role dict is turned into the read-scope answer a V001
+    check (or a Cypher label_map's cross-domain visibility) tests against, so every surface that
+    reaches the governed pipeline (Cypher, GraphQL, REST, bolt, gRPC, Flight) resolves "All"
+    identically instead of each re-deriving it. ``role_id`` itself, and every OTHER field on the
+    role (capabilities, RLS, masking, session_vars), stays single-role — only domain_access
+    follows the full claim set, matching ``domain_access_for_claims`` (REQ-1530): a real RBAC
+    union, grant if ANY assigned role allows it, never an intersection.
+    """
+    roles = roles or {}
+    role = roles.get(role_id) or {}
+    from provisa.core.request_context import current_role_claims
+
+    claims = current_role_claims.get()
+    if not claims or len(claims) <= 1:
+        return role
+    union = domain_access_for_claims(claims, roles)
+    return {**role, "domain_access": sorted(union)}
+
+
 def domain_access_for_capability(  # REQ-1592
     claims: "Iterable[str]", roles: dict[str, dict] | None, capability: str
 ) -> set[str]:
