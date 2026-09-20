@@ -61283,3 +61283,37 @@
     When the source is ATTACHed and a file in its directory changes
     Then the underlying Calcite FileSchema periodic-refresh thread picks up the change within
     that interval, with no Provisa-side action required
+- id: REQ-1789
+  status: complete
+  group: "8. Client Access & Protocols"
+  category: MCP Tools
+  priority: MAY
+  type: behavioral
+  description: >-
+    MCP tool jev_evaluate exposes TypeSafe AI's Jev "System One" decision-evaluation API to
+    Provisa's MCP clients. It evaluates typed decision questions (noul/choice/score primitives)
+    with confidence scores. The tool is conditionally registered: it appears in mcp.list_tools()
+    only when the TYPESAFEAI_API_KEY environment variable is set; absent the key, the tool is
+    not listed or callable (not a runtime error, an absent capability). tools.jev_evaluate()
+    also raises ValueError independently if the key is missing (defense-in-depth for direct
+    callers). Role is required on every call for audit attribution (REQ-074), per standard MCP
+    tool governance.
+  use_case: >-
+    MCP-connected agents can delegate typed decision evaluation to TypeSafe AI's Jev service
+    instead of reasoning through decisions internally, improving confidence scores and decision
+    consistency. The optional registration pattern allows deployments to offer the tool only when
+    an API key is available, avoiding broken tool registrations in environments without Jev
+    credentials.
+  code:
+    - provisa/api/mcp/server.py
+    - provisa/api/mcp/tools.py
+    - provisa/jev/
+  tests:
+    - tests/unit/test_jev_client.py
+    - tests/unit/test_mcp_server.py
+  since: "2026-09"
+  scenario: |
+    Given an MCP client connected to Provisa with TYPESAFEAI_API_KEY set and a role in context
+    When the client calls jev_evaluate with a typed decision question and role
+    Then the tool invokes TypeSafe AI's Jev API and returns confidence scores for the decision
+    options

@@ -33,6 +33,8 @@
     "saveButtonLabel": "Guardar configuración de modelos de IA",
     "loading": "Cargando…",
     "saved": "Guardado.",
-    "savedRestartRequired": "Guardado. Reinicie el servicio para aplicar los cambios."
+    "savedRestartRequired": "Guardado. Reinicie el servicio para aplicar los cambios.",
+    "jevHeading": "Jev (TypeSafe AI)",
+    "jevIntro": "Opcional. Cuando está definida, Provisa usa la API de decisiones con confianza calibrada de Jev para puntuar las propuestas de tipo de relación del glosario y las relaciones de clave foránea detectadas, en lugar de basarse solo en la confianza autodeclarada por el modelo generador. Si no está definida, esas funciones mantienen su comportamiento actual basado únicamente en el modelo. Si no se define aquí, se usa la variable de entorno TYPESAFEAI_API_KEY de la instalación cuando esté presente."
   }
 }

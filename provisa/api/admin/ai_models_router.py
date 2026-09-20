@@ -60,7 +60,12 @@ async def get_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
     """Return the acting org's AI-model assignments, vector-model registry, and NL rate limit."""
     require_org_settings(request)
     from provisa.api.app import state
-    from provisa.core.org_secrets import LLM_VENDORS, read_org_api_keys
+    from provisa.core.org_secrets import (
+        JEV_SECRET_KEY,
+        LLM_VENDORS,
+        read_org_api_keys,
+        read_org_secret,
+    )
 
     assert state.tenant_db is not None
     cfg = await _effective_config()
@@ -73,9 +78,11 @@ async def get_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
         return val if isinstance(val, str) else dict(val)
 
     # REQ-1395, REQ-1398: keys themselves are never echoed back — only whether each vendor has
-    # one set.
+    # one set. "jev" is not an aisuite vendor (no model assignment), so it is checked separately
+    # and merged into the same map the UI already renders vendor keys from.
     configured = await read_org_api_keys(state.tenant_db)
     api_keys_set = {vendor: vendor in configured for vendor in sorted(LLM_VENDORS)}
+    api_keys_set["jev"] = (await read_org_secret(state.tenant_db, JEV_SECRET_KEY)) is not None
 
     return {
         "ai_models": {k: _assignment(k) for k in _AI_MODEL_ROLES},
@@ -210,14 +217,15 @@ async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
     # blank/empty string clears a vendor's key, reverting that vendor's LLM calls to the
     # deployment's env-var credential (where one exists).
     if "api_keys" in body:
-        from provisa.core.org_secrets import LLM_VENDORS, write_org_secret
+        from provisa.core.org_secrets import JEV_SECRET_KEY, LLM_VENDORS, write_org_secret
 
         for vendor, raw_key in (body["api_keys"] or {}).items():
-            if vendor not in LLM_VENDORS:
+            if vendor not in LLM_VENDORS and vendor != "jev":
                 continue
+            secret_key = JEV_SECRET_KEY if vendor == "jev" else f"{vendor}_api_key"
             await write_org_secret(
                 state.tenant_db,
-                f"{vendor}_api_key",
+                secret_key,
                 raw_key.strip() if isinstance(raw_key, str) and raw_key.strip() else None,
                 updated_by=updated_by,
             )

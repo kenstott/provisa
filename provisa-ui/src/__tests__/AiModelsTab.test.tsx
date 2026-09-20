@@ -31,6 +31,7 @@ vi.mock("../api/aiModels", () => ({
     "sambanova",
     "inception",
   ],
+  JEV_KEY: "jev",
 }));
 
 import { fetchAiModels, fetchVendorModels, setAiModels } from "../api/aiModels";
@@ -190,6 +191,45 @@ describe("AiModelsTab", () => {
 
     await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
     expect(mockSet.mock.calls[0][0].api_keys?.anthropic).toBe("");
+  });
+
+  it("sends api_keys.jev when a Jev key is entered", async () => {
+    mockFetch.mockResolvedValue(state({ api_keys_set: { anthropic: false, jev: false } }));
+    mockSet.mockResolvedValue({
+      success: true,
+      updated: ["api_keys.jev"],
+      restart_required: false,
+    });
+    render(<AiModelsTab />);
+
+    await waitFor(() => expect(screen.getByTestId("ai-models-jev-key-input")).toBeInTheDocument());
+    expect(screen.getByTestId("ai-models-jev-key-status")).toHaveTextContent("No key set");
+    fireEvent.change(screen.getByTestId("ai-models-jev-key-input"), {
+      target: { value: "ts_org_key" },
+    });
+    fireEvent.click(screen.getByTestId("ai-models-save"));
+
+    await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+    expect(mockSet.mock.calls[0][0].api_keys?.jev).toBe("ts_org_key");
+  });
+
+  it("shows Jev key-set status with a clear option, and clearing sends an empty key", async () => {
+    mockFetch.mockResolvedValue(state({ api_keys_set: { anthropic: false, jev: true } }));
+    mockSet.mockResolvedValue({
+      success: true,
+      updated: ["api_keys.jev"],
+      restart_required: false,
+    });
+    render(<AiModelsTab />);
+
+    await waitFor(() => expect(screen.getByTestId("ai-models-jev-key-status")).toBeInTheDocument());
+    expect(screen.getByTestId("ai-models-jev-key-status")).toHaveTextContent("Key is set");
+
+    fireEvent.click(screen.getByTestId("ai-models-jev-key-clear"));
+    fireEvent.click(screen.getByTestId("ai-models-save"));
+
+    await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+    expect(mockSet.mock.calls[0][0].api_keys?.jev).toBe("");
   });
 
   it("offers the vendor's live model list as the model field's options, once per vendor", async () => {

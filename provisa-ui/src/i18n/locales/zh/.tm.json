@@ -3496,5 +3496,7 @@
   "zh/viewDefinitionForm.json::viewDefinitionForm.save": "Save view",
   "zh/viewDefinitionForm.json::viewDefinitionForm.saveFailed": "Save failed",
   "zh/viewDefinitionForm.json::viewDefinitionForm.sqlCreateHint": "Free-hand views are authored in the SQL editor: write the SELECT, run it, then save it as a view.",
-  "zh/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor."
+  "zh/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor.",
+  "zh/aiModelsTab.json::aiModelsTab.jevHeading": "Jev (TypeSafe AI)",
+  "zh/aiModelsTab.json::aiModelsTab.jevIntro": "Optional. When set, Provisa uses Jev's calibrated-confidence decision API to score glossary relationship-type proposals and discovered foreign-key relationships, instead of relying only on the generating model's self-reported confidence. If unset, those features fall back to their existing model-only behavior. If unset here, the deployment's TYPESAFEAI_API_KEY env var is used when present."
 }

@@ -33,6 +33,8 @@
     "saveButtonLabel": "Salva le impostazioni dei modelli AI",
     "loading": "Caricamento…",
     "saved": "Salvato.",
-    "savedRestartRequired": "Salvato. Riavviare il servizio per applicare le modifiche."
+    "savedRestartRequired": "Salvato. Riavviare il servizio per applicare le modifiche.",
+    "jevHeading": "Jev (TypeSafe AI)",
+    "jevIntro": "Facoltativo. Se impostata, Provisa usa l'API di decisioni a confidenza calibrata di Jev per valutare le proposte di tipo di relazione del glossario e le relazioni di chiave esterna individuate, invece di basarsi solo sulla confidenza autodichiarata dal modello generatore. Se non è impostata, queste funzionalità mantengono il comportamento attuale basato solo sul modello. Se non è impostata qui, viene usata la variabile d'ambiente TYPESAFEAI_API_KEY dell'installazione, se presente."
   }
 }

@@ -67,9 +67,22 @@ def org_overrides(monkeypatch):
     async def _read_api_keys(_db):
         return {}
 
+    secrets: dict = {}
+
+    async def _read_secret(_db, key):
+        return secrets.get(key)
+
+    async def _write_secret(_db, key, value, *, updated_by):
+        if value is None:
+            secrets.pop(key, None)
+        else:
+            secrets[key] = value
+
     monkeypatch.setattr(org_settings_mod, "read_org_overrides", _read)
     monkeypatch.setattr(org_settings_mod, "write_org_overrides", _write)
     monkeypatch.setattr(org_secrets_mod, "read_org_api_keys", _read_api_keys)
+    monkeypatch.setattr(org_secrets_mod, "read_org_secret", _read_secret)
+    monkeypatch.setattr(org_secrets_mod, "write_org_secret", _write_secret)
     monkeypatch.setattr(
         "provisa.api.app.state", types.SimpleNamespace(tenant_db=object()), raising=False
     )

@@ -33,6 +33,8 @@
     "saveButtonLabel": "AI-modelinstellingen opslaan",
     "loading": "Laden…",
     "saved": "Opgeslagen.",
-    "savedRestartRequired": "Opgeslagen. Start de service opnieuw om toe te passen."
+    "savedRestartRequired": "Opgeslagen. Start de service opnieuw om toe te passen.",
+    "jevHeading": "Jev (TypeSafe AI)",
+    "jevIntro": "Optioneel. Indien ingesteld, gebruikt Provisa de API voor gekalibreerde betrouwbaarheidsbeslissingen van Jev om voorstellen voor glossariumrelatietypen en gevonden refererende-sleutelrelaties te beoordelen, in plaats van alleen te vertrouwen op de door het genererende model zelf opgegeven betrouwbaarheid. Is er niets ingesteld, dan blijven deze functies hun bestaande, uitsluitend modelgebaseerde gedrag vertonen. Is hier niets ingesteld, dan wordt de omgevingsvariabele TYPESAFEAI_API_KEY van de installatie gebruikt indien aanwezig."
   }
 }

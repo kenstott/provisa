@@ -282,6 +282,30 @@ def build_mcp_server(state: Any):
             state, _role(role), metric, dimensions or [], filters=filters
         )
 
+    # Optional: only registered when a Jev credential is configured, so an agent never sees
+    # a tool it cannot use — no fallback, the tool simply does not exist without the key.
+    if os.environ.get("TYPESAFEAI_API_KEY", "").strip():
+
+        @mcp.tool()
+        async def jev_evaluate(
+            questions: list[dict],
+            jev_state: Any = None,
+            role: str | None = None,
+        ) -> dict:
+            """Evaluate typed decision questions via TypeSafe's Jev API — fast, cheap,
+            calibrated machine-native decisions (not text generation).
+
+            Each question in ``questions`` is ``{"id", "type", "instructions", "criteria"}``:
+              - noul: yes/no; criteria = {"true": "...", "false": "..."}; returns P(yes)
+              - choice: pick one of <=255 options; criteria = {option: description}
+              - score: rate on a 2-10 level rubric; criteria = [level description, ...]
+            All questions are evaluated in parallel against the same ``jev_state``
+            (any JSON value — the context to judge). Each answer carries a probability
+            distribution and a confidence score; route low-confidence answers to a human
+            or further reasoning rather than trusting them blind.
+            """
+            return await tools.jev_evaluate(state, _role(role), jev_state, questions)
+
     return mcp
 
 

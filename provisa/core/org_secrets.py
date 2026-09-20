@@ -57,8 +57,14 @@ LLM_VENDORS: frozenset[str] = frozenset(
     }
 )
 
+# Jev (TypeSafe AI) is not an aisuite chat vendor — it takes no model assignment, just a
+# credential — so it is kept out of LLM_VENDORS and handled as its own named secret.
+JEV_SECRET_KEY = "jev_api_key"
+
 # The only secrets an org administrator may set through this door.
-ORG_SECRET_KEYS: frozenset[str] = frozenset(f"{vendor}_api_key" for vendor in LLM_VENDORS)
+ORG_SECRET_KEYS: frozenset[str] = frozenset(
+    f"{vendor}_api_key" for vendor in LLM_VENDORS
+) | frozenset({JEV_SECRET_KEY})
 
 
 async def _resolved(value: str) -> str:
@@ -152,3 +158,19 @@ async def write_org_secret(
             index_elements=["key"],
             update_columns=["value_enc", "updated_at", "updated_by"],
         )
+
+
+async def resolve_jev_api_key(tenant_db: "Database | None") -> str | None:
+    """The Jev (TypeSafe AI) API key: the acting org's own key if it set one, else the
+    deployment's ``TYPESAFEAI_API_KEY`` env var, else ``None`` (Jev unavailable).
+
+    No silent invention of a key: callers that get ``None`` back must skip the Jev-assisted
+    path entirely rather than guessing a credential.
+    """
+    import os
+
+    if tenant_db is not None:
+        org_key = await read_org_secret(tenant_db, JEV_SECRET_KEY)
+        if org_key:
+            return org_key
+    return os.environ.get("TYPESAFEAI_API_KEY") or None

@@ -33,6 +33,8 @@
     "saveButtonLabel": "儲存 AI 模型設定",
     "loading": "正在載入…",
     "saved": "已儲存。",
-    "savedRestartRequired": "已儲存。重新啟動服務後生效。"
+    "savedRestartRequired": "已儲存。重新啟動服務後生效。",
+    "jevHeading": "Jev (TypeSafe AI)",
+    "jevIntro": "選用。設定後，Provisa 會使用 Jev 的校準信心決策 API，為詞彙表關係類型建議及偵測到的外鍵關係評分，而非僅依賴產生模型自行回報的信心度。若未設定，這些功能將維持現有僅依模型的行為。若此處未設定，則在存在時使用部署的 TYPESAFEAI_API_KEY 環境變數。"
   }
 }

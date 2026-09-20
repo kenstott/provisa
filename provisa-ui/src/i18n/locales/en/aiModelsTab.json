@@ -30,6 +30,8 @@
     "vectorEnabled": "Enabled",
     "addVectorModel": "Add vector model",
     "removeVectorModel": "Remove",
+    "jevHeading": "Jev (TypeSafe AI)",
+    "jevIntro": "Optional. When set, Provisa uses Jev's calibrated-confidence decision API to score glossary relationship-type proposals and discovered foreign-key relationships, instead of relying only on the generating model's self-reported confidence. If unset, those features fall back to their existing model-only behavior. If unset here, the deployment's TYPESAFEAI_API_KEY env var is used when present.",
     "saveButtonLabel": "Save AI model settings",
     "loading": "Loading…",
     "saved": "Saved.",

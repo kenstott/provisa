@@ -459,6 +459,47 @@ async def test_build_mcp_server_registers_tools():
     } <= names
 
 
+async def test_jev_tool_absent_without_api_key(monkeypatch):
+    from provisa.api.mcp.server import build_mcp_server
+
+    monkeypatch.delenv("TYPESAFEAI_API_KEY", raising=False)
+    mcp = build_mcp_server(_make_state())
+    names = {t.name for t in await mcp.list_tools()}
+    assert "jev_evaluate" not in names
+
+
+async def test_jev_tool_present_with_api_key(monkeypatch):
+    from provisa.api.mcp.server import build_mcp_server
+
+    monkeypatch.setenv("TYPESAFEAI_API_KEY", "ts_test_key")
+    mcp = build_mcp_server(_make_state())
+    names = {t.name for t in await mcp.list_tools()}
+    assert "jev_evaluate" in names
+
+
+async def test_jev_evaluate_calls_client_with_configured_key(state, monkeypatch):
+    monkeypatch.setenv("TYPESAFEAI_API_KEY", "ts_test_key")
+    mock = AsyncMock(return_value={"answers": {"q1": {"noul": 0.7}}})
+    monkeypatch.setattr("provisa.jev.client.evaluate", mock)
+    result = await tools.jev_evaluate(
+        state, "analyst", {"text": "hi"}, [{"id": "q1", "type": "noul"}]
+    )
+    assert result == {"answers": {"q1": {"noul": 0.7}}}
+    mock.assert_awaited_once_with("ts_test_key", {"text": "hi"}, [{"id": "q1", "type": "noul"}])
+
+
+async def test_jev_evaluate_requires_role(state, monkeypatch):
+    monkeypatch.setenv("TYPESAFEAI_API_KEY", "ts_test_key")
+    with pytest.raises(ValueError):
+        await tools.jev_evaluate(state, "", None, [{"id": "q1", "type": "noul"}])
+
+
+async def test_jev_evaluate_fails_loud_without_api_key(state, monkeypatch):
+    monkeypatch.delenv("TYPESAFEAI_API_KEY", raising=False)
+    with pytest.raises(ValueError):
+        await tools.jev_evaluate(state, "analyst", None, [{"id": "q1", "type": "noul"}])
+
+
 async def test_pinned_stdio_role_requires_env(monkeypatch):
     from provisa.api.mcp import server
 

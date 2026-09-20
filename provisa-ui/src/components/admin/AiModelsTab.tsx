@@ -33,6 +33,7 @@ import { Check, Plus, Trash2, TriangleAlert } from "lucide-react";
 import {
   fetchAiModels,
   fetchVendorModels,
+  JEV_KEY,
   LLM_VENDORS,
   setAiModels,
   type AiModelAssignments,
@@ -177,7 +178,7 @@ export function AiModelsTab() {
         ai_models[k] = serializeRole(s.ai_models[k]);
       }
       const api_keys: Record<string, string> = {};
-      for (const vendor of LLM_VENDORS) {
+      for (const vendor of [...LLM_VENDORS, JEV_KEY]) {
         const val = apiKeyInputs[vendor]?.trim();
         if (val || clearApiKeys[vendor]) api_keys[vendor] = val ?? "";
       }
@@ -460,6 +461,57 @@ export function AiModelsTab() {
             {t("aiModelsTab.addVectorModel")}
           </Button>
         </Group>
+      </Panel>
+
+      <Panel testId="ai-models-jev-panel" title={t("aiModelsTab.jevHeading")}>
+        <Text c="dimmed" size="sm">
+          {t("aiModelsTab.jevIntro")}
+        </Text>
+        <Stack gap={4}>
+          <Group gap="xs" align="center">
+            <Text size="sm" fw={500}>
+              Jev
+            </Text>
+            <Badge
+              color={s.api_keys_set[JEV_KEY] ? "green" : "gray"}
+              data-testid="ai-models-jev-key-status"
+            >
+              {s.api_keys_set[JEV_KEY] ? t("aiModelsTab.apiKeySet") : t("aiModelsTab.apiKeyNotSet")}
+            </Badge>
+          </Group>
+          <Group gap="sm" align="flex-end">
+            <PasswordInput
+              aria-label={t("aiModelsTab.apiKeyLabel", { vendor: "Jev" })}
+              placeholder={t("aiModelsTab.apiKeyPlaceholder")}
+              data-testid="ai-models-jev-key-input"
+              value={apiKeyInputs[JEV_KEY] ?? ""}
+              onChange={(e) => {
+                const value = e.currentTarget.value;
+                setApiKeyInputs((prev) => ({ ...prev, [JEV_KEY]: value }));
+                setClearApiKeys((prev) => ({ ...prev, [JEV_KEY]: false }));
+              }}
+              style={{ flex: 1 }}
+            />
+            {s.api_keys_set[JEV_KEY] && (
+              <Button
+                variant="subtle"
+                color="red"
+                data-testid="ai-models-jev-key-clear"
+                onClick={() => {
+                  setApiKeyInputs((prev) => ({ ...prev, [JEV_KEY]: "" }));
+                  setClearApiKeys((prev) => ({ ...prev, [JEV_KEY]: true }));
+                }}
+              >
+                {t("aiModelsTab.apiKeyClear")}
+              </Button>
+            )}
+          </Group>
+          {clearApiKeys[JEV_KEY] && (
+            <Text c="orange" size="sm">
+              {t("aiModelsTab.apiKeyWillClear")}
+            </Text>
+          )}
+        </Stack>
       </Panel>
 
       <Alert color="yellow" icon={<TriangleAlert size={16} />}>

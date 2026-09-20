@@ -33,6 +33,8 @@
     "saveButtonLabel": "KI-Modelleinstellungen speichern",
     "loading": "Wird geladen…",
     "saved": "Gespeichert.",
-    "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen."
+    "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen.",
+    "jevHeading": "Jev (TypeSafe AI)",
+    "jevIntro": "Optional. Ist der Schlüssel gesetzt, verwendet Provisa die API für kalibrierte Konfidenzentscheidungen von Jev, um Vorschläge für Glossar-Beziehungstypen und erkannte Fremdschlüssel-Beziehungen zu bewerten, statt sich allein auf die selbst angegebene Konfidenz des erzeugenden Modells zu verlassen. Ist er nicht gesetzt, verwenden diese Funktionen weiterhin ihr bisheriges, rein modellbasiertes Verhalten. Ist hier keiner gesetzt, wird die Umgebungsvariable TYPESAFEAI_API_KEY der Installation verwendet, sofern vorhanden."
   }
 }

@@ -33,6 +33,8 @@
     "saveButtonLabel": "保存 AI 模型设置",
     "loading": "正在加载…",
     "saved": "已保存。",
-    "savedRestartRequired": "已保存。重启服务以生效。"
+    "savedRestartRequired": "已保存。重启服务以生效。",
+    "jevHeading": "Jev (TypeSafe AI)",
+    "jevIntro": "可选。设置后，Provisa 将使用 Jev 的校准置信度决策 API 为术语表关系类型建议和发现的外键关系评分，而不是仅依赖生成模型自行报告的置信度。若未设置，这些功能将保留现有的仅基于模型的行为。若此处未设置，则在存在时使用部署的 TYPESAFEAI_API_KEY 环境变量。"
   }
 }

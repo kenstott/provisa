@@ -113,6 +113,25 @@ async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413
                 prompt = build_prompt(discovery_input)
                 llm_candidates = analyze(prompt, api_keys, discovery_input)
                 _log.warning("LLM returned %d candidates after validation", len(llm_candidates))
+
+                # Optional: when a Jev key is configured, replace each candidate's
+                # self-reported confidence with Jev's calibrated score (REQ-1789).
+                from provisa.core.org_secrets import resolve_jev_api_key
+
+                jev_key = await resolve_jev_api_key(pool)
+                if jev_key:
+                    from provisa.jev.decisions import refine_relationship_confidence
+
+                    llm_candidates = await refine_relationship_confidence(
+                        llm_candidates,
+                        jev_key,
+                        min_confidence=0.7,  # matches analyze()'s default
+                    )
+                    _log.warning(
+                        "Jev refined relationship confidence: %d candidates remain",
+                        len(llm_candidates),
+                    )
+
                 all_candidates.extend(llm_candidates)
 
             stored_ids = await candidates_repo.store_candidates(conn, all_candidates, body.scope)

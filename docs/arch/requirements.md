@@ -18939,3 +18939,17 @@ The files connector's Calcite operand builder (provisa/federation/pgwire_replica
 **Code:** `provisa/federation/pgwire_replica.py`
 
 **Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-1789 · MCP Tools {#REQ-1789}
+
+**Status:** ✅ complete · **Priority:** MAY · **Type:** behavioral
+
+MCP tool jev_evaluate exposes TypeSafe AI's Jev "System One" decision-evaluation API to Provisa's MCP clients. It evaluates typed decision questions (noul/choice/score primitives) with confidence scores. The tool is conditionally registered: it appears in mcp.list_tools() only when the TYPESAFEAI_API_KEY environment variable is set; absent the key, the tool is not listed or callable (not a runtime error, an absent capability). tools.jev_evaluate() also raises ValueError independently if the key is missing (defense-in-depth for direct callers). Role is required on every call for audit attribution ([REQ-074](#REQ-074)), per standard MCP tool governance.
+
+**Use case:** MCP-connected agents can delegate typed decision evaluation to TypeSafe AI's Jev service instead of reasoning through decisions internally, improving confidence scores and decision consistency. The optional registration pattern allows deployments to offer the tool only when an API key is available, avoiding broken tool registrations in environments without Jev credentials.
+
+**Code:** `provisa/api/mcp/server.py`, `provisa/api/mcp/tools.py`, `provisa/jev/`
+
+**Tests:** `tests/unit/test_jev_client.py`, `tests/unit/test_mcp_server.py`

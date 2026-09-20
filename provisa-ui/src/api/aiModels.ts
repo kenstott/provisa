@@ -52,6 +52,11 @@ export const LLM_VENDORS = [
 ] as const;
 export type LlmVendor = (typeof LLM_VENDORS)[number];
 
+// Jev (TypeSafe AI) is not an aisuite chat vendor — no model assignment, just a credential —
+// so it is kept out of LLM_VENDORS but rendered through the same api_keys/api_keys_set map
+// (mirrors provisa.core.org_secrets.JEV_SECRET_KEY).
+export const JEV_KEY = "jev" as const;
+
 export interface AiModelsState {
   ai_models: AiModelAssignments;
   vector_models: VectorModel[];

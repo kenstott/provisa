@@ -519,6 +519,34 @@ async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) ->
         )
 
 
+async def _jev_api_key(state: Any) -> str:
+    from provisa.core.org_secrets import resolve_jev_api_key
+
+    key = await resolve_jev_api_key(getattr(state, "tenant_db", None))
+    if not key:
+        raise ValueError(
+            "Jev is not configured — set TYPESAFEAI_API_KEY or an org Jev key in Admin > AI Models"
+        )
+    return key
+
+
+async def jev_evaluate(state: Any, role: str, jev_state: Any, questions: list[dict]) -> dict:
+    """Evaluate typed decision questions (noul/choice/score) via TypeSafe's Jev API.
+
+    A System One model for fast, cheap, calibrated machine-native decisions — not text
+    generation. Each question gets a typed answer, a probability distribution, and a
+    confidence score the caller can branch on (see docs.typesafe.ai/confidence for
+    confidence-routing: escalate low-confidence answers instead of trusting them blind).
+    role is required for audit attribution (REQ-074) even though this call touches no
+    governed data — consistent with every other MCP tool. The acting org's own Jev key
+    (Admin > AI Models) is preferred over the deployment's TYPESAFEAI_API_KEY.
+    """
+    from provisa.jev.client import evaluate
+
+    require_role(role, state)
+    return await evaluate(await _jev_api_key(state), jev_state, questions)
+
+
 def _row_to_json(cols: list[str], row: Any) -> dict:
     """Map a result tuple to a JSON-safe {column: value} dict."""
     out: dict[str, Any] = {}
