@@ -139,6 +139,28 @@ Private buckets need credentials (AWS region and keys from the environment). For
   path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
 ```
 
+#### Kaggle datasets (REQ-1780, REQ-1781, REQ-1782, REQ-1783)
+
+Kaggle is a file-download platform. A staged Kaggle dataset registers as a `files`-type Source and is queried through the same pgwire-file connector any other `files` source uses — there is no `kaggle` SourceType in the enum. [tool-verified: `provisa/kaggle/downloader.py`; `provisa/core/models.py` `SourceType` — no `kaggle` literal]
+
+**Adding a dataset.** Open Sources → Subscriptions → Kaggle. The form runs two sequential steps, because Kaggle's own dataset-search endpoint requires auth — the picker cannot appear before the token validates. [tool-verified: `provisa-ui/src/pages/sources/KaggleFormSection.tsx`] (REQ-1783)
+
+1. **Token** — enter a Kaggle API token and click "Validate". Validation calls `POST https://www.kaggle.com/api/v1/datasets/create/new` with an empty body. A `401` means invalid; any other response means valid (Kaggle's own payload-validation fires before any dataset is created — nothing is persisted). [tool-verified: `provisa/kaggle/client.py` `validate_token`] (REQ-1782)
+2. **Picker** — a live search-as-you-type field queries `GET /api/v1/datasets/list`. Each result shows dataset title and description. Select one, then click "Add Dataset".
+
+Clicking "Add Dataset" downloads the bundle from `GET /api/v1/datasets/download/{owner}/{ref}`, unzips CSV and Parquet members into `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, and creates **one** `files`-type Source whose `path` is that root directory. The token is never stored server-side. [tool-verified: `provisa/kaggle/downloader.py` `stage_dataset`; `provisa-ui/src/pages/sources/KaggleFormSection.tsx` `handleConfirmDataset`] (REQ-1780, REQ-1781)
+
+After adding the source, register its tables through the normal Register Table screen. The pgwire-file connector's recursive directory discovery lists each file as its own table — the same mechanism any other `files` source uses (REQ-1690). (REQ-1783)
+
+**v1 limitation.** A bundle containing a `.sqlite` or `.db` file is rejected outright with a clear error. Only CSV and Parquet files are staged. [tool-verified: `provisa/kaggle/downloader.py` `UnsupportedKaggleDataset`, `_UNSUPPORTED_EXTENSIONS`]
+
+**Table naming.** Each file lands in its own `<file-stem>/` subdirectory under the dataset root. The pgwire-file connector names the resulting table `<subdir>__<stem>` after SMART_CASING normalization. For example: `StatewiseTestingDetails.csv` lands at `statewise_testing_details/StatewiseTestingDetails.csv` and becomes the table `statewise_testing_details__statewise_testing_details`. The doubled stem is expected for single-file datasets. A multi-file dataset produces one pair per file: `orders__orders`, `customers__customers`. (REQ-471)
+
+**Refreshing.** To re-fetch a dataset after Kaggle publishes a new version, call the `refreshKaggleSource` GraphQL mutation with the source ID and a valid token. This re-stages the files in place and evicts the pgwire-file endpoint cache so the connector picks up any schema changes on its next query. The `kaggle_owner` and `kaggle_ref` stored in `federation_hints` at creation time identify which dataset to re-fetch. [tool-verified: `provisa/api/admin/schema_mutation.py` `refresh_kaggle_source`] (REQ-1780)
+
+**No static YAML config path.** Kaggle sources are created through the Sources form only. A Kaggle source exported to YAML appears as `type: files` with `kaggle_owner` and `kaggle_ref` in `federation_hints`. Re-downloading from Kaggle requires the UI refresh flow or the `refreshKaggleSource` mutation — pointing the YAML `path` at a pre-staged directory is the alternative for air-gapped environments.
+
+
 ### Observability & Other
 
 `prometheus` has a Trino connector (properties built from the type's mapping DSL). `google_sheets` is a registered source type with no Trino connector and materializes through the API cache pipeline. [tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` lines 87–88]

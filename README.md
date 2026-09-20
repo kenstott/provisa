@@ -102,11 +102,12 @@ These are the connection protocols. SQL, GraphQL, and Cypher ride over them — 
 
 ### Data Sources
 
-- **53 source types** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, and more through a single API; graph and RDF sources are first-class, not adapters
+- **54 source types** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, and more through a single API; graph and RDF sources are first-class, not adapters
 - **Smart routing** — Single-source queries bypass federation (sub-100ms); multi-source queries route through the federation layer — bring your own cluster or use the embedded workers
 - **API sources** — Register REST, GraphQL, gRPC, WebSocket, or RSS endpoints as queryable tables; SPARQL helpers included; federated joins across API sources and relational sources work transparently
 - **Remote schema introspection** — Point at any GraphQL, OpenAPI, or gRPC endpoint; documented operations are automatically surfaced as queryable tables, graph nodes, and edges with full governance applied on top
 - **File sources** — CSV, Parquet, and SQLite files as queryable tables; supports local paths and remote object storage (`s3://`, `ftp://`, `sftp://`)
+- **Kaggle datasets** — search Kaggle's public catalog and register a dataset by token-authenticated live search, no manual download; registers as a single file source whose tables are discovered automatically, CSV/Parquet bundles only
 - **Kafka integration** — Topics as read-only tables; query results as Kafka sinks
 - **Scheduled triggers** — Cron and interval triggers (APScheduler) that fire webhooks, mutations, or Kafka sink publishes
 - **Federation performance hints** — SQL-comment routing hints override automatic routing decisions

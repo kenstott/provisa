@@ -449,6 +449,8 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
+**Kaggle datasets** cannot be added through this file — they require a live token and dataset picker available in the Sources form (Sources → Subscriptions → Kaggle). A Kaggle source exported to YAML appears as `type: files` with `kaggle_owner` and `kaggle_ref` in `federation_hints`. Re-downloading from Kaggle requires the `refreshKaggleSource` mutation or the UI refresh flow, not a YAML edit. See [Kaggle datasets](sources.md#kaggle-datasets) in the source types reference.
+
 #### API / Remote sources
 
 **openapi** — set `base_url` to the OpenAPI base URL. Schema discovery reads the OpenAPI spec at startup.

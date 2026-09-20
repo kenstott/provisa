@@ -66,6 +66,21 @@ async def get_dataset_metadata(token: str, owner: str, ref: str) -> dict:  # REQ
         return resp.json()
 
 
+async def get_dataset_last_updated(token: str, owner: str, ref: str) -> str:  # REQ-1787
+    """Wraps ``GET /datasets/view/{owner}/{ref}`` for its dataset-level ``lastUpdated`` timestamp
+    (ISO 8601, e.g. ``"2018-03-22T15:18:06.097Z"``) — verified live 2026-09-19.
+
+    This is the ONE thing ``datasets/view`` is used for. ``get_dataset_metadata`` above already
+    documents why it is NOT used for the file listing (its own ``files`` field is always empty);
+    that limitation is specific to the file listing, not to this endpoint's other fields, which
+    are populated normally."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(f"{BASE_URL}/datasets/view/{owner}/{ref}", headers=_headers(token))
+        if resp.status_code != 200:
+            raise KaggleApiError(resp.status_code, resp.text)
+        return resp.json()["lastUpdated"]
+
+
 async def download_dataset(token: str, owner: str, ref: str) -> bytes:  # REQ-1782
     """Wraps ``GET /datasets/download/{owner}/{ref}`` — the bundle archive (zip, or a bare
     SQLite file for a single-sqlite-file dataset)."""

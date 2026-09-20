@@ -18915,3 +18915,27 @@ The create_source mutation (provisa/api/admin/schema_mutation.py) shall support 
 **Code:** `provisa/api/admin/schema_mutation.py`, `provisa/file_source/crawler.py`, `provisa-ui/src/pages/sources/SourceFormFields.tsx`
 
 **Tests:** —
+
+### REQ-1787 · Data Discovery {#REQ-1787}
+
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** structural
+
+refresh_kaggle_source (provisa/api/admin/schema_mutation.py) shall skip re-downloading and re-staging a Kaggle dataset when nothing has changed since it was last staged. No separate "last refreshed at" timestamp is persisted: the newest mtime among the files already staged under the source's directory (provisa/kaggle/downloader.py:staged_mtime) IS that record, since stage_dataset always writes fresh files at refresh time. The check compares that local mtime against Kaggle's own dataset-level `lastUpdated` (client.py:get_dataset_last_updated, wrapping `GET /datasets/view/{owner}/{ref}`) and returns a success MutationResult noting the dataset is already current -- without calling stage_dataset or stop_endpoint -- whenever `lastUpdated` is not newer than the local mtime. Any failure of the check itself (network error, missing field) falls back to refreshing unconditionally rather than blocking the refresh.
+
+**Use case:** An admin clicking "Refresh from Kaggle" on an unchanged dataset should not pay the cost of a full re-download and pgwire endpoint teardown/re-attach, which briefly interrupts querying that source, when the upstream dataset has not actually changed.
+
+**Code:** `provisa/kaggle/client.py`, `provisa/kaggle/downloader.py`, `provisa/api/admin/schema_mutation.py`
+
+**Tests:** —
+
+### REQ-1788 · Data Discovery {#REQ-1788}
+
+**Status:** ✓ accepted · **Priority:** MAY · **Type:** structural
+
+The files connector's Calcite operand builder (provisa/federation/pgwire_replica.py, _files_operand) shall pass through an optional `mapping.refresh_interval` (a duration string such as "5 minutes", matching Calcite FileSchema's own RefreshInterval.parse format) as the `refreshInterval` operand key. Unlike `executionEngine`/`recursive` above, this has no default -- it is omitted from the operand entirely unless a source's mapping sets it, so FileSchema's own null-check (`if (refreshInterval != null)`) leaves its background periodic- refresh thread (startPeriodicRefresh/refreshAllTables) off for the common case of a static files source. When set, the underlying JVM's own FileSchema layer polls the directory on that interval and refreshes its table cache without a Provisa-side stop_endpoint call.
+
+**Use case:** A files source pointed at a directory that changes on its own on disk (external ETL writing new files, a mounted network share, etc.) needs its Calcite-side table cache to pick up changes without an admin manually deleting/recreating or refreshing the source.
+
+**Code:** `provisa/federation/pgwire_replica.py`
+
+**Tests:** —

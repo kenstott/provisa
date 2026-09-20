@@ -113,6 +113,14 @@ def _files_operand(source: Any) -> dict:
         "executionEngine": mapping.get("execution_engine", "DUCKDB"),
         "recursive": True,
     }
+    # REQ-1785: Calcite's own periodic-refresh machinery (FileSchema.startPeriodicRefresh(),
+    # RefreshInterval.parse()) -- a duration string like "5 minutes"/"30 seconds". Opt-in via
+    # mapping.refresh_interval since most files sources are static; omitted entirely (not a
+    # default like executionEngine/recursive above) so FileSchema's own null-check
+    # (`if (refreshInterval != null)`) skips the background thread unless a source asks for it.
+    refresh_interval = mapping.get("refresh_interval")
+    if refresh_interval:
+        operand["refreshInterval"] = refresh_interval
     storage_type = mapping.get("storage_type")
     if storage_type:
         operand["storageType"] = storage_type

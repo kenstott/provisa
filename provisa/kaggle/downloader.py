@@ -52,6 +52,17 @@ def _file_names(meta: dict) -> list[str]:
     return [n for n in names if n]
 
 
+def staged_mtime(root: Path) -> float | None:  # REQ-1787
+    """Newest mtime among files already staged under *root*, or ``None`` if nothing is staged yet.
+
+    The staged files ARE the record of when this dataset was last fetched -- no separate
+    "last refreshed at" needs to be persisted; comparing this against Kaggle's own
+    ``lastUpdated`` (client.get_dataset_last_updated) is sufficient to know whether a refresh
+    would actually change anything."""
+    mtimes = [p.stat().st_mtime for p in root.rglob("*") if p.is_file()]
+    return max(mtimes) if mtimes else None
+
+
 async def stage_dataset(token: str, owner: str, ref: str) -> Path:  # REQ-1780, REQ-1781, REQ-1782
     """Download *owner/ref* and unzip its CSV/Parquet members onto local disk, one file per its
     own subdirectory under ``<data_dir>/kaggle/<owner>/<ref>/<file-stem>/<file-name>``.

@@ -86,6 +86,8 @@ These types are in `SOURCE_TO_CONNECTOR` using the `kenstott/calcite` Trino plug
 
 Tables: `information_schema.tables WHERE table_schema = ?`.
 
+Kaggle datasets are staged and registered as `files` sources — no separate row here. Introspection dispatches identically to any other `files` source. [tool-verified: `provisa/kaggle/downloader.py` `stage_dataset`; `provisa/api/admin/schema_mutation.py` `stage_kaggle_dataset`]
+
 ---
 
 ### Flat sources — fixed schema constant, native introspection

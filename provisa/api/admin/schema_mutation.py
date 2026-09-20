@@ -840,10 +840,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         (pgwire_replica.py) was added THIS SESSION to close for delete+recreate; a refresh needs
         the identical fix. The Kaggle token is deliberately never persisted server-side (REQ-1783)
         -- the caller re-enters it for this call, same as the original staging step."""
+        from datetime import datetime, timezone
+        from pathlib import Path
+
         from provisa.api.admin.capabilities import require_capability
         from provisa.core.repositories import source as source_repo
         from provisa.federation.pgwire_replica import stop_endpoint
-        from provisa.kaggle.downloader import UnsupportedKaggleDataset, stage_dataset
+        from provisa.kaggle.client import get_dataset_last_updated
+        from provisa.kaggle.downloader import UnsupportedKaggleDataset, stage_dataset, staged_mtime
 
         require_capability(info, "source_registration")
 
@@ -868,6 +872,29 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 code="schema.not_a_kaggle_source",
                 params={"source": source_id},
             )
+        # REQ-1787: skip the re-download (and the pgwire endpoint teardown it would otherwise
+        # force) when Kaggle has nothing newer than what's already on disk -- the staged files'
+        # own mtime IS the "last refreshed at" record; no separate timestamp needs to be stored.
+        staging_root = Path(row["path"]) if row.get("path") else None
+        local_mtime = staged_mtime(staging_root) if staging_root else None
+        if local_mtime is not None:
+            try:
+                remote_last_updated = await get_dataset_last_updated(token, owner, ref)
+                remote_dt = datetime.fromisoformat(remote_last_updated.replace("Z", "+00:00"))
+                local_dt = datetime.fromtimestamp(local_mtime, tz=timezone.utc)
+                if remote_dt <= local_dt:
+                    return MutationResult(
+                        success=True,
+                        message=f"{owner}/{ref} already up to date for source {source_id!r}",
+                        code="schema.kaggle_source_already_current",
+                        params={"source": source_id},
+                    )
+            except Exception as _check_err:
+                logging.getLogger(__name__).warning(
+                    "Kaggle lastUpdated check for %r failed, refreshing unconditionally: %s",
+                    source_id,
+                    _check_err,
+                )
         try:
             await stage_dataset(token, owner, ref)
         except UnsupportedKaggleDataset as exc:
