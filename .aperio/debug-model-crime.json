@@ -1,0 +1,3021 @@
+{
+  "operands" : {
+    "_storageProvider" : "S3StorageProvider",
+    "_incrementalTracker" : "ReadOnlyPipelineTracker",
+    "schemaName" : "crime",
+    "ephemeralCache" : false,
+    "constraints" : {
+      "cde_trends" : {
+        "primaryKey" : [ "offense_name" ]
+      },
+      "cde_offenses" : {
+        "primaryKey" : [ "state_abbr", "offense_code", "month" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_use_of_force" : {
+        "primaryKey" : [ "state_abbr", "year", "section", "category", "label" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_supplemental" : {
+        "primaryKey" : [ "state_abbr", "year", "property_type" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_reta" : {
+        "primaryKey" : [ "ori", "year", "month" ],
+        "foreignKeys" : [ {
+          "columns" : [ "zip_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "5-digit agency ZIP to the conformed ZCTA dimension"
+        } ]
+      },
+      "bjs_nibrs_estimates" : {
+        "primaryKey" : [ "endpoint_id", "indicator_name", "estimate_domain_1", "time_series_start_year" ]
+      },
+      "cde_police_employment" : {
+        "primaryKey" : [ "state_abbr", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_arrests" : {
+        "primaryKey" : [ "state_abbr", "year", "section", "category", "label" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_shr" : {
+        "primaryKey" : [ "state_abbr", "year", "section", "category", "label" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_hate_crimes" : {
+        "primaryKey" : [ "state_abbr", "year", "section", "category", "label" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_leoka" : {
+        "primaryKey" : [ "state_abbr", "year", "section", "category", "label" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_agencies" : {
+        "primaryKey" : [ "ori" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      }
+    },
+    "directory" : "s3://govdata-parquet-v1",
+    "canonicalSchemaName" : "crime",
+    "operatingDirectory" : "/Users/kennethstott/.provisa_askamerica/data/crime",
+    "column_templates" : {
+      "partition_state" : {
+        "name" : "state_abbr",
+        "type" : "VARCHAR"
+      },
+      "partition_year" : {
+        "name" : "year",
+        "type" : "INTEGER"
+      },
+      "state_abbr_column" : {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-letter state abbreviation (e.g., 'CA') or 'national'"
+      },
+      "section_column" : {
+        "name" : "section",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data section grouping"
+      },
+      "partition_endpoint" : {
+        "name" : "endpoint_id",
+        "type" : "VARCHAR"
+      },
+      "endpoint_partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "endpoint_id",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "label_column" : {
+        "name" : "label",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metric or value label"
+      },
+      "agency_partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "state_abbr",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "standard_partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "year_column" : {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year"
+      },
+      "category_column" : {
+        "name" : "category",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Category within section"
+      },
+      "partition_type" : {
+        "name" : "type",
+        "type" : "VARCHAR"
+      }
+    },
+    "dimension_values" : {
+      "bjs_ncvs_endpoints" : [ {
+        "endpoint_id" : "gcuy-rt5g",
+        "name" : "ncvs_personal"
+      }, {
+        "endpoint_id" : "r4j4-fdwx",
+        "name" : "ncvs_personal_pop"
+      }, {
+        "endpoint_id" : "gkck-euys",
+        "name" : "ncvs_household"
+      }, {
+        "endpoint_id" : "ya4e-n9zp",
+        "name" : "ncvs_household_pop"
+      } ],
+      "ucr_all_offenses" : [ "violent-crime", "property-crime", "homicide", "aggravated-assault", "rape", "robbery", "burglary", "larceny", "motor-vehicle-theft", "arson" ],
+      "ucr_core_offenses" : [ "violent-crime", "property-crime", "homicide", "aggravated-assault", "rape", "robbery", "burglary", "larceny", "motor-vehicle-theft", "arson" ],
+      "crime_year_range" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataLag" : 0
+      },
+      "arrest_offenses" : [ "all" ],
+      "bjs_nibrs_endpoints" : [ "r32q-bdaw", "iv7i-eah6", "x3sz-eb6y", "kj7p-vx4s", "ms42-n765", "uy37-xgmh" ],
+      "all_state_abbrs" : [ "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY" ]
+    },
+    "database_filename" : "/Users/kennethstott/.provisa_askamerica/data/.duckdb/govdata.duckdb",
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
+    "dataLagYears" : 0,
+    "views" : [ {
+      "name" : "crime_enforcement_equity",
+      "comment" : "Correlates FBI CDE monthly offense and clearance rates — averaged across each year's reported months, NOT summed to a true annual rate (see cde_offenses.offense_rate for why AVG understates the annual figure) — with police employment and an offense-rate-per-officer ratio, by state, year, and offense_code. One row per state + year + offense_code.\n",
+      "sql" : "SELECT\n  o.state_abbr,\n  gs.state_name,\n  gs.state_fips,\n  o.year,\n  o.offense_code,\n  AVG(o.offense_rate)                                  AS avg_monthly_offense_rate,\n  AVG(o.clearance_rate)                                AS avg_monthly_clearance_rate,\n  pe.officers_per_1000,\n  pe.male_officers + pe.female_officers                AS total_officers,\n  CASE\n    WHEN pe.officers_per_1000 IS NOT NULL\n      AND pe.officers_per_1000 > 0\n    THEN AVG(o.offense_rate) / pe.officers_per_1000\n    ELSE NULL\n  END                                                  AS offense_rate_per_officer\nFROM cde_offenses o LEFT JOIN cde_police_employment pe\n  ON o.state_abbr = pe.state_abbr AND o.year = pe.year\nLEFT JOIN \"geo\".\"states\" gs ON o.state_abbr = gs.state_abbr GROUP BY o.state_abbr, gs.state_name, gs.state_fips, o.year, o.offense_code,\n         pe.officers_per_1000, pe.male_officers, pe.female_officers\n"
+    } ],
+    "materializeDirectory" : "s3://govdata-parquet-v1",
+    "storageConfig" : {
+      "accessKeyId" : "********",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "actualSchemaName" : "crime",
+    "autoDownload" : false,
+    "s3Config" : {
+      "accessKeyId" : "****e4dc",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "executionEngine" : "duckdb",
+    "tableConstraints" : {
+      "cde_trends" : {
+        "primaryKey" : [ "offense_name" ]
+      },
+      "cde_offenses" : {
+        "primaryKey" : [ "state_abbr", "offense_code", "month" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_use_of_force" : {
+        "primaryKey" : [ "state_abbr", "year", "section", "category", "label" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_supplemental" : {
+        "primaryKey" : [ "state_abbr", "year", "property_type" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_reta" : {
+        "primaryKey" : [ "ori", "year", "month" ],
+        "foreignKeys" : [ {
+          "columns" : [ "zip_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "5-digit agency ZIP to the conformed ZCTA dimension"
+        } ]
+      },
+      "bjs_nibrs_estimates" : {
+        "primaryKey" : [ "endpoint_id", "indicator_name", "estimate_domain_1", "time_series_start_year" ]
+      },
+      "cde_police_employment" : {
+        "primaryKey" : [ "state_abbr", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_arrests" : {
+        "primaryKey" : [ "state_abbr", "year", "section", "category", "label" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_shr" : {
+        "primaryKey" : [ "state_abbr", "year", "section", "category", "label" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_hate_crimes" : {
+        "primaryKey" : [ "state_abbr", "year", "section", "category", "label" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_leoka" : {
+        "primaryKey" : [ "state_abbr", "year", "section", "category", "label" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "cde_agencies" : {
+        "primaryKey" : [ "ori" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      }
+    },
+    "testMode" : false,
+    "partitionedTables" : [ {
+      "name" : "cde_agencies",
+      "pattern" : "type=agency/state_abbr=*/*.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "state_abbr",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "FBI CDE law enforcement agency registry. ~19,600 agencies across 51 jurisdictions with ORI identifiers, agency type, county, NIBRS reporting status, and coordinates. One row per agency. Cross-references geo.states via state_abbr.\n",
+      "dimensions" : {
+        "type" : [ "agency" ],
+        "state_abbr" : [ "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        }
+      },
+      "columns" : [ {
+        "name" : "ori",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "ORI identifier (e.g., 'CA0150000')"
+      }, {
+        "name" : "agency_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Agency name"
+      }, {
+        "name" : "agency_type_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Agency type (City, County, State, Other)"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-letter state abbreviation (e.g., 'CA') or 'national'"
+      }, {
+        "name" : "county_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "County name (title case, e.g., 'Kern')"
+      }, {
+        "name" : "is_nibrs",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "Whether agency reports via NIBRS"
+      }, {
+        "name" : "nibrs_start_date",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "NIBRS start date (ISO format)"
+      }, {
+        "name" : "latitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Agency latitude"
+      }, {
+        "name" : "longitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Agency longitude"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.usa.gov/crime/fbi/cde/agency/byStateAbbr/{state_abbr}?API_KEY=${API_DATA_GOV}",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.CdeAgencyTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=agency/state_abbr=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "state_abbr" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "cde_agencies",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "overwritePartitions" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      }
+    }, {
+      "name" : "cde_offenses",
+      "pattern" : "type=offense/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 102000,
+        "checkedAt" : "2026-09-12T00:10:34Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "FBI CDE summarized crime rates by state and offense type. Includes offense rate, clearance rate, national comparison rates, population, and coverage percentage. One row per state + offense + month. Cross-references geo.states via state_abbr.\n",
+      "dimensions" : {
+        "type" : [ "offense" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0,
+          "monthlyYTD" : true
+        },
+        "state_abbr" : [ "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY" ],
+        "offense" : [ "violent-crime", "property-crime", "homicide", "aggravated-assault", "rape", "robbery", "burglary", "larceny", "motor-vehicle-theft", "arson" ]
+      },
+      "columns" : [ {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-letter state abbreviation (e.g., 'CA') or 'national'"
+      }, {
+        "name" : "offense_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FBI offense code (e.g., violent-crime, homicide, burglary)"
+      }, {
+        "name" : "month",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "MM-YYYY format"
+      }, {
+        "name" : "offense_rate",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Offenses per 100k population (state), for this row's month only — not an annualized rate. AVG(offense_rate) across a year's 12 rows understates the true annual rate by roughly 12x; SUM(offense_rate) across the year's months gives the annual per-100k rate.\n"
+      }, {
+        "name" : "clearance_rate",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Clearances per 100k population (state), for this row's month only — same per-month grain as offense_rate; sum across months for an annual rate.\n"
+      }, {
+        "name" : "national_offense_rate",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "National offense rate for comparison"
+      }, {
+        "name" : "national_clearance_rate",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "National clearance rate for comparison"
+      }, {
+        "name" : "population",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "State population for the period"
+      }, {
+        "name" : "population_coverage_pct",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Percentage of population covered by reporting agencies"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://cde.ucr.cjis.gov/LATEST/summarized/state/{state_abbr}/{offense}?from=01-{year}&to={month}-{year}",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.CdeCrimeRatesTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=offense/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "cde_offenses",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "cde_police_employment",
+      "lookbackPeriods" : 3,
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=pe/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 867,
+        "checkedAt" : "2026-09-12T00:10:35Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "FBI CDE police employment data by state and year. Includes officers per 1,000 population, male/female officer and civilian counts, and population coverage.\n",
+      "dimensions" : {
+        "type" : [ "pe" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        },
+        "state_abbr" : [ "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY" ]
+      },
+      "columns" : [ {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-letter state abbreviation (e.g., 'CA') or 'national'"
+      }, {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year"
+      }, {
+        "name" : "officers_per_1000",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Officers per 1,000 people"
+      }, {
+        "name" : "male_officers",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Male sworn officer count"
+      }, {
+        "name" : "female_officers",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Female sworn officer count"
+      }, {
+        "name" : "male_civilians",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Male civilian employee count"
+      }, {
+        "name" : "female_civilians",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Female civilian employee count"
+      }, {
+        "name" : "participated_population",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Population covered by reporting agencies"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://cde.ucr.cjis.gov/LATEST/pe/{state_abbr}?from={year}&to={year}",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.CdePoliceEmploymentTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=pe/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "cde_police_employment",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "cde_hate_crimes",
+      "pattern" : "type=hate_crime/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 250359,
+        "checkedAt" : "2026-09-12T00:10:36Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "FBI CDE hate crime statistics by state and year. Flattened from nested sections (bias_section, incident_section) with categories (victim_type, offense_type, offender_race, bias, etc.) and labels with counts.\n",
+      "dimensions" : {
+        "type" : [ "hate_crime" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        },
+        "month" : [ "12" ],
+        "state_abbr" : [ "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY" ]
+      },
+      "columns" : [ {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-letter state abbreviation (e.g., 'CA') or 'national'"
+      }, {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year"
+      }, {
+        "name" : "section",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data section grouping"
+      }, {
+        "name" : "category",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Category within section"
+      }, {
+        "name" : "label",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metric or value label"
+      }, {
+        "name" : "count",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Count for this combination"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://cde.ucr.cjis.gov/LATEST/hate-crime/state/{state_abbr}?from=01-{year}&to={month}-{year}",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.CdeHateCrimeTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=hate_crime/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "cde_hate_crimes",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "cde_use_of_force",
+      "pattern" : "type=uof/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2019,
+        "maxYear" : 2026,
+        "distinctYears" : 8,
+        "contiguous" : true,
+        "rowCount" : 12312,
+        "checkedAt" : "2026-09-12T00:10:37Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "FBI CDE use of force data by state and year, flattened into generic section/category/label rows with a single numeric value that may be a count or a percentage (see the value column). One row per state + year + section + category + label. The CDE API rejects years before 2019 outright (\"Year field cannot be less than 2019\"); the schema's 2010 floor is shared with every CDE table but this dataset has no years before 2019 to backfill.\n",
+      "dimensions" : {
+        "type" : [ "uof" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        },
+        "state_abbr" : [ "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY" ]
+      },
+      "columns" : [ {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-letter state abbreviation (e.g., 'CA') or 'national'"
+      }, {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year"
+      }, {
+        "name" : "section",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data section grouping"
+      }, {
+        "name" : "category",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Category within section"
+      }, {
+        "name" : "label",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metric or value label"
+      }, {
+        "name" : "value",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Metric value (count or percentage)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://cde.ucr.cjis.gov/LATEST/uof?location={state_abbr}&year={year}",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.CdeUseOfForceTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=uof/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "cde_use_of_force",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "cde_reta",
+      "pattern" : "type=reta/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2017,
+        "maxYear" : 2026,
+        "distinctYears" : 2,
+        "contiguous" : false,
+        "years" : [ 2017, 2026 ],
+        "rowCount" : 622608,
+        "checkedAt" : "2026-09-12T00:10:38Z"
+      },
+      "dqRowLimit" : 25000,
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "FBI Return A master file: agency-level monthly counts of Part I offenses (reported/unfounded/actual/cleared/juvenile-cleared) plus officers killed and assaulted, from the CDE bulk download (one national fixed-width file per year) instead of per-ORI API calls. One row per agency (ORI7) per month, unpivoted from the wide 12-month record. Cross-references cde_agencies via ori (ORI7 prefix).\n",
+      "dimensions" : {
+        "type" : [ "reta" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        }
+      },
+      "columns" : [ {
+        "name" : "identifier_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field identifier code"
+      }, {
+        "name" : "state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field state"
+      }, {
+        "name" : "ori",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "7-character originating agency identifier (ORI7)"
+      }, {
+        "name" : "population_group",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field population group"
+      }, {
+        "name" : "country_division",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field country division"
+      }, {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Reporting year (4-digit, from the file batch)"
+      }, {
+        "name" : "month",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar month 1-12 (unpivoted from the monthly record groups)"
+      }, {
+        "name" : "sequence_number",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field sequence number"
+      }, {
+        "name" : "juvenile_age",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field juvenile age"
+      }, {
+        "name" : "core_city_indication",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field core city indication"
+      }, {
+        "name" : "covered_by_ori",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field covered by ori"
+      }, {
+        "name" : "covered_by_population_group",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field covered by population group"
+      }, {
+        "name" : "last_update",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field last update"
+      }, {
+        "name" : "fbi_field_office",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field fbi field office"
+      }, {
+        "name" : "number_of_months_reported",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Return A header field number of months reported"
+      }, {
+        "name" : "agency_count",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Return A header field agency count"
+      }, {
+        "name" : "population_1",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Return A header field population 1"
+      }, {
+        "name" : "population_1_county",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Return A header field population 1 county"
+      }, {
+        "name" : "population_1_msa",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Return A header field population 1 msa"
+      }, {
+        "name" : "population_2",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Return A header field population 2"
+      }, {
+        "name" : "population_2_county",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Return A header field population 2 county"
+      }, {
+        "name" : "population_2_msa",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Return A header field population 2 msa"
+      }, {
+        "name" : "population_3",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Return A header field population 3"
+      }, {
+        "name" : "population_3_county",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Return A header field population 3 county"
+      }, {
+        "name" : "population_3_msa",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Return A header field population 3 msa"
+      }, {
+        "name" : "last_population_1",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Return A header field last population 1"
+      }, {
+        "name" : "last_population_2",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Return A header field last population 2"
+      }, {
+        "name" : "last_population_3",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Return A header field last population 3"
+      }, {
+        "name" : "population_source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field population source"
+      }, {
+        "name" : "followup_indication",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field followup indication"
+      }, {
+        "name" : "special_mailing_group",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field special mailing group"
+      }, {
+        "name" : "special_mailing_address",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field special mailing address"
+      }, {
+        "name" : "agency_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field agency name"
+      }, {
+        "name" : "agency_state_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field agency state name"
+      }, {
+        "name" : "first_line_of_mailing_address",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field first line of mailing address"
+      }, {
+        "name" : "second_line_of_mailing_address",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field second line of mailing address"
+      }, {
+        "name" : "third_line_of_mailing_address",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field third line of mailing address"
+      }, {
+        "name" : "fourth_line_of_mailing_address",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field fourth line of mailing address"
+      }, {
+        "name" : "zip_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field zip code"
+      }, {
+        "name" : "population_group_in_previous_year",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Return A header field population group in previous year"
+      }, {
+        "name" : "blank",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Unused filler field from the Return A record"
+      }, {
+        "name" : "month_included_in",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Monthly card field month included in"
+      }, {
+        "name" : "date_of_last_update",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Monthly card field date of last update"
+      }, {
+        "name" : "card_unfounded_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Monthly reporting card indicator card unfounded type"
+      }, {
+        "name" : "card_actual_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Monthly reporting card indicator card actual type"
+      }, {
+        "name" : "card_total_cleared_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Monthly reporting card indicator card total cleared type"
+      }, {
+        "name" : "card_cleared_18_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Monthly reporting card indicator card cleared 18 type"
+      }, {
+        "name" : "card_officers_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Monthly reporting card indicator card officers type"
+      }, {
+        "name" : "card_unfounded_pt",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Monthly reporting card indicator card unfounded pt"
+      }, {
+        "name" : "card_actual_pt",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Monthly reporting card indicator card actual pt"
+      }, {
+        "name" : "card_total_cleared_pt",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Monthly reporting card indicator card total cleared pt"
+      }, {
+        "name" : "card_cleared_18_pt",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Monthly reporting card indicator card cleared 18 pt"
+      }, {
+        "name" : "unfounded_murder",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded murder"
+      }, {
+        "name" : "unfounded_manslaughter",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded manslaughter"
+      }, {
+        "name" : "unfounded_rape_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded rape total"
+      }, {
+        "name" : "unfounded_rape_by_force",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded rape by force"
+      }, {
+        "name" : "unfounded_rape_attempted",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded rape attempted"
+      }, {
+        "name" : "unfounded_robbery_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded robbery total"
+      }, {
+        "name" : "unfounded_robbery_with_a_gun",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded robbery with a gun"
+      }, {
+        "name" : "unfounded_robbery_with_a_knife",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded robbery with a knife"
+      }, {
+        "name" : "unfounded_robbery_other_weapon",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded robbery other weapon"
+      }, {
+        "name" : "unfounded_robbery_unarmed",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded robbery unarmed"
+      }, {
+        "name" : "unfounded_assault_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded assault total"
+      }, {
+        "name" : "unfounded_assault_with_a_gun",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded assault with a gun"
+      }, {
+        "name" : "unfounded_assault_with_a_knife",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded assault with a knife"
+      }, {
+        "name" : "unfounded_assault_other_weapon",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded assault other weapon"
+      }, {
+        "name" : "unfounded_assault_unarmed",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded assault unarmed"
+      }, {
+        "name" : "unfounded_assault_simple",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded assault simple"
+      }, {
+        "name" : "unfounded_burglary_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded burglary total"
+      }, {
+        "name" : "unfounded_burglary_force_entry",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded burglary force entry"
+      }, {
+        "name" : "unfounded_burglary_nonforce_entry",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded burglary nonforce entry"
+      }, {
+        "name" : "unfounded_burglary_attempted",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded burglary attempted"
+      }, {
+        "name" : "unfounded_theft_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded theft total"
+      }, {
+        "name" : "unfounded_motor_vehicle_theft_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded motor vehicle theft total"
+      }, {
+        "name" : "unfounded_motor_vehicle_theft_car",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded motor vehicle theft car"
+      }, {
+        "name" : "unfounded_motor_vehicle_theft_truck",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded motor vehicle theft truck"
+      }, {
+        "name" : "unfounded_motor_vehicle_theft_other",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded motor vehicle theft other"
+      }, {
+        "name" : "unfounded_all_crimes",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded all crimes"
+      }, {
+        "name" : "unfounded_theft_under50_dollar",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded theft under50 dollar"
+      }, {
+        "name" : "unfounded_blank",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of unfounded blank"
+      }, {
+        "name" : "actual_murder",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual murder"
+      }, {
+        "name" : "actual_manslaughter",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual manslaughter"
+      }, {
+        "name" : "actual_rape_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual rape total"
+      }, {
+        "name" : "actual_rape_by_force",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual rape by force"
+      }, {
+        "name" : "actual_rape_attempted",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual rape attempted"
+      }, {
+        "name" : "actual_robbery_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual robbery total"
+      }, {
+        "name" : "actual_robbery_with_a_gun",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual robbery with a gun"
+      }, {
+        "name" : "actual_robbery_with_a_knife",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual robbery with a knife"
+      }, {
+        "name" : "actual_robbery_other_weapon",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual robbery other weapon"
+      }, {
+        "name" : "actual_robbery_unarmed",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual robbery unarmed"
+      }, {
+        "name" : "actual_assault_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual assault total"
+      }, {
+        "name" : "actual_assault_with_a_gun",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual assault with a gun"
+      }, {
+        "name" : "actual_assault_with_a_knife",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual assault with a knife"
+      }, {
+        "name" : "actual_assault_other_weapon",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual assault other weapon"
+      }, {
+        "name" : "actual_assault_unarmed",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual assault unarmed"
+      }, {
+        "name" : "actual_assault_simple",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual assault simple"
+      }, {
+        "name" : "actual_burglary_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual burglary total"
+      }, {
+        "name" : "actual_burglary_force_entry",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual burglary force entry"
+      }, {
+        "name" : "actual_burglary_nonforce_entry",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual burglary nonforce entry"
+      }, {
+        "name" : "actual_burglary_attempted",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual burglary attempted"
+      }, {
+        "name" : "actual_theft_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual theft total"
+      }, {
+        "name" : "actual_motor_vehicle_theft_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual motor vehicle theft total"
+      }, {
+        "name" : "actual_motor_vehicle_theft_car",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual motor vehicle theft car"
+      }, {
+        "name" : "actual_motor_vehicle_theft_truck",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual motor vehicle theft truck"
+      }, {
+        "name" : "actual_motor_vehicle_theft_other",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual motor vehicle theft other"
+      }, {
+        "name" : "actual_all_crimes",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual all crimes"
+      }, {
+        "name" : "actual_theft_under50_dollar",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual theft under50 dollar"
+      }, {
+        "name" : "actual_blank",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of actual blank"
+      }, {
+        "name" : "total_cleared_murder",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared murder"
+      }, {
+        "name" : "total_cleared_manslaughter",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared manslaughter"
+      }, {
+        "name" : "total_cleared_rape_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared rape total"
+      }, {
+        "name" : "total_cleared_rape_by_force",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared rape by force"
+      }, {
+        "name" : "total_cleared_rape_attempted",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared rape attempted"
+      }, {
+        "name" : "total_cleared_robbery_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared robbery total"
+      }, {
+        "name" : "total_cleared_robbery_with_a_gun",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared robbery with a gun"
+      }, {
+        "name" : "total_cleared_robbery_with_a_knife",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared robbery with a knife"
+      }, {
+        "name" : "total_cleared_robbery_other_weapon",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared robbery other weapon"
+      }, {
+        "name" : "total_cleared_robbery_unarmed",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared robbery unarmed"
+      }, {
+        "name" : "total_cleared_assault_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared assault total"
+      }, {
+        "name" : "total_cleared_assault_with_a_gun",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared assault with a gun"
+      }, {
+        "name" : "total_cleared_assault_with_a_knife",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared assault with a knife"
+      }, {
+        "name" : "total_cleared_assault_other_weapon",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared assault other weapon"
+      }, {
+        "name" : "total_cleared_assault_unarmed",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared assault unarmed"
+      }, {
+        "name" : "total_cleared_assault_simple",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared assault simple"
+      }, {
+        "name" : "total_cleared_burglary_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared burglary total"
+      }, {
+        "name" : "total_cleared_burglary_force_entry",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared burglary force entry"
+      }, {
+        "name" : "total_cleared_burglary_nonforce_entry",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared burglary nonforce entry"
+      }, {
+        "name" : "total_cleared_burglary_attempted",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared burglary attempted"
+      }, {
+        "name" : "total_cleared_theft_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared theft total"
+      }, {
+        "name" : "total_cleared_motor_vehicle_theft_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared motor vehicle theft total"
+      }, {
+        "name" : "total_cleared_motor_vehicle_theft_car",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared motor vehicle theft car"
+      }, {
+        "name" : "total_cleared_motor_vehicle_theft_truck",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared motor vehicle theft truck"
+      }, {
+        "name" : "total_cleared_motor_vehicle_theft_other",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared motor vehicle theft other"
+      }, {
+        "name" : "total_cleared_all_crimes",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared all crimes"
+      }, {
+        "name" : "total_cleared_theft_under50_dollar",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared theft under50 dollar"
+      }, {
+        "name" : "total_cleared_blank",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of total cleared blank"
+      }, {
+        "name" : "cleared_18_murder",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 murder"
+      }, {
+        "name" : "cleared_18_manslaughter",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 manslaughter"
+      }, {
+        "name" : "cleared_18_rape_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 rape total"
+      }, {
+        "name" : "cleared_18_rape_by_force",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 rape by force"
+      }, {
+        "name" : "cleared_18_rape_attempted",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 rape attempted"
+      }, {
+        "name" : "cleared_18_robbery_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 robbery total"
+      }, {
+        "name" : "cleared_18_robbery_with_a_gun",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 robbery with a gun"
+      }, {
+        "name" : "cleared_18_robbery_with_a_knife",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 robbery with a knife"
+      }, {
+        "name" : "cleared_18_robbery_other_weapon",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 robbery other weapon"
+      }, {
+        "name" : "cleared_18_robbery_unarmed",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 robbery unarmed"
+      }, {
+        "name" : "cleared_18_assault_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 assault total"
+      }, {
+        "name" : "cleared_18_assault_with_a_gun",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 assault with a gun"
+      }, {
+        "name" : "cleared_18_assault_with_a_knife",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 assault with a knife"
+      }, {
+        "name" : "cleared_18_assault_other_weapon",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 assault other weapon"
+      }, {
+        "name" : "cleared_18_assault_unarmed",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 assault unarmed"
+      }, {
+        "name" : "cleared_18_assault_simple",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 assault simple"
+      }, {
+        "name" : "cleared_18_burglary_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 burglary total"
+      }, {
+        "name" : "cleared_18_burglary_force_entry",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 burglary force entry"
+      }, {
+        "name" : "cleared_18_burglary_nonforce_entry",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 burglary nonforce entry"
+      }, {
+        "name" : "cleared_18_burglary_attempted",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 burglary attempted"
+      }, {
+        "name" : "cleared_18_theft_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 theft total"
+      }, {
+        "name" : "cleared_18_motor_vehicle_theft_total",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 motor vehicle theft total"
+      }, {
+        "name" : "cleared_18_motor_vehicle_theft_car",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 motor vehicle theft car"
+      }, {
+        "name" : "cleared_18_motor_vehicle_theft_truck",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 motor vehicle theft truck"
+      }, {
+        "name" : "cleared_18_motor_vehicle_theft_other",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 motor vehicle theft other"
+      }, {
+        "name" : "cleared_18_all_crimes",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 all crimes"
+      }, {
+        "name" : "cleared_18_theft_under50_dollar",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 theft under50 dollar"
+      }, {
+        "name" : "cleared_18_blank",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of cleared 18 blank"
+      }, {
+        "name" : "officers_killed_by_felony",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of officers killed by felony"
+      }, {
+        "name" : "officers_killed_by_accident",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of officers killed by accident"
+      }, {
+        "name" : "officers_assaulted",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Monthly count of officers assaulted"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://cde.ucr.cjis.gov/LATEST/s3/signedurl?key=master_files/reta/reta-{year}.zip",
+        "method" : "GET",
+        "urlResolver" : { },
+        "extractPattern" : "*RETA*MASTER*.txt",
+        "response" : {
+          "format" : "fixed_width"
+        },
+        "fixedWidth" : {
+          "encoding" : "ISO-8859-1",
+          "columnsResource" : "crime/reta_layout.json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 5.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "rowTransformers" : [ {
+          "type" : "class",
+          "class" : "org.apache.calcite.adapter.govdata.crime.RetaMonthUnpivotTransformer"
+        } ]
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=reta/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "cde_reta",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "cde_arrests",
+      "pattern" : "type=arrest/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : false,
+        "years" : [ 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2026 ],
+        "rowCount" : 81243,
+        "checkedAt" : "2026-09-12T00:10:38Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "FBI CDE arrest data by state, aggregated to annual (Jan-Dec) totals for all offenses combined — the offense dimension is fixed to 'all', so individual offense categories (e.g., drug abuse, DUI, violent crime) are not broken out. Counts are broken down by age group, sex, race, and ethnicity via the section/category/label columns. One row per state + year + section + category + label.\n",
+      "dimensions" : {
+        "type" : [ "arrest" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        },
+        "month" : [ "12" ],
+        "state_abbr" : [ "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY" ],
+        "offense" : [ "all" ]
+      },
+      "columns" : [ {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-letter state abbreviation (e.g., 'CA') or 'national'"
+      }, {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year"
+      }, {
+        "name" : "section",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data section (age, sex, race, ethnicity)"
+      }, {
+        "name" : "category",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Category within section (e.g., Under 10, Male, White)"
+      }, {
+        "name" : "label",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metric label"
+      }, {
+        "name" : "count",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Arrest count"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://cde.ucr.cjis.gov/LATEST/arrest/state/{state_abbr}/{offense}?from=01-{year}&to={month}-{year}&type=totals",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.CdeHateCrimeTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=arrest/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "cde_arrests",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "cde_shr",
+      "pattern" : "type=shr/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 116178,
+        "checkedAt" : "2026-09-12T00:10:39Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "FBI CDE Supplementary Homicide Report data, aggregated to annual (Jan-Dec) counts by state — not incident-level microdata. Victim and offender demographics for homicide incidents including age, sex, race, relationship, weapon, and circumstance details, flattened into section/category/label rows with a count. One row per state + year + section + category + label.\n",
+      "dimensions" : {
+        "type" : [ "shr" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        },
+        "month" : [ "12" ],
+        "state_abbr" : [ "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY" ]
+      },
+      "columns" : [ {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-letter state abbreviation (e.g., 'CA') or 'national'"
+      }, {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year"
+      }, {
+        "name" : "section",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data section (victim demographics, offender demographics, circumstances)"
+      }, {
+        "name" : "category",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Category (age, sex, race, relationship, weapon, circumstance)"
+      }, {
+        "name" : "label",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Value label"
+      }, {
+        "name" : "count",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Count for this combination"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://cde.ucr.cjis.gov/LATEST/shr/state/{state_abbr}?from=01-{year}&to={month}-{year}&type=totals",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.CdeHateCrimeTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=shr/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "cde_shr",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "cde_leoka",
+      "pattern" : "type=leoka/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2020,
+        "maxYear" : 2026,
+        "distinctYears" : 7,
+        "contiguous" : true,
+        "rowCount" : 71043,
+        "checkedAt" : "2026-09-12T00:10:40Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "FBI CDE Law Enforcement Officers Killed and Assaulted (LEOKA) data. Totals for officers killed (feloniously and accidentally) and assaulted in the line of duty, by state and year. The CDE API returns a null chart for every state for years before 2020; the schema's 2010 floor is shared with every CDE table but this dataset has no years before 2020 to backfill.\n",
+      "dimensions" : {
+        "type" : [ "leoka" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        },
+        "state_abbr" : [ "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY" ]
+      },
+      "columns" : [ {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-letter state abbreviation (e.g., 'CA') or 'national'"
+      }, {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year"
+      }, {
+        "name" : "section",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data section (killed, assaulted, activity, weapon, assignment)"
+      }, {
+        "name" : "category",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Category within section"
+      }, {
+        "name" : "label",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metric label"
+      }, {
+        "name" : "count",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Count for this combination"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://cde.ucr.cjis.gov/LATEST/leoka/ytd?stateAbbr={state_abbr}&year={year}",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.CdeLeokaTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=leoka/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "cde_leoka",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "cde_trends",
+      "dataset_type" : "snapshot",
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=trends/*.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "FBI CDE national crime trend percentages. Year-over-year change for major offense categories from a rolling 12-month comparison window. Single snapshot refreshed periodically (~monthly). No state dimension.\n",
+      "dimensions" : {
+        "type" : [ "trends" ]
+      },
+      "columns" : [ {
+        "name" : "offense_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Offense category (e.g., Murder, Robbery, Violent Crime)"
+      }, {
+        "name" : "trend_pct",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Year-over-year percentage change (negative = decrease)"
+      }, {
+        "name" : "current_range",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Comparison time window (e.g., 'November 2024 - October 2025')"
+      }, {
+        "name" : "last_refresh_date",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Date this data was last refreshed"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://cde.ucr.cjis.gov/LATEST/trends/national",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.CdeTrendsTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=trends/"
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "cde_trends",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "overwritePartitions" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      }
+    }, {
+      "name" : "cde_supplemental",
+      "pattern" : "type=supplemental/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 9537,
+        "checkedAt" : "2026-09-12T00:10:41Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "FBI CDE supplemental property crime data. Stolen and recovered property values by category (Firearms, Motor Vehicles, Currency, Jewelry, etc.) aggregated at the state level. Cross-references geo.states via state_abbr.\n",
+      "dimensions" : {
+        "type" : [ "supplemental" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        },
+        "month" : [ "12" ],
+        "state_abbr" : [ "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY" ]
+      },
+      "columns" : [ {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-letter state abbreviation (e.g., 'CA') or 'national'"
+      }, {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year"
+      }, {
+        "name" : "property_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Property category (Firearms, Locally Stolen Motor Vehicles, Currency, etc.)"
+      }, {
+        "name" : "stolen_value",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Total dollar value of stolen property"
+      }, {
+        "name" : "recovered_value",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Total dollar value of recovered property"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://cde.ucr.cjis.gov/LATEST/supplemental/state/{state_abbr}/property-crime?from=01-{year}&to={month}-{year}&type=totals",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.CdeSupplementalTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=supplemental/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "cde_supplemental",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "bjs_nibrs_estimates",
+      "pattern" : "type=nibrs/endpoint_id=*/*.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "endpoint_id",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "Bureau of Justice Statistics NIBRS national crime estimates from 6 SODA endpoints. Includes weighted estimates, confidence intervals, standard errors, agency counts, and population coverage for violent and property crime indicators.\n",
+      "dimensions" : {
+        "type" : [ "nibrs" ],
+        "endpoint_id" : [ "r32q-bdaw", "iv7i-eah6", "x3sz-eb6y", "kj7p-vx4s", "ms42-n765", "uy37-xgmh" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        }
+      },
+      "columns" : [ {
+        "name" : "endpoint_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SODA dataset ID (e.g., r32q-bdaw)"
+      }, {
+        "name" : "indicator_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Crime indicator name"
+      }, {
+        "name" : "estimate",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Weighted national estimate"
+      }, {
+        "name" : "estimate_unweighted",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Raw unweighted count"
+      }, {
+        "name" : "estimate_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Estimate type (count, percentage, or rate)"
+      }, {
+        "name" : "estimate_domain_1",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Primary domain (Incident count, Weapon involved, etc.)"
+      }, {
+        "name" : "estimate_geographic_location",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Geographic location (typically National)"
+      }, {
+        "name" : "estimate_standard_error",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Standard error"
+      }, {
+        "name" : "estimate_upper_bound",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Upper 95% confidence bound"
+      }, {
+        "name" : "estimate_lower_bound",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Lower 95% confidence bound"
+      }, {
+        "name" : "relative_standard_error",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Relative standard error"
+      }, {
+        "name" : "agency_counts",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Number of contributing agencies"
+      }, {
+        "name" : "pop_cov",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Population coverage fraction"
+      }, {
+        "name" : "time_series_start_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Year for the estimate"
+      }, {
+        "name" : "full_table",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "BJS table reference"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.ojp.gov/bjsdataset/v1/{endpoint_id}.json?$limit=50000",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.BjsSodaTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=nibrs/endpoint_id=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "endpoint_id" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "bjs_nibrs_estimates",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "overwritePartitions" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5
+        }
+      }
+    }, {
+      "name" : "bjs_ncvs_personal",
+      "pattern" : "type=ncvs/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2008,
+        "maxYear" : 2024,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 20878,
+        "checkedAt" : "2026-09-12T00:10:42Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Bureau of Justice Statistics NCVS personal victimization microdata, one row per victimization incident recorded by survey respondents, covering 2010 onward by default (start year configurable) and lagging about 2 years behind the current year. Contains 17 fields including crime/offense type codes, police notification status, weapon use, injury, offender age and sex, location (region/MSA), and person survey weight (newwgt). Use bjs_ncvs_personal_pop as the survey-respondent denominator for computing victimization rates.\n",
+      "dimensions" : {
+        "type" : [ "ncvs" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 2
+        }
+      },
+      "columns" : [ {
+        "name" : "year",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Survey year"
+      }, {
+        "name" : "yearq",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Year and quarter"
+      }, {
+        "name" : "newcrime",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Crime type code"
+      }, {
+        "name" : "newoff",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Offense type code"
+      }, {
+        "name" : "seriousviolent",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Serious violent crime indicator"
+      }, {
+        "name" : "notify",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Police notification status"
+      }, {
+        "name" : "weapon",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Weapon presence indicator"
+      }, {
+        "name" : "weapcat",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Weapon category"
+      }, {
+        "name" : "injury",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Injury indicator"
+      }, {
+        "name" : "offenderage",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Offender age category"
+      }, {
+        "name" : "offendersex",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Offender sex"
+      }, {
+        "name" : "locationr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Location of crime"
+      }, {
+        "name" : "direl",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Victim-offender relationship"
+      }, {
+        "name" : "region",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Census region"
+      }, {
+        "name" : "msa",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metropolitan statistical area indicator"
+      }, {
+        "name" : "series",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "NCVS series-victimization indicator — a flag for incidents reported as a series of similar crimes (six or more, too repetitive to recall individually), NOT a time-series identifier. This table is microdata, one row per victimization, so do not treat this column as a series key.\n"
+      }, {
+        "name" : "newwgt",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Person weight"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.ojp.gov/bjsdataset/v1/gcuy-rt5g.json?$where=year='{effective_year}'",
+        "method" : "GET",
+        "response" : {
+          "format" : "json",
+          "pagination" : {
+            "type" : "OFFSET",
+            "limitParam" : "$limit",
+            "offsetParam" : "$offset",
+            "pageSize" : 50000
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.BjsSodaTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=ncvs/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "bjs_ncvs_personal",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "bjs_ncvs_personal_pop",
+      "pattern" : "type=ncvs_pop/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2008,
+        "maxYear" : 2024,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 2168279,
+        "checkedAt" : "2026-09-12T00:10:43Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Bureau of Justice Statistics NCVS personal population data. Demographic information for all survey respondents regardless of victimization status. Includes age, sex, race, Hispanic origin, marital status, education, income. Same 2010-onward coverage and ~2-year publish lag as bjs_ncvs_personal. Used as denominator for computing victimization rates from bjs_ncvs_personal.\n",
+      "dimensions" : {
+        "type" : [ "ncvs_pop" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 2
+        }
+      },
+      "columns" : [ {
+        "name" : "year",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Survey year"
+      }, {
+        "name" : "yearq",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Year and quarter"
+      }, {
+        "name" : "ager",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Respondent age category"
+      }, {
+        "name" : "sex",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Respondent sex"
+      }, {
+        "name" : "race",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Respondent race"
+      }, {
+        "name" : "hispanic",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Hispanic origin indicator"
+      }, {
+        "name" : "marital",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Marital status"
+      }, {
+        "name" : "educatn1",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Education level (detailed)"
+      }, {
+        "name" : "educatn2",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Education level (recoded)"
+      }, {
+        "name" : "hincome1",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Household income category (detailed)"
+      }, {
+        "name" : "hincome2",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Household income category (recoded)"
+      }, {
+        "name" : "region",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Census region"
+      }, {
+        "name" : "msa",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metropolitan statistical area indicator"
+      }, {
+        "name" : "wgtpercy",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Person weight"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.ojp.gov/bjsdataset/v1/r4j4-fdwx.json?$where=year='{effective_year}'",
+        "method" : "GET",
+        "response" : {
+          "format" : "json",
+          "pagination" : {
+            "type" : "OFFSET",
+            "limitParam" : "$limit",
+            "offsetParam" : "$offset",
+            "pageSize" : 50000
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.BjsSodaTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=ncvs_pop/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "bjs_ncvs_personal_pop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "bjs_ncvs_household",
+      "pattern" : "type=ncvs_hh/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2008,
+        "maxYear" : 2024,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 81536,
+        "checkedAt" : "2026-09-12T00:10:43Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Bureau of Justice Statistics NCVS household victimization microdata, one row per household-level victimization incident, coded by newcrime/newoff crime and offense type codes. Includes police notification status, region/MSA, household income bracket, and household victimization weight (wgtviccy). Same 2010-onward coverage and ~2-year publish lag as bjs_ncvs_personal. Cross-references bjs_ncvs_household_pop as the denominator for household victimization rates.\n",
+      "dimensions" : {
+        "type" : [ "ncvs_hh" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 2
+        }
+      },
+      "columns" : [ {
+        "name" : "year",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Survey year"
+      }, {
+        "name" : "yearq",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Year and quarter"
+      }, {
+        "name" : "newcrime",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Crime type code"
+      }, {
+        "name" : "newoff",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Offense type code"
+      }, {
+        "name" : "notify",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Police notification status"
+      }, {
+        "name" : "region",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Census region"
+      }, {
+        "name" : "msa",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metropolitan statistical area indicator"
+      }, {
+        "name" : "hincome1",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Household income category (detailed)"
+      }, {
+        "name" : "hincome2",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Household income category (recoded)"
+      }, {
+        "name" : "series",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "NCVS series-victimization indicator — a flag for incidents reported as a series of similar crimes (six or more, too repetitive to recall individually), NOT a time-series identifier. This table is microdata, one row per victimization, so do not treat this column as a series key.\n"
+      }, {
+        "name" : "wgtviccy",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Household victimization weight"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.ojp.gov/bjsdataset/v1/gkck-euys.json?$where=year='{effective_year}'",
+        "method" : "GET",
+        "response" : {
+          "format" : "json",
+          "pagination" : {
+            "type" : "OFFSET",
+            "limitParam" : "$limit",
+            "offsetParam" : "$offset",
+            "pageSize" : 50000
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.BjsSodaTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=ncvs_hh/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "bjs_ncvs_household",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "bjs_ncvs_household_pop",
+      "pattern" : "type=ncvs_hh_pop/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2008,
+        "maxYear" : 2024,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 1538219,
+        "checkedAt" : "2026-09-12T00:10:44Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Bureau of Justice Statistics NCVS household population data — demographic data (region, MSA, household income bracket, household size) for all participating households regardless of victimization, with household weight (wgthhcy). Same 2010-onward coverage and ~2-year publish lag as bjs_ncvs_personal. Used as the denominator for computing bjs_ncvs_household victimization rates.\n",
+      "dimensions" : {
+        "type" : [ "ncvs_hh_pop" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 2
+        }
+      },
+      "columns" : [ {
+        "name" : "year",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Survey year"
+      }, {
+        "name" : "yearq",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Year and quarter"
+      }, {
+        "name" : "region",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Census region"
+      }, {
+        "name" : "msa",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metropolitan statistical area indicator"
+      }, {
+        "name" : "hincome1",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Household income category (detailed)"
+      }, {
+        "name" : "hincome2",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Household income category (recoded)"
+      }, {
+        "name" : "hnumber",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Number of persons in household"
+      }, {
+        "name" : "wgthhcy",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Household weight"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.ojp.gov/bjsdataset/v1/ya4e-n9zp.json?$where=year='{effective_year}'",
+        "method" : "GET",
+        "response" : {
+          "format" : "json",
+          "pagination" : {
+            "type" : "OFFSET",
+            "limitParam" : "$limit",
+            "offsetParam" : "$offset",
+            "pageSize" : 50000
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.crime.BjsSodaTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=ncvs_hh_pop/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/crime",
+          "tableName" : "bjs_ncvs_household_pop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    } ],
+    "comment" : "Comprehensive U.S. crime and public safety data from FBI Crime Data Explorer (CDE) and Bureau of Justice Statistics (BJS). CDE tables cover law enforcement agencies, summarized offense rates, agency-level offenses, arrests, supplementary homicide reports (SHR), police employment, hate crimes, use of force, LEOKA (officers killed/assaulted), cargo theft, human trafficking, agency participation rates, and estimated crime counts. BJS tables cover NIBRS national crime estimates, NCVS personal and household victimization, and NCVS population data. All state-level tables join with geo.states via state_abbr.\n",
+    "dataSource" : "crime"
+  },
+  "parentSchema" : "",
+  "generatedAt" : "2026-09-19T10:18:39.357292Z",
+  "schemaName" : "crime"
+}

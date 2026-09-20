@@ -1,0 +1,4348 @@
+{
+  "operands" : {
+    "_storageProvider" : "S3StorageProvider",
+    "_incrementalTracker" : "ReadOnlyPipelineTracker",
+    "schemaName" : "geo",
+    "ephemeralCache" : false,
+    "constraints" : {
+      "cbsa" : {
+        "primaryKey" : [ "cbsa_fips", "year" ],
+        "unique" : [ [ "cbsa_name", "year" ] ]
+      },
+      "zip_cd_crosswalk" : {
+        "primaryKey" : [ "zip", "cd_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cd_fips" ],
+          "targetTable" : "congressional_districts",
+          "targetColumns" : [ "cd_fips" ]
+        } ],
+        "indexes" : [ [ "zip" ], [ "cd_fips" ] ]
+      },
+      "county_zip_crosswalk" : {
+        "primaryKey" : [ "county_fips", "zip", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        } ],
+        "indexes" : [ [ "county_fips" ], [ "zip" ] ]
+      },
+      "gazetteer_counties" : {
+        "primaryKey" : [ "county_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ],
+          "comment" : "Links gazetteer county metadata to county boundaries"
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links gazetteer county to state"
+        } ],
+        "indexes" : [ [ "state_fips" ], [ "county_name" ] ]
+      },
+      "ruca_codes" : {
+        "primaryKey" : [ "tract_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "tract_fips" ],
+          "targetTable" : "census_tracts",
+          "targetColumns" : [ "tract_fips" ]
+        } ],
+        "indexes" : [ [ "ruca_primary" ], [ "county_fips" ] ]
+      },
+      "state_legislative_lower" : {
+        "primaryKey" : [ "sldl_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "tribal_areas" : {
+        "primaryKey" : [ "aiannhce", "year" ]
+      },
+      "urban_areas" : {
+        "primaryKey" : [ "uace", "year" ]
+      },
+      "states" : {
+        "primaryKey" : [ "state_fips", "year" ],
+        "unique" : [ [ "state_code", "year" ], [ "state_name", "year" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
+          "comment" : "Every boundary-snapshot row resolves to a canonical state identity"
+        } ]
+      },
+      "census_tracts" : {
+        "primaryKey" : [ "tract_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "block_groups" : {
+        "primaryKey" : [ "block_group_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "tract_fips", "year" ],
+          "targetTable" : "census_tracts",
+          "targetColumns" : [ "tract_fips", "year" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        }, {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        } ]
+      },
+      "congressional_districts" : {
+        "primaryKey" : [ "cd_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "gazetteer_zctas" : {
+        "primaryKey" : [ "zcta", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "zcta" ],
+          "targetTable" : "zctas",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "Links gazetteer ZCTA metadata to ZCTA boundaries"
+        } ],
+        "indexes" : [ [ "zcta" ] ]
+      },
+      "state_ref" : {
+        "primaryKey" : [ "state_abbr" ],
+        "unique" : [ [ "state_fips" ], [ "state_name" ] ],
+        "comment" : "Canonical state-identity dimension. state_abbr is the primary key (the column most cross-schema FKs join on); state_fips and state_name are declared unique so they are equally valid FK targets.\n"
+      },
+      "census_divisions" : {
+        "primaryKey" : [ "division_code" ],
+        "unique" : [ [ "division_name" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "region_code" ],
+          "targetTable" : "census_regions",
+          "targetColumns" : [ "region_code" ]
+        } ],
+        "comment" : "Conformed Census division dimension; FK target for a Census division_code (1-9)."
+      },
+      "county_subdivisions" : {
+        "primaryKey" : [ "cousub_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "watersheds_huc8" : {
+        "primaryKey" : [ "huc8", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "huc4" ],
+          "targetTable" : "watersheds_huc4",
+          "targetColumns" : [ "huc4" ]
+        } ]
+      },
+      "gazetteer_places" : {
+        "primaryKey" : [ "place_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "place_fips" ],
+          "targetTable" : "places",
+          "targetColumns" : [ "place_fips" ],
+          "comment" : "Links gazetteer place metadata to place boundaries"
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links gazetteer place to state"
+        } ],
+        "indexes" : [ [ "state_fips" ], [ "place_name" ] ]
+      },
+      "pumas" : {
+        "primaryKey" : [ "state_fips", "puma_code", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "watersheds_huc4" : {
+        "primaryKey" : [ "huc4", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "huc2" ],
+          "targetTable" : "watersheds_huc2",
+          "targetColumns" : [ "huc2" ]
+        } ]
+      },
+      "county_adjacency" : {
+        "primaryKey" : [ "county_fips", "neighbor_county_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "neighbor_county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        }, {
+          "columns" : [ "neighbor_state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ],
+        "comment" : "Real Census Bureau County Adjacency File, ingested directly (see the table's own comment) — replaces the county_adjacency_st_touches_legacy view's ST_Touches-on-TIGER-boundary-polygons derivation. year is a fetch/vintage marker, not a field carried by the source file.\n"
+      },
+      "watersheds_huc2" : {
+        "primaryKey" : [ "huc2", "year" ]
+      },
+      "watersheds_huc12" : {
+        "primaryKey" : [ "huc12", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "huc8" ],
+          "targetTable" : "watersheds_huc8",
+          "targetColumns" : [ "huc8" ]
+        } ]
+      },
+      "school_districts" : {
+        "primaryKey" : [ "sd_lea", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "tract_zip_crosswalk" : {
+        "primaryKey" : [ "tract_fips", "zip", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "tract_fips", "year" ],
+          "targetTable" : "census_tracts",
+          "targetColumns" : [ "tract_fips", "year" ]
+        } ],
+        "indexes" : [ [ "tract_fips" ], [ "zip" ] ]
+      },
+      "zcta_ref" : {
+        "primaryKey" : [ "zcta" ],
+        "comment" : "Canonical non-vintaged ZCTA dimension; zcta is the FK target for zip_code / ZCTA across schemas (year-partitioned geo.zctas cannot serve as one).\n"
+      },
+      "census_regions" : {
+        "primaryKey" : [ "region_code" ],
+        "unique" : [ [ "region_name" ] ],
+        "comment" : "Conformed Census region dimension; FK target for a Census region_code (1-4)."
+      },
+      "rural_urban_continuum" : {
+        "primaryKey" : [ "county_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ],
+        "indexes" : [ [ "rucc_code" ], [ "metro_nonmetro" ] ]
+      },
+      "state_legislative_upper" : {
+        "primaryKey" : [ "sldu_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "voting_districts" : {
+        "primaryKey" : [ "vtd_code", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "cd_zip_crosswalk" : {
+        "primaryKey" : [ "cd_fips", "zip", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cd_fips" ],
+          "targetTable" : "congressional_districts",
+          "targetColumns" : [ "cd_fips" ]
+        } ],
+        "indexes" : [ [ "cd_fips" ], [ "zip" ] ]
+      },
+      "places" : {
+        "primaryKey" : [ "place_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "zip_county_crosswalk" : {
+        "primaryKey" : [ "zip", "county_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        } ],
+        "indexes" : [ [ "zip" ], [ "county_fips" ] ]
+      },
+      "zctas" : {
+        "primaryKey" : [ "zcta", "year" ]
+      },
+      "zip_cbsa_crosswalk" : {
+        "primaryKey" : [ "zip", "cbsa_code", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cbsa_code" ],
+          "targetTable" : "cbsa",
+          "targetColumns" : [ "cbsa_fips" ]
+        } ],
+        "indexes" : [ [ "zip" ], [ "cbsa_code" ] ]
+      },
+      "counties" : {
+        "primaryKey" : [ "county_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "zip_tract_crosswalk" : {
+        "primaryKey" : [ "zip", "tract_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "tract_fips", "year" ],
+          "targetTable" : "census_tracts",
+          "targetColumns" : [ "tract_fips", "year" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ],
+        "indexes" : [ [ "zip" ], [ "tract_fips" ] ]
+      }
+    },
+    "directory" : "s3://govdata-parquet-v1",
+    "canonicalSchemaName" : "geo",
+    "operatingDirectory" : "/Users/kennethstott/.provisa_askamerica/data/geo",
+    "column_templates" : {
+      "geometry_column" : {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      },
+      "partition_year" : {
+        "name" : "year",
+        "type" : "INTEGER"
+      },
+      "land_area_column" : {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      },
+      "county_fips_column" : {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit FIPS code for county (state + county, e.g., '06037' for Los Angeles County)"
+      },
+      "water_area_column" : {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      },
+      "state_fips_column" : {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      },
+      "crosswalk_partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "partition_type" : {
+        "name" : "type",
+        "type" : "VARCHAR"
+      },
+      "boundary_partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      }
+    },
+    "dimension_values" : {
+      "tiger_year_range" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "dataLag" : 1
+      },
+      "all_state_fips" : [ "01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46", "47", "48", "49", "50", "51", "53", "54", "55", "56" ],
+      "hud_year_range" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "dataLag" : 3
+      }
+    },
+    "database_filename" : "/Users/kennethstott/.provisa_askamerica/data/.duckdb/govdata.duckdb",
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
+    "dataLagYears" : 1,
+    "views" : [ {
+      "name" : "county_adjacency_st_touches_legacy",
+      "comment" : "SUPERSEDED — county_adjacency is now a real ingested table (see partitionedTables above), sourced directly from the Census Bureau's published County Adjacency File, not derived from boundary geometry. This view is kept only for comparison against the old derivation and is no longer wired up as county_adjacency; nothing else in this schema references it. Original comment, preserved as-is: One row per adjacent county pair (undirected, both directions present — A/B and B/A each get a row) for the most recent TIGER vintage year present in counties (MAX(year), not a hard-coded year — this table is partitioned by TIGER vintage and a self-join across multiple vintages would produce a cartesian blowup of spurious pairs). Adjacency is true geometric adjacency (ST_Touches on the WKT boundary polygons via DuckDB's spatial extension) — counties that share only a single point (e.g. the Four Corners) count as touching, same as sharing a full border segment. Island counties with no land or water-crossing land border to any other county (all of Hawaii, plus isolated mainland island counties) legitimately have zero rows here — see geo_dq.sql's county_adjacency coverage check for the acknowledged-exception list. KNOWN BAD: this ST_Touches derivation covers only roughly 15% of true county adjacency, because TIGER shared-edge polygons rarely align exactly enough for an exact-touch predicate to fire — this is why it was replaced.\n",
+      "sql" : "WITH latest_year AS (\n  SELECT MAX(year) AS yr FROM counties\n), c AS (\n  SELECT county_fips, state_fips, county_name, ST_GeomFromText(geometry) AS geom\n  FROM counties, latest_year\n  WHERE year = latest_year.yr\n) SELECT\n  a.county_fips          AS county_fips,\n  a.state_fips           AS state_fips,\n  a.county_name          AS county_name,\n  b.county_fips          AS neighbor_county_fips,\n  b.state_fips           AS neighbor_state_fips,\n  b.county_name          AS neighbor_county_name\nFROM c a JOIN c b ON b.county_fips <> a.county_fips AND ST_Touches(a.geom, b.geom)\n"
+    } ],
+    "materializeDirectory" : "s3://govdata-parquet-v1",
+    "storageConfig" : {
+      "accessKeyId" : "********",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "refreshInterval" : "PT1H",
+    "actualSchemaName" : "geo",
+    "autoDownload" : false,
+    "s3Config" : {
+      "accessKeyId" : "****e4dc",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "executionEngine" : "duckdb",
+    "tableConstraints" : {
+      "cbsa" : {
+        "primaryKey" : [ "cbsa_fips", "year" ],
+        "uniqueKeys" : [ [ "cbsa_name", "year" ] ]
+      },
+      "zip_cd_crosswalk" : {
+        "primaryKey" : [ "zip", "cd_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cd_fips" ],
+          "targetTable" : "congressional_districts",
+          "targetColumns" : [ "cd_fips" ]
+        } ],
+        "indexes" : [ [ "zip" ], [ "cd_fips" ] ]
+      },
+      "county_zip_crosswalk" : {
+        "primaryKey" : [ "county_fips", "zip", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        } ],
+        "indexes" : [ [ "county_fips" ], [ "zip" ] ]
+      },
+      "gazetteer_counties" : {
+        "primaryKey" : [ "county_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ],
+          "comment" : "Links gazetteer county metadata to county boundaries"
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links gazetteer county to state"
+        } ],
+        "indexes" : [ [ "state_fips" ], [ "county_name" ] ]
+      },
+      "ruca_codes" : {
+        "primaryKey" : [ "tract_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "tract_fips" ],
+          "targetTable" : "census_tracts",
+          "targetColumns" : [ "tract_fips" ]
+        } ],
+        "indexes" : [ [ "ruca_primary" ], [ "county_fips" ] ]
+      },
+      "state_legislative_lower" : {
+        "primaryKey" : [ "sldl_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "tribal_areas" : {
+        "primaryKey" : [ "aiannhce", "year" ]
+      },
+      "urban_areas" : {
+        "primaryKey" : [ "uace", "year" ]
+      },
+      "states" : {
+        "primaryKey" : [ "state_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
+          "comment" : "Every boundary-snapshot row resolves to a canonical state identity"
+        } ],
+        "uniqueKeys" : [ [ "state_code", "year" ], [ "state_name", "year" ] ]
+      },
+      "census_tracts" : {
+        "primaryKey" : [ "tract_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "block_groups" : {
+        "primaryKey" : [ "block_group_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "tract_fips", "year" ],
+          "targetTable" : "census_tracts",
+          "targetColumns" : [ "tract_fips", "year" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        }, {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        } ]
+      },
+      "congressional_districts" : {
+        "primaryKey" : [ "cd_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "gazetteer_zctas" : {
+        "primaryKey" : [ "zcta", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "zcta" ],
+          "targetTable" : "zctas",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "Links gazetteer ZCTA metadata to ZCTA boundaries"
+        } ],
+        "indexes" : [ [ "zcta" ] ]
+      },
+      "state_ref" : {
+        "primaryKey" : [ "state_abbr" ],
+        "comment" : "Canonical state-identity dimension. state_abbr is the primary key (the column most cross-schema FKs join on); state_fips and state_name are declared unique so they are equally valid FK targets.\n",
+        "uniqueKeys" : [ [ "state_fips" ], [ "state_name" ] ]
+      },
+      "census_divisions" : {
+        "primaryKey" : [ "division_code" ],
+        "foreignKeys" : [ {
+          "columns" : [ "region_code" ],
+          "targetTable" : "census_regions",
+          "targetColumns" : [ "region_code" ]
+        } ],
+        "comment" : "Conformed Census division dimension; FK target for a Census division_code (1-9).",
+        "uniqueKeys" : [ [ "division_name" ] ]
+      },
+      "county_subdivisions" : {
+        "primaryKey" : [ "cousub_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "watersheds_huc8" : {
+        "primaryKey" : [ "huc8", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "huc4" ],
+          "targetTable" : "watersheds_huc4",
+          "targetColumns" : [ "huc4" ]
+        } ]
+      },
+      "gazetteer_places" : {
+        "primaryKey" : [ "place_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "place_fips" ],
+          "targetTable" : "places",
+          "targetColumns" : [ "place_fips" ],
+          "comment" : "Links gazetteer place metadata to place boundaries"
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links gazetteer place to state"
+        } ],
+        "indexes" : [ [ "state_fips" ], [ "place_name" ] ]
+      },
+      "pumas" : {
+        "primaryKey" : [ "state_fips", "puma_code", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "watersheds_huc4" : {
+        "primaryKey" : [ "huc4", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "huc2" ],
+          "targetTable" : "watersheds_huc2",
+          "targetColumns" : [ "huc2" ]
+        } ]
+      },
+      "county_adjacency" : {
+        "primaryKey" : [ "county_fips", "neighbor_county_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "neighbor_county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        }, {
+          "columns" : [ "neighbor_state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ],
+        "comment" : "Real Census Bureau County Adjacency File, ingested directly (see the table's own comment) — replaces the county_adjacency_st_touches_legacy view's ST_Touches-on-TIGER-boundary-polygons derivation. year is a fetch/vintage marker, not a field carried by the source file.\n"
+      },
+      "watersheds_huc2" : {
+        "primaryKey" : [ "huc2", "year" ]
+      },
+      "watersheds_huc12" : {
+        "primaryKey" : [ "huc12", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "huc8" ],
+          "targetTable" : "watersheds_huc8",
+          "targetColumns" : [ "huc8" ]
+        } ]
+      },
+      "school_districts" : {
+        "primaryKey" : [ "sd_lea", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "tract_zip_crosswalk" : {
+        "primaryKey" : [ "tract_fips", "zip", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "tract_fips", "year" ],
+          "targetTable" : "census_tracts",
+          "targetColumns" : [ "tract_fips", "year" ]
+        } ],
+        "indexes" : [ [ "tract_fips" ], [ "zip" ] ]
+      },
+      "zcta_ref" : {
+        "primaryKey" : [ "zcta" ],
+        "comment" : "Canonical non-vintaged ZCTA dimension; zcta is the FK target for zip_code / ZCTA across schemas (year-partitioned geo.zctas cannot serve as one).\n"
+      },
+      "census_regions" : {
+        "primaryKey" : [ "region_code" ],
+        "comment" : "Conformed Census region dimension; FK target for a Census region_code (1-4).",
+        "uniqueKeys" : [ [ "region_name" ] ]
+      },
+      "rural_urban_continuum" : {
+        "primaryKey" : [ "county_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ],
+        "indexes" : [ [ "rucc_code" ], [ "metro_nonmetro" ] ]
+      },
+      "state_legislative_upper" : {
+        "primaryKey" : [ "sldu_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "voting_districts" : {
+        "primaryKey" : [ "vtd_code", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "cd_zip_crosswalk" : {
+        "primaryKey" : [ "cd_fips", "zip", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cd_fips" ],
+          "targetTable" : "congressional_districts",
+          "targetColumns" : [ "cd_fips" ]
+        } ],
+        "indexes" : [ [ "cd_fips" ], [ "zip" ] ]
+      },
+      "places" : {
+        "primaryKey" : [ "place_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "zip_county_crosswalk" : {
+        "primaryKey" : [ "zip", "county_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "county_fips" ],
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        } ],
+        "indexes" : [ [ "zip" ], [ "county_fips" ] ]
+      },
+      "zctas" : {
+        "primaryKey" : [ "zcta", "year" ]
+      },
+      "zip_cbsa_crosswalk" : {
+        "primaryKey" : [ "zip", "cbsa_code", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cbsa_code" ],
+          "targetTable" : "cbsa",
+          "targetColumns" : [ "cbsa_fips" ]
+        } ],
+        "indexes" : [ [ "zip" ], [ "cbsa_code" ] ]
+      },
+      "counties" : {
+        "primaryKey" : [ "county_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ]
+      },
+      "zip_tract_crosswalk" : {
+        "primaryKey" : [ "zip", "tract_fips", "year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "tract_fips", "year" ],
+          "targetTable" : "census_tracts",
+          "targetColumns" : [ "tract_fips", "year" ]
+        }, {
+          "columns" : [ "state_fips" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ]
+        } ],
+        "indexes" : [ [ "zip" ], [ "tract_fips" ] ]
+      }
+    },
+    "testMode" : false,
+    "partitionedTables" : [ {
+      "name" : "states",
+      "pattern" : "type=boundary/year=*/states.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2025,
+        "distinctYears" : 16,
+        "contiguous" : true,
+        "rowCount" : 892,
+        "checkedAt" : "2026-09-12T00:13:46Z"
+      },
+      "comment" : "U.S. state boundaries and attributes (FIPS code, name, 2-letter postal abbreviation, land/water area, WKT geometry) from Census TIGER/Line shapefiles, one row per state per TIGER vintage year (2010-present). state_fips/state_abbr repeat across vintages so this table is not a valid FK target — join geo.state_ref for a stable, non-vintaged state-identity key.\n",
+      "columns" : [ {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "state_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Geographic identifier (GEOID) for the state, matches state_fips"
+      }, {
+        "name" : "state_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Full state name (e.g., 'California')"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-letter postal abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/STATE/tl_{year}_us_state.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "states",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "state_ref",
+      "pattern" : "state_ref.parquet",
+      "comment" : "Conformed US state-identity reference dimension: 50 states + DC with FIPS code, 2-letter postal abbreviation, and full name. Static and non-vintaged — this is the canonical foreign-key target for state_abbr and state_fips across all govdata schemas (geo.states is a year-partitioned boundary snapshot and cannot be an FK target). Join here to attach state names/codes to any table carrying a state abbreviation or FIPS code.\n",
+      "columns" : [ {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit state FIPS code, zero-padded (e.g., '06' for California)"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-letter USPS state abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "state_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Full state name (e.g., 'California')"
+      } ],
+      "source" : {
+        "type" : "constants",
+        "file" : "/geo/state-ref.yaml",
+        "path" : "states"
+      },
+      "dimensions" : {
+        "type" : [ "state_ref" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "state_ref",
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "census_regions",
+      "pattern" : "census_regions.parquet",
+      "comment" : "US Census Bureau statistical regions: 4 rows (Northeast, Midwest, South, West). Canonical FK target for a Census region_code (integer 1-4). Static and non-vintaged.\n",
+      "columns" : [ {
+        "name" : "region_code",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Census region code (1=Northeast, 2=Midwest, 3=South, 4=West)"
+      }, {
+        "name" : "region_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Census region name"
+      } ],
+      "source" : {
+        "type" : "constants",
+        "file" : "/geo/census-regions.yaml",
+        "path" : "regions"
+      },
+      "dimensions" : {
+        "type" : [ "census_regions" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "census_regions",
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "census_divisions",
+      "pattern" : "census_divisions.parquet",
+      "comment" : "US Census Bureau statistical divisions: 9 rows (New England, Middle Atlantic, East/West North Central, South Atlantic, East/West South Central, Mountain, Pacific), each carrying its parent region. Canonical FK target for a Census division_code (integer 1-9). Static and non-vintaged.\n",
+      "columns" : [ {
+        "name" : "division_code",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Census division code (1-9)"
+      }, {
+        "name" : "division_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Census division name"
+      }, {
+        "name" : "region_code",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Parent Census region code (FK to census_regions)"
+      }, {
+        "name" : "region_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Parent Census region name (denormalized for convenience)"
+      } ],
+      "source" : {
+        "type" : "constants",
+        "file" : "/geo/census-regions.yaml",
+        "path" : "divisions"
+      },
+      "dimensions" : {
+        "type" : [ "census_divisions" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "census_divisions",
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "zcta_ref",
+      "pattern" : "zcta_ref.parquet",
+      "comment" : "Conformed ZIP Code Tabulation Area reference dimension: one row per 5-digit ZCTA (2020 census vintage) with land/water area and internal-point centroid. Static and non-vintaged — the canonical foreign-key target for zip_code / ZCTA across all govdata schemas (geo.zctas is a year-partitioned boundary snapshot and cannot be an FK target).\n",
+      "columns" : [ {
+        "name" : "zcta",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit ZIP Code Tabulation Area code"
+      }, {
+        "name" : "land_area_sqmi",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area (square miles)"
+      }, {
+        "name" : "water_area_sqmi",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area (square miles)"
+      }, {
+        "name" : "latitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Internal-point latitude (centroid)"
+      }, {
+        "name" : "longitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Internal-point longitude (centroid)"
+      } ],
+      "source" : {
+        "type" : "constants",
+        "file" : "/geo/zcta-ref.yaml",
+        "path" : "zctas"
+      },
+      "dimensions" : {
+        "type" : [ "zcta_ref" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "zcta_ref",
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "counties",
+      "pattern" : "type=boundary/year=*/counties.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2025,
+        "distinctYears" : 16,
+        "contiguous" : true,
+        "rowCount" : 51729,
+        "checkedAt" : "2026-09-12T00:13:47Z"
+      },
+      "comment" : "U.S. county boundaries and attributes (FIPS code, name, GEOID, land/water area, WKT geometry) from Census TIGER/Line shapefiles, one row per county per TIGER vintage year (2010-present), covering all 3,000+ counties and county equivalents. Does not carry CBSA/metro-area membership — see geo.cbsa for metropolitan and micropolitan statistical area boundaries.\n",
+      "columns" : [ {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit FIPS code for county (state + county, e.g., '06037' for Los Angeles County)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "county_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Full county name (e.g., 'Los Angeles County')"
+      }, {
+        "name" : "county_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Geographic identifier (GEOID) for the county"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/COUNTY/tl_{year}_us_county.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "counties",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "places",
+      "pattern" : "type=boundary/year=*/places.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2025,
+        "distinctYears" : 16,
+        "contiguous" : true,
+        "rowCount" : 484210,
+        "checkedAt" : "2026-09-12T00:14:05Z"
+      },
+      "comment" : "Census designated places (incorporated cities/towns and census-designated places/CDPs) with place FIPS code, name, place type, and WKT geometry, one row per place per TIGER vintage year (2010-present), fanned out by state. Carries no land/water area or population — see geo.gazetteer_places for area, population, and housing-unit counts.\n",
+      "columns" : [ {
+        "name" : "place_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "7-digit FIPS code for place (state + place code)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "place_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Name of incorporated place or census-designated place"
+      }, {
+        "name" : "place_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Classification of place (e.g., 'city', 'town', 'CDP')"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        },
+        "state_fips" : [ "01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46", "47", "48", "49", "50", "51", "53", "54", "55", "56" ]
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/PLACE/tl_{year}_{state_fips}_place.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/state_fips=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year", "state_fips" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "places",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "zctas",
+      "pattern" : "type=boundary/year=*/zctas.parquet",
+      "observedCoverage" : {
+        "minYear" : 2020,
+        "maxYear" : 2025,
+        "distinctYears" : 6,
+        "contiguous" : true,
+        "rowCount" : 236537,
+        "checkedAt" : "2026-09-12T00:14:06Z"
+      },
+      "comment" : "ZIP Code Tabulation Area boundaries (ZCTA code, land/water area, WKT geometry) from Census TIGER/Line shapefiles, one row per ZCTA per TIGER vintage year. Currently only 2020-present is loaded in production — unlike the other TIGER boundary tables in this schema, which go back to 2010 — see observedCoverage below for the real range rather than assuming a 2010 floor here too. Vintage-specific — codes and boundaries shift between vintages, so this is not a stable FK target; see geo.zcta_ref for the static, non-vintaged ZCTA dimension, and geo.gazetteer_zctas for population, housing units, and centroid coordinates.\n",
+      "columns" : [ {
+        "name" : "zcta",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit ZIP Code Tabulation Area code"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1,
+          "excludeYears" : [ 2011 ]
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/ZCTA520/tl_{year}_us_zcta520.zip",
+        "urlRules" : [ {
+          "yearRange" : [ 2010, 2010 ],
+          "url" : "https://www2.census.gov/geo/tiger/TIGER2010/ZCTA5/2010/tl_2010_us_zcta510.zip"
+        }, {
+          "yearRange" : [ 2012, 2019 ],
+          "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/ZCTA5/tl_{year}_us_zcta510.zip"
+        } ],
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider",
+        "fieldNormalizer" : {
+          "type" : "vintage",
+          "table" : "zctas",
+          "mappings" : {
+            "zcta" : [ "ZCTA5CE20", "ZCTA5CE10", "GEOID20", "GEOID" ],
+            "land_area" : [ "ALAND20", "ALAND" ],
+            "water_area" : [ "AWATER20", "AWATER" ]
+          }
+        }
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "zctas",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "census_tracts",
+      "pattern" : "type=boundary/year=*/census_tracts.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2025,
+        "distinctYears" : 16,
+        "contiguous" : true,
+        "rowCount" : 1169345,
+        "checkedAt" : "2026-09-12T00:14:08Z"
+      },
+      "comment" : "Census tract boundary geometry (tract FIPS code, parent state/county FIPS, tract number, land/water area, WKT geometry) from Census TIGER/Line shapefiles, one row per tract per TIGER vintage year (2010-present), fanned out by state. Boundaries only — no demographic or population data; join to census schema ACS tables on tract FIPS for those statistics.\n",
+      "columns" : [ {
+        "name" : "tract_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "11-digit FIPS code for census tract (state + county + tract)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit FIPS code for county (state + county, e.g., '06037' for Los Angeles County)"
+      }, {
+        "name" : "tract_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Census tract number (e.g., '4201.02')"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        },
+        "state_fips" : [ "01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46", "47", "48", "49", "50", "51", "53", "54", "55", "56" ]
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/TRACT/tl_{year}_{state_fips}_tract.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "census_tracts",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "block_groups",
+      "pattern" : "type=boundary/year=*/block_groups.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2025,
+        "distinctYears" : 16,
+        "contiguous" : true,
+        "rowCount" : 3363454,
+        "checkedAt" : "2026-09-12T00:14:12Z"
+      },
+      "comment" : "Census block group boundary geometry (block group FIPS code, parent state/county/tract FIPS, land/water area, WKT geometry) from Census TIGER/Line shapefiles, one row per block group per TIGER vintage year (2010-present), fanned out by state. Boundaries only — no population or demographic data.\n",
+      "columns" : [ {
+        "name" : "block_group_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "12-digit FIPS code for block group (state + county + tract + block group)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit FIPS code for county (state + county, e.g., '06037' for Los Angeles County)"
+      }, {
+        "name" : "tract_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "11-digit FIPS code of the parent census tract"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        },
+        "state_fips" : [ "01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46", "47", "48", "49", "50", "51", "53", "54", "55", "56" ]
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/BG/tl_{year}_{state_fips}_bg.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "block_groups",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "cbsa",
+      "pattern" : "type=boundary/year=*/cbsa.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2025,
+        "distinctYears" : 15,
+        "contiguous" : false,
+        "years" : [ 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2023, 2024, 2025 ],
+        "rowCount" : 14108,
+        "checkedAt" : "2026-09-12T00:14:13Z"
+      },
+      "comment" : "Core Based Statistical Area boundaries (CBSA code, name, Metropolitan/Micropolitan designation via metro_micro, land/water area, WKT geometry) from Census TIGER/Line shapefiles, one row per CBSA per TIGER vintage year (2010-present, but not every year in between — see observedCoverage below, which currently has a 2022 gap), national file (not fanned out by state). Carries no member-county list — see geo.zip_cbsa_crosswalk to relate ZIP codes to CBSAs.\n",
+      "columns" : [ {
+        "name" : "cbsa_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit CBSA code for Core Based Statistical Area"
+      }, {
+        "name" : "cbsa_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Name of metropolitan or micropolitan statistical area"
+      }, {
+        "name" : "metro_micro",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "LSAD code indicating Metropolitan or Micropolitan designation"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/CBSA/tl_{year}_us_cbsa.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "cbsa",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "congressional_districts",
+      "pattern" : "type=boundary/year=*/congressional_districts.parquet",
+      "observedCoverage" : {
+        "minYear" : 2021,
+        "maxYear" : 2023,
+        "distinctYears" : 3,
+        "contiguous" : true,
+        "rowCount" : 1332,
+        "checkedAt" : "2026-09-12T00:14:13Z"
+      },
+      "comment" : "U.S. Congressional district boundaries for the House of Representatives (district code, parent state FIPS, district name, land/water area, WKT geometry), one row per district, national file per vintage. Unlike other TIGER boundary tables in this schema (which go back to 2010), congressional_districts only covers the current-cycle redistricting vintages forward — check observedCoverage below for the real floor rather than assuming a specific starting vintage year.\n",
+      "columns" : [ {
+        "name" : "cd_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "4-digit congressional district code (state + district number)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "cd_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Congressional district name or number"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2023",
+          "end" : "2026",
+          "dataLag" : 2
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/CD/",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/state_fips=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "congressional_districts",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "school_districts",
+      "pattern" : "type=boundary/year=*/school_districts.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2025,
+        "distinctYears" : 16,
+        "contiguous" : true,
+        "rowCount" : 174302,
+        "checkedAt" : "2026-09-12T00:14:14Z"
+      },
+      "comment" : "Elementary, secondary, and unified school district boundaries (LEA code, parent state FIPS, district name, district type — elementary/secondary/unified, land/water area, WKT geometry) from Census TIGER/Line shapefiles, one row per district per TIGER vintage year (2010-present), fanned out by state.\n",
+      "columns" : [ {
+        "name" : "sd_lea",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Local Education Agency (LEA) code identifying the school district"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "sd_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "School district name"
+      }, {
+        "name" : "sd_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "School district type (elementary, secondary, or unified)"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        },
+        "state_fips" : [ "01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46", "47", "48", "49", "50", "51", "53", "54", "55", "56" ]
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/UNSD/tl_{year}_{state_fips}_unsd.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "school_districts",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "state_legislative_lower",
+      "pattern" : "type=boundary/year=*/state_legislative_lower.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2025,
+        "distinctYears" : 16,
+        "contiguous" : true,
+        "rowCount" : 76618,
+        "checkedAt" : "2026-09-12T00:14:19Z"
+      },
+      "comment" : "State legislative district boundaries for lower chambers (State House/Assembly) — SLDL code, parent state FIPS, district name, land/water area, WKT geometry — one row per district per TIGER vintage year (2010-present). Excludes DC and Nebraska, which have no lower chamber (Nebraska's legislature is unicameral); see geo.state_legislative_upper for upper-chamber (State Senate) districts, which covers every state.\n",
+      "columns" : [ {
+        "name" : "sldl_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "State legislative district lower chamber code (state + district)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "district_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "District name or number"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        },
+        "state_fips" : {
+          "type" : "custom"
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/SLDL/tl_{year}_{state_fips}_sldl.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider",
+        "dimensionResolver" : "org.apache.calcite.adapter.govdata.geo.TigerStateLegislativeLowerDimensionResolver"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/state_fips=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year", "state_fips" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "state_legislative_lower",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "state_legislative_upper",
+      "pattern" : "type=boundary/year=*/state_legislative_upper.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2025,
+        "distinctYears" : 16,
+        "contiguous" : true,
+        "rowCount" : 31290,
+        "checkedAt" : "2026-09-12T00:14:27Z"
+      },
+      "comment" : "State legislative district boundaries for upper chambers (State Senate) — SLDU code, parent state FIPS, district name, land/water area, WKT geometry — one row per district per TIGER vintage year (2010-present), covering every state. See geo.state_legislative_lower for lower-chamber (State House/Assembly) districts, which excludes DC and Nebraska.\n",
+      "columns" : [ {
+        "name" : "sldu_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "State legislative district upper chamber code (state + district)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "district_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "District name or number"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        },
+        "state_fips" : [ "01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46", "47", "48", "49", "50", "51", "53", "54", "55", "56" ]
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/SLDU/tl_{year}_{state_fips}_sldu.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/state_fips=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year", "state_fips" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "state_legislative_upper",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "county_subdivisions",
+      "pattern" : "type=boundary/year=*/county_subdivisions.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2025,
+        "distinctYears" : 16,
+        "contiguous" : true,
+        "rowCount" : 570250,
+        "checkedAt" : "2026-09-12T00:14:45Z"
+      },
+      "comment" : "County subdivisions including Minor Civil Divisions (MCDs), census county divisions, and unorganized territories. Represents administrative or statistical subdivisions of counties.\n",
+      "columns" : [ {
+        "name" : "cousub_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "County subdivision FIPS code (state + county + subdivision)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit FIPS code for county (state + county, e.g., '06037' for Los Angeles County)"
+      }, {
+        "name" : "cousub_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "County subdivision name"
+      }, {
+        "name" : "cousub_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Legal/statistical area description code"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        },
+        "state_fips" : [ "01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46", "47", "48", "49", "50", "51", "53", "54", "55", "56" ]
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/COUSUB/tl_{year}_{state_fips}_cousub.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/state_fips=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year", "state_fips" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "county_subdivisions",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "tribal_areas",
+      "pattern" : "type=boundary/year=*/tribal_areas.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2025,
+        "distinctYears" : 16,
+        "contiguous" : true,
+        "rowCount" : 13471,
+        "checkedAt" : "2026-09-12T00:14:46Z"
+      },
+      "comment" : "American Indian reservations, Alaska Native village statistical areas, and Native Hawaiian home lands (area code, name, area type — federal reservation, state reservation, TDSA, etc., land/water area, WKT geometry) from Census TIGER/Line AIANNH shapefiles, one row per area per TIGER vintage year (2010-present), national file (not fanned out by state).\n",
+      "columns" : [ {
+        "name" : "aiannhce",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "American Indian/Alaska Native/Native Hawaiian area code"
+      }, {
+        "name" : "name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Area name"
+      }, {
+        "name" : "namelsad",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Name and legal/statistical area description"
+      }, {
+        "name" : "area_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Area type (federal reservation, state reservation, TDSA, etc.)"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/AIANNH/tl_{year}_us_aiannh.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "tribal_areas",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "urban_areas",
+      "pattern" : "type=boundary/year=*/urban_areas.parquet",
+      "observedCoverage" : {
+        "minYear" : 2024,
+        "maxYear" : 2025,
+        "distinctYears" : 2,
+        "contiguous" : true,
+        "rowCount" : 5288,
+        "checkedAt" : "2026-09-12T00:14:47Z"
+      },
+      "comment" : "Census Bureau urban area boundaries, one row per urban area per TIGER vintage year. The 2020-Census-cycle definition (minimum threshold 5,000 people or 2,000 housing units; the Urbanized-Area/Urban-Cluster distinction was eliminated, all qualifying areas are now simply 'urban areas') is the current methodology, but \"2020\" here describes the definition in effect, not the vintage year loaded — see observedCoverage below for which TIGER vintage years are actually present.\n",
+      "columns" : [ {
+        "name" : "uace",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Urban area code"
+      }, {
+        "name" : "name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Urban area name"
+      }, {
+        "name" : "urban_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Urban type code (legacy field from pre-2020 Census, may be blank for 2020+ data)"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1,
+          "excludeYears" : [ 2011 ]
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/UAC20/tl_{year}_us_uac20.zip",
+        "urlRules" : [ {
+          "yearRange" : [ 2010, 2010 ],
+          "url" : "https://www2.census.gov/geo/tiger/TIGER2010/UAC/2010/tl_2010_us_uac10.zip"
+        }, {
+          "yearRange" : [ 2012, 2022 ],
+          "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/UAC/tl_{year}_us_uac10.zip"
+        }, {
+          "yearRange" : [ 2023, 2023 ],
+          "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/UAC/tl_{year}_us_uac20.zip"
+        } ],
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider",
+        "fieldNormalizer" : {
+          "type" : "vintage",
+          "table" : "urban_areas",
+          "mappings" : {
+            "uace" : [ "UACE20", "UACE10", "GEOID" ],
+            "name" : [ "NAME20", "NAME10", "NAME" ],
+            "urban_type" : [ "UATYP20", "UATYP10" ],
+            "land_area" : [ "ALAND20", "ALAND" ],
+            "water_area" : [ "AWATER20", "AWATER" ]
+          }
+        }
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "urban_areas",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "pumas",
+      "pattern" : "type=boundary/year=*/pumas.parquet",
+      "observedCoverage" : {
+        "minYear" : 2012,
+        "maxYear" : 2025,
+        "distinctYears" : 14,
+        "contiguous" : true,
+        "rowCount" : 33358,
+        "checkedAt" : "2026-09-12T00:14:48Z"
+      },
+      "comment" : "Public Use Microdata Areas for Census microdata products. Each PUMA contains at least 100,000 people and is built from census tracts and counties.\n",
+      "columns" : [ {
+        "name" : "puma_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit PUMA code (unique within state)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "puma_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "PUMA name"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1,
+          "excludeYears" : [ 2011 ]
+        },
+        "state_fips" : [ "01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46", "47", "48", "49", "50", "51", "53", "54", "55", "56" ]
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/PUMA20/tl_{year}_{state_fips}_puma20.zip",
+        "urlRules" : [ {
+          "yearRange" : [ 2010, 2010 ],
+          "url" : "https://www2.census.gov/geo/tiger/TIGER2010/PUMA5/2010/tl_2010_{state_fips}_puma10.zip"
+        }, {
+          "yearRange" : [ 2012, 2021 ],
+          "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/PUMA/tl_{year}_{state_fips}_puma10.zip"
+        }, {
+          "yearRange" : [ 2022, 2023 ],
+          "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/PUMA/tl_{year}_{state_fips}_puma20.zip"
+        } ],
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider",
+        "fieldNormalizer" : {
+          "type" : "vintage",
+          "table" : "pumas",
+          "mappings" : {
+            "puma_code" : [ "PUMACE20", "PUMACE10", "PUMACE" ],
+            "state_fips" : [ "STATEFP20", "STATEFP10", "STATEFP" ],
+            "puma_name" : [ "NAMELSAD20", "NAMELSAD10", "NAMELSAD" ],
+            "land_area" : [ "ALAND20", "ALAND10", "ALAND" ],
+            "water_area" : [ "AWATER20", "AWATER10", "AWATER" ]
+          }
+        }
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "pumas",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "voting_districts",
+      "pattern" : "type=boundary/year=*/voting_districts.parquet",
+      "observedCoverage" : {
+        "minYear" : 2012,
+        "maxYear" : 2025,
+        "distinctYears" : 7,
+        "contiguous" : false,
+        "years" : [ 2012, 2020, 2021, 2022, 2023, 2024, 2025 ],
+        "rowCount" : 829906,
+        "checkedAt" : "2026-09-12T00:14:49Z"
+      },
+      "comment" : "Voting district boundaries (precincts, wards, election districts) as reported by states for redistricting. TigerDataProvider handles two distinct URL patterns: 2012 (2010 census vintage boundaries) and 2020-forward (2020 census vintage boundaries, same URL scheme continuing through later TIGER releases) — see observedCoverage below for which years are actually loaded, since it's more than just those two. Attributes are normalized to canonical form.\n",
+      "columns" : [ {
+        "name" : "vtd_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Voting district code (state + county + VTD)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit FIPS code for county (state + county, e.g., '06037' for Los Angeles County)"
+      }, {
+        "name" : "vtd_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Voting district name"
+      }, {
+        "name" : "land_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square meters"
+      }, {
+        "name" : "water_area",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square meters"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "boundary" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        },
+        "state_fips" : {
+          "type" : "custom"
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/tiger/TIGER{year}/VTD/tl_{year}_{state_fips}_vtd.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.TigerDataProvider",
+        "dimensionResolver" : "org.apache.calcite.adapter.govdata.geo.TigerVtdDimensionResolver",
+        "fieldNormalizer" : {
+          "type" : "vintage",
+          "table" : "voting_districts",
+          "mappings" : {
+            "vtd_code" : [ "GEOID20", "GEOID10", "GEOID" ],
+            "state_fips" : [ "STATEFP20", "STATEFP10", "STATEFP" ],
+            "county_fips" : [ "COUNTYFP20", "COUNTYFP10", "COUNTYFP" ],
+            "vtd_name" : [ "NAME20", "NAME10", "NAME" ],
+            "land_area" : [ "ALAND20", "ALAND10", "ALAND" ],
+            "water_area" : [ "AWATER20", "AWATER10", "AWATER" ]
+          }
+        }
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=boundary/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "voting_districts",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "zip_county_crosswalk",
+      "pattern" : "type=crosswalk/year=*/zip_county_crosswalk.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2023,
+        "distinctYears" : 14,
+        "contiguous" : true,
+        "rowCount" : 731205,
+        "checkedAt" : "2026-09-12T00:14:51Z"
+      },
+      "comment" : "ZIP Code to County crosswalk mapping ZIP codes to counties, with residential/business/other/total address-ratio splits (res_ratio, bus_ratio, oth_ratio, tot_ratio), one row per ZIP-county pair per year. Source: HUD USPS ZIP Code Crosswalk, Q4 snapshot only (not all four quarters). Reverse mapping: see geo.county_zip_crosswalk.\n",
+      "columns" : [ {
+        "name" : "zip",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit ZIP Code"
+      }, {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit FIPS code for county (state + county, e.g., '06037' for Los Angeles County)"
+      }, {
+        "name" : "res_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of residential addresses in this ZIP that are in this county"
+      }, {
+        "name" : "bus_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of business addresses in this ZIP that are in this county"
+      }, {
+        "name" : "oth_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of other addresses in this ZIP that are in this county"
+      }, {
+        "name" : "tot_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of total addresses in this ZIP that are in this county"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "crosswalk" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 3
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.huduser.gov/hudapi/public/usps?type=2&year={effective_year}&quarter=4&query=All",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "headers" : {
+          "Authorization" : "Bearer {env:HUD_TOKEN}"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.geo.HudCrosswalkTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=crosswalk/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "zip_county_crosswalk",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "zip_cbsa_crosswalk",
+      "pattern" : "type=crosswalk/year=*/zip_cbsa_crosswalk.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2023,
+        "distinctYears" : 14,
+        "contiguous" : true,
+        "rowCount" : 653911,
+        "checkedAt" : "2026-09-12T00:14:52Z"
+      },
+      "comment" : "ZIP Code to Core Based Statistical Area crosswalk mapping ZIP codes to metropolitan/micropolitan statistical areas, with residential/business/other/total address-ratio splits (res_ratio, bus_ratio, oth_ratio, tot_ratio), one row per ZIP-CBSA pair per year. Source: HUD USPS ZIP Code Crosswalk, Q4 snapshot only (not all four quarters).\n",
+      "columns" : [ {
+        "name" : "zip",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit ZIP Code"
+      }, {
+        "name" : "cbsa_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit CBSA code for Core Based Statistical Area"
+      }, {
+        "name" : "res_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of residential addresses in this ZIP that are in this CBSA"
+      }, {
+        "name" : "bus_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of business addresses in this ZIP that are in this CBSA"
+      }, {
+        "name" : "oth_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of other addresses in this ZIP that are in this CBSA"
+      }, {
+        "name" : "tot_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of total addresses in this ZIP that are in this CBSA"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "crosswalk" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 3
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.huduser.gov/hudapi/public/usps?type=3&year={effective_year}&quarter=4&query=All",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "headers" : {
+          "Authorization" : "Bearer {env:HUD_TOKEN}"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.geo.HudCrosswalkTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=crosswalk/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "zip_cbsa_crosswalk",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "tract_zip_crosswalk",
+      "pattern" : "type=crosswalk/year=*/tract_zip_crosswalk.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2023,
+        "distinctYears" : 14,
+        "contiguous" : true,
+        "rowCount" : 2355514,
+        "checkedAt" : "2026-09-12T00:14:53Z"
+      },
+      "comment" : "Census tract to ZIP Code crosswalk mapping tract FIPS to ZIP codes, with residential/business/other/total address-ratio splits (res_ratio, bus_ratio, oth_ratio, tot_ratio), one row per tract-ZIP pair per year. Source: HUD USPS ZIP Code Crosswalk, Q4 snapshot only (not all four quarters). Reverse mapping: see geo.zip_tract_crosswalk.\n",
+      "columns" : [ {
+        "name" : "tract_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "11-digit census tract FIPS code"
+      }, {
+        "name" : "zip",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit ZIP Code"
+      }, {
+        "name" : "res_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of residential addresses in this tract that are in this ZIP"
+      }, {
+        "name" : "bus_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of business addresses in this tract that are in this ZIP"
+      }, {
+        "name" : "oth_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of other addresses in this tract that are in this ZIP"
+      }, {
+        "name" : "tot_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of total addresses in this tract that are in this ZIP"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "crosswalk" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 3
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.huduser.gov/hudapi/public/usps?type=6&year={effective_year}&quarter=4&query=All",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "headers" : {
+          "Authorization" : "Bearer {env:HUD_TOKEN}"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.geo.HudCrosswalkTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=crosswalk/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "tract_zip_crosswalk",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "zip_tract_crosswalk",
+      "pattern" : "type=crosswalk/year=*/zip_tract_crosswalk.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2023,
+        "distinctYears" : 14,
+        "contiguous" : true,
+        "rowCount" : 2355514,
+        "checkedAt" : "2026-09-12T00:14:54Z"
+      },
+      "comment" : "ZIP Code to Census Tract crosswalk mapping ZIP codes to census tracts, with residential/business/other/total address-ratio splits (res_ratio, bus_ratio, oth_ratio, tot_ratio), one row per ZIP-tract pair per year. Source: HUD USPS ZIP Code Crosswalk, Q4 snapshot only (not all four quarters). Reverse mapping: see geo.tract_zip_crosswalk.\n",
+      "columns" : [ {
+        "name" : "zip",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit ZIP Code"
+      }, {
+        "name" : "tract_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "11-digit census tract FIPS code"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "res_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of residential addresses in this ZIP that are in this tract"
+      }, {
+        "name" : "bus_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of business addresses in this ZIP that are in this tract"
+      }, {
+        "name" : "oth_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of other addresses in this ZIP that are in this tract"
+      }, {
+        "name" : "tot_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of total addresses in this ZIP that are in this tract"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "crosswalk" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 3
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.huduser.gov/hudapi/public/usps?type=1&year={effective_year}&quarter=4&query=All",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "headers" : {
+          "Authorization" : "Bearer {env:HUD_TOKEN}"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.geo.HudCrosswalkTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=crosswalk/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "zip_tract_crosswalk",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "zip_cd_crosswalk",
+      "pattern" : "type=crosswalk/year=*/zip_cd_crosswalk.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2023,
+        "distinctYears" : 14,
+        "contiguous" : true,
+        "rowCount" : 639682,
+        "checkedAt" : "2026-09-12T00:14:56Z"
+      },
+      "comment" : "ZIP Code to Congressional District crosswalk mapping ZIP codes to congressional districts, with residential/business/other/total address-ratio splits (res_ratio, bus_ratio, oth_ratio, tot_ratio), one row per ZIP-CD pair per year. Source: HUD USPS ZIP Code Crosswalk, Q4 snapshot only (not all four quarters). Reverse mapping: see geo.cd_zip_crosswalk.\n",
+      "columns" : [ {
+        "name" : "zip",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit ZIP Code"
+      }, {
+        "name" : "cd_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Congressional district code (state + district number)"
+      }, {
+        "name" : "res_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of residential addresses in this ZIP that are in this CD"
+      }, {
+        "name" : "bus_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of business addresses in this ZIP that are in this CD"
+      }, {
+        "name" : "oth_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of other addresses in this ZIP that are in this CD"
+      }, {
+        "name" : "tot_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of total addresses in this ZIP that are in this CD"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "crosswalk" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 3
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.huduser.gov/hudapi/public/usps?type=5&year={effective_year}&quarter=4&query=All",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "headers" : {
+          "Authorization" : "Bearer {env:HUD_TOKEN}"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.geo.HudCrosswalkTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=crosswalk/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "zip_cd_crosswalk",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "county_zip_crosswalk",
+      "pattern" : "type=crosswalk/year=*/county_zip_crosswalk.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2023,
+        "distinctYears" : 14,
+        "contiguous" : true,
+        "rowCount" : 731205,
+        "checkedAt" : "2026-09-12T00:14:57Z"
+      },
+      "comment" : "County to ZIP Code crosswalk for allocating county-level data to ZIP codes, with residential/business/other/total address-ratio splits (res_ratio, bus_ratio, oth_ratio, tot_ratio), one row per county-ZIP pair per year. Source: HUD USPS ZIP Code Crosswalk, Q4 snapshot only (not all four quarters). Reverse mapping of geo.zip_county_crosswalk.\n",
+      "columns" : [ {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit FIPS code for county (state + county, e.g., '06037' for Los Angeles County)"
+      }, {
+        "name" : "zip",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit ZIP Code"
+      }, {
+        "name" : "res_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of residential addresses in this county that are in this ZIP"
+      }, {
+        "name" : "bus_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of business addresses in this county that are in this ZIP"
+      }, {
+        "name" : "oth_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of other addresses in this county that are in this ZIP"
+      }, {
+        "name" : "tot_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of total addresses in this county that are in this ZIP"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "crosswalk" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 3
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.huduser.gov/hudapi/public/usps?type=7&year={effective_year}&quarter=4&query=All",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "headers" : {
+          "Authorization" : "Bearer {env:HUD_TOKEN}"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.geo.HudCrosswalkTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=crosswalk/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "county_zip_crosswalk",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "cd_zip_crosswalk",
+      "pattern" : "type=crosswalk/year=*/cd_zip_crosswalk.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2023,
+        "distinctYears" : 14,
+        "contiguous" : true,
+        "rowCount" : 639682,
+        "checkedAt" : "2026-09-12T00:14:59Z"
+      },
+      "comment" : "Congressional District to ZIP Code crosswalk for allocating district-level data to ZIP codes, with residential/business/other/total address-ratio splits (res_ratio, bus_ratio, oth_ratio, tot_ratio), one row per CD-ZIP pair per year. Source: HUD USPS ZIP Code Crosswalk, Q4 snapshot only (not all four quarters). Reverse mapping of geo.zip_cd_crosswalk.\n",
+      "columns" : [ {
+        "name" : "cd_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Congressional district code (state + district number)"
+      }, {
+        "name" : "zip",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit ZIP Code"
+      }, {
+        "name" : "res_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of residential addresses in this CD that are in this ZIP"
+      }, {
+        "name" : "bus_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of business addresses in this CD that are in this ZIP"
+      }, {
+        "name" : "oth_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of other addresses in this CD that are in this ZIP"
+      }, {
+        "name" : "tot_ratio",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ratio of total addresses in this CD that are in this ZIP"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "crosswalk" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 3
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.huduser.gov/hudapi/public/usps?type=10&year={effective_year}&quarter=4&query=All",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "headers" : {
+          "Authorization" : "Bearer {env:HUD_TOKEN}"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.geo.HudCrosswalkTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=crosswalk/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "cd_zip_crosswalk",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "rural_urban_continuum",
+      "pattern" : "type=classification/year=*/rural_urban_continuum.parquet",
+      "observedCoverage" : {
+        "minYear" : 2023,
+        "maxYear" : 2023,
+        "distinctYears" : 1,
+        "contiguous" : true,
+        "rowCount" : 3235,
+        "checkedAt" : "2026-09-12T00:14:59Z"
+      },
+      "comment" : "USDA Economic Research Service Rural-Urban Continuum Codes (RUCC) classifying counties by degree of urbanization and adjacency to metro areas, with a 9-category code (rucc_code), description, county population, and a metro/nonmetro flag (metro_nonmetro), one row per county for the 2023 vintage (RUCC is updated decennially; next release ~2033). See geo.ruca_codes for the finer-grained, tract-level rural-urban classification.\n",
+      "columns" : [ {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit FIPS code for county (state + county, e.g., '06037' for Los Angeles County)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "county_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "County name"
+      }, {
+        "name" : "rucc_code",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Rural-Urban Continuum Code (1-9)"
+      }, {
+        "name" : "rucc_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Description of the RUCC category"
+      }, {
+        "name" : "population",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "County population from Census"
+      }, {
+        "name" : "metro_nonmetro",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metro (1-3) or Nonmetro (4-9) designation"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "classification" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2023",
+          "end" : "2023"
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.ers.usda.gov/media/5768/2023-rural-urban-continuum-codes.csv",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.UsdaDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=classification/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "rural_urban_continuum",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "ruca_codes",
+      "pattern" : "type=classification/year=*/ruca_codes.parquet",
+      "observedCoverage" : {
+        "minYear" : 2020,
+        "maxYear" : 2020,
+        "distinctYears" : 1,
+        "contiguous" : true,
+        "rowCount" : 85528,
+        "checkedAt" : "2026-09-12T00:15:00Z"
+      },
+      "comment" : "USDA Rural-Urban Commuting Area (RUCA) codes at census tract level (2020-vintage FIPS), more granular than the county-level geo.rural_urban_continuum (RUCC) table. Carries a primary RUCA code (primary_ruca, 1-10), a secondary subdivision code (secondary_ruca), a description, and tract population, one row per tract for the 2020 vintage (RUCA is updated roughly decennially; next release ~2030).\n",
+      "columns" : [ {
+        "name" : "tract_fips_20",
+        "type" : "string",
+        "source" : "TractFIPS20",
+        "nullable" : true,
+        "comment" : "11-digit census tract FIPS code (2020)"
+      }, {
+        "name" : "state_fips_20",
+        "type" : "string",
+        "source" : "StateFIPS20",
+        "nullable" : true,
+        "comment" : "2-digit state FIPS code"
+      }, {
+        "name" : "county_fips_20",
+        "type" : "string",
+        "source" : "CountyFIPS20",
+        "nullable" : true,
+        "comment" : "5-digit county FIPS code (state + county)"
+      }, {
+        "name" : "primary_ruca",
+        "type" : "int",
+        "source" : "PrimaryRUCA",
+        "nullable" : true,
+        "comment" : "Primary RUCA code (1-10)"
+      }, {
+        "name" : "secondary_ruca",
+        "type" : "double",
+        "source" : "SecondaryRUCA",
+        "nullable" : true,
+        "comment" : "Secondary RUCA code for subdivision"
+      }, {
+        "name" : "primary_ruca_description",
+        "type" : "string",
+        "source" : "PrimaryRUCADescription",
+        "nullable" : true,
+        "comment" : "Description of the primary RUCA category"
+      }, {
+        "name" : "population",
+        "type" : "int",
+        "source" : "Population",
+        "nullable" : true,
+        "comment" : "Tract population from Census"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "classification" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2020",
+          "end" : "2020"
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.ers.usda.gov/media/5443/2020-rural-urban-commuting-area-codes-census-tracts.csv",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.UsdaDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=classification/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "ruca_codes",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "gazetteer_counties",
+      "pattern" : "type=gazetteer/year=*/gazetteer_counties.parquet",
+      "observedCoverage" : {
+        "minYear" : 2012,
+        "maxYear" : 2025,
+        "distinctYears" : 14,
+        "contiguous" : true,
+        "rowCount" : 45092,
+        "checkedAt" : "2026-09-12T00:15:00Z"
+      },
+      "comment" : "Census Bureau Gazetteer file for counties: county FIPS code, name, land/water area in square miles, and centroid latitude/longitude, one row per county per TIGER vintage year — currently starting 2012 in production, not 2010 like the boundary tables in this schema (geo.counties etc.); see observedCoverage below for the real floor rather than assuming the two match. Centroid and area only, no boundary polygon — see geo.counties for full WKT boundary geometry.\n",
+      "columns" : [ {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit FIPS code for county (state + county, e.g., '06037' for Los Angeles County)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "county_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Official county name"
+      }, {
+        "name" : "land_area_sqmi",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square miles"
+      }, {
+        "name" : "water_area_sqmi",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square miles"
+      }, {
+        "name" : "latitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Internal point latitude (centroid)"
+      }, {
+        "name" : "longitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Internal point longitude (centroid)"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "gazetteer" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/{year}_Gazetteer/{year}_Gaz_counties_national.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.GazetteerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=gazetteer/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "gazetteer_counties",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "gazetteer_places",
+      "pattern" : "type=gazetteer/year=*/gazetteer_places.parquet",
+      "observedCoverage" : {
+        "minYear" : 2012,
+        "maxYear" : 2025,
+        "distinctYears" : 14,
+        "contiguous" : true,
+        "rowCount" : 429461,
+        "checkedAt" : "2026-09-12T00:15:02Z"
+      },
+      "comment" : "Census Bureau Gazetteer file for incorporated places and CDPs: place FIPS code, name, place type, land/water area in square miles, and centroid latitude/longitude, one row per place per TIGER vintage year — currently starting 2012 in production, not 2010 like the boundary tables in this schema (geo.places etc.); see observedCoverage below for the real floor rather than assuming the two match. Unlike geo.places (boundary polygons only), this table also carries population and housing_units — but the Gazetteer file itself is a geometry/boundary product with no such columns, so both are enriched separately from ACS 5-year estimates (B01003_001E, B25001_001E), joined by place FIPS; a row with no ACS match, or a vintage more than 2 years newer than the latest published ACS 5-year release, correctly carries NULL rather than a guessed value.\n",
+      "columns" : [ {
+        "name" : "place_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Place FIPS code (state + place)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit FIPS code identifying the state (e.g., '06' for California)"
+      }, {
+        "name" : "place_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Official place name"
+      }, {
+        "name" : "place_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Place type (city, town, CDP, etc.)"
+      }, {
+        "name" : "land_area_sqmi",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square miles"
+      }, {
+        "name" : "water_area_sqmi",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square miles"
+      }, {
+        "name" : "latitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Internal point latitude (centroid)"
+      }, {
+        "name" : "longitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Internal point longitude (centroid)"
+      }, {
+        "name" : "population",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Total population (ACS 5-year estimate B01003_001E), joined by place_fips; not sourced from the Gazetteer file itself\n"
+      }, {
+        "name" : "housing_units",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Total housing units (ACS 5-year estimate B25001_001E), joined by place_fips; not sourced from the Gazetteer file itself\n"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "gazetteer" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/{year}_Gazetteer/{year}_Gaz_place_national.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.GazetteerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=gazetteer/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "gazetteer_places",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "gazetteer_zctas",
+      "pattern" : "type=gazetteer/year=*/gazetteer_zctas.parquet",
+      "observedCoverage" : {
+        "minYear" : 2012,
+        "maxYear" : 2025,
+        "distinctYears" : 14,
+        "contiguous" : true,
+        "rowCount" : 467251,
+        "checkedAt" : "2026-09-12T00:15:03Z"
+      },
+      "comment" : "Census Bureau Gazetteer file for ZIP Code Tabulation Areas: ZCTA code, land/water area in square miles, and centroid latitude/longitude, one row per ZCTA per TIGER vintage year — currently starting 2012 in production; see observedCoverage below for the real floor rather than assuming it matches the other TIGER boundary tables' 2010 start. Unlike geo.zctas (boundary polygons only) or geo.zcta_ref (static, non-vintaged reference), this table also carries population and housing_units — but the Gazetteer file itself is a geometry/boundary product with no such columns, so both are enriched separately from ACS 5-year estimates (B01003_001E, B25001_001E), joined by ZCTA code; a row with no ACS match, or a vintage more than 2 years newer than the latest published ACS 5-year release, correctly carries NULL rather than a guessed value.\n",
+      "columns" : [ {
+        "name" : "zcta",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit ZCTA code"
+      }, {
+        "name" : "land_area_sqmi",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Land area in square miles"
+      }, {
+        "name" : "water_area_sqmi",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Water area in square miles"
+      }, {
+        "name" : "latitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Internal point latitude (centroid)"
+      }, {
+        "name" : "longitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Internal point longitude (centroid)"
+      }, {
+        "name" : "population",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Total population (ACS 5-year estimate B01003_001E), joined by zcta; not sourced from the Gazetteer file itself\n"
+      }, {
+        "name" : "housing_units",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Total housing units (ACS 5-year estimate B25001_001E), joined by zcta; not sourced from the Gazetteer file itself\n"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "gazetteer" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/{year}_Gazetteer/{year}_Gaz_zcta_national.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.GazetteerDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=gazetteer/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "gazetteer_zctas",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "watersheds_huc2",
+      "pattern" : "type=watershed/year=*/watersheds_huc2.parquet",
+      "observedCoverage" : {
+        "minYear" : 2009,
+        "maxYear" : 2025,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 374,
+        "checkedAt" : "2026-09-12T00:15:04Z"
+      },
+      "comment" : "USGS Watershed Boundary Dataset HUC2 regions - the largest hydrologic units dividing the country into 22 major drainage basins.\n",
+      "columns" : [ {
+        "name" : "huc2",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit Hydrologic Unit Code"
+      }, {
+        "name" : "name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Watershed region name"
+      }, {
+        "name" : "area_sq_km",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total area in square kilometers"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "watershed" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/WBD/National/GDB/WBD_National_GDB.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.WatershedDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=watershed/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "watersheds_huc2",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "watersheds_huc4",
+      "pattern" : "type=watershed/year=*/watersheds_huc4.parquet",
+      "observedCoverage" : {
+        "minYear" : 2009,
+        "maxYear" : 2025,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 4165,
+        "checkedAt" : "2026-09-12T00:15:04Z"
+      },
+      "comment" : "USGS Watershed Boundary Dataset HUC4 subregions - subdivisions of HUC2 regions into approximately 223 subregions.\n",
+      "columns" : [ {
+        "name" : "huc4",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "4-digit Hydrologic Unit Code"
+      }, {
+        "name" : "huc2",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Parent HUC2 region code"
+      }, {
+        "name" : "name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Watershed subregion name"
+      }, {
+        "name" : "area_sq_km",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total area in square kilometers"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "watershed" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/WBD/National/GDB/WBD_National_GDB.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.WatershedDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=watershed/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "watersheds_huc4",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "watersheds_huc8",
+      "pattern" : "type=watershed/year=*/watersheds_huc8.parquet",
+      "observedCoverage" : {
+        "minYear" : 2009,
+        "maxYear" : 2025,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 41752,
+        "checkedAt" : "2026-09-12T00:15:04Z"
+      },
+      "comment" : "USGS Watershed Boundary Dataset HUC8 subbasins - commonly used watershed level for water quality and resource management with ~2,300 units.\n",
+      "columns" : [ {
+        "name" : "huc8",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "8-digit Hydrologic Unit Code"
+      }, {
+        "name" : "huc4",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Parent HUC4 subregion code"
+      }, {
+        "name" : "name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Watershed subbasin name"
+      }, {
+        "name" : "area_sq_km",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total area in square kilometers"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "watershed" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/WBD/National/GDB/WBD_National_GDB.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.WatershedDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=watershed/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "watersheds_huc8",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "watersheds_huc12",
+      "pattern" : "type=watershed/year=*/watersheds_huc12.parquet",
+      "observedCoverage" : {
+        "minYear" : 2009,
+        "maxYear" : 2025,
+        "distinctYears" : 14,
+        "contiguous" : false,
+        "years" : [ 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2023, 2025 ],
+        "rowCount" : 1752139,
+        "checkedAt" : "2026-09-12T00:15:05Z"
+      },
+      "comment" : "USGS Watershed Boundary Dataset HUC12 subwatersheds - the smallest standard hydrologic units with approximately 100,000 units nationally.\n",
+      "columns" : [ {
+        "name" : "huc12",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "12-digit Hydrologic Unit Code"
+      }, {
+        "name" : "huc8",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Parent HUC8 subbasin code"
+      }, {
+        "name" : "name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Subwatershed name"
+      }, {
+        "name" : "area_sq_km",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total area in square kilometers"
+      }, {
+        "name" : "geometry",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "WKT representation of boundary polygon"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "watershed" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "dataLag" : 1
+        }
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/WBD/National/GDB/WBD_National_GDB.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.geo.WatershedDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=watershed/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "watersheds_huc12",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    }, {
+      "name" : "county_adjacency",
+      "pattern" : "year={year}/county_adjacency.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 11,
+        "contiguous" : false,
+        "years" : [ 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2024, 2026 ],
+        "rowCount" : 208626,
+        "checkedAt" : "2026-09-12T00:15:06Z"
+      },
+      "comment" : "Real Census Bureau County Adjacency File (https://www2.census.gov/geo/docs/ reference/county_adjacency.txt) — one row per adjacent county pair, undirected-symmetric as published (A/B and B/A each get a row; verified live 2026-08-21, sampled 2000 pairs, 0 missing reverse pairs). Excludes the source file's self-pair row (every county's block starts by listing itself) — 3,234 excluded in the verified live file, matching the county count. year is a fetch/vintage marker, not a field carried by the source file itself — the Census Bureau publishes one evergreen, non-year-versioned file (confirmed live: county_adjacency2023.txt/2024.txt/2025.txt all 404; only the un-suffixed county_adjacency.txt resolves), so this table is re-fetched under each configured year purely to give the ETL pool a freshness/re-fetch cadence. Column names match the table this replaces (county_fips, state_fips, county_name, neighbor_county_fips, neighbor_state_fips, neighbor_county_name) for compatibility with existing queries against county_adjacency.\n",
+      "columns" : [ {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit county FIPS (state+county) — PK component. FK to geo.counties.county_fips."
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit state FIPS, derived from county_fips[0:2] — FK to geo.state_ref.state_fips"
+      }, {
+        "name" : "county_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "County name with the source file's trailing \", ST\" state-abbreviation suffix stripped (e.g. source \"Autauga County, AL\" -> \"Autauga County\"), to match geo.counties.county_name's convention.\n"
+      }, {
+        "name" : "neighbor_county_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "5-digit FIPS of the adjacent county — PK component. FK to geo.counties.county_fips."
+      }, {
+        "name" : "neighbor_state_fips",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-digit state FIPS of the adjacent county, derived from neighbor_county_fips[0:2] — FK to geo.state_ref.state_fips"
+      }, {
+        "name" : "neighbor_county_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Adjacent county's name, state suffix stripped — same convention as county_name"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Fetch/vintage year — PK component. Not a field in the source file (see table comment); the source is refetched once per configured year.\n"
+      } ],
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/geo/docs/reference/county_adjacency.txt",
+        "method" : "GET",
+        "response" : {
+          "format" : "text"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "retryOn" : [ 429, 500, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.geo.CountyAdjacencyResponseTransformer"
+      },
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2025",
+          "end" : "2026"
+        }
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "warehousePath" : "s3://govdata-parquet-v1/geo",
+          "tableName" : "county_adjacency",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "compactionSmallFileSizeBytes" : 10485760
+        }
+      }
+    } ],
+    "comment" : "U.S. government geographic data including Census TIGER boundaries, HUD USPS ZIP code crosswalks, and demographic statistics. Enables spatial analysis, geographic aggregation, and crosswalk between ZIP codes, counties, census tracts, congressional districts, and metropolitan areas.\n",
+    "materializationDefaults" : {
+      "format" : "iceberg",
+      "options" : {
+        "warehousePath" : "s3://govdata-parquet-v1/geo",
+        "icebergTableName" : "${TABLE_NAME}",
+        "partitionBy" : [ "type", "year" ],
+        "emptyResultTtlDays" : 7,
+        "errorRetryDays" : 1
+      },
+      "iceberg" : {
+        "catalogType" : "hadoop",
+        "runCompaction" : true,
+        "compactionTargetFileSizeBytes" : 134217728,
+        "compactionMinFiles" : 5,
+        "compactionSmallFileSizeBytes" : 10485760,
+        "runMaintenance" : true,
+        "snapshotRetentionDays" : 7
+      }
+    },
+    "compaction_defaults" : {
+      "compactionTargetFileSizeBytes" : 134217728,
+      "runCompaction" : true,
+      "compactionMinFiles" : 5
+    },
+    "dataSource" : "geo"
+  },
+  "parentSchema" : "",
+  "generatedAt" : "2026-09-19T10:18:02.762382Z",
+  "schemaName" : "geo"
+}

@@ -1,0 +1,3200 @@
+{
+  "operands" : {
+    "_storageProvider" : "S3StorageProvider",
+    "_incrementalTracker" : "ReadOnlyPipelineTracker",
+    "schemaName" : "energy",
+    "ephemeralCache" : false,
+    "constraints" : {
+      "eia_capacity_changes" : {
+        "primaryKey" : [ "plant_id", "generator_id", "snapshot_year", "snapshot_month", "change_type" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        }, {
+          "columns" : [ "plant_id" ],
+          "targetTable" : "eia_power_plants",
+          "targetColumns" : [ "plant_id" ]
+        } ]
+      },
+      "eia_refinery_operations" : {
+        "primaryKey" : [ "eia_area_code", "series_id", "report_year", "report_month" ]
+      },
+      "ev_charging_stations" : {
+        "primaryKey" : [ "id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_coal_mines" : {
+        "primaryKey" : [ "mine_id", "subunit_code", "report_year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        }, {
+          "columns" : [ "county_fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        } ]
+      },
+      "eia_service_territory" : {
+        "primaryKey" : [ "utility_id", "report_year", "state_abbr", "county_name" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        }, {
+          "columns" : [ "utility_id" ],
+          "targetTable" : "eia_utility_annual",
+          "targetColumns" : [ "utility_id" ]
+        } ]
+      },
+      "eia_natural_gas_production" : {
+        "primaryKey" : [ "eia_area_code", "process_code", "production_year", "production_month" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_natural_gas_storage" : {
+        "primaryKey" : [ "eia_region_code", "storage_type_code", "report_date" ]
+      },
+      "eia_power_plants" : {
+        "primaryKey" : [ "plant_id", "generator_id", "report_year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        }, {
+          "columns" : [ "county_fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "utility_id" ],
+          "targetTable" : "eia_utility_annual",
+          "targetColumns" : [ "utility_id" ]
+        } ]
+      },
+      "eia_electricity_generation" : {
+        "primaryKey" : [ "geo_level", "state_abbr", "state_description", "energy_source_code", "sector_code", "generation_year", "generation_month" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_crude_oil_production" : {
+        "primaryKey" : [ "eia_area_code", "fuel_type", "process_code", "production_year", "production_month" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_utility_annual" : {
+        "primaryKey" : [ "utility_id", "report_year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_natural_gas_price" : {
+        "primaryKey" : [ "series_id", "report_date" ]
+      },
+      "eia_drilling_activity" : {
+        "primaryKey" : [ "series_id", "period" ]
+      },
+      "eia_crude_oil_imports" : {
+        "primaryKey" : [ "importer_name", "origin_country_code", "refinery_site_id", "rpt_period" ],
+        "foreignKeys" : [ {
+          "columns" : [ "refinery_state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_state_energy_consumption" : {
+        "primaryKey" : [ "state_abbr", "msn", "consumption_year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_electricity_prices" : {
+        "primaryKey" : [ "state_abbr", "sector_code", "price_year", "price_month" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_petroleum_stocks" : {
+        "primaryKey" : [ "eia_area_code", "product_code", "process_code", "report_date" ]
+      }
+    },
+    "directory" : "s3://govdata-parquet-v1/energy",
+    "canonicalSchemaName" : "energy",
+    "operatingDirectory" : "/Users/kennethstott/.provisa_askamerica/data/energy",
+    "column_templates" : {
+      "partition_year" : {
+        "name" : "year",
+        "type" : "INTEGER"
+      },
+      "state_abbr_column" : {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation (e.g., 'CA')"
+      },
+      "eia_rate_limit" : {
+        "requestsPerSecond" : 10.0,
+        "retryOn" : [ 429, 503 ],
+        "maxRetries" : 3
+      },
+      "state_description_column" : {
+        "name" : "state_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full state name"
+      },
+      "iceberg_common" : {
+        "warehousePath" : "s3://govdata-parquet-v1/energy",
+        "catalogType" : "hadoop",
+        "runCompaction" : true,
+        "compactionTargetFileSizeBytes" : 134217728,
+        "compactionMinFiles" : 5
+      },
+      "standard_partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "raw_cache_enabled" : {
+        "enabled" : true
+      },
+      "partition_month" : {
+        "name" : "month",
+        "type" : "VARCHAR"
+      },
+      "partition_type" : {
+        "name" : "type",
+        "type" : "VARCHAR"
+      },
+      "standard_partitions_monthly" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        }, {
+          "name" : "month",
+          "type" : "VARCHAR"
+        } ]
+      }
+    },
+    "dimension_values" : {
+      "eia_crude_imp_years" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataMonthLag" : 2
+      },
+      "eia_months" : {
+        "type" : "list",
+        "values" : [ "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12" ],
+        "descending" : true
+      },
+      "eia_capacity_years" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataLag" : 1
+      },
+      "eia_elec_gen_years" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataMonthLag" : 2
+      },
+      "eia_utility_years" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataLag" : 3
+      },
+      "eia_fossil_years" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataMonthLag" : 2
+      },
+      "eia_seds_years" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataLag" : 2
+      },
+      "eia_plant_years" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataLag" : 3
+      },
+      "eia_gas_storage_years" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataLag" : 1
+      },
+      "eia_elec_price_years" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataMonthLag" : 2
+      },
+      "eia_refinery_years" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataMonthLag" : 2
+      },
+      "eia_pet_stocks_years" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataLag" : 0
+      },
+      "msha_coal_years" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataLag" : 1
+      }
+    },
+    "database_filename" : "/Users/kennethstott/.provisa_askamerica/data/.duckdb/govdata.duckdb",
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
+    "views" : [ {
+      "name" : "state_energy_mix",
+      "comment" : "Annual renewable and fossil fuel generation mix by state. Reads eia_electricity_generation's own EIA-published rollup rows (energy_source_code ALL/FOS/REN/NUC at geo_level='state', sector_code='99' — \"All Sectors\") rather than re-summing individual fuel codes, since several of EIA's own leaf-looking codes are themselves nested rollups (e.g. COL is BIT+SUB+LIG) and summing them alongside their children double-counts. other_gen is a residual (total - fossil - renewable - nuclear) so the four categories always sum exactly to the total, rather than relying on EIA's own OTH code, which does not capture every non-fossil/non-renewable/non-nuclear source (e.g. pumped storage). other_gen can be slightly negative: EIA's own FOS/REN/NUC rollups do not always sum exactly to ALL, so treat it as a small balancing term rather than a clean physical category. Measured live across production, 69 of 255 complete state-years carry a negative residual, and its magnitude never exceeds 1.2% of that state-year's total in either direction — renewable_pct and fossil_pct are unaffected. eia_electricity_generation is MONTHLY and publishes no annual sentinel row, so every measure here is the sum of that state-year's monthly rollup rows. months_covered reports how many distinct months went into the sum: a year in progress, or one the source has only partly published, totals fewer than 12 months and is not comparable to a full year — filter on months_covered = 12 for year-over-year work. One row per state + year. State name comes from eia_electricity_generation's own state_description column (no join to geo.states, and no FIPS code is included).\n",
+      "sql" : "SELECT\n  state_abbr,\n  MAX(state_description)                                            AS state_name,\n  generation_year,\n  COUNT(DISTINCT generation_month)                                  AS months_covered,\n  SUM(CASE WHEN energy_source_code = 'ALL' THEN generation_thousand_mwh END)\n                                                                      AS total_gen_thousand_mwh,\n  SUM(CASE WHEN energy_source_code = 'REN' THEN generation_thousand_mwh END)\n                                                                      AS renewable_gen_thousand_mwh,\n  COALESCE(SUM(CASE WHEN energy_source_code = 'NUC' THEN generation_thousand_mwh END), 0)\n                                                                      AS nuclear_gen_thousand_mwh,\n  SUM(CASE WHEN energy_source_code = 'FOS' THEN generation_thousand_mwh END)\n                                                                      AS fossil_gen_thousand_mwh,\n  SUM(CASE WHEN energy_source_code = 'ALL' THEN generation_thousand_mwh END)\n    - SUM(CASE WHEN energy_source_code = 'FOS' THEN generation_thousand_mwh END)\n    - SUM(CASE WHEN energy_source_code = 'REN' THEN generation_thousand_mwh END)\n    - COALESCE(SUM(CASE WHEN energy_source_code = 'NUC' THEN generation_thousand_mwh END), 0)\n                                                                      AS other_gen_thousand_mwh,\n  CASE\n    WHEN SUM(CASE WHEN energy_source_code = 'ALL' THEN generation_thousand_mwh END) > 0\n    THEN 100.0 * SUM(CASE WHEN energy_source_code = 'REN' THEN generation_thousand_mwh END)\n         / SUM(CASE WHEN energy_source_code = 'ALL' THEN generation_thousand_mwh END)\n    ELSE NULL\n  END                                                                AS renewable_pct,\n  CASE\n    WHEN SUM(CASE WHEN energy_source_code = 'ALL' THEN generation_thousand_mwh END) > 0\n    THEN 100.0 * SUM(CASE WHEN energy_source_code = 'FOS' THEN generation_thousand_mwh END)\n         / SUM(CASE WHEN energy_source_code = 'ALL' THEN generation_thousand_mwh END)\n    ELSE NULL\n  END                                                                AS fossil_pct\nFROM eia_electricity_generation WHERE geo_level = 'state' AND sector_code = '99' GROUP BY state_abbr, generation_year\n"
+    }, {
+      "name" : "eia_fossil_fuel_production",
+      "comment" : "Combined view of crude oil and natural gas production by state and month. Unions eia_crude_oil_production (barrels) and eia_natural_gas_production (cubic feet). production_unit distinguishes measurement units — units are NOT convertible between fuels. Use fuel_type to filter or group. For single-fuel queries, prefer the base tables directly for better performance.\n",
+      "sql" : "SELECT\n  production_year,\n  production_month,\n  eia_area_code,\n  state_abbr,\n  fuel_type,\n  process_code,\n  process_name,\n  production_volume,\n  production_unit,\n  series_id,\n  series_description\nFROM eia_crude_oil_production UNION ALL SELECT\n  production_year,\n  production_month,\n  eia_area_code,\n  state_abbr,\n  'Natural Gas' AS fuel_type,\n  process_code,\n  process_name,\n  production_volume,\n  production_unit,\n  series_id,\n  series_description\nFROM eia_natural_gas_production\n"
+    }, {
+      "name" : "utility_scorecard",
+      "comment" : "Utility-level performance scorecard joining EIA-861 annual survey data with aggregated operating capacity from EIA-860 power plants. One row per utility + report year. Shows entity type, state, customer counts, total sales, total revenue, and sum of net summer capacity across all operating generators owned by the utility.\n",
+      "sql" : "SELECT\n  u.utility_id,\n  u.report_year,\n  u.utility_name,\n  u.entity_type,\n  u.state_abbr,\n  u.nerc_region,\n  u.customers_total,\n  u.sales_total_mwh,\n  u.revenue_total_thousand,\n  u.summer_peak_demand_mw,\n  u.winter_peak_demand_mw,\n  COALESCE(p.operating_capacity_mw, 0.0)                            AS operating_capacity_mw,\n  COALESCE(p.generator_count, 0)                                     AS generator_count\nFROM eia_utility_annual u LEFT JOIN (\n  SELECT\n    utility_id,\n    report_year,\n    SUM(net_summer_capacity_mw)                                      AS operating_capacity_mw,\n    COUNT(*)                                                          AS generator_count\n  FROM eia_power_plants\n  WHERE operating_status IN ('OP','SB','OS','RE')\n  GROUP BY utility_id, report_year\n) p ON u.utility_id = p.utility_id AND u.report_year = p.report_year\n"
+    }, {
+      "name" : "eia_electricity_demand_by_county",
+      "comment" : "County-grain electricity demand apportioned from EIA-861 utility-level sales (eia_utility_annual) using the EIA-861 Service_Territory utility-to-county crosswalk (eia_service_territory). EIA-861 does not publish a per-county customer count or sales split within a utility's service territory, so each utility's customer counts, sales, and revenue are divided evenly across the N counties in its service-territory list for that year — a naive equal-split apportionment, not a per-county measurement. A utility with a single-county territory gets an exact (unsplit) figure for that county; a multi-county utility blurs real variation across its territory (a large city and a rural county served by the same utility get identical apportioned demand). Where more than one utility serves the same county, sum this view's rows for that county to get a total. county_fips is a best-effort join to the latest TIGER vintage of geo.counties (prefix match on EIA's un-suffixed county name against geo's 'X County'/'X Parish'/etc. name) and is null where no vintage match is found — treat it as an enrichment, not a guaranteed key. Requires the geo schema present in the same Calcite model.\n",
+      "sql" : "WITH latest_counties AS (\n  SELECT county_fips, state_fips, county_name\n  FROM geo.counties\n  WHERE year = (SELECT MAX(year) FROM geo.counties)\n), territory_counts AS (\n  SELECT report_year, utility_id, COUNT(*) AS county_count\n  FROM energy.eia_service_territory\n  GROUP BY report_year, utility_id\n) SELECT\n  st.report_year,\n  st.utility_id,\n  u.utility_name,\n  st.state_abbr,\n  st.county_name,\n  gc.county_fips                                                      AS county_fips,\n  tc.county_count,\n  u.customers_total / CAST(tc.county_count AS DOUBLE)                 AS customers_total,\n  u.sales_residential_mwh / tc.county_count                           AS sales_residential_mwh,\n  u.sales_commercial_mwh / tc.county_count                            AS sales_commercial_mwh,\n  u.sales_industrial_mwh / tc.county_count                            AS sales_industrial_mwh,\n  u.sales_transportation_mwh / tc.county_count                        AS sales_transportation_mwh,\n  u.sales_total_mwh / tc.county_count                                 AS sales_total_mwh,\n  u.revenue_total_thousand / tc.county_count                          AS revenue_total_thousand\nFROM energy.eia_service_territory st JOIN territory_counts tc\n  ON tc.report_year = st.report_year AND tc.utility_id = st.utility_id\nJOIN energy.eia_utility_annual u\n  ON u.report_year = st.report_year AND u.utility_id = st.utility_id\nLEFT JOIN geo.state_ref sr\n  ON sr.state_abbr = st.state_abbr\nLEFT JOIN latest_counties gc\n  ON gc.state_fips = sr.state_fips\n  AND UPPER(gc.county_name) LIKE UPPER(st.county_name) || '%'\n"
+    }, {
+      "name" : "capacity_pipeline",
+      "comment" : "Capacity additions and retirements from EIA-860M annual snapshots, aggregated by state, change year, technology, fuel category and change type. One row per state + change_year + change_month + technology + fuel_category + change_type. DEDUPLICATION: eia_capacity_changes is a cumulative snapshot in which a single event reappears in every later snapshot_year it survives into (see that table's comment), so this view first reduces to the newest snapshot per (plant_id, generator_id, change_year, change_type) before aggregating. Without that step the totals overstate by roughly 4x — measured live, the pre-deduplication figure for this view's own filter was 3,773,160 MW across 72,779 rows against 918,476 MW across 14,575 real events. NOT FORWARD-LOOKING, despite the view's name: no row in eia_capacity_changes carries a change_year beyond the current year, and the 'Planned Addition' and 'Cancellation' rows — the ones that would carry a pipeline date — have change_year NULL on every row, so they aggregate into a single NULL bucket rather than a future year. 'Retirement' rows are historical (1896-2023). Treat this as a record of capacity change, not a pipeline of announced projects, until the planned-date mapping is fixed. The source's change_type vocabulary is exactly: Addition (259,980 rows, 1891-2025), Retirement (58,060, 1896-2023), Planned Addition (14,719, year NULL) and Cancellation (12,725, year NULL). This view covers 'Planned Addition' and 'Retirement'; historical 'Addition' is deliberately excluded, which is why it is not a total-capacity view.\n",
+      "sql" : "SELECT\n  c.state_abbr,\n  c.change_year,\n  c.change_month,\n  c.technology,\n  c.energy_source_code,\n  CASE\n    WHEN c.energy_source_code IN ('SUN','DPV','WND','WAT','GEO','WAS','OBG','OBS','OBL','MLG')\n      THEN 'Renewable'\n    WHEN c.energy_source_code IN ('NUC')\n      THEN 'Nuclear'\n    WHEN c.energy_source_code IN ('COL','BIT','SUB','LIG','WC','SC')\n      THEN 'Coal'\n    WHEN c.energy_source_code IN ('NG','LFG','OG','BFG','SNG')\n      THEN 'Natural Gas'\n    WHEN c.energy_source_code IN ('DFO','RFO','KER','JF','PG')\n      THEN 'Petroleum'\n    WHEN c.energy_source_code IN ('MWH','CEP')\n      THEN 'Storage'\n    ELSE 'Other'\n  END                                                                AS fuel_category,\n  c.change_type,\n  COUNT(*)                                                           AS unit_count,\n  SUM(c.nameplate_capacity_mw)                                       AS total_nameplate_mw,\n  SUM(c.net_summer_capacity_mw)                                      AS total_summer_mw\nFROM (\n  SELECT * FROM eia_capacity_changes\n  WHERE change_type IN ('Planned Addition', 'Retirement')\n  QUALIFY ROW_NUMBER() OVER (\n    PARTITION BY plant_id, generator_id, change_year, change_type\n    ORDER BY snapshot_year DESC) = 1\n) c GROUP BY\n  c.state_abbr, c.change_year, c.change_month,\n  c.technology, c.energy_source_code,\n  CASE\n    WHEN c.energy_source_code IN ('SUN','DPV','WND','WAT','GEO','WAS','OBG','OBS','OBL','MLG')\n      THEN 'Renewable'\n    WHEN c.energy_source_code IN ('NUC')\n      THEN 'Nuclear'\n    WHEN c.energy_source_code IN ('COL','BIT','SUB','LIG','WC','SC')\n      THEN 'Coal'\n    WHEN c.energy_source_code IN ('NG','LFG','OG','BFG','SNG')\n      THEN 'Natural Gas'\n    WHEN c.energy_source_code IN ('DFO','RFO','KER','JF','PG')\n      THEN 'Petroleum'\n    WHEN c.energy_source_code IN ('MWH','CEP')\n      THEN 'Storage'\n    ELSE 'Other'\n  END,\n  c.change_type\n"
+    }, {
+      "name" : "weekly_gas_storage_signal",
+      "comment" : "Weekly natural gas working gas storage levels (storage_type_code = 'SWO') with year-over-year comparison. Uses LAG window function to compute the prior year same-week volume for YoY delta and percent change calculation. One row per region + report date. Useful as a market signal for gas price forecasting.\n",
+      "sql" : "SELECT\n  s.report_date,\n  s.storage_year,\n  s.storage_week,\n  s.eia_region_code,\n  s.region,\n  s.volume_bcf                                                       AS working_gas_bcf,\n  LAG(s.volume_bcf, 52) OVER (\n    PARTITION BY s.eia_region_code\n    ORDER BY s.report_date\n  )                                                                  AS prior_year_bcf,\n  s.volume_bcf - LAG(s.volume_bcf, 52) OVER (\n    PARTITION BY s.eia_region_code\n    ORDER BY s.report_date\n  )                                                                  AS yoy_change_bcf,\n  CASE\n    WHEN LAG(s.volume_bcf, 52) OVER (\n      PARTITION BY s.eia_region_code\n      ORDER BY s.report_date\n    ) > 0\n    THEN 100.0 * (s.volume_bcf - LAG(s.volume_bcf, 52) OVER (\n      PARTITION BY s.eia_region_code\n      ORDER BY s.report_date\n    )) / LAG(s.volume_bcf, 52) OVER (\n      PARTITION BY s.eia_region_code\n      ORDER BY s.report_date\n    )\n    ELSE NULL\n  END                                                                AS yoy_change_pct\nFROM eia_natural_gas_storage s WHERE s.storage_type_code = 'SWO'\n"
+    }, {
+      "name" : "state_energy_burden",
+      "comment" : "State-level energy burden estimate joining annual residential electricity prices with state energy consumption. Computes an implied annual residential electricity bill estimate from average price and total residential electricity sales divided by customer count. One row per state + year. State name comes from eia_electricity_prices' own state_description column (no join to geo.states).\n",
+      "sql" : "SELECT\n  p.state_abbr,\n  MAX(p.state_description)                                           AS state_name,\n  p.price_year                                                       AS report_year,\n  p.avg_price_cents_kwh                                              AS residential_price_cents_kwh,\n  p.sales_million_kwh                                                AS residential_sales_million_kwh,\n  p.customers                                                        AS residential_customers,\n  CASE\n    WHEN p.customers > 0\n    THEN (p.sales_million_kwh * 1000000.0 / p.customers) * (p.avg_price_cents_kwh / 100.0)\n    ELSE NULL\n  END                                                                AS implied_annual_bill_dollars,\n  c.consumption_bbtu                                                 AS total_energy_consumption_bbtu,\n  c.expenditure_million                                              AS total_energy_expenditure_million\nFROM eia_electricity_prices p LEFT JOIN eia_state_energy_consumption c\n  ON p.state_abbr = c.state_abbr\n  AND p.price_year = c.consumption_year\n  AND c.msn = 'TETCB'\nWHERE p.sector_code = 'RES'\n  AND p.price_month IS NULL\nGROUP BY p.state_abbr, p.price_year, p.avg_price_cents_kwh,\n         p.sales_million_kwh, p.customers, c.consumption_bbtu, c.expenditure_million\n"
+    }, {
+      "name" : "refinery_utilization_summary",
+      "comment" : "Refinery utilization summary pivoted from tall eia_refinery_operations data. Uses CASE expressions on process_code/series_id to pivot key series into named columns: crude_input_kbd, operable_capacity_kbd, utilization_rate_pct (all taken directly from the source series), catalytic_cracking_kbd, coking_kbd, and reforming_kbd, plus a locally computed computed_utilization_pct (crude_input_kbd / operable_capacity_kbd). One row per EIA area + PADD + report year + report month.\n",
+      "sql" : "SELECT\n  r.eia_area_code,\n  r.padd,\n  r.report_year,\n  r.report_month,\n  MAX(CASE\n    WHEN r.process_code = 'CRDISS' OR r.series_id LIKE '%CRDISS%'\n    THEN r.value ELSE NULL\n  END)                                                               AS crude_input_kbd,\n  MAX(CASE\n    WHEN r.process_code = 'CAPACITY' OR r.series_id LIKE '%OPEFWRD%'\n    THEN r.value ELSE NULL\n  END)                                                               AS operable_capacity_kbd,\n  MAX(CASE\n    WHEN r.process_code = 'UTILIZATION' OR r.series_id LIKE '%UTILP%'\n    THEN r.value ELSE NULL\n  END)                                                               AS utilization_rate_pct,\n  MAX(CASE\n    WHEN r.process_code = 'CATCRACK' OR r.series_id LIKE '%CATCRD%'\n    THEN r.value ELSE NULL\n  END)                                                               AS catalytic_cracking_kbd,\n  MAX(CASE\n    WHEN r.process_code = 'COKING' OR r.series_id LIKE '%COKCRD%'\n    THEN r.value ELSE NULL\n  END)                                                               AS coking_kbd,\n  MAX(CASE\n    WHEN r.process_code = 'REFORMING' OR r.series_id LIKE '%REFCRD%'\n    THEN r.value ELSE NULL\n  END)                                                               AS reforming_kbd,\n  CASE\n    WHEN MAX(CASE\n      WHEN r.process_code = 'CAPACITY' OR r.series_id LIKE '%OPEFWRD%'\n      THEN r.value ELSE NULL END) > 0\n    THEN 100.0 * MAX(CASE\n      WHEN r.process_code = 'CRDISS' OR r.series_id LIKE '%CRDISS%'\n      THEN r.value ELSE NULL END)\n      / MAX(CASE\n      WHEN r.process_code = 'CAPACITY' OR r.series_id LIKE '%OPEFWRD%'\n      THEN r.value ELSE NULL END)\n    ELSE NULL\n  END                                                                AS computed_utilization_pct\nFROM eia_refinery_operations r GROUP BY r.eia_area_code, r.padd, r.report_year, r.report_month\n"
+    } ],
+    "materializeDirectory" : "s3://govdata-parquet-v1/energy",
+    "storageConfig" : {
+      "accessKeyId" : "********",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "actualSchemaName" : "energy",
+    "autoDownload" : false,
+    "s3Config" : {
+      "accessKeyId" : "****e4dc",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "executionEngine" : "duckdb",
+    "tableConstraints" : {
+      "eia_capacity_changes" : {
+        "primaryKey" : [ "plant_id", "generator_id", "snapshot_year", "snapshot_month", "change_type" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        }, {
+          "columns" : [ "plant_id" ],
+          "targetTable" : "eia_power_plants",
+          "targetColumns" : [ "plant_id" ]
+        } ]
+      },
+      "eia_refinery_operations" : {
+        "primaryKey" : [ "eia_area_code", "series_id", "report_year", "report_month" ]
+      },
+      "ev_charging_stations" : {
+        "primaryKey" : [ "id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_coal_mines" : {
+        "primaryKey" : [ "mine_id", "subunit_code", "report_year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        }, {
+          "columns" : [ "county_fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        } ]
+      },
+      "eia_service_territory" : {
+        "primaryKey" : [ "utility_id", "report_year", "state_abbr", "county_name" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        }, {
+          "columns" : [ "utility_id" ],
+          "targetTable" : "eia_utility_annual",
+          "targetColumns" : [ "utility_id" ]
+        } ]
+      },
+      "eia_natural_gas_production" : {
+        "primaryKey" : [ "eia_area_code", "process_code", "production_year", "production_month" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_natural_gas_storage" : {
+        "primaryKey" : [ "eia_region_code", "storage_type_code", "report_date" ]
+      },
+      "eia_power_plants" : {
+        "primaryKey" : [ "plant_id", "generator_id", "report_year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        }, {
+          "columns" : [ "county_fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ]
+        }, {
+          "columns" : [ "utility_id" ],
+          "targetTable" : "eia_utility_annual",
+          "targetColumns" : [ "utility_id" ]
+        } ]
+      },
+      "eia_electricity_generation" : {
+        "primaryKey" : [ "geo_level", "state_abbr", "state_description", "energy_source_code", "sector_code", "generation_year", "generation_month" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_crude_oil_production" : {
+        "primaryKey" : [ "eia_area_code", "fuel_type", "process_code", "production_year", "production_month" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_utility_annual" : {
+        "primaryKey" : [ "utility_id", "report_year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_natural_gas_price" : {
+        "primaryKey" : [ "series_id", "report_date" ]
+      },
+      "eia_drilling_activity" : {
+        "primaryKey" : [ "series_id", "period" ]
+      },
+      "eia_crude_oil_imports" : {
+        "primaryKey" : [ "importer_name", "origin_country_code", "refinery_site_id", "rpt_period" ],
+        "foreignKeys" : [ {
+          "columns" : [ "refinery_state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_state_energy_consumption" : {
+        "primaryKey" : [ "state_abbr", "msn", "consumption_year" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_electricity_prices" : {
+        "primaryKey" : [ "state_abbr", "sector_code", "price_year", "price_month" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "eia_petroleum_stocks" : {
+        "primaryKey" : [ "eia_area_code", "product_code", "process_code", "report_date" ]
+      }
+    },
+    "testMode" : false,
+    "partitionedTables" : [ {
+      "name" : "eia_electricity_generation",
+      "lookbackPeriods" : 24,
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_elec_gen/year=*/month=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : false,
+        "years" : [ 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2026 ],
+        "rowCount" : 1661005,
+        "checkedAt" : "2026-09-12T00:12:34Z"
+      },
+      "dqRowLimit" : 25000,
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        }, {
+          "name" : "month",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "EIA API v2 electric power operational data. Monthly electricity generation (thousand MWh), total fuel consumption (MMBtu), fuel consumption for electricity generation (MMBtu), cost per MMBtu, sulfur content, and ash content. Broken down by state, energy source, and sector. One row per state + energy source + sector + year-month. Cross-references geo.states via state_abbr. THIS TABLE CANNOT BE SUMMED NAIVELY — it interleaves rollup rows with the leaf rows they already contain, on all three axes at once, and a SUM that ignores any of them multiplies the answer: (1) energy_source_code mixes leaves with EIA's own rollups — 'ALL', 'FOS', 'REN' and 'NUC' each already total other rows, and even some leaf-looking codes are nested (COL = BIT + SUB + LIG). Use fuel_is_rollup to pick one level. (2) sector_code likewise carries '99' = \"All Sectors\" alongside the individual sectors it sums; see sector_is_rollup. (3) geo_level mixes 'state', 'division' and 'national' rows — see that column. For a state's annual generation mix, filter geo_level='state' AND sector_code='99', take the ALL/FOS/REN/NUC rows, and SUM across the 12 months — there is no annual sentinel row, so a per-year figure must be summed from months. Selecting a single month's value per category instead mixes different peak months and produces parts that do not add up to the total. The state_energy_mix view does exactly this and is the intended entry point for mix questions.\n",
+      "dimensions" : {
+        "type" : [ "eia_elec_gen" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataMonthLag" : 2
+        },
+        "month" : {
+          "type" : "list",
+          "values" : [ "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12" ],
+          "descending" : true
+        }
+      },
+      "columns" : [ {
+        "name" : "generation_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year of the generation period"
+      }, {
+        "name" : "generation_month",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar month (1-12) of the generation period"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "state_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full state name"
+      }, {
+        "name" : "geo_level",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Geographic granularity of this row's location: 'state' (real state_abbr), 'division' (Census division rollup, e.g. code '90' for Pacific), or 'national' (US total). Distinguishes the 3 location granularities that all share the same underlying EIA location field, to prevent overcounting on a naive SUM across state + division + national rows.\n"
+      }, {
+        "name" : "energy_source_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA energy source code (e.g., 'COL', 'NG', 'NUC', 'SUN')"
+      }, {
+        "name" : "energy_source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full energy source description"
+      }, {
+        "name" : "fuel_is_rollup",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "True when energy_source_code is a rollup/aggregate fuel code (e.g. 'COW' aggregates 'COL'/'LIG'/'SUB', 'TSN' aggregates 'SPV'/'DPV') rather than a true leaf-level fuel, so it should be excluded from a naive SUM alongside its constituent codes.\n"
+      }, {
+        "name" : "sector_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA sector code (e.g., '1', '2', '98', '99')"
+      }, {
+        "name" : "sector",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Sector description (e.g., 'Electric Utility', 'IPP Non-CHP')"
+      }, {
+        "name" : "sector_is_rollup",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "True when sector_code is a rollup/aggregate sector code (90, 94-99) rather than a true leaf-level sector (1-8), so it should be excluded from a naive SUM alongside its constituent sectors.\n"
+      }, {
+        "name" : "generation_thousand_mwh",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Net electricity generation in thousand MWh"
+      }, {
+        "name" : "fuel_consumed_total_mmbtu",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total fuel consumed in MMBtu (all purposes)"
+      }, {
+        "name" : "fuel_consumed_for_eg_mmbtu",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Fuel consumed for electricity generation in MMBtu"
+      }, {
+        "name" : "fuel_cost_per_mmbtu",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Fuel cost per MMBtu in dollars"
+      }, {
+        "name" : "sulfur_content",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Sulfur content percentage of fuel"
+      }, {
+        "name" : "ash_content",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Ash content percentage of fuel"
+      } ],
+      "backfill_period" : "annual",
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.eia.gov/v2/electricity/electric-power-operational-data/data?frequency=monthly&start={period_start}&end={period_end}&data[]=generation&data[]=total-consumption-btu&data[]=consumption-for-eg-btu&data[]=cost-per-btu&data[]=sulfur-content&data[]=ash-content",
+        "method" : "GET",
+        "parameters" : {
+          "api_key" : "",
+          "length" : "5000"
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "$.response.data",
+          "pagination" : {
+            "type" : "OFFSET",
+            "totalPath" : "$.response.total",
+            "pageSize" : 5000,
+            "limitParam" : "length",
+            "offsetParam" : "offset"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.EiaElectricityGenerationTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_elec_gen/year=*/month=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year", "month" ],
+          "valueSource" : {
+            "year" : "effective_year",
+            "month" : "generation_month"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_electricity_generation",
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year", "month" ],
+          "incrementalKeys" : [ "year", "month" ]
+        }
+      }
+    }, {
+      "name" : "eia_electricity_prices",
+      "lookbackPeriods" : 2,
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_elec_price/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2006,
+        "maxYear" : 2024,
+        "distinctYears" : 19,
+        "contiguous" : true,
+        "rowCount" : 7068,
+        "checkedAt" : "2026-09-12T00:12:35Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "EIA API v2 retail electricity sales data, fetched at annual frequency (the source URL hardcodes frequency=annual, so price_month exists in the schema but is always null here). Average price (cents/kWh), revenue (million dollars), sales (million kWh), and customer counts by state and sector. One row per state + sector + year. Cross-references geo.states via state_abbr.\n",
+      "dimensions" : {
+        "type" : [ "eia_elec_price" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataMonthLag" : 2
+        }
+      },
+      "columns" : [ {
+        "name" : "price_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year"
+      }, {
+        "name" : "price_month",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Calendar month (1-12), null for annual aggregates"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "state_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full state name"
+      }, {
+        "name" : "sector_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA customer sector code (e.g., 'RES', 'COM', 'IND', 'TRA', 'ALL')"
+      }, {
+        "name" : "sector",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Sector description (e.g., 'Residential', 'Commercial', 'Industrial')"
+      }, {
+        "name" : "avg_price_cents_kwh",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Average retail electricity price in cents per kWh"
+      }, {
+        "name" : "revenue_million_dollars",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total revenue in million dollars"
+      }, {
+        "name" : "sales_million_kwh",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total electricity sales in million kWh"
+      }, {
+        "name" : "customers",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Number of customer accounts"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.eia.gov/v2/electricity/retail-sales/data?frequency=annual&start={effective_year}&end={effective_year}&data[]=price&data[]=revenue&data[]=sales&data[]=customers",
+        "method" : "GET",
+        "parameters" : {
+          "api_key" : "",
+          "length" : "5000"
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "$.response.data",
+          "pagination" : {
+            "type" : "OFFSET",
+            "totalPath" : "$.response.total",
+            "pageSize" : 5000,
+            "limitParam" : "length",
+            "offsetParam" : "offset"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.EiaRetailSalesTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_elec_price/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_electricity_prices",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "eia_utility_annual",
+      "lookbackPeriods" : 2,
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_utility/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2012,
+        "maxYear" : 2023,
+        "distinctYears" : 12,
+        "contiguous" : true,
+        "rowCount" : 37649,
+        "checkedAt" : "2026-09-12T00:12:36Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "EIA Form 861 annual electric utility survey. Covers all electric utilities, retail power marketers, and energy service providers. Fields include entity type, NERC region, service type, customer counts and sales by sector (residential, commercial, industrial, transportation), revenue, peak demand, and net generation. One row per utility + year. The transformer downloads and parses the annual ZIP archive of XLSX files from EIA. Cross-references geo.states via state_abbr.\nTo reach a utility's cross-schema identity FROM another schema rather than by name, join ref.canonical_org_entity on eia_utility_id = utility_id — that table carries one foreign key per source, so the utility's LEI/SEC CIK and its utility_id sit in the same row and the join is exact. Matching utility_name as text finds the wrong entities and misses utilities filing under a differently-worded name.\n",
+      "dimensions" : {
+        "type" : [ "eia_utility" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 3
+        }
+      },
+      "columns" : [ {
+        "name" : "utility_id",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "EIA utility identifier"
+      }, {
+        "name" : "report_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Report year"
+      }, {
+        "name" : "utility_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Utility company name"
+      }, {
+        "name" : "entity_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity type code (e.g., 'C', 'I', 'M', 'S', 'F', 'G', 'P', 'Q', 'W')"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "ba_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Balancing authority code"
+      }, {
+        "name" : "nerc_region",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "NERC reliability region code"
+      }, {
+        "name" : "service_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Service type (Bundled, Energy, Delivery)"
+      }, {
+        "name" : "data_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data type indicator"
+      }, {
+        "name" : "activity_generation",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "Whether utility engages in generation"
+      }, {
+        "name" : "activity_transmission",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "Whether utility engages in transmission"
+      }, {
+        "name" : "activity_distribution",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "Whether utility engages in distribution"
+      }, {
+        "name" : "customers_residential",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Number of residential customer accounts"
+      }, {
+        "name" : "customers_commercial",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Number of commercial customer accounts"
+      }, {
+        "name" : "customers_industrial",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Number of industrial customer accounts"
+      }, {
+        "name" : "customers_transportation",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Number of transportation customer accounts"
+      }, {
+        "name" : "customers_total",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Total number of customer accounts"
+      }, {
+        "name" : "sales_residential_mwh",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Electricity sales to residential customers in MWh"
+      }, {
+        "name" : "sales_commercial_mwh",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Electricity sales to commercial customers in MWh"
+      }, {
+        "name" : "sales_industrial_mwh",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Electricity sales to industrial customers in MWh"
+      }, {
+        "name" : "sales_transportation_mwh",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Electricity sales to transportation customers in MWh"
+      }, {
+        "name" : "sales_total_mwh",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total electricity sales in MWh"
+      }, {
+        "name" : "revenue_residential_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Revenue from residential customers in thousands of dollars"
+      }, {
+        "name" : "revenue_commercial_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Revenue from commercial customers in thousands of dollars"
+      }, {
+        "name" : "revenue_industrial_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Revenue from industrial customers in thousands of dollars"
+      }, {
+        "name" : "revenue_total_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total revenue in thousands of dollars"
+      }, {
+        "name" : "summer_peak_demand_mw",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Summer peak demand in MW"
+      }, {
+        "name" : "winter_peak_demand_mw",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Winter peak demand in MW"
+      }, {
+        "name" : "net_generation_mwh",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Net electricity generation in MWh"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.eia.gov/electricity/data/eia861/archive/zip/f861{effective_year}.zip",
+        "method" : "GET",
+        "parallel" : 1,
+        "response" : {
+          "format" : "TEXT"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.Eia861UtilityTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_utility/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_utility_annual",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "eia_service_territory",
+      "lookbackPeriods" : 2,
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_service_territory/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2012,
+        "maxYear" : 2023,
+        "distinctYears" : 4,
+        "contiguous" : false,
+        "years" : [ 2012, 2013, 2014, 2023 ],
+        "rowCount" : 47284,
+        "checkedAt" : "2026-09-12T00:12:36Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "EIA-861 utility-to-county service-territory crosswalk. One row per utility + state + county the utility reported serving in that year (a multi-state or multi-county utility has one row per county). Sourced from the \"Counties_States\" sheet of the Service_Territory file in the same annual EIA-861 ZIP archive that eia_utility_annual downloads (Counties_States covers the 50 states + DC; the sibling Counties_Territories sheet is out of scope, matching this schema's existing 50-states+DC convention). Does not carry a per-county customer count or sales split — EIA-861 does not publish one — so this table is a service-territory *membership* list, not a weighted allocation; see eia_electricity_demand_by_county for the county-grain demand apportionment built from it. Cross-references geo.state_ref via state_abbr; joins eia_utility_annual via (utility_id, report_year).\n",
+      "dimensions" : {
+        "type" : [ "eia_service_territory" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 3
+        }
+      },
+      "columns" : [ {
+        "name" : "utility_id",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "EIA utility identifier (links to eia_utility_annual)"
+      }, {
+        "name" : "report_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Report year"
+      }, {
+        "name" : "utility_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Utility company name"
+      }, {
+        "name" : "short_form_filer",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "Whether the utility filed the EIA-861 short form (less-detailed survey)"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "county_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "County name as reported by EIA (no 'County'/'Parish'/'Borough' suffix, e.g. 'Vermilion' not 'Vermilion Parish'). Not a FIPS code — join to geo.counties by name prefix match if a county_fips is needed (see eia_electricity_demand_by_county for a worked example).\n"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.eia.gov/electricity/data/eia861/archive/zip/f861{effective_year}.zip",
+        "method" : "GET",
+        "parallel" : 1,
+        "response" : {
+          "format" : "TEXT"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.Eia861ServiceTerritoryTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_service_territory/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_service_territory",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "eia_power_plants",
+      "lookbackPeriods" : 2,
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_plant/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2012,
+        "maxYear" : 2023,
+        "distinctYears" : 12,
+        "contiguous" : true,
+        "rowCount" : 264539,
+        "checkedAt" : "2026-09-12T00:12:37Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "EIA Form 860 annual electric generator inventory. One row per generator (plant + generator ID + year), sourced from BOTH the archive's \"Operable\" sheet and its \"Retired and Canceled\" sheet (2011 onward; earlier archives carry only an operable-equivalent). A generator therefore has a row in a given report_year's archive whether it was running that year or had already stopped — filter operating_status IN ('RE','CN') to isolate the latter, and read retirement_year for when it actually happened, as distinct from planned_retirement_year (a forecast made while still operating). Includes plant and utility identifiers, geographic location (state, county, city, lat/lon), NERC region, balancing authority, technology, prime mover, energy sources, capacity (nameplate, summer, winter, minimum load), ownership type, and energy storage flag. Transformer downloads and parses the annual ZIP archive from EIA. Cross-references geo.states via state_abbr; joins eia_utility_annual via utility_id.\n",
+      "dimensions" : {
+        "type" : [ "eia_plant" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 3
+        }
+      },
+      "columns" : [ {
+        "name" : "plant_id",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "EIA plant identifier"
+      }, {
+        "name" : "generator_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Generator identifier within the plant"
+      }, {
+        "name" : "report_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Report year"
+      }, {
+        "name" : "plant_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Plant name"
+      }, {
+        "name" : "utility_id",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "EIA utility identifier (links to eia_utility_annual)"
+      }, {
+        "name" : "utility_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Utility company name"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "county_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "County name"
+      }, {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "5-digit county FIPS code"
+      }, {
+        "name" : "city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "City or town name"
+      }, {
+        "name" : "latitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Plant latitude"
+      }, {
+        "name" : "longitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Plant longitude"
+      }, {
+        "name" : "nerc_region",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "NERC reliability region"
+      }, {
+        "name" : "balancing_authority_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Balancing authority code"
+      }, {
+        "name" : "balancing_authority_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Balancing authority name"
+      }, {
+        "name" : "primary_purpose_naics",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Primary purpose NAICS code"
+      }, {
+        "name" : "regulatory_status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Regulatory status (e.g., Regulated, Nonutility)"
+      }, {
+        "name" : "sector_code",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "EIA sector code"
+      }, {
+        "name" : "sector",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Sector description"
+      }, {
+        "name" : "technology",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Generation technology (e.g., 'Conventional Steam Coal', 'Onshore Wind Turbine')"
+      }, {
+        "name" : "prime_mover",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Prime mover code (e.g., 'ST', 'GT', 'IC', 'WT', 'PV')"
+      }, {
+        "name" : "energy_source_1",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Primary energy source code"
+      }, {
+        "name" : "energy_source_2",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Secondary energy source code"
+      }, {
+        "name" : "energy_source_3",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Tertiary energy source code"
+      }, {
+        "name" : "nameplate_capacity_mw",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Nameplate (installed) capacity in MW"
+      }, {
+        "name" : "net_summer_capacity_mw",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Net summer capacity in MW"
+      }, {
+        "name" : "net_winter_capacity_mw",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Net winter capacity in MW"
+      }, {
+        "name" : "minimum_load_mw",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Minimum load in MW"
+      }, {
+        "name" : "ownership_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Ownership type code"
+      }, {
+        "name" : "operating_status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Operating status code — OP (operating), SB (standby/backup), OA (out of service, expected back), OS (out of service, not expected back), P/L/T/U/V (various under-construction / permitting stages), RE (retired) or CN (cancelled or postponed). RE and CN only appear on a row sourced from the \"Retired and Canceled\" sheet (see retirement_year) — a generator that stopped operating simply has no row on the \"Operable\" sheet in that year's archive rather than switching this code, so its last \"Operable\" row's status stays whatever it was the year before it disappeared.\n"
+      }, {
+        "name" : "operating_month",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Month generator began commercial operation"
+      }, {
+        "name" : "operating_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Year generator began commercial operation"
+      }, {
+        "name" : "planned_retirement_month",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Planned retirement month, as reported by a still-operating generator on the \"Operable\" sheet — a forecast, not an actual retirement. Once a generator has actually retired this is no longer populated for it; see retirement_month.\n"
+      }, {
+        "name" : "planned_retirement_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Planned retirement year — see planned_retirement_month. Not populated once a generator has actually retired; see retirement_year.\n"
+      }, {
+        "name" : "retirement_month",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Actual retirement month, from EIA-860's \"Retired and Canceled\" sheet — only populated on a row whose operating_status is RE or CN. NULL on every \"Operable\" sheet row, including one whose planned_retirement_year suggests retirement is coming: this field records that a generator DID retire, not that it is expected to.\n"
+      }, {
+        "name" : "retirement_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Actual retirement year — see retirement_month. To find when a generator retired, filter operating_status IN ('RE','CN') and read this column, not planned_retirement_year.\n"
+      }, {
+        "name" : "energy_storage_flag",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "Whether generator includes energy storage capability"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.eia.gov/electricity/data/eia860/archive/xls/eia860{effective_year}.zip",
+        "method" : "GET",
+        "parallel" : 1,
+        "response" : {
+          "format" : "TEXT"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.Eia860PowerPlantsTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_plant/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_power_plants",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "eia_capacity_changes",
+      "lookbackPeriods" : 1,
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_capacity/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2015,
+        "maxYear" : 2025,
+        "distinctYears" : 11,
+        "contiguous" : true,
+        "rowCount" : 345484,
+        "checkedAt" : "2026-09-12T00:12:38Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "EIA Form 860M generator inventory, one annual snapshot per snapshot_year. Captures planned additions and planned retirements with capacity (nameplate, summer, winter, energy storage). Transformer parses the XLSX directly. Cross-references geo.states via state_abbr; joins eia_power_plants via plant_id. GRAIN — READ BEFORE AGGREGATING: this is a CUMULATIVE SNAPSHOT, not a change log. One row per generator per snapshot_year, so a single addition or retirement event REAPPEARS in every later snapshot it survives into — measured live, additions with change_year 2020-2024 appear in 1 to 6 distinct snapshot_years each. The row count therefore grows every year by construction (25,986 in 2016 to 38,359 in 2025) without any new events. SUMming nameplate_capacity_mw across snapshot_year multiplies every event by the number of snapshots it appears in: for change_type='Addition' and change_year 2020-2024 that is 746,721 MW across 18,688 rows, against 5,236 real generator-years — roughly 3.6x EIA's own published additions of ~40 GW/yr. To total real capacity change, first reduce to one row per (plant_id, generator_id, change_year) — e.g. pick the newest snapshot_year per generator with QUALIFY ROW_NUMBER() OVER (PARTITION BY plant_id, generator_id, change_year ORDER BY snapshot_year DESC) = 1 — and only then aggregate. snapshot_month is NULL on every row: only the December file is ingested, so the column carries no information and must not be used to disambiguate snapshots.\n",
+      "dimensions" : {
+        "type" : [ "eia_capacity" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 1
+        }
+      },
+      "columns" : [ {
+        "name" : "plant_id",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "EIA plant identifier"
+      }, {
+        "name" : "generator_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Generator identifier within the plant"
+      }, {
+        "name" : "snapshot_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Year of the monthly snapshot file"
+      }, {
+        "name" : "snapshot_month",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Month of the monthly snapshot file (12 for December)"
+      }, {
+        "name" : "change_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Type of capacity change (e.g., 'Planned Addition', 'Planned Retirement', 'New Unit')"
+      }, {
+        "name" : "change_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Year the change is expected to take effect"
+      }, {
+        "name" : "change_month",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Month the change is expected to take effect"
+      }, {
+        "name" : "plant_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Plant name"
+      }, {
+        "name" : "entity_id",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "EIA entity (utility/owner) identifier"
+      }, {
+        "name" : "entity_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity name"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "county_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "County name"
+      }, {
+        "name" : "balancing_authority_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Balancing authority code"
+      }, {
+        "name" : "sector",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Sector description"
+      }, {
+        "name" : "technology",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Generation technology"
+      }, {
+        "name" : "energy_source_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Primary energy source code"
+      }, {
+        "name" : "prime_mover_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Prime mover code"
+      }, {
+        "name" : "nameplate_capacity_mw",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Nameplate capacity in MW"
+      }, {
+        "name" : "net_summer_capacity_mw",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Net summer capacity in MW"
+      }, {
+        "name" : "net_winter_capacity_mw",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Net winter capacity in MW"
+      }, {
+        "name" : "nameplate_energy_capacity_mwh",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Nameplate energy capacity in MWh (for storage units)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.eia.gov/electricity/data/eia860m/archive/xls/december_generator{effective_year}.xlsx",
+        "method" : "GET",
+        "parallel" : 1,
+        "response" : {
+          "format" : "TEXT"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.Eia860MCapacityChangesTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_capacity/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_capacity_changes",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "eia_crude_oil_production",
+      "lookbackPeriods" : 36,
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_crude/year=*/month=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2006,
+        "maxYear" : 2026,
+        "distinctYears" : 21,
+        "contiguous" : true,
+        "rowCount" : 20640,
+        "checkedAt" : "2026-09-12T00:12:41Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        }, {
+          "name" : "month",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "EIA API v2 petroleum crude oil production by state and month. Source is the single endpoint petroleum/crd/crpdn; fuel_type values are 'Crude Oil' or 'ANS Crude Oil' (Alaska North Slope). For natural gas production data, see eia_natural_gas_production table (separate endpoint, different units). One row per EIA area + process + year-month. Cross-references geo.states via state_abbr.\n",
+      "dimensions" : {
+        "type" : [ "eia_crude" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataMonthLag" : 2
+        },
+        "month" : {
+          "type" : "list",
+          "values" : [ "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12" ],
+          "descending" : true
+        }
+      },
+      "columns" : [ {
+        "name" : "production_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year of production"
+      }, {
+        "name" : "production_month",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar month (1-12) of production"
+      }, {
+        "name" : "eia_area_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA area/region code (may be state abbreviation or PADD code)"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "fuel_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Fuel type — 'Crude Oil' or 'ANS Crude Oil' (Alaska North Slope). For natural gas, see eia_natural_gas_production."
+      }, {
+        "name" : "process_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA process code identifying the production activity"
+      }, {
+        "name" : "process_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Process description"
+      }, {
+        "name" : "production_volume",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Production volume in units specified by production_unit"
+      }, {
+        "name" : "production_unit",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Unit of measure — one of exactly two short codes: MBBL (thousand barrels) or MBBL/D (thousand barrels per day). The spelled-out forms in series_description (\"Thousand Barrels\", \"Thousand Barrels per Day\") never appear here and are not valid filter values (D-270) — filtering on the long form silently returns a near-empty result instead of an error.\n"
+      }, {
+        "name" : "series_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA API v2 series identifier. Composite key built by EIA from the endpoint's facets: area plus process (e.g. the state's crude oil field production series). The human-readable label is in series_description on the same row, and the decoded parts are in eia_area_code, state_abbr, and process_code. This table is long-format: one row per (series_id, year, month). Enumerate with SELECT DISTINCT series_id, series_description.\n"
+      }, {
+        "name" : "series_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full series description"
+      } ],
+      "backfill_period" : "annual",
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.eia.gov/v2/petroleum/crd/crpdn/data?frequency=monthly&start={period_start}&end={period_end}&data[]=value",
+        "method" : "GET",
+        "parameters" : {
+          "api_key" : "",
+          "length" : "5000"
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "$.response.data",
+          "pagination" : {
+            "type" : "OFFSET",
+            "totalPath" : "$.response.total",
+            "pageSize" : 5000,
+            "limitParam" : "length",
+            "offsetParam" : "offset"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.EiaFossilFuelTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_crude/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 67108864,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_crude_oil_production",
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year", "month" ]
+        }
+      }
+    }, {
+      "name" : "eia_natural_gas_production",
+      "lookbackPeriods" : 36,
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_natural_gas_prod/year=*/month=*/*.parquet",
+      "comment" : "EIA API v2 natural gas production by state and month. Source is the separate endpoint natural-gas/prod/sum. Units are in different scale than crude oil (typically MCF or MMCF, million cubic feet). For crude oil data, see eia_crude_oil_production. One row per EIA area + process + year-month. Cross-references geo.states via state_abbr.\n",
+      "dimensions" : {
+        "type" : [ "eia_natural_gas_prod" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataMonthLag" : 2
+        },
+        "month" : {
+          "type" : "list",
+          "values" : [ "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12" ],
+          "descending" : true
+        }
+      },
+      "columns" : [ {
+        "name" : "production_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year of production"
+      }, {
+        "name" : "production_month",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar month (1-12) of production"
+      }, {
+        "name" : "eia_area_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA area/region code (state or region)"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "process_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA process code identifying the production activity"
+      }, {
+        "name" : "process_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Process description"
+      }, {
+        "name" : "production_volume",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Production volume in cubic feet (MCF or MMCF)"
+      }, {
+        "name" : "production_unit",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Unit of measure (e.g., MCF = million cubic feet, MMCF = million MCF)"
+      }, {
+        "name" : "series_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA API v2 series identifier for this production series"
+      }, {
+        "name" : "series_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full series description"
+      } ],
+      "backfill_period" : "annual",
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.eia.gov/v2/natural-gas/prod/sum/data?frequency=monthly&start={period_start}&end={period_end}&data[]=value",
+        "method" : "GET",
+        "parameters" : {
+          "api_key" : "",
+          "length" : "5000"
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "$.response.data",
+          "pagination" : {
+            "type" : "OFFSET",
+            "totalPath" : "$.response.total",
+            "pageSize" : 5000,
+            "limitParam" : "length",
+            "offsetParam" : "offset"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.EiaNaturalGasProductionTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_natural_gas_prod/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 67108864,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_natural_gas_production",
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year", "month" ]
+        }
+      }
+    }, {
+      "name" : "eia_state_energy_consumption",
+      "pattern" : "type=eia_seds/*.parquet",
+      "dqRowLimit" : 25000,
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "EIA API v2 State Energy Data System (SEDS). Annual energy consumption, expenditure, and price by state, sector, fuel type, and MSN (energy series code). The MSN code encodes fuel, sector, and metric in a compact 5-character string. The transformer decodes MSN values and maps them to human-readable sector, fuel_type, units, consumption_bbtu, expenditure_million, and price_per_mmbtu columns where applicable. One row per state + MSN + year. Cross-references geo.states via state_abbr.\n",
+      "dimensions" : {
+        "type" : [ "eia_seds" ]
+      },
+      "columns" : [ {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year (partition column)"
+      }, {
+        "name" : "consumption_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "state_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full state name"
+      }, {
+        "name" : "msn",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "EIA Mnemonic Series Name (5-char code, e.g., 'TETCB', 'NGRCB')"
+      }, {
+        "name" : "sector",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Sector decoded from MSN (e.g., 'Residential', 'Commercial', 'Transportation', 'Total')"
+      }, {
+        "name" : "fuel_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Fuel type decoded from MSN (e.g., 'Natural Gas', 'Coal', 'Petroleum')"
+      }, {
+        "name" : "value",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Raw numeric value from the API response"
+      }, {
+        "name" : "units",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Units for the value field"
+      }, {
+        "name" : "consumption_bbtu",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Energy consumption in billion BTU (null if MSN is not a consumption series)"
+      }, {
+        "name" : "expenditure_million",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Expenditure in million dollars (null if MSN is not an expenditure series)"
+      }, {
+        "name" : "price_per_mmbtu",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Price per million BTU (null if MSN is not a price series)"
+      }, {
+        "name" : "series_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full human-readable description of the SEDS series"
+      } ],
+      "freshness" : {
+        "type" : "last_modified"
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.eia.gov/opendata/bulk/SEDS.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.EiaSedsBulkTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_seds/"
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_state_energy_consumption",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "eia_natural_gas_storage",
+      "pattern" : "type=eia_gas_storage/*.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "EIA API v2 weekly natural gas underground storage data. Covers working gas, base gas, total gas, injections, and withdrawals by EIA storage region (East, West, Midwest, Mountain, Pacific, South Central, Salt, Non-Salt, National). One row per region + storage type + report date. Useful for gas market signal analysis and year-over-year storage comparison.\n",
+      "dimensions" : {
+        "type" : [ "eia_gas_storage" ]
+      },
+      "columns" : [ {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year of the report date (partition column)"
+      }, {
+        "name" : "report_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Report date in ISO format (YYYY-MM-DD)"
+      }, {
+        "name" : "storage_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year of the report date"
+      }, {
+        "name" : "storage_week",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Week number within the year (ISO week)"
+      }, {
+        "name" : "eia_region_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA storage region code (e.g., 'R10', 'R20', 'R30', 'NAT')"
+      }, {
+        "name" : "region",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Region description (e.g., 'East', 'West', 'National')"
+      }, {
+        "name" : "storage_type_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Storage type code (e.g., 'SAW' = total working gas, 'SAS' = salt, 'SAN' = non-salt)"
+      }, {
+        "name" : "storage_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Storage type description"
+      }, {
+        "name" : "volume_bcf",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Volume in billion cubic feet"
+      }, {
+        "name" : "units",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Units for volume (typically 'Bcf')"
+      }, {
+        "name" : "series_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA series identifier from the NG bulk archive. Encodes the storage region plus the storage measure; the decoded parts are in eia_region_code, region, storage_type_code, and storage_type (working gas, base gas, total gas, injections, withdrawals). This table is long-format: one row per (series_id, report_date), so ALWAYS filter on series_id (or storage_type_code) — the archive carries both regional and lower-48 totals, and mixing them double counts. Volumes are in Bcf. Enumerate with SELECT DISTINCT series_id.\n"
+      } ],
+      "freshness" : {
+        "type" : "last_modified"
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.eia.gov/opendata/bulk/NG.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.EiaNgStorageBulkTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_gas_storage/"
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_natural_gas_storage",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "eia_petroleum_stocks",
+      "lookbackPeriods" : 2,
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_pet_stocks/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : false,
+        "years" : [ 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2026 ],
+        "rowCount" : 80264,
+        "checkedAt" : "2026-09-12T00:12:42Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "EIA API v2 weekly petroleum product stocks. Covers crude oil and refined products (gasoline, distillate, jet fuel, residual fuel, etc.) by PADD district and national totals. One row per area + product + process + report date. Supports supply disruption analysis, seasonal inventory tracking, and refinery margin signals.\n",
+      "dimensions" : {
+        "type" : [ "eia_pet_stocks" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        }
+      },
+      "columns" : [ {
+        "name" : "report_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Report date in ISO format (YYYY-MM-DD)"
+      }, {
+        "name" : "stock_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year of the report date"
+      }, {
+        "name" : "stock_week",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Week number within the year (ISO week)"
+      }, {
+        "name" : "eia_area_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA area code (e.g., 'SAE', 'USA', 'PAD1', 'PAD2')"
+      }, {
+        "name" : "padd",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "PADD district description or 'National'"
+      }, {
+        "name" : "product_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA petroleum product code (e.g., 'EPC0', 'EPM0', 'EPD0')"
+      }, {
+        "name" : "product",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Product description (e.g., 'Crude Oil', 'Finished Motor Gasoline')"
+      }, {
+        "name" : "process_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA process code identifying the stock measurement"
+      }, {
+        "name" : "process_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Process description"
+      }, {
+        "name" : "stocks_kbbl",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Stocks in thousand barrels"
+      }, {
+        "name" : "series_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA API v2 series identifier. Composite key encoding area (PADD or U.S.) plus product plus process; the human-readable label is in series_description on the same row, and the decoded parts are in eia_area_code, padd, product_code, and process_code. This table is long-format: one row per (series_id, report_date), so ALWAYS filter on series_id (or product_code plus padd) — national totals and PADD districts coexist here, so summing across series double counts. Stocks are in thousand barrels. Enumerate with SELECT DISTINCT series_id, series_description.\n"
+      }, {
+        "name" : "series_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full series description"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.eia.gov/v2/petroleum/stoc/wstk/data?frequency=weekly&start={year}-01-01&end={year}-12-31&data[]=value",
+        "method" : "GET",
+        "parameters" : {
+          "api_key" : "",
+          "length" : "5000"
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "$.response.data",
+          "pagination" : {
+            "type" : "OFFSET",
+            "totalPath" : "$.response.total",
+            "pageSize" : 5000,
+            "limitParam" : "length",
+            "offsetParam" : "offset"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.EiaPetroleumStocksTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_pet_stocks/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_petroleum_stocks",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "eia_natural_gas_price",
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_ng_price/*.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "EIA API v2 Henry Hub Natural Gas Spot Price (series RNGWHHD), daily, in dollars per million Btu. Full history in one unpartitioned fetch (~7,500 rows since 1997-01-07, paginated via OFFSET). Pairs with eia_natural_gas_storage / weekly_gas_storage_signal to answer inventory-vs-price questions the corpus previously had no price series for at all — only the storage/inventory side existed.\n",
+      "dimensions" : {
+        "type" : [ "eia_ng_price" ]
+      },
+      "columns" : [ {
+        "name" : "report_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Report date in ISO format (YYYY-MM-DD)"
+      }, {
+        "name" : "series_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA API v2 series identifier (RNGWHHD = Henry Hub spot)"
+      }, {
+        "name" : "series_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full series description"
+      }, {
+        "name" : "product",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Product description (Natural Gas)"
+      }, {
+        "name" : "process_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Process description (Spot Price)"
+      }, {
+        "name" : "value_dollars_per_mmbtu",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Price in dollars per million Btu"
+      }, {
+        "name" : "units",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Unit label as published ($/MMBTU)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.eia.gov/v2/natural-gas/pri/fut/data/?frequency=daily&data[0]=value&facets[series][]=RNGWHHD&sort[0][column]=period&sort[0][direction]=asc",
+        "method" : "GET",
+        "parameters" : {
+          "api_key" : "",
+          "length" : "5000"
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "$.response.data",
+          "pagination" : {
+            "type" : "OFFSET",
+            "totalPath" : "$.response.total",
+            "pageSize" : 5000,
+            "limitParam" : "length",
+            "offsetParam" : "offset"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.EiaNaturalGasPriceTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_ng_price/"
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_natural_gas_price",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ ]
+        }
+      }
+    }, {
+      "name" : "eia_crude_oil_imports",
+      "lookbackPeriods" : 2,
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_crude_imp/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 16,
+        "contiguous" : false,
+        "years" : [ 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2026 ],
+        "rowCount" : 203250,
+        "checkedAt" : "2026-09-12T00:12:43Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "EIA Form 814 monthly crude oil import survey. The transformer iterates all 12 monthly XLSX files for the given year (URL pattern impa{yy}{m}.xlsx where yy is 2-digit year and m is 1-based month digit) and unions them into a single partition. One row per import transaction per month (importer + origin country + entry port + receiving refinery). Includes API gravity, sulfur content, and volume in thousand barrels. Cross-references geo.states via state_abbr (refinery state).\n",
+      "dimensions" : {
+        "type" : [ "eia_crude_imp" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataMonthLag" : 2
+        }
+      },
+      "columns" : [ {
+        "name" : "rpt_period",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Reporting period in YYYYMM format"
+      }, {
+        "name" : "import_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Import year"
+      }, {
+        "name" : "import_month",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Import month (1-12)"
+      }, {
+        "name" : "importer_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Name of the importing company"
+      }, {
+        "name" : "origin_country",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Country of origin name"
+      }, {
+        "name" : "origin_country_code",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "EIA country code for the origin country"
+      }, {
+        "name" : "entry_port_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "PADD district code for the entry port"
+      }, {
+        "name" : "entry_port_city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entry port city name"
+      }, {
+        "name" : "entry_padd",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "PADD district number of the entry port"
+      }, {
+        "name" : "dest_padd",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "PADD district number of the destination refinery"
+      }, {
+        "name" : "receiving_company",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Company receiving the crude at the destination"
+      }, {
+        "name" : "refinery_site_id",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "EIA refinery site identifier"
+      }, {
+        "name" : "refinery_site_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Refinery site name"
+      }, {
+        "name" : "refinery_state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation of the receiving refinery"
+      }, {
+        "name" : "api_gravity",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "API gravity of the imported crude"
+      }, {
+        "name" : "sulfur_content_pct",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Sulfur content as a percentage by weight"
+      }, {
+        "name" : "volume_kbbl",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Volume imported in thousand barrels"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.eia.gov/petroleum/imports/companylevel/",
+        "method" : "GET",
+        "parallel" : 1,
+        "response" : {
+          "format" : "TEXT"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.Eia814CrudeImportsTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_crude_imp/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_crude_oil_imports",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "eia_refinery_operations",
+      "lookbackPeriods" : 24,
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_refinery/year=*/month=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2006,
+        "maxYear" : 2026,
+        "distinctYears" : 20,
+        "contiguous" : false,
+        "years" : [ 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2026 ],
+        "rowCount" : 303065,
+        "checkedAt" : "2026-09-12T00:12:45Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        }, {
+          "name" : "month",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "EIA API v2 petroleum refinery process data in tall format. One row per EIA area + series (process_code) + year-month. Key series include crude inputs to distillation (CRDISS), operable distillation capacity (CAPACITY), and utilization rate (UTIL). Additional series cover catalytic cracking, coking, reforming, and other secondary processes. Pivoting into wide format is done via the refinery_utilization_summary view. One row per area + series_id + report year-month.\n",
+      "dimensions" : {
+        "type" : [ "eia_refinery" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataMonthLag" : 2
+        },
+        "month" : {
+          "type" : "list",
+          "values" : [ "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12" ],
+          "descending" : true
+        }
+      },
+      "columns" : [ {
+        "name" : "report_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year"
+      }, {
+        "name" : "report_month",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar month (1-12)"
+      }, {
+        "name" : "eia_area_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA area code (e.g., PADD code or 'USA')"
+      }, {
+        "name" : "padd",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "PADD district description or 'National'"
+      }, {
+        "name" : "series_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA API v2 series identifier. Encodes area plus refinery process; the process is also available decoded in process_code with its label in metric_name. Key process codes include CRDISS crude inputs to distillation and operable distillation capacity measures. This table is tall format: one row per (eia_area_code, series_id, year-month), so ALWAYS filter on series_id or process_code — units differ per process (see the units column) and national totals coexist with PADD districts. Enumerate with SELECT DISTINCT series_id, process_code, metric_name.\n"
+      }, {
+        "name" : "process_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIA refinery process code"
+      }, {
+        "name" : "metric_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metric description (e.g., 'Crude Oil Input to Atmospheric Crude Oil Distillation Units')"
+      }, {
+        "name" : "units",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Units of measure (e.g., 'Thousand Barrels per Day')"
+      }, {
+        "name" : "value",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Metric value"
+      } ],
+      "backfill_period" : "annual",
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.eia.gov/v2/petroleum/pnp/refp/data?frequency=monthly&start={period_start}&end={period_end}&data[]=value",
+        "method" : "GET",
+        "parameters" : {
+          "api_key" : "",
+          "length" : "5000"
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "$.response.data",
+          "pagination" : {
+            "type" : "OFFSET",
+            "totalPath" : "$.response.total",
+            "pageSize" : 5000,
+            "limitParam" : "length",
+            "offsetParam" : "offset"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.EiaRefineryOperationsTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_refinery/year=*/month=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year", "month" ],
+          "valueSource" : {
+            "year" : "effective_year",
+            "month" : "report_month"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_refinery_operations",
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year", "month" ],
+          "incrementalKeys" : [ "year", "month" ]
+        }
+      }
+    }, {
+      "name" : "eia_coal_mines",
+      "lookbackPeriods" : 2,
+      "freshness" : {
+        "type" : "etag"
+      },
+      "pattern" : "type=msha_coal/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2007,
+        "maxYear" : 2025,
+        "distinctYears" : 19,
+        "contiguous" : true,
+        "rowCount" : 42475,
+        "checkedAt" : "2026-09-12T00:12:46Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "MSHA MinesProdYearly coal mine production data (pipe-delimited CSV ZIP). The transformer downloads MinesProdYearly.zip and Mines.zip, performs an inner join on mine_id, filters to coal mines (COAL_METAL_IND = 'C'), and returns one row per mine + subunit + year. Includes mine demographics, operator/controller identity, geographic location (lat/lon, county, state), mine type and status, production volume in short tons, employee count, annual hours, labor productivity, and average seam height (underground mines). The transformer filters by the requested year dimension. Cross-references geo.states via state_abbr.\ncontroller_name and operator_name are unstructured (no per-row id) — mine_id is per-mine, not per-company. ref.canonical_org_entity carries each as an already-resolved identity (eia_coal_controller_name, eia_coal_operator_name, each with an LEI when matched); join there on the name rather than re-running a fuzzy match against gleif_entities.legal_name by hand.\n",
+      "dimensions" : {
+        "type" : [ "msha_coal" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 1
+        }
+      },
+      "columns" : [ {
+        "name" : "mine_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "MSHA mine identifier"
+      }, {
+        "name" : "report_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Production report year"
+      }, {
+        "name" : "mine_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mine name"
+      }, {
+        "name" : "controller_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mine controller company name"
+      }, {
+        "name" : "operator_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mine operator company name"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "5-digit county FIPS code"
+      }, {
+        "name" : "county_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "County name"
+      }, {
+        "name" : "latitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Mine latitude"
+      }, {
+        "name" : "longitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Mine longitude"
+      }, {
+        "name" : "mine_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mine type (e.g., 'Surface', 'Underground')"
+      }, {
+        "name" : "subunit_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "MSHA subunit code (e.g., '01' = Underground, '02' = Surface, '03' = Auger)"
+      }, {
+        "name" : "subunit",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Subunit description"
+      }, {
+        "name" : "mine_status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mine status (e.g., 'Active', 'Temporarily Idled', 'Abandoned')"
+      }, {
+        "name" : "production_short_tons",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Coal production in short tons"
+      }, {
+        "name" : "avg_employee_count",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Average number of employees"
+      }, {
+        "name" : "annual_hours",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total employee hours worked"
+      }, {
+        "name" : "labor_productivity",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Labor productivity in short tons per employee hour"
+      }, {
+        "name" : "avg_mine_height_inches",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Average mine height in inches (underground mines only)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://arlweb.msha.gov/OpenGovernmentData/DataSets/MinesProdYearly.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "TEXT"
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.MshaCoalMinesTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=msha_coal/year=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_coal_mines",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "ev_charging_stations",
+      "freshness" : {
+        "type" : "last_modified"
+      },
+      "pattern" : "type=ev_charging_stations/*.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "NREL Alternative Fuels Data Center (AFDC) public electric charging station registry — one row per station. Station-level port counts by charging level (ev_dc_fast_num / ev_level1_evse_num / ev_level2_evse_num) and available connector types (ev_connector_types, comma-separated — e.g. CHADEMO, J1772, J1772COMBO, TESLA). Does not model AFDC's per-charger connector/power breakdown (ev_charging_units) — deeper than any known query needs; the station-level aggregate counts and connector list answer \"how much charging capacity exists where.\" Whole registry re-fetched and overwritten each run when Last-Modified changes (confirmed live: ~90K electric stations, 200-row page cap). Cross-references geo.states via state_abbr. Source: developer.nlr.gov (NREL's API host as of the 29 May 2026 migration off the retired developer.nrel.gov domain; confirmed live).\n",
+      "dimensions" : {
+        "type" : [ "ev_charging_stations" ]
+      },
+      "columns" : [ {
+        "name" : "id",
+        "type" : "long",
+        "nullable" : false,
+        "comment" : "AFDC station ID (PK)"
+      }, {
+        "name" : "station_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Station name"
+      }, {
+        "name" : "street_address",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Street address"
+      }, {
+        "name" : "intersection_directions",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Free-text directions to the station"
+      }, {
+        "name" : "city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "City"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation (e.g., 'CA')"
+      }, {
+        "name" : "zip",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ZIP code"
+      }, {
+        "name" : "country",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ISO country code (station registry also covers CA/MX)"
+      }, {
+        "name" : "latitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Station latitude"
+      }, {
+        "name" : "longitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Station longitude"
+      }, {
+        "name" : "access_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "'public' or 'private'"
+      }, {
+        "name" : "access_days_time",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Free-text access hours"
+      }, {
+        "name" : "access_detail_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Access restriction detail code, when access_code is private"
+      }, {
+        "name" : "groups_with_access_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Groups permitted access (e.g. 'Public', 'Private')"
+      }, {
+        "name" : "facility_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Facility type (e.g. 'FLEET_GOVT', 'HOTEL', 'PARKING_GARAGE')"
+      }, {
+        "name" : "owner_type_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Owner type code (e.g. 'LG'=local govt, 'SG'=state govt, 'P'=private, 'T'=utility)"
+      }, {
+        "name" : "status_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Station status ('E'=available, 'P'=planned, 'T'=temporarily unavailable)"
+      }, {
+        "name" : "open_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Date the station opened"
+      }, {
+        "name" : "date_last_confirmed",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Date AFDC last confirmed this record"
+      }, {
+        "name" : "expected_date",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Expected opening date, for planned stations"
+      }, {
+        "name" : "updated_at",
+        "type" : "timestamp",
+        "nullable" : true,
+        "comment" : "AFDC's last-updated timestamp for this record"
+      }, {
+        "name" : "ev_connector_types",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Comma-separated connector types available (e.g. 'CHADEMO,J1772,J1772COMBO')"
+      }, {
+        "name" : "ev_dc_fast_num",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Count of DC fast charging ports"
+      }, {
+        "name" : "ev_level1_evse_num",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Count of Level 1 charging ports"
+      }, {
+        "name" : "ev_level2_evse_num",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Count of Level 2 charging ports"
+      }, {
+        "name" : "ev_network",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Charging network operator (e.g. 'TESLA', 'CHARGEPOINT', 'Non-Networked')"
+      }, {
+        "name" : "ev_network_web",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Network operator website"
+      }, {
+        "name" : "ev_pricing",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Free-text pricing description"
+      }, {
+        "name" : "ev_workplace_charging",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "Whether this is workplace charging"
+      }, {
+        "name" : "ev_renewable_source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "On-site renewable generation source, when present"
+      }, {
+        "name" : "restricted_access",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "Whether access is restricted"
+      }, {
+        "name" : "maximum_vehicle_class",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Maximum vehicle class served (e.g. 'LD', 'MD', 'HD')"
+      }, {
+        "name" : "station_phone",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Station contact phone number"
+      }, {
+        "name" : "geocode_status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "AFDC geocoding confidence status"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://developer.nlr.gov/api/alt-fuel-stations/v1.json",
+        "method" : "GET",
+        "parameters" : {
+          "api_key" : "${API_DATA_GOV}",
+          "fuel_type" : "ELEC"
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "fuel_stations",
+          "pagination" : {
+            "type" : "OFFSET",
+            "pageSize" : 200,
+            "limitParam" : "limit",
+            "offsetParam" : "offset",
+            "countPath" : "total_results"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "retryOn" : [ 429, 500, 503 ],
+          "maxRetries" : 4
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.NrelEvChargingStationsTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=ev_charging_stations/"
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "ev_charging_stations",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "eia_drilling_activity",
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=eia_drilling_activity/*.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "EIA Short-Term Energy Outlook (STEO) Table 10a upstream drilling activity — active rig count, new wells drilled, new wells completed, and drilled-but- uncompleted (DUC) well inventory, monthly, for the 6 regions STEO covers (Permian, Bakken, Eagle Ford, Appalachia, Haynesville, and Rest of Lower 48 excluding Gulf of America). This is the successor to EIA's standalone Drilling Productivity Report, folded into STEO as Table 10a in June 2024 (confirmed live: full 2013-01 through present history, 24 series, ~3,900 rows, one request). Rig counts/wells drilled lead crude and gas production by months, which energy's production/capacity tables alone cannot show. One row per (region, metric, period). Whole series set re-fetched and overwritten each run when content changes.\n",
+      "dimensions" : {
+        "type" : [ "eia_drilling_activity" ]
+      },
+      "columns" : [ {
+        "name" : "series_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "EIA STEO series ID (e.g. 'RIGSPM'); PK component with period"
+      }, {
+        "name" : "series_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full EIA series description"
+      }, {
+        "name" : "region_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "DPR region code decoded from series_id (PM/BK/EF/AP/HA/R48)"
+      }, {
+        "name" : "region_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Region name decoded from series_id (Permian/Bakken/Eagle Ford/ Appalachia/Haynesville/Rest of Lower 48 excluding Gulf of America)\n"
+      }, {
+        "name" : "metric_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metric decoded from series_id (RIGS/NWD/NWC/DUCS)"
+      }, {
+        "name" : "metric_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Metric name decoded from series_id (Active Rigs/New Wells Drilled/ New Wells Completed/Drilled but Uncompleted Wells)\n"
+      }, {
+        "name" : "period",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Report period, YYYY-MM; PK component with series_id"
+      }, {
+        "name" : "report_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Calendar year parsed from period"
+      }, {
+        "name" : "report_month",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Calendar month (1-12) parsed from period"
+      }, {
+        "name" : "value",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Metric value — rig count and well counts are physical counts (not dollars/percent); DUC is an end-of-month inventory level, not a flow\n"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.eia.gov/v2/steo/data/?frequency=monthly&data[0]=value&facets[seriesId][]=RIGSPM&facets[seriesId][]=NWDPM&facets[seriesId][]=NWCPM&facets[seriesId][]=DUCSPM&facets[seriesId][]=RIGSBK&facets[seriesId][]=NWDBK&facets[seriesId][]=NWCBK&facets[seriesId][]=DUCSBK&facets[seriesId][]=RIGSEF&facets[seriesId][]=NWDEF&facets[seriesId][]=NWCEF&facets[seriesId][]=DUCSEF&facets[seriesId][]=RIGSAP&facets[seriesId][]=NWDAP&facets[seriesId][]=NWCAP&facets[seriesId][]=DUCSAP&facets[seriesId][]=RIGSHA&facets[seriesId][]=NWDHA&facets[seriesId][]=NWCHA&facets[seriesId][]=DUCSHA&facets[seriesId][]=RIGSR48&facets[seriesId][]=NWDR48&facets[seriesId][]=NWCR48&facets[seriesId][]=DUCSR48",
+        "method" : "GET",
+        "parameters" : {
+          "api_key" : "",
+          "length" : "5000"
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "$.response.data"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 10.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.energy.EiaDrillingActivityTransformer"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=eia_drilling_activity/"
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/energy",
+          "catalogType" : "hadoop",
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "eia_drilling_activity",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    } ],
+    "comment" : "Comprehensive U.S. energy data from the Energy Information Administration (EIA) and Mine Safety and Health Administration (MSHA). Covers electricity generation and retail prices, utility operations, power plant inventory, generator capacity changes, fossil fuel production, state energy consumption, natural gas storage, petroleum stocks, crude oil imports, refinery operations, and coal mine production. All state-level tables join with geo.states via state_abbr. EIA API tables use OFFSET pagination against v2 endpoints. Bulk tables (EIA-860, EIA-861, EIA-860M, EIA-814) use TEXT format with transformers that download, extract, and parse XLSX/ZIP archives.\n",
+    "dataSource" : "energy"
+  },
+  "parentSchema" : "",
+  "generatedAt" : "2026-09-19T10:18:42.354898Z",
+  "schemaName" : "energy"
+}

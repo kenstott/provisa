@@ -1,0 +1,2953 @@
+{
+  "operands" : {
+    "_storageProvider" : "S3StorageProvider",
+    "_incrementalTracker" : "ReadOnlyPipelineTracker",
+    "schemaName" : "ref",
+    "ephemeralCache" : false,
+    "constraints" : {
+      "calendar" : {
+        "primaryKey" : [ "type", "date_key" ],
+        "unique" : [ [ "date_key" ], [ "iso_date" ], [ "basic_iso" ], [ "iso_ordinal" ], [ "iso_week_date" ], [ "epoch_day" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "fiscal_year" ],
+          "targetTable" : "fiscal_year",
+          "targetColumns" : [ "fiscal_year" ],
+          "comment" : "US federal fiscal year the day belongs to"
+        } ]
+      },
+      "gleif_cik_mapping" : {
+        "primaryKey" : [ "type", "lei" ],
+        "foreignKeys" : [ {
+          "columns" : [ "lei" ],
+          "targetTable" : "gleif_entities",
+          "targetColumns" : [ "lei" ],
+          "comment" : "Links CIK-LEI bridge record to full GLEIF entity record"
+        }, {
+          "columns" : [ "cik" ],
+          "targetSchema" : "sec",
+          "targetTable" : "filings",
+          "targetColumns" : [ "cik" ]
+        } ]
+      },
+      "gleif_entities" : {
+        "primaryKey" : [ "type", "lei" ],
+        "foreignKeys" : [ {
+          "columns" : [ "registration_authority_entity_id" ],
+          "targetSchema" : "sec",
+          "targetTable" : "filings",
+          "targetColumns" : [ "cik" ],
+          "comment" : "Links GLEIF entities registered with SEC (RA000665) to SEC filings"
+        }, {
+          "columns" : [ "headquarters_country" ],
+          "targetTable" : "countries",
+          "targetColumns" : [ "iso_alpha2" ],
+          "comment" : "Links HQ country (ISO 3166-1 alpha-2) to country reference"
+        }, {
+          "columns" : [ "registered_country" ],
+          "targetTable" : "countries",
+          "targetColumns" : [ "iso_alpha2" ],
+          "comment" : "Links legal-registration country (ISO 3166-1 alpha-2) to country reference"
+        } ]
+      },
+      "naics_vintage" : {
+        "primaryKey" : [ "vintage", "naics_code" ],
+        "comment" : "One code per edition; (vintage, naics_code) is unique. Period-correct lookup table."
+      },
+      "naics_vintage_map" : {
+        "primaryKey" : [ "data_year" ],
+        "comment" : "Data-year to NAICS edition; naics_vintage matches ref.naics_vintage.vintage."
+      },
+      "countries" : {
+        "primaryKey" : [ "type", "census_cty_code" ],
+        "unique" : [ [ "iso_alpha3" ], [ "iso_alpha2" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "currency_code" ],
+          "targetTable" : "currencies",
+          "targetColumns" : [ "currency_code" ],
+          "comment" : "ISO 4217 currency of the country (null/aggregate rows excluded by nullability)"
+        } ]
+      },
+      "sic" : {
+        "primaryKey" : [ "sic_code" ],
+        "comment" : "4-digit SIC code; FK target for sec.filing_metadata.sic_code."
+      },
+      "gleif_relationships" : {
+        "primaryKey" : [ "type", "start_node_id", "relationship_type", "registration_last_update" ],
+        "foreignKeys" : [ {
+          "columns" : [ "start_node_id" ],
+          "targetTable" : "gleif_entities",
+          "targetColumns" : [ "lei" ],
+          "comment" : "The subordinate end of the edge — subsidiary, sub-fund, branch or feeder"
+        }, {
+          "columns" : [ "end_node_id" ],
+          "targetTable" : "gleif_entities",
+          "targetColumns" : [ "lei" ],
+          "comment" : "The superior end of the edge — consolidating parent, fund manager or umbrella"
+        }, {
+          "columns" : [ "registration_managing_lou" ],
+          "targetTable" : "gleif_entities",
+          "targetColumns" : [ "lei" ],
+          "comment" : "LOUs are themselves LEI-registered; links the record's maintainer to its entity"
+        } ]
+      },
+      "sec_company_tickers" : {
+        "primaryKey" : [ "type", "as_of", "cik", "ticker" ]
+      },
+      "figi_instruments" : {
+        "primaryKey" : [ "type", "figi" ]
+      },
+      "canonical_org_entity" : {
+        "primaryKey" : [ "canonical_entity_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "lei" ],
+          "targetTable" : "gleif_entities",
+          "targetColumns" : [ "lei" ]
+        } ]
+      },
+      "holidays" : {
+        "primaryKey" : [ "type", "year", "country_code", "holiday_date", "holiday_name" ],
+        "foreignKeys" : [ {
+          "columns" : [ "country_code" ],
+          "targetTable" : "countries",
+          "targetColumns" : [ "iso_alpha2" ],
+          "comment" : "ISO 3166-1 alpha-2 country of the holiday"
+        }, {
+          "columns" : [ "holiday_date" ],
+          "targetTable" : "calendar",
+          "targetColumns" : [ "iso_date" ],
+          "comment" : "Holiday date joins the ref.calendar spine"
+        } ]
+      },
+      "fiscal_year" : {
+        "primaryKey" : [ "type", "fiscal_year" ],
+        "unique" : [ [ "fiscal_year" ] ],
+        "comment" : "US federal fiscal-year dimension; FK target for fiscal_year across schemas."
+      },
+      "entity_org_bridge" : {
+        "primaryKey" : [ "source_schema", "source_table", "source_column", "source_key" ],
+        "comment" : "Single best match per source entity, so downstream joins stay unambiguous.",
+        "foreignKeys" : [ {
+          "columns" : [ "lei" ],
+          "targetTable" : "gleif_entities",
+          "targetColumns" : [ "lei" ],
+          "comment" : "GLEIF-path matches (nullable — many bridge rows have no LEI match)"
+        }, {
+          "columns" : [ "sec_cik" ],
+          "targetSchema" : "sec",
+          "targetTable" : "filings",
+          "targetColumns" : [ "cik" ],
+          "comment" : "EIN-path matches (nullable — most bridge rows have no EIN match)"
+        } ]
+      },
+      "entity_person_bridge" : {
+        "primaryKey" : [ "source_a_schema", "source_a_table", "source_a_key", "source_b_schema", "source_b_table", "source_b_key" ]
+      },
+      "canonical_person_entity" : {
+        "primaryKey" : [ "canonical_entity_id" ]
+      },
+      "naics" : {
+        "primaryKey" : [ "naics_code" ],
+        "comment" : "NAICS code is the canonical FK target for naics_code across schemas."
+      },
+      "currencies" : {
+        "primaryKey" : [ "currency_code" ],
+        "comment" : "ISO 4217 code; FK target for ref.countries.currency_code."
+      }
+    },
+    "directory" : "s3://govdata-parquet-v1",
+    "bulkDownloads" : {
+      "gleif_golden_copy" : {
+        "cachePattern" : "type=gleif_bulk/gleif-lei2-golden-copy.csv.zip",
+        "url" : "https://goldencopy.gleif.org/api/v2/golden-copies/publishes/lei2/latest.csv",
+        "dimensions" : { },
+        "comment" : "GLEIF LEI-CDF 3.1 golden copy CSV download (~450MB compressed, 3.2M records). Contains all LEI records worldwide. Shared by gleif_entities and gleif_cik_mapping.\n"
+      },
+      "gleif_rr_golden_copy" : {
+        "cachePattern" : "type=gleif_bulk/gleif-rr-golden-copy.csv.zip",
+        "url" : "https://goldencopy.gleif.org/api/v2/golden-copies/publishes/rr/latest.csv",
+        "dimensions" : { },
+        "comment" : "GLEIF RR-CDF 2.1 golden copy CSV download (~23MB compressed, ~483k relationship records). One row per directed LEI-to-LEI relationship. Used by gleif_relationships.\n"
+      }
+    },
+    "canonicalSchemaName" : "ref",
+    "operatingDirectory" : "/Users/kennethstott/.provisa_askamerica/data/ref",
+    "column_templates" : {
+      "lei_column" : {
+        "name" : "lei",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Legal Entity Identifier (20-character alphanumeric)",
+        "source" : "LEI"
+      },
+      "figi_column" : {
+        "name" : "figi",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Financial Instrument Global Identifier (12-character)"
+      },
+      "ticker_column" : {
+        "name" : "ticker",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Trading ticker symbol"
+      },
+      "legal_name_column" : {
+        "name" : "legal_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Legal name of the entity",
+        "source" : "Entity.LegalName"
+      },
+      "entity_status_column" : {
+        "name" : "entity_status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity status (ACTIVE, INACTIVE, etc.)",
+        "source" : "Entity.EntityStatus"
+      }
+    },
+    "dimension_values" : {
+      "ref_year_range" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataLag" : 0
+      }
+    },
+    "database_filename" : "/Users/kennethstott/.provisa_askamerica/data/.duckdb/govdata.duckdb",
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
+    "views" : [ {
+      "name" : "ticker_instrument_map",
+      "comment" : "Connects OpenFIGI instruments to SEC filers via shared ticker symbol. One row per ticker+figi combination — enables instrument-to-company resolution and cross-referencing FIGI, CIK, and company name for equity analysis. Self-contained within the ref schema; no dependency on other schemas.\n",
+      "sql" : "SELECT\n  fi.ticker,\n  fi.figi,\n  fi.name          AS instrument_name,\n  fi.exchange_code,\n  fi.market_sector,\n  fi.security_type,\n  sct.cik,\n  sct.title        AS company_name\nFROM figi_instruments fi LEFT JOIN sec_company_tickers sct ON fi.ticker = sct.ticker WHERE fi.ticker IS NOT NULL\n"
+    }, {
+      "name" : "current_naics",
+      "comment" : "Current NAICS edition — the latest vintage in naics_vintage. Tracks the newest loaded edition automatically (ref.naics remains the materialized current-edition FK spine; use this view when working from the vintage table). See naics_vintage_map for period-correct (non-current) edition selection.\n",
+      "sql" : "SELECT vintage, naics_code, naics_title, level FROM naics_vintage WHERE vintage = (SELECT MAX(vintage) FROM naics_vintage)\n"
+    }, {
+      "name" : "current_gleif_entities",
+      "comment" : "Current-state GLEIF entities: the latest row per LEI (max last_update) from the append-only gleif_entities changelog. Use for \"as-now\" lookups; query gleif_entities directly (group by last_update) for point-in-time / history.\n",
+      "sql" : "SELECT e.* FROM gleif_entities e JOIN (\n  SELECT lei, MAX(last_update) AS max_last_update\n  FROM gleif_entities\n  GROUP BY lei\n) latest ON e.lei = latest.lei AND e.last_update = latest.max_last_update\n"
+    }, {
+      "name" : "current_gleif_relationships",
+      "comment" : "Current-state GLEIF relationships: the latest row per (start_node_id, relationship_type) from the append-only gleif_relationships changelog, raw source columns unchanged. Use for \"as-now\" walks; query gleif_relationships directly (group by registration_last_update) to see when an edge changed.\n",
+      "sql" : "SELECT r.* FROM gleif_relationships r JOIN (\n  SELECT start_node_id, relationship_type,\n         MAX(registration_last_update) AS max_last_update\n  FROM gleif_relationships\n  GROUP BY start_node_id, relationship_type\n) latest ON r.start_node_id = latest.start_node_id\n        AND r.relationship_type = latest.relationship_type\n        AND r.registration_last_update = latest.max_last_update\n"
+    }, {
+      "name" : "current_gleif_parents",
+      "comment" : "The convenience shape over the raw relationship rows — this is where the repeating Period / Qualifier / Quantifier slots are collapsed, deliberately in SQL rather than baked into the stored table, so the selection rules can change without a re-ingest. Restricted to the two ownership types (fund, branch and feeder edges excluded), to ACTIVE relationships whose record is still PUBLISHED, with legal name and jurisdiction resolved on both ends. One row per (child, IS_DIRECTLY_CONSOLIDATED_BY | IS_ULTIMATELY_CONSOLIDATED_BY) — an entity can appear twice, once for its immediate parent and once for the top of its group. Join child_lei or parent_lei to gleif_cik_mapping to reach SEC filers.\n",
+      "sql" : "SELECT r.start_node_id AS child_lei, ce.legal_name AS child_legal_name,\n       ce.jurisdiction AS child_jurisdiction, r.relationship_type,\n       r.end_node_id AS parent_lei, pe.legal_name AS parent_legal_name,\n       pe.jurisdiction AS parent_jurisdiction,\n       CASE WHEN r.period_1_type = 'RELATIONSHIP_PERIOD' THEN r.period_1_start_date\n            WHEN r.period_2_type = 'RELATIONSHIP_PERIOD' THEN r.period_2_start_date\n            WHEN r.period_3_type = 'RELATIONSHIP_PERIOD' THEN r.period_3_start_date\n            WHEN r.period_4_type = 'RELATIONSHIP_PERIOD' THEN r.period_4_start_date\n            WHEN r.period_5_type = 'RELATIONSHIP_PERIOD' THEN r.period_5_start_date\n       END AS relationship_start_date,\n       CASE WHEN r.period_1_type = 'ACCOUNTING_PERIOD' THEN r.period_1_end_date\n            WHEN r.period_2_type = 'ACCOUNTING_PERIOD' THEN r.period_2_end_date\n            WHEN r.period_3_type = 'ACCOUNTING_PERIOD' THEN r.period_3_end_date\n            WHEN r.period_4_type = 'ACCOUNTING_PERIOD' THEN r.period_4_end_date\n            WHEN r.period_5_type = 'ACCOUNTING_PERIOD' THEN r.period_5_end_date\n       END AS accounting_period_end_date,\n       CASE WHEN r.qualifier_1_dimension = 'ACCOUNTING_STANDARD' THEN r.qualifier_1_category\n            WHEN r.qualifier_2_dimension = 'ACCOUNTING_STANDARD' THEN r.qualifier_2_category\n            WHEN r.qualifier_3_dimension = 'ACCOUNTING_STANDARD' THEN r.qualifier_3_category\n            WHEN r.qualifier_4_dimension = 'ACCOUNTING_STANDARD' THEN r.qualifier_4_category\n            WHEN r.qualifier_5_dimension = 'ACCOUNTING_STANDARD' THEN r.qualifier_5_category\n       END AS accounting_standard,\n       CASE WHEN r.quantifier_1_units = 'PERCENTAGE'\n            THEN CAST(r.quantifier_1_amount AS DOUBLE) END AS ownership_percentage\nFROM gleif_relationships r JOIN (\n  SELECT start_node_id, relationship_type,\n         MAX(registration_last_update) AS max_last_update\n  FROM gleif_relationships\n  GROUP BY start_node_id, relationship_type\n) lr ON r.start_node_id = lr.start_node_id\n    AND r.relationship_type = lr.relationship_type\n    AND r.registration_last_update = lr.max_last_update\nLEFT JOIN (\n  SELECT e.lei, e.legal_name, e.jurisdiction\n  FROM gleif_entities e\n  JOIN (\n    SELECT lei, MAX(last_update) AS max_last_update FROM gleif_entities GROUP BY lei\n  ) le ON e.lei = le.lei AND e.last_update = le.max_last_update\n) ce ON r.start_node_id = ce.lei LEFT JOIN (\n  SELECT e.lei, e.legal_name, e.jurisdiction\n  FROM gleif_entities e\n  JOIN (\n    SELECT lei, MAX(last_update) AS max_last_update FROM gleif_entities GROUP BY lei\n  ) le ON e.lei = le.lei AND e.last_update = le.max_last_update\n) pe ON r.end_node_id = pe.lei WHERE r.relationship_type IN ('IS_DIRECTLY_CONSOLIDATED_BY', 'IS_ULTIMATELY_CONSOLIDATED_BY')\n  AND r.relationship_status = 'ACTIVE'\n  AND r.registration_status = 'PUBLISHED'\n"
+    }, {
+      "name" : "gleif_ownership_ancestry",
+      "comment" : "Full multi-hop ownership chain per entity, walking IS_DIRECTLY_CONSOLIDATED_BY edges from current_gleif_relationships (ACTIVE/PUBLISHED only) via a recursive CTE. GLEIF's own IS_ULTIMATELY_CONSOLIDATED_BY shortcut reports only the top of the chain and hides every intermediate holding company: HSBC Bank USA sits 4 hops below HSBC Holdings plc via direct edges (HSBC USA Inc. -> HSBC North America Holdings Inc. -> HSBC Overseas Holdings (UK) Ltd. -> HSBC Holdings plc), but IS_ULTIMATELY_CONSOLIDATED_BY reports that as one hop. One row per (entity, ancestor): lei is the entity being looked up, immediate_parent_lei is that entity's own direct parent (constant across all of its rows), ancestor_lei is the entity found at this depth (1 = immediate parent), path is the full lei chain from lei to ancestor_lei inclusive, and ancestor_is_ultimate is true when ancestor_lei has no further direct parent of its own. The cycle guard (path exclusion, plus a depth<50 backstop) is load -bearing: nothing upstream guarantees the direct-consolidation edges are acyclic. Live- verified: 116,978 rows / 89,392 distinct entities / max depth 9 over the full forest.\n",
+      "sql" : "WITH RECURSIVE direct_edges AS (\n  SELECT start_node_id AS child_lei, end_node_id AS parent_lei\n  FROM current_gleif_relationships\n  WHERE relationship_type = 'IS_DIRECTLY_CONSOLIDATED_BY'\n    AND relationship_status = 'ACTIVE'\n    AND registration_status = 'PUBLISHED'\n), ancestry(lei, immediate_parent_lei, ancestor_lei, depth, path) AS (\n  SELECT child_lei, parent_lei, parent_lei, 1, [child_lei, parent_lei]\n  FROM direct_edges\n  UNION ALL\n  SELECT a.lei, a.immediate_parent_lei, e.parent_lei, a.depth + 1,\n         list_append(a.path, e.parent_lei)\n  FROM ancestry a\n  JOIN direct_edges e ON e.child_lei = a.ancestor_lei\n  WHERE NOT list_contains(a.path, e.parent_lei)\n    AND a.depth < 50\n) SELECT lei, immediate_parent_lei, ancestor_lei, depth, path,\n       NOT EXISTS (\n         SELECT 1 FROM direct_edges d WHERE d.child_lei = ancestor_lei\n       ) AS ancestor_is_ultimate\nFROM ancestry\n"
+    }, {
+      "name" : "org_entity_sec",
+      "comment" : "Defect Register Recommendation 1. canonical_org_entity's own sec_cik column is populated only via exact EIN match (Defect B2-2 — that path currently has no EIN-bearing SEC-side source wired in and so is effectively always null); this view reaches the same destination today via the LEI both tables already carry. If sec_cik is backfilled directly (B2-2), this view becomes redundant with querying canonical_org_entity alone — that is the intended outcome, not a problem; this view exists to make the connection reachable in the meantime. cik_via_gleif is deliberately named apart from the source sec_cik column so a caller can see which path produced which value while both exist side by side.\n",
+      "sql" : "SELECT c.*, g.cik AS cik_via_gleif FROM canonical_org_entity c JOIN gleif_cik_mapping g ON c.lei = g.lei\n"
+    }, {
+      "name" : "org_entity_ultimate_parent",
+      "comment" : "Defect Register Recommendation 2. Rolls each canonical org up to its ultimate GLEIF parent (IS_ULTIMATELY_CONSOLIDATED_BY only — see current_gleif_parents for the direct-parent edge too), falling back to the entity itself where no such edge exists so every input row still produces one output row. Without this, a firm's activity comes back split across every subsidiary that files under its own name — measured live: Capital One's patents are 96% under \"Capital One Services, LLC\" and the rest under \"Capital One Financial Corporation\", so grouping by the raw entity name alone undercounts the parent by roughly 29x.\n",
+      "sql" : "SELECT c.*,\n       COALESCE(p.parent_lei, c.lei) AS ultimate_parent_lei,\n       COALESCE(p.parent_legal_name, c.canonical_name) AS ultimate_parent_name\nFROM canonical_org_entity c LEFT JOIN current_gleif_parents p\n  ON c.lei = p.child_lei AND p.relationship_type = 'IS_ULTIMATELY_CONSOLIDATED_BY'\n"
+    }, {
+      "name" : "patent_assignee_firm",
+      "comment" : "Defect Register Recommendation 3, corrected scope: not a four-hop join (canonical_org_entity already carries both patents_assignee_id and sec_cik directly), but it does pre-resolve the one genuine extra hop — the ultimate parent — via org_entity_ultimate_parent, so patent output rolls up to the filing parent rather than staying split across subsidiaries (see that view's comment for the measured Capital One case). Known limitation carried from Defect Register B2-4: canonical_org_entity.patents_assignee_id picks one assignee_id arbitrarily when a name maps to several (measured: Schlumberger links to an id with 1 patent instead of a sibling id with 10,227) — this view inherits that until B2-4 lands.\n",
+      "sql" : "SELECT\n  a.patent_id,\n  a.assignee_organization,\n  u.ultimate_parent_lei,\n  u.ultimate_parent_name,\n  c.sec_cik\nFROM patents.patent_assignees a JOIN canonical_org_entity c ON a.assignee_id = c.patents_assignee_id LEFT JOIN org_entity_ultimate_parent u ON c.canonical_entity_id = u.canonical_entity_id\n"
+    } ],
+    "materializeDirectory" : "s3://govdata-parquet-v1",
+    "storageConfig" : {
+      "accessKeyId" : "********",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "actualSchemaName" : "ref",
+    "autoDownload" : false,
+    "s3Config" : {
+      "accessKeyId" : "****e4dc",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "executionEngine" : "duckdb",
+    "tableConstraints" : {
+      "calendar" : {
+        "primaryKey" : [ "type", "date_key" ],
+        "foreignKeys" : [ {
+          "columns" : [ "fiscal_year" ],
+          "targetTable" : "fiscal_year",
+          "targetColumns" : [ "fiscal_year" ],
+          "comment" : "US federal fiscal year the day belongs to"
+        } ],
+        "uniqueKeys" : [ [ "date_key" ], [ "iso_date" ], [ "basic_iso" ], [ "iso_ordinal" ], [ "iso_week_date" ], [ "epoch_day" ] ]
+      },
+      "gleif_cik_mapping" : {
+        "primaryKey" : [ "type", "lei" ],
+        "foreignKeys" : [ {
+          "columns" : [ "lei" ],
+          "targetTable" : "gleif_entities",
+          "targetColumns" : [ "lei" ],
+          "comment" : "Links CIK-LEI bridge record to full GLEIF entity record"
+        }, {
+          "columns" : [ "cik" ],
+          "targetSchema" : "sec",
+          "targetTable" : "filings",
+          "targetColumns" : [ "cik" ]
+        } ]
+      },
+      "gleif_entities" : {
+        "primaryKey" : [ "type", "lei" ],
+        "foreignKeys" : [ {
+          "columns" : [ "registration_authority_entity_id" ],
+          "targetSchema" : "sec",
+          "targetTable" : "filings",
+          "targetColumns" : [ "cik" ],
+          "comment" : "Links GLEIF entities registered with SEC (RA000665) to SEC filings"
+        }, {
+          "columns" : [ "headquarters_country" ],
+          "targetTable" : "countries",
+          "targetColumns" : [ "iso_alpha2" ],
+          "comment" : "Links HQ country (ISO 3166-1 alpha-2) to country reference"
+        }, {
+          "columns" : [ "registered_country" ],
+          "targetTable" : "countries",
+          "targetColumns" : [ "iso_alpha2" ],
+          "comment" : "Links legal-registration country (ISO 3166-1 alpha-2) to country reference"
+        } ]
+      },
+      "naics_vintage" : {
+        "primaryKey" : [ "vintage", "naics_code" ],
+        "comment" : "One code per edition; (vintage, naics_code) is unique. Period-correct lookup table."
+      },
+      "naics_vintage_map" : {
+        "primaryKey" : [ "data_year" ],
+        "comment" : "Data-year to NAICS edition; naics_vintage matches ref.naics_vintage.vintage."
+      },
+      "countries" : {
+        "primaryKey" : [ "type", "census_cty_code" ],
+        "foreignKeys" : [ {
+          "columns" : [ "currency_code" ],
+          "targetTable" : "currencies",
+          "targetColumns" : [ "currency_code" ],
+          "comment" : "ISO 4217 currency of the country (null/aggregate rows excluded by nullability)"
+        } ],
+        "uniqueKeys" : [ [ "iso_alpha3" ], [ "iso_alpha2" ] ]
+      },
+      "sic" : {
+        "primaryKey" : [ "sic_code" ],
+        "comment" : "4-digit SIC code; FK target for sec.filing_metadata.sic_code."
+      },
+      "gleif_relationships" : {
+        "primaryKey" : [ "type", "start_node_id", "relationship_type", "registration_last_update" ],
+        "foreignKeys" : [ {
+          "columns" : [ "start_node_id" ],
+          "targetTable" : "gleif_entities",
+          "targetColumns" : [ "lei" ],
+          "comment" : "The subordinate end of the edge — subsidiary, sub-fund, branch or feeder"
+        }, {
+          "columns" : [ "end_node_id" ],
+          "targetTable" : "gleif_entities",
+          "targetColumns" : [ "lei" ],
+          "comment" : "The superior end of the edge — consolidating parent, fund manager or umbrella"
+        }, {
+          "columns" : [ "registration_managing_lou" ],
+          "targetTable" : "gleif_entities",
+          "targetColumns" : [ "lei" ],
+          "comment" : "LOUs are themselves LEI-registered; links the record's maintainer to its entity"
+        } ]
+      },
+      "sec_company_tickers" : {
+        "primaryKey" : [ "type", "as_of", "cik", "ticker" ]
+      },
+      "figi_instruments" : {
+        "primaryKey" : [ "type", "figi" ]
+      },
+      "canonical_org_entity" : {
+        "primaryKey" : [ "canonical_entity_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "lei" ],
+          "targetTable" : "gleif_entities",
+          "targetColumns" : [ "lei" ]
+        } ]
+      },
+      "holidays" : {
+        "primaryKey" : [ "type", "year", "country_code", "holiday_date", "holiday_name" ],
+        "foreignKeys" : [ {
+          "columns" : [ "country_code" ],
+          "targetTable" : "countries",
+          "targetColumns" : [ "iso_alpha2" ],
+          "comment" : "ISO 3166-1 alpha-2 country of the holiday"
+        }, {
+          "columns" : [ "holiday_date" ],
+          "targetTable" : "calendar",
+          "targetColumns" : [ "iso_date" ],
+          "comment" : "Holiday date joins the ref.calendar spine"
+        } ]
+      },
+      "fiscal_year" : {
+        "primaryKey" : [ "type", "fiscal_year" ],
+        "comment" : "US federal fiscal-year dimension; FK target for fiscal_year across schemas.",
+        "uniqueKeys" : [ [ "fiscal_year" ] ]
+      },
+      "entity_org_bridge" : {
+        "primaryKey" : [ "source_schema", "source_table", "source_column", "source_key" ],
+        "comment" : "Single best match per source entity, so downstream joins stay unambiguous.",
+        "foreignKeys" : [ {
+          "columns" : [ "lei" ],
+          "targetTable" : "gleif_entities",
+          "targetColumns" : [ "lei" ],
+          "comment" : "GLEIF-path matches (nullable — many bridge rows have no LEI match)"
+        }, {
+          "columns" : [ "sec_cik" ],
+          "targetSchema" : "sec",
+          "targetTable" : "filings",
+          "targetColumns" : [ "cik" ],
+          "comment" : "EIN-path matches (nullable — most bridge rows have no EIN match)"
+        } ]
+      },
+      "entity_person_bridge" : {
+        "primaryKey" : [ "source_a_schema", "source_a_table", "source_a_key", "source_b_schema", "source_b_table", "source_b_key" ]
+      },
+      "canonical_person_entity" : {
+        "primaryKey" : [ "canonical_entity_id" ]
+      },
+      "naics" : {
+        "primaryKey" : [ "naics_code" ],
+        "comment" : "NAICS code is the canonical FK target for naics_code across schemas."
+      },
+      "currencies" : {
+        "primaryKey" : [ "currency_code" ],
+        "comment" : "ISO 4217 code; FK target for ref.countries.currency_code."
+      }
+    },
+    "testMode" : false,
+    "partitionedTables" : [ {
+      "name" : "gleif_entities",
+      "dataset_type" : "computed_delta",
+      "freshness" : {
+        "type" : "last_modified"
+      },
+      "pattern" : "type=gleif_entities.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "GLEIF Legal Entity Identifier (LEI) records from the Global LEI Foundation golden copy CSV — entity registration details, jurisdiction, legal form, HQ/registered addresses, and registration authority links. The registration_authority_entity_id field contains the SEC CIK number for entities registered with RA000665 (SEC EDGAR); most other registration authorities carry that jurisdiction's own business-registry number instead (e.g. RA000602, Delaware Division of Corporations), so this column is only a CIK when registration_authority_id is actually RA000665 — see gleif_cik_mapping, which applies that filter. Append-only changelog: one row per LEI per publish in which it changed, with last_update as the history axis; use the current_gleif_entities view for the latest row per LEI. Source: GLEIF Golden Copy (goldencopy.gleif.org).\n",
+      "columns" : [ {
+        "name" : "lei",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Legal Entity Identifier (20-character alphanumeric)",
+        "source" : "LEI"
+      }, {
+        "name" : "legal_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Legal name of the entity",
+        "source" : "Entity.LegalName"
+      }, {
+        "name" : "legal_name_language",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Language of the legal name (ISO 639-1)",
+        "source" : "Entity.LegalName.xmllang"
+      }, {
+        "name" : "jurisdiction",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Jurisdiction of legal formation (ISO 3166-2, e.g., US-DE)",
+        "source" : "Entity.LegalJurisdiction"
+      }, {
+        "name" : "entity_status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity status (ACTIVE, INACTIVE, etc.)",
+        "source" : "Entity.EntityStatus"
+      }, {
+        "name" : "entity_legal_form",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity legal form code (ELF code)",
+        "source" : "Entity.LegalForm.EntityLegalFormCode"
+      }, {
+        "name" : "registration_authority_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Registration authority identifier (e.g., RA000665 for SEC EDGAR; RA000602 is Delaware Division of Corporations, the most common non-SEC value for US entities)",
+        "source" : "Entity.RegistrationAuthority.RegistrationAuthorityID"
+      }, {
+        "name" : "registration_authority_entity_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity ID at the registration authority (CIK for SEC registrants)",
+        "source" : "Entity.RegistrationAuthority.RegistrationAuthorityEntityID"
+      }, {
+        "name" : "headquarters_country",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Country of headquarters (ISO 3166-1 alpha-2)",
+        "source" : "Entity.HeadquartersAddress.Country"
+      }, {
+        "name" : "headquarters_city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "City of headquarters",
+        "source" : "Entity.HeadquartersAddress.City"
+      }, {
+        "name" : "registered_country",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Country of legal registration (ISO 3166-1 alpha-2)",
+        "source" : "Entity.LegalAddress.Country"
+      }, {
+        "name" : "registered_city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "City of legal registration",
+        "source" : "Entity.LegalAddress.City"
+      }, {
+        "name" : "registration_date",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Initial LEI registration date (ISO 8601)",
+        "source" : "Registration.InitialRegistrationDate"
+      }, {
+        "name" : "last_update",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Last update date of the LEI record (ISO 8601)",
+        "source" : "Registration.LastUpdateDate"
+      }, {
+        "name" : "next_renewal",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Next renewal date for the LEI (ISO 8601)",
+        "source" : "Registration.NextRenewalDate"
+      } ],
+      "download" : {
+        "bulkDownload" : "gleif_golden_copy"
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://goldencopy.gleif.org/api/v2/golden-copies/publishes/lei2/latest.csv",
+        "method" : "GET",
+        "extractPattern" : "*.csv",
+        "incremental" : {
+          "dateField" : "last_update"
+        },
+        "response" : {
+          "format" : "csv"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "gleif_entities" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "batchPartitionColumns" : [ "type" ],
+          "overwritePartitions" : false,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "gleif_cik_mapping",
+      "freshness" : {
+        "type" : "last_modified"
+      },
+      "pattern" : "type=gleif_cik_mapping.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "Bridge table mapping GLEIF LEI codes to SEC CIK numbers (lei, cik, legal_name, entity_status). Derived from the GLEIF golden copy CSV filtered where registration_authority_id = 'RA000665' (SEC EDGAR). That authority ID covers both real filer CIKs and SEC fund-series identifiers (e.g. \"S000005113\") registered with SEC but not themselves filers — a validator drops any non-numeric cik value, since a series ID never matches a real CIK downstream. Current snapshot only, overwritten each run — unlike gleif_entities, which keeps an append-only change history. Provides fast LEI <-> CIK lookups without scanning the full GLEIF dataset. entity_org_bridge.sec_cik (EIN-path matches) joins here on cik = sec_cik to reach the LEI — the exact bridge for that column; do not name-match its org against gleif_entities.legal_name.\n",
+      "columns" : [ {
+        "name" : "lei",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Legal Entity Identifier (20-character alphanumeric)",
+        "source" : "LEI"
+      }, {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC Central Index Key (CIK) number",
+        "source" : "Entity.RegistrationAuthority.RegistrationAuthorityEntityID"
+      }, {
+        "name" : "legal_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Legal name of the entity",
+        "source" : "Entity.LegalName"
+      }, {
+        "name" : "entity_status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity status (ACTIVE, INACTIVE, etc.)",
+        "source" : "Entity.EntityStatus"
+      } ],
+      "download" : {
+        "bulkDownload" : "gleif_golden_copy"
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://goldencopy.gleif.org/api/v2/golden-copies/publishes/lei2/latest.csv",
+        "method" : "GET",
+        "extractPattern" : "*.csv",
+        "rowFilter" : {
+          "column" : "Entity.RegistrationAuthority.RegistrationAuthorityID",
+          "pattern" : "^RA000665$"
+        },
+        "response" : {
+          "format" : "csv"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "rowTransformers" : [ {
+          "type" : "class",
+          "class" : "org.apache.calcite.adapter.govdata.ref.GleifCikNumericFilterTransformer"
+        } ]
+      },
+      "dimensions" : {
+        "type" : [ "gleif_cik_mapping" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "batchPartitionColumns" : [ "type" ],
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "gleif_relationships",
+      "dataset_type" : "computed_delta",
+      "freshness" : {
+        "type" : "last_modified"
+      },
+      "pattern" : "type=gleif_relationships.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "GLEIF Level 2 relationship records — the LEI-to-LEI edges that LEI-CDF (gleif_entities) does not carry. One row per directed relationship. Both endpoints are always LEIs, so the table self-joins to gleif_entities on either side and, through gleif_cik_mapping, resolves to SEC CIKs. relationship_type values (2026-07-31 publish, 482,849 rows): IS_DIRECTLY_CONSOLIDATED_BY (126,021) and IS_ULTIMATELY_CONSOLIDATED_BY (132,196) are the two levels of the ownership hierarchy; IS_FUND-MANAGED_BY (148,576), IS_SUBFUND_OF (72,731), IS_FEEDER_TO (1,386) are fund structures; IS_INTERNATIONAL_BRANCH_OF (1,939) is branch registration. In every type start_node_id is the subordinate entity and end_node_id is the superior one — but only consolidation means ownership. A fund commonly carries a manager AND an umbrella (59,419 entities; the two are different entities in 60,266 of 60,370 cases): two distinct relations, not two parents. GLEIF flattens the ownership chain to two attested levels and never publishes the intermediate one, so IS_ULTIMATELY_CONSOLIDATED_BY is largely derivable — walking the direct chain reaches the declared ultimate for 113,860 of the 118,627 entities that report both. It is kept because it is REPORTED, not computed: 13,569 entities declare an ultimate with no direct edge to walk from, and 4,765 chains break at an intermediate holding company that has no LEI. Dropping it loses those ~18k attestations. Only entities that report a relationship to GLEIF appear here — an absent edge means \"not reported\", which the REPEX (reporting exception) publish explains and this table does not carry. Source: GLEIF Golden Copy RR (goldencopy.gleif.org).\n",
+      "columns" : [ {
+        "name" : "start_node_id",
+        "type" : "string",
+        "nullable" : false,
+        "source" : "Relationship.StartNode.NodeID",
+        "comment" : "LEI of the subordinate entity in the relationship (start_node_id_type is LEI on all 482,849 rows)"
+      }, {
+        "name" : "start_node_id_type",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.StartNode.NodeIDType",
+        "comment" : "Node identifier scheme; LEI throughout the current publish"
+      }, {
+        "name" : "end_node_id",
+        "type" : "string",
+        "nullable" : false,
+        "source" : "Relationship.EndNode.NodeID",
+        "comment" : "LEI of the superior entity in the relationship"
+      }, {
+        "name" : "end_node_id_type",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.EndNode.NodeIDType",
+        "comment" : "Node identifier scheme; LEI throughout the current publish"
+      }, {
+        "name" : "relationship_type",
+        "type" : "string",
+        "nullable" : false,
+        "source" : "Relationship.RelationshipType",
+        "comment" : "IS_DIRECTLY_CONSOLIDATED_BY, IS_ULTIMATELY_CONSOLIDATED_BY, IS_FUND-MANAGED_BY, IS_SUBFUND_OF, IS_FEEDER_TO, IS_INTERNATIONAL_BRANCH_OF"
+      }, {
+        "name" : "relationship_status",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.RelationshipStatus",
+        "comment" : "ACTIVE or INACTIVE"
+      }, {
+        "name" : "period_1_start_date",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.1.startDate"
+      }, {
+        "name" : "period_1_end_date",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.1.endDate"
+      }, {
+        "name" : "period_1_type",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.1.periodType"
+      }, {
+        "name" : "period_2_start_date",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.2.startDate"
+      }, {
+        "name" : "period_2_end_date",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.2.endDate"
+      }, {
+        "name" : "period_2_type",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.2.periodType"
+      }, {
+        "name" : "period_3_start_date",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.3.startDate"
+      }, {
+        "name" : "period_3_end_date",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.3.endDate"
+      }, {
+        "name" : "period_3_type",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.3.periodType"
+      }, {
+        "name" : "period_4_start_date",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.4.startDate"
+      }, {
+        "name" : "period_4_end_date",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.4.endDate"
+      }, {
+        "name" : "period_4_type",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.4.periodType"
+      }, {
+        "name" : "period_5_start_date",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.5.startDate"
+      }, {
+        "name" : "period_5_end_date",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.5.endDate"
+      }, {
+        "name" : "period_5_type",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Period.5.periodType"
+      }, {
+        "name" : "qualifier_1_dimension",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Qualifiers.1.QualifierDimension"
+      }, {
+        "name" : "qualifier_1_category",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Qualifiers.1.QualifierCategory"
+      }, {
+        "name" : "qualifier_2_dimension",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Qualifiers.2.QualifierDimension"
+      }, {
+        "name" : "qualifier_2_category",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Qualifiers.2.QualifierCategory"
+      }, {
+        "name" : "qualifier_3_dimension",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Qualifiers.3.QualifierDimension"
+      }, {
+        "name" : "qualifier_3_category",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Qualifiers.3.QualifierCategory"
+      }, {
+        "name" : "qualifier_4_dimension",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Qualifiers.4.QualifierDimension"
+      }, {
+        "name" : "qualifier_4_category",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Qualifiers.4.QualifierCategory"
+      }, {
+        "name" : "qualifier_5_dimension",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Qualifiers.5.QualifierDimension"
+      }, {
+        "name" : "qualifier_5_category",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Qualifiers.5.QualifierCategory"
+      }, {
+        "name" : "quantifier_1_method",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.1.MeasurementMethod"
+      }, {
+        "name" : "quantifier_1_amount",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.1.QuantifierAmount"
+      }, {
+        "name" : "quantifier_1_units",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.1.QuantifierUnits"
+      }, {
+        "name" : "quantifier_2_method",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.2.MeasurementMethod"
+      }, {
+        "name" : "quantifier_2_amount",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.2.QuantifierAmount"
+      }, {
+        "name" : "quantifier_2_units",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.2.QuantifierUnits"
+      }, {
+        "name" : "quantifier_3_method",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.3.MeasurementMethod"
+      }, {
+        "name" : "quantifier_3_amount",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.3.QuantifierAmount"
+      }, {
+        "name" : "quantifier_3_units",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.3.QuantifierUnits"
+      }, {
+        "name" : "quantifier_4_method",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.4.MeasurementMethod"
+      }, {
+        "name" : "quantifier_4_amount",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.4.QuantifierAmount"
+      }, {
+        "name" : "quantifier_4_units",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.4.QuantifierUnits"
+      }, {
+        "name" : "quantifier_5_method",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.5.MeasurementMethod"
+      }, {
+        "name" : "quantifier_5_amount",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.5.QuantifierAmount"
+      }, {
+        "name" : "quantifier_5_units",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Relationship.Quantifiers.5.QuantifierUnits"
+      }, {
+        "name" : "registration_initial_date",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Registration.InitialRegistrationDate"
+      }, {
+        "name" : "registration_last_update",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Registration.LastUpdateDate",
+        "comment" : "Last update of the relationship record (ISO 8601) — the computed_delta change key"
+      }, {
+        "name" : "registration_status",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Registration.RegistrationStatus",
+        "comment" : "PUBLISHED, LAPSED, PENDING_ARCHIVAL or PENDING_TRANSFER — lifecycle of the relationship record itself"
+      }, {
+        "name" : "registration_next_renewal",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Registration.NextRenewalDate"
+      }, {
+        "name" : "registration_managing_lou",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Registration.ManagingLOU",
+        "comment" : "LEI of the Local Operating Unit maintaining the record"
+      }, {
+        "name" : "registration_validation_sources",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Registration.ValidationSources",
+        "comment" : "FULLY_CORROBORATED, PARTIALLY_CORROBORATED or ENTITY_SUPPLIED_ONLY"
+      }, {
+        "name" : "registration_validation_documents",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Registration.ValidationDocuments"
+      }, {
+        "name" : "registration_validation_reference",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "Registration.ValidationReference"
+      } ],
+      "download" : {
+        "bulkDownload" : "gleif_rr_golden_copy"
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://goldencopy.gleif.org/api/v2/golden-copies/publishes/rr/latest.csv",
+        "method" : "GET",
+        "extractPattern" : "*.csv",
+        "incremental" : {
+          "dateField" : "registration_last_update"
+        },
+        "response" : {
+          "format" : "csv"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "gleif_relationships" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "batchPartitionColumns" : [ "type" ],
+          "overwritePartitions" : false,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "sec_company_tickers",
+      "pattern" : "type=sec_company_tickers.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "SEC EDGAR company ticker mapping: cik, ticker, title (registered company name), and as_of (the UTC ingest date). ~10,000 active US exchange-listed companies, sourced from the SEC EDGAR company_tickers.json file (updated daily). Each run stamps a fresh as_of snapshot, so grouping by as_of recovers ticker/name history over time. Feeds the ticker dimension for figi_instruments — enables the full chain LEI → CIK → ticker → FIGI within the ref schema with no dependency on other schemas. Source: https://www.sec.gov/files/company_tickers.json\n",
+      "columns" : [ {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC Central Index Key (plain numeric string, matches gleif_cik_mapping.cik)"
+      }, {
+        "name" : "ticker",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Exchange ticker symbol"
+      }, {
+        "name" : "title",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Company name as registered with SEC"
+      }, {
+        "name" : "as_of",
+        "type" : "date",
+        "nullable" : false,
+        "expression" : "CURRENT_DATE",
+        "comment" : "Ingest date this snapshot was materialized (UTC today; group by for history)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.sec.gov/files/company_tickers.json",
+        "method" : "GET",
+        "headers" : {
+          "User-Agent" : "govdata-etl kennethstott@gmail.com"
+        },
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.2,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.ref.SecCompanyTickersTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "sec_company_tickers" ],
+        "month" : [ "09" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "as_of" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "batchPartitionColumns" : [ "type", "as_of" ],
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "figi_instruments",
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=figi_instruments.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "enabled" : "",
+      "comment" : "Financial instrument identifiers from OpenFIGI. Maps tickers to FIGI codes with exchange, market sector, and security type information. Requires an OpenFIGI API key (set OPENFIGI_API_KEY environment variable). Rate limited to 25 requests/minute with API key, 5 requests/minute without.\n",
+      "columns" : [ {
+        "name" : "figi",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Financial Instrument Global Identifier (12-character)"
+      }, {
+        "name" : "ticker",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Trading ticker symbol"
+      }, {
+        "name" : "name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Instrument name"
+      }, {
+        "name" : "exchange_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Exchange code (e.g., US, LN, JP)",
+        "source" : "exchCode"
+      }, {
+        "name" : "market_sector",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Market sector (Equity, Govt, Corp, etc.)",
+        "source" : "marketSector"
+      }, {
+        "name" : "security_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Security type (Common Stock, ADR, ETF, etc.)",
+        "source" : "securityType"
+      }, {
+        "name" : "security_type2",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Secondary security type classification",
+        "source" : "securityType2"
+      }, {
+        "name" : "security_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Security description",
+        "source" : "securityDescription"
+      }, {
+        "name" : "composite_figi",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Composite FIGI (country-level aggregate identifier)",
+        "source" : "compositeFIGI"
+      }, {
+        "name" : "share_class_figi",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Share class FIGI",
+        "source" : "shareClassFIGI"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.openfigi.com/v3/mapping",
+        "method" : "POST",
+        "headers" : {
+          "Content-Type" : "application/json",
+          "X-OPENFIGI-APIKEY" : ""
+        },
+        "body" : {
+          "idType" : "TICKER",
+          "idValue" : "{ticker}"
+        },
+        "bodyWrapArray" : true,
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.4,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.ref.FigiDataProvider"
+      },
+      "dimensions" : {
+        "type" : [ "figi_instruments" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "batchPartitionColumns" : [ "type" ],
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "countries",
+      "freshness" : {
+        "type" : "last_modified"
+      },
+      "pattern" : "type=countries.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "Country identity crosswalk: one row per country carrying the Census 4-digit trade code, ISO 3166-1 alpha-2/alpha-3/numeric, FIPS 10-4, a name-based BEA area key, plus M49 region/subregion/continent and ISO 4217 currency. Lets the Census-coded trade tables (econ.trade_by_state / trade_exports / trade_imports), the ISO-3-coded econ.world_indicators, and the name-keyed BEA tables (econ.ita_data / fdi_*) all join to a single reference. Sources: Census Schedule C country list (live, freshness-gated) + a bundled ISO spine derived from DataHub datasets/country-codes (public domain).\n",
+      "columns" : [ {
+        "name" : "census_cty_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Census 4-digit foreign-trade country code (FK target for the trade tables)"
+      }, {
+        "name" : "iso_alpha2",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ISO 3166-1 alpha-2 code"
+      }, {
+        "name" : "iso_alpha3",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ISO 3166-1 alpha-3 code"
+      }, {
+        "name" : "iso_numeric",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ISO 3166-1 numeric code"
+      }, {
+        "name" : "fips_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "FIPS 10-4 country code"
+      }, {
+        "name" : "country_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Census display name (clean short form)"
+      }, {
+        "name" : "official_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ISO English official name"
+      }, {
+        "name" : "bea_area_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "country_name with any parenthetical stripped; best-effort join key for BEA area_or_country"
+      }, {
+        "name" : "currency_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ISO 4217 currency alphabetic code"
+      }, {
+        "name" : "region",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "M49 region (e.g. Americas, Europe)"
+      }, {
+        "name" : "subregion",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "M49 sub-region (e.g. Northern America)"
+      }, {
+        "name" : "intermediate_region",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "M49 intermediate region (nullable)"
+      }, {
+        "name" : "continent",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Continent code (e.g. NA, EU, AS)"
+      }, {
+        "name" : "is_aggregate",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "True when the Census row is a grouping/area with no single ISO country"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.census.gov/foreign-trade/schedules/c/country.txt",
+        "method" : "GET",
+        "headers" : {
+          "User-Agent" : "govdata-etl kennethstott@gmail.com"
+        },
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.ref.CountriesReferenceTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "countries" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "batchPartitionColumns" : [ "type" ],
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "naics",
+      "pattern" : "naics.parquet",
+      "comment" : "NAICS 2022 industry classification: one row per 2-to-6-digit code with its title and hierarchy level (2=sector, 3=subsector, 4=industry group, 5=NAICS industry, 6=national industry). Sector codes retain the Census range form (e.g. '31-33' manufacturing). Canonical FK target for naics_code across census/econ/environment. Source: Census 2022 NAICS code list.\n",
+      "columns" : [ {
+        "name" : "naics_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-6 digit NAICS code (sectors may be a range, e.g. '31-33')"
+      }, {
+        "name" : "naics_title",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Industry title"
+      }, {
+        "name" : "level",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Hierarchy depth = number of digits in the base code (2=sector … 6=national industry)"
+      } ],
+      "source" : {
+        "type" : "constants",
+        "file" : "/ref/naics-codes.yaml",
+        "path" : "naics"
+      },
+      "dimensions" : {
+        "type" : [ "naics" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "naics_vintage",
+      "pattern" : "type=naics_vintage/vintage=*/*.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "vintage",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Multi-edition NAICS classification: one row per 2-6 digit code PER vintage (edition year). Use for period-correct industry lookups — join fact.year to ref.naics_vintage_map to pick the edition, then join on (naics_vintage, naics_code). For the single current-edition FK spine use ref.naics. Source: Census per-edition code lists (editions 2017, 2022).\n",
+      "columns" : [ {
+        "name" : "vintage",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "NAICS edition year (e.g. 2017, 2022)"
+      }, {
+        "name" : "naics_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "2-6 digit NAICS code (sectors may be a range, e.g. '31-33')"
+      }, {
+        "name" : "naics_title",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Industry title for this code in this edition"
+      }, {
+        "name" : "level",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Hierarchy depth = number of digits in the base code (2=sector … 6=national industry)"
+      } ],
+      "source" : {
+        "type" : "constants",
+        "file" : "/ref/naics-vintage-codes.yaml",
+        "path" : "naics_vintage"
+      },
+      "dimensions" : {
+        "type" : [ "naics_vintage" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=naics_vintage/vintage=*/"
+        },
+        "partition" : {
+          "columns" : [ "type", "vintage" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "naics_vintage_map",
+      "pattern" : "naics_vintage_map.parquet",
+      "comment" : "Data-year to applicable NAICS edition. Join fact.year = naics_vintage_map.data_year to resolve naics_vintage, then join ref.naics_vintage on (naics_vintage, naics_code) for the period-correct title. Loaded editions: 2017, 2022; years before the earliest loaded edition map to it (documented fallback — refine when older editions are sourced).\n",
+      "columns" : [ {
+        "name" : "data_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar/data year"
+      }, {
+        "name" : "naics_vintage",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "NAICS edition year in effect for data_year (matches ref.naics_vintage.vintage)"
+      } ],
+      "source" : {
+        "type" : "constants",
+        "file" : "/ref/naics-vintage-map.yaml",
+        "path" : "naics_vintage_map"
+      },
+      "dimensions" : {
+        "type" : [ "naics_vintage_map" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "sic",
+      "pattern" : "sic.parquet",
+      "comment" : "SEC EDGAR Standard Industrial Classification codes: one row per 4-digit SIC code with its EDGAR Assistant-Director office and industry title. FK target for sec.filing_metadata.sic_code. Source: SEC EDGAR siccodes list.\n",
+      "columns" : [ {
+        "name" : "sic_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "4-digit SIC code, zero-padded (e.g. '0100', '7372')"
+      }, {
+        "name" : "ad_office",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EDGAR Assistant-Director office / industry group that reviews filers in this SIC"
+      }, {
+        "name" : "industry_title",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SIC industry title (SEC EDGAR display form)"
+      } ],
+      "source" : {
+        "type" : "constants",
+        "file" : "/ref/sic-codes.yaml",
+        "path" : "sic"
+      },
+      "dimensions" : {
+        "type" : [ "sic" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "currencies",
+      "pattern" : "currencies.parquet",
+      "comment" : "ISO 4217 active currencies: one row per alphabetic code with its name, numeric code, and minor-unit (decimal places). FK target for ref.countries.currency_code. Withdrawn codes are excluded. Source: ISO 4217 (datasets/currency-codes).\n",
+      "columns" : [ {
+        "name" : "currency_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "ISO 4217 3-letter alphabetic code (e.g. 'USD')"
+      }, {
+        "name" : "currency_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Currency name (e.g. 'US Dollar')"
+      }, {
+        "name" : "numeric_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ISO 4217 3-digit numeric code, zero-padded (e.g. '840')"
+      }, {
+        "name" : "minor_unit",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Number of decimal places in the minor unit (e.g. 2 for cents; null when not applicable)"
+      } ],
+      "source" : {
+        "type" : "constants",
+        "file" : "/ref/currency-codes.yaml",
+        "path" : "currencies"
+      },
+      "dimensions" : {
+        "type" : [ "currencies" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "calendar",
+      "dataset_type" : "computed_delta",
+      "pattern" : "type=calendar.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "Daily date spine from 2010-01-01 through two years past the current year, one row per calendar day. The full-date representations (date_key, iso_date, basic_iso YYYYMMDD, iso_ordinal YYYY-DDD, iso_week_date YYYY-Www-D, epoch_day) are each unique and serve as FK targets for date columns in any form. Also carries numeric and named date parts, calendar flags, and US-federal fiscal attributes (fiscal_year FKs ref.fiscal_year). Generated by CalendarDataProvider — no external source.\n",
+      "columns" : [ {
+        "name" : "date_key",
+        "type" : "date",
+        "nullable" : false,
+        "comment" : "Calendar day as a native DATE (canonical FK target for DATE-typed columns)"
+      }, {
+        "name" : "iso_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "ISO-8601 calendar date YYYY-MM-DD (FK target for ISO date strings)"
+      }, {
+        "name" : "basic_iso",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "ISO-8601 basic date YYYYMMDD (FK target for compact date stamps)"
+      }, {
+        "name" : "iso_ordinal",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "ISO-8601 ordinal date YYYY-DDD"
+      }, {
+        "name" : "iso_week_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "ISO-8601 week date YYYY-Www-D"
+      }, {
+        "name" : "epoch_day",
+        "type" : "long",
+        "nullable" : false,
+        "comment" : "Days since 1970-01-01 (numeric full-date form)"
+      }, {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar year"
+      }, {
+        "name" : "quarter",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Calendar quarter (1-4)"
+      }, {
+        "name" : "month",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Month of year (1-12)"
+      }, {
+        "name" : "day_of_month",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Day of month (1-31)"
+      }, {
+        "name" : "day_of_week_iso",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "ISO day of week (1=Monday .. 7=Sunday)"
+      }, {
+        "name" : "day_of_week_us",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "US day of week (1=Sunday .. 7=Saturday)"
+      }, {
+        "name" : "day_of_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Day of year (1-366)"
+      }, {
+        "name" : "day_of_quarter",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Day of quarter (1-92)"
+      }, {
+        "name" : "iso_week",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "ISO-8601 week of week-based year (1-53)"
+      }, {
+        "name" : "iso_week_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "ISO-8601 week-based year (may differ from year near Jan/Dec boundaries)"
+      }, {
+        "name" : "days_in_month",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Number of days in this month"
+      }, {
+        "name" : "month_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Full month name (English, e.g. January)"
+      }, {
+        "name" : "month_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Abbreviated month name (English, e.g. Jan)"
+      }, {
+        "name" : "day_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Full weekday name (English, e.g. Monday)"
+      }, {
+        "name" : "day_abbr",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Abbreviated weekday name (English, e.g. Mon)"
+      }, {
+        "name" : "year_month",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Month-grain key YYYY-MM"
+      }, {
+        "name" : "year_quarter",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Quarter-grain key YYYY-Qn"
+      }, {
+        "name" : "year_iso_week",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "ISO week-grain key YYYY-Www"
+      }, {
+        "name" : "is_weekend",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "True on Saturday or Sunday"
+      }, {
+        "name" : "is_weekday",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "True Monday through Friday"
+      }, {
+        "name" : "is_month_start",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "True on the first day of the month"
+      }, {
+        "name" : "is_month_end",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "True on the last day of the month"
+      }, {
+        "name" : "is_quarter_start",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "True on the first day of the quarter"
+      }, {
+        "name" : "is_quarter_end",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "True on the last day of the quarter"
+      }, {
+        "name" : "is_year_start",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "True on January 1"
+      }, {
+        "name" : "is_year_end",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "True on December 31"
+      }, {
+        "name" : "is_leap_year",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "True when the calendar year is a leap year"
+      }, {
+        "name" : "fiscal_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "US federal fiscal year (starts Oct 1; FK to fiscal_year.fiscal_year)"
+      }, {
+        "name" : "fiscal_quarter",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "US federal fiscal quarter (1=Oct-Dec .. 4=Jul-Sep)"
+      }, {
+        "name" : "fiscal_month",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "US federal fiscal month (1=October .. 12=September)"
+      }, {
+        "name" : "fiscal_year_label",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Fiscal year label, e.g. FY2024"
+      }, {
+        "name" : "day_of_fiscal_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Day of the federal fiscal year (1-366, from Oct 1)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "incremental" : {
+          "dateField" : "iso_date"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.ref.CalendarDataProvider"
+      },
+      "dimensions" : {
+        "type" : [ "calendar" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "batchPartitionColumns" : [ "type" ],
+          "overwritePartitions" : false,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "fiscal_year",
+      "pattern" : "type=fiscal_year.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "US federal fiscal-year dimension: one row per fiscal year (FY starts Oct 1, labelled by the calendar year it ends — FY2024 = 2023-10-01..2024-09-30). Boundary and per-quarter start dates are ISO strings that join to ref.calendar. Conformed FK target for fiscal_year across schemas (ref.calendar.fiscal_year references it). Generated by FiscalYearDataProvider — no external source. Covers FY2010 through two years past the current fiscal year.\n",
+      "columns" : [ {
+        "name" : "fiscal_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "US federal fiscal year (e.g. 2024 = 2023-10-01..2024-09-30)"
+      }, {
+        "name" : "fiscal_year_label",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Fiscal year label, e.g. FY2024"
+      }, {
+        "name" : "start_date",
+        "type" : "date",
+        "nullable" : false,
+        "comment" : "First day of the fiscal year (Oct 1 of the prior calendar year)"
+      }, {
+        "name" : "end_date",
+        "type" : "date",
+        "nullable" : false,
+        "comment" : "Last day of the fiscal year (Sep 30)"
+      }, {
+        "name" : "start_iso_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "start_date as ISO YYYY-MM-DD (FK to calendar.iso_date)"
+      }, {
+        "name" : "end_iso_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "end_date as ISO YYYY-MM-DD (FK to calendar.iso_date)"
+      }, {
+        "name" : "calendar_years",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Spanning calendar years, e.g. 2023-2024"
+      }, {
+        "name" : "days_in_fiscal_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "Number of days in the fiscal year (365 or 366)"
+      }, {
+        "name" : "q1_start_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Fiscal Q1 start (Oct 1) as ISO YYYY-MM-DD"
+      }, {
+        "name" : "q2_start_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Fiscal Q2 start (Jan 1) as ISO YYYY-MM-DD"
+      }, {
+        "name" : "q3_start_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Fiscal Q3 start (Apr 1) as ISO YYYY-MM-DD"
+      }, {
+        "name" : "q4_start_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Fiscal Q4 start (Jul 1) as ISO YYYY-MM-DD"
+      }, {
+        "name" : "prior_fiscal_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "The preceding fiscal year"
+      }, {
+        "name" : "next_fiscal_year",
+        "type" : "integer",
+        "nullable" : false,
+        "comment" : "The following fiscal year"
+      } ],
+      "source" : {
+        "type" : "http"
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.ref.FiscalYearDataProvider"
+      },
+      "dimensions" : {
+        "type" : [ "fiscal_year" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "batchPartitionColumns" : [ "type" ],
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "holidays",
+      "pattern" : "type=holidays/year=*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 44236,
+        "checkedAt" : "2026-09-12T00:15:38Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "Public holidays for every country supported by the Nager.Date API (~110), one row per (country, holiday) per year. Joins to ref.calendar via holiday_date (ISO YYYY-MM-DD) and to ref.countries via country_code (ISO 3166-1 alpha-2). Generated by HolidaysDataProvider, which pulls /api/v3/AvailableCountries then /api/v3/PublicHolidays/{year}/{country}. Source: date.nager.at (free, no API key).\n",
+      "columns" : [ {
+        "name" : "country_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "ISO 3166-1 alpha-2 country code (FK to countries.iso_alpha2)"
+      }, {
+        "name" : "country_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "English country name (Nager AvailableCountries)"
+      }, {
+        "name" : "holiday_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Holiday date ISO YYYY-MM-DD (FK to calendar.iso_date)"
+      }, {
+        "name" : "holiday_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Holiday name in English"
+      }, {
+        "name" : "local_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Holiday name in the local language"
+      }, {
+        "name" : "is_global",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "True when the holiday applies nationwide (not subdivision-scoped)"
+      }, {
+        "name" : "is_fixed",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "True when the holiday falls on the same calendar date every year"
+      }, {
+        "name" : "counties",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Comma-separated ISO-3166-2 subdivisions when the holiday is regional (else null)"
+      }, {
+        "name" : "launch_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Year the holiday was first observed, when known"
+      }, {
+        "name" : "holiday_types",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Comma-separated Nager holiday types (Public, Bank, Optional, ...)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://date.nager.at/api/v3/PublicHolidays/{year}/{countryCode}",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 5.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.ref.HolidaysDataProvider"
+      },
+      "dimensions" : {
+        "type" : [ "holidays" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "batchPartitionColumns" : [ "type", "year" ],
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "entity_org_bridge",
+      "comment" : "Tall audit/match log: one row per (source_schema, source_table, source_column, source_key) org-name mention, carrying its best-match LEI (via GLEIF fuzzy/exact match) or SEC CIK (via EIN exact match against sec.filing_metadata.irs_number). Rebuilt in full every run by EntityBridgeListener from the org-type source registry (fec, patents, sec, health, environment, energy, transport, fiscal). Absence of a row below match_score 0.85 is a clean \"no confident match\" signal, not a data gap. Primary consumers should generally query canonical_org_entity instead; use this table when the full audit trail or per-source detail matters.\n",
+      "columns" : [ {
+        "name" : "source_schema",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Owning AskAmerica schema, e.g. 'fec', 'patents', 'sec'"
+      }, {
+        "name" : "source_table",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Source table name, e.g. 'committees', 'patent_assignees'"
+      }, {
+        "name" : "source_column",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Name column matched, e.g. 'connected_org_name'; disambiguates same-table dual-role columns (eia_coal_mines controller_name vs operator_name)"
+      }, {
+        "name" : "source_key",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Registry key_column value; the normalized name itself for unstructured (name-only) sources"
+      }, {
+        "name" : "source_name_raw",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Original source name, for audit"
+      }, {
+        "name" : "source_name_normalized",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Normalized name (lowercase, punctuation/legal-suffix stripped), for debugging match misses"
+      }, {
+        "name" : "lei",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "GLEIF Legal Entity Identifier, populated for GLEIF-path matches"
+      }, {
+        "name" : "sec_cik",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "SEC CIK, populated for EIN-path matches via sec.filing_metadata.irs_number. To reach this CIK's GLEIF LEI, join ref.gleif_cik_mapping on cik = sec_cik — that table is the exact bridge (RA000665-filtered GLEIF golden copy); do not name-match sec_cik's org against gleif_entities.legal_name.\n"
+      }, {
+        "name" : "gleif_legal_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Denormalized from ref.gleif_entities, avoids a join for the common case"
+      }, {
+        "name" : "match_method",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "exact_ein | exact_normalized | fuzzy"
+      }, {
+        "name" : "match_confidence",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "high | low | ambiguous. high/low apply to fuzzy matches (score-threshold split); exact_ein is always high (EIN->CIK is 1:1 by construction). exact_normalized is high only when the normalized name resolves to exactly one GLEIF LEI; when it resolves to more than one (Defect Register B2-1 -- e.g. 6 distinct LEIs shared source_name_normalized='apple' before this fix), every candidate row is still written but labelled ambiguous rather than asserted as equally high-confidence.\n"
+      }, {
+        "name" : "match_score",
+        "type" : "double",
+        "nullable" : false,
+        "comment" : "1.0 for exact; raw jaro_winkler_similarity for fuzzy"
+      }, {
+        "name" : "match_run_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "ISO timestamp of the build run, so bridge quality is diffable across reruns"
+      } ],
+      "hooks" : {
+        "enabled" : false
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "targetTableId" : "entity_org_bridge",
+        "columns" : [ {
+          "name" : "source_schema",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "source_table",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "source_column",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "source_key",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "source_name_raw",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "source_name_normalized",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "lei",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "sec_cik",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "gleif_legal_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "match_method",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "match_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "match_score",
+          "type" : "DOUBLE"
+        }, {
+          "name" : "match_run_id",
+          "type" : "VARCHAR"
+        } ],
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 5000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "sortOrder" : [ "source_name_normalized", "lei" ]
+        }
+      }
+    }, {
+      "name" : "entity_person_bridge",
+      "comment" : "Tall N-way pairwise person-match log across person-type sources (fec.candidates, sec.insider_transactions individual-type rows, health.cms_open_payments, transport.faa_aircraft_registry individual-type registrants). One row per matched pair of source entities; only holds rows where a match was found — most people known to one source are never in another, so a \"no match\" majority is expected and not written. A person appearing in 3+ sources yields multiple pairwise rows rather than one N-ary row. Rebuilt in full every run.\n",
+      "columns" : [ {
+        "name" : "source_a_schema",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "First side of the match — owning schema"
+      }, {
+        "name" : "source_a_table",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "First side of the match — source table"
+      }, {
+        "name" : "source_a_key",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "First side of the match — registry key_column value"
+      }, {
+        "name" : "source_a_name_raw",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "First side of the match — original raw name"
+      }, {
+        "name" : "source_b_schema",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Second side of the match — owning schema"
+      }, {
+        "name" : "source_b_table",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Second side of the match — source table"
+      }, {
+        "name" : "source_b_key",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Second side of the match — registry key_column value"
+      }, {
+        "name" : "source_b_name_raw",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Second side of the match — original raw name"
+      }, {
+        "name" : "match_method",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "exact_normalized | fuzzy_first_name"
+      }, {
+        "name" : "match_confidence",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "high | low — low is never silently promoted"
+      }, {
+        "name" : "match_score",
+        "type" : "double",
+        "nullable" : false,
+        "comment" : "First-name jaro_winkler_similarity for fuzzy rows; 1.0 for exact"
+      }, {
+        "name" : "match_run_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "ISO timestamp, diffable across reruns"
+      } ],
+      "hooks" : {
+        "enabled" : false
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "targetTableId" : "entity_person_bridge",
+        "columns" : [ {
+          "name" : "source_a_schema",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "source_a_table",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "source_a_key",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "source_a_name_raw",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "source_b_schema",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "source_b_table",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "source_b_key",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "source_b_name_raw",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "match_method",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "match_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "match_score",
+          "type" : "DOUBLE"
+        }, {
+          "name" : "match_run_id",
+          "type" : "VARCHAR"
+        } ],
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 5000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "sortOrder" : [ "source_a_name_raw", "source_b_name_raw" ]
+        }
+      }
+    }, {
+      "name" : "canonical_org_entity",
+      "comment" : "THE CROSS-SOURCE JOIN TABLE FOR ORGANISATIONS — a wide crosswalk you join on, carrying one nullable foreign key per source alongside a _confidence sibling for each. Use it to define a SET by exact predicate rather than by matching names: \"every firm that files with the SEC and holds patents\" is `WHERE sec_cik IS NOT NULL AND patents_assignee_id IS NOT NULL`, then a direct join to sec.filing_metadata on cik and patents.patent_assignees on assignee_id. No name matching, no match rate, no candidate review. The resolve_entity tool is for the other case — a person handed you one name and you need its keys.\nOne row per SOURCE MENTION, not per real-world org: a company whose patents are split across three assignee_ids gets three rows, all sharing one canonical_entity_id and canonical_name, each carrying a different patents_assignee_id. Identity columns (canonical_name, lei, sec_cik) are resolved across the whole org and repeated on every one of its rows, so a cross-source predicate still matches on a single row — and now returns every key a source holds for that org rather than one arbitrary representative. COUNT rows here and you are counting mentions; COUNT DISTINCT canonical_entity_id to count organisations. An org identified only in patents.patent_assignees (never resolved) still gets a row, with lei left null. Nullable FK columns point at each source's natural key; a \"_confidence\" sibling column (high | low | null) accompanies every FK.\nConsumer tables, each carrying a cross-reference back to its own FK column here: fec.committees (fec_committee_id), sec.insider_transactions (sec_reporting_person_cik), sec.institutional_holdings (sec_manager_cik), patents.patent_assignees (patents_assignee_id), patents.trademark_owner (patents_trademark_owner_id), health.fda_drug_approvals (fda_sponsor_name), health.fda_drug_recalls (fda_drug_recalling_firm), health.fda_device_recalls (fda_device_recalling_firm), health.fda_ndc_products (fda_labeler_name), health.cms_open_payments (cms_paying_entity_name), health.clinical_trials (clinical_trials_nct_id), environment.ghg_facilities (ghg_parent_company_name), energy.eia_utility_annual (eia_utility_id), energy.eia_coal_mines (eia_coal_controller_name, eia_coal_operator_name), transport.fmcsa_carriers (fmcsa_dot_number), transport.faa_aircraft_registry (faa_registrant_name), fiscal.exempt_org_master (exempt_org_ein), fiscal.sba_loan_approvals (sba_borrower_name, sba_lender_name), research.nsf_herd_by_institution (nsf_herd_inst_id), edu.ipeds_institutions (ipeds_unitid). Structured-key sources (a per-row id/CIK/EIN already on the source table — fec_committee_id, sec_reporting_person_cik, sec_manager_cik, patents_assignee_id, patents_trademark_owner_id, eia_utility_id, fmcsa_dot_number, exempt_org_ein, clinical_trials_nct_id, ipeds_unitid) get an exact join here on that id; unstructured sources (name-only, no per-row id) get the fuzzy-resolved identity this table already carries, so a cross-schema link still avoids re-running the fuzzy match by hand.\n",
+      "columns" : [ {
+        "name" : "canonical_entity_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Surrogate PK — the LEI when present; the SEC CIK when EIN-matched but no LEI; else a deterministic hash of the first-seen (source_schema, source_table, source_column, source_key)"
+      }, {
+        "name" : "canonical_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "GLEIF legal_name when lei is populated, else the longest/most-complete raw source name seen"
+      }, {
+        "name" : "lei",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "sec_cik",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Via EIN exact match against sec.filing_metadata.irs_number"
+      }, {
+        "name" : "fec_committee_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Scalar FK, safe 1:1 — a committee represents one org"
+      }, {
+        "name" : "fec_committee_id_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "sec_reporting_person_cik",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity-type SEC insiders — SEC's own stable per-filer ID, safe 1:1"
+      }, {
+        "name" : "sec_reporting_person_cik_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "patents_assignee_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "PatentsView assignee_id. Its disambiguation is imperfect, so one company can hold several — measured 5,224 companies split across 13,650 ids, one holding 78. Each gets its own row (see this table's grain), so joining patents.patent_assignees on this column reaches all of a company's patents.\n"
+      }, {
+        "name" : "patents_assignee_id_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "fda_sponsor_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Unstructured source, keyed by normalized name"
+      }, {
+        "name" : "fda_sponsor_name_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "ghg_parent_company_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Unstructured source, keyed by normalized name"
+      }, {
+        "name" : "ghg_parent_company_name_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "cms_paying_entity_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Unstructured source, keyed by normalized name"
+      }, {
+        "name" : "cms_paying_entity_name_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "eia_utility_id",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "eia_utility_id_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "eia_coal_controller_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mine controller — logically distinct from operator, same source table"
+      }, {
+        "name" : "eia_coal_controller_name_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "eia_coal_operator_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mine operator — logically distinct from controller, same source table"
+      }, {
+        "name" : "eia_coal_operator_name_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "fmcsa_dot_number",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Lossy potential given ~4.47M-row source scale — see table comment"
+      }, {
+        "name" : "fmcsa_dot_number_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "faa_registrant_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Unstructured, entity-type registrants only (registrant_type != Individual)"
+      }, {
+        "name" : "faa_registrant_name_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "exempt_org_ein",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "EIN exact-match hub key, alongside GLEIF LEI"
+      }, {
+        "name" : "exempt_org_ein_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "sba_borrower_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Unstructured, distinct role from lender on the same source table"
+      }, {
+        "name" : "sba_borrower_name_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "sba_lender_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Unstructured, distinct role from borrower on the same source table"
+      }, {
+        "name" : "sba_lender_name_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "sec_manager_cik",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Form 13F institutional investment manager, SEC's own stable per-filer ID"
+      }, {
+        "name" : "sec_manager_cik_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "patents_trademark_owner_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "USPTO trademark applicant/owner (own_id), org-shaped rows"
+      }, {
+        "name" : "patents_trademark_owner_id_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "fda_device_recalling_firm",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Structural twin of fda_drug_recalling_firm below, for medical device recalls"
+      }, {
+        "name" : "fda_device_recalling_firm_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "fda_labeler_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Lossy potential — product_ndc is per-product, many products share one labeler"
+      }, {
+        "name" : "fda_labeler_name_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "nsf_herd_inst_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "NSF HERD survey institution; ipeds_unitid below is the same real institution via a different registry"
+      }, {
+        "name" : "nsf_herd_inst_id_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "ipeds_unitid",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "NCES IPEDS institution directory"
+      }, {
+        "name" : "ipeds_unitid_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "clinical_trials_nct_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ClinicalTrials.gov lead sponsor"
+      }, {
+        "name" : "clinical_trials_nct_id_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "fda_drug_recalling_firm",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "FDA drug (not device) recall — recall_number is per-recall, not per-firm"
+      }, {
+        "name" : "fda_drug_recalling_firm_confidence",
+        "type" : "string",
+        "nullable" : true
+      } ],
+      "hooks" : {
+        "enabled" : true
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "targetTableId" : "canonical_org_entity",
+        "columns" : [ {
+          "name" : "canonical_entity_id",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "canonical_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "lei",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "sec_cik",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fec_committee_id",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fec_committee_id_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "sec_reporting_person_cik",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "sec_reporting_person_cik_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "patents_assignee_id",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "patents_assignee_id_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fda_sponsor_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fda_sponsor_name_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "ghg_parent_company_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "ghg_parent_company_name_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "cms_paying_entity_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "cms_paying_entity_name_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "eia_utility_id",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "eia_utility_id_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "eia_coal_controller_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "eia_coal_controller_name_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "eia_coal_operator_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "eia_coal_operator_name_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fmcsa_dot_number",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fmcsa_dot_number_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "faa_registrant_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "faa_registrant_name_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "exempt_org_ein",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "exempt_org_ein_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "sba_borrower_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "sba_borrower_name_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "sba_lender_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "sba_lender_name_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "sec_manager_cik",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "sec_manager_cik_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "patents_trademark_owner_id",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "patents_trademark_owner_id_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fda_device_recalling_firm",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fda_device_recalling_firm_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fda_labeler_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fda_labeler_name_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "nsf_herd_inst_id",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "nsf_herd_inst_id_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "ipeds_unitid",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "ipeds_unitid_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "clinical_trials_nct_id",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "clinical_trials_nct_id_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fda_drug_recalling_firm",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fda_drug_recalling_firm_confidence",
+          "type" : "VARCHAR"
+        } ],
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 5000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "sortOrder" : [ "lei", "canonical_name" ]
+        }
+      }
+    }, {
+      "name" : "canonical_person_entity",
+      "comment" : "One row per real-world person known to any person-type registry source, whether or not they cross-matched another source. A row with 2+ FKs populated is a person-track match (e.g. a political candidate who is also a corporate insider); a row with only one FK populated is simply \"known to that one source, never cross-matched\" — both are legitimate outcomes. No third-party canonical individual registry exists (unlike GLEIF for orgs), so these FKs are direct pairwise links between source pools, not resolutions to an external hub.\n",
+      "columns" : [ {
+        "name" : "canonical_entity_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Surrogate PK — deterministic hash of the first-seen source key; no external hub key exists for individuals"
+      }, {
+        "name" : "canonical_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Best-available parsed (first, last) name"
+      }, {
+        "name" : "fec_candidate_id",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "fec_candidate_id_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "sec_reporting_person_cik",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Already 1:1 by SEC's own construction"
+      }, {
+        "name" : "sec_reporting_person_cik_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "cms_physician_profile_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Already 1:1 by CMS's own construction"
+      }, {
+        "name" : "cms_physician_profile_id_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "faa_registrant_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Unstructured, individual-type registrants only"
+      }, {
+        "name" : "faa_registrant_name_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "patents_individual_assignee_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "patents.patent_assignees rows where assignee_type is '4' (US individual) or '5' (foreign individual) — a patent assigned directly to a person rather than a company. Distinct from the org-track's patents_assignee_id (canonical_org_entity), which only covers assignee_type '2'/'3' (company rows).\n"
+      }, {
+        "name" : "patents_individual_assignee_id_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "officials_member_bioguide_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "House/Senate member, Congress.gov's own stable per-member ID"
+      }, {
+        "name" : "officials_member_bioguide_id_confidence",
+        "type" : "string",
+        "nullable" : true
+      }, {
+        "name" : "officials_judge_jid",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Article III federal judge, FJC's own stable per-judge ID"
+      }, {
+        "name" : "officials_judge_jid_confidence",
+        "type" : "string",
+        "nullable" : true
+      } ],
+      "hooks" : {
+        "enabled" : true
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "targetTableId" : "canonical_person_entity",
+        "columns" : [ {
+          "name" : "canonical_entity_id",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "canonical_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fec_candidate_id",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "fec_candidate_id_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "sec_reporting_person_cik",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "sec_reporting_person_cik_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "cms_physician_profile_id",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "cms_physician_profile_id_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "faa_registrant_name",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "faa_registrant_name_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "patents_individual_assignee_id",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "patents_individual_assignee_id_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "officials_member_bioguide_id",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "officials_member_bioguide_id_confidence",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "officials_judge_jid",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "officials_judge_jid_confidence",
+          "type" : "VARCHAR"
+        } ],
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 5000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "sortOrder" : [ "canonical_name", "canonical_entity_id" ]
+        }
+      }
+    } ],
+    "comment" : "Reference and cross-referencing tables for financial entity identification. Links SEC CIK identifiers to GLEIF LEI codes and OpenFIGI instrument identifiers. Enables cross-system entity resolution for financial data analysis.\n",
+    "compaction_defaults" : {
+      "compactionTargetFileSizeBytes" : 134217728,
+      "runCompaction" : true,
+      "compactionMinFiles" : 5
+    },
+    "dataSource" : "ref"
+  },
+  "parentSchema" : "",
+  "generatedAt" : "2026-09-19T10:18:39.574448Z",
+  "schemaName" : "ref"
+}

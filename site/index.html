@@ -54,7 +54,7 @@
         <span class="hero-badge"><span class="hero-badge-dot"></span>The hosted service is live — start a free trial today</span>
         <h1>Query all your data<br />in 3 languages in any tool.<br />In 5 minutes.</h1>
         <p class="lead">
-          Connect your databases once. Then query them in <strong>GraphQL, SQL, or
+          Connect your data once. Query in <strong>GraphQL, SQL, or
           Cypher</strong> — from psql, Tableau, Neo4j Browser, or an AI agent. Governance
           is compiled into the query plan, so there's no way in that goes around it.
         </p>
@@ -66,7 +66,6 @@
         <p class="hero-try">
           <span class="hero-try-lead">Nothing to connect yet?</span>
           <a class="hero-try-cta" href="#download">Download and take the demo tour</a>
-          <span class="hero-try-tail">— a sample federation is bundled, so there is nothing to connect first.</span>
         </p>
 
         <div class="proto">
@@ -85,6 +84,9 @@
                 </button>
                 <button class="proto-tab" role="tab" id="tab-rest" aria-controls="panel-rest" aria-selected="false" tabindex="-1">
                   <span class="proto-lang">REST</span><span class="proto-wire">OpenAPI</span>
+                </button>
+                <button class="proto-tab" role="tab" id="tab-grpc" aria-controls="panel-grpc" aria-selected="false" tabindex="-1">
+                  <span class="proto-lang">gRPC</span><span class="proto-wire">HTTP/2</span>
                 </button>
               </div>
             </div>
@@ -139,6 +141,20 @@
 <span class="c-comment"># The spec is generated too — point a client generator at it</span>
 <span class="c-cmd">curl</span> https://provisa.internal<span class="c-flag">/data/jsonapi/openapi.json</span></code></pre>
             </div>
+
+            <div class="proto-panel" role="tabpanel" id="panel-grpc" aria-labelledby="tab-grpc" hidden>
+              <pre><code><span class="c-comment"># A .proto generated from your schema — typed RPCs per table</span>
+<span class="c-cmd">grpcurl</span> <span class="c-flag">-d</span> <span class="c-str">'{"total_gt": 1000}'</span> provisa.internal:443 \
+  <span class="c-flag">provisa.orders.OrdersService/Query</span>
+
+<span class="c-comment"># The same question — a typed response, no schema drift possible</span>
+<span class="c-kw">message</span> Order {
+  <span class="c-kw">string</span> id = 1;
+  <span class="c-kw">double</span> total = 2;
+  Customer customer = 3;
+  <span class="c-kw">repeated</span> Query queries = 4;
+}</code></pre>
+            </div>
           </div>
 
           <p class="proto-note">
@@ -184,7 +200,7 @@
             Connect the BI tool over JDBC or pgwire and join across all of them — no
             pipeline, no copy, no warehouse in the middle.
           </p>
-          <span class="job-more">All 53 source types &rarr;</span>
+          <span class="job-more">All 54 source types &rarr;</span>
         </a>
         <a class="job" href="/why/interfaces">
           <p class="job-tag">Data science, connected</p>
@@ -400,7 +416,7 @@
       <div class="container">
         <header class="section-head">
           <p class="eyebrow">Data sources</p>
-          <h2>53 source types through one API.</h2>
+          <h2>54 source types through one API.</h2>
           <p class="section-sub">
             Graph and RDF sources are first-class, not adapters. Register REST, GraphQL,
             gRPC, WebSocket, or RSS endpoints as governed tables — federated joins across
@@ -417,7 +433,7 @@
           <li>REST APIs</li><li>GraphQL APIs</li><li>gRPC APIs</li><li>RSS · WebSocket</li>
         </ul>
 
-        <a class="more" href="/why/sources#the-53">See all 53 source types</a>
+        <a class="more" href="/why/sources#the-53">See all 54 source types</a>
 
         <div class="spot">
           <div class="spot-head">
@@ -430,7 +446,7 @@
               <p class="eyebrow">Auto-indexing file crawler</p>
               <h3>Point it at a location. Get a catalog of the data hiding in it.</h3>
               <p class="spot-lead">
-                One of the 53 behaves unlike the other fifty-two: you register a
+                One of the 54 behaves unlike the other fifty-three: you register a
                 <em>location</em>, not a table. It walks the tree recursively, introspects
                 every data file it finds, and catalogs each one as an available table —
                 the shared drive nobody has mapped, the S3 prefix of extracts, the

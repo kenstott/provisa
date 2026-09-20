@@ -1,0 +1,877 @@
+{
+  "operands" : {
+    "_storageProvider" : "S3StorageProvider",
+    "_incrementalTracker" : "ReadOnlyPipelineTracker",
+    "schemaName" : "econ_reference",
+    "ephemeralCache" : false,
+    "constraints" : {
+      "fred_series" : {
+        "primaryKey" : [ "category", "series" ],
+        "indexes" : [ [ "title" ], [ "units" ], [ "frequency_short" ], [ "seasonal_adjustment" ] ]
+      },
+      "jolts_dataelements" : {
+        "primaryKey" : [ "dataelement_code" ],
+        "comment" : "Reference dimension table for JOLTS metric codes and descriptions"
+      },
+      "bls_geographies" : {
+        "primaryKey" : [ "geo_code" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links BLS state geography codes to Census TIGER state boundaries (for geo_type='state' records)"
+        }, {
+          "columns" : [ "cbsa_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "cbsa",
+          "targetColumns" : [ "cbsa_fips" ],
+          "comment" : "Links BLS metro areas to Census CBSA geographic boundaries (for geo_type='metro' records)"
+        } ],
+        "comment" : "Reference table mapping BLS geography codes to FIPS codes, CBSA codes, and Census regions"
+      },
+      "nipa_tables" : {
+        "primaryKey" : [ "table_name" ],
+        "comment" : "Reference dimension table for NIPA table classifications and descriptions. PK is table_name alone — the former section categorization named in an earlier PK here was never populated and the partition column was renamed section->type in commit a2c400aaa, so the table no longer has a section column (see the columns block above and national_accounts_enriched's comment in econ-schema.yaml). table_name unique is a correctness fact about this table, not a query-planner lever: national_accounts_enriched's LEFT JOIN against it can't be skipped based on that uniqueness, and skipping it would only drop this table's own small scan anyway — table_id is sourced from national_accounts, the large side of that join, not from here. Discovering table_id values cheaply means querying national_accounts_tables directly, not DISTINCT-ing through national_accounts_enriched.\n"
+      },
+      "regional_linecodes" : {
+        "primaryKey" : [ "tablename", "LineCode" ],
+        "comment" : "Reference dimension table for BEA Regional table LineCode classifications and descriptions. Composite key includes partition columns (type, tablename) and LineCode data column."
+      },
+      "naics_sectors" : {
+        "primaryKey" : [ "supersector_code" ],
+        "comment" : "Reference dimension table for NAICS supersector industry classifications. PK is supersector_code alone; the 'type' partition column is a constant physical discriminator ('naics_sectors') and carries no identity, so it is excluded from the logical key. This lets state_industry/metro_industry FKs reference the real primary key rather than a PK subset.\n"
+      },
+      "jolts_industries" : {
+        "primaryKey" : [ "industry_code" ],
+        "comment" : "Reference dimension table for JOLTS industry classifications"
+      }
+    },
+    "directory" : "s3://govdata-parquet-v1",
+    "canonicalSchemaName" : "econ_reference",
+    "operatingDirectory" : "/Users/kennethstott/.provisa_askamerica/data/econ_reference",
+    "column_templates" : {
+      "series_column" : {
+        "name" : "series",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "BLS series identifier"
+      },
+      "industry_name_column" : {
+        "name" : "industry_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Industry name"
+      },
+      "partition_year" : {
+        "name" : "year",
+        "type" : "INTEGER"
+      },
+      "value_column" : {
+        "name" : "value",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Numeric value for the metric"
+      },
+      "percent_change_year_column" : {
+        "name" : "percent_change_year",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Year-over-year percentage change"
+      },
+      "state_name_column" : {
+        "name" : "state_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "State name"
+      },
+      "date_column" : {
+        "name" : "date",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Observation date (ISO 8601 format)"
+      },
+      "standard_partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "frequency",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "percent_change_month_column" : {
+        "name" : "percent_change_month",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Month-over-month percentage change"
+      },
+      "state_fips_column" : {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "State FIPS code"
+      },
+      "partition_frequency" : {
+        "name" : "frequency",
+        "type" : "VARCHAR"
+      },
+      "partition_type" : {
+        "name" : "type",
+        "type" : "VARCHAR"
+      }
+    },
+    "dimension_values" : {
+      "econ_reference_year_range" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataLag" : 0
+      }
+    },
+    "database_filename" : "/Users/kennethstott/.provisa_askamerica/data/.duckdb/govdata.duckdb",
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
+    "materializeDirectory" : "s3://govdata-parquet-v1",
+    "storageConfig" : {
+      "accessKeyId" : "********",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "actualSchemaName" : "econ_reference",
+    "autoDownload" : false,
+    "s3Config" : {
+      "accessKeyId" : "****e4dc",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "executionEngine" : "duckdb",
+    "tableConstraints" : {
+      "fred_series" : {
+        "primaryKey" : [ "category", "series" ],
+        "indexes" : [ [ "title" ], [ "units" ], [ "frequency_short" ], [ "seasonal_adjustment" ] ]
+      },
+      "jolts_dataelements" : {
+        "primaryKey" : [ "dataelement_code" ],
+        "comment" : "Reference dimension table for JOLTS metric codes and descriptions"
+      },
+      "bls_geographies" : {
+        "primaryKey" : [ "geo_code" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links BLS state geography codes to Census TIGER state boundaries (for geo_type='state' records)"
+        }, {
+          "columns" : [ "cbsa_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "cbsa",
+          "targetColumns" : [ "cbsa_fips" ],
+          "comment" : "Links BLS metro areas to Census CBSA geographic boundaries (for geo_type='metro' records)"
+        } ],
+        "comment" : "Reference table mapping BLS geography codes to FIPS codes, CBSA codes, and Census regions"
+      },
+      "nipa_tables" : {
+        "primaryKey" : [ "table_name" ],
+        "comment" : "Reference dimension table for NIPA table classifications and descriptions. PK is table_name alone — the former section categorization named in an earlier PK here was never populated and the partition column was renamed section->type in commit a2c400aaa, so the table no longer has a section column (see the columns block above and national_accounts_enriched's comment in econ-schema.yaml). table_name unique is a correctness fact about this table, not a query-planner lever: national_accounts_enriched's LEFT JOIN against it can't be skipped based on that uniqueness, and skipping it would only drop this table's own small scan anyway — table_id is sourced from national_accounts, the large side of that join, not from here. Discovering table_id values cheaply means querying national_accounts_tables directly, not DISTINCT-ing through national_accounts_enriched.\n"
+      },
+      "regional_linecodes" : {
+        "primaryKey" : [ "tablename", "LineCode" ],
+        "comment" : "Reference dimension table for BEA Regional table LineCode classifications and descriptions. Composite key includes partition columns (type, tablename) and LineCode data column."
+      },
+      "naics_sectors" : {
+        "primaryKey" : [ "supersector_code" ],
+        "comment" : "Reference dimension table for NAICS supersector industry classifications. PK is supersector_code alone; the 'type' partition column is a constant physical discriminator ('naics_sectors') and carries no identity, so it is excluded from the logical key. This lets state_industry/metro_industry FKs reference the real primary key rather than a PK subset.\n"
+      },
+      "jolts_industries" : {
+        "primaryKey" : [ "industry_code" ],
+        "comment" : "Reference dimension table for JOLTS industry classifications"
+      }
+    },
+    "testMode" : false,
+    "partitionedTables" : [ {
+      "name" : "jolts_industries",
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "jolts_industries.parquet",
+      "sourcePaths" : {
+        "ftpFiles" : [ {
+          "cachePath" : "type=jolts_ftp/jt.industry",
+          "url" : "https://download.bls.gov/pub/time.series/jt/jt.industry",
+          "comment" : "JOLTS industry code reference file"
+        } ]
+      },
+      "comment" : "JOLTS industry code reference table from BLS. Maps industry codes to human-readable industry names for JOLTS data (jolts_regional, jolts_state tables). Essential dimension table for decoding JOLTS industry classifications.\n",
+      "columns" : [ {
+        "name" : "industry_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "JOLTS industry code"
+      }, {
+        "name" : "industry_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Industry name",
+        "source" : "industry_text"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://download.bls.gov/pub/time.series/jt/jt.industry",
+        "method" : "GET",
+        "headers" : {
+          "User-Agent" : "calcite-govdata (+mailto:kennethstott@gmail.com)",
+          "Accept" : "text/plain, text/tab-separated-values, */*",
+          "Accept-Language" : "en-US,en;q=0.9"
+        },
+        "response" : {
+          "format" : "tsv"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "jolts_industries" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "jolts_dataelements",
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "jolts_dataelements.parquet",
+      "sourcePaths" : {
+        "ftpFiles" : [ {
+          "cachePath" : "type=jolts_ftp/jt.dataelement",
+          "url" : "https://download.bls.gov/pub/time.series/jt/jt.dataelement",
+          "comment" : "JOLTS data element code reference file"
+        } ]
+      },
+      "comment" : "JOLTS data element code reference table from BLS. Maps metric codes (JOR, HIR, QUR, TSR, LDR) to descriptions (Job Openings Rate, Hires Rate, etc.). Essential dimension table for understanding JOLTS metrics in jolts_regional and jolts_state tables.\n",
+      "columns" : [ {
+        "name" : "dataelement_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "JOLTS data element code"
+      }, {
+        "name" : "dataelement_text",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data element description"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://download.bls.gov/pub/time.series/jt/jt.dataelement",
+        "method" : "GET",
+        "headers" : {
+          "User-Agent" : "calcite-govdata (+mailto:kennethstott@gmail.com)",
+          "Accept" : "text/plain, text/tab-separated-values, */*",
+          "Accept-Language" : "en-US,en;q=0.9"
+        },
+        "response" : {
+          "format" : "tsv"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "jolts_dataelements" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "bls_geographies",
+      "pattern" : "bls_geographies.parquet",
+      "comment" : "BLS geography reference table mapping state abbreviations to FIPS codes, census regions, metro areas, and BLS-specific area codes. Consolidates STATE_FIPS_MAP, CENSUS_REGIONS, METRO_AREA_CODES, METRO_CPI_CODES, and METRO_BLS_AREA_CODES into a single catalog-driven table. Enables dynamic geography lookups without hardcoded maps.\n",
+      "columns" : [ {
+        "name" : "geo_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Primary geography code (state abbreviation, metro code like 'A100', or region code)"
+      }, {
+        "name" : "geo_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Geography name (e.g., 'California', 'New York-Newark-Jersey City, NY-NJ-PA', 'Northeast')"
+      }, {
+        "name" : "geo_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Geography type: 'state', 'metro', 'region'"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-digit state FIPS code (e.g., '06' for CA, '36' for NY). NULL for regions."
+      }, {
+        "name" : "region_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "4-digit census region code for regions (e.g., '0100' for Northeast). NULL for states/metros."
+      }, {
+        "name" : "metro_publication_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "BLS publication code for metro areas (e.g., 'A100' for NYC). NULL for states/regions."
+      }, {
+        "name" : "metro_cpi_area_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CPI area code for metro CPI series (e.g., 'S35D' for NYC). NULL if metro lacks CPI data or for states/regions."
+      }, {
+        "name" : "metro_bls_area_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "7-digit BLS area code for metro employment series (state FIPS + 5-digit area code, e.g., '3693561' for NYC). NULL for states/regions."
+      }, {
+        "name" : "cbsa_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "5-digit OMB Core Based Statistical Area code (e.g., '35620' for NYC). NULL for states/regions. Enables joins to geo.cbsa for geographic boundaries."
+      } ],
+      "source" : {
+        "type" : "constants",
+        "file" : "/bls/bls-geographies.yaml",
+        "path" : "geographies"
+      },
+      "dimensions" : {
+        "type" : [ "bls_geographies" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "naics_sectors",
+      "pattern" : "naics_sectors.parquet",
+      "comment" : "BLS NAICS supersector reference table mapping supersector codes to industry names. Consolidates NAICS_SUPERSECTORS hardcoded map. Used for state_industry_employment, metro_industry_employment, and other industry-based BLS series.\n",
+      "columns" : [ {
+        "name" : "supersector_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "8-digit NAICS supersector code (e.g., '00000000' for total nonfarm, '05000000' for construction)"
+      }, {
+        "name" : "supersector_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Industry supersector name (e.g., 'Total Nonfarm', 'Construction', 'Manufacturing')"
+      } ],
+      "download" : null,
+      "source" : {
+        "type" : "constants",
+        "file" : "/bls/bls-constants.yaml",
+        "path" : "naicsSupersectors",
+        "keyColumn" : "supersector_code",
+        "valueColumn" : "supersector_name"
+      },
+      "dimensions" : {
+        "type" : [ "naics_sectors" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "nipa_tables",
+      "pattern" : "type=nipa_tables/*.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "BEA NIPA (National Income and Product Accounts) table reference catalog: maps each NIPA table_name code (e.g., 'T10105', 'T20100') to its BEA description. Static lookup only (table_name, description columns, no year/time dimension), downloaded early to enable dynamic discovery of available NIPA tables before the main NIPA data pull.\n",
+      "columns" : [ {
+        "name" : "table_name",
+        "type" : "string",
+        "source" : "TableName",
+        "nullable" : true,
+        "comment" : "NIPA table code (e.g., 'T10105', 'T20100')"
+      }, {
+        "name" : "description",
+        "type" : "string",
+        "source" : "Description",
+        "nullable" : true,
+        "comment" : "Full table description from BEA including frequency indicators (A, Q)"
+      } ],
+      "download" : {
+        "enabled" : true,
+        "method" : "GET",
+        "baseUrl" : "https://apps.bea.gov/api/data",
+        "authentication" : {
+          "type" : "query_param",
+          "paramName" : "UserID",
+          "envVar" : "BEA_API_KEY"
+        },
+        "queryParams" : {
+          "UserID" : {
+            "type" : "auth"
+          },
+          "method" : {
+            "type" : "constant",
+            "value" : "GetParameterValues"
+          },
+          "datasetname" : {
+            "type" : "constant",
+            "value" : "NIPA"
+          },
+          "ParameterName" : {
+            "type" : "constant",
+            "value" : "TableName"
+          },
+          "ResultFormat" : {
+            "type" : "constant",
+            "value" : "JSON"
+          }
+        },
+        "cachePattern" : "type=reference/nipa_tables.json",
+        "response" : {
+          "format" : "json",
+          "dataPath" : "BEAAPI.Results.ParamValue"
+        },
+        "rateLimit" : {
+          "minIntervalMs" : 500,
+          "maxRetries" : 3,
+          "retryDelayMs" : 5000
+        },
+        "earlyDownload" : true
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://apps.bea.gov/api/data",
+        "method" : "GET",
+        "parameters" : {
+          "UserID" : "{env:BEA_API_KEY}",
+          "method" : "GetParameterValues",
+          "DataSetName" : "NIPA",
+          "ParameterName" : "TableName",
+          "ResultFormat" : "JSON"
+        },
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.5,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.econ.BeaResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "nipa_tables" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type=nipa_tables/"
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "regional_linecodes",
+      "pattern" : "tablename=*/reference_regional_linecodes.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "tablename",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "BEA Regional dataset LineCode catalog. Maps table-specific line codes (key) to their descriptions (desc) for the 56 tracked BEA Regional tables (SAINC*, SQINC*, CAINC*, SAGDP*, SQGDP*, CAGDP* series). Each Regional table has its own set of valid LineCodes, so this catalog is fetched first (one API call per tablename) to enable complete regional data collection without hardcoded LineCode limitations.\n",
+      "columns" : [ {
+        "name" : "key",
+        "type" : "string",
+        "source" : "Key",
+        "nullable" : true,
+        "comment" : "Line code identifier from BEA API (e.g., '10', '20', '30')"
+      }, {
+        "name" : "desc",
+        "type" : "string",
+        "source" : "Desc",
+        "nullable" : true,
+        "comment" : "Line code description from BEA API (e.g., 'Personal income', 'Compensation of employees')"
+      } ],
+      "download" : {
+        "enabled" : true,
+        "method" : "GET",
+        "baseUrl" : "https://apps.bea.gov/api/data",
+        "authentication" : {
+          "type" : "query_param",
+          "paramName" : "UserID",
+          "envVar" : "BEA_API_KEY"
+        },
+        "queryParams" : {
+          "UserID" : {
+            "type" : "auth"
+          },
+          "method" : {
+            "type" : "constant",
+            "value" : "GetParameterValuesFiltered"
+          },
+          "datasetname" : {
+            "type" : "constant",
+            "value" : "Regional"
+          },
+          "TargetParameter" : {
+            "type" : "constant",
+            "value" : "LineCode"
+          },
+          "TableName" : {
+            "type" : "expression",
+            "value" : "{tablename}"
+          },
+          "ResultFormat" : {
+            "type" : "constant",
+            "value" : "JSON"
+          }
+        },
+        "tableNamesList" : [ "SAINC1", "SAINC30", "SAINC35", "SAINC4", "SAINC40", "SAINC50", "SAINC51", "SAINC5H", "SAINC5N", "SAINC5S", "SAINC6N", "SAINC6S", "SAINC70", "SAINC7H", "SAINC7N", "SAINC7S", "SAINC91", "SQINC1", "SQINC35", "SQINC4", "SQINC5H", "SQINC5N", "SQINC5S", "SQINC6N", "SQINC6S", "SQINC7H", "SQINC7N", "SQINC7S", "CAINC1", "CAINC30", "CAINC4", "CAINC5N", "CAINC5S", "CAINC6N", "CAINC6S", "CAINC91", "SAGDP1", "SAGDP2", "SAGDP3", "SAGDP4", "SAGDP5", "SAGDP6", "SAGDP7", "SAGDP8", "SAGDP9", "SAGDP11", "SQGDP1", "SQGDP2", "SQGDP8", "SQGDP9", "SQGDP11", "CAGDP1", "CAGDP2", "CAGDP8", "CAGDP9", "CAGDP11" ],
+        "response" : {
+          "format" : "json",
+          "dataPath" : "BEAAPI.Results.ParamValue"
+        },
+        "rateLimit" : {
+          "minIntervalMs" : 500,
+          "maxRetries" : 3,
+          "retryDelayMs" : 5000
+        },
+        "earlyDownload" : true
+      },
+      "source" : {
+        "type" : "http",
+        "url" : "https://apps.bea.gov/api/data",
+        "method" : "GET",
+        "parameters" : {
+          "UserID" : "{env:BEA_API_KEY}",
+          "method" : "GetParameterValuesFiltered",
+          "DataSetName" : "Regional",
+          "TargetParameter" : "LineCode",
+          "TableName" : "{tablename}",
+          "ResultFormat" : "JSON"
+        },
+        "response" : {
+          "format" : "json",
+          "errorPath" : "BEAAPI.Results.Error"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.5,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "regional_linecodes" ],
+        "tablename" : [ "SAINC1", "SAINC30", "SAINC35", "SAINC4", "SAINC40", "SAINC50", "SAINC51", "SAINC5H", "SAINC5N", "SAINC5S", "SAINC6N", "SAINC6S", "SAINC70", "SAINC7H", "SAINC7N", "SAINC7S", "SAINC91", "SQINC1", "SQINC35", "SQINC4", "SQINC5H", "SQINC5N", "SQINC5S", "SQINC6N", "SQINC6S", "SQINC7H", "SQINC7N", "SQINC7S", "CAINC1", "CAINC30", "CAINC4", "CAINC5N", "CAINC5S", "CAINC6N", "CAINC6S", "CAINC91", "SAGDP1", "SAGDP2", "SAGDP3", "SAGDP4", "SAGDP5", "SAGDP6", "SAGDP7", "SAGDP8", "SAGDP9", "SAGDP11", "SQGDP1", "SQGDP2", "SQGDP8", "SQGDP9", "SQGDP11", "CAGDP1", "CAGDP2", "CAGDP8", "CAGDP9", "CAGDP11" ]
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.econ.BeaResponseTransformer"
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "tablename=*/"
+        },
+        "partition" : {
+          "columns" : [ "tablename" ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "batchPartitionColumns" : [ "tablename" ],
+          "incrementalKeys" : [ "tablename" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "fred_series",
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=*/category=*/reference_fred_series.parquet",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "category",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "FRED series discovery/metadata catalog: series id, title, observation date range (observation_start/observation_end), frequency, units, seasonal adjustment, last-updated timestamp, and popularity scores — one row per series, partitioned by category (7 top-level FRED categories: Production & Business Activity, Population/Employment/Labor Markets, National Accounts, Prices, Discontinued/Legacy, Money/Banking/Finance, International Data; up to 1000 series fetched per category). This is a lookup/discovery catalog only, not observation data — see econ.fred_indicators for the curated ~48-series time series values (enumerated in that table's series column comment).\n",
+      "columns" : [ {
+        "name" : "series",
+        "type" : "string",
+        "nullable" : true,
+        "source" : "id",
+        "comment" : "Unique FRED series identifier (e.g. 'UNRATE', 'GDP'). This is the catalog of everything FRED publishes, so use it to decode or discover series; the econ.fred_indicators observations table loads only a curated 48-series subset, enumerated in that table's series column comment.\n"
+      }, {
+        "name" : "title",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full descriptive title of the economic data series"
+      }, {
+        "name" : "observation_start",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Date of first available observation (ISO 8601 format)"
+      }, {
+        "name" : "observation_end",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Date of most recent observation (ISO 8601 format)"
+      }, {
+        "name" : "frequency",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data frequency (e.g., 'Daily', 'Monthly', 'Quarterly', 'Annual')"
+      }, {
+        "name" : "frequency_short",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Abbreviated frequency code (e.g., 'D', 'M', 'Q', 'A')"
+      }, {
+        "name" : "units",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Units of measurement (e.g., 'Percent', 'Billions of Dollars')"
+      }, {
+        "name" : "units_short",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Abbreviated units code"
+      }, {
+        "name" : "seasonal_adjustment",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Seasonal adjustment status (e.g., 'Seasonally Adjusted', 'Not Seasonally Adjusted')"
+      }, {
+        "name" : "seasonal_adjustment_short",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Abbreviated seasonal adjustment code (e.g., 'SA', 'NSA')"
+      }, {
+        "name" : "last_updated",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Timestamp of last data update (ISO 8601 format)"
+      }, {
+        "name" : "popularity",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "FRED popularity score indicating usage/interest level"
+      }, {
+        "name" : "group_popularity",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Popularity score within category group"
+      }, {
+        "name" : "notes",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Detailed description, methodology, and source information"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.stlouisfed.org/fred/category/series",
+        "method" : "GET",
+        "parameters" : {
+          "api_key" : "{env:FRED_API_KEY}",
+          "file_type" : "json",
+          "category_id" : "{category}",
+          "limit" : "1000"
+        },
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "dimensions" : {
+        "type" : [ "fred_series" ],
+        "category" : [ 1, 10, 32992, 32455, 3, 32991, 32263 ]
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.econ.FredResponseTransformer"
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "category=*/"
+        },
+        "partition" : {
+          "columns" : [ "category" ],
+          "columnDefinitions" : [ {
+            "name" : "category",
+            "type" : "INTEGER"
+          } ]
+        },
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "batchPartitionColumns" : [ "category" ],
+          "incrementalKeys" : [ "category" ],
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    } ],
+    "comment" : "Reference and dimension tables for U.S. economic data. Contains lookup tables for BLS series codes, geographic mappings, industry classifications, and metadata catalogs for FRED, NIPA, and BEA Regional datasets. These tables should be loaded before the main econ schema as they provide dimension data for enriched views and semantic queries.\n",
+    "compaction_defaults" : {
+      "compactionTargetFileSizeBytes" : 134217728,
+      "runCompaction" : true,
+      "compactionMinFiles" : 5
+    },
+    "dataSource" : "econ_reference"
+  },
+  "parentSchema" : "",
+  "generatedAt" : "2026-09-19T10:18:46.311317Z",
+  "schemaName" : "econ_reference"
+}

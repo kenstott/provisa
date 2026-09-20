@@ -1,0 +1,336 @@
+{
+  "operands" : {
+    "_storageProvider" : "S3StorageProvider",
+    "_incrementalTracker" : "ReadOnlyPipelineTracker",
+    "schemaName" : "fedregister",
+    "ephemeralCache" : false,
+    "constraints" : {
+      "fr_significance" : {
+        "primaryKey" : [ "document_number" ],
+        "foreignKeys" : [ {
+          "columns" : [ "document_number" ],
+          "targetTable" : "fr_documents",
+          "targetColumns" : [ "document_number" ]
+        } ]
+      },
+      "fr_documents" : {
+        "primaryKey" : [ "document_number" ]
+      }
+    },
+    "directory" : "s3://govdata-parquet-v1",
+    "canonicalSchemaName" : "fedregister",
+    "operatingDirectory" : "/Users/kennethstott/.provisa_askamerica/data/fedregister",
+    "column_templates" : {
+      "partition_year" : {
+        "name" : "year",
+        "type" : "INTEGER"
+      },
+      "year_month_partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        }, {
+          "name" : "month",
+          "type" : "INTEGER"
+        } ]
+      },
+      "partition_month" : {
+        "name" : "month",
+        "type" : "INTEGER"
+      }
+    },
+    "dimension_values" : {
+      "fr_year_range" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "2026",
+        "dataLag" : 0
+      },
+      "fr_months" : {
+        "type" : "list",
+        "values" : [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 ],
+        "descending" : true
+      },
+      "fr_months_padded" : {
+        "type" : "list",
+        "values" : [ "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12" ],
+        "descending" : true
+      }
+    },
+    "database_filename" : "/Users/kennethstott/.provisa_askamerica/data/.duckdb/govdata.duckdb",
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
+    "dataLagYears" : 0,
+    "views" : [ {
+      "name" : "fr_documents_significance",
+      "comment" : "fr_documents enriched with the OIRA EO 12866 significance flag from fr_significance (D-052), joined on document_number. LEFT JOIN so documents not yet classified by the Federal Register API (or not yet ingested into fr_significance) still appear, with significant = NULL.\n",
+      "sql" : "SELECT\n  d.*,\n  s.significant\nFROM fr_documents d LEFT JOIN fr_significance s ON d.document_number = s.document_number\n"
+    } ],
+    "materializeDirectory" : "s3://govdata-parquet-v1",
+    "storageConfig" : {
+      "accessKeyId" : "********",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "actualSchemaName" : "fedregister",
+    "autoDownload" : false,
+    "s3Config" : {
+      "accessKeyId" : "****e4dc",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "executionEngine" : "duckdb",
+    "tableConstraints" : {
+      "fr_significance" : {
+        "primaryKey" : [ "document_number" ],
+        "foreignKeys" : [ {
+          "columns" : [ "document_number" ],
+          "targetTable" : "fr_documents",
+          "targetColumns" : [ "document_number" ]
+        } ]
+      },
+      "fr_documents" : {
+        "primaryKey" : [ "document_number" ]
+      }
+    },
+    "testMode" : false,
+    "partitionedTables" : [ {
+      "name" : "fr_documents",
+      "pattern" : "year=*/month=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 477551,
+        "checkedAt" : "2026-09-12T00:13:35Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        }, {
+          "name" : "month",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "All Federal Register documents partitioned by publication year and month. RULE=final rules (binding, amend CFR), PRORULE=proposed rules (open for comment), NOTICE=agency announcements/meetings/grants, PRESDOC=executive orders/proclamations. Key analytical fields: rin (tracks NPRM→final rule lifecycle via RIN cross-reference), cfr_references (JSON: affected CFR titles and parts → maps to regulated industry), docket_ids (JSON: links to regulations.gov for comment letter intelligence).\n",
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        },
+        "month" : {
+          "type" : "list",
+          "values" : [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 ],
+          "descending" : true
+        }
+      },
+      "columns" : [ {
+        "name" : "document_number",
+        "type" : "string",
+        "comment" : "Federal Register document number (e.g., 2026-07234)"
+      }, {
+        "name" : "title",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Document title"
+      }, {
+        "name" : "doc_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Document type (RULE, PRORULE, NOTICE, PRESDOC)"
+      }, {
+        "name" : "publication_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Publication date (YYYY-MM-DD)"
+      }, {
+        "name" : "effective_on",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Effective date of the rule (YYYY-MM-DD)"
+      }, {
+        "name" : "action",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Rule action description (e.g., 'Final rule', 'Proposed rule')"
+      }, {
+        "name" : "agency_names",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Comma-separated issuing agency names (denormalized for easy SQL filtering)"
+      }, {
+        "name" : "cfr_references",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "JSON array of CFR references [{title:N, part:N}] — maps to regulated industry"
+      }, {
+        "name" : "rin",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Primary Regulatory Identifier Number (links NPRM to final rule lifecycle)"
+      }, {
+        "name" : "docket_ids",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "JSON array of docket identifiers (links to regulations.gov comment dockets)"
+      }, {
+        "name" : "signing_date",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Presidential document signing date (YYYY-MM-DD)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.govinfo.gov/bulkdata/FR/{year}/{month:02d}/FR-{year}-{month:02d}.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.fedregister.FedRegisterBulkXmlDataProvider"
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "partition" : {
+          "columns" : [ "year", "month" ]
+        },
+        "output" : {
+          "pattern" : "year={year}/month={month}/"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "warehousePath" : "s3://govdata-parquet-v1/fedregister",
+          "batchPartitionColumns" : [ "year", "month" ],
+          "incrementalKeys" : [ "year", "month" ],
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "fr_significance",
+      "pattern" : "year=*/month=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2026,
+        "maxYear" : 2026,
+        "distinctYears" : 1,
+        "contiguous" : true,
+        "rowCount" : 822,
+        "checkedAt" : "2026-09-12T00:13:35Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        }, {
+          "name" : "month",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "OIRA EO 12866 economic-significance determination per Federal Register document, sourced directly from the Federal Register API's own `significant` JSON field (https://www.federalregister.gov/api/v1/documents.json) — not present in fr_documents' govinfo.gov bulk-XML source. true = economically significant under EO 12866 (subject to OMB/OIRA regulatory review), false = not significant. NULL is overwhelmingly \"significance does not apply to this document type\" (confirmed live: 817 of 818 Notices in a March 2026 sample are NULL, since EO 12866 review applies only to Rules) rather than \"not yet classified\" — filter to type='Rule' or 'Proposed Rule' before treating a NULL as meaningful. Join to fr_documents on document_number to filter significant vs. routine rules.\n",
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "2026",
+          "dataLag" : 0
+        },
+        "month" : {
+          "type" : "list",
+          "values" : [ "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12" ],
+          "descending" : true
+        }
+      },
+      "columns" : [ {
+        "name" : "document_number",
+        "type" : "string",
+        "comment" : "Federal Register document number (e.g., 2026-07234); joins to fr_documents.document_number"
+      }, {
+        "name" : "publication_date",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Publication date (YYYY-MM-DD)"
+      }, {
+        "name" : "significant",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "OIRA EO 12866 economic-significance flag (true/false/null — see table comment)"
+      }, {
+        "name" : "type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Federal Register document type (Rule, Proposed Rule, Notice, Presidential Document). EO 12866 significance review applies only to Rule/Proposed Rule — filter to those before aggregating `significant` or NULL from every non-rule Notice swamps the count.\n"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.federalregister.gov/api/v1/documents.json?conditions[publication_date][gte]={year}-{month}-01&conditions[publication_date][lte]={year}-{month}-{month_end}&fields[]=document_number&fields[]=publication_date&fields[]=significant&fields[]=type",
+        "method" : "GET",
+        "response" : {
+          "format" : "json",
+          "dataPath" : "results",
+          "pagination" : {
+            "type" : "PAGE",
+            "pageParam" : "page",
+            "limitParam" : "per_page",
+            "pageSize" : 1000,
+            "countPath" : "count"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "retryOn" : [ 429, 503, 504 ],
+          "maxRetries" : 5
+        },
+        "rawCache" : {
+          "enabled" : false
+        }
+      },
+      "materialize" : {
+        "format" : "iceberg",
+        "partition" : {
+          "columns" : [ "year", "month" ]
+        },
+        "output" : {
+          "pattern" : "year={year}/month={month}/"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "warehousePath" : "s3://govdata-parquet-v1/fedregister",
+          "batchPartitionColumns" : [ "year", "month" ],
+          "incrementalKeys" : [ "year", "month" ],
+          "overwritePartitions" : true,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    } ],
+    "comment" : "U.S. Federal Register documents from govinfo.gov bulk XML archives. Covers final rules, proposed rules, notices, and presidential documents (executive orders, proclamations, memoranda), partitioned by publication year and month from 2010 to present by default (start year configurable via GOVDATA_START_YEAR). Key cross-reference fields: cfr_references (links to affected CFR titles/parts by industry), rin (Regulatory Identifier Number — tracks rulemaking lifecycle from NPRM to final rule), docket_ids (links to regulations.gov comment dockets). Two tables in this schema: fr_documents (full document metadata from govinfo.gov bulk XML) and fr_significance (OIRA EO 12866 economic-significance flag per document, sourced directly from the Federal Register API's own JSON field — join to fr_documents on document_number). See each table for its full column list.\n",
+    "compaction_defaults" : {
+      "compactionTargetFileSizeBytes" : 134217728,
+      "runCompaction" : true,
+      "compactionMinFiles" : 5
+    },
+    "dataSource" : "fedregister"
+  },
+  "parentSchema" : "",
+  "generatedAt" : "2026-09-19T10:18:39.724706Z",
+  "schemaName" : "fedregister"
+}

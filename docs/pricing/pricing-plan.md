@@ -1,235 +1,292 @@
 # Provisa Pricing Plan
 
-Model source: `pricing_model.py` in the repository root. Edit the `ASSUMPTIONS`
-block and re-run to reprice. All GCP costs are us-central1 list/spot, 2026-07.
+This restates the pricing model to match what is actually implemented and live, not an
+earlier design proposal. Two sources of truth, cross-checked against each other:
 
-## Two SKUs, two anchors
+- **Code** — `.claude/commercial/provisa_commercial/` (the commercial plugin; proprietary,
+  not part of the open-source distribution — see its own README). `entitlements.py`,
+  `models.py`, `usage.py`, `trial.py`.
+- **Lemon Squeezy** (the merchant of record) — store `SimpleIsHard` (store id `285474`),
+  products `Provisa Compute` and `Provisa Egress`, queried live via the API on 2026-09-16.
+  Every rate below is the live configured price, not a modeled/target number.
 
-Provisa is a mix of two products with two different price anchors, so it bills on
-two units:
+**Known drift**: the variant IDs configured in this deployment's `.env`
+(`LEMONSQUEEZY_VARIANT_STARTER` etc.) 404 against the Lemon Squeezy API — they don't match
+the live variant IDs the store actually has today. The rates below are still accurate (read
+directly from the live variants), but the `.env` wiring that would let this deployment
+actually check out against them needs to be reconciled separately from this document.
 
-- **Serving lane — the active-hour.** A warm, always-reachable federated endpoint:
-  low-latency ops, the persistent-protocol surface, governance and auth. This is the
-  Hasura workload; it bills like Hasura, on **active-hours** at **$3.25/active-hr**.
-- **Analytical lane — the worker-hour.** Distributed MPP over autoscaled workers:
-  large cross-source joins that spill to disk. This is the Starburst Galaxy workload;
-  it bills like Galaxy, on **worker-hours** at **$2.50/worker-hr**.
+## The plan ladder
 
-A customer buys either or both. The two lanes have different cost shapes, different
-competitors, and different anchors, so a single unit would misprice one of them —
-active-hour framing underprices analytical compute ~8x; worker-hour framing can't
-express a warm always-on endpoint. Splitting the SKU captures both markets.
+Five plans, one product family, not the "Free/Starter/Team/Scale + two lanes" shape an
+earlier design pass modeled. `provisa_commercial.models.Plan`: `trial`, `starter`, `pro_s`,
+`pro_m`, `pro_l`. Pro is sold as three fixed sizes — the size IS the plan, not a setting on
+a single "Pro" tier, because each size is different hardware, a different price, and a
+different Lemon Squeezy variant.
 
-| | Serving lane | Analytical lane |
-| --- | --- | --- |
-| Workload | warm low-latency API, persistent connections | large distributed cross-source joins |
-| Anchor | Hasura v2 ($3.00/active-hr advanced source) | Starburst Galaxy Pro ($3.00/worker-hr) |
-| Unit | active-hour ($3.25) | worker-hour ($2.50) |
-| Cost | warm coordinator $0.15–0.42/hr | Spot worker $0.080/hr, on-demand $0.268/hr |
-| Margin | ~87–97% | ~97% Spot / ~89% on-demand |
-| Cold start | never (that's the product) | customer eats first-query boot |
+| Plan | Hardware | Query ceilings | Sources | Compute base fee | Included active-hrs | Overage/active-hr | Included egress | Egress overage |
+|---|---|---|---|---|---|---|---|---|
+| Trial | shared/pooled | 100K rows / 10GB scan / 8GB mem / 120s | 2 | — (rides Starter's LS trial) | 40 hrs or 14 days or 25GB, whichever first | — | 25 GB | — |
+| Starter | shared/pooled | 1M rows / 100GB scan / 32GB mem / 300s | 10 | $25/mo | 19 hrs | $1.30/hr | 25 GB | $0.48/GB |
+| Pro S | n2-highmem-4 (4 vCPU / 32 GB), dedicated | uncapped | 100 | $99/mo | 66 hrs | $1.50/hr | 50 GB | $0.48/GB |
+| Pro M | n2-highmem-8 (8 vCPU / 64 GB), dedicated | uncapped | 100 | $199/mo | 72 hrs | $2.75/hr | 100 GB | $0.48/GB |
+| Pro L | n2-highmem-16 (16 vCPU / 128 GB), dedicated | uncapped | 100 | $399/mo | 72 hrs | $5.50/hr | 200 GB | $0.48/GB |
 
-## Serving lane — the active-hour (Hasura anchor)
+Query ceilings and hardware are engineering facts (`entitlements.py`, `ProSize`); base fee,
+included hours/GB, and overage rates are the live Lemon Squeezy price for each variant's
+graduated tier.
 
-The serving business is one SKU, the same one that took Hasura to ~$35M ARR almost
-entirely self-serve: **billed active-hours on a warm, always-reachable endpoint.**
-Any hour the endpoint sees activity bills a full hour. A production API touched even
-once an hour bills ~730 hr/mo whether it served one request or a hundred thousand.
+**Pro is not unmetered compute.** Query *ceilings* (rows/bytes/memory/time) are uncapped on
+Pro — a dedicated engine has no shared-tenant reason to throttle a single query — but active-
+hour *billing* still applies to every plan, Pro included: each size's monthly base fee bundles
+an included-hours allowance, then overage bills per hour beyond it, at a rate that scales with
+the hardware. Uncapped query limits and metered billing are two different axes; Pro relaxes
+only the first.
 
-The customer is not buying a vCPU. They are buying the guarantee that their live
-endpoint answers — the managed control plane, governance, auth, the federated query
-surface. Compute is the meter, not the product. A warm coordinator costs us
-~$0.134/hr and bills $3.25/active-hr — the software value, not a compute markup.
+## Why active-hour, not vCPU-hour or per-query
 
-Revenue is welded to the customer's uptime, not their usage: their production endpoint
-runs on it, so they cannot let it go cold. That is what makes the active-hour durable.
+The unit is occupancy (any clock hour the org submitted at least one query bills once,
+regardless of query count or duration), not a per-query or per-vCPU meter — Starter's shard
+hosts many orgs on the same nodes, so no per-org vCPU-hour is a real, readable number; billing
+one would be inventing a figure the infrastructure cannot actually attribute
+(`usage.py`). An hour containing only rejected/killed queries still bills — the shard did the
+work of planning and admitting them before rejecting, so the occupancy cost was real.
 
-### Why Provisa's active-hour welds tighter than Hasura's
+The signal is a durable counter (`org_usage_hour`, upserted per `(org, hour)`), not the audit
+log or the OTel trace stream — neither of those is a billing record; a billing fact needs an
+idempotent row a monthly sweep can total without risk of double-counting a replay.
 
-Hasura's warm surface is HTTP — request-driven, so warmth is inferred from traffic.
-Provisa adds **raw-TCP protocols that hold persistent connections**: pgwire (5439),
-bolt (7687), Arrow Flight (8815), gRPC (50051), MCP (8009). A DBeaver session, a Neo4j
-Browser, a BI tool on pgwire keeps the socket open — the coordinator is continuously
-active, and by construction continuously billing. Every persistent-protocol connection
-is an always-on active-hour meter that a request-driven HTTP product structurally
-cannot offer.
+## The trial
 
-The two are not a fair COGS comparison, and not at parity. Hasura is GraphQL-only and
-built for low-latency, small-payload ops, so its warm surface is one small instance
-(~$0.005/hr). Provisa's warm hour is a distributed MPP: a **required coordinator**
-(planner + persistent-protocol listeners, which can't ride a worker) always on, and —
-for zero query cold-start — a **warm worker** too, plus cross-zone shuffle on
-multi-worker joins. That is a structurally higher warm cost: ~$0.15/active-hr
-coordinator-only, up to ~$0.42 with a warm worker (see model), against Hasura's
-~$0.005. It is not inefficiency — it is the cost of serving a heavier, broader workload
-class Hasura's instance cannot touch at all.
+14 days, capped by three independent bounds, whichever comes first (`trial.py`,
+`TRIAL_DAYS`/`TRIAL_ACTIVE_HOURS`/`TRIAL_EGRESS_BYTES`): **14 calendar days**, **40 active
+hours**, or **25 GB egress** (sized to match Starter's own included egress allowance, so the
+trial evaluates the plan the org would actually buy). There is no separate "Trial" product in
+Lemon Squeezy — a trial is a Starter subscription with Lemon Squeezy's own free-trial flag
+enabled on that variant (confirmed live: the Starter variant carries `has_free_trial: true`,
+`trial_interval_count: 14`, `trial_interval: day`). Lemon Squeezy can only express the
+day-count bound; the active-hour and egress bounds are enforced by Provisa's own clock, which
+force-converts the trial (moves `trial_ends_at` to now) when either is hit early — that's what
+makes the merchant of record charge the first period on schedule rather than Provisa's code.
 
-The margin still clears. At $3.25/active-hr the warm SKU runs ~95% coordinator-only and
-~87% with a warm worker (~92–97% with a 1-year committed-use discount on the always-on
-boxes). Lower than Hasura's ~99% on their narrow op — but that gap buys the superset.
+Entitlement is keyed on the Lemon Squeezy **subscription status**, never on a landed payment:
+`on_trial`, `active`, and `cancelled` (cancel-at-period-end — the org paid for the period it's
+still in) are entitled; `past_due`, `unpaid`, `expired`, and `paused` are not (`models.py`,
+`ENTITLED_STATUSES`).
 
-The small active-hour premium ($3.25 vs $3.00) is a product-surface premium — broader
-source class (warehouses, graph, MSSQL/Mongo) under one query, plus the raw-TCP protocol
-surface — on top of a warm hour that already costs more to hold than Hasura's.
+## Egress
 
-### Hasura v2 parity (the serving-lane anchor)
+One overage rate, **$0.48/GB**, identical across every plan — only the included allowance
+scales with plan size (25/50/100/200 GB). Metered separately from compute because it fails
+differently: a compute ceiling is enforced by Trino itself (session properties, `EXCEEDED_*`
+errors); an unbounded `SELECT *` over a modest table passes every scan guard while still
+shipping gigabytes, so egress is enforced on the result path
+(`enforce_output_cap`/`translate_engine_error`), not the query-planning path.
 
-| | Hasura v2 Professional | Provisa (parity + small premium) |
-| --- | --- | --- |
-| Warm, generic Postgres source | $1.50/active-hr | — (Provisa's floor case is multi-source) |
-| Warm, advanced source (Snowflake/BigQuery/Mongo/MSSQL…) | $3.00/active-hr | **$3.25/active-hr** |
-| Persistent-connection protocol surface (pgwire/bolt/Flight) | none | **included in the warm hour** |
-| Cross-source join scale | single serialization instance (~1 GB intermediate) | **distributed MPP workers, spills to disk, unbounded** |
-| Egress (result passthrough) | $0.13/GB | **$0.13/GB** (match) |
-| Free | 3 projects, 3M req/mo, 100 MB passthrough | match request + passthrough caps |
-| Analytical lane | none (always-warm only) | separate worker-hour SKU (Galaxy-anchored) |
+## What's deliberately not billed by usage on Pro
 
-## Analytical lane — the worker-hour (Galaxy anchor)
+Pro's query ceilings are uncapped by design (`entitlements.py`, REQ-1449): "the isolated lane
+cannot degrade another tenant once placement is dedicated, so the size is the only limit — a
+concurrency or duration ceiling on top of it would bill for hardware and then refuse to let the
+org use it." The org already pays for the box; Provisa does not also meter what it does on the
+box beyond the active-hour/egress lines above.
 
-The cross-source join that outgrows a single serialization instance is not a Hasura
-workload — it is a Starburst Galaxy workload, and it is priced against Galaxy, not
-against a cost-recovery floor. Galaxy is Trino-as-a-service billed on worker uptime:
-6 credits/worker-hr × $0.50 = **$3.00/worker-hr** (Pro), $4.50 (Enterprise), $6.00
-(Mission Critical).
+## The zero-customer cost floor
 
-Provisa's analytical lane bills the same unit — **$2.50/worker-hr**, just under Galaxy
-Pro — for distributed MPP across autoscaled workers that spill to disk. Same anchor,
-small discount, so it wins the analytical buyer on price while still clearing
-warehouse-standard margin:
+What this deployment costs with zero paying customers signed up — the number that makes the
+free tier and trial genuinely low-risk to offer, verified against what's actually deployed
+(`terraform/gcp-saas/`), not a modeled estimate:
 
-| Line | Cost | Price | Margin |
-| --- | --- | --- | --- |
-| Worker-hour (Spot n2-highmem-8, scale-to-zero) | $0.080/hr | **$2.50/worker-hr** | 97% |
-| Worker-hour (on-demand, guaranteed-warm SLA) | $0.268/hr | $2.50/worker-hr | 89% |
+| Component | Cost at zero customers | Why |
+|---|---|---|
+| Front-door proxy (e2-micro) | **$0** | GCP's Always Free tier covers 1 e2-micro/month in us-central1/us-west1/us-east1; this VM never stops (it's the thing that wakes everything else), so it rides the free allowance continuously. |
+| Coordinator (control-plane VM) | **$0** | Idle-stopped by the front door after 20 minutes of zero traffic on every protocol port (REQ-1779; doubled from 10 min this session). Stopped = not billed for compute. |
+| Engine shard (GKE, Trino/federation compute) | **$0** | Scaled to zero pods by the in-app reaper after 10 minutes of query inactivity (half the coordinator's window, so it always finishes ahead of a coordinator stop). GKE Autopilot bills per-pod resource-second; zero pods is zero compute charge. |
+| GKE Autopilot cluster management fee | **$0** | $0.10/cluster-hour, but Google's Always Free tier includes $74.40/month in GKE credit — enough to cover one Autopilot or zonal-Standard cluster running continuously all month. This is the only GKE cluster in the project. |
+| Cloud SQL (`db-f1-micro`, control-plane Postgres) | **~$9/mo** | The one component that's always on regardless of traffic — org/tenant registry, auth, billing state. Documented in `variables.tf`'s own comment as "the always-warm baseline." |
+| Static IP (shared front-door address) | **$0** | GCP only charges for a *reserved-but-unattached* external IP; this one stays attached to the always-on front-door VM. |
+| DNS (Cloudflare) | **$0** | Free-tier DNS-only records (`proxied = false`). |
 
-This is a worker-hour, not a vCPU-hr cost-recovery meter. Pricing it as cost-plus put
-it at ~$0.32/worker-hr — ~8x under the Galaxy anchor and leaving the analytical margin
-on the table. A worker-hour is billed per second a worker is up on a query, scale-to-
-zero between queries, so an idle analytical customer pays nothing.
+**Total fixed floor: ~$9/mo**, not the ~$19/mo an earlier design pass modeled — Cloud SQL is
+the only real fixed line; everything else is either genuinely free-tier or scales to zero with
+no traffic. This is what makes offering a free tier and a 14-day trial cheap to run: acquiring
+a customer who never converts costs Cloud SQL's per-tenant registry row, nothing else.
 
-Why Provisa wins this lane: Galaxy joins Trino sources; Provisa's federation reaches the
-broader source class (warehouses **and** graph, MSSQL, Mongo, sheets) under one query,
-with the same distributed-MPP scaling — at a lower worker-hour.
+## Comparison to competitors' actual current pricing
 
-## Egress — metered passthrough, both lanes
+Verified against each vendor's own live pricing/API as of 2026-09-16, not older or modeled
+figures — two material corrections to what an earlier pass assumed:
 
-Egress is a cost-recovery passthrough spanning both SKUs, matching Hasura's own logic —
-the margin engine is the active-hour and the worker-hour, not the byte. Our only egress
-cost is **result bytes leaving GCP to the consumer** (`$0.12/GB`). The source-cloud
-egress a federated query triggers — AWS/Azure charging to move bytes out of the source —
-is billed to the account that **owns the source**, i.e. the customer, not us; bytes
-arriving at GCP are free ingress. Result sets are the small, filtered/aggregated output,
-not the raw scan.
+**Hasura has moved off active-hour billing entirely for new customers.** Their current
+flagship product, Hasura DDN, bills **$5–$30 per "active model"/month** (Free / Base / Advanced
+tiers) — a per-table unit, not project-hours, and specifically gated on a usage threshold, per
+Hasura's own pricing page: *"Active Model is any model or command in the metadata that is
+accessed more than 1000 times/month."* A table queried fewer than 1000 times in the month costs
+nothing; cross that line and the whole table is billed for the month, regardless of how far
+over 1000 it went. This is a fundamentally different unit from what Provisa's `hasura_v2`
+compatibility layer targets. The active-hour model below is **Hasura Cloud v2, legacy and
+grandfathered** — still running for existing customers, not what a new Hasura signup lands on
+today.
 
-At Hasura parity `$0.13/GB` against our `$0.12` cost, egress clears +8% — no loss, but
-thin. Two ways to widen it, both compatible with holding parity:
+| | Hasura Cloud v2 (legacy) | Starburst Galaxy | Provisa |
+|---|---|---|---|
+| Unit | active-hour | worker-hour (credits) | active-hour (compute), separately metered egress |
+| Base/entry rate | $1.50/active-hr (no DB connected) — confirmed live | $0.50/credit × 6 credits/worker-hr = $3.00/worker-hr (Pro) | Starter: $25/mo base (19 hrs incl.) + $1.30/hr overage |
+| Higher tier | Advanced-connector surcharge exists (Snowflake/BigQuery/Mongo/MSSQL); exact current multiplier not independently confirmable via public docs — do not restate a specific number without re-verifying against a live account | Enterprise $0.75/credit ($4.50/worker-hr), Mission Critical $1.00/credit ($6.00/worker-hr) | Pro S/M/L: $99–$399/mo base + $1.50–$5.50/hr overage, scaling with dedicated hardware size |
+| Egress | $0.13/GB | Not publicly itemized the same way (bundled into credit consumption) | $0.48/GB overage, 25–200 GB included by plan |
+| What one price buys | GraphQL-only, request-driven warmth, single-serialization joins | Trino-as-a-service, MPP over Trino-reachable sources only | Federated MPP across a broader source class (warehouses, graph, Mongo, MSSQL) under one query, plus persistent-protocol surfaces (pgwire/Bolt/Flight/gRPC/MCP) Hasura's request-driven model can't offer |
 
-- **Bundled-egress infra.** A provider with bundled/near-zero egress (Hetzner ~20 TB/VM
-  then ~$0.0013/GB, OVH unmetered) zeroes the GCP leg, taking parity from +8% to ~99%.
-  This is the single highest-leverage infra change for the data plane.
-- **Absorb it.** The active-hour and worker-hour margins cover the thin egress line at
-  blended-account level regardless.
+Provisa's Starter rate ($1.30/active-hr overage) undercuts Hasura v2's base rate ($1.50/active-hr)
+even before accounting for the included-hours allowance a Lemon Squeezy subscription bundles in;
+Provisa's Pro tiers sit at or below Galaxy's Pro worker-hour rate while reaching a broader source
+class than Galaxy's Trino-only reach. Both comparisons hold at the *entry* tier — a rigorous
+apples-to-apples comparison at higher tiers would need Hasura's actual current advanced-connector
+multiplier, which isn't publicly documented precisely enough to cite as fact here.
 
-## Architecture split (drives the two SKUs)
+## Net-revenue projection
 
-- **Control plane** — durable, tiny, always-on. Multitenancy metadata
-  (`superadmin_bootstrap`, `user_profiles`, `user_org_memberships`, tenant DB), auth,
-  governance, connection front-door. Cloud SQL f1-micro + Cloud Run site (min=1). This is
-  the fixed floor, **~$19/mo shared across all tenants** — no per-tenant fixed cost.
-- **Warm coordinator** — the serving lane's active-hour engine. Trino planner + the
-  persistent-protocol listeners. Warm while active, billed by the active-hour. Cost and
-  revenue ride the same clock: warm ⇒ active ⇒ billed.
-- **Data plane** — the analytical lane's worker-hour engine. Stateless federated query
-  workers, ephemeral, scale 0→N on Spot VMs, billed by the worker-hour.
+**Illustrative, not a forecast.** Revenue rates are the live Lemon Squeezy prices above; direct
+compute costs are current GCP on-demand list prices for the actual machine types/pod sizes this
+deployment runs (`ProSize` for Pro, the shared shard's Autopilot pod request for Starter);
+per-org usage and the customer count per tier are assumed, not measured. The single biggest
+unverified lever is the Starter/shared-lane concurrency assumption below — change it and
+Starter's margin moves a lot; Pro's doesn't, because Pro's engine is never shared.
 
-## Fixed-vs-variable invariant
+**Direct compute cost basis:**
 
-**No fixed cost without a matching fixed revenue floor.** Every warmth a customer needs
-is rented by a meter, so cost and revenue are welded to the same clock.
+| | Basis | $/hr |
+|---|---|---|
+| Starter (shared shard) | GKE Autopilot pod, 6 vCPU/24 GiB (`shared_shards`), at $0.0445/vCPU-hr + $0.0049/GiB-hr, **divided across an assumed 4 concurrently-active Starter orgs per shard-hour** | $0.385/hr shard ÷ 4 ≈ **$0.096/hr per org** |
+| Pro S | n2-highmem-4 on-demand, us-central1 | **$0.26/hr** |
+| Pro M | n2-highmem-8 on-demand, us-central1 | **$0.52/hr** |
+| Pro L | n2-highmem-16 on-demand, us-central1 | **$1.05/hr** |
 
-| Cost line | Shape | Matching revenue | Exposed? |
-| --- | --- | --- | --- |
-| Warm coordinator | fixed while on | active-hour meter (warm ⇒ active ⇒ billed) | No — welded |
-| Worker (Spot, scale-to-zero) | variable | worker-hour meter | No — both variable |
-| Egress (result set) | variable | $/GB meter | No — both variable |
-| Shared site + control plane | **fixed, unconditional** | flat platform fee | Only line; floored below |
+Egress costs Provisa **$0.12/GB** regardless of whether it falls inside a customer's included
+allowance (that section, above) — included GB is revenue Provisa doesn't collect on cost it
+still pays, not cost Provisa avoids.
 
-The sole unconditional fixed cost is the **~$19/mo shared floor** (or ~$2/mo fully
-stopped pre-revenue). The minimum platform fee is set so `fee ≥ shared-floor /
-paying-orgs`; with a $45 min fee and a $19 floor, org #1 covers it several times over.
-The only fixed-cost-with-no-revenue window is pre-revenue — a runway line, not a
-unit-economics flaw.
+**Per-org economics, assumed usage:**
 
-## Warmth tiers — the site never cold-starts; customers may
+| Tier | Count (assumed) | Active-hrs used/mo | Egress used/mo | Revenue/org | Direct cost/org | Margin/org | Margin % |
+|---|---|---|---|---|---|---|---|
+| Starter | 30 | 40 | 15 GB | $52.30 | $5.65 | $46.65 | 89% |
+| Pro S | 12 | 90 | 60 GB | $139.80 | $30.60 | $109.20 | 78% |
+| Pro M | 5 | 100 | 130 GB | $290.40 | $67.60 | $222.80 | 77% |
+| Pro L | 3 | 110 | 250 GB | $632.00 | $145.50 | $486.50 | 77% |
 
-Warmth is tiered so cold-start cost lands on the party that needs it.
+**Fleet total, this mix (50 paying orgs):**
 
-- **Site — always warm, free to the visitor.** Cloud Run (`min-instances=1`) serves
-  marketing/signup/login/UI/REST-API/health; Cloud SQL control plane always on. Floor
-  ~$19/mo, shared across all tenants. A prospect always hits an instant site, and the
-  daily up-test is a free hit on the warm health endpoint.
-- **Warm coordinator — the serving lane.** Persistent-protocol listeners and ops-grade
-  latency need a warm coordinator; it can't be woken on demand. Sold as the active-hour.
-- **Query execution — the analytical lane, cold by default.** Trino workers on a Spot
-  MIG, min=0. First query wakes a worker; a per-resume minimum covers the boot, then the
-  worker-hour meter runs.
+| | Monthly |
+|---|---|
+| Revenue | $6,594.60 |
+| Direct cost (compute + egress) | $1,311.08 |
+| Fixed floor (zero-customer cost, above) | $9.00 |
+| **Net** | **$5,274.52** |
+| **Net margin** | **80%** |
 
-## Cold start (scale-to-zero workers)
+Two things this makes visible that the per-unit margin percentages alone don't: Starter's 89%
+margin is the *most* sensitive number in this whole model — it's a direct function of the
+concurrency assumption (4 orgs/shard-hour), which isn't measured, only asserted; a real
+concurrency count from `org_usage_hour` once there's live traffic should replace it. Pro's ~77%
+margin depends on no modeling assumption at all: dedicated hardware means no concurrency
+number to guess at, just the org's own usage against a fixed, verifiable on-demand rate — the
+only thing that would move it is which Pro sizes customers actually pick.
 
-Default worker posture: `WARM_POOL_NODES = 0`. Waking a cold worker is billed a
-per-resume minimum, Snowflake-style, so the boot cost lands on the customer who caused
-it.
+**Live model:** the SaaS figures above, plus on-prem/add-on SKUs and two named scenarios, are
+built as an interactive workbook — `docs/pricing/provisa-revenue-model.xlsx`
+(`build_revenue_model.py` regenerates it; edit the script's inputs, not the `.xlsx` directly).
+Every yellow cell on its `Inputs` sheet is a knob; every other cell is a live formula. The
+figures quoted below are that workbook's *current default* knob settings, not fixed numbers —
+re-run the script after changing an assumption and everything downstream recomputes.
 
-- Boot 90s → $0.002 Spot compute burned.
-- Minimum billed 90s → $0.008 revenue. **Net +$0.006/resume (~75% margin).**
+## On-prem licensing
 
-Tradeoff: pool-miss queries wait `BOOT_SECONDS`. Tolerable for the analytical lane,
-unacceptable for interactive — interactive/ops customers buy the warm coordinator (the
-serving lane) instead.
+Negotiated, not published — these are starting-assumption placeholder rates for the SKU
+structure, not a price list (`Inputs` sheet, "On-prem licensing" section). One model only: a
+flat per-core rate, with no hardware-class factor and no coordinator/worker distinction — a
+core costs the same regardless of the chip it runs on or the role the node plays.
 
-## Free bands (hard cap, under break-even)
+An earlier draft split cores into a device-class factor (Oracle's core-factor-table pattern:
+0.5× commodity x86/ARM, 1.0× everything else) — dropped, because Oracle's rationale for that
+split (non-x86 chips do more work per core on Oracle's own workloads) doesn't hold for Provisa:
+it's software, a core is a core regardless of instruction set.
 
-A free tier is acquisition spend, capped at ~$3/user/mo of marginal cost. Card required
-up front; at max, **throttle/suspend the data plane** — never silent billing.
+| | Basis |
+|---|---|
+| Rate | $3,000/core/yr |
+| Memory | Bundled at 4 GiB/licensed core — informational, never billed as a separate meter |
+| Delivery/support cost | 25% of license revenue (placeholder; real fully-loaded cost, not a floor) |
 
-| Band | Free max | Cost to us |
-| --- | --- | --- |
-| Compute | 200 vCPU-hr/mo (= 25 node-hr on 8-vCPU) | $2.00 |
-| Egress | 8 GB/mo | $1.00 |
+A representative deal (48 licensed cores, the workbook's current default): 48 × $3,000 =
+**$144,000/deal license revenue**, **$108,000/deal margin** after the 25% delivery cost.
 
-Egress capped tighter in dollars than compute — it is the abuse vector (cheap data pipe
-/ exfil). Paid plans bake the same allowance in and meter overage above it (soft cap).
-Free tier is the only hard cap.
+**Enforcement is contractual, not technical.** Provisa on-prem ships as a library — there is no
+runtime gate that can check node count, core count, or memory against what was purchased, and no
+phone-home or central key registry. The license key is scoped to a *cluster* (a group of nodes):
+nodes sharing a key can sum their own reported vCPU/mem and warn once the cluster's licensed core
+entitlement is exceeded, but that check only holds within one cluster's own key exchange —
+nothing stops a customer copying the same key into a second, isolated cluster. The only thing
+Provisa can actually withhold from an out-of-scope or unpaid deployment is service: support,
+SLAs, and updates. Every license fee above is really a support/update contract with a
+usage-scope clause and audit rights attached — not a technical control on total consumption.
+This is the same posture Oracle and IBM's own core-factor licensing runs on in practice (audit
+rights, not a runtime block), and the same free-to-run-anywhere shape as Grafana OSS or Neo4j
+Desktop.
 
-## Platform tiers
+**Free tier:** orgs may run on-prem at $0/no-support if both hold: a self-attested contractual
+8-core cluster cap, and under $1M in company annual revenue — license-terms limits, not
+technical ones, for the same reason above.
 
-| Tier | Fee/mo | Notes |
-| --- | --- | --- |
-| Free | $0 | Hard-capped free bands, card on file, always-warm site, cold query/connect |
-| Starter | ~$180 | Allowance baked in, cold query/connect, metered overage |
-| Team | ~$900 | Larger allowance, metered overage |
-| Scale | ~$2,300 | Larger allowance, metered overage |
-| Serving lane (active-hour) | $3.25/active-hr | Always-on persistent-protocol endpoints, ops latency, ~87–97% margin |
-| Analytical lane (worker-hour) | $2.50/worker-hr | Distributed MPP cross-source joins, scale-to-zero, ~97% Spot / ~89% on-demand |
-| + Warm worker add-on | +~$890 | Zero query cold start on the serving lane (~$196/mo cost) |
+**Support-only SKU:** for free-tier orgs who want someone to call without buying a license —
+**$10,000/yr**, no license included, scoped to a 24-hour response commitment (confirm the defect
+or clarify the feature, plus a resolution ETA — never a resolution-time guarantee, which the
+price point can't cover). At a 40% assumed delivery cost, that nets **$6,000/yr per
+subscriber**.
 
-The minimum platform fee ($45/org/mo) covers the shared ~$19/mo floor at any org count
-and holds ~96% margin on the fixed line. Warm compute (coordinator, and the warm-worker
-add-on) uses on-demand instances — a guaranteed-warm SLA can't ride Spot — and qualifies
-for a ~37% 1-year committed-use discount since it runs 24/7. The analytical lane's
-worker-hour rides Spot, hence its higher margin.
+## Add-on SKUs
 
-## Assumptions most likely to move the answer
+Sold on top of either SaaS or on-prem; placeholder rates, no comparable-vendor research done
+on these yet (unlike the on-prem rates above, which were checked against Denodo/Starburst/
+Oracle/IBM/Red Hat).
 
-1. **Serving-lane attach rate.** How many endpoints stay warm and how many active hours
-   each bills is the dominant serving-lane revenue variable — far more than egress.
-2. **Analytical-lane worker-hours.** Galaxy-anchored worker-hours are the analytical
-   revenue variable; the anchor ($2.50 vs Galaxy $3.00) sets the win-rate/margin trade.
-3. `PAYING_ORGS` — drives floor-per-org and the minimum platform fee.
-4. `BOOT_SECONDS` — real federated-worker + FDW warmup time. Sets whether the cold
-   analytical lane is viable, and how hard the warm coordinator is to upsell.
-5. `SPOT_NODE_HR` — Spot prices fluctuate and workers can be preempted. A warm pool on
-   on-demand pricing takes the worker-hour margin from ~97% to ~89%.
-6. **Data-plane infra.** GCP result-egress at `$0.12/GB` holds parity at only +8%;
-   bundled-egress infra (Hetzner/OVH) takes it to ~99% and is the highest-leverage cost
-   change.
+| SKU | Rate | Net/yr per attach (30% assumed delivery cost) |
+|---|---|---|
+| Premium connector (Splunk / SharePoint / Files) | $6,000/yr | $4,200 |
+| LLM validated-reasoning add-on | $400/org/mo ($4,800/yr) | $3,360 |
+
+The LLM add-on's 30% cost assumption is the least trustworthy number in the whole workbook —
+inference cost is the real cost driver there and isn't modeled at all yet.
+
+## Scenarios
+
+Two named scenarios in the workbook, each with its own independent customer-count/deal-count
+knobs (they don't share counts with the base `Model` sheet):
+
+- **`Scenario - $1M Net`** — SaaS only, 473 Starter / 189 Pro S / 79 Pro M / 47 Pro L (the base
+  50-org mix scaled ~15.8×) → **~$998K/yr net**, at current default assumptions.
+- **`Scenario - Mixed`** — half that SaaS mix (220/90/38/22) plus 3 on-prem deals at the
+  representative-deal economics above → **~$471K/yr SaaS net + $324K/yr on-prem net ≈
+  $795K/yr combined**, illustrating that on-prem deals reach the same order of magnitude with
+  far fewer logos than SaaS alone (3 deals vs. hundreds of orgs).
+
+Neither is a forecast — both are starting points for a "what customer mix gets us to $X"
+conversation, meant to be replaced by real attach/conversion rates once they exist.
+
+## How this deployment reaches billing
+
+`.claude/commercial/` is the only module that knows about any of this — `provisa.core.commerce`
+is the sole seam, imported inside a `try` from core, memoized, degrading to a no-op everywhere
+it's not installed. A self-hosted install with no commercial plugin present runs **unmetered,
+uncapped, and unbilled** — the correct behavior for a deployment with no subscription to
+enforce, not a bug. The plugin is installed only on the hosted node.
+
+## Open questions this restatement surfaces
+
+- **`.env` variant-ID drift** (above) — needs reconciling against the live store before the
+  hosted checkout flow can be trusted to charge the right variant.
+- The commercial plugin's own numbers (base fees, included hours, overage rates) live in Lemon
+  Squeezy's dashboard, not in this repository, by design (`README.md`: "so the open-source
+  wheel and the demo build ship neither the pricing model nor the code that charges for it").
+  This document is a snapshot as of 2026-09-16 — re-pull from the API before quoting these
+  numbers externally if meaningful time has passed, since nothing enforces this file staying in
+  sync with a dashboard it doesn't read.

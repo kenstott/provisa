@@ -1,0 +1,1351 @@
+{
+  "operands" : {
+    "_storageProvider" : "S3StorageProvider",
+    "_incrementalTracker" : "ReadOnlyPipelineTracker",
+    "storageConfig" : {
+      "accessKeyId" : "********",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "actualSchemaName" : "cyber_vuln",
+    "autoDownload" : false,
+    "s3Config" : {
+      "accessKeyId" : "****e4dc",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "schemaName" : "cyber_vuln",
+    "ephemeralCache" : false,
+    "constraints" : {
+      "advisories" : {
+        "primaryKey" : [ "type", "advisory_id" ]
+      },
+      "vulnerability_cwes" : {
+        "primaryKey" : [ "type", "cve_id", "cwe_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cve_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "vulnerabilities",
+          "targetColumns" : [ "cve_id" ],
+          "comment" : "Links CWE classification back to NVD canonical CVE record"
+        }, {
+          "columns" : [ "cwe_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "cwe_catalog",
+          "targetColumns" : [ "cwe_id" ],
+          "comment" : "Links CVE-CWE pair to CWE taxonomy entry"
+        } ]
+      },
+      "osv_vulnerabilities" : {
+        "primaryKey" : [ "type", "osv_id" ]
+      },
+      "cwe_catalog" : {
+        "primaryKey" : [ "type", "cwe_id" ]
+      },
+      "vulnerabilities" : {
+        "primaryKey" : [ "type", "cve_id" ]
+      },
+      "vulnerability_cpes" : {
+        "primaryKey" : [ "type", "cve_id", "cpe_criteria" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cve_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "vulnerabilities",
+          "targetColumns" : [ "cve_id" ],
+          "comment" : "Links CPE affected-product back to NVD canonical CVE record"
+        } ]
+      },
+      "vuln_cross_refs" : {
+        "primaryKey" : [ "type", "cve_id", "external_id", "external_source" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cve_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "vulnerabilities",
+          "targetColumns" : [ "cve_id" ],
+          "comment" : "Cross-refs link back to NVD canonical CVE records"
+        } ]
+      },
+      "kev_catalog" : {
+        "primaryKey" : [ "type", "cve_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cve_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "vulnerabilities",
+          "targetColumns" : [ "cve_id" ],
+          "comment" : "KEV entries reference NVD canonical CVE records"
+        } ]
+      },
+      "kev_cwes" : {
+        "primaryKey" : [ "type", "cve_id", "cwe_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cve_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "kev_catalog",
+          "targetColumns" : [ "cve_id" ],
+          "comment" : "Links KEV CWE entry back to CISA KEV catalog record"
+        }, {
+          "columns" : [ "cwe_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "cwe_catalog",
+          "targetColumns" : [ "cwe_id" ],
+          "comment" : "Links KEV-CWE pair to CWE taxonomy entry"
+        } ]
+      }
+    },
+    "executionEngine" : "duckdb",
+    "directory" : "s3://govdata-parquet-v1",
+    "tableConstraints" : {
+      "advisories" : {
+        "primaryKey" : [ "type", "advisory_id" ]
+      },
+      "vulnerability_cwes" : {
+        "primaryKey" : [ "type", "cve_id", "cwe_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cve_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "vulnerabilities",
+          "targetColumns" : [ "cve_id" ],
+          "comment" : "Links CWE classification back to NVD canonical CVE record"
+        }, {
+          "columns" : [ "cwe_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "cwe_catalog",
+          "targetColumns" : [ "cwe_id" ],
+          "comment" : "Links CVE-CWE pair to CWE taxonomy entry"
+        } ]
+      },
+      "osv_vulnerabilities" : {
+        "primaryKey" : [ "type", "osv_id" ]
+      },
+      "cwe_catalog" : {
+        "primaryKey" : [ "type", "cwe_id" ]
+      },
+      "vulnerabilities" : {
+        "primaryKey" : [ "type", "cve_id" ]
+      },
+      "vulnerability_cpes" : {
+        "primaryKey" : [ "type", "cve_id", "cpe_criteria" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cve_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "vulnerabilities",
+          "targetColumns" : [ "cve_id" ],
+          "comment" : "Links CPE affected-product back to NVD canonical CVE record"
+        } ]
+      },
+      "vuln_cross_refs" : {
+        "primaryKey" : [ "type", "cve_id", "external_id", "external_source" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cve_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "vulnerabilities",
+          "targetColumns" : [ "cve_id" ],
+          "comment" : "Cross-refs link back to NVD canonical CVE records"
+        } ]
+      },
+      "kev_catalog" : {
+        "primaryKey" : [ "type", "cve_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cve_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "vulnerabilities",
+          "targetColumns" : [ "cve_id" ],
+          "comment" : "KEV entries reference NVD canonical CVE records"
+        } ]
+      },
+      "kev_cwes" : {
+        "primaryKey" : [ "type", "cve_id", "cwe_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cve_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "kev_catalog",
+          "targetColumns" : [ "cve_id" ],
+          "comment" : "Links KEV CWE entry back to CISA KEV catalog record"
+        }, {
+          "columns" : [ "cwe_id" ],
+          "targetSchema" : "cyber_vuln",
+          "targetTable" : "cwe_catalog",
+          "targetColumns" : [ "cwe_id" ],
+          "comment" : "Links KEV-CWE pair to CWE taxonomy entry"
+        } ]
+      }
+    },
+    "canonicalSchemaName" : "cyber_vuln",
+    "operatingDirectory" : "/Users/kennethstott/.provisa_askamerica/data/cyber_vuln",
+    "database_filename" : "/Users/kennethstott/.provisa_askamerica/data/.duckdb/govdata.duckdb",
+    "testMode" : false,
+    "partitionedTables" : [ {
+      "name" : "cwe_catalog",
+      "releaseWindow" : {
+        "dow" : [ 0 ]
+      },
+      "pattern" : "type=cwe_catalog.parquet",
+      "dataset_type" : "snapshot",
+      "freshness" : {
+        "type" : "last_modified"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "MITRE Common Weakness Enumeration (CWE) catalog, one row per CWE ID (e.g., CWE-79) with name, abstraction level (Class/Base/Variant/Compound), structure, status, and description. Full-catalog snapshot sourced from cwec_latest.xml.zip, refreshed weekly. Canonical dimension joined to NVD CVEs via vulnerability_cwes, to CISA KEV via kev_cwes, and to cyber_threat.owasp_top10 in the vuln_threat_chain view.\n",
+      "columns" : [ {
+        "name" : "cwe_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "CWE identifier (e.g., CWE-79)"
+      }, {
+        "name" : "name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CWE name"
+      }, {
+        "name" : "abstraction",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Abstraction level (Class, Base, Variant, Compound)"
+      }, {
+        "name" : "structure",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Structure (Simple, Chain, Composite)"
+      }, {
+        "name" : "status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Status (Draft, Stable, Deprecated, Incomplete, Obsolete)"
+      }, {
+        "name" : "description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Short description"
+      }, {
+        "name" : "extended_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Extended description"
+      }, {
+        "name" : "parent_ids",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited parent CWE IDs (ChildOf relationships)"
+      }, {
+        "name" : "cwe_url",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Canonical URL on cwe.mitre.org"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip",
+        "method" : "GET",
+        "extractPattern" : "*.xml",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.vuln.CweResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "cwe_catalog" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "vulnerabilities",
+      "freshness" : {
+        "type" : "count",
+        "count_probe" : {
+          "url" : "https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=1",
+          "path" : "totalResults"
+        }
+      },
+      "pattern" : "type=vulnerabilities/year=*/quarter=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 1999,
+        "maxYear" : 2026,
+        "distinctYears" : 28,
+        "contiguous" : true,
+        "rowCount" : 389366,
+        "checkedAt" : "2026-09-12T00:10:47Z"
+      },
+      "dqRowLimit" : 5000,
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        }, {
+          "name" : "quarter",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "NVD CVE 2.0 canonical vulnerability records, one row per CVE, partitioned by publication year and quarter. NVD's own catalog spans 1999-present (~347k CVEs total), but this table's own observedCoverage below is the source of truth for what's actually loaded here — check it rather than assuming the two match. Stores CVSS v2 and v3.1 base scores with their vector strings, plus a CVSS v4.0 base score (no v4.0 vector column), vuln_status, and pipe-delimited CWE IDs. The canonical CVE registry — see kev_catalog for the smaller subset known to be actively exploited, and vulnerability_cwes for the CVE-to-CWE junction.\n",
+      "columns" : [ {
+        "name" : "cve_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "CVE identifier (e.g., CVE-2021-44228)"
+      }, {
+        "name" : "published",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Publication date (ISO 8601)"
+      }, {
+        "name" : "last_modified",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Last modification date (ISO 8601)"
+      }, {
+        "name" : "vuln_status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Vulnerability status (Analyzed, Modified, Rejected, etc.)"
+      }, {
+        "name" : "description_en",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "English description"
+      }, {
+        "name" : "cvss_v2_score",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "CVSS v2 base score"
+      }, {
+        "name" : "cvss_v2_vector",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CVSS v2 vector string"
+      }, {
+        "name" : "cvss_v31_score",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "CVSS v3.1 base score"
+      }, {
+        "name" : "cvss_v31_vector",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CVSS v3.1 vector string"
+      }, {
+        "name" : "cvss_v31_severity",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CVSS v3.1 severity (LOW, MEDIUM, HIGH, CRITICAL)"
+      }, {
+        "name" : "cvss_v40_score",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "CVSS v4.0 base score when present"
+      }, {
+        "name" : "cwe_ids",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited CWE IDs"
+      }, {
+        "name" : "source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Feed source (nvd)"
+      }, {
+        "name" : "pub_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Publication year (emitted by transformer from published; drives year partition routing)"
+      }, {
+        "name" : "pub_month",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Publication month 1-12 (emitted by transformer from published; drives quarter routing)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://services.nvd.nist.gov/rest/json/cves/2.0",
+        "method" : "GET",
+        "parameters" : {
+          "pubStartDate" : "{pubStartDate}",
+          "pubEndDate" : "{pubEndDate}"
+        },
+        "headers" : {
+          "apiKey" : ""
+        },
+        "response" : {
+          "format" : "json",
+          "pagination" : {
+            "type" : "OFFSET",
+            "limitParam" : "resultsPerPage",
+            "offsetParam" : "startIndex",
+            "pageSize" : 2000,
+            "countPath" : "totalResults"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.5,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : false
+        }
+      },
+      "hooks" : {
+        "dimensionResolver" : "org.apache.calcite.adapter.govdata.cyber.vuln.NvdPublishedWindowDimensionResolver",
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.vuln.NvdResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "vulnerabilities" ],
+        "pubStartDate" : {
+          "type" : "custom",
+          "effectiveYearField" : "pub_year",
+          "effectiveMonthField" : "pub_month",
+          "properties" : {
+            "startYear" : "1999",
+            "tipDays" : "90",
+            "tipChunkDays" : "1"
+          }
+        },
+        "pubEndDate" : {
+          "type" : "custom"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type={type}/year={year}/quarter={quarter}/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year", "quarter" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year", "quarter" ],
+          "incrementalKeys" : [ "type", "year", "quarter" ]
+        }
+      }
+    }, {
+      "name" : "vulnerability_cwes",
+      "freshness" : {
+        "type" : "count",
+        "count_probe" : {
+          "url" : "https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=1",
+          "path" : "totalResults"
+        }
+      },
+      "pattern" : "type=vulnerability_cwes/year=*/quarter=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 1999,
+        "maxYear" : 2026,
+        "distinctYears" : 28,
+        "contiguous" : true,
+        "rowCount" : 51529,
+        "checkedAt" : "2026-09-12T00:10:48Z"
+      },
+      "dqRowLimit" : 5000,
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        }, {
+          "name" : "quarter",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Junction table of CVE→CWE pairs, materialized from NVD at ingest time. One row per (cve_id, cwe_id) pair. Replaces query-time UNNEST on the pipe-delimited cwe_ids column in vulnerabilities.\n",
+      "columns" : [ {
+        "name" : "cve_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "CVE identifier"
+      }, {
+        "name" : "cwe_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "CWE identifier (e.g., CWE-79)"
+      }, {
+        "name" : "pub_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Year from CVE-YYYY-NNN (emitted by transformer; drives year partition routing)"
+      }, {
+        "name" : "pub_month",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Month placeholder 1 (emitted by transformer; CVE-year-only routing → Q1)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://services.nvd.nist.gov/rest/json/cves/2.0",
+        "method" : "GET",
+        "parameters" : {
+          "pubStartDate" : "{pubStartDate}",
+          "pubEndDate" : "{pubEndDate}"
+        },
+        "headers" : {
+          "apiKey" : ""
+        },
+        "response" : {
+          "format" : "json",
+          "pagination" : {
+            "type" : "OFFSET",
+            "limitParam" : "resultsPerPage",
+            "offsetParam" : "startIndex",
+            "pageSize" : 2000,
+            "countPath" : "totalResults"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.5,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : false
+        }
+      },
+      "hooks" : {
+        "dimensionResolver" : "org.apache.calcite.adapter.govdata.cyber.vuln.NvdPublishedWindowDimensionResolver",
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.vuln.NvdVulnCwesResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "vulnerability_cwes" ],
+        "pubStartDate" : {
+          "type" : "custom",
+          "effectiveYearField" : "pub_year",
+          "effectiveMonthField" : "pub_month",
+          "properties" : {
+            "startYear" : "1999",
+            "tipDays" : "90",
+            "tipChunkDays" : "1"
+          }
+        },
+        "pubEndDate" : {
+          "type" : "custom"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type={type}/year={year}/quarter={quarter}/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year", "quarter" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year", "quarter" ],
+          "incrementalKeys" : [ "type", "year", "quarter" ]
+        }
+      }
+    }, {
+      "name" : "vulnerability_cpes",
+      "freshness" : {
+        "type" : "count",
+        "count_probe" : {
+          "url" : "https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=1",
+          "path" : "totalResults"
+        }
+      },
+      "pattern" : "type=vulnerability_cpes/year=*/quarter=*/*.parquet",
+      "dqRowLimit" : 5000,
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        }, {
+          "name" : "quarter",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Junction table of CVE→affected CPE (vendor/product/version) pairs, materialized from NVD's configurations[].nodes[].cpeMatch[] array at ingest time. One row per (cve_id, cpe_criteria) pair. Enables per-vendor exploitation analysis (join to kev_catalog on cve_id, aggregate by vendor) that the base vulnerabilities table cannot answer alone. CPE 2.3 format: cpe:2.3:{part}:{vendor}:{product}:{version}:... part = 'a' (application), 'o' (OS), or 'h' (hardware).\n",
+      "columns" : [ {
+        "name" : "cve_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "CVE identifier"
+      }, {
+        "name" : "cpe_criteria",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Full CPE 2.3 string (unparsed)"
+      }, {
+        "name" : "part",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CPE part — 'a' (application), 'o' (OS), 'h' (hardware)"
+      }, {
+        "name" : "vendor",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Vendor identifier from CPE (e.g., 'microsoft', 'cisco', 'apple')"
+      }, {
+        "name" : "product",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Product identifier from CPE (e.g., 'windows_10', 'ios')"
+      }, {
+        "name" : "version",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Version string from CPE (may be '*' or literal version)"
+      }, {
+        "name" : "vulnerable",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "True if this CPE match indicates vulnerable configuration"
+      }, {
+        "name" : "version_start_including",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Version range start (inclusive)"
+      }, {
+        "name" : "version_start_excluding",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Version range start (exclusive)"
+      }, {
+        "name" : "version_end_including",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Version range end (inclusive)"
+      }, {
+        "name" : "version_end_excluding",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Version range end (exclusive)"
+      }, {
+        "name" : "pub_year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Year from CVE-YYYY-NNN (drives year partition routing)"
+      }, {
+        "name" : "pub_month",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Month placeholder 1 (CVE-year-only routing → Q1)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://services.nvd.nist.gov/rest/json/cves/2.0",
+        "method" : "GET",
+        "parameters" : {
+          "pubStartDate" : "{pubStartDate}",
+          "pubEndDate" : "{pubEndDate}"
+        },
+        "headers" : {
+          "apiKey" : ""
+        },
+        "response" : {
+          "format" : "json",
+          "pagination" : {
+            "type" : "OFFSET",
+            "limitParam" : "resultsPerPage",
+            "offsetParam" : "startIndex",
+            "pageSize" : 2000,
+            "countPath" : "totalResults"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.5,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : false
+        }
+      },
+      "hooks" : {
+        "dimensionResolver" : "org.apache.calcite.adapter.govdata.cyber.vuln.NvdPublishedWindowDimensionResolver",
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.vuln.NvdVulnCpesResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "vulnerability_cpes" ],
+        "pubStartDate" : {
+          "type" : "custom",
+          "effectiveYearField" : "pub_year",
+          "effectiveMonthField" : "pub_month",
+          "properties" : {
+            "startYear" : "1999",
+            "tipDays" : "90",
+            "tipChunkDays" : "1"
+          }
+        },
+        "pubEndDate" : {
+          "type" : "custom"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type={type}/year={year}/quarter={quarter}/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year", "quarter" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year", "quarter" ],
+          "incrementalKeys" : [ "type", "year", "quarter" ]
+        }
+      }
+    }, {
+      "name" : "kev_catalog",
+      "pattern" : "type=kev_catalog.parquet",
+      "dataset_type" : "snapshot",
+      "freshness" : {
+        "type" : "etag"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "CISA Known Exploited Vulnerabilities (KEV) catalog: one row per CVE known to be actively exploited in the wild, ~1,585 entries. Carries vendor_project, product, vulnerability_name, date_added to KEV, the FCEB remediation due_date, and a known_ransomware_use flag — no CVSS scores are included here. A curated subset of the full NVD catalog in vulnerabilities (join on cve_id); see kev_enriched or kev_cross_threat for KEV joined with NVD CVSS scores and CWE names.\n",
+      "columns" : [ {
+        "name" : "cve_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "CVE identifier"
+      }, {
+        "name" : "vendor_project",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Vendor or project name (KEV vendorProject)"
+      }, {
+        "name" : "product",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Product name"
+      }, {
+        "name" : "vulnerability_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Vulnerability name (KEV vulnerabilityName)"
+      }, {
+        "name" : "date_added",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Date added to KEV catalog (YYYY-MM-DD)"
+      }, {
+        "name" : "short_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Short description"
+      }, {
+        "name" : "required_action",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Required action for federal agencies"
+      }, {
+        "name" : "due_date",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Remediation due date for FCEB agencies (YYYY-MM-DD)"
+      }, {
+        "name" : "known_ransomware_use",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Known ransomware campaign use (Known or Unknown)"
+      }, {
+        "name" : "notes_urls",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited URLs split from KEV notes field on semicolon"
+      }, {
+        "name" : "cwes",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited CWE IDs from KEV cwes array (may be empty)"
+      }, {
+        "name" : "catalog_version",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Catalog version at ingest time (YYYY.MM.DD) for delta detection"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : false
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.vuln.CisaKevResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "kev_catalog" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "kev_cwes",
+      "pattern" : "type=kev_cwes.parquet",
+      "dataset_type" : "snapshot",
+      "freshness" : {
+        "type" : "etag"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "Junction table of KEV CVE→CWE pairs, materialized from CISA KEV at ingest time. One row per (cve_id, cwe_id) pair. Replaces query-time UNNEST on the pipe-delimited cwes column in kev_catalog.\n",
+      "columns" : [ {
+        "name" : "cve_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "CVE identifier"
+      }, {
+        "name" : "cwe_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "CWE identifier (e.g., CWE-78)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : false
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.vuln.CisaKevCwesResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "kev_cwes" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "osv_vulnerabilities",
+      "freshness" : {
+        "type" : "etag",
+        "probe_url" : "https://osv-vulnerabilities.storage.googleapis.com/{ecosystem}/all.zip"
+      },
+      "releaseWindow" : {
+        "dow" : [ 0 ]
+      },
+      "pattern" : "type=osv_vulnerabilities/ecosystem=*/*.parquet",
+      "dataset_type" : "snapshot",
+      "dqRowLimit" : 5000,
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "ecosystem",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "OSV (Open Source Vulnerabilities) records for open-source package ecosystems (PyPI, npm, Go, Maven, RubyGems, NuGet, Packagist, Hex, Pub, CRAN), one row per OSV entry (osv_id, e.g. GHSA-xxxx, PYSEC-2021-xxx), partitioned by ecosystem and refreshed weekly. Carries severity type/score, package name and purl, and pipe-delimited alias IDs including CVE IDs where assigned — includes OSV-native entries with no CVE assignment. Not part of vuln_cross_refs, which is sourced solely from GitHub Security Advisories.\n",
+      "columns" : [ {
+        "name" : "osv_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "OSV identifier (e.g., GHSA-xxxx, OSV-2021-xxx, PYSEC-2021-xxx)"
+      }, {
+        "name" : "modified",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Last modification timestamp (ISO 8601)"
+      }, {
+        "name" : "published",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Publication timestamp (ISO 8601)"
+      }, {
+        "name" : "withdrawn",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Withdrawal timestamp if entry was retracted (ISO 8601)"
+      }, {
+        "name" : "aliases",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited alias IDs (CVE IDs, GHSA IDs, etc.)"
+      }, {
+        "name" : "summary",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Short summary"
+      }, {
+        "name" : "details",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Detailed description (may include Markdown)"
+      }, {
+        "name" : "severity_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Severity type (CVSS_V3, CVSS_V4, etc.)"
+      }, {
+        "name" : "severity_score",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CVSS vector string or numeric score"
+      }, {
+        "name" : "ecosystem",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Package ecosystem (PyPI, npm, Go, Maven, etc.)"
+      }, {
+        "name" : "package_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Package name within the ecosystem"
+      }, {
+        "name" : "package_purl",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Package URL (purl) for the affected package"
+      }, {
+        "name" : "schema_version",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "OSV schema version"
+      }, {
+        "name" : "database_specific",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "JSON blob of database-specific metadata"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://osv-vulnerabilities.storage.googleapis.com",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.vuln.OsvResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "osv_vulnerabilities" ],
+        "ecosystem" : {
+          "type" : "list",
+          "values" : [ "PyPI", "npm", "Go", "Maven", "RubyGems", "NuGet", "Packagist", "Hex", "Pub", "CRAN" ]
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type={type}/ecosystem={ecosystem}/"
+        },
+        "partition" : {
+          "columns" : [ "type", "ecosystem" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "ecosystem" ],
+          "incrementalKeys" : [ "type", "ecosystem" ]
+        }
+      }
+    }, {
+      "name" : "vuln_cross_refs",
+      "releaseWindow" : {
+        "dow" : [ 0 ]
+      },
+      "pattern" : "type=vuln_cross_refs.parquet",
+      "dataset_type" : "snapshot",
+      "dqRowLimit" : 5000,
+      "freshness" : {
+        "type" : "graphql",
+        "query" : "{ securityAdvisories(first:1, orderBy:{field:UPDATED_AT, direction:DESC}){ nodes{ updatedAt } } }",
+        "path" : "data.securityAdvisories.nodes[0].updatedAt",
+        "watermark_var" : "updatedSince"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "Cross-reference mappings from CVE identifiers to external advisory IDs, sourced solely from GitHub Security Advisories (GHSA) via the GraphQL API (single source per the one-table = one-source rule; NVD/OSV cross-refs are derived as SQL views over their own tables). Dedup key is (cve_id, external_id, external_source); external_source is 'ghsa'. APPEND LOG: the incremental delta crawl appends changed advisories each run, so this base table may hold exact-duplicate rows across runs. Query the vuln_cross_refs_unique view for one row per (cve_id, external_id, external_source).\n",
+      "columns" : [ {
+        "name" : "cve_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "CVE identifier (CVE-YYYY-NNNNN normalized form)"
+      }, {
+        "name" : "external_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "External identifier (GHSA ID, NVD URL slug, etc.)"
+      }, {
+        "name" : "external_source",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Source system (ghsa, nvd, cisa, mitre, github, cve)"
+      }, {
+        "name" : "url",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "URL of the external advisory or reference"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.github.com/graphql",
+        "method" : "POST",
+        "headers" : {
+          "Authorization" : "bearer ",
+          "Content-Type" : "application/json"
+        },
+        "body" : {
+          "query" : "query($first: Int!, $after: String, $updatedSince: DateTime) { securityAdvisories(first: $first, after: $after, updatedSince: $updatedSince, orderBy: {field: UPDATED_AT, direction: ASC}) { pageInfo { hasNextPage endCursor } nodes { ghsaId publishedAt severity summary identifiers { type value } references { url } } } }",
+          "variables" : {
+            "after" : null,
+            "updatedSince" : null
+          }
+        },
+        "response" : {
+          "format" : "json",
+          "pagination" : {
+            "type" : "CURSOR",
+            "cursorIn" : "body",
+            "cursorParam" : "after",
+            "cursorPath" : "data.securityAdvisories.pageInfo.endCursor",
+            "hasNextPath" : "data.securityAdvisories.pageInfo.hasNextPage",
+            "limitParam" : "first",
+            "pageSize" : 100,
+            "boundParam" : "updatedSince"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 3
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.vuln.GithubSaResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "vuln_cross_refs" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "overwritePartitions" : false
+        }
+      }
+    }, {
+      "name" : "advisories",
+      "releaseWindow" : {
+        "dow" : [ 0 ]
+      },
+      "pattern" : "type=advisories/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2024,
+        "maxYear" : 2026,
+        "distinctYears" : 3,
+        "contiguous" : true,
+        "rowCount" : 41,
+        "checkedAt" : "2026-09-12T00:10:48Z"
+      },
+      "dataset_type" : "delta",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "CISA cybersecurity advisory metadata, one row per advisory (e.g., AA24-001A, ICSA-24-001-01), partitioned by year. CISA's own feed goes back to 2017, but this table's own observedCoverage below is the source of truth for what's actually loaded here — check it rather than assuming the two match. Refreshed weekly. Carries title, published_date, severity label, pipe-delimited CVE IDs mentioned in the advisory, and a short affected_systems description. Sourced from CISA's official CSAF 2.0 JSON feed (cisagov/CSAF GitHub repo).\n",
+      "columns" : [ {
+        "name" : "advisory_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Advisory identifier (e.g., AA24-001A, ICSA-24-001-01)"
+      }, {
+        "name" : "source",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Advisory source (cisa)"
+      }, {
+        "name" : "title",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Advisory title"
+      }, {
+        "name" : "published_date",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Publication date (YYYY-MM-DD)"
+      }, {
+        "name" : "severity",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Severity label (CRITICAL, HIGH, MEDIUM, LOW)"
+      }, {
+        "name" : "cve_ids",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited CVE IDs mentioned in the advisory"
+      }, {
+        "name" : "affected_systems",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Short description of affected products or systems"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://raw.githubusercontent.com/cisagov/CSAF/develop/csaf_files/IT/white/{advisory_path}",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.vuln.CisaAdvisoryResponseTransformer",
+        "dimensionResolver" : "org.apache.calcite.adapter.govdata.cyber.vuln.CsafAdvisoryDimensionResolver"
+      },
+      "dimensions" : {
+        "type" : [ "advisories" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2017",
+          "end" : "2026"
+        },
+        "advisory_path" : {
+          "type" : "custom",
+          "properties" : {
+            "indexUrl" : "https://raw.githubusercontent.com/cisagov/CSAF/develop/csaf_files/IT/white/index.txt"
+          }
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "type={type}/year={year}/"
+        },
+        "partition" : {
+          "columns" : [ "type", "year" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "overwritePartitions" : true,
+          "batchPartitionColumns" : [ "type", "year" ],
+          "incrementalKeys" : [ "type", "year" ]
+        }
+      }
+    } ],
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "comment" : "Cybersecurity vulnerability data. Canonical vulnerability records from NVD, active exploitation catalog from CISA KEV, CWE taxonomy, and cross-source identifier mappings. Part of the govdata cyber sub-domain.\n",
+    "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
+    "dataSource" : "cyber_vuln",
+    "views" : [ {
+      "name" : "vuln_cross_refs_unique",
+      "comment" : "Deduplicated CVE↔external-advisory cross-references — the serving layer for vuln_cross_refs. The base vuln_cross_refs table is an APPEND log: the incremental GHSA delta crawl appends only advisories changed since the last watermark each run, so an advisory updated across several runs (and the inclusive updatedSince boundary advisory) contributes the same (cve_id, external_id) mapping more than once. GHSA→CVE mappings are immutable, so those repeats are exact duplicates; this view collapses them to one row per (cve_id, external_id, external_source). Query this view, not the base table, for unique cross-references.\n",
+      "sql" : "SELECT cve_id, external_id, external_source, MIN(url) AS url FROM vuln_cross_refs GROUP BY cve_id, external_id, external_source\n"
+    }, {
+      "name" : "kev_enriched",
+      "comment" : "KEV entries enriched with the matching NVD record via LEFT JOIN — one row per KEV entry, adding published/last_modified dates, vuln_status, full description_en, and CVSS v2/v3.1/v4.0 scores. Orphaned KEV entries (no matching NVD record) still appear with NULL NVD columns. For CWE taxonomy names instead of full NVD fields, see kev_cross_threat.\n",
+      "sql" : "SELECT k.cve_id, k.vendor_project, k.product, k.vulnerability_name,\n       k.date_added, k.short_description, k.required_action, k.due_date,\n       k.known_ransomware_use, k.notes_urls, k.cwes, k.catalog_version,\n       v.published, v.last_modified, v.vuln_status, v.description_en,\n       v.cvss_v2_score, v.cvss_v31_score, v.cvss_v31_severity, v.cvss_v40_score\nFROM kev_catalog k LEFT JOIN vulnerabilities v ON k.cve_id = v.cve_id\n"
+    }, {
+      "name" : "vuln_cwe_enriched",
+      "comment" : "Vulnerability-CWE junction enriched with CWE catalog details via LEFT JOIN. Unresolved CWE IDs still appear with NULL catalog columns.\n",
+      "sql" : "SELECT vc.cve_id, vc.cwe_id,\n       c.name AS cwe_name, c.abstraction, c.status, c.description\nFROM vulnerability_cwes vc LEFT JOIN cwe_catalog c ON vc.cwe_id = c.cwe_id\n"
+    }, {
+      "name" : "kev_cwe_enriched",
+      "comment" : "KEV CWE references enriched with CWE catalog details via LEFT JOIN. Unresolved CWE IDs still appear with NULL catalog columns.\n",
+      "sql" : "SELECT kc.cve_id, kc.cwe_id,\n       c.name AS cwe_name, c.abstraction, c.status, c.description\nFROM kev_cwes kc LEFT JOIN cwe_catalog c ON kc.cwe_id = c.cwe_id\n"
+    }, {
+      "name" : "vuln_threat_chain",
+      "comment" : "Cross-domain vulnerability chain: CVE → KEV status → CWE → OWASP Top 10 category. Bridges cyber_vuln and cyber_threat schemas. Filter on cve_id or owasp_rank to navigate the chain. CVE→ATT&CK linkage requires the entity resolution layer (no structural mapping exists in the current data).\n",
+      "sql" : "SELECT\n  v.cve_id,\n  v.published,\n  v.cvss_v31_score,\n  v.cvss_v31_severity,\n  CASE WHEN k.cve_id IS NOT NULL THEN 'yes' ELSE 'no' END AS is_known_exploited,\n  k.date_added  AS kev_date_added,\n  k.due_date    AS kev_due_date,\n  k.known_ransomware_use,\n  k.vendor_project,\n  vc.cwe_id,\n  cw.name       AS cwe_name,\n  cw.abstraction AS cwe_abstraction,\n  o.rank        AS owasp_rank,\n  o.name        AS owasp_category\nFROM vulnerabilities v LEFT JOIN kev_catalog       k  ON v.cve_id  = k.cve_id LEFT JOIN vulnerability_cwes vc ON v.cve_id  = vc.cve_id LEFT JOIN cwe_catalog       cw ON vc.cwe_id  = cw.cwe_id LEFT JOIN \"cyber_threat\".\"owasp_top10\" o\n  ON ('|' || o.cwe_ids || '|') LIKE ('%|' || vc.cwe_id || '|%')\n"
+    }, {
+      "name" : "kev_cross_threat",
+      "comment" : "CISA KEV catalog enriched with NVD CVSS v2/v3.1 scores and CWE taxonomy names via LEFT JOIN through vulnerability_cwes and cwe_catalog (not full NVD description/status fields — see kev_enriched for those). One row per CVE in KEV; multiple CWE assignments per CVE are aggregated into a comma-delimited cwe_ids list and a semicolon-delimited cwe_names list.\n",
+      "sql" : "SELECT\n  k.cve_id,\n  k.vendor_project,\n  k.product,\n  k.vulnerability_name,\n  k.date_added,\n  k.due_date,\n  k.known_ransomware_use,\n  v.cvss_v31_score,\n  v.cvss_v31_severity,\n  v.cvss_v2_score,\n  STRING_AGG(DISTINCT vc.cwe_id, ', ') AS cwe_ids,\n  STRING_AGG(DISTINCT cw.name,   '; ') AS cwe_names\nFROM kev_catalog k LEFT JOIN vulnerabilities  v  ON k.cve_id  = v.cve_id LEFT JOIN vulnerability_cwes vc ON k.cve_id = vc.cve_id LEFT JOIN cwe_catalog      cw ON vc.cwe_id  = cw.cwe_id GROUP BY k.cve_id, k.vendor_project, k.product, k.vulnerability_name,\n         k.date_added, k.due_date, k.known_ransomware_use,\n         v.cvss_v31_score, v.cvss_v31_severity, v.cvss_v2_score\n"
+    } ],
+    "materializeDirectory" : "s3://govdata-parquet-v1"
+  },
+  "parentSchema" : "",
+  "generatedAt" : "2026-09-19T10:18:39.797627Z",
+  "schemaName" : "cyber_vuln"
+}

@@ -1,0 +1,2259 @@
+{
+  "operands" : {
+    "cikRegistryPath" : "",
+    "_storageProvider" : "S3StorageProvider",
+    "_incrementalTracker" : "ReadOnlyPipelineTracker",
+    "document_source_defaults" : {
+      "headers" : {
+        "User-Agent" : "Apache Calcite SEC Adapter (apache-calcite@apache.org)",
+        "Accept-Encoding" : "gzip, deflate"
+      },
+      "responseTransformer" : "org.apache.calcite.adapter.govdata.sec.EdgarResponseTransformer",
+      "metadataUrl" : "https://data.sec.gov/submissions/CIK{cik}.json",
+      "rateLimit" : {
+        "requestsPerSecond" : 8,
+        "retryOn" : [ 429, 503 ],
+        "maxRetries" : 5,
+        "retryDelayMs" : 5000
+      },
+      "documentConverter" : "org.apache.calcite.adapter.govdata.sec.XbrlToParquetConverter",
+      "documentUrl" : "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}",
+      "rawCache" : {
+        "enabled" : true,
+        "directory" : "${GOVDATA_CACHE_DIR}/sec",
+        "manifestFile" : "cache-manifest.json"
+      },
+      "type" : "document"
+    },
+    "schemaName" : "sec",
+    "ephemeralCache" : false,
+    "edgarRateLimitMs" : "125",
+    "constraints" : {
+      "mda_sections" : {
+        "primaryKey" : [ "cik", "accession_number", "section", "paragraph_number" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      },
+      "earnings_transcripts" : {
+        "primaryKey" : [ "cik", "accession_number", "section_type", "paragraph_number" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      },
+      "stock_prices" : {
+        "primaryKey" : [ "ticker", "date" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik" ]
+        }, {
+          "columns" : [ "ticker" ],
+          "targetSchema" : "ref",
+          "targetTable" : "figi_instruments",
+          "targetColumns" : [ "ticker" ],
+          "comment" : "Links stock price series to OpenFIGI instrument identifier"
+        } ]
+      },
+      "xbrl_relationships" : {
+        "primaryKey" : [ "cik", "accession_number", "linkbase_type", "from_concept", "to_concept" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      },
+      "financial_line_items" : {
+        "primaryKey" : [ "cik", "accession_number", "element_id" ],
+        "indexes" : [ [ "concept" ], [ "period_end" ], [ "value_numeric" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        }, {
+          "columns" : [ "cik", "accession_number", "context_ref" ],
+          "targetTable" : "filing_contexts",
+          "targetColumns" : [ "cik", "accession_number", "context_id" ],
+          "comment" : "Context IDs are only unique within a filing, requires composite FK"
+        } ]
+      },
+      "filing_contexts" : {
+        "primaryKey" : [ "cik", "accession_number", "context_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      },
+      "beneficial_ownership" : {
+        "primaryKey" : [ "cik", "accession_number", "filer_cik" ],
+        "indexes" : [ [ "subject_cik" ], [ "filer_name" ], [ "percent_of_class" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      },
+      "institutional_holdings" : {
+        "primaryKey" : [ "cik", "accession_number", "cusip" ],
+        "indexes" : [ [ "report_period" ], [ "issuer_name" ], [ "cusip" ], [ "manager_cik" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      },
+      "insider_transactions" : {
+        "primaryKey" : [ "cik", "accession_number", "reporting_person_cik", "security_title", "transaction_code" ],
+        "indexes" : [ [ "transaction_date" ], [ "reporting_person_name" ], [ "transaction_code" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ],
+          "comment" : "Each Form 3/4/5 is a distinct filing with its own accession number"
+        } ]
+      },
+      "filing_metadata" : {
+        "primaryKey" : [ "cik", "accession_number" ],
+        "indexes" : [ [ "filing_date" ], [ "company_name" ], [ "ticker" ], [ "sic_code" ], [ "state_of_incorporation" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_of_incorporation" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
+          "comment" : "Links filing state of incorporation to the canonical state-identity dimension"
+        }, {
+          "columns" : [ "sic_code" ],
+          "targetSchema" : "ref",
+          "targetTable" : "sic",
+          "targetColumns" : [ "sic_code" ],
+          "comment" : "Links the filer's SIC code to the SEC EDGAR industry-classification reference"
+        } ]
+      },
+      "risk_factor_sections" : {
+        "primaryKey" : [ "cik", "accession_number", "section", "paragraph_number" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      }
+    },
+    "directory" : "s3://govdata-parquet-v1",
+    "canonicalSchemaName" : "sec",
+    "operatingDirectory" : "/Users/kennethstott/.provisa_askamerica/data/sec",
+    "bulkStockPriceZip" : "s3://stock-price-bulk/d_us_txt.zip",
+    "iceberg_defaults" : {
+      "targetFileSizeBytes" : 134217728,
+      "compactionTargetFileSizeBytes" : 134217728,
+      "catalogType" : "hadoop",
+      "snapshotRetentionDays" : 7,
+      "warehousePath" : "s3://govdata-parquet-v1/sec",
+      "runMaintenance" : true,
+      "runCompaction" : true,
+      "compactionMinFiles" : 5
+    },
+    "alphaVantageRateLimitMs" : "1500",
+    "column_templates" : {
+      "unit_ref_normalized_column" : {
+        "name" : "unit_ref_normalized",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Canonical unit (e.g. USD, shares, pure, usdPerShare); equals unit_ref when no normalization rule matches"
+      },
+      "stock_partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "value_numeric_method_column" : {
+        "name" : "value_numeric_method",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Provenance of value_numeric — direct, heuristic, or null if no conversion possible"
+      },
+      "partition_ticker" : {
+        "name" : "ticker",
+        "type" : "VARCHAR"
+      },
+      "filing_type_column" : {
+        "name" : "filing_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Type of SEC filing (e.g., '10-K', '10-Q', '8-K', 'DEF 14A')"
+      },
+      "concept_column" : {
+        "name" : "concept",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "XBRL concept name (e.g., 'us-gaap:Assets', 'dei:EntityRegistrantName')"
+      },
+      "partition_year" : {
+        "name" : "year",
+        "type" : "INTEGER"
+      },
+      "value_numeric_column" : {
+        "name" : "value_numeric",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Best-effort numeric value as reported by the filer, with the iXBRL scale factor already applied (a statement \"in thousands\" tagging 1,234 with scale=3 stores 1234000). The as-displayed text is kept verbatim in the value column, and scale is kept for provenance. Not a verbatim copy of the filing text; see value_numeric_method for how it was derived.\n"
+      },
+      "partition_filing_type" : {
+        "name" : "filing_type",
+        "type" : "VARCHAR"
+      },
+      "cik_column" : {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Central Index Key (unique SEC company identifier, 10 digits zero-padded)"
+      },
+      "accession_number_column" : {
+        "name" : "accession_number",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC accession number (unique filing identifier, format 0000000000-00-000000)"
+      },
+      "unit_ref_column" : {
+        "name" : "unit_ref",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Raw unit reference as reported in the source XBRL document"
+      },
+      "filing_date_column" : {
+        "name" : "filing_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Date the filing was submitted to SEC (ISO 8601 format)"
+      },
+      "period_start_column" : {
+        "name" : "period_start",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Start date of the reporting period (ISO 8601 format)"
+      },
+      "footnote_refs_column" : {
+        "name" : "footnote_refs",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Comma-separated list of footnote references"
+      },
+      "sec_partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "period_end_column" : {
+        "name" : "period_end",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "End date of the reporting period (ISO 8601 format)"
+      },
+      "context_ref_column" : {
+        "name" : "context_ref",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Reference to context element defining the reporting period and entity"
+      },
+      "paragraph_text_column" : {
+        "name" : "paragraph_text",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Full text content of the paragraph"
+      },
+      "partition_cik" : {
+        "name" : "cik",
+        "type" : "VARCHAR"
+      }
+    },
+    "dimension_values" : {
+      "beneficial_ownership_types" : [ "SC 13D", "SC 13D/A", "SC 13G", "SC 13G/A" ],
+      "all_filing_types" : [ "10-K", "10-K/A", "10-Q", "10-Q/A", "8-K", "8-K/A", "20-F", "40-F", "DEF 14A", "S-1", "S-3", "424B2", "424B5", "3", "4", "5", "13F-HR", "13F-HR/A", "SC 13D", "SC 13D/A", "SC 13G", "SC 13G/A" ],
+      "current_report_types" : [ "8-K", "8-K/A" ],
+      "annual_filing_types" : [ "10-K", "10-K/A", "20-F", "40-F" ],
+      "year_range" : {
+        "type" : "yearRange",
+        "start" : "2010",
+        "end" : "${GOVDATA_END_YEAR:${CURRENT_YEAR}}"
+      },
+      "insider_filing_types" : [ "3", "4", "5" ],
+      "quarterly_filing_types" : [ "10-Q", "10-Q/A" ],
+      "institutional_filing_types" : [ "13F-HR", "13F-HR/A" ]
+    },
+    "database_filename" : "/Users/kennethstott/.provisa_askamerica/data/.duckdb/govdata.duckdb",
+    "submissionsTtlHours" : "24",
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
+    "dataLagYears" : 0,
+    "views" : [ {
+      "name" : "latest_filings",
+      "comment" : "Most recent filing of each type per company",
+      "sql" : "SELECT fm.* FROM filing_metadata fm INNER JOIN (\n  SELECT cik, filing_type, MAX(filing_date) as max_date\n  FROM filing_metadata\n  GROUP BY cik, filing_type\n) latest ON fm.cik = latest.cik\n  AND fm.filing_type = latest.filing_type\n  AND fm.filing_date = latest.max_date\n"
+    }, {
+      "name" : "revenue_trends",
+      "comment" : "Revenue-tagged XBRL facts (any concept whose name matches '%Revenue%') joined to company_name/ticker, one row per matching concept per period_end. Uses a simple substring match rather than the curated concept_aliases mapping in the financial_facts view, so it can include non-revenue concepts (e.g. DeferredRevenue) or miss unmapped revenue tags — prefer financial_facts (canonical_name='revenue') for precise revenue trend analysis.\n",
+      "sql" : "SELECT\n  fm.company_name,\n  fm.ticker,\n  fli.period_end,\n  fli.value_numeric as revenue\nFROM financial_line_items fli JOIN filing_metadata fm ON fli.cik = fm.cik AND fli.accession_number = fm.accession_number WHERE fli.concept LIKE '%Revenue%'\n  AND fli.value_numeric IS NOT NULL\nORDER BY fm.cik, fli.period_end\n"
+    }, {
+      "name" : "insider_activity_summary",
+      "comment" : "Transaction count, total shares, and average price per share from insider_transactions, aggregated by company and transaction_code — purchases ('P') and sales ('S') only; awards, holdings, and other codes are excluded.\n",
+      "sql" : "SELECT\n  fm.company_name,\n  fm.ticker,\n  it.transaction_code,\n  COUNT(*) as transaction_count,\n  SUM(it.shares_transacted) as total_shares,\n  AVG(it.price_per_share) as avg_price\nFROM insider_transactions it JOIN filing_metadata fm ON it.cik = fm.cik WHERE it.transaction_code IN ('P', 'S') GROUP BY fm.company_name, fm.ticker, it.transaction_code\n"
+    }, {
+      "name" : "financial_facts",
+      "comment" : "Normalized financial line items with canonical metric names and scaled dollar values. Joins financial_line_items against an inline concept_aliases mapping to resolve XBRL concept variants (e.g. both us-gaap:Revenues and us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax map to canonical_name=revenue). value_dollars is retained as an alias of the (already scale-applied) value_numeric so existing callers keep working; the scale factor is applied once, in the base table. WARNING: a filing reports one consolidated value per concept plus, separately, its segment/geography/product-line breakdown members under the same canonical_name and period — each context_ref is a distinct fact, so SUM(value_dollars) across all context_refs for a (cik, canonical_name, period) multiplies the consolidated total by however many dimensional breakdowns the filer disclosed. Filter is_consolidated_total = TRUE to get the single company-wide figure per concept/period. SCOPE WARNING: canonical_name only covers the ~40 concepts listed in this view's own concept_aliases mapping below (revenue, net income, assets, liabilities, EPS and similar common income-statement/balance-sheet lines). It does NOT and structurally CANNOT cover filer-specific or industry-specific concepts (e.g. a bank's loan-portfolio breakdown by class) — those rows are simply excluded by this view's inner JOIN, not filtered out by any WHERE clause, so an empty or missing result here means \"not one of the ~40 aliased concepts\", not \"not disclosed\". Query financial_line_items directly by its raw `concept` string for anything outside that list (see that table's own comment). PERFORMANCE WARNING: filtering this view by cik/accession_number has been observed to be dramatically slower than the identical filter run directly against financial_line_items — in one case a hang lasting 45+ minutes at 900%+ CPU versus an instant response from the base table with the same predicate — most likely because the filter does not push through this view's LEFT JOIN to filing_contexts before that join executes. For a single-filer or single-filing lookup, prefer querying financial_line_items directly (optionally scoped to one accession_number) over filtering this view.\n",
+      "sql" : "SELECT\n  li.cik,\n  li.accession_number,\n  li.filing_date,\n  li.year,\n  li.concept,\n  ca.canonical_name,\n  ca.metric_category,\n  li.context_ref,\n  li.unit_ref_normalized,\n  li.period_start,\n  li.period_end,\n  li.is_instant,\n  li.decimals,\n  li.scale,\n  li.value_numeric,\n  li.value_numeric AS value_dollars,\n  fc.segment IS NULL AS is_consolidated_total\nFROM financial_line_items li LEFT JOIN filing_contexts fc\n  ON li.cik = fc.cik\n  AND li.accession_number = fc.accession_number\n  AND li.context_ref = fc.context_id\nJOIN (VALUES\n  ('us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax', 'revenue', 'income_statement'),\n  ('us-gaap:Revenues', 'revenue', 'income_statement'),\n  ('us-gaap:SalesRevenueNet', 'revenue', 'income_statement'),\n  ('us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax', 'revenue', 'income_statement'),\n  ('us-gaap:SalesRevenueGoodsNet', 'revenue', 'income_statement'),\n  ('us-gaap:SalesRevenueServicesNet', 'revenue', 'income_statement'),\n  ('us-gaap:GrossProfit', 'gross_profit', 'income_statement'),\n  ('us-gaap:OperatingIncomeLoss', 'operating_income', 'income_statement'),\n  ('us-gaap:NetIncomeLoss', 'net_income', 'income_statement'),\n  ('us-gaap:NetIncomeLossAvailableToCommonStockholdersBasic', 'net_income', 'income_statement'),\n  ('us-gaap:IncomeLossFromContinuingOperations', 'net_income', 'income_statement'),\n  ('us-gaap:CostOfRevenue', 'cost_of_revenue', 'income_statement'),\n  ('us-gaap:CostOfGoodsAndServicesSold', 'cost_of_revenue', 'income_statement'),\n  ('us-gaap:CostOfGoodsSold', 'cost_of_revenue', 'income_statement'),\n  ('us-gaap:ResearchAndDevelopmentExpense', 'rd_expense', 'income_statement'),\n  ('us-gaap:SellingGeneralAndAdministrativeExpense', 'sga_expense', 'income_statement'),\n  ('us-gaap:OperatingExpenses', 'operating_expenses', 'income_statement'),\n  ('us-gaap:EarningsPerShareBasic', 'eps_basic', 'income_statement'),\n  ('us-gaap:EarningsPerShareDiluted', 'eps_diluted', 'income_statement'),\n  ('us-gaap:Assets', 'total_assets', 'balance_sheet'),\n  ('us-gaap:AssetsCurrent', 'current_assets', 'balance_sheet'),\n  ('us-gaap:Liabilities', 'total_liabilities', 'balance_sheet'),\n  ('us-gaap:LiabilitiesCurrent', 'current_liabilities', 'balance_sheet'),\n  ('us-gaap:StockholdersEquity', 'shareholders_equity', 'balance_sheet'),\n  ('us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest', 'shareholders_equity', 'balance_sheet'),\n  ('us-gaap:CashAndCashEquivalentsAtCarryingValue', 'cash', 'balance_sheet'),\n  ('us-gaap:CashCashEquivalentsAndShortTermInvestments', 'cash', 'balance_sheet'),\n  ('us-gaap:LongTermDebt', 'long_term_debt', 'balance_sheet'),\n  ('us-gaap:LongTermDebtNoncurrent', 'long_term_debt', 'balance_sheet'),\n  ('us-gaap:NetCashProvidedByUsedInOperatingActivities', 'operating_cash_flow', 'cash_flow'),\n  ('us-gaap:NetCashProvidedByUsedInInvestingActivities', 'investing_cash_flow', 'cash_flow'),\n  ('us-gaap:NetCashProvidedByUsedInFinancingActivities', 'financing_cash_flow', 'cash_flow'),\n  ('us-gaap:PaymentsToAcquirePropertyPlantAndEquipment', 'capex', 'cash_flow'),\n  ('us-gaap:CapitalExpendituresIncurredButNotYetPaid', 'capex', 'cash_flow'),\n  ('us-gaap:DepreciationDepletionAndAmortization', 'depreciation_amortization', 'cash_flow'),\n  ('us-gaap:ShareBasedCompensation', 'stock_based_compensation', 'cash_flow')\n) AS ca(xbrl_concept, canonical_name, metric_category)\n  ON li.concept = ca.xbrl_concept\nWHERE li.concept IN (\n  'us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax',\n  'us-gaap:Revenues',\n  'us-gaap:SalesRevenueNet',\n  'us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax',\n  'us-gaap:SalesRevenueGoodsNet',\n  'us-gaap:SalesRevenueServicesNet',\n  'us-gaap:GrossProfit',\n  'us-gaap:OperatingIncomeLoss',\n  'us-gaap:NetIncomeLoss',\n  'us-gaap:NetIncomeLossAvailableToCommonStockholdersBasic',\n  'us-gaap:IncomeLossFromContinuingOperations',\n  'us-gaap:CostOfRevenue',\n  'us-gaap:CostOfGoodsAndServicesSold',\n  'us-gaap:CostOfGoodsSold',\n  'us-gaap:ResearchAndDevelopmentExpense',\n  'us-gaap:SellingGeneralAndAdministrativeExpense',\n  'us-gaap:OperatingExpenses',\n  'us-gaap:EarningsPerShareBasic',\n  'us-gaap:EarningsPerShareDiluted',\n  'us-gaap:Assets',\n  'us-gaap:AssetsCurrent',\n  'us-gaap:Liabilities',\n  'us-gaap:LiabilitiesCurrent',\n  'us-gaap:StockholdersEquity',\n  'us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest',\n  'us-gaap:CashAndCashEquivalentsAtCarryingValue',\n  'us-gaap:CashCashEquivalentsAndShortTermInvestments',\n  'us-gaap:LongTermDebt',\n  'us-gaap:LongTermDebtNoncurrent',\n  'us-gaap:NetCashProvidedByUsedInOperatingActivities',\n  'us-gaap:NetCashProvidedByUsedInInvestingActivities',\n  'us-gaap:NetCashProvidedByUsedInFinancingActivities',\n  'us-gaap:PaymentsToAcquirePropertyPlantAndEquipment',\n  'us-gaap:CapitalExpendituresIncurredButNotYetPaid',\n  'us-gaap:DepreciationDepletionAndAmortization',\n  'us-gaap:ShareBasedCompensation'\n)\n"
+    }, {
+      "name" : "company_financial_profile",
+      "comment" : "Denormalised company identity: SEC filing metadata joined to GLEIF CIK-LEI bridge and GLEIF entity registry. One row per company — enables CIK-to-LEI resolution and cross-border corporate entity analysis. gleif_cik_mapping.cik is unpadded (GLEIF's own convention) while filing_metadata.cik is 10-digit zero-padded (SEC's convention); the join normalizes with LPAD. GLEIF's SEC-authority CIK bridge covers only entities GLEIF has registered under registration_authority_id='RA000665' (SEC EDGAR) — a minority of SEC filers, so lei/legal_name/headquarters_* are legitimately NULL for most companies, not a join defect. A company incorporated outside Delaware (e.g. Apple in California, Microsoft in Washington) commonly has no RA000665 record in GLEIF at all, even though it is a real SEC filer.\n",
+      "sql" : "SELECT\n  fm.cik,\n  fm.company_name,\n  fm.ticker,\n  fm.sic_code,\n  fm.state_of_incorporation,\n  fm.irs_number,\n  gcm.lei,\n  ge.legal_name,\n  ge.jurisdiction,\n  ge.headquarters_country,\n  ge.headquarters_city,\n  COUNT(DISTINCT fm.accession_number) AS total_filings,\n  MAX(fm.filing_date)                 AS latest_filing_date\nFROM filing_metadata fm LEFT JOIN \"ref\".\"gleif_cik_mapping\" gcm ON fm.cik = LPAD(gcm.cik, 10, '0') LEFT JOIN \"ref\".\"gleif_entities\"    ge  ON gcm.lei = ge.lei GROUP BY fm.cik, fm.company_name, fm.ticker, fm.sic_code,\n         fm.state_of_incorporation, fm.irs_number,\n         gcm.lei, ge.legal_name, ge.jurisdiction,\n         ge.headquarters_country, ge.headquarters_city\n"
+    } ],
+    "materializeDirectory" : "s3://govdata-parquet-v1",
+    "storageConfig" : {
+      "accessKeyId" : "********",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "refreshInterval" : "PT1H",
+    "actualSchemaName" : "sec",
+    "autoDownload" : false,
+    "stockPriceSource" : "stooq",
+    "s3Config" : {
+      "accessKeyId" : "****e4dc",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "executionEngine" : "duckdb",
+    "tableConstraints" : {
+      "mda_sections" : {
+        "primaryKey" : [ "cik", "accession_number", "section", "paragraph_number" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      },
+      "earnings_transcripts" : {
+        "primaryKey" : [ "cik", "accession_number", "section_type", "paragraph_number" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      },
+      "stock_prices" : {
+        "primaryKey" : [ "ticker", "date" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik" ]
+        }, {
+          "columns" : [ "ticker" ],
+          "targetSchema" : "ref",
+          "targetTable" : "figi_instruments",
+          "targetColumns" : [ "ticker" ],
+          "comment" : "Links stock price series to OpenFIGI instrument identifier"
+        } ]
+      },
+      "xbrl_relationships" : {
+        "primaryKey" : [ "cik", "accession_number", "linkbase_type", "from_concept", "to_concept" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      },
+      "financial_line_items" : {
+        "primaryKey" : [ "cik", "accession_number", "element_id" ],
+        "indexes" : [ [ "concept" ], [ "period_end" ], [ "value_numeric" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        }, {
+          "columns" : [ "cik", "accession_number", "context_ref" ],
+          "targetTable" : "filing_contexts",
+          "targetColumns" : [ "cik", "accession_number", "context_id" ],
+          "comment" : "Context IDs are only unique within a filing, requires composite FK"
+        } ]
+      },
+      "filing_contexts" : {
+        "primaryKey" : [ "cik", "accession_number", "context_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      },
+      "beneficial_ownership" : {
+        "primaryKey" : [ "cik", "accession_number", "filer_cik" ],
+        "indexes" : [ [ "subject_cik" ], [ "filer_name" ], [ "percent_of_class" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      },
+      "institutional_holdings" : {
+        "primaryKey" : [ "cik", "accession_number", "cusip" ],
+        "indexes" : [ [ "report_period" ], [ "issuer_name" ], [ "cusip" ], [ "manager_cik" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      },
+      "insider_transactions" : {
+        "primaryKey" : [ "cik", "accession_number", "reporting_person_cik", "security_title", "transaction_code" ],
+        "indexes" : [ [ "transaction_date" ], [ "reporting_person_name" ], [ "transaction_code" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ],
+          "comment" : "Each Form 3/4/5 is a distinct filing with its own accession number"
+        } ]
+      },
+      "filing_metadata" : {
+        "primaryKey" : [ "cik", "accession_number" ],
+        "indexes" : [ [ "filing_date" ], [ "company_name" ], [ "ticker" ], [ "sic_code" ], [ "state_of_incorporation" ] ],
+        "foreignKeys" : [ {
+          "columns" : [ "state_of_incorporation" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
+          "comment" : "Links filing state of incorporation to the canonical state-identity dimension"
+        }, {
+          "columns" : [ "sic_code" ],
+          "targetSchema" : "ref",
+          "targetTable" : "sic",
+          "targetColumns" : [ "sic_code" ],
+          "comment" : "Links the filer's SIC code to the SEC EDGAR industry-classification reference"
+        } ]
+      },
+      "risk_factor_sections" : {
+        "primaryKey" : [ "cik", "accession_number", "section", "paragraph_number" ],
+        "foreignKeys" : [ {
+          "columns" : [ "cik", "accession_number" ],
+          "targetTable" : "filing_metadata",
+          "targetColumns" : [ "cik", "accession_number" ]
+        } ]
+      }
+    },
+    "parquet_defaults" : {
+      "rowGroupSize" : 134217728,
+      "compression" : "snappy"
+    },
+    "commitIntervalAccessions" : "2000",
+    "testMode" : false,
+    "partitionedTables" : [ {
+      "name" : "filing_metadata",
+      "pattern" : "year=*/*metadata*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2009,
+        "maxYear" : 2026,
+        "distinctYears" : 12,
+        "contiguous" : false,
+        "years" : [ 2009, 2010, 2011, 2012, 2013, 2014, 2021, 2022, 2023, 2024, 2025, 2026 ],
+        "rowCount" : 160409,
+        "checkedAt" : "2026-09-12T00:15:42Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "SEC filing metadata for all public company submissions. Forms include: 10-K (annual report with audited financials), 10-Q (quarterly report), 8-K (current report of a material event), DEF 14A (proxy statement for shareholder meetings), and Form 3/4/5 (insider trading). This table does not carry 8-K item codes (which event a given 8-K reports — earnings, M&A, executive changes, etc.); that classification is not currently exposed in any queryable table (the item-header regex that used to derive it fed the old per-schema vectorized_chunks writer, removed when SEC chunking centralized into ref.vectorized_chunks via ChunkOrganizer's cross-schema sweep). Use for: identifying available filings, filtering by company/date/type, joining to other SEC tables, and tracking filing history.\n",
+      "columns" : [ {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Central Index Key (unique SEC company identifier, 10 digits zero-padded)"
+      }, {
+        "name" : "accession_number",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC accession number (unique filing identifier, format 0000000000-00-000000)"
+      }, {
+        "name" : "filing_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Type of SEC filing (e.g., '10-K', '10-Q', '8-K', 'DEF 14A')"
+      }, {
+        "name" : "filing_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Date the filing was submitted to SEC (ISO 8601 format)"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Filing year for Iceberg partitioning"
+      }, {
+        "name" : "primary_document",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Primary document filename in the filing"
+      }, {
+        "name" : "company_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Legal name of the registrant company"
+      }, {
+        "name" : "period_of_report",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Reporting period end date (ISO 8601 format)"
+      }, {
+        "name" : "acceptance_datetime",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Date and time the filing was accepted by SEC"
+      }, {
+        "name" : "file_size",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Total size of filing in bytes"
+      }, {
+        "name" : "fiscal_year",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Fiscal year of the reporting period"
+      }, {
+        "name" : "state_of_incorporation",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "State or jurisdiction of incorporation"
+      }, {
+        "name" : "fiscal_year_end",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Fiscal year end date (MMDD format)"
+      }, {
+        "name" : "business_address",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Physical business address of the company"
+      }, {
+        "name" : "mailing_address",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mailing address for correspondence"
+      }, {
+        "name" : "phone",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Company phone number"
+      }, {
+        "name" : "sic_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Standard Industrial Classification code"
+      }, {
+        "name" : "irs_number",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "IRS Employer Identification Number (EIN)"
+      }, {
+        "name" : "ticker",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Stock ticker symbol (if available)"
+      } ],
+      "source" : {
+        "type" : "document",
+        "metadataUrl" : "https://data.sec.gov/submissions/CIK{cik}.json",
+        "documentUrl" : "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}",
+        "rateLimit" : {
+          "requestsPerSecond" : 8,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 5,
+          "retryDelayMs" : 5000
+        },
+        "headers" : {
+          "User-Agent" : "Apache Calcite SEC Adapter (apache-calcite@apache.org)",
+          "Accept-Encoding" : "gzip, deflate"
+        },
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.sec.EdgarResponseTransformer",
+        "documentConverter" : "org.apache.calcite.adapter.govdata.sec.XbrlToParquetConverter",
+        "rawCache" : {
+          "enabled" : true,
+          "directory" : "${GOVDATA_CACHE_DIR}/sec",
+          "manifestFile" : "cache-manifest.json"
+        },
+        "extractionType" : "metadata"
+      },
+      "hooks" : {
+        "enabled" : false,
+        "dimensionResolver" : "org.apache.calcite.adapter.govdata.sec.CikResolver"
+      },
+      "dimensions" : {
+        "cik" : {
+          "type" : "custom",
+          "resolver" : "org.apache.calcite.adapter.govdata.sec.CikResolver",
+          "values" : [ "0000320193", "0000018230" ],
+          "properties" : {
+            "source" : "config"
+          }
+        },
+        "filing_type" : [ "10-K", "10-K/A", "10-Q", "10-Q/A", "8-K", "8-K/A", "20-F", "40-F", "DEF 14A", "S-1", "S-3", "424B2", "424B5", "3", "4", "5", "13F-HR", "13F-HR/A", "SC 13D", "SC 13D/A", "SC 13G", "SC 13G/A" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "${GOVDATA_END_YEAR:${CURRENT_YEAR}}"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "rowBatchSize" : 50000,
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/sec",
+          "catalogType" : "hadoop",
+          "targetFileSizeBytes" : 134217728,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "filing_metadata",
+          "sortOrder" : [ "cik", "accession_number" ],
+          "batchPartitionColumns" : [ "year" ],
+          "incrementalKeys" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "financial_line_items",
+      "pattern" : "year=*/*facts*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2009,
+        "maxYear" : 2026,
+        "distinctYears" : 12,
+        "contiguous" : false,
+        "years" : [ 2009, 2010, 2011, 2012, 2013, 2014, 2021, 2022, 2023, 2024, 2025, 2026 ],
+        "rowCount" : 90872029,
+        "checkedAt" : "2026-09-12T00:15:56Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "hooks" : {
+        "enabled" : false
+      },
+      "comment" : "Raw XBRL facts extracted from 10-K/10-Q/20-F filings, one row per (cik, accession_number, concept, context_ref) using native US-GAAP concept names (e.g. us-gaap:Assets, us-gaap:Revenues) — variant concepts for the same metric are NOT consolidated here. Carries both the original text value and a derived value_numeric (value_numeric_method records direct vs. heuristic conversion), plus unit_ref_normalized for the canonical unit. For canonical metric names, dollar-scaled values, and consolidated-vs-segment filtering on the ~40 common income-statement/balance-sheet concepts it recognizes (revenue, net income, assets, liabilities, EPS, etc. — see financial_facts' own comment for the exact list), use the financial_facts view built on top of this table. THIS TABLE, NOT financial_facts, IS WHERE EVERYTHING ELSE LIVES: any concept outside that ~40-item list — including every filer-specific/custom-taxonomy concept (a bank's loan-portfolio breakdown, an industry-specific disclosure, anything namespaced to the filer's own ticker prefix rather than us-gaap:) — is only ever queryable here, by its raw `concept` string, never through financial_facts (whose concept_aliases mapping is a fixed literal list and silently omits everything not on it — an empty financial_facts result for a concept means \"not on the alias list\", not \"not disclosed\"; check this table before concluding a metric is absent). This table is also the one to filter by cik/accession_number directly for a single-filer or single-filing lookup — filtering financial_facts by cik has been observed to be dramatically slower (a hang, in one case) than the identical filter run here, most likely because the predicate does not push through financial_facts' LEFT JOIN to filing_contexts before that join executes. For a sub-category breakdown of a concept (loan class, geography, product line, business segment) rather than one consolidated total, join this table's context_ref to filing_contexts.context_id (same cik + accession_number) and read filing_contexts.segment for the dimension — see that column's comment.\n",
+      "columns" : [ {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Central Index Key (unique SEC company identifier, 10 digits zero-padded)"
+      }, {
+        "name" : "accession_number",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC accession number (unique filing identifier, format 0000000000-00-000000)"
+      }, {
+        "name" : "filing_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Date the filing was submitted to SEC (ISO 8601 format)"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Filing year for Iceberg partitioning"
+      }, {
+        "name" : "concept",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "XBRL concept name (e.g., 'us-gaap:Assets', 'dei:EntityRegistrantName')"
+      }, {
+        "name" : "context_ref",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Reference to context element defining the reporting period and entity"
+      }, {
+        "name" : "unit_ref",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Raw unit reference as reported in the source XBRL document"
+      }, {
+        "name" : "unit_ref_normalized",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Canonical unit (e.g. USD, shares, pure, usdPerShare); equals unit_ref when no normalization rule matches"
+      }, {
+        "name" : "value",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Text value of the fact element"
+      }, {
+        "name" : "full_text",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full text content for TextBlock elements (narrative disclosures)"
+      }, {
+        "name" : "value_numeric",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Best-effort numeric value as reported by the filer, with the iXBRL scale factor already applied (a statement \"in thousands\" tagging 1,234 with scale=3 stores 1234000). The as-displayed text is kept verbatim in the value column, and scale is kept for provenance. Not a verbatim copy of the filing text; see value_numeric_method for how it was derived.\n"
+      }, {
+        "name" : "value_numeric_method",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Provenance of value_numeric — direct, heuristic, or null if no conversion possible"
+      }, {
+        "name" : "period_start",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Start date of the reporting period (ISO 8601 format)"
+      }, {
+        "name" : "period_end",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "End date of the reporting period (ISO 8601 format)"
+      }, {
+        "name" : "is_instant",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "Whether this is an instant-in-time fact (true) or duration fact (false)"
+      }, {
+        "name" : "footnote_refs",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Comma-separated list of footnote references"
+      }, {
+        "name" : "element_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Unique element identifier for linking to other elements"
+      }, {
+        "name" : "decimals",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Decimal precision of the numeric value"
+      }, {
+        "name" : "scale",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "iXBRL scale factor for this fact, already applied to value_numeric; retained for provenance and to relate value_numeric back to the as-displayed value text.\n"
+      } ],
+      "source" : {
+        "type" : "document",
+        "metadataUrl" : "https://data.sec.gov/submissions/CIK{cik}.json",
+        "documentUrl" : "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}",
+        "rateLimit" : {
+          "requestsPerSecond" : 8,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 5,
+          "retryDelayMs" : 5000
+        },
+        "headers" : {
+          "User-Agent" : "Apache Calcite SEC Adapter (apache-calcite@apache.org)",
+          "Accept-Encoding" : "gzip, deflate"
+        },
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.sec.EdgarResponseTransformer",
+        "documentConverter" : "org.apache.calcite.adapter.govdata.sec.XbrlToParquetConverter",
+        "rawCache" : {
+          "enabled" : true,
+          "directory" : "${GOVDATA_CACHE_DIR}/sec",
+          "manifestFile" : "cache-manifest.json"
+        },
+        "extractionType" : "xbrl_facts",
+        "documentTypes" : [ "*.xml", "*_htm.xml", "*.xbrl" ]
+      },
+      "dimensions" : {
+        "cik" : {
+          "type" : "inherited"
+        },
+        "filing_type" : [ "10-K", "10-K/A", "10-Q", "10-Q/A", "20-F" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "${GOVDATA_END_YEAR:${CURRENT_YEAR}}"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "rowBatchSize" : 50000,
+        "fileChunkSize" : 5,
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/sec",
+          "catalogType" : "hadoop",
+          "targetFileSizeBytes" : 134217728,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "financial_line_items",
+          "sortOrder" : [ "cik", "accession_number", "concept" ],
+          "batchPartitionColumns" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "filing_contexts",
+      "enabled" : true,
+      "pattern" : "year=*/*contexts*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2009,
+        "maxYear" : 2026,
+        "distinctYears" : 12,
+        "contiguous" : false,
+        "years" : [ 2009, 2010, 2011, 2012, 2013, 2014, 2021, 2022, 2023, 2024, 2025, 2026 ],
+        "rowCount" : 22573436,
+        "checkedAt" : "2026-09-12T00:15:59Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "hooks" : {
+        "enabled" : false
+      },
+      "comment" : "XBRL context definitions from 10-K and 10-Q filings that specify the reporting period and entity for each financial fact. Contexts define whether a value is a point-in-time snapshot (instant) or covers a duration (e.g., fiscal quarter). Use for: understanding the time period of financial data, segment-level analysis, and resolving dimensional breakdowns (e.g., revenue by geography or product line).\n",
+      "columns" : [ {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Central Index Key (unique SEC company identifier, 10 digits zero-padded)"
+      }, {
+        "name" : "accession_number",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC accession number (unique filing identifier, format 0000000000-00-000000)"
+      }, {
+        "name" : "filing_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Date the filing was submitted to SEC (ISO 8601 format)"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Filing year for Iceberg partitioning"
+      }, {
+        "name" : "context_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Unique identifier for this context element"
+      }, {
+        "name" : "entity_identifier",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Entity identifier (typically CIK number)"
+      }, {
+        "name" : "entity_scheme",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entity identifier scheme (e.g., 'http://www.sec.gov/CIK')"
+      }, {
+        "name" : "period_start",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Start date of the reporting period (ISO 8601 format)"
+      }, {
+        "name" : "period_end",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "End date of the reporting period (ISO 8601 format)"
+      }, {
+        "name" : "period_instant",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Instant date for point-in-time facts (ISO 8601 format)"
+      }, {
+        "name" : "effective_date",
+        "type" : "string",
+        "nullable" : true,
+        "expression" : "COALESCE(\"period_instant\", \"period_end\")",
+        "comment" : "Unified recency anchor for instant and duration contexts, so a caller sorting or filtering by recency doesn't need to know the two are mutually exclusive. period_instant is populated only for point-in-time (balance-sheet) facts; duration facts (most segment/disclosure breakdowns) carry it NULL and populate period_start/ period_end instead. Sorting a mixed set by period_instant alone silently buries every duration-context row behind NULL-sorts-first semantics, reading as \"coverage stopped here\" when it hasn't (see the sec-filing-contexts-mixed-instant-duration-sort recipe). The two source columns are perfectly complementary in production (confirmed live: 0 rows with both NULL, 0 rows with both populated), so this COALESCE has no ambiguous case to special-case.\n"
+      }, {
+        "name" : "segment",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "NULL for a consolidated (company-wide) fact; non-NULL for a fact broken out by a sub-category. THIS IS THE JOIN PATH TO DIMENSIONAL BREAKDOWNS — loan class, business segment, geography, product line. Format is a semicolon-joined list of XBRL \"Axis=Member\" pairs, e.g. \"us-gaap:FinancingReceivableRecordedInvestmentByClassOfFinancingReceivableAxis= fbc:CommercialRealEstateLoansMember; us-gaap:FinancingReceivablePortfolioSegmentAxis= fbc:MortgageLoansHeldForInvestmentMember\" — the Member after each '=' names the actual sub-category and is namespaced to the FILER'S OWN taxonomy prefix (here 'fbc:'), not a fixed vocabulary, so search it with ILIKE on the category name (e.g. '%CommercialRealEstate%', '%Office%', '%Multifamily%') rather than an exact match. To pull the dollar value for a sub-category: find its context_id here (filtering segment + cik + accession_number to one filing keeps this cheap), then join financial_line_items.context_ref = context_id (same cik + accession_number) and read value_numeric there for the concept you want.\n"
+      }, {
+        "name" : "scenario",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Scenario dimension information (XML fragment)"
+      } ],
+      "source" : {
+        "type" : "document",
+        "metadataUrl" : "https://data.sec.gov/submissions/CIK{cik}.json",
+        "documentUrl" : "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}",
+        "rateLimit" : {
+          "requestsPerSecond" : 8,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 5,
+          "retryDelayMs" : 5000
+        },
+        "headers" : {
+          "User-Agent" : "Apache Calcite SEC Adapter (apache-calcite@apache.org)",
+          "Accept-Encoding" : "gzip, deflate"
+        },
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.sec.EdgarResponseTransformer",
+        "documentConverter" : "org.apache.calcite.adapter.govdata.sec.XbrlToParquetConverter",
+        "rawCache" : {
+          "enabled" : true,
+          "directory" : "${GOVDATA_CACHE_DIR}/sec",
+          "manifestFile" : "cache-manifest.json"
+        },
+        "extractionType" : "xbrl_contexts"
+      },
+      "dimensions" : {
+        "cik" : {
+          "type" : "inherited"
+        },
+        "filing_type" : [ "10-K", "10-K/A", "10-Q", "10-Q/A" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "${GOVDATA_END_YEAR:${CURRENT_YEAR}}"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "rowBatchSize" : 50000,
+        "fileChunkSize" : 5,
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/sec",
+          "catalogType" : "hadoop",
+          "targetFileSizeBytes" : 134217728,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "filing_contexts",
+          "sortOrder" : [ "cik", "accession_number", "context_id" ],
+          "batchPartitionColumns" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "mda_sections",
+      "pattern" : "year=*/*mda*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2009,
+        "maxYear" : 2026,
+        "distinctYears" : 12,
+        "contiguous" : false,
+        "years" : [ 2009, 2010, 2011, 2012, 2013, 2014, 2021, 2022, 2023, 2024, 2025, 2026 ],
+        "rowCount" : 3156498,
+        "checkedAt" : "2026-09-12T00:16:06Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "hooks" : {
+        "enabled" : false
+      },
+      "comment" : "Management Discussion & Analysis (MD&A) text from 10-K (Item 7) and 10-Q (Item 2) filings. MD&A is a required narrative section where management explains the company's financial condition, results of operations, and known risks/uncertainties. Use for: sentiment analysis, risk factor monitoring, NLP-based insights, comparing management tone across periods, and identifying forward-looking statements. For a pre-chunked, embedding-ready version of this same text, see ref.vectorized_chunks (source_table='mda_sections') — populated by ChunkOrganizer's cross-schema sweep, not by this schema's own ETL; source_type there is 'row_concat' like every other ChunkOrganizer contributor, not a per-content label.\n",
+      "columns" : [ {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Central Index Key (unique SEC company identifier, 10 digits zero-padded)"
+      }, {
+        "name" : "accession_number",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC accession number (unique filing identifier, format 0000000000-00-000000)"
+      }, {
+        "name" : "filing_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Date the filing was submitted to SEC (ISO 8601 format)"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Filing year for Iceberg partitioning"
+      }, {
+        "name" : "section",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Item section identifier (e.g., 'Item 7', 'Item 7A')"
+      }, {
+        "name" : "subsection",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Immediate heading enclosing this chunk (null when no heading context)"
+      }, {
+        "name" : "section_path",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full heading breadcrumb as ' > '-delimited string for cluster analysis"
+      }, {
+        "name" : "paragraph_continuation",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "True when this chunk is a continuation of an oversized split element"
+      }, {
+        "name" : "paragraph_number",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Sequential paragraph number within the subsection"
+      }, {
+        "name" : "paragraph_text",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Full text content of the paragraph"
+      }, {
+        "name" : "footnote_refs",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Comma-separated list of footnote references"
+      } ],
+      "source" : {
+        "type" : "document",
+        "metadataUrl" : "https://data.sec.gov/submissions/CIK{cik}.json",
+        "documentUrl" : "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}",
+        "rateLimit" : {
+          "requestsPerSecond" : 8,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 5,
+          "retryDelayMs" : 5000
+        },
+        "headers" : {
+          "User-Agent" : "Apache Calcite SEC Adapter (apache-calcite@apache.org)",
+          "Accept-Encoding" : "gzip, deflate"
+        },
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.sec.EdgarResponseTransformer",
+        "documentConverter" : "org.apache.calcite.adapter.govdata.sec.XbrlToParquetConverter",
+        "rawCache" : {
+          "enabled" : true,
+          "directory" : "${GOVDATA_CACHE_DIR}/sec",
+          "manifestFile" : "cache-manifest.json"
+        },
+        "extractionType" : "mda_text",
+        "documentTypes" : [ "*.htm", "*.html" ],
+        "extractionStrategies" : [ "regex_item7", "direct_search", "html_element_specific", "aggressive_fallback" ]
+      },
+      "dimensions" : {
+        "cik" : {
+          "type" : "inherited"
+        },
+        "filing_type" : [ "10-K", "10-K/A", "10-Q", "10-Q/A", "8-K", "8-K/A" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "${GOVDATA_END_YEAR:${CURRENT_YEAR}}"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "rowBatchSize" : 10000,
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/sec",
+          "catalogType" : "hadoop",
+          "targetFileSizeBytes" : 134217728,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "mda_sections",
+          "sortOrder" : [ "cik", "accession_number", "section", "paragraph_number" ],
+          "batchPartitionColumns" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "risk_factor_sections",
+      "pattern" : "year=*/*risk_factors*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2009,
+        "maxYear" : 2026,
+        "distinctYears" : 11,
+        "contiguous" : false,
+        "years" : [ 2009, 2010, 2011, 2012, 2013, 2021, 2022, 2023, 2024, 2025, 2026 ],
+        "rowCount" : 2183433,
+        "checkedAt" : "2026-09-12T00:16:11Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "hooks" : {
+        "enabled" : true
+      },
+      "comment" : "Item 1A (Risk Factors) text from 10-K filings. Risk Factors is a required narrative section where management discloses material risks to the business, operations, and financial condition. Use for: risk-disclosure trend analysis, climate/ESG-risk screening, cross-company risk-language comparison, and NLP-based topic clustering.\n",
+      "columns" : [ {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Central Index Key (unique SEC company identifier, 10 digits zero-padded)"
+      }, {
+        "name" : "accession_number",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC accession number (unique filing identifier, format 0000000000-00-000000)"
+      }, {
+        "name" : "filing_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Date the filing was submitted to SEC (ISO 8601 format)"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Filing year for Iceberg partitioning"
+      }, {
+        "name" : "section",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Item section identifier (always 'Item 1A' today)"
+      }, {
+        "name" : "subsection",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Immediate heading enclosing this chunk (null when no heading context)"
+      }, {
+        "name" : "section_path",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Full heading breadcrumb as ' > '-delimited string for cluster analysis"
+      }, {
+        "name" : "paragraph_continuation",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "True when this chunk is a continuation of an oversized split element"
+      }, {
+        "name" : "paragraph_number",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Sequential paragraph number within the subsection"
+      }, {
+        "name" : "paragraph_text",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Full text content of the paragraph"
+      }, {
+        "name" : "footnote_refs",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Comma-separated list of footnote references"
+      } ],
+      "source" : {
+        "type" : "document",
+        "metadataUrl" : "https://data.sec.gov/submissions/CIK{cik}.json",
+        "documentUrl" : "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}",
+        "rateLimit" : {
+          "requestsPerSecond" : 8,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 5,
+          "retryDelayMs" : 5000
+        },
+        "headers" : {
+          "User-Agent" : "Apache Calcite SEC Adapter (apache-calcite@apache.org)",
+          "Accept-Encoding" : "gzip, deflate"
+        },
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.sec.EdgarResponseTransformer",
+        "documentConverter" : "org.apache.calcite.adapter.govdata.sec.XbrlToParquetConverter",
+        "rawCache" : {
+          "enabled" : true,
+          "directory" : "${GOVDATA_CACHE_DIR}/sec",
+          "manifestFile" : "cache-manifest.json"
+        },
+        "extractionType" : "risk_factors_text",
+        "documentTypes" : [ "*.htm", "*.html" ],
+        "extractionStrategies" : [ "regex_item1a", "direct_search", "html_element_specific" ]
+      },
+      "dimensions" : {
+        "cik" : {
+          "type" : "inherited"
+        },
+        "filing_type" : [ "10-K", "10-K/A" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "${GOVDATA_END_YEAR:${CURRENT_YEAR}}"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "rowBatchSize" : 10000,
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/sec",
+          "catalogType" : "hadoop",
+          "targetFileSizeBytes" : 134217728,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "risk_factor_sections",
+          "sortOrder" : [ "cik", "accession_number", "section", "paragraph_number" ],
+          "batchPartitionColumns" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "xbrl_relationships",
+      "pattern" : "year=*/*relationships*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2009,
+        "maxYear" : 2026,
+        "distinctYears" : 12,
+        "contiguous" : false,
+        "years" : [ 2009, 2010, 2011, 2012, 2013, 2014, 2021, 2022, 2023, 2024, 2025, 2026 ],
+        "rowCount" : 92829475,
+        "checkedAt" : "2026-09-12T00:16:17Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "hooks" : {
+        "enabled" : false
+      },
+      "comment" : "XBRL linkbase relationships from 10-K and 10-Q filings showing how financial concepts connect (e.g., Assets = CurrentAssets + NoncurrentAssets). Includes calculation links (mathematical rollups), presentation links (display order), and definition links (dimensional/hypercube structure via context_element and closed, with arc_use/arc_priority resolving prohibited vs. asserted arcs). Use for: validating financial statement math, reconstructing statement hierarchy, understanding concept relationships, and building automated financial models.\n",
+      "columns" : [ {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Central Index Key (unique SEC company identifier, 10 digits zero-padded)"
+      }, {
+        "name" : "accession_number",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC accession number (unique filing identifier, format 0000000000-00-000000)"
+      }, {
+        "name" : "filing_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Date the filing was submitted to SEC (ISO 8601 format)"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Filing year for Iceberg partitioning"
+      }, {
+        "name" : "linkbase_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Type of linkbase relationship (presentation, calculation, definition)"
+      }, {
+        "name" : "arc_role",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Arc role defining relationship type (e.g., parent-child, summation-item)"
+      }, {
+        "name" : "link_role",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Role URI of the extended link element containing this arc (e.g., presentation role URL)"
+      }, {
+        "name" : "from_concept",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Source concept in the relationship"
+      }, {
+        "name" : "to_concept",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Target concept in the relationship"
+      }, {
+        "name" : "weight",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Calculation weight (+1 for addition, -1 for subtraction)"
+      }, {
+        "name" : "order",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Presentation order for display sequencing"
+      }, {
+        "name" : "preferred_label",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Preferred label role for presentation"
+      }, {
+        "name" : "arc_use",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Arc use, \"optional\" or \"prohibited\". A prohibited arc states that the relationship does NOT hold — it removes one inherited from a base taxonomy — so a consumer reconstructing the graph must exclude it rather than treat it as an assertion."
+      }, {
+        "name" : "arc_priority",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Arc priority, resolving which arc wins when several share the same from/to and role. Meaningless without arc_use, since its purpose is ordering prohibition against assertion."
+      }, {
+        "name" : "context_element",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "xbrldt:contextElement on a hypercube arc, \"segment\" or \"scenario\" — which part of the XBRL context the dimension applies to. Definition linkbases only."
+      }, {
+        "name" : "closed",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "xbrldt:closed on a hypercube arc. When true the hypercube admits only the members it names, so a fact dimensioned outside it is invalid. Definition linkbases only."
+      } ],
+      "source" : {
+        "type" : "document",
+        "metadataUrl" : "https://data.sec.gov/submissions/CIK{cik}.json",
+        "documentUrl" : "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}",
+        "rateLimit" : {
+          "requestsPerSecond" : 8,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 5,
+          "retryDelayMs" : 5000
+        },
+        "headers" : {
+          "User-Agent" : "Apache Calcite SEC Adapter (apache-calcite@apache.org)",
+          "Accept-Encoding" : "gzip, deflate"
+        },
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.sec.EdgarResponseTransformer",
+        "documentConverter" : "org.apache.calcite.adapter.govdata.sec.XbrlToParquetConverter",
+        "rawCache" : {
+          "enabled" : true,
+          "directory" : "${GOVDATA_CACHE_DIR}/sec",
+          "manifestFile" : "cache-manifest.json"
+        },
+        "extractionType" : "xbrl_linkbases",
+        "documentTypes" : [ "*_cal.xml", "*_pre.xml", "*_def.xml" ]
+      },
+      "dimensions" : {
+        "cik" : {
+          "type" : "inherited"
+        },
+        "filing_type" : [ "10-K", "10-K/A", "10-Q", "10-Q/A" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "${GOVDATA_END_YEAR:${CURRENT_YEAR}}"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "rowBatchSize" : 50000,
+        "fileChunkSize" : 5,
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/sec",
+          "catalogType" : "hadoop",
+          "targetFileSizeBytes" : 134217728,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 999,
+          "tableName" : "xbrl_relationships",
+          "sortOrder" : [ "cik", "accession_number", "linkbase_type", "from_concept" ],
+          "batchPartitionColumns" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "insider_transactions",
+      "pattern" : "year=*/*insider*.parquet",
+      "observedCoverage" : {
+        "rowCount" : 0,
+        "checkedAt" : "2026-09-12T00:16:17Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "hooks" : {
+        "enabled" : false
+      },
+      "comment" : "Insider trading transactions from Form 3 (initial ownership), Form 4 (changes in ownership within 2 days), and Form 5 (annual summary). Required filings by company officers, directors, and 10%+ shareholders showing their buy/sell activity. Use for: tracking insider sentiment, identifying unusual trading patterns, corporate governance analysis, and generating buy/sell signals based on insider activity.\nFor entity-type reporting persons (an insider that is itself an organization, not an individual), reach this insider's cross-schema identity FROM another schema by joining ref.canonical_org_entity on sec_reporting_person_cik = reporting_person_cik — that table carries one foreign key per source, so the org's LEI and its reporting_person_cik sit in the same row and the join is exact. Matching reporting_person_name as text finds the wrong entities.\n",
+      "columns" : [ {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Central Index Key (unique SEC company identifier, 10 digits zero-padded)"
+      }, {
+        "name" : "accession_number",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC accession number (unique filing identifier, format 0000000000-00-000000)"
+      }, {
+        "name" : "filing_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Date the filing was submitted to SEC (ISO 8601 format)"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Filing year for Iceberg partitioning"
+      }, {
+        "name" : "filing_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Type of SEC filing (e.g., '10-K', '10-Q', '8-K', 'DEF 14A')"
+      }, {
+        "name" : "reporting_person_cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "CIK of the reporting insider"
+      }, {
+        "name" : "reporting_person_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Name of the reporting insider"
+      }, {
+        "name" : "is_director",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "Whether the insider is a director"
+      }, {
+        "name" : "is_officer",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "Whether the insider is an officer"
+      }, {
+        "name" : "is_ten_percent_owner",
+        "type" : "boolean",
+        "nullable" : false,
+        "comment" : "Whether the insider owns 10% or more of the company"
+      }, {
+        "name" : "officer_title",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Title of the officer (if applicable)"
+      }, {
+        "name" : "transaction_date",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Date of the transaction (ISO 8601 format) - null for holdings"
+      }, {
+        "name" : "transaction_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Transaction code (P=purchase, S=sale, A=award, H=holding, I=initial appointment with no securities)"
+      }, {
+        "name" : "security_title",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Title of the security transacted"
+      }, {
+        "name" : "shares_transacted",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Number of shares bought or sold (null for holdings)"
+      }, {
+        "name" : "price_per_share",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Price per share in the transaction"
+      }, {
+        "name" : "shares_owned_after",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Shares beneficially owned after the transaction"
+      }, {
+        "name" : "acquired_disposed_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Whether shares were acquired (A) or disposed (D) - null for holdings"
+      }, {
+        "name" : "ownership_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Type of ownership (direct or indirect)"
+      }, {
+        "name" : "footnotes",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Additional footnotes and explanations"
+      } ],
+      "source" : {
+        "type" : "document",
+        "metadataUrl" : "https://data.sec.gov/submissions/CIK{cik}.json",
+        "documentUrl" : "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}",
+        "rateLimit" : {
+          "requestsPerSecond" : 8,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 5,
+          "retryDelayMs" : 5000
+        },
+        "headers" : {
+          "User-Agent" : "Apache Calcite SEC Adapter (apache-calcite@apache.org)",
+          "Accept-Encoding" : "gzip, deflate"
+        },
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.sec.EdgarResponseTransformer",
+        "documentConverter" : "org.apache.calcite.adapter.govdata.sec.XbrlToParquetConverter",
+        "rawCache" : {
+          "enabled" : true,
+          "directory" : "${GOVDATA_CACHE_DIR}/sec",
+          "manifestFile" : "cache-manifest.json"
+        },
+        "extractionType" : "insider_html_tables",
+        "documentTypes" : [ "*.xml", "*.html" ]
+      },
+      "dimensions" : {
+        "cik" : {
+          "type" : "inherited"
+        },
+        "filing_type" : [ "3", "4", "5" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "${GOVDATA_END_YEAR:${CURRENT_YEAR}}"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "rowBatchSize" : 25000,
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/sec",
+          "catalogType" : "hadoop",
+          "targetFileSizeBytes" : 134217728,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "insider_transactions",
+          "sortOrder" : [ "cik", "transaction_date", "reporting_person_cik" ],
+          "batchPartitionColumns" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "institutional_holdings",
+      "pattern" : "year=*/*13f*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2024,
+        "maxYear" : 2026,
+        "distinctYears" : 2,
+        "contiguous" : false,
+        "years" : [ 2024, 2026 ],
+        "rowCount" : 13921051,
+        "checkedAt" : "2026-09-12T00:16:19Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "hooks" : {
+        "enabled" : false
+      },
+      "comment" : "Institutional investment manager holdings from Form 13F-HR. Filed quarterly by managers with $100M+ in qualifying assets. Contains per-security positions with share counts, market value, and voting authority. Known as \"whale watching\" data — tracks positions of Berkshire Hathaway, Bridgewater, Renaissance, etc. Use for: tracking institutional ownership changes, identifying crowded trades, monitoring activist accumulation, and building factor models.\nTo reach a filing manager's cross-schema identity FROM another schema rather than by name, join ref.canonical_org_entity on sec_manager_cik = manager_cik — that table carries one foreign key per source, so the manager's LEI and its manager_cik sit in the same row and the join is exact. Matching manager_name as text finds the wrong entities and misses managers filing under a differently-worded name.\n",
+      "columns" : [ {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Central Index Key (unique SEC company identifier, 10 digits zero-padded)"
+      }, {
+        "name" : "accession_number",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC accession number (unique filing identifier, format 0000000000-00-000000)"
+      }, {
+        "name" : "filing_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Date the filing was submitted to SEC (ISO 8601 format)"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Filing year for Iceberg partitioning"
+      }, {
+        "name" : "filing_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Type of SEC filing (e.g., '10-K', '10-Q', '8-K', 'DEF 14A')"
+      }, {
+        "name" : "manager_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Name of the filing investment manager"
+      }, {
+        "name" : "manager_cik",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CIK of the filing investment manager"
+      }, {
+        "name" : "report_period",
+        "type" : "date",
+        "nullable" : true,
+        "comment" : "Calendar quarter end date for the report (ISO 8601)"
+      }, {
+        "name" : "issuer_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Name of the security issuer (company name)",
+        "source" : "nameOfIssuer"
+      }, {
+        "name" : "title_of_class",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Title/class of the security (e.g., COM, CL A, PFD)",
+        "source" : "titleOfClass"
+      }, {
+        "name" : "cusip",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CUSIP identifier (9-character)"
+      }, {
+        "name" : "value_thousands",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Market value in thousands of USD"
+      }, {
+        "name" : "shares_or_principal",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Number of shares or principal amount",
+        "source" : "sshPrnamt"
+      }, {
+        "name" : "shares_or_principal_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "SH for shares, PRN for principal amount",
+        "source" : "sshPrnamtType"
+      }, {
+        "name" : "investment_discretion",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Investment discretion (SOLE, DFND, OTR)",
+        "source" : "investmentDiscretion"
+      }, {
+        "name" : "voting_authority_sole",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Shares with sole voting authority"
+      }, {
+        "name" : "voting_authority_shared",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Shares with shared voting authority"
+      }, {
+        "name" : "voting_authority_none",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Shares with no voting authority"
+      }, {
+        "name" : "put_call",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Put or Call indicator for options (null for common stock)"
+      } ],
+      "source" : {
+        "type" : "document",
+        "metadataUrl" : "https://data.sec.gov/submissions/CIK{cik}.json",
+        "documentUrl" : "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}",
+        "rateLimit" : {
+          "requestsPerSecond" : 8,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 5,
+          "retryDelayMs" : 5000
+        },
+        "headers" : {
+          "User-Agent" : "Apache Calcite SEC Adapter (apache-calcite@apache.org)",
+          "Accept-Encoding" : "gzip, deflate"
+        },
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.sec.EdgarResponseTransformer",
+        "documentConverter" : "org.apache.calcite.adapter.govdata.sec.XbrlToParquetConverter",
+        "rawCache" : {
+          "enabled" : true,
+          "directory" : "${GOVDATA_CACHE_DIR}/sec",
+          "manifestFile" : "cache-manifest.json"
+        },
+        "extractionType" : "form_13f_xml",
+        "documentTypes" : [ "*.xml" ]
+      },
+      "dimensions" : {
+        "cik" : {
+          "type" : "inherited"
+        },
+        "filing_type" : [ "13F-HR", "13F-HR/A" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "${GOVDATA_END_YEAR:${CURRENT_YEAR}}"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "rowBatchSize" : 25000,
+        "fileChunkSize" : 5,
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/sec",
+          "catalogType" : "hadoop",
+          "targetFileSizeBytes" : 134217728,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "institutional_holdings",
+          "sortOrder" : [ "cik", "report_period", "cusip" ],
+          "batchPartitionColumns" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "beneficial_ownership",
+      "pattern" : "year=*/*13dg*.parquet",
+      "observedCoverage" : {
+        "rowCount" : 0,
+        "checkedAt" : "2026-09-12T00:16:19Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "hooks" : {
+        "enabled" : false
+      },
+      "comment" : "Beneficial ownership filings from Schedule 13D (activist >5% holders) and Schedule 13G (passive >5% holders). Discloses who owns large stakes, how many shares, percent of class, source of funds, and critically — the purpose of the transaction (Item 4). 13D filers may push for M&A, board changes, or restructuring. Use for: tracking activist campaigns, monitoring ownership concentration, detecting accumulation patterns, and governance risk analysis.\n",
+      "columns" : [ {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Central Index Key (unique SEC company identifier, 10 digits zero-padded)"
+      }, {
+        "name" : "accession_number",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC accession number (unique filing identifier, format 0000000000-00-000000)"
+      }, {
+        "name" : "filing_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Date the filing was submitted to SEC (ISO 8601 format)"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Filing year for Iceberg partitioning"
+      }, {
+        "name" : "filing_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Type of SEC filing (e.g., '10-K', '10-Q', '8-K', 'DEF 14A')"
+      }, {
+        "name" : "subject_company",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Name of the company whose shares are held"
+      }, {
+        "name" : "subject_cik",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CIK of the subject company"
+      }, {
+        "name" : "filer_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Name of the beneficial owner filing the schedule"
+      }, {
+        "name" : "filer_cik",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CIK of the beneficial owner"
+      }, {
+        "name" : "date_of_event",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Date of event requiring filing (ISO 8601)"
+      }, {
+        "name" : "title_of_class",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Title/class of securities (e.g., Common Stock)"
+      }, {
+        "name" : "cusip",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CUSIP identifier of the security"
+      }, {
+        "name" : "percent_of_class",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Percent of class beneficially owned"
+      }, {
+        "name" : "shares_beneficially_owned",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Number of shares beneficially owned"
+      }, {
+        "name" : "sole_voting_power",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Shares with sole voting power"
+      }, {
+        "name" : "shared_voting_power",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Shares with shared voting power"
+      }, {
+        "name" : "sole_dispositive_power",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Shares with sole dispositive power"
+      }, {
+        "name" : "shared_dispositive_power",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Shares with shared dispositive power"
+      }, {
+        "name" : "type_of_reporting_person",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Type code (IN=individual, CO=corporation, IA=investment adviser, etc.)"
+      }, {
+        "name" : "source_of_funds",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Source of funds (WC=working capital, BK=bank, OO=other)"
+      }, {
+        "name" : "purpose_of_transaction",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Item 4 text describing intent (investment, activist, M&A, etc.)"
+      } ],
+      "source" : {
+        "type" : "document",
+        "metadataUrl" : "https://data.sec.gov/submissions/CIK{cik}.json",
+        "documentUrl" : "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}",
+        "rateLimit" : {
+          "requestsPerSecond" : 8,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 5,
+          "retryDelayMs" : 5000
+        },
+        "headers" : {
+          "User-Agent" : "Apache Calcite SEC Adapter (apache-calcite@apache.org)",
+          "Accept-Encoding" : "gzip, deflate"
+        },
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.sec.EdgarResponseTransformer",
+        "documentConverter" : "org.apache.calcite.adapter.govdata.sec.XbrlToParquetConverter",
+        "rawCache" : {
+          "enabled" : true,
+          "directory" : "${GOVDATA_CACHE_DIR}/sec",
+          "manifestFile" : "cache-manifest.json"
+        },
+        "extractionType" : "form_13dg_html",
+        "documentTypes" : [ "*.htm", "*.html", "*.xml" ]
+      },
+      "dimensions" : {
+        "cik" : {
+          "type" : "inherited"
+        },
+        "filing_type" : [ "SC 13D", "SC 13D/A", "SC 13G", "SC 13G/A" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "${GOVDATA_END_YEAR:${CURRENT_YEAR}}"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "rowBatchSize" : 25000,
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/sec",
+          "catalogType" : "hadoop",
+          "targetFileSizeBytes" : 134217728,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "beneficial_ownership",
+          "sortOrder" : [ "subject_cik", "filing_date", "filer_cik" ],
+          "batchPartitionColumns" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "earnings_transcripts",
+      "pattern" : "year=*/*earnings*.parquet",
+      "observedCoverage" : {
+        "rowCount" : 0,
+        "checkedAt" : "2026-09-12T00:16:19Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "hooks" : {
+        "enabled" : false
+      },
+      "comment" : "Earnings-related content from 8-K filings (Item 2.02 - Results of Operations). 8-K forms are \"current reports\" filed within 4 days of material events; Item 2.02 covers earnings releases with quarterly results, guidance, and press release text, split into prepared_remarks vs qa_session paragraphs with speaker_name/speaker_role for the Q&A portion. Use for: earnings surprise analysis, guidance tracking, management commentary on results, and correlating announcements with stock price movements. For a pre-chunked, embedding-ready version of this same text, see ref.vectorized_chunks (source_table='earnings_transcripts') — populated by ChunkOrganizer's cross-schema sweep, not by this schema's own ETL; source_type there is 'row_concat' like every other ChunkOrganizer contributor, not a per-content label.\n",
+      "columns" : [ {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Central Index Key (unique SEC company identifier, 10 digits zero-padded)"
+      }, {
+        "name" : "accession_number",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SEC accession number (unique filing identifier, format 0000000000-00-000000)"
+      }, {
+        "name" : "filing_date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Date the filing was submitted to SEC (ISO 8601 format)"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Filing year for Iceberg partitioning"
+      }, {
+        "name" : "filing_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Type of SEC filing (e.g., '10-K', '10-Q', '8-K', 'DEF 14A')"
+      }, {
+        "name" : "exhibit_number",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Exhibit number within the filing"
+      }, {
+        "name" : "section_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Section type (prepared_remarks, qa_session)"
+      }, {
+        "name" : "paragraph_number",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Sequential paragraph number"
+      }, {
+        "name" : "paragraph_text",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Full text content of the paragraph"
+      }, {
+        "name" : "speaker_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Name of the speaker (for Q&A sections)"
+      }, {
+        "name" : "speaker_role",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Role/title of the speaker"
+      } ],
+      "source" : {
+        "type" : "document",
+        "metadataUrl" : "https://data.sec.gov/submissions/CIK{cik}.json",
+        "documentUrl" : "https://www.sec.gov/Archives/edgar/data/{cik}/{accession}/{document}",
+        "rateLimit" : {
+          "requestsPerSecond" : 8,
+          "retryOn" : [ 429, 503 ],
+          "maxRetries" : 5,
+          "retryDelayMs" : 5000
+        },
+        "headers" : {
+          "User-Agent" : "Apache Calcite SEC Adapter (apache-calcite@apache.org)",
+          "Accept-Encoding" : "gzip, deflate"
+        },
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.sec.EdgarResponseTransformer",
+        "documentConverter" : "org.apache.calcite.adapter.govdata.sec.XbrlToParquetConverter",
+        "rawCache" : {
+          "enabled" : true,
+          "directory" : "${GOVDATA_CACHE_DIR}/sec",
+          "manifestFile" : "cache-manifest.json"
+        },
+        "extractionType" : "earnings_text",
+        "documentTypes" : [ "*.htm", "*.html" ],
+        "itemFilter" : [ "2.02" ]
+      },
+      "dimensions" : {
+        "cik" : {
+          "type" : "inherited"
+        },
+        "filing_type" : [ "8-K", "8-K/A" ],
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "end" : "${GOVDATA_END_YEAR:${CURRENT_YEAR}}"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "rowBatchSize" : 5000,
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/sec",
+          "catalogType" : "hadoop",
+          "targetFileSizeBytes" : 134217728,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "earnings_transcripts",
+          "sortOrder" : [ "cik", "accession_number", "section_type", "paragraph_number" ],
+          "batchPartitionColumns" : [ "year" ]
+        }
+      }
+    }, {
+      "name" : "stock_prices",
+      "enabled" : "false",
+      "pattern" : "stock_prices/year=*/*.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 23100354,
+        "checkedAt" : "2026-09-12T00:16:20Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INT"
+        } ]
+      },
+      "hooks" : {
+        "enabled" : false
+      },
+      "comment" : "Daily open/high/low/close/volume stock prices, one row per (ticker, date), plus adjusted_close (close price adjusted for splits and dividends) for computing returns across corporate actions. Sourced from Stooq (bulk S3 zip checked first via StooqBulkProxy, HTTP API fallback) and linkable back to SEC filers via cik. Use for: event studies, volatility analysis, price correlation studies.\n",
+      "columns" : [ {
+        "name" : "cik",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Central Index Key (unique SEC company identifier, 10 digits zero-padded)"
+      }, {
+        "name" : "ticker",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Stock ticker symbol in Stooq format (e.g., 'AAPL.US', 'MSFT.US')"
+      }, {
+        "name" : "date",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Trading date in ISO 8601 format (YYYY-MM-DD)"
+      }, {
+        "name" : "open",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Opening price for the trading day"
+      }, {
+        "name" : "high",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Highest price during the trading day"
+      }, {
+        "name" : "low",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Lowest price during the trading day"
+      }, {
+        "name" : "close",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Closing price for the trading day"
+      }, {
+        "name" : "volume",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Number of shares traded during the day"
+      }, {
+        "name" : "adjusted_close",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Closing price adjusted for splits and dividends"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Trading year (Iceberg partition column; present in the data and the year=*/ path)"
+      } ],
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "options" : {
+          "compression" : "snappy",
+          "batchSize" : 50000,
+          "stagingMode" : "local"
+        },
+        "filePassthrough" : true,
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "iceberg" : {
+          "warehousePath" : "s3://govdata-parquet-v1/sec",
+          "catalogType" : "hadoop",
+          "targetFileSizeBytes" : 134217728,
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "tableName" : "stock_prices"
+        }
+      }
+    } ],
+    "comment" : "Securities and Exchange Commission financial data including XBRL filings (10-K, 10-Q, 8-K), insider trading transactions, stock prices, and earnings transcripts. Enables financial analysis, regulatory compliance monitoring, and investment research across public companies. Uses document-based ETL to extract multiple tables from each SEC filing. Stock prices can be seeded from a bulk Stooq zip archive stored in S3, with fallback to the HTTP API for missing or newly-listed tickers.\n",
+    "materialize_defaults" : {
+      "format" : "iceberg",
+      "options" : {
+        "compression" : "snappy",
+        "batchSize" : 50000,
+        "stagingMode" : "local"
+      },
+      "enabled" : true
+    },
+    "dataSource" : "sec"
+  },
+  "parentSchema" : "",
+  "generatedAt" : "2026-09-19T10:18:02.319786Z",
+  "schemaName" : "sec"
+}

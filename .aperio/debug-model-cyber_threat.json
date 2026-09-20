@@ -1,0 +1,1479 @@
+{
+  "operands" : {
+    "_storageProvider" : "S3StorageProvider",
+    "_incrementalTracker" : "ReadOnlyPipelineTracker",
+    "schemaName" : "cyber_threat",
+    "ephemeralCache" : false,
+    "constraints" : {
+      "attack_techniques" : {
+        "primaryKey" : [ "type", "technique_id" ]
+      },
+      "cis_controls" : {
+        "primaryKey" : [ "type", "safeguard_id" ]
+      },
+      "ioc_ips" : {
+        "primaryKey" : [ "type", "ip_address", "first_seen" ],
+        "foreignKeys" : [ {
+          "columns" : [ "country" ],
+          "targetSchema" : "ref",
+          "targetTable" : "countries",
+          "targetColumns" : [ "iso_alpha2" ],
+          "comment" : "Links IOC IP geolocation country (ISO 3166-1 alpha-2) to ref.countries"
+        } ]
+      },
+      "ioc_mixed" : {
+        "primaryKey" : [ "type", "ioc_value", "first_seen" ]
+      },
+      "owasp_top10" : {
+        "primaryKey" : [ "type", "entry_id" ]
+      },
+      "attack_to_nist_mappings" : {
+        "primaryKey" : [ "type", "technique_id", "nist_control_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "technique_id" ],
+          "targetTable" : "attack_techniques",
+          "targetColumns" : [ "technique_id" ],
+          "comment" : "Links each ATT&CK technique mapping to its technique definition"
+        }, {
+          "columns" : [ "nist_control_id" ],
+          "targetTable" : "nist_controls",
+          "targetColumns" : [ "control_id" ],
+          "comment" : "Links each mapping to the NIST 800-53 control it satisfies"
+        } ]
+      },
+      "ioc_urls" : {
+        "primaryKey" : [ "type", "url", "first_seen" ]
+      },
+      "ioc_hashes" : {
+        "primaryKey" : [ "type", "sha256", "first_seen" ]
+      },
+      "threat_pulses" : {
+        "primaryKey" : [ "type", "pulse_id", "first_seen" ]
+      },
+      "nist_csf_functions" : {
+        "primaryKey" : [ "type", "subcategory_id" ]
+      },
+      "nist_controls" : {
+        "primaryKey" : [ "type", "control_id" ]
+      }
+    },
+    "directory" : "s3://govdata-parquet-v1",
+    "canonicalSchemaName" : "cyber_threat",
+    "operatingDirectory" : "/Users/kennethstott/.provisa_askamerica/data/cyber_threat",
+    "database_filename" : "/Users/kennethstott/.provisa_askamerica/data/.duckdb/govdata.duckdb",
+    "otxCacheTtlDays" : "0",
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
+    "views" : [ {
+      "name" : "active_threat_intel",
+      "comment" : "Row-per-indicator union of ioc_ips, ioc_urls, and ioc_hashes onto a common (ioc_type, ioc_value, first_seen, country, threat, context) schema for cross-indicator search. Does not include ioc_mixed (ThreatFox) or threat_pulses — query those directly for ip:port/domain indicators or pulse-level context.\n",
+      "sql" : "SELECT\n  'ip'        AS ioc_type,\n  ip_address  AS ioc_value,\n  first_seen,\n  country,\n  malware_family AS threat,\n  as_name        AS context\nFROM ioc_ips UNION ALL SELECT\n  'url'   AS ioc_type,\n  url     AS ioc_value,\n  first_seen,\n  NULL    AS country,\n  threat,\n  tags    AS context\nFROM ioc_urls UNION ALL SELECT\n  'hash'     AS ioc_type,\n  sha256     AS ioc_value,\n  first_seen,\n  NULL       AS country,\n  signature  AS threat,\n  file_type  AS context\nFROM ioc_hashes\n"
+    } ],
+    "materializeDirectory" : "s3://govdata-parquet-v1",
+    "storageConfig" : {
+      "accessKeyId" : "********",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "actualSchemaName" : "cyber_threat",
+    "autoDownload" : false,
+    "s3Config" : {
+      "accessKeyId" : "****e4dc",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "executionEngine" : "duckdb",
+    "tableConstraints" : {
+      "attack_techniques" : {
+        "primaryKey" : [ "type", "technique_id" ]
+      },
+      "cis_controls" : {
+        "primaryKey" : [ "type", "safeguard_id" ]
+      },
+      "ioc_ips" : {
+        "primaryKey" : [ "type", "ip_address", "first_seen" ],
+        "foreignKeys" : [ {
+          "columns" : [ "country" ],
+          "targetSchema" : "ref",
+          "targetTable" : "countries",
+          "targetColumns" : [ "iso_alpha2" ],
+          "comment" : "Links IOC IP geolocation country (ISO 3166-1 alpha-2) to ref.countries"
+        } ]
+      },
+      "ioc_mixed" : {
+        "primaryKey" : [ "type", "ioc_value", "first_seen" ]
+      },
+      "owasp_top10" : {
+        "primaryKey" : [ "type", "entry_id" ]
+      },
+      "attack_to_nist_mappings" : {
+        "primaryKey" : [ "type", "technique_id", "nist_control_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "technique_id" ],
+          "targetTable" : "attack_techniques",
+          "targetColumns" : [ "technique_id" ],
+          "comment" : "Links each ATT&CK technique mapping to its technique definition"
+        }, {
+          "columns" : [ "nist_control_id" ],
+          "targetTable" : "nist_controls",
+          "targetColumns" : [ "control_id" ],
+          "comment" : "Links each mapping to the NIST 800-53 control it satisfies"
+        } ]
+      },
+      "ioc_urls" : {
+        "primaryKey" : [ "type", "url", "first_seen" ]
+      },
+      "ioc_hashes" : {
+        "primaryKey" : [ "type", "sha256", "first_seen" ]
+      },
+      "threat_pulses" : {
+        "primaryKey" : [ "type", "pulse_id", "first_seen" ]
+      },
+      "nist_csf_functions" : {
+        "primaryKey" : [ "type", "subcategory_id" ]
+      },
+      "nist_controls" : {
+        "primaryKey" : [ "type", "control_id" ]
+      }
+    },
+    "testMode" : false,
+    "partitionedTables" : [ {
+      "name" : "attack_techniques",
+      "releaseWindow" : {
+        "dow" : [ 0 ]
+      },
+      "pattern" : "type=attack_techniques.parquet",
+      "dataset_type" : "snapshot",
+      "freshness" : {
+        "type" : "etag"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "MITRE ATT&CK enterprise-domain technique and sub-technique records, one row per technique, fetched from the enterprise-attack.json STIX2 bundle (sub-technique parent resolved via subtechnique-of relationships). Carries per-technique platforms, data sources, and detection guidance plus the ATT&CK version string; refreshed on MITRE's April/October release cadence. Mapped to NIST 800-53 controls in attack_to_nist_mappings below.\n",
+      "columns" : [ {
+        "name" : "technique_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "ATT&CK technique ID (e.g., T1055.011)"
+      }, {
+        "name" : "stix_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "STIX2 object ID"
+      }, {
+        "name" : "name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Technique name"
+      }, {
+        "name" : "description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Technique description"
+      }, {
+        "name" : "tactic_short_names",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited tactic short names from kill_chain_phases"
+      }, {
+        "name" : "platforms",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited target platforms (x_mitre_platforms)"
+      }, {
+        "name" : "data_sources",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited data sources (x_mitre_data_sources)"
+      }, {
+        "name" : "is_subtechnique",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "True if this is a sub-technique (x_mitre_is_subtechnique)"
+      }, {
+        "name" : "parent_technique_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Parent technique ID for sub-techniques (via subtechnique-of relationship)"
+      }, {
+        "name" : "domain",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ATT&CK domain (enterprise-attack, ics-attack, mobile-attack)"
+      }, {
+        "name" : "detection",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Detection guidance"
+      }, {
+        "name" : "mitre_version",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ATT&CK version string (x_mitre_version)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.threat.MitreAttackResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "attack_techniques" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "ioc_urls",
+      "pattern" : "type=ioc_urls/first_seen=${first_seen}.parquet",
+      "dataset_type" : "snapshot",
+      "dqRowLimit" : 5000,
+      "freshness" : {
+        "type" : "etag"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "first_seen",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "URLhaus (abuse.ch) malicious URL indicators, one row per reported URL, with online/offline status, threat classification, and reporter tags, partitioned by first_seen date. Snapshot re-fetched and overwritten per partition each run. See active_threat_intel below for a normalized cross-indicator view spanning ioc_urls, ioc_ips, and ioc_hashes.\n",
+      "columns" : [ {
+        "name" : "url_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "URLhaus numeric ID"
+      }, {
+        "name" : "url",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Malicious URL"
+      }, {
+        "name" : "url_status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "URL status (online, offline)"
+      }, {
+        "name" : "date_added",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Date added to URLhaus"
+      }, {
+        "name" : "last_online",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Last time URL was observed online"
+      }, {
+        "name" : "threat",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Threat classification"
+      }, {
+        "name" : "tags",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Comma-delimited tags (as provided by URLhaus)"
+      }, {
+        "name" : "urlhaus_link",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "URLhaus entry page"
+      }, {
+        "name" : "reporter",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Reporter handle"
+      }, {
+        "name" : "source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Feed source (urlhaus)"
+      }, {
+        "name" : "first_seen",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Partition column (date of first observation, mapped from dateadded)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://urlhaus.abuse.ch/downloads/csv/",
+        "method" : "GET",
+        "extractPattern" : "*.txt",
+        "response" : {
+          "format" : "csv",
+          "hasHeader" : false,
+          "columnNames" : "id,dateadded,url,url_status,last_online,threat,tags,urlhaus_link,reporter"
+        },
+        "rowFilter" : {
+          "column" : "id",
+          "pattern" : "^[0-9]"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.threat.UrlhausResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "ioc_urls" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "ioc_hashes",
+      "pattern" : "type=ioc_hashes/first_seen=${first_seen}.parquet",
+      "dataset_type" : "snapshot",
+      "freshness" : {
+        "type" : "etag"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "first_seen",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "MalwareBazaar (abuse.ch) malware sample hashes — SHA-256/SHA-1/MD5 plus ssdeep and TLSH fuzzy hashes — with file type, malware family signature, ClamAV detection name, and VirusTotal detection percentage, one row per sample, partitioned by first_seen date. See active_threat_intel below for a normalized cross-indicator view spanning ioc_hashes, ioc_urls, and ioc_ips.\n",
+      "columns" : [ {
+        "name" : "sha256",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "SHA-256 hash (transformer emits final column names; no source remap)"
+      }, {
+        "name" : "md5",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "MD5 hash"
+      }, {
+        "name" : "sha1",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "SHA-1 hash"
+      }, {
+        "name" : "first_seen_utc",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "First seen UTC timestamp"
+      }, {
+        "name" : "reporter",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Reporter handle"
+      }, {
+        "name" : "file_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Original file name"
+      }, {
+        "name" : "file_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Detected file type"
+      }, {
+        "name" : "mime_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "MIME type"
+      }, {
+        "name" : "signature",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Malware family signature"
+      }, {
+        "name" : "clamav",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ClamAV detection name"
+      }, {
+        "name" : "vt_percent",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "VirusTotal detection percentage (null when n/a)"
+      }, {
+        "name" : "imphash",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Import hash (null when n/a)"
+      }, {
+        "name" : "ssdeep",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ssdeep fuzzy hash"
+      }, {
+        "name" : "tlsh",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "TLSH fuzzy hash"
+      }, {
+        "name" : "source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Feed source (malwarebazaar)"
+      }, {
+        "name" : "first_seen",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Partition column (date of first observation)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://bazaar.abuse.ch/export/csv/recent/",
+        "method" : "GET",
+        "response" : {
+          "format" : "csv",
+          "hasHeader" : false,
+          "columnNames" : "first_seen,sha256_hash,md5_hash,sha1_hash,reporter,file_name,file_type_guess,mime_type,signature,clamav,vtpercent,imphash,ssdeep,tlsh"
+        },
+        "rowFilter" : {
+          "column" : "sha256_hash",
+          "pattern" : "^[A-Fa-f0-9]"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.threat.MalwareBazaarResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "ioc_hashes" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "first_seen" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "ioc_ips",
+      "pattern" : "type=ioc_ips/first_seen=${first_seen}.parquet",
+      "dataset_type" : "snapshot",
+      "freshness" : {
+        "type" : "etag"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "first_seen",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "Feodo Tracker (abuse.ch) botnet command-and-control IP blocklist — typically ~5 active entries — with port, online/offline status, ASN, AS name, associated malware family, and geolocated country (joined to ref.countries), partitioned by first_seen date. For a broader multi-source feed that also carries ip:port indicators, see ioc_mixed (ThreatFox) below; see active_threat_intel for a normalized cross-indicator view spanning ioc_ips, ioc_urls, and ioc_hashes.\n",
+      "columns" : [ {
+        "name" : "ip_address",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "C2 IP address"
+      }, {
+        "name" : "port",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "C2 port"
+      }, {
+        "name" : "status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Status (online, offline)"
+      }, {
+        "name" : "hostname",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Resolved hostname"
+      }, {
+        "name" : "as_number",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Autonomous system number"
+      }, {
+        "name" : "as_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Autonomous system name"
+      }, {
+        "name" : "country",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Country code (ISO 3166-1 alpha-2)"
+      }, {
+        "name" : "first_seen",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "First observed date (partition column)"
+      }, {
+        "name" : "last_online",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Last observed online date"
+      }, {
+        "name" : "malware_family",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Associated malware family"
+      }, {
+        "name" : "source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Feed source (feodo)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://feodotracker.abuse.ch/downloads/ipblocklist.json",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.threat.FeodoResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "ioc_ips" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "first_seen" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "ioc_mixed",
+      "freshness" : {
+        "type" : "hash"
+      },
+      "pattern" : "type=ioc_mixed/first_seen=${first_seen}.parquet",
+      "dataset_type" : "snapshot",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "first_seen",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "ThreatFox (abuse.ch) multi-type IOC feed covering ip:port, domain, url, md5_hash, and sha256_hash indicators in a single table, with malware family, threat type, confidence level (0-100), and an is_compromised (legitimate-asset) flag, partitioned by first_seen date. Requires CYBER_THREATFOX_API_KEY. Distinct source and indicator mix from the single-type ioc_ips/ioc_urls/ioc_hashes tables (Feodo/URLhaus/MalwareBazaar).\n",
+      "columns" : [ {
+        "name" : "ioc_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ThreatFox IOC ID"
+      }, {
+        "name" : "ioc_value",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "IOC value (IP:port, domain, URL, or hash)"
+      }, {
+        "name" : "ioc_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "IOC type (ip:port, domain, url, md5_hash, sha256_hash)"
+      }, {
+        "name" : "threat_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Threat type classification"
+      }, {
+        "name" : "malware_key",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Malware identifier key"
+      }, {
+        "name" : "malware_printable",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Human-readable malware name"
+      }, {
+        "name" : "malware_aliases",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited malware aliases"
+      }, {
+        "name" : "first_seen_utc",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "First seen UTC timestamp"
+      }, {
+        "name" : "last_seen_utc",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Last seen UTC timestamp"
+      }, {
+        "name" : "confidence_level",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Confidence level (0-100)"
+      }, {
+        "name" : "is_compromised",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "True if indicator is a compromised legitimate asset"
+      }, {
+        "name" : "reference",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Reference URL"
+      }, {
+        "name" : "tags",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited tags"
+      }, {
+        "name" : "reporter",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Reporter handle"
+      }, {
+        "name" : "anonymous",
+        "type" : "boolean",
+        "nullable" : true,
+        "comment" : "True if submitted anonymously"
+      }, {
+        "name" : "source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Feed source (threatfox)"
+      }, {
+        "name" : "first_seen",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Partition column (date of first observation)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://threatfox-api.abuse.ch/api/v1/",
+        "method" : "POST",
+        "headers" : {
+          "Auth-Key" : "",
+          "Content-Type" : "application/json"
+        },
+        "body" : {
+          "query" : "get_iocs",
+          "days" : 1
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "data"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.threat.ThreatFoxResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "ioc_mixed" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "first_seen" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "nist_controls",
+      "pattern" : "type=nist_controls.parquet",
+      "dataset_type" : "snapshot",
+      "freshness" : {
+        "type" : "etag"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "NIST SP 800-53 Rev 5 security controls. Sourced from the usnistgov/oscal-content GitHub repository in OSCAL JSON format. Includes both base controls and enhancements (e.g., AC-2(1)). Description assembled from statement/item parts recursively.\n",
+      "columns" : [ {
+        "name" : "control_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Control identifier (e.g., AC-1, AC-2(1))"
+      }, {
+        "name" : "family_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Two-letter family code (e.g., AC, SI)"
+      }, {
+        "name" : "family_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Control family name (e.g., Access Control)"
+      }, {
+        "name" : "title",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Control title"
+      }, {
+        "name" : "description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Assembled control statement prose (up to 4000 chars)"
+      }, {
+        "name" : "enhancement_of",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Parent control_id for enhancements; null for base controls"
+      }, {
+        "name" : "framework",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Framework name (NIST SP 800-53)"
+      }, {
+        "name" : "version",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Framework version (Rev 5)"
+      }, {
+        "name" : "source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data source identifier"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.threat.NistControlsResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "nist_controls" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "nist_csf_functions",
+      "pattern" : "type=nist_csf_functions.parquet",
+      "dataset_type" : "snapshot",
+      "freshness" : {
+        "type" : "etag"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "NIST CSF 2.0 subcategories. One row per subcategory (most granular level). 3-level hierarchy: Function → Category → Subcategory. 6 functions: GV (Govern), ID (Identify), PR (Protect), DE (Detect), RS (Respond), RC (Recover).\n",
+      "columns" : [ {
+        "name" : "function_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Function code (GV, ID, PR, DE, RS, RC)"
+      }, {
+        "name" : "function_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Function name (GOVERN, IDENTIFY, etc.)"
+      }, {
+        "name" : "category_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Category identifier (e.g., GV.OC)"
+      }, {
+        "name" : "category_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Category label"
+      }, {
+        "name" : "subcategory_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Subcategory identifier (e.g., GV.OC-01)"
+      }, {
+        "name" : "subcategory_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Subcategory statement prose"
+      }, {
+        "name" : "framework_version",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CSF version (2.0)"
+      }, {
+        "name" : "source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data source identifier"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/CSF/v2.0/json/NIST_CSF_v2.0_catalog.json",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.threat.NistCsfResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "nist_csf_functions" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "cis_controls",
+      "freshness" : {
+        "type" : "etag"
+      },
+      "pattern" : "type=cis_controls.parquet",
+      "dataset_type" : "snapshot",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "CIS Controls v8 safeguards from the CISecurity/ControlsAssessmentSpecification GitHub repository (RST format). 18 controls, ~153 safeguards. The transformer fetches individual RST files for each safeguard and parses title, description, asset type, security function, and implementation groups.\n",
+      "columns" : [ {
+        "name" : "control_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "CIS Control number (1-18)"
+      }, {
+        "name" : "control_title",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CIS Control title"
+      }, {
+        "name" : "safeguard_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Safeguard identifier (e.g., 1.1, 2.3)"
+      }, {
+        "name" : "title",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Safeguard title"
+      }, {
+        "name" : "description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Safeguard description (up to 2000 chars)"
+      }, {
+        "name" : "asset_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Asset type from implementation table (e.g., Devices, Applications)"
+      }, {
+        "name" : "security_function",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Security function (Identify, Protect, Detect, Respond, Recover)"
+      }, {
+        "name" : "ig_group",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Implementation groups string (e.g., 1, 2, 3 or 2, 3)"
+      }, {
+        "name" : "version",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CIS Controls version (v8)"
+      }, {
+        "name" : "source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data source identifier"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://raw.githubusercontent.com/CISecurity/ControlsAssessmentSpecification/master/control-1/index.rst",
+        "method" : "GET",
+        "response" : {
+          "format" : "text"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.threat.CisControlsResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "cis_controls" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "owasp_top10",
+      "freshness" : {
+        "type" : "etag"
+      },
+      "pattern" : "type=owasp_top10.parquet",
+      "dataset_type" : "snapshot",
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "OWASP Top 10 (2021) web application security risk categories, ranked 1-10, each with an overview and the pipe-delimited CWE IDs associated with that risk. One row per entry; sourced from the OWASP/Top10 GitHub repo's Markdown docs.\n",
+      "columns" : [ {
+        "name" : "entry_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "OWASP entry ID (e.g., A01:2021)"
+      }, {
+        "name" : "rank",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Rank (1-10)"
+      }, {
+        "name" : "name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Entry name (e.g., Broken Access Control)"
+      }, {
+        "name" : "overview",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Overview section prose (up to 2000 chars)"
+      }, {
+        "name" : "cwe_ids",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited CWE IDs mentioned in the entry"
+      }, {
+        "name" : "year",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "OWASP Top 10 year (2021)"
+      }, {
+        "name" : "source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data source identifier"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://raw.githubusercontent.com/OWASP/Top10/master/2021/docs/en/A01_2021-Broken_Access_Control.md",
+        "method" : "GET",
+        "response" : {
+          "format" : "text"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.threat.OwaspTop10ResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "owasp_top10" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "attack_to_nist_mappings",
+      "releaseWindow" : {
+        "dow" : [ 0 ]
+      },
+      "pattern" : "type=attack_to_nist_mappings.parquet",
+      "dataset_type" : "snapshot",
+      "freshness" : {
+        "type" : "etag"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "MITRE ATT&CK to NIST SP 800-53 control mappings from the center-for-threat-informed-defense/mappings-explorer GitHub repository. ATT&CK v16.1 mapped to NIST 800-53 Rev 5 enterprise domain. Records with status=non_mappable are excluded.\n",
+      "columns" : [ {
+        "name" : "technique_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "ATT&CK technique ID (e.g., T1566, T1566.001)"
+      }, {
+        "name" : "attack_object_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ATT&CK technique name"
+      }, {
+        "name" : "nist_control_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "NIST 800-53 control ID (e.g., CM-03)"
+      }, {
+        "name" : "capability_group",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Control family code (e.g., CM, AC)"
+      }, {
+        "name" : "capability_description",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Control name"
+      }, {
+        "name" : "mapping_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mapping relationship type (mitigates)"
+      }, {
+        "name" : "comments",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mapping rationale"
+      }, {
+        "name" : "status",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Mapping status (complete)"
+      }, {
+        "name" : "source_version",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ATT&CK and NIST versions used for mapping"
+      }, {
+        "name" : "source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Data source identifier"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://raw.githubusercontent.com/center-for-threat-informed-defense/mappings-explorer/main/mappings/nist_800_53/attack-16.1/nist_800_53-rev5/enterprise/nist_800_53-rev5_attack-16.1-enterprise.json",
+        "method" : "GET",
+        "response" : {
+          "format" : "json"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.threat.AttackToNistResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "attack_to_nist_mappings" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true
+        }
+      }
+    }, {
+      "name" : "threat_pulses",
+      "pattern" : "type=threat_pulses/first_seen=${first_seen}.parquet",
+      "dataset_type" : "snapshot",
+      "freshness" : {
+        "type" : "version",
+        "probe_url" : "https://otx.alienvault.com/api/v1/pulses/subscribed?limit=1",
+        "version_field" : "results[0].modified",
+        "watermark_var" : "otxModifiedSince"
+      },
+      "dqRowLimit" : 2000,
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "type",
+          "type" : "VARCHAR"
+        }, {
+          "name" : "first_seen",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "AlienVault OTX subscribed threat-intelligence pulses (curated reports), each with targeted countries, malware families, mapped ATT&CK technique IDs, an IOC count, and TLP classification, partitioned by first_seen (date portion of created). Requires CYBER_OTX_API_KEY. Production daily runs append pulse version history into each partition (query current state via max(modified) per pulse_id); historical/DQ runs replace the partition wholesale.\n",
+      "columns" : [ {
+        "name" : "pulse_id",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "OTX pulse UUID"
+      }, {
+        "name" : "name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pulse name"
+      }, {
+        "name" : "author",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Author username"
+      }, {
+        "name" : "tags",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited tags"
+      }, {
+        "name" : "targeted_countries",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited ISO country codes"
+      }, {
+        "name" : "malware_families",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited malware family display names"
+      }, {
+        "name" : "attack_ids",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Pipe-delimited ATT&CK technique IDs"
+      }, {
+        "name" : "ioc_count",
+        "type" : "integer",
+        "nullable" : true,
+        "comment" : "Number of IOC indicators in this pulse"
+      }, {
+        "name" : "created",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Creation timestamp (ISO-8601)"
+      }, {
+        "name" : "modified",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Last modified timestamp (ISO-8601)"
+      }, {
+        "name" : "tlp",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Traffic Light Protocol classification"
+      }, {
+        "name" : "source",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Feed source (otx)"
+      }, {
+        "name" : "first_seen",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Partition column (date portion of created)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://otx.alienvault.com/api/v1/pulses/subscribed",
+        "method" : "GET",
+        "headers" : {
+          "X-OTX-API-KEY" : ""
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "results"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 5
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.cyber.threat.OtxResponseTransformer"
+      },
+      "dimensions" : {
+        "type" : [ "threat_pulses" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "type", "first_seen" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7,
+          "overwritePartitions" : true,
+          "appendWhenOperand" : "cyber_threat.otxWriteMode",
+          "appendWhenValue" : "append"
+        }
+      }
+    } ],
+    "comment" : "Cyber threat intelligence, exploit data, IOC feeds, MITRE ATT&CK taxonomy, and standards/compliance mappings. Part of the govdata cyber sub-domain.\n",
+    "compaction_defaults" : {
+      "compactionTargetFileSizeBytes" : 134217728,
+      "runCompaction" : true,
+      "compactionMinFiles" : 5
+    },
+    "dataSource" : "cyber_threat"
+  },
+  "parentSchema" : "",
+  "generatedAt" : "2026-09-19T10:18:39.883177Z",
+  "schemaName" : "cyber_threat"
+}

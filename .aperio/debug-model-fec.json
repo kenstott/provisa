@@ -1,7 +1,7 @@
 {
   "operands" : {
     "_storageProvider" : "S3StorageProvider",
-    "_incrementalTracker" : "DuckDBPartitionStatusStore",
+    "_incrementalTracker" : "ReadOnlyPipelineTracker",
     "schemaName" : "fec",
     "ephemeralCache" : false,
     "constraints" : {
@@ -10,15 +10,26 @@
         "foreignKeys" : [ {
           "columns" : [ "state" ],
           "targetSchema" : "geo",
-          "targetTable" : "states",
-          "targetColumns" : [ "state_abbreviation" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
           "comment" : "Links candidate state to geographic state data"
         }, {
-          "columns" : [ "state", "district" ],
+          "columns" : [ "cd_fips" ],
           "targetSchema" : "geo",
           "targetTable" : "congressional_districts",
-          "targetColumns" : [ "state_abbreviation", "district_number" ],
-          "comment" : "Links House candidates to congressional district geography"
+          "targetColumns" : [ "cd_fips" ],
+          "comment" : "Links House candidates to congressional district geography via enriched cd_fips (state_fips + zero-padded district)"
+        }, {
+          "columns" : [ "principal_committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links candidate to principal campaign committee (CAND_PCC)"
+        }, {
+          "columns" : [ "zip" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "Mailing ZIP to the conformed ZCTA dimension (best-effort; FEC ZIPs may be ZIP+4, only 5-digit resolve)"
         } ]
       },
       "communication_costs" : {
@@ -34,8 +45,8 @@
         }, {
           "columns" : [ "candidate_state" ],
           "targetSchema" : "geo",
-          "targetTable" : "states",
-          "targetColumns" : [ "state_abbreviation" ]
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
         } ]
       },
       "committee_contributions" : {
@@ -53,9 +64,15 @@
         }, {
           "columns" : [ "state" ],
           "targetSchema" : "geo",
-          "targetTable" : "states",
-          "targetColumns" : [ "state_abbreviation" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
           "comment" : "Links contributor state to geographic data"
+        }, {
+          "columns" : [ "zip_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "Contributor ZIP to the conformed ZCTA dimension (best-effort; FEC ZIPs may be ZIP+4, only 5-digit resolve)"
         } ]
       },
       "intercommittee_transactions" : {
@@ -68,8 +85,14 @@
         }, {
           "columns" : [ "state" ],
           "targetSchema" : "geo",
-          "targetTable" : "states",
-          "targetColumns" : [ "state_abbreviation" ]
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        }, {
+          "columns" : [ "zip_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "ZIP to the conformed ZCTA dimension (best-effort; FEC ZIPs may be ZIP+4, only 5-digit resolve)"
         } ]
       },
       "individual_contributions" : {
@@ -82,9 +105,15 @@
         }, {
           "columns" : [ "state" ],
           "targetSchema" : "geo",
-          "targetTable" : "states",
-          "targetColumns" : [ "state_abbreviation" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
           "comment" : "Links contributor state to geographic data"
+        }, {
+          "columns" : [ "zip_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "Contributor ZIP to the conformed ZCTA dimension (best-effort; FEC ZIPs may be ZIP+4, only 5-digit resolve)"
         } ]
       },
       "candidate_summaries" : {
@@ -96,8 +125,8 @@
         }, {
           "columns" : [ "state" ],
           "targetSchema" : "geo",
-          "targetTable" : "states",
-          "targetColumns" : [ "state_abbreviation" ]
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
         } ]
       },
       "candidate_committee_linkages" : {
@@ -129,8 +158,8 @@
         }, {
           "columns" : [ "candidate_state" ],
           "targetSchema" : "geo",
-          "targetTable" : "states",
-          "targetColumns" : [ "state_abbreviation" ]
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
         } ]
       },
       "committees" : {
@@ -138,14 +167,20 @@
         "foreignKeys" : [ {
           "columns" : [ "state" ],
           "targetSchema" : "geo",
-          "targetTable" : "states",
-          "targetColumns" : [ "state_abbreviation" ],
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
           "comment" : "Links committee state to geographic state data"
         }, {
           "columns" : [ "candidate_id" ],
           "targetTable" : "candidates",
           "targetColumns" : [ "candidate_id" ],
           "comment" : "Links authorized committees to their candidate"
+        }, {
+          "columns" : [ "zip" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "Mailing ZIP to the conformed ZCTA dimension (best-effort; FEC ZIPs may be ZIP+4, only 5-digit resolve)"
         } ]
       },
       "electioneering_communications" : {
@@ -161,8 +196,8 @@
         }, {
           "columns" : [ "candidate_state" ],
           "targetSchema" : "geo",
-          "targetTable" : "states",
-          "targetColumns" : [ "state_abbreviation" ]
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
         } ]
       },
       "operating_expenditures" : {
@@ -175,8 +210,14 @@
         }, {
           "columns" : [ "state" ],
           "targetSchema" : "geo",
-          "targetTable" : "states",
-          "targetColumns" : [ "state_abbreviation" ]
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        }, {
+          "columns" : [ "zip_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "Payee ZIP to the conformed ZCTA dimension (best-effort; FEC ZIPs may be ZIP+4, only 5-digit resolve)"
         } ]
       },
       "committee_summaries" : {
@@ -188,8 +229,8 @@
         }, {
           "columns" : [ "state" ],
           "targetSchema" : "geo",
-          "targetTable" : "states",
-          "targetColumns" : [ "state_abbreviation" ]
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
         } ]
       }
     },
@@ -204,7 +245,7 @@
             "start" : 2010,
             "cadenceStart" : 2010,
             "cadenceLength" : 2,
-            "minYear" : "2024"
+            "minYear" : 1980
           }
         }
       },
@@ -217,7 +258,7 @@
             "start" : 2010,
             "cadenceStart" : 2010,
             "cadenceLength" : 2,
-            "minYear" : "2024"
+            "minYear" : 1980
           }
         }
       },
@@ -230,7 +271,7 @@
             "start" : 2010,
             "cadenceStart" : 2010,
             "cadenceLength" : 2,
-            "minYear" : "2024"
+            "minYear" : 1980
           }
         }
       },
@@ -243,7 +284,7 @@
             "start" : 2010,
             "cadenceStart" : 2010,
             "cadenceLength" : 2,
-            "minYear" : "2024"
+            "minYear" : 1980
           }
         }
       },
@@ -256,7 +297,7 @@
             "start" : 2010,
             "cadenceStart" : 2010,
             "cadenceLength" : 2,
-            "minYear" : "2024"
+            "minYear" : 1980
           }
         }
       },
@@ -269,7 +310,7 @@
             "start" : 2010,
             "cadenceStart" : 2010,
             "cadenceLength" : 2,
-            "minYear" : "2024"
+            "minYear" : 1980
           }
         }
       },
@@ -282,13 +323,13 @@
             "start" : 2010,
             "cadenceStart" : 2010,
             "cadenceLength" : 2,
-            "minYear" : "2024"
+            "minYear" : 1980
           }
         }
       }
     },
     "canonicalSchemaName" : "fec",
-    "operatingDirectory" : "/Users/kennethstott/.govdata/fec",
+    "operatingDirectory" : "/Users/kennethstott/.provisa_askamerica/data/fec",
     "workerTimeoutMinutes" : 480,
     "column_templates" : {
       "committee_id_column" : {
@@ -398,11 +439,12 @@
         "source" : "AMNDT_IND"
       }
     },
-    "modelUri" : "/var/folders/3z/9k876p5x7xn2b7839l4hfv800000gn/T/govdata-model2687571713078806897.json",
-    "baseDirectory" : "/var/folders/3z/9k876p5x7xn2b7839l4hfv800000gn/T",
+    "database_filename" : "/Users/kennethstott/.provisa_askamerica/data/.duckdb/govdata.duckdb",
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
     "views" : [ {
       "name" : "active_candidates",
-      "comment" : "Active federal candidates from the most recent election cycle. Filters fec.candidates to rows where candidate_status = 'C' (certified active). Single-schema view using only fec tables.\n",
+      "comment" : "Federal candidates flagged as certified active (candidate_status = 'C') in fec.candidates. Not filtered to a single cycle — rows span every loaded election year, distinguished by the year column. Single-schema view using only fec tables.\n",
       "sql" : "SELECT\n  candidate_id,\n  candidate_name,\n  party,\n  office,\n  state,\n  district,\n  incumbent_challenger,\n  election_year,\n  year\nFROM candidates WHERE candidate_status = 'C'\n"
     }, {
       "name" : "candidate_district_profile",
@@ -414,6 +456,7 @@
       "accessKeyId" : "********",
       "secretAccessKey" : "********",
       "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
       "region" : "auto"
     },
     "actualSchemaName" : "fec",
@@ -422,57 +465,238 @@
       "accessKeyId" : "****e4dc",
       "secretAccessKey" : "********",
       "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
       "region" : "auto"
     },
     "executionEngine" : "duckdb",
     "tableConstraints" : {
       "candidates" : {
         "primaryKey" : [ "type", "year", "candidate_id" ],
-        "foreignKeys" : [ ]
+        "foreignKeys" : [ {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
+          "comment" : "Links candidate state to geographic state data"
+        }, {
+          "columns" : [ "cd_fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "congressional_districts",
+          "targetColumns" : [ "cd_fips" ],
+          "comment" : "Links House candidates to congressional district geography via enriched cd_fips (state_fips + zero-padded district)"
+        }, {
+          "columns" : [ "principal_committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links candidate to principal campaign committee (CAND_PCC)"
+        }, {
+          "columns" : [ "zip" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "Mailing ZIP to the conformed ZCTA dimension (best-effort; FEC ZIPs may be ZIP+4, only 5-digit resolve)"
+        } ]
       },
       "communication_costs" : {
         "primaryKey" : [ "type", "year", "filing_id", "candidate_id" ],
-        "foreignKeys" : [ ]
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ]
+        }, {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ]
+        }, {
+          "columns" : [ "candidate_state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
       },
       "committee_contributions" : {
         "primaryKey" : [ "type", "year", "sub_id" ],
-        "foreignKeys" : [ ]
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links to contributing committee"
+        }, {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ],
+          "comment" : "Links to recipient candidate"
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
+          "comment" : "Links contributor state to geographic data"
+        }, {
+          "columns" : [ "zip_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "Contributor ZIP to the conformed ZCTA dimension (best-effort; FEC ZIPs may be ZIP+4, only 5-digit resolve)"
+        } ]
       },
       "intercommittee_transactions" : {
         "primaryKey" : [ "type", "year", "sub_id" ],
-        "foreignKeys" : [ ]
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links to originating committee"
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        }, {
+          "columns" : [ "zip_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "ZIP to the conformed ZCTA dimension (best-effort; FEC ZIPs may be ZIP+4, only 5-digit resolve)"
+        } ]
       },
       "individual_contributions" : {
         "primaryKey" : [ "type", "year", "sub_id" ],
-        "foreignKeys" : [ ]
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links contribution to receiving committee"
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
+          "comment" : "Links contributor state to geographic data"
+        }, {
+          "columns" : [ "zip_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "Contributor ZIP to the conformed ZCTA dimension (best-effort; FEC ZIPs may be ZIP+4, only 5-digit resolve)"
+        } ]
       },
       "candidate_summaries" : {
         "primaryKey" : [ "type", "year", "candidate_id" ],
-        "foreignKeys" : [ ]
+        "foreignKeys" : [ {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ]
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
       },
       "candidate_committee_linkages" : {
         "primaryKey" : [ "type", "year", "linkage_id" ],
-        "foreignKeys" : [ ]
+        "foreignKeys" : [ {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ],
+          "comment" : "Links to candidate registration"
+        }, {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links to committee registration"
+        } ]
       },
       "independent_expenditures" : {
         "primaryKey" : [ "type", "year", "filing_id", "transaction_id" ],
-        "foreignKeys" : [ ]
+        "foreignKeys" : [ {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ],
+          "comment" : "Links IE to targeted candidate"
+        }, {
+          "columns" : [ "spender_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links IE to spending committee"
+        }, {
+          "columns" : [ "candidate_state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
       },
       "committees" : {
         "primaryKey" : [ "type", "year", "committee_id" ],
-        "foreignKeys" : [ ]
+        "foreignKeys" : [ {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
+          "comment" : "Links committee state to geographic state data"
+        }, {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ],
+          "comment" : "Links authorized committees to their candidate"
+        }, {
+          "columns" : [ "zip" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "Mailing ZIP to the conformed ZCTA dimension (best-effort; FEC ZIPs may be ZIP+4, only 5-digit resolve)"
+        } ]
       },
       "electioneering_communications" : {
         "primaryKey" : [ "type", "year", "committee_id", "candidate_id", "communication_date" ],
-        "foreignKeys" : [ ]
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ]
+        }, {
+          "columns" : [ "candidate_id" ],
+          "targetTable" : "candidates",
+          "targetColumns" : [ "candidate_id" ]
+        }, {
+          "columns" : [ "candidate_state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
       },
       "operating_expenditures" : {
         "primaryKey" : [ "type", "year", "sub_id" ],
-        "foreignKeys" : [ ]
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ],
+          "comment" : "Links expenditure to spending committee"
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        }, {
+          "columns" : [ "zip_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "zcta_ref",
+          "targetColumns" : [ "zcta" ],
+          "comment" : "Payee ZIP to the conformed ZCTA dimension (best-effort; FEC ZIPs may be ZIP+4, only 5-digit resolve)"
+        } ]
       },
       "committee_summaries" : {
         "primaryKey" : [ "type", "year", "committee_id" ],
-        "foreignKeys" : [ ]
+        "foreignKeys" : [ {
+          "columns" : [ "committee_id" ],
+          "targetTable" : "committees",
+          "targetColumns" : [ "committee_id" ]
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
       }
     },
     "dimension_templates" : {
@@ -481,13 +705,22 @@
         "start" : 2010,
         "cadenceStart" : 2010,
         "cadenceLength" : 2,
-        "minYear" : "2024"
+        "minYear" : 1980
       }
     },
     "testMode" : false,
     "partitionedTables" : [ {
       "name" : "candidates",
       "pattern" : "type=candidates/year={year}/candidates.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : false,
+        "years" : [ 2010, 2012, 2014, 2016, 2018, 2020, 2022, 2024, 2026 ],
+        "rowCount" : 65244,
+        "checkedAt" : "2026-09-12T00:13:23Z"
+      },
       "partitions" : {
         "style" : "hive",
         "columnDefinitions" : [ {
@@ -535,6 +768,12 @@
         "nullable" : true,
         "comment" : "Congressional district number (00 for at-large/Senate/President)",
         "source" : "CAND_OFFICE_DISTRICT"
+      }, {
+        "name" : "cd_fips",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Enriched 4-digit congressional-district FIPS (state_fips + zero-padded district) — FK to geo.congressional_districts.cd_fips. Computed at materialization for House candidates only (office=H); NULL for Senate/President/unmapped jurisdictions. Mirrors the candidate_district_profile view join logic.\n",
+        "expression" : "CASE WHEN UPPER(TRIM(CAST(src.\"CAND_OFFICE\" AS VARCHAR))) = 'H'\n     THEN (CASE UPPER(TRIM(CAST(src.\"CAND_OFFICE_ST\" AS VARCHAR)))\n             WHEN 'AL' THEN '01' WHEN 'AK' THEN '02' WHEN 'AZ' THEN '04' WHEN 'AR' THEN '05'\n             WHEN 'CA' THEN '06' WHEN 'CO' THEN '08' WHEN 'CT' THEN '09' WHEN 'DE' THEN '10'\n             WHEN 'DC' THEN '11' WHEN 'FL' THEN '12' WHEN 'GA' THEN '13' WHEN 'HI' THEN '15'\n             WHEN 'ID' THEN '16' WHEN 'IL' THEN '17' WHEN 'IN' THEN '18' WHEN 'IA' THEN '19'\n             WHEN 'KS' THEN '20' WHEN 'KY' THEN '21' WHEN 'LA' THEN '22' WHEN 'ME' THEN '23'\n             WHEN 'MD' THEN '24' WHEN 'MA' THEN '25' WHEN 'MI' THEN '26' WHEN 'MN' THEN '27'\n             WHEN 'MS' THEN '28' WHEN 'MO' THEN '29' WHEN 'MT' THEN '30' WHEN 'NE' THEN '31'\n             WHEN 'NV' THEN '32' WHEN 'NH' THEN '33' WHEN 'NJ' THEN '34' WHEN 'NM' THEN '35'\n             WHEN 'NY' THEN '36' WHEN 'NC' THEN '37' WHEN 'ND' THEN '38' WHEN 'OH' THEN '39'\n             WHEN 'OK' THEN '40' WHEN 'OR' THEN '41' WHEN 'PA' THEN '42' WHEN 'RI' THEN '44'\n             WHEN 'SC' THEN '45' WHEN 'SD' THEN '46' WHEN 'TN' THEN '47' WHEN 'TX' THEN '48'\n             WHEN 'UT' THEN '49' WHEN 'VT' THEN '50' WHEN 'VA' THEN '51' WHEN 'WA' THEN '53'\n             WHEN 'WV' THEN '54' WHEN 'WI' THEN '55' WHEN 'WY' THEN '56'\n             WHEN 'AS' THEN '60' WHEN 'GU' THEN '66' WHEN 'MP' THEN '69' WHEN 'PR' THEN '72'\n             WHEN 'VI' THEN '78' ELSE NULL END)\n          || LPAD(CAST(TRY_CAST(src.\"CAND_OFFICE_DISTRICT\" AS INTEGER) AS VARCHAR), 2, '0')\n     ELSE NULL END\n"
       }, {
         "name" : "incumbent_challenger",
         "type" : "string",
@@ -601,6 +840,7 @@
         "response" : {
           "format" : "csv",
           "delimiter" : "|",
+          "quoted" : false,
           "hasHeader" : false,
           "columnNames" : "CAND_ID|CAND_NAME|CAND_PTY_AFFILIATION|CAND_ELECTION_YR|CAND_OFFICE_ST|CAND_OFFICE|CAND_OFFICE_DISTRICT|CAND_ICI|CAND_STATUS|CAND_PCC|CAND_ST1|CAND_ST2|CAND_CITY|CAND_ST|CAND_ZIP"
         },
@@ -619,7 +859,7 @@
           "start" : 2010,
           "cadenceStart" : 2010,
           "cadenceLength" : 2,
-          "minYear" : "2024"
+          "minYear" : 1980
         }
       },
       "materialize" : {
@@ -651,6 +891,15 @@
     }, {
       "name" : "committees",
       "pattern" : "type=committees/year={year}/committees.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : false,
+        "years" : [ 2010, 2012, 2014, 2016, 2018, 2020, 2022, 2024, 2026 ],
+        "rowCount" : 156104,
+        "checkedAt" : "2026-09-12T00:13:23Z"
+      },
       "partitions" : {
         "style" : "hive",
         "columnDefinitions" : [ {
@@ -661,7 +910,7 @@
           "type" : "INTEGER"
         } ]
       },
-      "comment" : "All political committees registered with the FEC. Includes PACs, party committees, campaign committees, and Super PACs. Contains committee type, designation, connected organization, treasurer, and filing frequency. Source: cm{YY}.zip bulk download (pipe-delimited, no header).\n",
+      "comment" : "All political committees registered with the FEC. Includes PACs, party committees, campaign committees, and Super PACs. Contains committee type, designation, connected organization, treasurer, and filing frequency. Source: cm{YY}.zip bulk download (pipe-delimited, no header).\nTo reach a committee's connected organization FROM another schema rather than by name, join ref.canonical_org_entity on fec_committee_id = committee_id — that table carries one foreign key per source, so the org's LEI/SEC CIK and its committee_id sit in the same row and the join is exact. Matching connected_org_name as text finds the wrong entities and misses orgs filing under a differently-worded name.\n",
       "columns" : [ {
         "name" : "committee_id",
         "type" : "string",
@@ -764,6 +1013,7 @@
         "response" : {
           "format" : "csv",
           "delimiter" : "|",
+          "quoted" : false,
           "hasHeader" : false,
           "columnNames" : "CMTE_ID|CMTE_NM|TRES_NM|CMTE_ST1|CMTE_ST2|CMTE_CITY|CMTE_ST|CMTE_ZIP|CMTE_DSGN|CMTE_TP|CMTE_PTY_AFFILIATION|CMTE_FILING_FREQ|ORG_TP|CONNECTED_ORG_NM|CAND_ID"
         },
@@ -782,7 +1032,7 @@
           "start" : 2010,
           "cadenceStart" : 2010,
           "cadenceLength" : 2,
-          "minYear" : "2024"
+          "minYear" : 1980
         }
       },
       "materialize" : {
@@ -814,6 +1064,15 @@
     }, {
       "name" : "candidate_committee_linkages",
       "pattern" : "type=candidate_committee_linkages/year={year}/linkages.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : false,
+        "years" : [ 2010, 2012, 2014, 2016, 2018, 2020, 2022, 2024, 2026 ],
+        "rowCount" : 62156,
+        "checkedAt" : "2026-09-12T00:13:24Z"
+      },
       "partitions" : {
         "style" : "hive",
         "columnDefinitions" : [ {
@@ -879,6 +1138,7 @@
         "response" : {
           "format" : "csv",
           "delimiter" : "|",
+          "quoted" : false,
           "hasHeader" : false,
           "columnNames" : "CAND_ID|CAND_ELECTION_YR|FEC_ELECTION_YR|CMTE_ID|CMTE_TP|CMTE_DSGN|LINKAGE_ID"
         },
@@ -897,7 +1157,7 @@
           "start" : 2010,
           "cadenceStart" : 2010,
           "cadenceLength" : 2,
-          "minYear" : "2024"
+          "minYear" : 1980
         }
       },
       "materialize" : {
@@ -929,6 +1189,15 @@
     }, {
       "name" : "individual_contributions",
       "pattern" : "type=individual_contributions/year={year}/contributions.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : false,
+        "years" : [ 2010, 2012, 2014, 2016, 2018, 2020, 2022, 2024, 2026 ],
+        "rowCount" : 314343827,
+        "checkedAt" : "2026-09-12T00:13:27Z"
+      },
       "partitions" : {
         "style" : "hive",
         "columnDefinitions" : [ {
@@ -939,7 +1208,7 @@
           "type" : "INTEGER"
         } ]
       },
-      "comment" : "Itemized individual contributions to federal committees exceeding $200 in an election cycle. Largest FEC dataset (~4-5GB per cycle, 20M+ records). Contains donor name, employer, occupation, amount, date, and memo text. Memo text is vectorized for inferred relationship discovery. Source: indiv{YY}.zip (pipe-delimited, no header).\n",
+      "comment" : "Itemized individual (donor-level) contributions to federal committees exceeding $200 per cycle. transaction_type spans both ordinary contributions (15/15E/22Y) AND code 10 (giving to Super PACs/Hybrid PACs/nonfederal soft-money accounts) — 10 is uncapped and by dollar volume is typically the single largest code (2024: $6.2B vs. $3.6B for 15), so a query that only knows 15/15E/22Y silently undercounts total giving, especially per-donor. See the transaction_type column comment for the full code list. Largest FEC dataset (~4-5GB per cycle, 20M+ records); contains donor name, employer, occupation, amount, date, and memo text (vectorized for inferred relationship discovery). Distinct from committee_contributions (committee-to-candidate money) and intercommittee_transactions (committee-to-committee transfers). Source: indiv{YY}.zip (pipe-delimited, no header).\n",
       "columns" : [ {
         "name" : "committee_id",
         "type" : "string",
@@ -974,7 +1243,7 @@
         "name" : "transaction_type",
         "type" : "string",
         "nullable" : true,
-        "comment" : "Transaction type code (15=contribution, 15E=earmarked, 22Y=refund)",
+        "comment" : "FEC transaction type code (source: FEC transaction-type-code-descriptions). 15=contribution (individual/partnership/LLC), 15C=contribution from candidate, 15E=earmarked contribution, 22Y=contribution refund, 10=contribution to Super PAC/Hybrid PAC/nonfederal soft-money account (uncapped, no 15/15E individual limit — usually the largest single code by dollar volume, e.g. $6.2B vs $3.6B for 15 in 2024), 11=Native American Tribe contribution, 21Y=Native American Tribe refund, 20Y=nonfederal refund, 24I=earmarked passed by intermediary committee (intermediary out), 24T=earmarked passed from intermediary's treasury (treasury out), 19=electioneering communication donation received, 30/30E/30T=Convention Account receipt (individual/earmarked/tribe), 31/31E/31T=Headquarters Account receipt (individual/earmarked/tribe), 32/32E/32T=Recount Account receipt (individual/earmarked/tribe), 41Y=Headquarters Account refund, 42Y=Recount Account refund.\n",
         "source" : "TRANSACTION_TP"
       }, {
         "name" : "entity_type",
@@ -1079,6 +1348,7 @@
         "response" : {
           "format" : "csv",
           "delimiter" : "|",
+          "quoted" : false,
           "hasHeader" : false,
           "columnNames" : "CMTE_ID|AMNDT_IND|RPT_TP|TRANSACTION_PGI|IMAGE_NUM|TRANSACTION_TP|ENTITY_TP|NAME|CITY|STATE|ZIP_CODE|EMPLOYER|OCCUPATION|TRANSACTION_DT|TRANSACTION_AMT|OTHER_ID|TRAN_ID|FILE_NUM|MEMO_CD|MEMO_TEXT|SUB_ID"
         },
@@ -1097,7 +1367,7 @@
           "start" : 2010,
           "cadenceStart" : 2010,
           "cadenceLength" : 2,
-          "minYear" : "2024"
+          "minYear" : 1980
         }
       },
       "materialize" : {
@@ -1123,7 +1393,7 @@
           "snapshotRetentionDays" : 7,
           "runCompaction" : true,
           "compactionTargetFileSizeBytes" : 134217728,
-          "compactionMinFiles" : 2000
+          "compactionMinFiles" : 5
         }
       },
       "vectorize" : {
@@ -1136,6 +1406,15 @@
     }, {
       "name" : "committee_contributions",
       "pattern" : "type=committee_contributions/year={year}/contributions.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 8,
+        "contiguous" : false,
+        "years" : [ 2010, 2012, 2014, 2016, 2018, 2022, 2024, 2026 ],
+        "rowCount" : 3590105,
+        "checkedAt" : "2026-09-12T00:13:28Z"
+      },
       "partitions" : {
         "style" : "hive",
         "columnDefinitions" : [ {
@@ -1146,7 +1425,7 @@
           "type" : "INTEGER"
         } ]
       },
-      "comment" : "Contributions from committees (PACs, party committees) to candidates. Shows direct committee-to-candidate financial support including amount, date, and purpose. Source: pas2{YY}.zip (pipe-delimited, no header).\n",
+      "comment" : "Committee-to-candidate transactions (PACs, party committees), spanning direct contributions and coordinated/independent spending via transaction_type codes (24K=direct contribution, 24C=coordinated party expenditure, 24E=independent for, 24A=independent against, 24F=communication cost for). Each row carries a candidate_id, distinguishing it from intercommittee_transactions (committee-to-committee transfers with no candidate link). Source: pas2{YY}.zip (pipe-delimited, no header).\n",
       "columns" : [ {
         "name" : "committee_id",
         "type" : "string",
@@ -1292,6 +1571,7 @@
         "response" : {
           "format" : "csv",
           "delimiter" : "|",
+          "quoted" : false,
           "hasHeader" : false,
           "columnNames" : "CMTE_ID|AMNDT_IND|RPT_TP|TRANSACTION_PGI|IMAGE_NUM|TRANSACTION_TP|ENTITY_TP|NAME|CITY|STATE|ZIP_CODE|EMPLOYER|OCCUPATION|TRANSACTION_DT|TRANSACTION_AMT|OTHER_ID|CAND_ID|TRAN_ID|FILE_NUM|MEMO_CD|MEMO_TEXT|SUB_ID"
         },
@@ -1310,7 +1590,7 @@
           "start" : 2010,
           "cadenceStart" : 2010,
           "cadenceLength" : 2,
-          "minYear" : "2024"
+          "minYear" : 1980
         }
       },
       "materialize" : {
@@ -1349,6 +1629,15 @@
     }, {
       "name" : "intercommittee_transactions",
       "pattern" : "type=intercommittee_transactions/year={year}/transactions.parquet",
+      "observedCoverage" : {
+        "minYear" : 2022,
+        "maxYear" : 2026,
+        "distinctYears" : 3,
+        "contiguous" : false,
+        "years" : [ 2022, 2024, 2026 ],
+        "rowCount" : 50894008,
+        "checkedAt" : "2026-09-12T00:13:29Z"
+      },
       "partitions" : {
         "style" : "hive",
         "columnDefinitions" : [ {
@@ -1359,7 +1648,7 @@
           "type" : "INTEGER"
         } ]
       },
-      "comment" : "Transactions between political committees — transfers, joint fundraising allocations, and other inter-committee financial activity. Shows the flow of money between PACs, party committees, and campaign committees. Source: oth{YY}.zip (pipe-delimited, no header).\n",
+      "comment" : "Transactions between political committees — transfers, joint fundraising allocations, and other inter-committee financial activity — with no candidate_id column, unlike committee_contributions (which links each row to a specific candidate). Shows the flow of money between PACs, party committees, and campaign committees. Source: oth{YY}.zip (pipe-delimited, no header).\n",
       "columns" : [ {
         "name" : "committee_id",
         "type" : "string",
@@ -1499,6 +1788,7 @@
         "response" : {
           "format" : "csv",
           "delimiter" : "|",
+          "quoted" : false,
           "hasHeader" : false,
           "columnNames" : "CMTE_ID|AMNDT_IND|RPT_TP|TRANSACTION_PGI|IMAGE_NUM|TRANSACTION_TP|ENTITY_TP|NAME|CITY|STATE|ZIP_CODE|EMPLOYER|OCCUPATION|TRANSACTION_DT|TRANSACTION_AMT|OTHER_ID|TRAN_ID|FILE_NUM|MEMO_CD|MEMO_TEXT|SUB_ID"
         },
@@ -1517,7 +1807,7 @@
           "start" : 2010,
           "cadenceStart" : 2010,
           "cadenceLength" : 2,
-          "minYear" : "2024"
+          "minYear" : 1980
         }
       },
       "materialize" : {
@@ -1556,6 +1846,15 @@
     }, {
       "name" : "operating_expenditures",
       "pattern" : "type=operating_expenditures/year={year}/expenditures.parquet",
+      "observedCoverage" : {
+        "minYear" : 2022,
+        "maxYear" : 2026,
+        "distinctYears" : 3,
+        "contiguous" : false,
+        "years" : [ 2022, 2024, 2026 ],
+        "rowCount" : 7710453,
+        "checkedAt" : "2026-09-12T00:13:29Z"
+      },
       "partitions" : {
         "style" : "hive",
         "columnDefinitions" : [ {
@@ -1730,6 +2029,7 @@
         "response" : {
           "format" : "csv",
           "delimiter" : "|",
+          "quoted" : false,
           "hasHeader" : false,
           "columnNames" : "CMTE_ID|AMNDT_IND|RPT_YR|RPT_TP|IMAGE_NUM|LINE_NUM|FORM_TP_CD|SCHED_TP_CD|NAME|CITY|STATE|ZIP_CODE|TRANSACTION_DT|TRANSACTION_AMT|TRANSACTION_PGI|PURPOSE|CATEGORY|CATEGORY_DESC|MEMO_CD|MEMO_TEXT|ENTITY_TP|SUB_ID|FILE_NUM|TRAN_ID|BACK_REF_TRAN_ID"
         },
@@ -1748,7 +2048,7 @@
           "start" : 2010,
           "cadenceStart" : 2010,
           "cadenceLength" : 2,
-          "minYear" : "2024"
+          "minYear" : 1980
         }
       },
       "materialize" : {
@@ -1790,6 +2090,15 @@
     }, {
       "name" : "independent_expenditures",
       "pattern" : "type=independent_expenditures/year={year}/expenditures.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : false,
+        "years" : [ 2010, 2012, 2014, 2016, 2018, 2020, 2022, 2024, 2026 ],
+        "rowCount" : 671580,
+        "checkedAt" : "2026-09-12T00:13:30Z"
+      },
       "partitions" : {
         "style" : "hive",
         "columnDefinitions" : [ {
@@ -1939,7 +2248,7 @@
           "start" : 2010,
           "cadenceStart" : 2010,
           "cadenceLength" : 2,
-          "minYear" : "2024"
+          "minYear" : 1980
         }
       },
       "materialize" : {
@@ -1978,6 +2287,15 @@
     }, {
       "name" : "electioneering_communications",
       "pattern" : "type=electioneering_communications/year={year}/communications.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : false,
+        "years" : [ 2010, 2012, 2014, 2016, 2018, 2020, 2022, 2024, 2026 ],
+        "rowCount" : 1685,
+        "checkedAt" : "2026-09-12T00:13:31Z"
+      },
       "partitions" : {
         "style" : "hive",
         "columnDefinitions" : [ {
@@ -1988,7 +2306,7 @@
           "type" : "INTEGER"
         } ]
       },
-      "comment" : "Electioneering communications — broadcast, cable, or satellite ads that mention a federal candidate within 30 days of a primary or 60 days of a general election. Source: ElectioneeringComm_{YYYY}.csv (CSV with headers).\n",
+      "comment" : "Electioneering communications — broadcast, cable, or satellite ads that mention a federal candidate within 30 days of a primary or 60 days of a general election. Carries the reported disbursement amount plus, when one ad buy names multiple candidates, number_of_candidates and calculated_candidate_share to apportion the cost per candidate. Source: ElectioneeringComm_{YYYY}.csv (CSV with headers).\n",
       "columns" : [ {
         "name" : "candidate_id",
         "type" : "string",
@@ -2098,7 +2416,7 @@
           "start" : 2010,
           "cadenceStart" : 2010,
           "cadenceLength" : 2,
-          "minYear" : "2024"
+          "minYear" : 1980
         }
       },
       "materialize" : {
@@ -2136,7 +2454,20 @@
       }
     }, {
       "name" : "communication_costs",
+      "lookbackPeriods" : 2,
+      "freshness" : {
+        "type" : "hash"
+      },
       "pattern" : "type=communication_costs/year={year}/costs.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : false,
+        "years" : [ 2010, 2012, 2014, 2016, 2018, 2020, 2022, 2024, 2026 ],
+        "rowCount" : 25716,
+        "checkedAt" : "2026-09-12T00:13:31Z"
+      },
       "partitions" : {
         "style" : "hive",
         "columnDefinitions" : [ {
@@ -2147,7 +2478,7 @@
           "type" : "INTEGER"
         } ]
       },
-      "comment" : "Communication costs reported by corporations and labor organizations for internal communications (to employees, members) mentioning federal candidates. Source: CommunicationCosts_{YYYY}.csv (CSV with headers).\n",
+      "comment" : "Communication costs reported by corporations and labor organizations for internal communications (to employees, members) mentioning federal candidates, with a support_oppose (S/O) flag per candidate. Distinct from electioneering_communications, which covers public broadcast/cable/satellite ads rather than internal member communications. Source: CommunicationCosts_{YYYY}.csv (CSV with headers).\n",
       "columns" : [ {
         "name" : "committee_id",
         "type" : "string",
@@ -2218,9 +2549,9 @@
         "name" : "transaction_date",
         "type" : "date",
         "nullable" : true,
-        "comment" : "Transaction date",
+        "comment" : "Transaction date. Unlike every other FEC bulk table (which use MMDDYYYY_OR_SLASH), CommunicationCosts_{year}.csv's TRANSACTION_DT is YYYYMMDD (e.g. \"20260330\") — verified directly against the raw cached response for both 2024 and 2026, not assumed from the shared *transaction_date_column anchor other tables use.\n",
         "source" : "TRANSACTION_DT",
-        "dateFormat" : "DD_MON_YY"
+        "dateFormat" : "YYYYMMDD"
       }, {
         "name" : "amount",
         "type" : "double",
@@ -2262,7 +2593,7 @@
           "start" : 2010,
           "cadenceStart" : 2010,
           "cadenceLength" : 2,
-          "minYear" : "2024"
+          "minYear" : 1980
         }
       },
       "materialize" : {
@@ -2294,6 +2625,15 @@
     }, {
       "name" : "candidate_summaries",
       "pattern" : "type=candidate_summaries/year={year}/summaries.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : false,
+        "years" : [ 2010, 2012, 2014, 2016, 2018, 2020, 2022, 2024, 2026 ],
+        "rowCount" : 37183,
+        "checkedAt" : "2026-09-12T00:13:32Z"
+      },
       "partitions" : {
         "style" : "hive",
         "columnDefinitions" : [ {
@@ -2304,7 +2644,7 @@
           "type" : "INTEGER"
         } ]
       },
-      "comment" : "Aggregated financial summary for each federal candidate per election cycle. Includes total receipts, disbursements, cash on hand, debts, and individual/ PAC contribution breakdowns. Source: candidate_summary_{YYYY}.csv (CSV with headers).\n",
+      "comment" : "Aggregated per-candidate financial summary for each election cycle — one row per candidate, not a transaction. Includes total receipts, disbursements, cash on hand, debts, and individual contributions split into itemized (>$200) vs unitemized (<=$200), plus party/other-committee contribution totals. Rolls up the transaction-level individual_contributions and committee_contributions tables rather than replacing them. Source: candidate_summary_{YYYY}.csv (CSV with headers).\n",
       "columns" : [ {
         "name" : "candidate_id",
         "type" : "string",
@@ -2491,7 +2831,7 @@
           "start" : 2010,
           "cadenceStart" : 2010,
           "cadenceLength" : 2,
-          "minYear" : "2024"
+          "minYear" : 1980
         }
       },
       "materialize" : {
@@ -2523,6 +2863,15 @@
     }, {
       "name" : "committee_summaries",
       "pattern" : "type=committee_summaries/year={year}/summaries.parquet",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : false,
+        "years" : [ 2010, 2012, 2014, 2016, 2018, 2020, 2022, 2024, 2026 ],
+        "rowCount" : 109445,
+        "checkedAt" : "2026-09-12T00:13:33Z"
+      },
       "partitions" : {
         "style" : "hive",
         "columnDefinitions" : [ {
@@ -2533,7 +2882,7 @@
           "type" : "INTEGER"
         } ]
       },
-      "comment" : "Aggregated financial summary for each political committee per election cycle. Includes total receipts, disbursements, cash on hand, debts, contribution sources, and independent expenditures. Source: committee_summary_{YYYY}.csv (CSV with headers).\n",
+      "comment" : "Aggregated per-committee financial summary for each election cycle — one row per committee, not a transaction. Includes total receipts, disbursements, cash on hand, debts, independent expenditures, party coordinated expenditures, and the nonfederal (non-election-account) share of transfers and expenditures. Rolls up the transaction-level committee_contributions and intercommittee_transactions tables rather than replacing them. Source: committee_summary_{YYYY}.csv (CSV with headers).\n",
       "columns" : [ {
         "name" : "committee_id",
         "type" : "string",
@@ -2738,7 +3087,7 @@
           "start" : 2010,
           "cadenceStart" : 2010,
           "cadenceLength" : 2,
-          "minYear" : "2024"
+          "minYear" : 1980
         }
       },
       "materialize" : {
@@ -2772,6 +3121,6 @@
     "dataSource" : "fec"
   },
   "parentSchema" : "",
-  "generatedAt" : "2026-09-05T21:16:50.600411Z",
+  "generatedAt" : "2026-09-19T10:18:39.697390Z",
   "schemaName" : "fec"
 }

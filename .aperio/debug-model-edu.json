@@ -1,0 +1,3125 @@
+{
+  "operands" : {
+    "_storageProvider" : "S3StorageProvider",
+    "_incrementalTracker" : "ReadOnlyPipelineTracker",
+    "storageConfig" : {
+      "accessKeyId" : "********",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "actualSchemaName" : "edu",
+    "autoDownload" : false,
+    "s3Config" : {
+      "accessKeyId" : "****e4dc",
+      "secretAccessKey" : "********",
+      "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "region" : "auto"
+    },
+    "schemaName" : "edu",
+    "ephemeralCache" : false,
+    "constraints" : {
+      "naep_scores" : {
+        "primaryKey" : [ "year", "jurisdiction", "subject", "grade", "variable_type", "subgroup_name" ],
+        "foreignKeys" : [ {
+          "columns" : [ "jurisdiction" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links NAEP state to geo.states; jurisdiction=0 (national aggregate) will not match"
+        } ]
+      },
+      "ipeds_completions" : {
+        "primaryKey" : [ "year", "unitid", "cipcode", "award_level", "majornum" ],
+        "foreignKeys" : [ {
+          "columns" : [ "unitid", "year" ],
+          "targetTable" : "ipeds_institutions",
+          "targetColumns" : [ "unitid", "year" ],
+          "comment" : "Links completion record to institution directory"
+        } ]
+      },
+      "library_outlets" : {
+        "primaryKey" : [ "year", "state", "fscs_key", "fscs_seq" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
+          "comment" : "Links outlet state to geographic state record"
+        }, {
+          "columns" : [ "county_fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ],
+          "comment" : "Links outlet county to geo.counties (derived from CENTRACT, may be null)"
+        } ]
+      },
+      "ipeds_financials" : {
+        "primaryKey" : [ "year", "form_type", "unitid" ],
+        "foreignKeys" : [ {
+          "columns" : [ "unitid", "year" ],
+          "targetTable" : "ipeds_institutions",
+          "targetColumns" : [ "unitid", "year" ],
+          "comment" : "Links financial record to institution directory"
+        } ]
+      },
+      "crdc_schools" : {
+        "primaryKey" : [ "year", "crdc_topic", "crdc_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "ncessch", "year" ],
+          "targetTable" : "ccd_schools",
+          "targetColumns" : [ "ncessch", "year" ],
+          "comment" : "Links CRDC school record to CCD school directory (crdc_id = ncessch for most schools)"
+        }, {
+          "columns" : [ "leaid", "year" ],
+          "targetTable" : "ccd_districts",
+          "targetColumns" : [ "leaid", "year" ],
+          "comment" : "Links CRDC school to parent district; populated for directory sub-endpoint only"
+        }, {
+          "columns" : [ "fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links CRDC school state to geographic state record"
+        } ]
+      },
+      "ccd_districts" : {
+        "primaryKey" : [ "year", "leaid" ],
+        "foreignKeys" : [ {
+          "columns" : [ "fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links district state to geographic state record"
+        }, {
+          "columns" : [ "county_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ],
+          "comment" : "Links district county to geo.counties; county_code is zero-padded to 5-char FIPS by the transformer"
+        }, {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "ccd_schools" : {
+        "primaryKey" : [ "year", "ncessch" ],
+        "foreignKeys" : [ {
+          "columns" : [ "leaid", "year" ],
+          "targetTable" : "ccd_districts",
+          "targetColumns" : [ "leaid", "year" ],
+          "comment" : "Links school to parent LEA district record"
+        }, {
+          "columns" : [ "fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links school state to geographic state record"
+        }, {
+          "columns" : [ "county_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ],
+          "comment" : "Links school county to geo.counties; county_code is zero-padded to 5-char FIPS by the transformer"
+        } ]
+      },
+      "ipeds_institutions" : {
+        "primaryKey" : [ "year", "unitid" ],
+        "foreignKeys" : [ {
+          "columns" : [ "fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links institution state to geographic state record"
+        }, {
+          "columns" : [ "county_fips_str" ],
+          "targetSchema" : "geo",
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ],
+          "comment" : "Links institution county to geo.counties; county_fips_str is zero-padded by transformer"
+        }, {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "college_scorecard_programs" : {
+        "primaryKey" : [ "year", "unit_id", "cip_code", "credential_level" ],
+        "foreignKeys" : [ {
+          "columns" : [ "unit_id", "year" ],
+          "targetTable" : "college_scorecard",
+          "targetColumns" : [ "id", "year" ],
+          "comment" : "Links program-level record to institution-level Scorecard record"
+        }, {
+          "columns" : [ "unit_id", "year" ],
+          "targetTable" : "ipeds_institutions",
+          "targetColumns" : [ "unitid", "year" ],
+          "comment" : "Direct link to IPEDS directory; bypasses college_scorecard for joins against ipeds tables"
+        } ]
+      },
+      "naep_achievement_levels" : {
+        "primaryKey" : [ "year", "jurisdiction", "subject", "grade", "variable_type", "subgroup_name", "level" ],
+        "foreignKeys" : [ {
+          "columns" : [ "jurisdiction", "year", "subject", "grade", "variable_type", "subgroup_name" ],
+          "targetTable" : "naep_scores",
+          "targetColumns" : [ "jurisdiction", "year", "subject", "grade", "variable_type", "subgroup_name" ],
+          "comment" : "Links achievement level row to its corresponding mean score row"
+        } ]
+      },
+      "ipeds_tuition" : {
+        "primaryKey" : [ "year", "unitid", "level_of_study", "tuition_type" ],
+        "foreignKeys" : [ {
+          "columns" : [ "unitid", "year" ],
+          "targetTable" : "ipeds_institutions",
+          "targetColumns" : [ "unitid", "year" ],
+          "comment" : "Links tuition record to institution directory"
+        } ]
+      },
+      "college_scorecard" : {
+        "primaryKey" : [ "year", "id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "id", "year" ],
+          "targetTable" : "ipeds_institutions",
+          "targetColumns" : [ "unitid", "year" ],
+          "comment" : "Links Scorecard institution to IPEDS directory via unitid"
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
+          "comment" : "Links institution state to geographic state record"
+        } ]
+      }
+    },
+    "executionEngine" : "duckdb",
+    "directory" : "s3://govdata-parquet-v1",
+    "tableConstraints" : {
+      "naep_scores" : {
+        "primaryKey" : [ "year", "jurisdiction", "subject", "grade", "variable_type", "subgroup_name" ],
+        "foreignKeys" : [ {
+          "columns" : [ "jurisdiction" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links NAEP state to geo.states; jurisdiction=0 (national aggregate) will not match"
+        } ]
+      },
+      "ipeds_completions" : {
+        "primaryKey" : [ "year", "unitid", "cipcode", "award_level", "majornum" ],
+        "foreignKeys" : [ {
+          "columns" : [ "unitid", "year" ],
+          "targetTable" : "ipeds_institutions",
+          "targetColumns" : [ "unitid", "year" ],
+          "comment" : "Links completion record to institution directory"
+        } ]
+      },
+      "library_outlets" : {
+        "primaryKey" : [ "year", "state", "fscs_key", "fscs_seq" ],
+        "foreignKeys" : [ {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
+          "comment" : "Links outlet state to geographic state record"
+        }, {
+          "columns" : [ "county_fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ],
+          "comment" : "Links outlet county to geo.counties (derived from CENTRACT, may be null)"
+        } ]
+      },
+      "ipeds_financials" : {
+        "primaryKey" : [ "year", "form_type", "unitid" ],
+        "foreignKeys" : [ {
+          "columns" : [ "unitid", "year" ],
+          "targetTable" : "ipeds_institutions",
+          "targetColumns" : [ "unitid", "year" ],
+          "comment" : "Links financial record to institution directory"
+        } ]
+      },
+      "crdc_schools" : {
+        "primaryKey" : [ "year", "crdc_topic", "crdc_id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "ncessch", "year" ],
+          "targetTable" : "ccd_schools",
+          "targetColumns" : [ "ncessch", "year" ],
+          "comment" : "Links CRDC school record to CCD school directory (crdc_id = ncessch for most schools)"
+        }, {
+          "columns" : [ "leaid", "year" ],
+          "targetTable" : "ccd_districts",
+          "targetColumns" : [ "leaid", "year" ],
+          "comment" : "Links CRDC school to parent district; populated for directory sub-endpoint only"
+        }, {
+          "columns" : [ "fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links CRDC school state to geographic state record"
+        } ]
+      },
+      "ccd_districts" : {
+        "primaryKey" : [ "year", "leaid" ],
+        "foreignKeys" : [ {
+          "columns" : [ "fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links district state to geographic state record"
+        }, {
+          "columns" : [ "county_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ],
+          "comment" : "Links district county to geo.counties; county_code is zero-padded to 5-char FIPS by the transformer"
+        }, {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "ccd_schools" : {
+        "primaryKey" : [ "year", "ncessch" ],
+        "foreignKeys" : [ {
+          "columns" : [ "leaid", "year" ],
+          "targetTable" : "ccd_districts",
+          "targetColumns" : [ "leaid", "year" ],
+          "comment" : "Links school to parent LEA district record"
+        }, {
+          "columns" : [ "fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links school state to geographic state record"
+        }, {
+          "columns" : [ "county_code" ],
+          "targetSchema" : "geo",
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ],
+          "comment" : "Links school county to geo.counties; county_code is zero-padded to 5-char FIPS by the transformer"
+        } ]
+      },
+      "ipeds_institutions" : {
+        "primaryKey" : [ "year", "unitid" ],
+        "foreignKeys" : [ {
+          "columns" : [ "fips" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_fips" ],
+          "comment" : "Links institution state to geographic state record"
+        }, {
+          "columns" : [ "county_fips_str" ],
+          "targetSchema" : "geo",
+          "targetTable" : "counties",
+          "targetColumns" : [ "county_fips" ],
+          "comment" : "Links institution county to geo.counties; county_fips_str is zero-padded by transformer"
+        }, {
+          "columns" : [ "state_abbr" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ]
+        } ]
+      },
+      "college_scorecard_programs" : {
+        "primaryKey" : [ "year", "unit_id", "cip_code", "credential_level" ],
+        "foreignKeys" : [ {
+          "columns" : [ "unit_id", "year" ],
+          "targetTable" : "college_scorecard",
+          "targetColumns" : [ "id", "year" ],
+          "comment" : "Links program-level record to institution-level Scorecard record"
+        }, {
+          "columns" : [ "unit_id", "year" ],
+          "targetTable" : "ipeds_institutions",
+          "targetColumns" : [ "unitid", "year" ],
+          "comment" : "Direct link to IPEDS directory; bypasses college_scorecard for joins against ipeds tables"
+        } ]
+      },
+      "naep_achievement_levels" : {
+        "primaryKey" : [ "year", "jurisdiction", "subject", "grade", "variable_type", "subgroup_name", "level" ],
+        "foreignKeys" : [ {
+          "columns" : [ "jurisdiction", "year", "subject", "grade", "variable_type", "subgroup_name" ],
+          "targetTable" : "naep_scores",
+          "targetColumns" : [ "jurisdiction", "year", "subject", "grade", "variable_type", "subgroup_name" ],
+          "comment" : "Links achievement level row to its corresponding mean score row"
+        } ]
+      },
+      "ipeds_tuition" : {
+        "primaryKey" : [ "year", "unitid", "level_of_study", "tuition_type" ],
+        "foreignKeys" : [ {
+          "columns" : [ "unitid", "year" ],
+          "targetTable" : "ipeds_institutions",
+          "targetColumns" : [ "unitid", "year" ],
+          "comment" : "Links tuition record to institution directory"
+        } ]
+      },
+      "college_scorecard" : {
+        "primaryKey" : [ "year", "id" ],
+        "foreignKeys" : [ {
+          "columns" : [ "id", "year" ],
+          "targetTable" : "ipeds_institutions",
+          "targetColumns" : [ "unitid", "year" ],
+          "comment" : "Links Scorecard institution to IPEDS directory via unitid"
+        }, {
+          "columns" : [ "state" ],
+          "targetSchema" : "geo",
+          "targetTable" : "state_ref",
+          "targetColumns" : [ "state_abbr" ],
+          "comment" : "Links institution state to geographic state record"
+        } ]
+      }
+    },
+    "canonicalSchemaName" : "edu",
+    "operatingDirectory" : "/Users/kennethstott/.provisa_askamerica/data/edu",
+    "database_filename" : "/Users/kennethstott/.provisa_askamerica/data/.duckdb/govdata.duckdb",
+    "testMode" : false,
+    "partitionedTables" : [ {
+      "name" : "ccd_districts",
+      "releaseWindow" : {
+        "months" : [ 7, 8 ]
+      },
+      "pattern" : "year={year}",
+      "observedCoverage" : {
+        "minYear" : 2013,
+        "maxYear" : 2024,
+        "distinctYears" : 12,
+        "contiguous" : true,
+        "rowCount" : 232288,
+        "checkedAt" : "2026-09-12T00:12:18Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "NCES Common Core of Data — Local Education Agency (district) directory. One row per LEA per school year (year = end year; 2022 = 2021-22). Primary join target for ccd_schools (leaid) and geo.school_districts (sd_lea = leaid). Staff FTE fields (teachers, counselors, psychologists) enable resource equity analysis. Several numeric fields (number_of_schools, enrollment, spec_ed_students, english_language_learners, teachers_total_fte, guidance_counselors_total_fte, librarian_specialists_fte, staff_total_fte — see each column's own comment) carry raw NCES CCD sentinel codes instead of a real count on some rows: -1 = Missing and -2 = Not Applicable are NCES's own official codes (numeric fields, all CCD surveys since 2002-03); -9 = does not meet NCES data quality standards is also an official code, observed here on english_language_learners. These are meaningful metadata, not corrupted data, so this raw table keeps them as-is — but any view aggregating these fields (SUM/AVG/ratio) MUST exclude negative values first (value < 0), or the sentinel codes get silently summed in as if they were real counts.\n",
+      "columns" : [ {
+        "name" : "leaid",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "NCES LEA ID (7-digit string) — PK component"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "School year end year (e.g. 2022 = 2021-22) — PK component"
+      }, {
+        "name" : "lea_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "District name"
+      }, {
+        "name" : "fips",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "State FIPS code (integer 1-56) — FK to geo.states.state_fips"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-letter state abbreviation from state_location field"
+      }, {
+        "name" : "county_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "County FIPS, zero-padded to 5 chars by the transformer (e.g. '06037') — FK to geo.counties.county_fips"
+      }, {
+        "name" : "county_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "County name"
+      }, {
+        "name" : "urban_centric_locale",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "NCES locale code (11=city large, 12=city mid, 13=city small, 21=suburb large, 31=town fringe, 41=rural fringe)"
+      }, {
+        "name" : "cbsa",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Core-Based Statistical Area code"
+      }, {
+        "name" : "latitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "LEA mailing address latitude"
+      }, {
+        "name" : "longitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "LEA mailing address longitude"
+      }, {
+        "name" : "agency_type",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1=local, 2=supervisory union component, 3=state agency, 4=federal, 7=independent charter"
+      }, {
+        "name" : "agency_level",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1=elementary, 2=secondary, 3=K-12, 4=other"
+      }, {
+        "name" : "agency_charter_indicator",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1=charter LEA, 0=not charter"
+      }, {
+        "name" : "lowest_grade_offered",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Lowest grade offered (-1=PK, 0=K, 1-12)"
+      }, {
+        "name" : "highest_grade_offered",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Highest grade offered"
+      }, {
+        "name" : "number_of_schools",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Number of operational schools in LEA. May carry a negative NCES CCD sentinel code (see table comment) instead of a real count."
+      }, {
+        "name" : "enrollment",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Total student enrollment (may be null for some administrative LEAs). May carry a negative NCES CCD sentinel code (see table comment) instead of a real count."
+      }, {
+        "name" : "spec_ed_students",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Students receiving special education services. May carry a negative NCES CCD sentinel code (see table comment) instead of a real count."
+      }, {
+        "name" : "english_language_learners",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "English language learner students. May carry a negative NCES CCD sentinel code (see table comment, incl. -9) instead of a real count."
+      }, {
+        "name" : "teachers_total_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total FTE classroom teachers across all grade levels. May carry a negative NCES CCD sentinel code (see table comment) instead of a real count."
+      }, {
+        "name" : "guidance_counselors_total_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total FTE guidance counselors. May carry a negative NCES CCD sentinel code (see table comment) instead of a real count."
+      }, {
+        "name" : "school_counselors_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "FTE school counselors"
+      }, {
+        "name" : "school_psychologists_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "FTE school psychologists"
+      }, {
+        "name" : "librarian_specialists_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "FTE librarian/media specialists. May carry a negative NCES CCD sentinel code (see table comment) instead of a real count."
+      }, {
+        "name" : "staff_total_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total FTE all staff categories. May carry a negative NCES CCD sentinel code (see table comment) instead of a real count."
+      }, {
+        "name" : "state_leg_district_lower",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "State lower legislative district"
+      }, {
+        "name" : "state_leg_district_upper",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "State upper legislative district"
+      }, {
+        "name" : "congress_district_id",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Congressional district ID"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://educationdata.urban.org/api/v1/school-districts/ccd/directory/{effective_year}/",
+        "method" : "GET",
+        "response" : {
+          "format" : "json",
+          "dataPath" : "results",
+          "pagination" : {
+            "type" : "PAGE",
+            "pageSize" : 10000,
+            "pageParam" : "page"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 2,
+          "retryOn" : [ 429, 500, 503 ]
+        },
+        "rawCache" : {
+          "enabled" : true
+        },
+        "incremental" : {
+          "yearParam" : "year",
+          "yearRange" : {
+            "start" : "2010"
+          }
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.edu.CcdDistrictsResponseTransformer"
+      },
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "minYear" : 2015,
+          "dataLag" : 2
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "ccd_schools",
+      "freshness" : {
+        "type" : "etag"
+      },
+      "releaseWindow" : {
+        "months" : [ 7, 8 ]
+      },
+      "pattern" : "year={year}",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2024,
+        "distinctYears" : 15,
+        "contiguous" : true,
+        "rowCount" : 1537589,
+        "checkedAt" : "2026-09-12T00:12:19Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "NCES Common Core of Data — individual school directory. One row per school per year. Joins to ccd_districts via leaid. free_or_reduced_price_lunch enables poverty proxy at the school level. Biennial CRDC data joins via ncessch = crdc_schools.ncessch. Numeric fields (enrollment, teachers_fte, free_lunch, reduced_price_lunch, free_or_reduced_price_lunch, direct_certification — see each column's own comment) carry raw NCES CCD sentinel codes instead of a real count on some rows: -1 = Missing and -2 = Not Applicable are NCES's own official codes (numeric fields, all CCD surveys since 2002-03); a further -3 is consistently present across all six fields above but its exact NCES definition could not be confirmed against NCES/Urban Institute documentation as of 2026-08-02 (checked live; do not assume it means the same thing as -3 on unrelated datasets, e.g. IMLS's Public Libraries Survey — that's a different codebook). These are meaningful metadata, not corrupted data, so this raw table keeps them as-is — but any view aggregating these fields (SUM/AVG/ratio) MUST exclude negative values first (value < 0), or the sentinel codes get silently summed in as if they were real counts.\n",
+      "columns" : [ {
+        "name" : "ncessch",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "NCES school ID (12-digit string) — PK component"
+      }, {
+        "name" : "leaid",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Parent LEA ID (7-digit) — FK to ccd_districts.leaid"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "School year end year — PK component"
+      }, {
+        "name" : "school_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "School name"
+      }, {
+        "name" : "fips",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "State FIPS (integer) — FK to geo.states.state_fips"
+      }, {
+        "name" : "county_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "County FIPS, zero-padded to 5 chars by the transformer (e.g. '06037') — FK to geo.counties.county_fips"
+      }, {
+        "name" : "latitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "School latitude"
+      }, {
+        "name" : "longitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "School longitude"
+      }, {
+        "name" : "urban_centric_locale",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "NCES locale code"
+      }, {
+        "name" : "cbsa",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CBSA code (string in API)"
+      }, {
+        "name" : "school_level",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1=elementary, 2=middle, 3=high, 4=other combined"
+      }, {
+        "name" : "school_type",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1=regular, 2=special ed, 3=vocational, 4=alternative"
+      }, {
+        "name" : "school_status",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1=open, 2=closed, 3=new, 4=added, 5=changed agency, 6=reopened, 8=future"
+      }, {
+        "name" : "lowest_grade_offered",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Lowest grade (-1=PK, 0=K, 1-12)"
+      }, {
+        "name" : "highest_grade_offered",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Highest grade offered"
+      }, {
+        "name" : "charter",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Charter school indicator (1=yes, 0=no)"
+      }, {
+        "name" : "magnet",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Magnet school indicator (1=yes, 0=no)"
+      }, {
+        "name" : "virtual",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Virtual school indicator (1=yes, 0=no, 2=supplemental)"
+      }, {
+        "name" : "shared_time",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Shared-time school (students also attend another school)"
+      }, {
+        "name" : "title_i_status",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Title I status code (5=schoolwide, 6=targeted assistance, 7=eligible not participating)"
+      }, {
+        "name" : "title_i_eligible",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Title I eligible (1=yes, 0=no)"
+      }, {
+        "name" : "title_i_schoolwide",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Schoolwide Title I program (1=yes, 0=no)"
+      }, {
+        "name" : "teachers_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "FTE classroom teachers. May carry a negative NCES CCD sentinel code (see table comment) instead of a real count."
+      }, {
+        "name" : "enrollment",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Total student enrollment. May carry a negative NCES CCD sentinel code (see table comment) instead of a real count."
+      }, {
+        "name" : "free_lunch",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Students approved for free lunch (NSLP). May carry a negative NCES CCD sentinel code (see table comment) instead of a real count."
+      }, {
+        "name" : "reduced_price_lunch",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Students approved for reduced-price lunch. May carry a negative NCES CCD sentinel code (see table comment) instead of a real count."
+      }, {
+        "name" : "free_or_reduced_price_lunch",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Combined free+reduced lunch count; divide by enrollment for poverty proxy. May carry a negative NCES CCD sentinel code (see table comment) instead of a real count — exclude value < 0 before using in any ratio. SOURCE BEHAVIOR: states that have moved their schools to the Community Eligibility Provision stop collecting FRPL applications altogether, and CCD then publishes NOTHING in this field for every school in the state while still publishing direct_certification. Observed live against production: no such state before 2016, then a state set that changes each year — 2016 {DE,DC,MA,TN}, 2021 peaks at 10, 2022 {DE,DC,MA,MT,TN,WV}, 2024 {AZ,DE,DC,MA,TN,WV,GU}. A NULL here for a whole state-year is therefore the source's own answer, not a gap in ingestion, and it is not repairable by a reprocess. direct_certification is the only poverty signal CCD carries for those state-years — see that column for why the two are not interchangeable.\n"
+      }, {
+        "name" : "direct_certification",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Students directly certified for free meals via SNAP/TANF data matching, without a household application. May carry a negative NCES CCD sentinel code (see table comment) instead of a real count. NOT INTERCHANGEABLE WITH free_or_reduced_price_lunch: direct certification captures only the categorically eligible subset, so it runs well below FRPL wherever both are reported — measured live across production, the ratio of summed direct_certification to summed free_or_reduced_price_lunch on schools reporting both is 0.57-0.69 in every year 2016-2024. Substituting it for FRPL (a COALESCE, say) understates poverty by roughly a third and silently changes what the number means, so derive a separate rate from it rather than folding it into an FRPL rate.\n"
+      }, {
+        "name" : "lunch_program",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Lunch program type code"
+      }, {
+        "name" : "bureau_indian_education",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Bureau of Indian Education school indicator"
+      }, {
+        "name" : "congress_district_id",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Congressional district"
+      }, {
+        "name" : "state_leg_district_lower",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "State lower legislative district"
+      }, {
+        "name" : "state_leg_district_upper",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "State upper legislative district"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://educationdata.urban.org/csv/ccd/schools_ccd_directory.csv",
+        "method" : "GET",
+        "response" : {
+          "format" : "csv",
+          "pagination" : {
+            "type" : "NONE"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 2,
+          "retryOn" : [ 500, 503 ]
+        },
+        "rawCache" : {
+          "enabled" : true
+        },
+        "responsePartitioning" : {
+          "fields" : {
+            "year" : "year"
+          },
+          "yearFilter" : {
+            "field" : "year",
+            "start" : 2010
+          }
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.edu.CcdSchoolsResponseTransformer"
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "naep_scores",
+      "releaseWindow" : {
+        "months" : [ 1, 2, 3 ],
+        "yearParity" : "odd"
+      },
+      "pattern" : "year={year}",
+      "observedCoverage" : {
+        "minYear" : 2013,
+        "maxYear" : 2024,
+        "distinctYears" : 6,
+        "contiguous" : false,
+        "years" : [ 2013, 2015, 2017, 2019, 2022, 2024 ],
+        "rowCount" : 1248,
+        "checkedAt" : "2026-09-12T00:12:20Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "NAEP (National Assessment of Educational Progress) state-level mean scale scores for grade 4 and grade 8 math/reading. One row per jurisdiction × year × subject × grade × variable_type × subgroup_name; jurisdiction=0 is the national aggregate, otherwise state FIPS (joins to ccd_districts.fips or geo.states.state_fips). Administered in odd years 2013-2019, then 2022 and 2024 (COVID-19 postponed the 2021 cycle) — not a strict biennial cadence. Proficiency-level (below_basic/basic/proficient/advanced) breakdowns are in the separate naep_achievement_levels table, joinable via the full key.\n",
+      "columns" : [ {
+        "name" : "jurisdiction",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "State FIPS code (0 = national aggregate) — PK component"
+      }, {
+        "name" : "jurisdiction_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "State name or \"National\""
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Assessment year — PK component"
+      }, {
+        "name" : "subject",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "MAT=mathematics, RED=reading — PK component"
+      }, {
+        "name" : "grade",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "4 or 8 — PK component"
+      }, {
+        "name" : "variable_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Disaggregation type (TOTAL, Race/Ethnicity, Gender, NAEP Eligibility) — PK component"
+      }, {
+        "name" : "subgroup_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Subgroup label (All students, Male, White, Black, etc.) — PK component"
+      }, {
+        "name" : "avg_score",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Average NAEP scale score"
+      }, {
+        "name" : "is_displayable",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1 if statistically displayable (sufficient sample size)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.nationsreportcard.gov/Dataservice/GetAdhocData.aspx?type=data&subject=MAT&grade={grade}&subscale=MRPCM&variable=TOTAL&jurisdiction=NP,AL,AK,AZ,AR,CA,CO,CT,DE,DC,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY&stattype=MN:MN&Year={year}",
+        "method" : "GET",
+        "urlRules" : [ {
+          "url" : "https://www.nationsreportcard.gov/Dataservice/GetAdhocData.aspx?type=data&subject=MAT&grade={grade}&subscale=MRPCM&variable=TOTAL&jurisdiction=NP,AL,AK,AZ,AR,CA,CO,CT,DE,DC,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY&stattype=MN:MN&Year={year}",
+          "variableMatch" : {
+            "subscale" : "MRPCM"
+          }
+        }, {
+          "url" : "https://www.nationsreportcard.gov/Dataservice/GetAdhocData.aspx?type=data&subject=RED&grade={grade}&subscale=RRPCM&variable=TOTAL&jurisdiction=NP,AL,AK,AZ,AR,CA,CO,CT,DE,DC,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY&stattype=MN:MN&Year={year}",
+          "variableMatch" : {
+            "subscale" : "RRPCM"
+          }
+        } ],
+        "response" : {
+          "format" : "json",
+          "dataPath" : "result",
+          "pagination" : {
+            "type" : "NONE"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 3,
+          "retryOn" : [ 429, 500, 503 ],
+          "skipOn" : [ 400 ]
+        },
+        "rawCache" : {
+          "enabled" : true
+        },
+        "incremental" : {
+          "yearParam" : "year",
+          "yearRange" : {
+            "start" : "2010"
+          }
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.edu.NaepScoresResponseTransformer"
+      },
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "minYear" : 2013,
+          "maxYear" : 2024,
+          "excludeYears" : [ 2014, 2016, 2018, 2020, 2021, 2023 ]
+        },
+        "grade" : [ "4", "8" ],
+        "subscale" : [ "MRPCM", "RRPCM" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "naep_achievement_levels",
+      "releaseWindow" : {
+        "months" : [ 1, 2, 3 ],
+        "yearParity" : "odd"
+      },
+      "pattern" : "year={year}",
+      "observedCoverage" : {
+        "minYear" : 2013,
+        "maxYear" : 2024,
+        "distinctYears" : 6,
+        "contiguous" : false,
+        "years" : [ 2013, 2015, 2017, 2019, 2022, 2024 ],
+        "rowCount" : 3744,
+        "checkedAt" : "2026-09-12T00:12:23Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "NAEP proficiency level distributions sourced from GetAdhocData ALD stattype calls. One row per state × year × subject × grade × subgroup × level. level values: below_basic, basic, proficient, advanced. pct is the percentage of students at that level for the given key. Joins to naep_scores via (jurisdiction, year, subject, grade, variable_type, subgroup_name).\n",
+      "columns" : [ {
+        "name" : "jurisdiction",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "State FIPS code (0 = national aggregate) — PK component"
+      }, {
+        "name" : "jurisdiction_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "State name or \"National\""
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Assessment year — PK component"
+      }, {
+        "name" : "subject",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "MAT=mathematics, RED=reading — PK component"
+      }, {
+        "name" : "grade",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "4 or 8 — PK component"
+      }, {
+        "name" : "variable_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Disaggregation type (TOTAL, Race/Ethnicity, Gender, NAEP Eligibility) — PK component"
+      }, {
+        "name" : "subgroup_name",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Subgroup label (All students, Male, White, Black, etc.) — PK component"
+      }, {
+        "name" : "level",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Proficiency level — PK component; below_basic, basic, proficient, advanced"
+      }, {
+        "name" : "pct",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Percentage of students at this proficiency level"
+      }, {
+        "name" : "is_displayable",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1 if statistically displayable"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.nationsreportcard.gov/Dataservice/GetAdhocData.aspx?type=data&subject=MAT&grade={grade}&subscale=MRPCM&variable=TOTAL&jurisdiction=NP,AL,AK,AZ,AR,CA,CO,CT,DE,DC,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY&stattype=ALD:BA&Year={year}",
+        "method" : "GET",
+        "urlRules" : [ {
+          "url" : "https://www.nationsreportcard.gov/Dataservice/GetAdhocData.aspx?type=data&subject=MAT&grade={grade}&subscale=MRPCM&variable=TOTAL&jurisdiction=NP,AL,AK,AZ,AR,CA,CO,CT,DE,DC,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY&stattype=ALD:BA&Year={year}",
+          "variableMatch" : {
+            "subscale" : "MRPCM",
+            "level" : "BA"
+          }
+        }, {
+          "url" : "https://www.nationsreportcard.gov/Dataservice/GetAdhocData.aspx?type=data&subject=MAT&grade={grade}&subscale=MRPCM&variable=TOTAL&jurisdiction=NP,AL,AK,AZ,AR,CA,CO,CT,DE,DC,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY&stattype=ALD:PR&Year={year}",
+          "variableMatch" : {
+            "subscale" : "MRPCM",
+            "level" : "PR"
+          }
+        }, {
+          "url" : "https://www.nationsreportcard.gov/Dataservice/GetAdhocData.aspx?type=data&subject=MAT&grade={grade}&subscale=MRPCM&variable=TOTAL&jurisdiction=NP,AL,AK,AZ,AR,CA,CO,CT,DE,DC,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY&stattype=ALD:AD&Year={year}",
+          "variableMatch" : {
+            "subscale" : "MRPCM",
+            "level" : "AD"
+          }
+        }, {
+          "url" : "https://www.nationsreportcard.gov/Dataservice/GetAdhocData.aspx?type=data&subject=RED&grade={grade}&subscale=RRPCM&variable=TOTAL&jurisdiction=NP,AL,AK,AZ,AR,CA,CO,CT,DE,DC,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY&stattype=ALD:BA&Year={year}",
+          "variableMatch" : {
+            "subscale" : "RRPCM",
+            "level" : "BA"
+          }
+        }, {
+          "url" : "https://www.nationsreportcard.gov/Dataservice/GetAdhocData.aspx?type=data&subject=RED&grade={grade}&subscale=RRPCM&variable=TOTAL&jurisdiction=NP,AL,AK,AZ,AR,CA,CO,CT,DE,DC,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY&stattype=ALD:PR&Year={year}",
+          "variableMatch" : {
+            "subscale" : "RRPCM",
+            "level" : "PR"
+          }
+        }, {
+          "url" : "https://www.nationsreportcard.gov/Dataservice/GetAdhocData.aspx?type=data&subject=RED&grade={grade}&subscale=RRPCM&variable=TOTAL&jurisdiction=NP,AL,AK,AZ,AR,CA,CO,CT,DE,DC,FL,GA,HI,ID,IL,IN,IA,KS,KY,LA,ME,MD,MA,MI,MN,MS,MO,MT,NE,NV,NH,NJ,NM,NY,NC,ND,OH,OK,OR,PA,RI,SC,SD,TN,TX,UT,VT,VA,WA,WV,WI,WY&stattype=ALD:AD&Year={year}",
+          "variableMatch" : {
+            "subscale" : "RRPCM",
+            "level" : "AD"
+          }
+        } ],
+        "response" : {
+          "format" : "json",
+          "dataPath" : "result",
+          "pagination" : {
+            "type" : "NONE"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 3,
+          "retryOn" : [ 429, 500, 503 ],
+          "skipOn" : [ 400 ]
+        },
+        "rawCache" : {
+          "enabled" : true
+        },
+        "incremental" : {
+          "yearParam" : "year",
+          "yearRange" : {
+            "start" : "2010"
+          }
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.edu.NaepAchievementLevelsResponseTransformer"
+      },
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "minYear" : 2013,
+          "maxYear" : 2024,
+          "excludeYears" : [ 2014, 2016, 2018, 2020, 2021, 2023 ]
+        },
+        "grade" : [ "4", "8" ],
+        "subscale" : [ "MRPCM", "RRPCM" ],
+        "level" : [ "BA", "PR", "AD" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "crdc_schools",
+      "releaseWindow" : {
+        "months" : [ 10, 11, 12 ],
+        "yearParity" : "odd"
+      },
+      "pattern" : "year={year}/crdc_topic={crdc_topic}",
+      "observedCoverage" : {
+        "minYear" : 2013,
+        "maxYear" : 2022,
+        "distinctYears" : 6,
+        "contiguous" : false,
+        "years" : [ 2013, 2015, 2017, 2020, 2021, 2022 ],
+        "rowCount" : 18159226,
+        "checkedAt" : "2026-09-12T00:12:24Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        }, {
+          "name" : "crdc_topic",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "dqRowLimit" : 5000,
+      "comment" : "CRDC school-level civil-rights/equity data consolidated from four Urban Institute sub-endpoints, selected via the crdc_topic dimension: directory (charter/magnet/ alternative-school flags), chronic-absenteeism (chronically-absent student counts by race/sex/disability/LEP subgroup), offenses (firearm, homicide, rape, and assault incident counts), and teachers-staff (FTE teachers/certified-vs-uncertified/counselors/ psychologists/nurses/security/law-enforcement). Each row belongs to exactly one crdc_topic, so most columns are null outside their topic's rows. Joins to ccd_schools via ncessch (crdc_id equals ncessch for schools in the NCES universe; null ncessch means a non-NCES private/charter school with only a crdc_id). Collected by the Dept of Education Office for Civil Rights on an irregular, roughly-biennial schedule — not a strict 2-year interval, and not every topic shares the same loaded years: see observedCoverage below for the table-wide year set, but per-topic availability varies within it (e.g. offenses has no 2013 data even though teachers-staff does; year 2022 currently carries only chronic-absenteeism, not teachers-staff/offenses). CRDC's own known survey years are 2011, 2013, 2015, 2017, and the 2020-21 cycle (which lands here as two separate years, 2020 and 2021, not consolidated into one) — 2011 is a known CRDC survey year with no rows currently loaded in this table.\n",
+      "columns" : [ {
+        "name" : "crdc_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Best available PK component for CRDC records; more properly an AK (alternate key). Equals ncessch for schools in the NCES universe. Chronic-absenteeism pre-2022 data may be null (transformer backfills from ncessch). For schools outside NCES (private/charter), crdc_id is the only identifier; ncessch will be null instead.\n"
+      }, {
+        "name" : "ncessch",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "NCES school ID — FK to ccd_schools.ncessch; null for ~1,800 non-NCES schools"
+      }, {
+        "name" : "leaid",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "LEA ID — FK to ccd_districts.leaid"
+      }, {
+        "name" : "fips",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "State FIPS"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Survey year (2011, 2013, 2015, 2017) — PK component"
+      }, {
+        "name" : "crdc_topic",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "Sub-endpoint dimension: directory, chronic-absenteeism, offenses, teachers-staff — PK component"
+      }, {
+        "name" : "charter_crdc",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Charter school per CRDC report (may differ from CCD value)"
+      }, {
+        "name" : "magnet_crdc",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Magnet school per CRDC"
+      }, {
+        "name" : "alt_school",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Alternative school indicator"
+      }, {
+        "name" : "primarily_serve_students_w_dis",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "School primarily serves students with disabilities"
+      }, {
+        "name" : "race",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Race/ethnicity disaggregation (HI=Hispanic, BL=Black, WH=White, etc.; MF=all)"
+      }, {
+        "name" : "sex",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Sex disaggregation (M=male, F=female, MF=both)"
+      }, {
+        "name" : "disability",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Disability status disaggregation (WD=with disability, WOD=without, TOT=total)"
+      }, {
+        "name" : "lep",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Limited English proficiency disaggregation"
+      }, {
+        "name" : "students_chronically_absent",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Count of chronically absent students (>10% days missed) for this subgroup"
+      }, {
+        "name" : "firearm_incident_ind",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Any firearm incident reported (0/1)"
+      }, {
+        "name" : "homicide_ind",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Homicide incident indicator"
+      }, {
+        "name" : "rape_incidents",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Number of rape allegations"
+      }, {
+        "name" : "sexual_battery_incidents",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Number of sexual battery incidents"
+      }, {
+        "name" : "attack_w_weapon_incidents",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Attacks with a weapon (non-firearm)"
+      }, {
+        "name" : "attack_no_weapon_incidents",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Attacks without a weapon"
+      }, {
+        "name" : "possession_firearm_incidents",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Firearm possession incidents"
+      }, {
+        "name" : "teachers_fte_crdc",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total FTE teachers per CRDC report"
+      }, {
+        "name" : "teachers_certified_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "FTE certified teachers"
+      }, {
+        "name" : "teachers_uncertified_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "FTE uncertified/emergency-certified teachers"
+      }, {
+        "name" : "counselors_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "FTE school counselors"
+      }, {
+        "name" : "psychologists_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "FTE school psychologists"
+      }, {
+        "name" : "social_workers_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "FTE school social workers"
+      }, {
+        "name" : "nurses_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "FTE nurses"
+      }, {
+        "name" : "security_guard_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "FTE security guards"
+      }, {
+        "name" : "law_enforcement_fte",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "FTE sworn law enforcement officers"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://educationdata.urban.org/api/v1/schools/crdc/directory/{year}/",
+        "method" : "GET",
+        "response" : {
+          "format" : "json",
+          "dataPath" : "results",
+          "pagination" : {
+            "type" : "PAGE",
+            "pageSize" : 10000,
+            "pageParam" : "page"
+          }
+        },
+        "urlRules" : [ {
+          "url" : "https://educationdata.urban.org/api/v1/schools/crdc/chronic-absenteeism/{year}/",
+          "variableMatch" : {
+            "crdc_topic" : "chronic-absenteeism"
+          }
+        }, {
+          "url" : "https://educationdata.urban.org/api/v1/schools/crdc/offenses/{year}/",
+          "variableMatch" : {
+            "crdc_topic" : "offenses"
+          }
+        }, {
+          "url" : "https://educationdata.urban.org/api/v1/schools/crdc/teachers-staff/{year}/",
+          "variableMatch" : {
+            "crdc_topic" : "teachers-staff"
+          }
+        } ],
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 2,
+          "retryOn" : [ 429, 500, 503 ]
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.edu.CrdcSchoolsResponseTransformer"
+      },
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "minYear" : 2013,
+          "maxYear" : 2022
+        },
+        "crdc_topic" : [ "directory", "chronic-absenteeism", "offenses", "teachers-staff" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "year", "crdc_topic" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "ipeds_institutions",
+      "freshness" : {
+        "type" : "etag"
+      },
+      "releaseWindow" : {
+        "months" : [ 11 ]
+      },
+      "pattern" : "year={year}",
+      "observedCoverage" : {
+        "minYear" : 2010,
+        "maxYear" : 2024,
+        "distinctYears" : 15,
+        "contiguous" : true,
+        "rowCount" : 947601,
+        "checkedAt" : "2026-09-12T00:12:25Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "NCES IPEDS Institutional Characteristics (HD survey) directory. One row per institution per year. Joins to geo.counties via county_fips (pad integer to 5-char string). Enrollment is NOT here (IPEDS EF survey). Tuition/fees are NOT here — see ipeds_tuition table (academic-year-tuition endpoint). college_scorecard joins via unitid = college_scorecard.id. ipeds_completions and ipeds_financials join via unitid.\nTo reach an institution's cross-schema identity FROM another schema rather than by name, join ref.canonical_org_entity on ipeds_unitid = unitid — that table carries one foreign key per source, so the institution's LEI/SEC CIK and its unitid sit in the same row and the join is exact. Matching inst_name as text finds the wrong entities and misses institutions filing under a differently-worded name.\n",
+      "columns" : [ {
+        "name" : "unitid",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "IPEDS unit ID (integer) — PK component"
+      }, {
+        "name" : "opeid",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "OPE ID 8-digit — parent key for college_scorecard.ope8_id (that child declares the FK)"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Survey year — PK component"
+      }, {
+        "name" : "inst_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Institution name (INSTNM in bulk CSV)"
+      }, {
+        "name" : "inst_alias",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Institution alias or common name"
+      }, {
+        "name" : "address",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Street address"
+      }, {
+        "name" : "city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "City"
+      }, {
+        "name" : "state_abbr",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "State abbreviation — FK to geo.states.state_abbr"
+      }, {
+        "name" : "zip",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ZIP code"
+      }, {
+        "name" : "fips",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "State FIPS (integer) — FK to geo.states.state_fips"
+      }, {
+        "name" : "county_fips",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "County FIPS integer (COUNTYCD in bulk); source for county_fips_str"
+      }, {
+        "name" : "county_fips_str",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "County FIPS zero-padded to 5 chars (e.g. '06037') — FK to geo.counties.county_fips"
+      }, {
+        "name" : "county_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "County name"
+      }, {
+        "name" : "longitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Longitude (LONGITUD in bulk CSV)"
+      }, {
+        "name" : "latitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Latitude"
+      }, {
+        "name" : "sector",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "0=admin, 1=public 4yr, 2=private nonprofit 4yr, 3=private for-profit 4yr, 4=public 2yr, 5=private nonprofit 2yr, 6=private for-profit 2yr, 7=public <2yr, 8=private nonprofit <2yr, 9=private for-profit <2yr"
+      }, {
+        "name" : "inst_control",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1=public, 2=private nonprofit, 3=private for-profit"
+      }, {
+        "name" : "institution_level",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1=4yr or higher, 2=2-4yr, 3=<2yr"
+      }, {
+        "name" : "hbcu",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Historically Black College or University (1=yes, 0=no)"
+      }, {
+        "name" : "hospital",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Institution has hospital (1=yes, 0=no)"
+      }, {
+        "name" : "medical_degree",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Medical degree offered (1=yes, 0=no)"
+      }, {
+        "name" : "tribal_college",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Tribal college or university (1=yes, 0=no)"
+      }, {
+        "name" : "land_grant",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Land-grant institution (1=yes, 0=no)"
+      }, {
+        "name" : "inst_size",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1=<1000 students, 2=1000-4999, 3=5000-9999, 4=10000-19999, 5=20000+"
+      }, {
+        "name" : "degree_granting",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Degree-granting institution (1=yes, 0=no)"
+      }, {
+        "name" : "title_iv_indicator",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Title IV federal financial aid eligible"
+      }, {
+        "name" : "offering_undergrad",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Undergraduate programs offered (1=yes)"
+      }, {
+        "name" : "offering_grad",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Graduate programs offered (1=yes)"
+      }, {
+        "name" : "cc_basic_2021",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Carnegie Classification basic 2021 (integer code; see carnegie.edu for legend)"
+      }, {
+        "name" : "cbsa",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "CBSA code"
+      }, {
+        "name" : "cbsa_type",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1=metropolitan, 2=micropolitan"
+      }, {
+        "name" : "url_school",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Institution website URL"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://educationdata.urban.org/csv/ipeds/colleges_ipeds_directory.csv",
+        "method" : "GET",
+        "response" : {
+          "format" : "csv",
+          "pagination" : {
+            "type" : "NONE"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 2,
+          "retryOn" : [ 500, 503 ]
+        },
+        "rawCache" : {
+          "enabled" : true
+        },
+        "responsePartitioning" : {
+          "fields" : {
+            "year" : "year"
+          },
+          "yearFilter" : {
+            "field" : "year",
+            "start" : 2010
+          }
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.edu.IpedsInstitutionsResponseTransformer"
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "ipeds_completions",
+      "releaseWindow" : {
+        "months" : [ 11 ]
+      },
+      "pattern" : "year={year}",
+      "observedCoverage" : {
+        "minYear" : 2007,
+        "maxYear" : 2024,
+        "distinctYears" : 18,
+        "contiguous" : true,
+        "rowCount" : 5114193,
+        "checkedAt" : "2026-09-12T00:12:27Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dqRowLimit" : 5000,
+      "comment" : "NCES IPEDS Completions survey (C_A bulk CSV) — degrees/certificates awarded. One row per (unitid, year, cipcode, majornum, award_level). Race/ethnicity and sex counts are wide columns (ctotalt, caiant, casiat, cbkaat, chispt, cnhpit, cwhitt, c2mort, cunknt, cnralt and per-sex _m/_w variants). cipcode is the full 6-digit dotted string (e.g. \"52.0101\"). Source: nces.ed.gov/ipeds/datacenter/data/C{effective_year}_A.zip. Configured from 2010; the source has a multi-year publication lag (final revised files only, provisional-only vintages are skipped) — see observedCoverage below for the actual latest loaded vintage rather than assuming a fixed lag length.\n",
+      "columns" : [ {
+        "name" : "unitid",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "IPEDS unit ID — PK component; FK to ipeds_institutions.unitid"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Award year — PK component; injected from URL dimension"
+      }, {
+        "name" : "cipcode",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "6-digit CIP field of study (e.g. \"52.0101\") — PK component"
+      }, {
+        "name" : "majornum",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "1=first major, 2=second major — PK component"
+      }, {
+        "name" : "award_level",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "IPEDS award level — PK component; 1=<1yr cert, 2=1-2yr cert, 3=Associate, 5=Bachelor's, 7=Master's, 17=Doctoral research, 18=Doctoral professional, 19=Doctoral other"
+      }, {
+        "name" : "ctotalt",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Total completions (all races, both sexes)"
+      }, {
+        "name" : "ctotalm",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Total completions — men"
+      }, {
+        "name" : "ctotalw",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Total completions — women"
+      }, {
+        "name" : "caiant",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "American Indian/Alaska Native — total"
+      }, {
+        "name" : "caianm",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "American Indian/Alaska Native — men"
+      }, {
+        "name" : "caianw",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "American Indian/Alaska Native — women"
+      }, {
+        "name" : "casiat",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Asian — total"
+      }, {
+        "name" : "casiam",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Asian — men"
+      }, {
+        "name" : "casiaw",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Asian — women"
+      }, {
+        "name" : "cbkaat",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Black or African American — total"
+      }, {
+        "name" : "cbkaam",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Black or African American — men"
+      }, {
+        "name" : "cbkaaw",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Black or African American — women"
+      }, {
+        "name" : "chispt",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Hispanic or Latino — total"
+      }, {
+        "name" : "chispm",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Hispanic or Latino — men"
+      }, {
+        "name" : "chispw",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Hispanic or Latino — women"
+      }, {
+        "name" : "cnhpit",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Native Hawaiian/Other Pacific Islander — total"
+      }, {
+        "name" : "cnhpim",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Native Hawaiian/Other Pacific Islander — men"
+      }, {
+        "name" : "cnhpiw",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Native Hawaiian/Other Pacific Islander — women"
+      }, {
+        "name" : "cwhitt",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "White — total"
+      }, {
+        "name" : "cwhitm",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "White — men"
+      }, {
+        "name" : "cwhitw",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "White — women"
+      }, {
+        "name" : "c2mort",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Two or more races — total"
+      }, {
+        "name" : "c2morm",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Two or more races — men"
+      }, {
+        "name" : "c2morw",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Two or more races — women"
+      }, {
+        "name" : "cunknt",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Race/ethnicity unknown — total"
+      }, {
+        "name" : "cunknm",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Race/ethnicity unknown — men"
+      }, {
+        "name" : "cunknw",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Race/ethnicity unknown — women"
+      }, {
+        "name" : "cnralt",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Nonresident alien — total"
+      }, {
+        "name" : "cnralm",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Nonresident alien — men"
+      }, {
+        "name" : "cnralw",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Nonresident alien — women"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://nces.ed.gov/ipeds/datacenter/data/C{effective_year}_A.zip",
+        "method" : "GET",
+        "response" : {
+          "format" : "csv",
+          "extractPattern" : "?{effective_year}_a_??.csv",
+          "extractPatternFallback" : "?{effective_year}_a.csv"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 1.0,
+          "maxRetries" : 2,
+          "retryOn" : [ 429, 503 ],
+          "skipOn" : [ 404, 500 ]
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.edu.IpedsCompletionsResponseTransformer"
+      },
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "minYear" : 2010,
+          "dataLag" : 3
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "ipeds_financials",
+      "releaseWindow" : {
+        "months" : [ 1 ]
+      },
+      "pattern" : "year={year}/form_type={form_type}",
+      "observedCoverage" : {
+        "minYear" : 2012,
+        "maxYear" : 2023,
+        "distinctYears" : 12,
+        "contiguous" : true,
+        "rowCount" : 77184,
+        "checkedAt" : "2026-09-12T00:12:28Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        }, {
+          "name" : "form_type",
+          "type" : "VARCHAR"
+        } ]
+      },
+      "comment" : "NCES IPEDS Finance survey (F survey). Revenues, expenditures, endowment, and net position per institution per fiscal year. Sourced from NCES bulk ZIP downloads (nces.ed.gov/ipeds/datacenter/data/). Three form_type variants cover all institutions: F1A=GASB public, F2=FASB larger private, F3=FASB smaller private non-profit. All monetary values in dollars. Transformer maps NCES coded column names to canonical names. FY2022-23 is provisional (flag with is_provisional=true); FY2021-22 is the most recent final release. Joins to ipeds_institutions via unitid.\n",
+      "columns" : [ {
+        "name" : "unitid",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "IPEDS unit ID — PK component; FK to ipeds_institutions.unitid"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Fiscal year end (end year of academic year, e.g. 2022 = FY2021-22) — PK component"
+      }, {
+        "name" : "form_type",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "NCES form variant — PK component; F1A=GASB public, F2=FASB larger private, F3=FASB smaller private"
+      }, {
+        "name" : "is_provisional",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "1 if this is a provisional release (FY2022-23 and later); 0 if final"
+      }, {
+        "name" : "rev_tuition_fees_gross",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Gross tuition and fees revenue before allowances"
+      }, {
+        "name" : "rev_tuition_fees_net",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Net tuition and fees revenue after discounts/allowances"
+      }, {
+        "name" : "rev_appropriations_state",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "State appropriations revenue"
+      }, {
+        "name" : "rev_appropriations_fed",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Federal appropriations revenue"
+      }, {
+        "name" : "rev_grants_contracts_federal",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Federal grants and contracts revenue"
+      }, {
+        "name" : "rev_grants_contracts_state",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "State grants and contracts revenue"
+      }, {
+        "name" : "rev_fed_approps_grants",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Combined federal appropriations + grants revenue"
+      }, {
+        "name" : "rev_state_local_approps_grants",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Combined state/local appropriations + grants revenue"
+      }, {
+        "name" : "rev_gifts_grants_contracts",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Private gifts, grants, and contracts revenue"
+      }, {
+        "name" : "rev_investment_return",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Return on investments and endowment"
+      }, {
+        "name" : "rev_auxiliary_enterprises_net",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Auxiliary enterprises net revenue (housing, dining, bookstore)"
+      }, {
+        "name" : "rev_operating",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total operating revenues"
+      }, {
+        "name" : "rev_nonoperating",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total nonoperating revenues"
+      }, {
+        "name" : "rev_total_current",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total all revenues and additions"
+      }, {
+        "name" : "sch_pell_grant",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Pell grant scholarships/fellowships"
+      }, {
+        "name" : "sch_grants_institutional",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Unrestricted institutional grants awarded"
+      }, {
+        "name" : "sch_total_student_aid",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total student aid awarded"
+      }, {
+        "name" : "sch_allowances_tuition_fees",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Discount/allowance applied to tuition and fees"
+      }, {
+        "name" : "exp_instruc_total",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Instruction expenditures total"
+      }, {
+        "name" : "exp_research_total",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Research expenditures total"
+      }, {
+        "name" : "exp_pub_serv_total",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Public service expenditures total"
+      }, {
+        "name" : "exp_acad_supp_total",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Academic support expenditures (libraries, computing, curriculum)"
+      }, {
+        "name" : "exp_student_serv_total",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Student services expenditures (admissions, registrar, athletics)"
+      }, {
+        "name" : "exp_inst_supp_total",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Institutional support expenditures (executive management, finance, HR)"
+      }, {
+        "name" : "exp_aux_ent_total",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Auxiliary enterprises expenditures"
+      }, {
+        "name" : "exp_net_grant_aid_total",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Net grant aid and fellowships expenditures"
+      }, {
+        "name" : "exp_total_current",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total expenses and deductions"
+      }, {
+        "name" : "exp_total_salaries",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total salary expenditures across all functions"
+      }, {
+        "name" : "endowment_beg",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Endowment assets beginning of year"
+      }, {
+        "name" : "endowment_end",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Endowment assets end of year"
+      }, {
+        "name" : "assets",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total assets"
+      }, {
+        "name" : "liabilities",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total liabilities"
+      }, {
+        "name" : "net_position_end",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Net position / net assets at end of year"
+      }, {
+        "name" : "longterm_debt",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Long-term debt outstanding"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://nces.ed.gov/ipeds/datacenter/data/F{fiscal_yy1}{fiscal_yy2}_{form_type}.zip",
+        "method" : "GET",
+        "extractPattern" : "f{fiscal_yy1}{fiscal_yy2}_{form_type_lower}_rv.csv",
+        "extractPatternFallback" : "f{fiscal_yy1}{fiscal_yy2}_{form_type_lower}.csv",
+        "response" : {
+          "format" : "csv"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "maxRetries" : 3,
+          "retryOn" : [ 500, 503 ]
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.edu.IpedsFinancialsResponseTransformer",
+        "dimensionResolver" : "org.apache.calcite.adapter.govdata.edu.IpedsFinancialsDimensionResolver"
+      },
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "minYear" : 2015,
+          "dataLag" : 3
+        },
+        "fiscal_yy1" : {
+          "type" : "custom",
+          "dataLag" : 3
+        },
+        "fiscal_yy2" : {
+          "type" : "custom",
+          "dataLag" : 3
+        },
+        "form_type" : [ "F1A", "F2", "F3" ]
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "year", "form_type" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "ipeds_tuition",
+      "releaseWindow" : {
+        "months" : [ 11 ]
+      },
+      "pattern" : "year={year}",
+      "observedCoverage" : {
+        "minYear" : 2015,
+        "maxYear" : 2021,
+        "distinctYears" : 7,
+        "contiguous" : true,
+        "rowCount" : 125143,
+        "checkedAt" : "2026-09-12T00:12:28Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "NCES IPEDS IC_AY (Institutional Characteristics — Academic Year) survey. Published tuition and fees by institution, level of study, and tuition type. One row per (unitid, year, level_of_study, tuition_type). level_of_study: 1=undergraduate, 2=graduate. tuition_type: 1=in-district, 2=in-state, 3=out-of-state, 4=out-of-district. Use tuition_type=2 for in-state and tuition_type=3 for out-of-state comparisons. Data only available through year=2021 (the Urban Institute academic-year-tuition endpoint has no more recent years); use ipeds_institutions/college_scorecard for more current institution data.\n",
+      "columns" : [ {
+        "name" : "unitid",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "IPEDS unit ID — PK component; FK to ipeds_institutions.unitid"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Academic year — PK component"
+      }, {
+        "name" : "fips",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "State FIPS (denormalized)"
+      }, {
+        "name" : "level_of_study",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "1=undergraduate, 2=graduate — PK component"
+      }, {
+        "name" : "tuition_type",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "1=in-district, 2=in-state, 3=out-of-state, 4=out-of-district — PK component"
+      }, {
+        "name" : "tuition_fees_ft",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Full-time tuition and fees (combined)"
+      }, {
+        "name" : "tuition_ft",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Full-time tuition only"
+      }, {
+        "name" : "fees_ft",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Full-time required fees only"
+      }, {
+        "name" : "credit_hour_charge_pt",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Per-credit-hour charge for part-time students"
+      }, {
+        "name" : "tuition_published",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Published (sticker) tuition"
+      }, {
+        "name" : "fees_published",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Published required fees"
+      }, {
+        "name" : "tuition_fees_published",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Published total tuition and fees"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://educationdata.urban.org/api/v1/college-university/ipeds/academic-year-tuition/{year}/",
+        "method" : "GET",
+        "response" : {
+          "format" : "json",
+          "dataPath" : "results",
+          "pagination" : {
+            "type" : "PAGE",
+            "pageSize" : 10000,
+            "pageParam" : "page"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 2,
+          "retryOn" : [ 429, 500, 503 ]
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.edu.IpedsTuitionResponseTransformer"
+      },
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "minYear" : 2015,
+          "maxYear" : 2021
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "college_scorecard",
+      "releaseWindow" : {
+        "months" : [ 10 ]
+      },
+      "pattern" : "year={year}",
+      "observedCoverage" : {
+        "minYear" : 2018,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : true,
+        "rowCount" : 56457,
+        "checkedAt" : "2026-09-12T00:12:29Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Dept of Ed College Scorecard institution-level outcomes. Earnings, debt, completion rates, and enrollment demographics. One row per institution per vintage year. Joins to ipeds_institutions via id=unitid or ope8_id=opeid. API key required (API_DATA_GOV); PrivacySuppressed values are null. Earnings field is mean (not median) at 10yr — median available at 8yr. For program-level (CIP code / credential) earnings, see college_scorecard_programs (finer grain, same source).\n",
+      "columns" : [ {
+        "name" : "id",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "IPEDS unit ID — PK component; FK to ipeds_institutions.unitid"
+      }, {
+        "name" : "ope8_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "OPE ID 8-digit — FK to ipeds_institutions.opeid"
+      }, {
+        "name" : "ope6_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "OPE ID 6-digit"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Data vintage year — PK component"
+      }, {
+        "name" : "name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Institution name (school.name)"
+      }, {
+        "name" : "city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "City"
+      }, {
+        "name" : "state",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "State abbreviation — FK to geo.states.state_abbr"
+      }, {
+        "name" : "ownership",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "1=public, 2=private nonprofit, 3=private for-profit"
+      }, {
+        "name" : "carnegie_basic",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Carnegie basic classification (integer code)"
+      }, {
+        "name" : "hbcu",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "HBCU flag (1=yes)"
+      }, {
+        "name" : "tribal",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Tribal college flag (1=yes)"
+      }, {
+        "name" : "hispanic_serving",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Hispanic-serving institution (1=yes)"
+      }, {
+        "name" : "online_only",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Online-only institution (1=yes)"
+      }, {
+        "name" : "locale",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "NCES locale code"
+      }, {
+        "name" : "size",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Total enrollment (latest.student.size)"
+      }, {
+        "name" : "pell_grant_rate",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Share of students receiving Pell grants (latest.aid.pell_grant_rate)"
+      }, {
+        "name" : "completion_rate_4yr",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "6-year completion rate at 150% time for 4yr institutions"
+      }, {
+        "name" : "completion_rate_2yr",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Completion rate for <4yr institutions"
+      }, {
+        "name" : "retention_rate_fulltime",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "First-time full-time student retention rate (4yr)"
+      }, {
+        "name" : "median_debt_completers",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Median federal loan debt at completion (aid.median_debt.completers.overall)"
+      }, {
+        "name" : "median_debt_noncompleters",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Median federal loan debt for non-completers (aid.median_debt.noncompleters)"
+      }, {
+        "name" : "mean_earnings_10yr",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Mean earnings 10yr after entry for working non-enrolled students (note: mean, not median)"
+      }, {
+        "name" : "median_earnings_8yr",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Median earnings 8yr after entry (earnings.8_yrs_after_entry.median_earnings)"
+      }, {
+        "name" : "median_family_income",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Median family income of entering students"
+      }, {
+        "name" : "default_rate_3yr",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "3-year student loan cohort default rate"
+      }, {
+        "name" : "avg_net_price_public",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Average net price for public institutions after aid"
+      }, {
+        "name" : "avg_net_price_private",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Average net price for private institutions after aid"
+      }, {
+        "name" : "tuition_in_state",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "In-state tuition (cost.tuition.in_state)"
+      }, {
+        "name" : "tuition_out_state",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Out-of-state tuition (cost.tuition.out_of_state)"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.data.gov/ed/collegescorecard/v1/schools.json",
+        "method" : "GET",
+        "parameters" : {
+          "api_key" : "${API_DATA_GOV}",
+          "per_page" : "100",
+          "fields" : "id,ope8_id,ope6_id,school.name,school.city,school.state,school.ownership,school.carnegie_basic,school.minority_serving.historically_black,school.minority_serving.tribal,school.minority_serving.hispanic,school.online_only,school.locale,latest.student.size,latest.aid.pell_grant_rate,latest.completion.completion_rate_4yr_150nt,latest.completion.completion_rate_less_than_4yr_150nt,latest.student.retention_rate.four_year.full_time,latest.aid.median_debt.completers.overall,latest.aid.median_debt.noncompleters,latest.earnings.10_yrs_after_entry.working_not_enrolled.mean_earnings,latest.earnings.8_yrs_after_entry.median_earnings,latest.student.demographics.median_family_income,latest.repayment.3_yr_default_rate,latest.cost.avg_net_price.public,latest.cost.avg_net_price.private,latest.cost.tuition.in_state,latest.cost.tuition.out_of_state"
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "results",
+          "pagination" : {
+            "type" : "PAGE_ZERO",
+            "pageSize" : 100,
+            "limitParam" : "per_page",
+            "pageParam" : "page",
+            "countPath" : "metadata.total"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 5,
+          "retryOn" : [ 429, 500, 503 ]
+        },
+        "rawCache" : {
+          "enabled" : true
+        },
+        "incremental" : {
+          "yearParam" : "year",
+          "yearRange" : {
+            "start" : "2010"
+          }
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.edu.CollegeScorecardResponseTransformer"
+      },
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "minYear" : 2018
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "college_scorecard_programs",
+      "releaseWindow" : {
+        "months" : [ 10 ]
+      },
+      "pattern" : "year={year}",
+      "observedCoverage" : {
+        "minYear" : 2018,
+        "maxYear" : 2026,
+        "distinctYears" : 9,
+        "contiguous" : true,
+        "rowCount" : 1933472,
+        "checkedAt" : "2026-09-12T00:12:30Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "dqRowLimit" : 3000,
+      "comment" : "Dept of Ed College Scorecard program-level outcomes by CIP 4-digit code. One row per institution × program × credential level per year. Earnings by field of study — the most granular post-graduation outcome data. Joins to ipeds_completions via (unitid=unit_id, cipcode LIKE cip_code+'%'). PrivacySuppressed values are null. Institution-level scorecard outcomes (overall earnings, debt, completion rate) are in college_scorecard; this table breaks those out by field of study instead.\n",
+      "columns" : [ {
+        "name" : "unit_id",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "IPEDS unit ID — PK component; FK to ipeds_institutions.unitid"
+      }, {
+        "name" : "ope6_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "OPE ID 6-digit"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Data vintage year — PK component"
+      }, {
+        "name" : "cip_code",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "4-digit CIP code (e.g. \"0199\") — PK component"
+      }, {
+        "name" : "cip_title",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CIP field of study title"
+      }, {
+        "name" : "credential_level",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Credential level code — PK component; 1=certificate <1yr, 2=certificate 1-2yr, 3=associate, 5=bachelor's, 7=master's, 17=doctoral"
+      }, {
+        "name" : "credential_title",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Credential level description"
+      }, {
+        "name" : "ipeds_awards",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "IPEDS completions count for this program (counts.ipeds_awards1)"
+      }, {
+        "name" : "median_earnings_1yr",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Median earnings 1yr after completion (earnings.1_yr.overall_median_earnings)"
+      }, {
+        "name" : "median_earnings_4yr",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Median earnings 4yr after completion"
+      }, {
+        "name" : "median_earnings_5yr",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Median earnings 5yr after completion"
+      }, {
+        "name" : "pell_median_earnings_1yr",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Pell grant recipient median earnings 1yr after completion"
+      }, {
+        "name" : "nonpell_median_earnings_1yr",
+        "type" : "int",
+        "nullable" : true,
+        "comment" : "Non-Pell recipient median earnings 1yr after completion"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://api.data.gov/ed/collegescorecard/v1/schools.json",
+        "method" : "GET",
+        "parameters" : {
+          "api_key" : "${API_DATA_GOV}",
+          "per_page" : "100",
+          "fields" : "latest.programs.cip_4_digit.unit_id,latest.programs.cip_4_digit.ope6_id,latest.programs.cip_4_digit.code,latest.programs.cip_4_digit.title,latest.programs.cip_4_digit.credential.level,latest.programs.cip_4_digit.credential.title,latest.programs.cip_4_digit.counts.ipeds_awards1,latest.programs.cip_4_digit.earnings.1_yr.overall_median_earnings,latest.programs.cip_4_digit.earnings.4_yr.overall_median_earnings,latest.programs.cip_4_digit.earnings.5_yr.overall_median_earnings,latest.programs.cip_4_digit.earnings.1_yr.pell_median_earnings,latest.programs.cip_4_digit.earnings.1_yr.nonpell_median_earnings"
+        },
+        "response" : {
+          "format" : "json",
+          "dataPath" : "results",
+          "pagination" : {
+            "type" : "PAGE_ZERO",
+            "pageSize" : 100,
+            "limitParam" : "per_page",
+            "pageParam" : "page",
+            "countPath" : "metadata.total"
+          }
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 2.0,
+          "maxRetries" : 5,
+          "retryOn" : [ 429, 500, 503 ]
+        },
+        "rawCache" : {
+          "enabled" : true
+        },
+        "incremental" : {
+          "yearParam" : "year",
+          "yearRange" : {
+            "start" : "2010"
+          }
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.edu.CollegeScorecardProgramsResponseTransformer"
+      },
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2010",
+          "minYear" : 2018
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : ""
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "library_outlets",
+      "releaseWindow" : {
+        "months" : [ 5, 6, 7, 8 ]
+      },
+      "pattern" : "year=*",
+      "observedCoverage" : {
+        "minYear" : 2019,
+        "maxYear" : 2024,
+        "distinctYears" : 6,
+        "contiguous" : true,
+        "rowCount" : 105178,
+        "checkedAt" : "2026-09-12T00:12:30Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "IMLS Public Libraries Survey (PLS), outlet-level file — one row per physical library outlet (central, branch, or bookmobile stop) x fiscal year, the only PLS grain that carries square footage. IMLS lists every fiscal year's ZIP on one static landing page (not a per-year URL), so LibraryOutletsTransformer discovers the year's link from that page, then the \"outlet\" CSV inside the ZIP (which also holds a separate administrative-entity-level CSV with no square-footage column). Outlet identity is (state, fscs_key, fscs_seq) — NOT the source's own library_id field, which is not reliably unique/self-consistent in the raw data (confirmed: over a thousand library_id values collide across two different library systems in the FY2024 file). outlet_type: CE=Central, BR=Branch, BS=Bookmobile Stop, BM=Bookmobile. square_feet is null wherever the source carries an NCES missing/not-applicable/not-reported sentinel rather than a real count. county_fips is derived from the first 5 digits of the source's 11-digit Census tract FIPS (no county FIPS column is provided directly). Source: imls.gov/research-evaluation/surveys/public-libraries-survey-pls.\n",
+      "dqRowLimit" : 50000,
+      "columns" : [ {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "PLS fiscal year — PK component"
+      }, {
+        "name" : "state",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "STABR, 2-letter USPS state code — PK component (FK to geo.state_ref)"
+      }, {
+        "name" : "fscs_key",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FSCSKEY, the outlet's parent library system ID — PK component"
+      }, {
+        "name" : "fscs_seq",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "FSCS_SEQ, sequence number of this outlet within its library system — PK component"
+      }, {
+        "name" : "library_id",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "LIBID as reported (nominally FSCSKEY + '-' + FSCS_SEQ). NOT used as the key — see the table comment on source data-quality collisions.\n"
+      }, {
+        "name" : "library_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "LIBNAME"
+      }, {
+        "name" : "outlet_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "C_OUT_TY (CE=Central, BR=Branch, BS=Bookmobile Stop, BM=Bookmobile). One known source-data anomaly: library_id='MO0004-037' (\"Library By Mail\") carries outlet_type='MO' in year=2019 only (every other year for this outlet reads 'BM') -- confirmed present verbatim in IMLS's own FY2019 raw file (C_OUT_TY column, not a positional/mapping error on our side), not corrected here since there is no better field to derive the true value from.\n"
+      }, {
+        "name" : "address",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Street address"
+      }, {
+        "name" : "city",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CITY"
+      }, {
+        "name" : "zip_code",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "ZIP"
+      }, {
+        "name" : "county_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "CNTY (name, not FIPS)"
+      }, {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Derived from CENTRACT[0:5] (FK to geo.counties)"
+      }, {
+        "name" : "square_feet",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "SQ_FEET; null where the source carries a missing/not-applicable/not-reported sentinel"
+      }, {
+        "name" : "latitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "LATITUDE"
+      }, {
+        "name" : "longitude",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "LONGITUD"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www.imls.gov/research-evaluation/surveys/public-libraries-survey-pls",
+        "method" : "GET",
+        "response" : {
+          "format" : "text"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "retryOn" : [ 429, 500, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "responseTransformer" : "org.apache.calcite.adapter.govdata.edu.LibraryOutletsTransformer"
+      },
+      "dimensions" : {
+        "year" : {
+          "type" : "range",
+          "start" : "2014",
+          "end" : "2024"
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ]
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    }, {
+      "name" : "f33_district_finance",
+      "pattern" : "year={year}",
+      "observedCoverage" : {
+        "minYear" : 2008,
+        "maxYear" : 2024,
+        "distinctYears" : 17,
+        "contiguous" : true,
+        "rowCount" : 243892,
+        "checkedAt" : "2026-09-12T00:12:32Z"
+      },
+      "partitions" : {
+        "style" : "hive",
+        "columnDefinitions" : [ {
+          "name" : "year",
+          "type" : "INTEGER"
+        } ]
+      },
+      "comment" : "Census Bureau Annual Survey of School System Finances (\"F-33\"), individual-unit file — one row per public school district (LEA) per fiscal year. Source: the Census Bureau's published elsec{yy}t.txt comma-delimited file, one per fiscal year (14,088 LEAs in the verified FY2023 file). leaid (source column NCESID) is the Census Bureau's own copy of the NCES LEA ID and joins directly to ccd_districts.leaid and geo.school_districts.sd_lea. Unlike ccd_districts (a staffing/enrollment directory with no dollar figures at all), this table carries the actual survey dollar aggregates: total_revenue_thousand, total_expenditure_thousand, and current_expenditure_thousand are reported in thousands of dollars (the source's own convention, not converted here — see each column's comment); per_pupil_current_expenditure, per_pupil_instruction_expenditure, and per_pupil_support_services_expenditure are the source's own per-pupil dollar figures (PPCSTOT/PPITOTAL/PPSTOTAL), computed by the Census Bureau from fall membership, not derived here. A two-year data lag applies (dataLag: 2 below) — the Census Bureau's most recently published fiscal year is real time minus roughly two years (verified live 2026-08-21: the FY2024 file was the latest published, FY2025 was not yet available). Verified live against the FY2023 file: NCESID is unique per row (0 duplicates) and always 7 digits; none of TOTALREV/TOTALEXP/TCURSPND/ PPCSTOT/ENROLL carried a negative value in that file, so (unlike CCD) this table does not null out negative sentinel codes — none were observed, but this has only been checked for FY2023/FY2024.\n",
+      "columns" : [ {
+        "name" : "leaid",
+        "type" : "string",
+        "nullable" : false,
+        "comment" : "NCES LEA ID (7-digit string), from source column NCESID — PK component. FK to ccd_districts.leaid and geo.school_districts.sd_lea.\n"
+      }, {
+        "name" : "year",
+        "type" : "int",
+        "nullable" : false,
+        "comment" : "Fiscal year of the survey (the yearRange dimension's effective_year, after dataLag=2 is applied) — PK component. Matches ccd_districts.year.\n"
+      }, {
+        "name" : "pid6",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Census Bureau 6-digit processing identifier for the school system, source column PID6 (as of FY2023 this replaced the older IDCENSUS identifier as the Census Bureau's primary key for the unit).\n"
+      }, {
+        "name" : "unit_type",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Census government unit type code, source column UNIT_TYPE (raw code)"
+      }, {
+        "name" : "state_fips",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "2-digit state FIPS code — FK to geo.states.state_fips. From source column FIPST for FY2022 and later; earlier files publish a narrower header with no FIPST at all, so it is taken from the leading two digits of CONUM (a county FIPS is the state FIPS plus a 3-digit county code). Null for the handful of multi-county educational cooperatives whose CONUM is the \"M\" not-applicable marker, and for those years PID6, UNIT_TYPE and SCHLEV are null too — those columns do not exist in the pre-FY2022 file.\n"
+      }, {
+        "name" : "county_fips",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "5-digit county FIPS (state+county), source column CONUM — FK to geo.counties.county_fips"
+      }, {
+        "name" : "district_name",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "School system name, source column NAME"
+      }, {
+        "name" : "cbsa",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "Core-Based Statistical Area code, source column CBSA"
+      }, {
+        "name" : "school_level",
+        "type" : "string",
+        "nullable" : true,
+        "comment" : "School level code, source column SCHLEV (raw code)"
+      }, {
+        "name" : "enrollment",
+        "type" : "long",
+        "nullable" : true,
+        "comment" : "Fall membership (student enrollment) used to compute the per-pupil columns, source column ENROLL"
+      }, {
+        "name" : "total_revenue_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total elementary-secondary revenue, in thousands of dollars, source column TOTALREV"
+      }, {
+        "name" : "federal_revenue_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total revenue from federal sources, in thousands of dollars, source column TFEDREV"
+      }, {
+        "name" : "state_revenue_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total revenue from state sources, in thousands of dollars, source column TSTREV"
+      }, {
+        "name" : "local_revenue_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total revenue from local sources, in thousands of dollars, source column TLOCREV"
+      }, {
+        "name" : "total_expenditure_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total elementary-secondary expenditure, in thousands of dollars, source column TOTALEXP"
+      }, {
+        "name" : "current_expenditure_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total current spending (operating expenditure — excludes capital outlay and debt service), in thousands of dollars, source column TCURSPND\n"
+      }, {
+        "name" : "instruction_expenditure_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Current spending for instruction, in thousands of dollars, source column TCURINST"
+      }, {
+        "name" : "support_services_expenditure_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Current spending for support services, in thousands of dollars, source column TCURSSVC"
+      }, {
+        "name" : "capital_outlay_expenditure_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Total capital outlay expenditure, in thousands of dollars, source column TCAPOUT"
+      }, {
+        "name" : "interest_on_debt_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Interest on school system indebtedness, in thousands of dollars, source column TINTRST"
+      }, {
+        "name" : "long_term_debt_outstanding_thousand",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Long-term debt outstanding at end of the fiscal year, in thousands of dollars, source column DEBTOUT"
+      }, {
+        "name" : "per_pupil_current_expenditure",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Per-pupil total current spending, in whole dollars — the source's own derived per-pupil figure (source column PPCSTOT), not computed here.\n"
+      }, {
+        "name" : "per_pupil_instruction_expenditure",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Per-pupil current spending for instruction, in whole dollars, source column PPITOTAL"
+      }, {
+        "name" : "per_pupil_support_services_expenditure",
+        "type" : "double",
+        "nullable" : true,
+        "comment" : "Per-pupil current spending for support services, in whole dollars, source column PPSTOTAL"
+      } ],
+      "source" : {
+        "type" : "http",
+        "url" : "https://www2.census.gov/programs-surveys/school-finances/tables/",
+        "method" : "GET",
+        "response" : {
+          "format" : "text"
+        },
+        "rateLimit" : {
+          "requestsPerSecond" : 0.5,
+          "retryOn" : [ 429, 500, 503 ],
+          "maxRetries" : 3
+        },
+        "rawCache" : {
+          "enabled" : true
+        }
+      },
+      "hooks" : {
+        "dataProvider" : "org.apache.calcite.adapter.govdata.edu.F33DistrictFinanceProvider"
+      },
+      "dimensions" : {
+        "year" : {
+          "type" : "yearRange",
+          "start" : "2013",
+          "minYear" : 2000,
+          "dataLag" : 2
+        }
+      },
+      "materialize" : {
+        "enabled" : true,
+        "format" : "iceberg",
+        "output" : {
+          "pattern" : "year=*/"
+        },
+        "partition" : {
+          "columns" : [ "year" ],
+          "valueSource" : {
+            "year" : "effective_year"
+          }
+        },
+        "options" : {
+          "compression" : "snappy"
+        },
+        "iceberg" : {
+          "runCompaction" : true,
+          "compactionTargetFileSizeBytes" : 134217728,
+          "compactionMinFiles" : 5,
+          "catalogType" : "hadoop",
+          "runMaintenance" : true,
+          "snapshotRetentionDays" : 7
+        }
+      }
+    } ],
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "comment" : "Institutional education data for K-12 districts, schools, and higher education. K-12 tables cover NCES Common Core of Data (CCD), Civil Rights Data Collection (CRDC), and NAEP assessments. Higher-ed tables cover IPEDS directory, completions, financials, and College Scorecard outcomes. All sourced via the Urban Institute Education Data Portal API (free, unauthenticated) except College Scorecard (free API key required). Complements census.acs_education (population attainment) — this schema describes the institutions themselves.\n",
+    "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
+    "compaction_defaults" : {
+      "compactionTargetFileSizeBytes" : 134217728,
+      "runCompaction" : true,
+      "compactionMinFiles" : 5
+    },
+    "dataSource" : "edu",
+    "views" : [ {
+      "name" : "district_resources",
+      "comment" : "District-level pupil_teacher_ratio (enrollment / teachers_total_fte) and district_frpl_rate, a free/reduced-price-lunch poverty proxy computed by summing free_or_reduced_price_lunch and enrollment from ccd_schools per (leaid, year) and joining to ccd_districts. One row per district per year. ccd_districts.enrollment and teachers_total_fte and ccd_schools.free_or_reduced_price_lunch/enrollment all carry negative NCES CCD sentinel codes on some rows (see those tables' comments) — this view excludes them (value < 0 treated as null) before computing pupil_teacher_ratio and before summing into district_frpl_count/frpl_rate, so a sentinel code is never silently counted as a real value. frpl_rate is NULL for a whole district in any year its state runs the Community Eligibility Provision: CEP schools take no FRPL applications, so CCD publishes nothing in free_or_reduced_price_lunch statewide and carries direct_certification instead. That state set grows and shifts from 2016 on (2022: DE, DC, MA, MT, TN, WV; 2024: AZ, DE, DC, MA, TN, WV, GU). direct_cert_rate is provided for those districts but is a DIFFERENT measure, not a fallback — it counts only the categorically eligible subset and runs at 0.57-0.69 of FRPL wherever both are reported, so the two must not be pooled into one poverty control. Use one or the other and say which.\n",
+      "sql" : "SELECT\n  d.leaid,\n  d.year,\n  d.lea_name,\n  d.fips,\n  d.state_abbr,\n  d.county_code,\n  d.urban_centric_locale,\n  CASE WHEN d.enrollment >= 0 THEN d.enrollment END                       AS enrollment,\n  d.number_of_schools,\n  CASE WHEN d.teachers_total_fte >= 0 THEN d.teachers_total_fte END       AS teachers_total_fte,\n  d.guidance_counselors_total_fte,\n  d.school_psychologists_fte,\n  CASE WHEN d.enrollment >= 0 AND d.teachers_total_fte >= 0\n       THEN d.enrollment / NULLIF(d.teachers_total_fte, 0) END            AS pupil_teacher_ratio,\n  s.free_or_reduced_price_lunch                                          AS district_frpl_count,\n  s.free_or_reduced_price_lunch * 1.0 / NULLIF(s.enrollment, 0)          AS frpl_rate,\n  s.direct_certification                                                 AS district_direct_cert_count,\n  s.direct_certification * 1.0 / NULLIF(s.enrollment, 0)                 AS direct_cert_rate\nFROM ccd_districts d LEFT JOIN (\n  SELECT leaid, year,\n         SUM(CASE WHEN free_or_reduced_price_lunch >= 0 THEN free_or_reduced_price_lunch END) AS free_or_reduced_price_lunch,\n         SUM(CASE WHEN direct_certification >= 0 THEN direct_certification END)               AS direct_certification,\n         SUM(CASE WHEN enrollment >= 0 THEN enrollment END)                                   AS enrollment\n  FROM ccd_schools\n  GROUP BY leaid, year\n) s ON d.leaid = s.leaid AND d.year = s.year\n"
+    }, {
+      "name" : "naep_state_trends",
+      "comment" : "NAEP aggregate trends for all-student subgroup by state, subject, and grade. Filters to variable_type=TOTAL to avoid double-counting disaggregations. One row per state × year × subject × grade. subject holds the raw NAEP code: MAT=mathematics, RED=reading.\n",
+      "sql" : "SELECT\n  n.jurisdiction,\n  n.jurisdiction_name,\n  n.year,\n  n.subject,\n  n.grade,\n  n.avg_score\nFROM naep_scores n WHERE n.variable_type = 'TOTAL'\n  AND n.subgroup_name = 'All students'\n"
+    }, {
+      "name" : "school_equity_profile",
+      "comment" : "School-level equity view joining ccd_schools (enrollment, free_or_reduced_price_lunch poverty proxy) with two crdc_schools sub-endpoint topics: teachers-staff (counselor, psychologist, certified/uncertified teacher FTE) and offenses (firearm and rape incident counts). CRDC year is mapped to the closest CRDC survey year at or below the school year, among the years crdc_schools actually carries for these two topics — 2013, 2015, 2017, 2020, 2021 (verified live 2026-08-26; crdc_schools also has a 2011-labeled partition with 0 rows and a 2022 partition that carries only the chronic-absenteeism topic, neither of which teachers-staff/offenses can ever match, so neither is a mapping target). School years after 2021 map to the 2021 survey (the latest available) rather than going unmatched. offenses has no 2013 data (teachers-staff does), so offenses columns are null for school years mapped to 2013 even though teachers-staff columns are populated for that year. One row per school per year; CRDC columns are null where no match exists. s.enrollment and s.free_or_reduced_price_lunch carry negative NCES CCD sentinel codes on some rows (see ccd_schools' comment) — excluded (value < 0 treated as null) here before exposing them and before computing frpl_rate. frpl_rate is NULL for a whole school in any year its state runs the Community Eligibility Provision: CEP schools take no FRPL applications, so CCD publishes nothing in free_or_reduced_price_lunch statewide and carries direct_certification instead. That state set grows and shifts from 2016 on (2022: DE, DC, MA, MT, TN, WV; 2024: AZ, DE, DC, MA, TN, WV, GU). direct_cert_rate is provided for those schools but is a DIFFERENT measure, not a fallback — it counts only the categorically eligible subset and runs at 0.57-0.69 of FRPL wherever both are reported, so the two must not be pooled into one poverty control. Use one or the other and say which.\n",
+      "sql" : "SELECT\n  s.ncessch,\n  s.school_name,\n  s.leaid,\n  s.year,\n  CASE WHEN s.enrollment >= 0 THEN s.enrollment END                             AS enrollment,\n  CASE WHEN s.free_or_reduced_price_lunch >= 0 THEN s.free_or_reduced_price_lunch END AS free_or_reduced_price_lunch,\n  CASE WHEN s.free_or_reduced_price_lunch >= 0 AND s.enrollment >= 0\n       THEN s.free_or_reduced_price_lunch * 1.0 / NULLIF(s.enrollment, 0) END    AS frpl_rate,\n  CASE WHEN s.direct_certification >= 0 THEN s.direct_certification END          AS direct_certification,\n  CASE WHEN s.direct_certification >= 0 AND s.enrollment >= 0\n       THEN s.direct_certification * 1.0 / NULLIF(s.enrollment, 0) END           AS direct_cert_rate,\n  s.charter,\n  s.school_level,\n  ts.counselors_fte,\n  ts.psychologists_fte,\n  ts.teachers_certified_fte,\n  ts.teachers_uncertified_fte,\n  o.firearm_incident_ind,\n  o.rape_incidents,\n  o.possession_firearm_incidents\nFROM ccd_schools s LEFT JOIN crdc_schools ts\n  ON s.ncessch = ts.ncessch\n  AND ts.crdc_topic = 'teachers-staff'\n  AND ts.year = (\n    CASE WHEN s.year >= 2021 THEN 2021\n         WHEN s.year >= 2020 THEN 2020\n         WHEN s.year >= 2017 THEN 2017\n         WHEN s.year >= 2015 THEN 2015\n         WHEN s.year >= 2013 THEN 2013\n         ELSE 2013 END\n  )\nLEFT JOIN crdc_schools o\n  ON s.ncessch = o.ncessch\n  AND o.crdc_topic = 'offenses'\n  AND o.year = ts.year\n"
+    }, {
+      "name" : "institution_outcomes",
+      "comment" : "Higher education institution outcomes: ipeds_institutions directory joined to college_scorecard earnings/debt/completion outcomes, plus both in-state and out-of-state full-time undergraduate tuition from ipeds_tuition (level_of_study=1). One row per institution per year, covering all institution levels (4yr, 2-4yr, <2yr).\n",
+      "sql" : "SELECT\n  i.unitid,\n  i.inst_name,\n  i.city,\n  i.state_abbr,\n  i.county_fips,\n  i.year,\n  i.sector,\n  i.inst_control,\n  i.institution_level,\n  i.hbcu,\n  i.tribal_college,\n  i.inst_size,\n  t.tuition_fees_ft AS tuition_in_state,\n  t_out.tuition_fees_ft AS tuition_out_state,\n  sc.pell_grant_rate,\n  sc.completion_rate_4yr,\n  sc.completion_rate_2yr,\n  sc.median_debt_completers,\n  sc.median_debt_noncompleters,\n  sc.mean_earnings_10yr,\n  sc.median_earnings_8yr,\n  sc.median_family_income,\n  sc.default_rate_3yr,\n  sc.avg_net_price_public,\n  sc.avg_net_price_private\nFROM ipeds_institutions i LEFT JOIN ipeds_tuition t\n  ON i.unitid = t.unitid AND i.year = t.year\n  AND t.level_of_study = 1 AND t.tuition_type = 2\nLEFT JOIN ipeds_tuition t_out\n  ON i.unitid = t_out.unitid AND i.year = t_out.year\n  AND t_out.level_of_study = 1 AND t_out.tuition_type = 3\nLEFT JOIN college_scorecard sc\n  ON i.unitid = sc.id AND i.year = sc.year\n"
+    }, {
+      "name" : "field_of_study_roi",
+      "comment" : "Program-level return on investment: college_scorecard_programs earnings by CIP code and credential level (including ipeds_awards, a completions count sourced from the Scorecard API itself) joined to ipeds_institutions for institution name, state, and sector context. Enables ranking fields of study by median earnings at 1yr, 4yr, and 5yr after completion, including Pell vs. non-Pell earnings gaps.\n",
+      "sql" : "SELECT\n  p.unit_id,\n  p.year,\n  p.cip_code,\n  p.cip_title,\n  p.credential_level,\n  p.credential_title,\n  p.ipeds_awards,\n  p.median_earnings_1yr,\n  p.median_earnings_4yr,\n  p.median_earnings_5yr,\n  p.pell_median_earnings_1yr,\n  p.nonpell_median_earnings_1yr,\n  i.inst_name,\n  i.state_abbr,\n  i.sector\nFROM edu.college_scorecard_programs p LEFT JOIN edu.ipeds_institutions i\n  ON p.unit_id = i.unitid AND p.year = i.year\n"
+    }, {
+      "name" : "district_charter_profile",
+      "comment" : "District-level summary of school types and equity metrics aggregated from ccd_schools: counts of charter, magnet, virtual, Title I schoolwide/eligible, and open schools, plus charter_share (charter fraction of schools) and district_frpl_rate (free/reduced-price-lunch share of aggregated school enrollment). Joins to ccd_districts for district name, FIPS, and district-level enrollment/teacher FTE context. One row per district per year via an inner join — districts with no matching ccd_schools rows are excluded. s.enrollment and s.free_or_reduced_price_lunch carry negative NCES CCD sentinel codes on some rows (see ccd_schools' comment) — excluded (value < 0 treated as null) before summing into school_enrollment_sum and district_frpl_rate. district_frpl_rate is NULL for a whole district in any year its state runs the Community Eligibility Provision — CEP schools take no FRPL applications, so CCD publishes nothing in free_or_reduced_price_lunch statewide (2022: DE, DC, MA, MT, TN, WV; 2024: AZ, DE, DC, MA, TN, WV, GU). district_direct_cert_rate covers those districts but is a DIFFERENT measure, not a fallback: it counts only the categorically eligible subset, running at 0.57-0.69 of FRPL wherever both are reported, so pooling the two into one poverty control understates poverty by roughly a third.\n",
+      "sql" : "SELECT\n  d.leaid,\n  d.year,\n  d.lea_name,\n  d.fips,\n  d.state_abbr,\n  d.enrollment                                                        AS district_enrollment,\n  d.number_of_schools,\n  d.teachers_total_fte,\n  SUM(CASE WHEN s.charter = 1 THEN 1 ELSE 0 END)                     AS charter_school_count,\n  SUM(CASE WHEN s.magnet = 1 THEN 1 ELSE 0 END)                      AS magnet_school_count,\n  SUM(CASE WHEN s.virtual = 1 THEN 1 ELSE 0 END)                     AS virtual_school_count,\n  SUM(CASE WHEN s.title_i_schoolwide = 1 THEN 1 ELSE 0 END)          AS title_i_schoolwide_count,\n  SUM(CASE WHEN s.title_i_eligible = 1 THEN 1 ELSE 0 END)            AS title_i_eligible_count,\n  SUM(CASE WHEN s.school_status = 1 THEN 1 ELSE 0 END)               AS open_school_count,\n  SUM(CASE WHEN s.enrollment >= 0 THEN s.enrollment END)              AS school_enrollment_sum,\n  SUM(CASE WHEN s.free_or_reduced_price_lunch >= 0 THEN s.free_or_reduced_price_lunch END) * 1.0\n    / NULLIF(SUM(CASE WHEN s.enrollment >= 0 THEN s.enrollment END), 0) AS district_frpl_rate,\n  SUM(CASE WHEN s.direct_certification >= 0 THEN s.direct_certification END) * 1.0\n    / NULLIF(SUM(CASE WHEN s.enrollment >= 0 THEN s.enrollment END), 0) AS district_direct_cert_rate,\n  SUM(CASE WHEN s.charter = 1 THEN 1 ELSE 0 END) * 1.0\n    / NULLIF(COUNT(*), 0)                                             AS charter_share\nFROM ccd_districts d JOIN ccd_schools s\n  ON d.leaid = s.leaid AND d.year = s.year\nGROUP BY\n  d.leaid, d.year, d.lea_name, d.fips, d.state_abbr,\n  d.enrollment, d.number_of_schools, d.teachers_total_fte\n"
+    }, {
+      "name" : "institution_completions_summary",
+      "comment" : "Institution-level completions totals by award level per year. Collapses ipeds_completions (wide format) to one row per institution per year by summing ctotalt — the grand total of awards across all races and both sexes — for majornum=1 (first-major) rows. Joins to ipeds_institutions for institutional context. award_level codes: 1/2=Certificate (<1yr/1-2yr), 3=Associate, 5=Bachelor, 7=Master, 17/18/19=Doctoral. completions_total is the grand sum across all award levels, not just those broken out individually.\n",
+      "sql" : "SELECT\n  i.unitid,\n  i.inst_name,\n  i.year,\n  i.state_abbr,\n  i.sector,\n  i.inst_control,\n  i.hbcu,\n  i.tribal_college,\n  SUM(CASE WHEN c.award_level = 3\n      THEN c.ctotalt ELSE 0 END)                                      AS associate_total,\n  SUM(CASE WHEN c.award_level = 5\n      THEN c.ctotalt ELSE 0 END)                                      AS bachelor_total,\n  SUM(CASE WHEN c.award_level = 7\n      THEN c.ctotalt ELSE 0 END)                                      AS masters_total,\n  SUM(CASE WHEN c.award_level IN (17, 18, 19)\n      THEN c.ctotalt ELSE 0 END)                                      AS doctoral_total,\n  SUM(CASE WHEN c.award_level IN (1, 2)\n      THEN c.ctotalt ELSE 0 END)                                      AS certificate_total,\n  SUM(c.ctotalt)                                                      AS completions_total\nFROM edu.ipeds_institutions i LEFT JOIN edu.ipeds_completions c\n  ON i.unitid = c.unitid AND i.year = c.year\n  AND c.majornum = 1\nGROUP BY\n  i.unitid, i.inst_name, i.year, i.state_abbr, i.sector,\n  i.inst_control, i.hbcu, i.tribal_college\n"
+    }, {
+      "name" : "ipeds_financial_efficiency",
+      "comment" : "Institution-level financial efficiency ratios from ipeds_financials joined to ipeds_institutions: tuition_dependency_ratio (net tuition / total current revenue; >0.70 signals heavy tuition reliance), salary_share_of_expenses (total salaries / total current expenses), and institutional_discount_rate (total student aid / gross tuition and fees). form_type (F1A=GASB public, F2/F3=FASB private) is preserved so institution types can be filtered or compared. One row per institution per fiscal year.\n",
+      "sql" : "SELECT\n  f.unitid,\n  f.year,\n  f.form_type,\n  f.is_provisional,\n  i.inst_name,\n  i.state_abbr,\n  i.sector,\n  i.inst_control,\n  i.hbcu,\n  f.rev_tuition_fees_net,\n  f.rev_total_current,\n  f.exp_instruc_total,\n  f.endowment_end,\n  f.net_position_end,\n  f.rev_tuition_fees_net / NULLIF(f.rev_total_current, 0)            AS tuition_dependency_ratio,\n  f.exp_total_salaries / NULLIF(f.exp_total_current, 0)              AS salary_share_of_expenses,\n  f.sch_total_student_aid / NULLIF(f.rev_tuition_fees_gross, 0)      AS institutional_discount_rate\nFROM ipeds_financials f LEFT JOIN ipeds_institutions i\n  ON f.unitid = i.unitid AND f.year = i.year\n"
+    }, {
+      "name" : "district_naep_spending",
+      "comment" : "State-level correlation view: naep_scores (filtered to variable_type=TOTAL, subgroup_name='All students') joined to ccd_districts/ccd_schools data aggregated to the state level — total_enrollment (sum), avg_pupil_teacher_ratio (average of each district's enrollment/teachers_total_fte), avg_frpl_rate (state free/reduced lunch share), and district_count. Enables correlating per-pupil staffing and poverty resources with NAEP outcomes. DESPITE THE NAME, this view carries NO dollar or per-pupil expenditure figures — \"spending\" here is proxied only by staffing (avg_pupil_teacher_ratio) and poverty (avg_frpl_rate); NCES CCD in this catalog has no district finance/dollars, so per-pupil spending in dollars is not available anywhere here. One row per jurisdiction × year × subject × grade; jurisdiction=0 (national aggregate) will not match any state's district data. d2.enrollment, d2.teachers_total_fte, and ccd_schools.free_or_reduced_price_lunch all carry negative NCES CCD sentinel codes on some rows (see those tables' comments) — excluded (value < 0 treated as null) before computing total_enrollment, avg_pupil_teacher_ratio, and avg_frpl_rate, so a sentinel code is never silently counted as a real value. avg_frpl_rate is NULL for a whole jurisdiction in any year where CCD published no FRPL count for that state at all, which is what CCD does for states running the Community Eligibility Provision: those schools take no FRPL applications, so the field is empty statewide and direct_certification carries the poverty signal instead. That set grows and shifts from 2016 on (2022: DE, DC, MA, MT, TN, WV; 2024: AZ, DE, DC, MA, TN, WV, GU) — see ccd_schools.free_or_reduced_price_lunch. avg_direct_cert_rate is provided for exactly those jurisdictions, but it is a DIFFERENT measure, not a fallback: it counts only the categorically eligible subset and runs at 0.57-0.69 of FRPL wherever both are reported, so a regression must not pool the two columns into one poverty control. Use one or the other and say which.\n",
+      "sql" : "SELECT\n  n.jurisdiction,\n  n.jurisdiction_name,\n  n.year,\n  n.subject,\n  n.grade,\n  n.avg_score,\n  d.total_enrollment,\n  d.avg_pupil_teacher_ratio,\n  d.avg_frpl_rate,\n  d.avg_direct_cert_rate,\n  d.district_count\nFROM naep_scores n LEFT JOIN (\n  SELECT\n    d2.fips,\n    d2.year,\n    SUM(CASE WHEN d2.enrollment >= 0 THEN d2.enrollment END)          AS total_enrollment,\n    AVG(CASE WHEN d2.enrollment >= 0 AND d2.teachers_total_fte >= 0\n             THEN d2.enrollment / NULLIF(d2.teachers_total_fte, 0) END) AS avg_pupil_teacher_ratio,\n    COUNT(*)                                                      AS district_count,\n    SUM(school_frpl.frpl_count) * 1.0\n      / NULLIF(SUM(CASE WHEN d2.enrollment >= 0 THEN d2.enrollment END), 0) AS avg_frpl_rate,\n    SUM(school_frpl.direct_cert_count) * 1.0\n      / NULLIF(SUM(CASE WHEN d2.enrollment >= 0 THEN d2.enrollment END), 0) AS avg_direct_cert_rate\n  FROM edu.ccd_districts d2\n  LEFT JOIN (\n    SELECT leaid, year,\n           SUM(CASE WHEN free_or_reduced_price_lunch >= 0 THEN free_or_reduced_price_lunch END) AS frpl_count,\n           SUM(CASE WHEN direct_certification >= 0 THEN direct_certification END)               AS direct_cert_count\n    FROM edu.ccd_schools GROUP BY leaid, year\n  ) school_frpl ON d2.leaid = school_frpl.leaid AND d2.year = school_frpl.year\n  GROUP BY d2.fips, d2.year\n) d ON n.jurisdiction = d.fips AND n.year = d.year WHERE n.variable_type = 'TOTAL' AND n.subgroup_name = 'All students'\n"
+    }, {
+      "name" : "institution_county_context",
+      "comment" : "IPEDS institutions enriched with county name and state FIPS from geo.counties, joined via county_fips_str (zero-padded 5-digit FIPS computed by transformer) to geo.counties.county_fips. No year filter is applied on either side, so if geo.counties holds multiple years for a county, the join fans out to one row per (institution, geo.counties year) rather than staying one row per institution per year. Requires the geo schema present in the same Calcite model.\n",
+      "sql" : "SELECT\n  i.unitid,\n  i.inst_name,\n  i.year,\n  i.state_abbr,\n  i.fips,\n  i.county_fips,\n  i.county_fips_str,\n  i.county_name                                                       AS ipeds_county_name,\n  c.county_name                                                       AS geo_county_name,\n  c.state_fips                                                        AS geo_state_fips,\n  i.city,\n  i.latitude,\n  i.longitude,\n  i.sector,\n  i.inst_control,\n  i.inst_size,\n  i.hbcu,\n  i.tribal_college,\n  i.degree_granting\nFROM edu.ipeds_institutions i LEFT JOIN geo.counties c\n  ON i.county_fips_str = c.county_fips\n"
+    }, {
+      "name" : "state_naep_geography",
+      "comment" : "NAEP state-level assessment scores joined to geo.states for state name and geographic context. Filters to all-student total rows to avoid double-counting disaggregations. jurisdiction=0 (national aggregate) will not join to geo.states and is retained with null geo fields. Requires geo schema present in the same Calcite model.\n",
+      "sql" : "SELECT\n  n.jurisdiction,\n  n.jurisdiction_name,\n  s.state_name                                                        AS geo_state_name,\n  s.state_abbr                                                        AS geo_state_abbr,\n  n.year,\n  n.subject,\n  n.grade,\n  n.avg_score,\n  n.is_displayable\nFROM naep_scores n LEFT JOIN geo.states s\n  ON n.jurisdiction = s.state_fips\nWHERE n.variable_type = 'TOTAL'\n  AND n.subgroup_name = 'All students'\n"
+    }, {
+      "name" : "naep_proficiency_summary",
+      "comment" : "NAEP mean scores with proficiency level distributions in a single pivot row. Joins naep_scores to naep_achievement_levels via the full natural key. Filters to all-student TOTAL subgroup. One row per state × year × subject × grade. pct_* columns are null when achievement level data has not been ingested.\n",
+      "sql" : "SELECT\n  n.jurisdiction,\n  n.jurisdiction_name,\n  n.year,\n  n.subject,\n  n.grade,\n  n.avg_score,\n  MAX(CASE WHEN a.level = 'below_basic'  THEN a.pct END)              AS pct_below_basic,\n  MAX(CASE WHEN a.level = 'basic'         THEN a.pct END)              AS pct_basic,\n  MAX(CASE WHEN a.level = 'proficient'    THEN a.pct END)              AS pct_proficient,\n  MAX(CASE WHEN a.level = 'advanced'      THEN a.pct END)              AS pct_advanced\nFROM naep_scores n LEFT JOIN naep_achievement_levels a\n  ON  a.jurisdiction  = n.jurisdiction\n  AND a.year          = n.year\n  AND a.subject       = n.subject\n  AND a.grade         = n.grade\n  AND a.variable_type = n.variable_type\n  AND a.subgroup_name = n.subgroup_name\nWHERE n.variable_type = 'TOTAL'\n  AND n.subgroup_name = 'All students'\nGROUP BY\n  n.jurisdiction, n.jurisdiction_name, n.year, n.subject, n.grade, n.avg_score\n"
+    } ],
+    "materializeDirectory" : "s3://govdata-parquet-v1"
+  },
+  "parentSchema" : "",
+  "generatedAt" : "2026-09-19T10:18:46.226509Z",
+  "schemaName" : "edu"
+}
