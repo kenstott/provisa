@@ -66,9 +66,17 @@ def build_table(
 ) -> Table:
     """A Core ``Table`` for the landed relation on a fresh ``MetaData``. ``columns`` are
     (name, sql_type) pairs — the projected source result shape. ``pk_columns`` names the primary
-    key (required for the CDC shape; empty for replace/append)."""
+    key (required for the CDC shape; empty for replace/append).
+
+    A PRIMARY KEY column gets ``indexed=True`` (REQ-1730): an unbounded IR ``text`` column cannot
+    be a key/index column on several dialects (verified live: SQL Server refused a
+    ``VARCHAR(max)`` primary key) — ``to_sqlalchemy`` substitutes a bounded, config-driven
+    ``String`` for exactly this case, the one place that substitution happens."""
     pk = set(pk_columns)
-    cols = [Column(name, _sa_type(sql_type), primary_key=name in pk) for name, sql_type in columns]
+    cols = [
+        Column(name, _sa_type(sql_type, indexed=name in pk), primary_key=name in pk)
+        for name, sql_type in columns
+    ]
     return Table(table, MetaData(), *cols, schema=schema or None)
 
 

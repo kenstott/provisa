@@ -196,22 +196,18 @@ def _process_kafka_sources(raw_config: dict) -> None:  # REQ-147, REQ-250
 
 
 def fixed_catalog_for_engine(state: "AppState") -> str | None:
-    """The one physical catalog every source is pinned to, for a fixed-catalog warehouse engine.
+    """The one physical catalog every source is pinned to, for a single-store engine — every source
+    on that engine, config-loaded or created dynamically via ``createSource``, must share this one
+    catalog name rather than the per-source name ``source_to_catalog`` would derive.
 
-    BigQuery (project.dataset.table), Fabric/Synapse (database.schema.table) attach and read at
-    exactly ``<catalog>.<schema>.<table>``, so every source on that engine — config-loaded or
-    created dynamically via ``createSource`` — must share this one catalog name rather than the
-    per-source name ``source_to_catalog`` would derive.
-    """
-    engine = getattr(state, "federation_engine", None)
-    engine_name = getattr(getattr(engine, "engine", None), "name", "")
-    if engine_name == "bigquery":
-        return os.environ.get("GOOGLE_CLOUD_PROJECT")
-    elif engine_name == "fabric":
-        return os.environ.get("FABRIC_DATABASE")
-    elif engine_name == "synapse":
-        return os.environ.get("SYNAPSE_DATABASE")
-    return None
+    Thin wrapper: ``provisa.federation.engine.fixed_catalog_for`` is the single naming authority
+    for this decision (REQ-1730) — it must never be duplicated or re-derived here."""
+    from provisa.federation.engine import fixed_catalog_for
+
+    engine = getattr(getattr(state, "federation_engine", None), "engine", None)
+    if engine is None:
+        return None
+    return fixed_catalog_for(engine)
 
 
 def catalog_name_for_source(state: "AppState", source_type: str, source_id: str) -> str:  # REQ-1730

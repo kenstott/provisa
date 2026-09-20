@@ -215,10 +215,35 @@ def is_ir_type(name: str, platform: str | None = None) -> bool:
         return False
 
 
-def to_sqlalchemy(type_name: str) -> Any:
+def indexed_string_length() -> int:
+    """The bounded length a ``text``-mapped column gets when it is a PRIMARY KEY (or otherwise
+    indexed) column, config-driven via ``$PROVISA_INDEXED_STRING_LENGTH`` (default 255). An
+    unbounded type cannot be a key/index column on several dialects — verified live (REQ-1730
+    engine-swap harness, 2026-09-20): SQL Server refused a ``VARCHAR(max)`` primary key with
+    ``Column ... is of a type that is invalid for use as a key column in an index``. 255 is well
+    under every mainstream RDBMS's own index-key byte limit (SQL Server: 900 bytes; MySQL innodb:
+    767/3072 bytes depending on row format) even at 4 bytes/char utf8mb4, so it is a safe portable
+    default without being dialect-specific — read once here, not re-guessed per call site."""
+    import os
+
+    return int(os.environ.get("PROVISA_INDEXED_STRING_LENGTH", "255"))
+
+
+def to_sqlalchemy(type_name: str, *, indexed: bool = False) -> Any:
     """The SQLAlchemy generic type for an IR name (or a native spelling, normalized via ``to_ir``).
-    This is the write face's IR → SQLAlchemy mapping; it renders per-dialect at DDL time."""
-    return _IR_TO_SA[to_ir(type_name)]
+    This is the write face's IR → SQLAlchemy mapping; it renders per-dialect at DDL time.
+
+    ``indexed=True`` (a PRIMARY KEY or otherwise indexed column, REQ-1730): an IR ``text`` column
+    gets a BOUNDED ``String(indexed_string_length())`` instead of unbounded ``Text`` — the single
+    place this substitution happens, so every engine/dialect that lands a keyed column through
+    ``materialize_exec.build_table`` gets it uniformly, not just the one dialect that happened to
+    surface the gap. Every other IR type is already bounded/fixed-width and needs no substitution."""
+    sa_type = _IR_TO_SA[to_ir(type_name)]
+    if indexed and sa_type is Text:
+        from sqlalchemy import String
+
+        return String(indexed_string_length())
+    return sa_type
 
 
 def to_physical(type_name: str, dialect_name: str) -> str:

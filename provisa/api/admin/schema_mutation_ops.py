@@ -388,6 +388,42 @@ async def register_table(
     except Exception:
         logging.getLogger(__name__).exception("landed-table reconcile after registration failed")
 
+    # REQ-1730: a mapping-DSL source (redis) registered under an engine that is ALREADY primary
+    # from a cold start (no prior DuckDB registration to replay from) has its Trino catalog
+    # provisioned at create_source time, BEFORE this table existed — create_source's own
+    # `_synthesize_mapping_dsl_tables` synthesizes an entry from `registered_tables`, which had no
+    # rows yet, so the catalog's `redis.table-names` was written empty and stayed that way forever
+    # (nothing else ever re-provisions it). The existing DuckDB-first→Trino-replay flow
+    # (`reprovisionSourceOnEngine`) never hits this because register_table always runs before that
+    # replay's own create_source call. Verified live (REQ-1730 engine-swap harness, 2026-09-20):
+    # registering redis directly against a Trino-primary process raised `SCHEMA_NOT_FOUND: Schema
+    # 'default' does not exist` on every subsequent query. Re-run the same synthesis +
+    # engine-provisioning call create_source itself makes, now that this table exists to
+    # synthesize from — a no-op for every non-redis type (the synthesis function's own gate) and
+    # for a native engine (register_source has nothing catalog-like to provision). Best-effort,
+    # same posture as the reconcile above.
+    try:
+        from provisa.api.admin.schema_common import _synthesize_mapping_dsl_tables
+        from provisa.api.app import state as _mapping_state
+        from provisa.core.secrets import resolve_secrets
+        from provisa.federation.registry_view import registered_sources
+
+        _src_model = next(
+            (s for s in await registered_sources(_mapping_state) if s.id == input.source_id), None
+        )
+        if _src_model is not None:
+            await _synthesize_mapping_dsl_tables(pool, _src_model)
+            _mapping_state.federation_engine.register_source(
+                _src_model,
+                resolve_secrets(_src_model.password) if _src_model.password else "",
+                catalog_name=_mapping_state.source_catalogs[input.source_id],
+            )
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "mapping-DSL catalog refresh after registration failed for source %r",
+            input.source_id,
+        )
+
     # A newly-created materialized view is materialized immediately and its refresh job registered, so
     # it lands FRESH instead of STALE-until-restart (the event loop otherwise wires only at boot).
     if _effective_view_sql and input.materialize:

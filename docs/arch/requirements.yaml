@@ -57463,8 +57463,111 @@
     cross-engine reboot (`RebootEngineKind` extended to include `"pg"` — sqlite reaches pg via
     `SqliteFdwConnector`, not Trino); firebird/airport get a real Trino reboot now that landing
     works. See source-e2e-coverage-audit project memory for live-verification status per type.)
+
+    (Amended 2026-09-19, REVERSED-DIRECTION SWAP: the harness's runRebootCase primitive (a single
+    backend process genuinely killed and respawned with PROVISA_ENGINE flipped) is extended to
+    cover the reverse of its original DuckDB-first direction — registering a source against the
+    Trino-primary backend from a cold start, then rebooting that SAME process back into DuckDB and
+    requerying, with no mutation replay either direction. This required generalizing
+    `rewriteHostForContainerizedEngine` (engine-swap-helpers.ts) to take a `toContainerized` boolean
+    so the docker-topology host rewrite (localhost <-> host.docker.internal, kafka's container
+    alias) works in both directions, and generalizing `runRebootCase`'s host-rewrite trigger to fire
+    whenever the engine being entered crosses the native/containerized boundary, not only "whenever
+    entering trino". Piloted for the four MATERIALIZE_ONLY source types
+    mongodb/redis/cassandra/elasticsearch, each of whose register* function gained an optional
+    `host` param for this. New coverage: "scenario 1 reversed: same source survives an engine
+    change + reboot, Trino first (REQ-1730)" in engine-swap.spec.ts.)
+
+    (Amended 2026-09-19, WAREHOUSE ENGINES BEYOND DUCKDB/TRINO: `provisa/federation/engine.py`'s
+    `_ENGINE_BUILDERS` registry defines roughly 30 selectable `PROVISA_ENGINE` values, not just
+    duckdb/trino/pg — snowflake, databricks, bigquery, and mssql (generic sqlalchemy) among them.
+    `RebootEngineKind` (engine-swap-helpers.ts) is extended to include these four, and
+    `rebootEngineExtraEnv()` builds each engine's own `PROVISA_ENGINE_URL` DSN (snowflake://,
+    databricks://, bigquery via ambient GOOGLE_CLOUD_PROJECT/ADC with no DSN, mssql+pyodbc:// against
+    the local demo/sources/sqlserver fixture). This is a different model from registering the same
+    product as a SOURCE TYPE (registerSnowflake/registerDatabricks/registerBigquery already existed
+    for that, reached via duckdb/trino as the federation engine) — this instead makes
+    Snowflake/Databricks/BigQuery/mssql themselves the federation engine. Availability gates
+    SNOWFLAKE_ENGINE_AVAILABLE/DATABRICKS_ENGINE_AVAILABLE/BIGQUERY_ENGINE_AVAILABLE are env-var
+    presence checks, the same vars the existing cloud-warehouse source tests gate on. New coverage:
+    "scenario 1 extended: same source survives an engine change to a warehouse engine (REQ-1730)",
+    piloting mongodb->snowflake, redis->databricks, cassandra->bigquery, elasticsearch->mssql.)
+
+    (Amended 2026-09-20, GENERIC SQLALCHEMY ENGINE WORKS (MSSQL, AND BY THE SAME MECHANISM EVERY
+    OTHER SELF-ONLY _RDB_KINDS PRODUCT: MARIADB, ORACLE, DB2, ETC.): making the "elasticsearch ->
+    mssql" case in the "scenario 1 extended" describe block pass against a real dockerized SQL
+    Server 2022 instance surfaced and fixed five compounding bugs (closes GH#116, bugs 3-5 below;
+    bugs 1-2 were fixed before the issue was filed and aren't tracked separately):
+
+    1. EngineBackend.dialect (backend.py) passed native_store ("mssql") directly to SQLGlot as the
+    transpile-target dialect name; SQLGlot names it "tsql". Fixed with a small
+    _SQLGLOT_DIALECT_ALIASES map at that one seam only — native_store itself is untouched
+    everywhere else it identifies the storage backend.
+
+    2. SqlAlchemyFederationRuntime.run() (sqlalchemy_runtime.py) called
+    cur.execute(sql, params or None) — pyodbc treats an explicit None second argument as one NULL
+    parameter, not "no parameters" (unlike SQLAlchemy Core's own execution path), so every
+    parameterless query raised pyodbc.ProgrammingError. Fixed by omitting the argument entirely
+    when there are no params.
+
+    3. fixed_catalog_for_engine (app_loaders.py) hardcoded an allowlist of exactly three engine
+    names (bigquery/fabric/synapse) needing one shared physical catalog; every other single-store
+    engine (mssql and the rest of the generic _RDB_KINDS family) fell through to a per-source
+    Trino-style catalog name (source_to_catalog) that nothing ever creates, producing "Invalid
+    object name". Replaced with a new single naming authority fixed_catalog_for (engine.py), keyed
+    off the small stable set of per-source-catalog FEDERATOR engines
+    (_PER_SOURCE_CATALOG_ENGINES = {duckdb, trino, trino-byo, pg, clickhouse, clickhouse-server})
+    rather than an allowlist of single-store engines that must be kept in sync by hand as new
+    engines are added. app_loaders.py's function is now a thin delegating wrapper.
+
+    4. SqlAlchemyBackend (sqlalchemy_backend.py) had no landing_target/land_table/
+    attach_landed_source at all: a MATERIALIZE_ONLY table's DDL was never converged at boot
+    (reconcile_landed_tables no-ops for any runtime lacking attach_landed_source), and
+    build_sqlalchemy_engine's default_materialize_store pointed at the shared platform Postgres
+    instead of the engine's own store, so rows that did land went to the wrong physical database.
+    Fixed: SqlAlchemyBackend.landing_target lands every MATERIALIZED source unconditionally at its
+    registered (schema_name, table_name) — this engine has no DuckDB-style ATTACH+view indirection
+    and, unlike Trino, has zero live connectors for anything, so unlike Trino's own landing_target
+    override (which checks is_adapter_fetched to exempt types it can reach live) there is no type
+    to exempt here. SqlAlchemyFederationRuntime.attach_landed_source does eager DDL reconcile with
+    real metadata-drift detection (created/kept/recreated), mirroring
+    snowflake_store.reconcile_snowflake_native's contract, via SQLAlchemy Core's Inspector
+    (has_table/get_columns/get_pk_constraint) rather than a hand-written per-dialect
+    information_schema query. land_table/apply_cdc_events implement REPLACE/APPEND/CDC landing via
+    the runtime's own existing sync SQLAlchemy connection (store_writer.py's async path has no
+    pyodbc/mssql driver available). build_sqlalchemy_engine's default_materialize_store switched
+    from _platform_db_materialize_default to _own_warehouse_materialize_default (already used by
+    build_snowflake_engine) so the engine lands into itself. ir_types.to_sqlalchemy gained an
+    `indexed: bool = False` parameter: a PRIMARY KEY column now gets a bounded
+    String(indexed_string_length()) instead of unbounded Text, since several dialects (SQL Server
+    confirmed live) refuse an unbounded type as a key/index column; length is config-driven via
+    $PROVISA_INDEXED_STRING_LENGTH (default 255) through the new indexed_string_length() function.
+    materialize_exec.build_table now passes indexed=name in pk for every column.
+
+    5. query_residency.ensure_resident's staleness oracle reads a single freshness clock keyed by
+    node (schema.table) alone, shared across every engine a source has ever been queried under. An
+    engine with a live connector for a source type (Trino, for mongodb/elasticsearch/redis/
+    cassandra) never notices this gap because it answers those queries live, bypassing the landed
+    replica entirely — but a genuinely self-only engine's first-ever query against a source landed
+    minutes earlier under a different engine read the shared clock as "fresh" and skipped landing
+    into its own, still-empty store (0 rows returned, no error). Fixed with a narrower fix than
+    changing the persisted freshness table's schema/semantics: EngineBackend.is_first_touch
+    (source_id)/mark_landed(source_id), a per-process, per-backend-instance in-memory set, never
+    persisted, OR'd into the is_stale oracle passed to materialize_pending in ensure_resident —
+    forces exactly one land per (backend instance, source) the first time it is genuinely queried,
+    while every later query on that same process still defers to the real persisted clock.
+
+    All five confirmed individually and together via a live Playwright e2e run
+    (engine-swap.spec.ts, the "elasticsearch -> mssql" case) against a real dockerized SQL Server
+    2022 instance: register elasticsearch under DuckDB, genuinely kill and respawn the process with
+    PROVISA_ENGINE=mssql, requery with no mutation replay, get the correct 6 rows back.)
   code:
   - provisa/api/app_loaders.py
+  - provisa/federation/sqlalchemy_backend.py
+  - provisa/federation/sqlalchemy_runtime.py
+  - provisa/federation/materialize_exec.py
+  - provisa/federation/query_residency.py
+  - provisa/core/ir_types.py
   - provisa/api/admin/schema_mutation.py
   - provisa/api/admin/schema_common.py
   - provisa/api/app.py

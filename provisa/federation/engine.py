@@ -759,7 +759,15 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
         pooled=True,  # SQLAlchemy engine holds a server-side connection pool
         transactional=True,  # a generic RDB store is transactional
         backend_factory=SqlAlchemyBackend,  # in-process terminal driving SqlAlchemyFederationRuntime
-        default_materialize_store=_platform_db_materialize_default,
+        # REQ-1730: was `_platform_db_materialize_default` — the shared PLATFORM Postgres, not this
+        # engine's own store. A SELF_ONLY engine's whole point is "every source lands into me" (see
+        # DriverClass.SELF_ONLY's own doc); landing into a DIFFERENT database than the one governed
+        # queries run against left the compiler resolving names (via `fixed_catalog_for`, itself
+        # once this same bug's own fix) into a database that never received the rows. Verified live:
+        # before this fix, `master.default.support_tickets` and the row actually landed in the
+        # platform tenant DB were two different databases. `_own_warehouse_materialize_default` is
+        # the SAME function `build_snowflake_engine` already uses for the identical reason.
+        default_materialize_store=_own_warehouse_materialize_default,
         capabilities=frozenset(
             {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
         ),  # ARROW via the generic row→batch adapter over the lazy row stream (REQ-1219)
@@ -1380,6 +1388,57 @@ def configured_engine_url() -> str | None:
         or os.environ.get("PROVISA_ENGINE_URL")
         or _engine_config().get("federation_engine_url")
     )
+
+
+# Per-source-catalog federators (REQ-840's BROAD/PARTIAL-with-live-ATTACH engines): each source
+# gets its OWN engine-side catalog (Trino's `create_catalog`, DuckDB/ClickHouse/pg's per-source
+# ATTACH), so the compiler must emit a per-source name (`source_to_catalog`), never one shared
+# catalog. Every OTHER engine — every self-only warehouse (snowflake/databricks/bigquery/fabric/
+# synapse/sqlalchemy) and every generic `_RDB_KINDS` product (mssql, mariadb, oracle, ...) — lands
+# ALL sources into the ONE store its own URL/config names, so the compiler must emit that ONE name
+# for every source instead. This is deliberately an EXCLUSION list of the (small, stable) federator
+# set rather than an allowlist of single-store engines: allowlisting drifts every time a new
+# single-store engine is added (verified live, REQ-1730: `fixed_catalog_for_engine`'s old allowlist
+# named only bigquery/fabric/synapse, so a newly-exercised generic "mssql" engine fell through to
+# the per-source name and queried a catalog that was never created — `Invalid object name
+# 'e2e_swap_es_<id>.default.support_tickets'`, SQL Server parsing the per-source identity string as
+# a literal 3-part object reference). The federator set changes far less often than the set of
+# selectable single-store products, so excluding it is the stable side to maintain.
+_PER_SOURCE_CATALOG_ENGINES = frozenset(
+    {"duckdb", "trino", "trino-byo", "pg", "clickhouse", "clickhouse-server"}
+)
+
+
+def fixed_catalog_for(engine: FederationEngine) -> str | None:
+    """The ONE physical catalog every source lands under on a single-store engine (REQ-1730) — the
+    single naming authority for this decision. ``catalog_name_for_source``
+    (provisa/api/app_loaders.py) is the only caller; nothing else should re-derive this.
+
+    BigQuery/Fabric/Synapse don't carry their one database in a normal DSN (BigQuery has no
+    materialize URL at all — ADC + `$GOOGLE_CLOUD_PROJECT`; Fabric/Synapse read their own
+    deployment-specific env directly), so those three stay named lookups. Every other non-federator
+    engine's one database is a plain SQLAlchemy-DSN segment (`configured_engine_url()`), read
+    generically rather than adding another per-product branch here."""
+    if engine.name in _PER_SOURCE_CATALOG_ENGINES:
+        return None
+    if engine.name == "bigquery":
+        import os
+
+        return os.environ.get("GOOGLE_CLOUD_PROJECT")
+    if engine.name == "fabric":
+        import os
+
+        return os.environ.get("FABRIC_DATABASE")
+    if engine.name == "synapse":
+        import os
+
+        return os.environ.get("SYNAPSE_DATABASE")
+    url = configured_engine_url()
+    if not url:
+        return None
+    from sqlalchemy.engine import make_url
+
+    return make_url(url).database
 
 
 def configured_materialize_url() -> str | None:

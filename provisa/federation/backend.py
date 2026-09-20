@@ -161,6 +161,36 @@ class EngineBackend:
 
     def __init__(self, engine: FederationEngine) -> None:
         self.engine = engine
+        # Sources this backend INSTANCE has itself landed at least once (REQ-1730) — per-process,
+        # never persisted. `query_residency.ensure_resident`'s `is_stale` oracle reads
+        # `node_freshness_state.last_refresh_at`, a timestamp keyed by NODE (schema.table) alone,
+        # shared across every engine a source has ever been queried under — so a source landed
+        # minutes ago under DuckDB reads as "fresh" the instant a DIFFERENT engine (a genuine
+        # reboot, this engine's first-ever process) is asked for it, even though THIS engine's own
+        # store has never held a row of it. Verified live: a self-only engine with no live-connector
+        # fallback for the source type (elasticsearch under the generic mssql engine) served 0 rows
+        # with no error — `is_stale` correctly read the GLOBAL clock as fresh, `materialize_pending`
+        # correctly skipped landing by that clock's own logic, and the read simply had nothing to
+        # read. An engine with a live connector for the same source type never hits this (Trino
+        # answers mongodb/elasticsearch/etc. live, never through the landed replica, so the global
+        # clock's staleness is irrelevant to it) — this is why the existing scenario-1 reboot suite
+        # never surfaced it before a self-only engine with zero live reach was exercised. Forcing a
+        # land on this instance's OWN first touch of a source — regardless of the global clock —
+        # fixes it without changing the freshness table's schema or its meaning for every other
+        # caller; a later query against an already-first-touched source still defers to the real
+        # clock, so a source genuinely fresh elsewhere isn't re-landed on every request.
+        self._landed_this_process: set[str] = set()
+
+    def is_first_touch(self, source_id: str) -> bool:
+        """Whether this backend instance has never itself landed ``source_id`` — see
+        ``_landed_this_process``'s own doc for why this must be checked ALONGSIDE, not instead of,
+        the real (persisted) staleness clock."""
+        return source_id not in self._landed_this_process
+
+    def mark_landed(self, source_id: str) -> None:
+        """Record that this backend instance has now landed ``source_id`` at least once — called by
+        ``query_residency.ensure_resident`` after a successful ``materialize_pending``."""
+        self._landed_this_process.add(source_id)
 
     @property
     def dialect(self) -> str:
