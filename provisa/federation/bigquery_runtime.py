@@ -142,6 +142,56 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
         append = select_landing_shape(change_signal, watermark_column) == APPEND
         await asyncio.to_thread(self._load, dataset, table, columns, rows, append)
 
+    async def land_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        change_signal: str = "ttl",
+        watermark_column: str | None = None,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+        shape: str | None = None,
+    ) -> str:
+        """The ``NativeEngineBackend.land_source_table``/``hasattr(runtime, "land_table")`` seam
+        every other native engine's runtime uses (REQ-1730) — before this, ``BigQueryFederationRuntime``
+        had no method by this name (only ``materialize_source``, a different signature taking a
+        full ``source`` object), so the seam silently fell through to the BASE ``EngineBackend``
+        default: landing through ``store_writer``'s async path against
+        ``self.engine.materialize_store()`` — the shared PLATFORM Postgres, not BigQuery itself.
+        Verified live (REQ-1730 engine-swap harness, 2026-09-20): a cassandra source rebooted into
+        BigQuery queried 0 rows with no error — the DDL reconcile (``attach_landed_source``,
+        already correctly wired via ``reconcile_landed_tables``) created the right table in
+        BigQuery, but the actual rows landed in a different database entirely.
+
+        Adapts to ``materialize_source``'s own signature: it needs a source-like object for
+        ``_phys_parts`` (``schema_name``/``table_name`` only — confirmed by reading it, no other
+        attribute is read), so this builds the minimal one. ``match_floor``/CDC are not something
+        ``materialize_source`` implements (REPLACE/APPEND only, matching Snowflake/Databricks's
+        own same limitation) — raising loud on CDC rather than silently mishandling it."""
+        from types import SimpleNamespace
+
+        from provisa.core.change_signal import CDC, select_landing_shape
+
+        del match_floor
+        landing_shape = shape or select_landing_shape(change_signal, watermark_column)
+        if landing_shape == CDC:
+            raise NotImplementedError(
+                "BigQuery native landing has no CDC shape; use replace or append"
+            )
+        source = SimpleNamespace(schema_name=schema, table_name=table)
+        await self.materialize_source(
+            source,
+            columns,
+            rows,
+            change_signal=change_signal,
+            watermark_column=watermark_column,
+            pk_columns=pk_columns,
+        )
+        return f"{schema}.{table}"
+
     async def attach_landed_source(
         self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
     ) -> str:

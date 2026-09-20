@@ -26,6 +26,32 @@ class BigQueryBackend(NativeEngineBackend):
     def dialect(self) -> str:
         return "bigquery"
 
+    def landing_target(
+        self,
+        *,
+        store_schema: str,
+        source_id: str,
+        source_type: Any,
+        schema_name: str,
+        table_name: str,
+    ) -> tuple[str, str]:
+        """EVERY MATERIALIZED source's replica lands at its REGISTERED address — same reasoning and
+        same fix as ``PgBackend``/``SqlAlchemyBackend`` (REQ-1730): there is no DuckDB-style
+        mangled-name+separate-view indirection to redirect a MATERIALIZE_ONLY source through here.
+        ``attach_landed_source`` (``BigQueryFederationRuntime``, wired at boot via
+        ``reconcile_landed_tables``) already DDL-reconciles the table at exactly
+        ``source.schema_name``/``source.table_name`` (its ``_phys_parts`` reads nothing else); the
+        base ``EngineBackend`` default (a mangled ``source_id__schema__table`` name under a landing
+        schema) sent ``land_table``'s actual row LOAD to a dataset/table BigQuery never DDL-reconciled
+        and the compiled query never reads. Verified live (REQ-1730 engine-swap harness,
+        2026-09-20): a cassandra source rebooted into BigQuery queried 0 rows with no error — the
+        DDL reconcile created the right table, but every landed row went to the mangled address
+        instead. Unlike ``PgBackend``, no catalog-fold is needed: BigQuery's project already is the
+        catalog (``catalog_qualified`` stays the engine default, True), so schema/table alone
+        (dataset/table) is the complete, unambiguous physical address."""
+        del store_schema, source_id, source_type  # never chooses a different table
+        return schema_name, table_name
+
     def _new_runtime(self) -> Any:
         from provisa.federation.bigquery_runtime import BigQueryFederationRuntime
         from provisa.federation.engine import configured_engine_url

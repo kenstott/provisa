@@ -643,6 +643,9 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         PgDuckdbIcebergConnector,
         PgDuckdbJsonConnector,
         PgDuckdbParquetConnector,
+        PgFilesConnector,
+        PgSharepointConnector,
+        PgSplunkConnector,
         PostgresFdwConnector,
         SqliteFdwConnector,
         TdsFdwConnector,
@@ -654,6 +657,9 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         name,
         [
             PostgresFdwConnector(),  # postgresql
+            PgFilesConnector(),  # files (pgwire bridge, live attach — REQ-1730)
+            PgSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
+            PgSplunkConnector(),  # splunk (pgwire bridge, live attach — REQ-1730)
             PgDuckdbCsvConnector(),  # csv (preferred over file_fdw)
             FileFdwConnector(),  # csv (fallback)
             PgDuckdbParquetConnector(),  # parquet
@@ -697,11 +703,14 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
     from provisa.federation.clickhouse_connectors import (
         ClickHouseCsvConnector,
         ClickHouseDeltaLakeConnector,
+        ClickHouseFilesConnector,
         ClickHouseIcebergConnector,
         ClickHouseMongoConnector,
         ClickHouseMysqlConnector,
         ClickHouseParquetConnector,
         ClickHousePostgresConnector,
+        ClickHouseSharepointConnector,
+        ClickHouseSplunkConnector,
         ClickHouseSqliteConnector,
     )
     from provisa.federation.clickhouse_backend import ClickHouseBackend
@@ -715,6 +724,9 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
             "clickhouse",
             attach=[
                 ClickHousePostgresConnector(),  # postgresql — CREATE DATABASE ENGINE=PostgreSQL
+                ClickHouseFilesConnector(),  # files (pgwire bridge, live attach — REQ-1730)
+                ClickHouseSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
+                ClickHouseSplunkConnector(),  # splunk (pgwire bridge, live attach — REQ-1730)
                 ClickHouseMysqlConnector(),  # mysql — CREATE DATABASE ENGINE=MySQL
                 ClickHouseSqliteConnector(),  # sqlite — CREATE DATABASE ENGINE=SQLite (file, REQ-1178)
                 ClickHouseMongoConnector(),  # mongodb — MongoDB table engine (columns from registry)

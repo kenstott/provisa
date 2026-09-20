@@ -1905,7 +1905,7 @@ test.describe("scenario 1 extended: same source survives an engine change to a w
 // warehouse like mssql/snowflake/databricks/bigquery — piloted here for the first time in this
 // harness to find out whether its own landing/reconcile path for a MATERIALIZE_ONLY source (no FDW
 // reaches elasticsearch) already works or has the same gap mssql needed five fixes for.
-test.describe("scenario 1 extended: mssql and pg as the primary engine (REQ-1730)", () => {
+test.describe("scenario 1 extended: mssql, pg and bigquery as the primary engine (REQ-1730)", () => {
   test.use({ allowedBrowserErrors: ["ERR_CONNECTION_REFUSED"] });
 
   test.describe("mssql -> duckdb", () => {
@@ -1945,6 +1945,18 @@ test.describe("scenario 1 extended: mssql and pg as the primary engine (REQ-1730
     }) => {
       test.setTimeout(300000);
       await runRebootCase(page, (p) => registerElasticsearch(p), {}, ["pg"]);
+    });
+  });
+
+  test.describe("bigquery -> duckdb", () => {
+    test.beforeAll(() => startDemoSources(["elasticsearch"]));
+    test.afterAll(() => removeDemoSources(["elasticsearch"]));
+
+    test("elasticsearch registered once under BigQuery resolves after rebooting into DuckDB, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(300000);
+      await runRebootCase(page, (p) => registerElasticsearch(p), {}, ["duckdb"], false, "bigquery");
     });
   });
 

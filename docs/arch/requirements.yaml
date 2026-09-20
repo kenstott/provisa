@@ -54543,23 +54543,21 @@
   target: 2026-Q4
   description: 'Every federation engine runtime must implement `attach_landed_source` (DDL-only zero-row
     reconcile, dispatched from native_backend.py''s reconcile_landed_tables()) so REQ-1632''s eager boot-time/post-edit
-    landing works uniformly regardless of which engine is configured. Audited across all ~10 engine keys
-    (trino, trino-byo, pg, duckdb, clickhouse, clickhouse-server, snowflake, databricks, bigquery, fabric,
-    synapse, sqlalchemy): only DuckDBFederationRuntime and DatabricksFederationRuntime implement attach_landed_source.
-    BigQueryFederationRuntime, SnowflakeFederationRuntime, ClickHouseFederationRuntime, PgFederationRuntime,
-    SqlAlchemyFederationRuntime, and MssqlWarehouseRuntime (backing both fabric and synapse) do not —
-    for all of these, NativeEngineBackend.reconcile_landed_tables() (native_backend.py:315-316) silently
-    returns an empty list with no error, so REQ-1632''s zero-row replica never appears in that engine''s
-    own catalog. Trino is NOT affected by this gap: TrinoBackend overrides reconcile_landed_tables() independently
-    (provisa/federation/backend.py:634) via store_writer.reconcile_table(), which already performs the
-    same DDL-only zero-row convergence against Trino''s own materialize store. Full-data landing (`land_table`,
-    the event-queue-triggered terminal dispatched from land_source_table()) is separately implemented
-    only by DuckDBFederationRuntime; every other NativeEngineBackend-based runtime falls back to the generic
-    store_writer DSN path for that trigger. Databricks, BigQuery, and MssqlWarehouseRuntime instead land
-    data natively through the unrelated poll/refresh-cadence terminal `materialize_source` (provisa/federation/residency.py''s
-    run_prep()) — Snowflake has none of the three terminals (`land_table`, `attach_landed_source`, `materialize_source`),
-    so Snowflake-as-engine cannot land any source''s data into its own native tables today by any path,
-    undercutting Horizon Catalog visibility entirely, independent of REQ-1632.'
+    landing works uniformly regardless of which engine is configured, AND `land_table` (the event-queue-triggered
+    full-data landing terminal dispatched from land_source_table() via `hasattr(runtime, "land_table")`),
+    so a MATERIALIZE_ONLY source''s rows land in that engine''s own store rather than silently falling
+    back to the generic store_writer DSN path against the platform database (REQ-1730). As of 2026-09-20:
+    DuckDBFederationRuntime, SnowflakeFederationRuntime, BigQueryFederationRuntime, PgFederationRuntime,
+    and SqlAlchemyFederationRuntime implement both `land_table` and `attach_landed_source`. DatabricksFederationRuntime
+    implements `attach_landed_source` and lands data through the separate poll/refresh-cadence terminal
+    `materialize_source` instead of `land_table` (equivalent coverage via a different seam). ClickHouseFederationRuntime
+    and MssqlWarehouseRuntime (backing both fabric and synapse) implement none of the three terminals —
+    for these, NativeEngineBackend.reconcile_landed_tables() (native_backend.py:315-316) silently returns
+    an empty list with no error, so REQ-1632''s zero-row replica never appears in that engine''s own catalog,
+    and land_source_table() falls back to the generic store_writer DSN path. Trino is NOT affected by
+    this gap: TrinoBackend overrides reconcile_landed_tables() independently (provisa/federation/backend.py:634)
+    via store_writer.reconcile_table(), which already performs the same DDL-only zero-row convergence
+    against Trino''s own materialize store.'
   use_case: Uniform native landing terminals let every federation engine participate in boot-time eager
     landing (REQ-1632) and post-edit replica reconciliation, so MATERIALIZED sources land native, zero-row-then-refreshed
     replicas visible in that engine's own catalog product (Snowflake Horizon Catalog, BigQuery Dataplex,
@@ -56449,10 +56447,22 @@
     and projections push down to Calcite (which pushes its own into the SaaS API). The server is
     started once per source when the engine first resolves it, its listener awaited before the
     ATTACH (a server that never answers is loud), and every started server is stopped at app
-    shutdown. Engines with no postgres reach of their own keep the landing path (REQ-954). The
-    bundle resolver fetches the release's per-OS/arch tarball (`pgwire-<connector>-<ver>-<variant>`),
-    fails closed on a platform the release does not build, and unnests the tarball so the bundle
-    root carries `bin/pgwire-<connector>`.
+    shutdown. The bundle resolver fetches the release's per-OS/arch tarball
+    (`pgwire-<connector>-<ver>-<variant>`), fails closed on a platform the release does not build,
+    and unnests the tarball so the bundle root carries `bin/pgwire-<connector>`.
+
+    (Amended 2026-09-20, generalized to every engine with its own generic-Postgres reach:) the
+    pgwire bridge is nothing but a real Postgres wire endpoint, so any engine whose own connector
+    set already speaks generic Postgres wire protocol can attach to it the identical way DuckDB
+    does, no new bundle/server needed. `PgFilesConnector`/`PgSharepointConnector`/`PgSplunkConnector`
+    (`connector_duckdb.py`, via `postgres_fdw` pointed at `pgwire_replica.ensure_endpoint`'s host/port
+    instead of a real remote Postgres) and `ClickHouseFilesConnector`/`ClickHouseSharepointConnector`/
+    `ClickHouseSplunkConnector` (`clickhouse_connectors.py`, via `CREATE DATABASE ... ENGINE =
+    PostgreSQL(...)` the same way) now attach live on the `pg` and `clickhouse` engines respectively.
+    Trino needs no such connector: it already reaches all three types live through its own native
+    plugins (`trino-file`/`trino-sharepoint`/`trino-splunk`), a different and better mechanism, not
+    this bridge. Only engines with NO generic-Postgres-wire reach of their own (Snowflake,
+    Databricks, BigQuery, the warehouse/mssql family) keep the landing path (REQ-954).
 
     (Amended 2026-09-19, delete-time stop:) the per-source server started once when the engine
     first resolves it is also stopped, and forgotten, when that source is deleted
@@ -56484,6 +56494,7 @@
     edit, same as `delete_source` and `refresh_kaggle_source` (REQ-1780's amendment).
   code:
   - provisa/federation/connector_duckdb.py
+  - provisa/federation/clickhouse_connectors.py
   - provisa/federation/pgwire_replica.py
   - provisa/federation/engine.py
   - provisa/runtime_deps/pgwire_bundles.py
@@ -56494,6 +56505,8 @@
   tests:
   - tests/unit/test_replica_strategy.py
   - tests/unit/test_federation_strategy.py
+  - tests/unit/test_pg_pgwire_connectors.py
+  - tests/unit/test_clickhouse_pgwire_connectors.py
   - tests/integration/test_duckdb_attach_calcite_pgwire.py
   - tests/integration/test_splunk_duckdb_attach.py
   - tests/integration/test_files_pgwire_replica.py
@@ -57591,6 +57604,7 @@
   - provisa-ui/src/pages/sql/sqlHelpers.ts
   - provisa/federation/connector_duckdb.py
   - provisa/federation/trino_connectors.py
+  - provisa/federation/clickhouse_connectors.py
   - provisa-ui/src/pages/sources/constants.ts
   - provisa-ui/src/pages/sources/SourceFormFields.tsx
   - demo/sources/firebird/compose.yml
@@ -57618,6 +57632,9 @@
   - tests/unit/test_transpile.py
   - provisa-ui/src/pages/sql/__tests__/wrapSampledSql.test.ts
   - tests/unit/test_duckdb_community_connectors.py
+  - tests/unit/test_federation_strategy.py
+  - tests/unit/test_pg_pgwire_connectors.py
+  - tests/unit/test_clickhouse_pgwire_connectors.py
   use_case: >-
     Building the cross-engine "register once, swap engine, requery" harness surfaced these —
     nothing had ever registered a source under one engine and queried it under another before, or

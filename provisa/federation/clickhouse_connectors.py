@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from provisa.core.models import Source
 
-from provisa.federation.connector_base import Capability, Connector, Mechanism
+from provisa.federation.connector_base import Capability, Connector, Mechanism, ProbeResult
 
 
 class ClickHousePostgresConnector(Connector):
@@ -58,6 +58,71 @@ class ClickHousePostgresConnector(Connector):
             ],
             "local_schema": local_schema,
         }
+
+
+class _ClickHousePgwireConnector(Connector):  # REQ-1730
+    """Mount a connector-pgwire-replica source (files/sharepoint/splunk, ``strategy.py``'s
+    ``_CONNECTOR_PGWIRE_REPLICA``) into ClickHouse LIVE via the built-in PostgreSQL database engine,
+    pointed at the source's own bundled Calcite pgwire server instead of a real remote Postgres.
+
+    Same trick as ``PgFilesConnector``/``_DuckDBPgwireConnector`` (REQ-1690/1730): the pgwire bridge
+    (``pgwire_replica.py``) is nothing but a real Postgres wire endpoint, and ClickHouse's PostgreSQL
+    engine needs no extension/probe to reach one — it is built in. Once registered,
+    ``FederationEngine.complete_reach()`` skips its own land-reach fallback for this type, so the
+    source is live-attached instead of falling to ``pgwire_replica.ConnectorReplica``'s landed-copy
+    path. Read-only: Calcite serves no DML, so ``write=True`` (the plain postgresql connector's own
+    default) is deliberately NOT claimed here."""
+
+    engine = "clickhouse"
+    mechanism = Mechanism.ATTACH_R
+
+    async def probe(self, fetch) -> ProbeResult:  # REQ-904
+        from provisa.runtime_deps import BundleResolver, bundle_spec_for
+        from provisa.runtime_deps.pgwire_bundles import BundleUnavailable
+
+        del fetch  # ClickHouse's PostgreSQL engine is built in; only the bundle needs checking
+        try:
+            spec = bundle_spec_for(self.source_type)
+            asset = spec.asset_filename  # resolves this host's variant; unbuilt platforms raise
+        except BundleUnavailable as e:
+            return ProbeResult(
+                False,
+                str(e),
+                "run Provisa on macOS arm64, Linux x86_64 or Windows x86_64, or publish a bundle "
+                "for this platform in the kenstott/calcite release",
+            )
+        if BundleResolver().is_cached(spec):
+            return ProbeResult(True, f"{spec.artifact_name} bundle cached ({spec.version})")
+        return ProbeResult(True, f"{asset} is fetched on first use from {spec.download_url}")
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)
+
+    def details(self, source: Source) -> dict:
+        from provisa.federation.pgwire_replica import ensure_endpoint, schema_name
+
+        ports = ensure_endpoint(source)  # starts (once) the source's bundled Calcite pgwire server
+        local_schema = f"ch_pgwire_{source.id}"
+        return {
+            "attach_ddl": [
+                f'CREATE DATABASE IF NOT EXISTS "{local_schema}" ENGINE = PostgreSQL('
+                f"'{ports.calcite_child_host}:{ports.pgwire_port}', 'provisa', 'provisa', '', "
+                f"'{schema_name(source)}')"
+            ],
+            "local_schema": local_schema,
+        }
+
+
+class ClickHouseFilesConnector(_ClickHousePgwireConnector):  # REQ-1730
+    source_type = "files"
+
+
+class ClickHouseSharepointConnector(_ClickHousePgwireConnector):  # REQ-1730
+    source_type = "sharepoint"
+
+
+class ClickHouseSplunkConnector(_ClickHousePgwireConnector):  # REQ-1730
+    source_type = "splunk"
 
 
 class ClickHouseMysqlConnector(Connector):

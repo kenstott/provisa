@@ -577,6 +577,87 @@ class PostgresFdwConnector(Connector):  # REQ-893
         }
 
 
+class _PgPgwireConnector(Connector):  # REQ-1730
+    """Attach a connector-pgwire-replica source (files/sharepoint/splunk, ``strategy.py``'s
+    ``_CONNECTOR_PGWIRE_REPLICA``) into a Postgres engine LIVE via postgres_fdw, pointed at the
+    source's own bundled Calcite pgwire server instead of a real remote Postgres.
+
+    The pgwire bridge (``pgwire_replica.py``) is nothing but a real Postgres wire endpoint — DuckDB
+    already attaches to it this way (``_DuckDBPgwireConnector``, REQ-1690); postgres_fdw is pg's own
+    equivalent generic-Postgres-attach mechanism, so the same trick applies with no new server. Once
+    registered, ``FederationEngine.complete_reach()`` skips its own land-reach fallback for this type
+    (an attach connector always wins), so a files/sharepoint/splunk source is live-attached on pg
+    instead of falling to ``pgwire_replica.ConnectorReplica``'s landed-copy path. Read-only: Calcite
+    serves no DML (same restriction ``_DuckDBPgwireConnector`` documents).
+
+    ``CREATE USER MAPPING`` carries no password: postgres_fdw only enforces ``password_required``
+    (default true) for a non-superuser mapping owner, and the pgwire bundle itself does not check
+    credentials (``pgwire_replica._pg_connect`` connects with none) — a non-superuser pg engine role
+    fails loud here with postgres_fdw's own "password is required" error, not a silent gap.
+    """
+
+    engine = "postgres"
+    mechanism = Mechanism.ATTACH_R
+    materialized_store = False
+
+    async def probe(self, fetch) -> ProbeResult:  # REQ-904
+        from provisa.runtime_deps import BundleResolver, bundle_spec_for
+        from provisa.runtime_deps.pgwire_bundles import BundleUnavailable
+
+        fdw = await _probe_pg_extension(fetch, "postgres_fdw", auto_create=True)
+        if not fdw.available:
+            return fdw
+        try:
+            spec = bundle_spec_for(self.source_type)
+            asset = spec.asset_filename  # resolves this host's variant; unbuilt platforms raise
+        except BundleUnavailable as e:
+            return ProbeResult(
+                False,
+                str(e),
+                "run Provisa on macOS arm64, Linux x86_64 or Windows x86_64, or publish a bundle "
+                "for this platform in the kenstott/calcite release",
+            )
+        if BundleResolver().is_cached(spec):
+            return ProbeResult(True, f"{spec.artifact_name} bundle cached ({spec.version})")
+        return ProbeResult(True, f"{asset} is fetched on first use from {spec.download_url}")
+
+    def capability(self) -> Capability:
+        return Capability(predicate_pushdown=True)
+
+    def details(self, source: Source) -> dict:
+        from provisa.federation.pgwire_replica import ensure_endpoint, schema_name
+
+        ports = ensure_endpoint(source)  # starts (once) the source's bundled Calcite pgwire server
+        server = f"fdw_pgwire_{source.id}"
+        local_schema = f"fdw_pgwire_{source.id}"
+        return {
+            "attach_ddl": [
+                "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
+                f"CREATE SERVER IF NOT EXISTS {server} FOREIGN DATA WRAPPER postgres_fdw "
+                f"OPTIONS (host '{ports.calcite_child_host}', port '{ports.pgwire_port}', "
+                f"dbname 'provisa')",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server} "
+                f"OPTIONS (user 'provisa')",
+                f"CREATE SCHEMA IF NOT EXISTS {local_schema}",
+                f"IMPORT FOREIGN SCHEMA {schema_name(source)} FROM SERVER {server} "
+                f"INTO {local_schema}",
+            ],
+            "local_schema": local_schema,
+        }
+
+
+class PgFilesConnector(_PgPgwireConnector):  # REQ-1730
+    source_type = "files"
+
+
+class PgSharepointConnector(_PgPgwireConnector):  # REQ-1730
+    source_type = "sharepoint"
+
+
+class PgSplunkConnector(_PgPgwireConnector):  # REQ-1730
+    source_type = "splunk"
+
+
 class FileFdwConnector(Connector):  # REQ-893
     """Attach a CSV file into a Postgres engine via file_fdw (a stock/core PG contrib FDW).
 

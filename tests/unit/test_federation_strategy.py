@@ -71,11 +71,14 @@ def test_nosql_source_is_virtual_on_trino():
 
 
 def test_same_source_different_strategy_per_engine():
-    # csv scans on DuckDB, but Trino (no csv connector here) has no scan → unreachable.
-    csv = _src("c", SourceType.csv, path="/c.csv")
-    assert federate(csv, build_duckdb_engine()) is Strategy.SCAN
-    with pytest.raises(UnreachableSource):
-        federate(csv, build_trino_engine())
+    # firebird ATTACHes live via DuckDB's community extension (REQ-1730), but Trino has no
+    # firebird connector at all → falls to the materialize-only fallback instead.
+    # (csv/parquet used to make this point too, until Trino gained its own single-file
+    # connectors — TrinoCsvConnector/TrinoParquetConnector, REQ-1730 — and started SCANning
+    # them live the same as DuckDB.)
+    fb = _src("fb", SourceType.firebird, password="p")
+    assert federate(fb, build_duckdb_engine()) is Strategy.VIRTUAL
+    assert federate(fb, build_trino_engine()) is Strategy.MATERIALIZED
 
 
 def test_prefer_materialized_overrides_attachable():
@@ -87,9 +90,12 @@ def test_prefer_materialized_overrides_attachable():
 
 
 def test_unreachable_when_neither_attach_scan_nor_materializable():
-    # parquet: no Trino connector here and not materialize-only → genuinely unreachable.
+    # saphana: no Trino connector on the raw builder (only reached via complete_reach()'s
+    # driver-registry fallback, not called here) and not materialize-only → genuinely unreachable.
+    # (parquet used to make this point too, until Trino gained TrinoParquetConnector, REQ-1730,
+    # and started SCANning it live — see test_same_source_different_strategy_per_engine.)
     with pytest.raises(UnreachableSource):
-        federate(_src("o", SourceType.parquet, path="/o.parquet"), build_trino_engine())
+        federate(_src("o", SourceType.saphana), build_trino_engine())
 
 
 def test_engine_federate_method_matches():
