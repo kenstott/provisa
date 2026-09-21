@@ -58,6 +58,7 @@ function state(overrides: Partial<AiModelsState> = {}): AiModelsState {
         enabled: true,
       },
     ],
+    ai_endpoints: [],
     nl: { rate_limit: 60 },
     api_keys_set: { anthropic: false },
     restart_required_note: "AI model settings take effect after a service restart.",
