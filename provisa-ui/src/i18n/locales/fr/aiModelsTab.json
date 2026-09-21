@@ -35,6 +35,14 @@
     "saved": "Enregistré.",
     "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer.",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "Facultatif. Si elle est définie, Provisa utilise l'API de décisions à confiance calibrée de Jev pour évaluer les propositions de type de relation du glossaire et les relations de clé étrangère découvertes, au lieu de se fier uniquement à la confiance autodéclarée par le modèle générateur. Si elle n'est pas définie, ces fonctionnalités conservent leur comportement actuel, basé uniquement sur le modèle. Si elle n'est pas définie ici, la variable d'environnement TYPESAFEAI_API_KEY de l'installation est utilisée si elle est présente."
+    "jevIntro": "Facultatif. Si elle est définie, Provisa utilise l'API de décisions à confiance calibrée de Jev pour évaluer les propositions de type de relation du glossaire et les relations de clé étrangère découvertes, au lieu de se fier uniquement à la confiance autodéclarée par le modèle générateur. Si elle n'est pas définie, ces fonctionnalités conservent leur comportement actuel, basé uniquement sur le modèle. Si elle n'est pas définie ici, la variable d'environnement TYPESAFEAI_API_KEY de l'installation est utilisée si elle est présente.",
+    "endpointBaseUrl": "URL de base",
+    "endpointApiKeyEnv": "Variable d'env. de la clé API",
+    "removeEndpoint": "Supprimer",
+    "endpointsHeading": "Points de terminaison IA personnalisés",
+    "endpointsIntro": "Faites pointer le fournisseur d'une attribution de rôle vers une passerelle auto-hébergée ou tierce (par ex. OpenRouter, LiteLLM, un proxy interne) qui ne figure pas parmi les fournisseurs nommés ci-dessus. Le style détermine le protocole que parle l'URL de base. Saisissez l'ID de ce point de terminaison comme fournisseur pour toute attribution de rôle ci-dessus.",
+    "endpointId": "ID",
+    "endpointStyle": "Style",
+    "addEndpoint": "Ajouter un point de terminaison"
   }
 }

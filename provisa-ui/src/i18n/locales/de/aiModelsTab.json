@@ -35,6 +35,14 @@
     "saved": "Gespeichert.",
     "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen.",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "Optional. Ist der Schlüssel gesetzt, verwendet Provisa die API für kalibrierte Konfidenzentscheidungen von Jev, um Vorschläge für Glossar-Beziehungstypen und erkannte Fremdschlüssel-Beziehungen zu bewerten, statt sich allein auf die selbst angegebene Konfidenz des erzeugenden Modells zu verlassen. Ist er nicht gesetzt, verwenden diese Funktionen weiterhin ihr bisheriges, rein modellbasiertes Verhalten. Ist hier keiner gesetzt, wird die Umgebungsvariable TYPESAFEAI_API_KEY der Installation verwendet, sofern vorhanden."
+    "jevIntro": "Optional. Ist der Schlüssel gesetzt, verwendet Provisa die API für kalibrierte Konfidenzentscheidungen von Jev, um Vorschläge für Glossar-Beziehungstypen und erkannte Fremdschlüssel-Beziehungen zu bewerten, statt sich allein auf die selbst angegebene Konfidenz des erzeugenden Modells zu verlassen. Ist er nicht gesetzt, verwenden diese Funktionen weiterhin ihr bisheriges, rein modellbasiertes Verhalten. Ist hier keiner gesetzt, wird die Umgebungsvariable TYPESAFEAI_API_KEY der Installation verwendet, sofern vorhanden.",
+    "endpointBaseUrl": "Basis-URL",
+    "endpointApiKeyEnv": "API-Schlüssel-Umgebungsvariable",
+    "removeEndpoint": "Entfernen",
+    "endpointsHeading": "Benutzerdefinierte KI-Endpunkte",
+    "endpointsIntro": "Richten Sie den Anbieter einer Rollenzuweisung auf ein selbst gehostetes oder Drittanbieter-Gateway (z. B. OpenRouter, LiteLLM, einen internen Proxy), das keiner der oben genannten Anbieter ist. Der Stil bestimmt, welches Übertragungsprotokoll die Basis-URL spricht. Geben Sie die ID dieses Endpunkts oben als Anbieter für eine beliebige Rollenzuweisung ein.",
+    "endpointId": "ID",
+    "endpointStyle": "Stil",
+    "addEndpoint": "Endpunkt hinzufügen"
   }
 }

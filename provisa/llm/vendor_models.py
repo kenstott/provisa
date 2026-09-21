@@ -14,7 +14,7 @@ asking for one is an error rather than an empty list — an empty catalog would 
 has no models".
 """
 
-# Requirements: REQ-1395, REQ-1398, REQ-1409
+# Requirements: REQ-1395, REQ-1398, REQ-1409, REQ-1790
 
 from __future__ import annotations
 
@@ -96,5 +96,38 @@ async def fetch_vendor_models(vendor: str, api_key: str, *, timeout: float = 15.
     api = VENDOR_MODEL_APIS[vendor]
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.get(api.url, headers=_headers(api, api_key))
+    resp.raise_for_status()
+    return parse_model_ids(resp.json())
+
+
+def _endpoint_model_api(style: str, base_url: str) -> _VendorApi:
+    """The list-models endpoint for a custom :class:`AiEndpointConfig`.
+
+    Mirrors ``VENDOR_MODEL_APIS``: an OpenAI-style base URL already ends in a version segment
+    (``.../v1``), so the listing hangs directly off it (``.../v1/models``); Anthropic's does not
+    (``https://api.anthropic.com``), so ``/v1/models`` is appended. Auth follows the same split as
+    the named vendors — bearer for OpenAI-style, ``x-api-key`` for Anthropic-style.
+    """
+    base = base_url.rstrip("/")
+    if style == "anthropic":
+        return _VendorApi(f"{base}/v1/models", "x-api-key")
+    return _VendorApi(f"{base}/models", "bearer")
+
+
+async def fetch_endpoint_models(
+    style: str, base_url: str, api_key: str | None, *, timeout: float = 15.0
+) -> list[str]:
+    """Every model name a custom AI endpoint (REQ-1790) serves, sorted.
+
+    ``api_key`` is ``None`` for a keyless local gateway — the request then carries no auth header
+    rather than an empty one. Raises ``httpx.HTTPStatusError``/``httpx.HTTPError`` on failure, the
+    same as :func:`fetch_vendor_models`.
+    """
+    import httpx
+
+    api = _endpoint_model_api(style, base_url)
+    headers = _headers(api, api_key) if api_key else {}
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(api.url, headers=headers)
     resp.raise_for_status()
     return parse_model_ids(resp.json())

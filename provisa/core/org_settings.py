@@ -44,7 +44,16 @@ if TYPE_CHECKING:
 # results, so both are org-owned. The object store they land in — bucket, endpoint, credentials —
 # is the deployment's and stays in the platform env, never here.
 ORG_OVERRIDABLE_KEYS: frozenset[str] = frozenset(
-    {"ai_models", "vector_models", "nl", "metadata_export", "naming", "redirect", "cache"}
+    {
+        "ai_models",
+        "vector_models",
+        "ai_endpoints",  # REQ-1790
+        "nl",
+        "metadata_export",
+        "naming",
+        "redirect",
+        "cache",
+    }
 )
 
 # The only `naming` sub-keys an org owns. Every other sub-key configures the process-global naming

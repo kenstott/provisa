@@ -35,6 +35,14 @@
     "saved": "已保存。",
     "savedRestartRequired": "已保存。重启服务以生效。",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "可选。设置后，Provisa 将使用 Jev 的校准置信度决策 API 为术语表关系类型建议和发现的外键关系评分，而不是仅依赖生成模型自行报告的置信度。若未设置，这些功能将保留现有的仅基于模型的行为。若此处未设置，则在存在时使用部署的 TYPESAFEAI_API_KEY 环境变量。"
+    "jevIntro": "可选。设置后，Provisa 将使用 Jev 的校准置信度决策 API 为术语表关系类型建议和发现的外键关系评分，而不是仅依赖生成模型自行报告的置信度。若未设置，这些功能将保留现有的仅基于模型的行为。若此处未设置，则在存在时使用部署的 TYPESAFEAI_API_KEY 环境变量。",
+    "endpointBaseUrl": "基础 URL",
+    "endpointApiKeyEnv": "API 密钥环境变量",
+    "removeEndpoint": "移除",
+    "endpointsHeading": "自定义 AI 端点",
+    "endpointsIntro": "将角色分配的供应商指向自托管或第三方网关（例如 OpenRouter、LiteLLM、内部代理），而不是上面列出的已命名供应商之一。样式决定基础 URL 使用的传输协议。在上方任意角色分配中输入此端点的 ID 作为供应商。",
+    "endpointId": "ID",
+    "endpointStyle": "样式",
+    "addEndpoint": "添加端点"
   }
 }

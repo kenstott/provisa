@@ -124,6 +124,7 @@ def test_overridable_keys_exclude_every_deployment_wide_concern():
     assert ORG_OVERRIDABLE_KEYS == {
         "ai_models",
         "vector_models",
+        "ai_endpoints",
         "nl",
         "metadata_export",
         "naming",

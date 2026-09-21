@@ -1,4 +1,12 @@
 {
+  "aiModelsTab.json::aiModelsTab.addEndpoint": "Add endpoint",
+  "aiModelsTab.json::aiModelsTab.endpointApiKeyEnv": "API key env var",
+  "aiModelsTab.json::aiModelsTab.endpointBaseUrl": "Base URL",
+  "aiModelsTab.json::aiModelsTab.endpointId": "ID",
+  "aiModelsTab.json::aiModelsTab.endpointStyle": "Style",
+  "aiModelsTab.json::aiModelsTab.endpointsHeading": "Custom AI Endpoints",
+  "aiModelsTab.json::aiModelsTab.endpointsIntro": "Point a role assignment's vendor at a self-hosted or third-party gateway (e.g. OpenRouter, LiteLLM, an internal proxy) that isn't one of the named vendors above. Style selects which wire protocol the base URL speaks. Enter this endpoint's id as the vendor for any role assignment above.",
+  "aiModelsTab.json::aiModelsTab.removeEndpoint": "Remove",
   "ja.json::app.apiUnreachable": "Could not reach the Provisa API.",
   "ja.json::app.notAuthorized": "You do not have permission to view this page.",
   "ja.json::common.cancel": "Cancel",
@@ -179,6 +187,8 @@
   "ja/aiModelsTab.json::aiModelsTab.apiKeyWillClear": "The key will be cleared when you save.",
   "ja/aiModelsTab.json::aiModelsTab.apiKeysHeading": "AI Vendor API Keys",
   "ja/aiModelsTab.json::aiModelsTab.apiKeysIntro": "Your org's own API key for each vendor, used for AI-assisted operations assigned to that vendor. If unset for a vendor, the deployment's default key is used. Keys are never shown once saved. You may paste a vault reference instead of the key itself — ${secret:NAME} is resolved against your org's secrets each time it is used.",
+  "ja/aiModelsTab.json::aiModelsTab.jevHeading": "Jev (TypeSafe AI)",
+  "ja/aiModelsTab.json::aiModelsTab.jevIntro": "Optional. When set, Provisa uses Jev's calibrated-confidence decision API to score glossary relationship-type proposals and discovered foreign-key relationships, instead of relying only on the generating model's self-reported confidence. If unset, those features fall back to their existing model-only behavior. If unset here, the deployment's TYPESAFEAI_API_KEY env var is used when present.",
   "ja/aiModelsTab.json::aiModelsTab.loading": "Loading…",
   "ja/aiModelsTab.json::aiModelsTab.modelLabel": "Model",
   "ja/aiModelsTab.json::aiModelsTab.modelsHeading": "AI Model Assignments",
@@ -3496,7 +3506,5 @@
   "orgEngineTab.json::orgEngineTab.hostedStateStopped": "This engine is idle. It starts on the next query.",
   "serverErrors.json::serverErrors.schema.source_limit_reached": "This organization holds {{held}} of the {{limit}} data sources its {{plan}} plan admits. Change the plan on the Billing page, or remove a source.",
   "tablesPage.json::tablesPage.modelingRole.impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table",
-  "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
-  "ja/aiModelsTab.json::aiModelsTab.jevHeading": "Jev (TypeSafe AI)",
-  "ja/aiModelsTab.json::aiModelsTab.jevIntro": "Optional. When set, Provisa uses Jev's calibrated-confidence decision API to score glossary relationship-type proposals and discovered foreign-key relationships, instead of relying only on the generating model's self-reported confidence. If unset, those features fall back to their existing model-only behavior. If unset here, the deployment's TYPESAFEAI_API_KEY env var is used when present."
+  "tablesPage.json::tablesPage.modelingRole.impliedFactTitle": "Implied fact — Enable Aggregates is on for this table"
 }

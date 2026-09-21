@@ -35,6 +35,14 @@
     "saved": "Opgeslagen.",
     "savedRestartRequired": "Opgeslagen. Start de service opnieuw om toe te passen.",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "Optioneel. Indien ingesteld, gebruikt Provisa de API voor gekalibreerde betrouwbaarheidsbeslissingen van Jev om voorstellen voor glossariumrelatietypen en gevonden refererende-sleutelrelaties te beoordelen, in plaats van alleen te vertrouwen op de door het genererende model zelf opgegeven betrouwbaarheid. Is er niets ingesteld, dan blijven deze functies hun bestaande, uitsluitend modelgebaseerde gedrag vertonen. Is hier niets ingesteld, dan wordt de omgevingsvariabele TYPESAFEAI_API_KEY van de installatie gebruikt indien aanwezig."
+    "jevIntro": "Optioneel. Indien ingesteld, gebruikt Provisa de API voor gekalibreerde betrouwbaarheidsbeslissingen van Jev om voorstellen voor glossariumrelatietypen en gevonden refererende-sleutelrelaties te beoordelen, in plaats van alleen te vertrouwen op de door het genererende model zelf opgegeven betrouwbaarheid. Is er niets ingesteld, dan blijven deze functies hun bestaande, uitsluitend modelgebaseerde gedrag vertonen. Is hier niets ingesteld, dan wordt de omgevingsvariabele TYPESAFEAI_API_KEY van de installatie gebruikt indien aanwezig.",
+    "endpointBaseUrl": "Basis-URL",
+    "endpointApiKeyEnv": "Omgevingsvariabele API-sleutel",
+    "removeEndpoint": "Verwijderen",
+    "endpointsHeading": "Aangepaste AI-eindpunten",
+    "endpointsIntro": "Wijs de leverancier van een roltoewijzing naar een selfhosted of externe gateway (bijv. OpenRouter, LiteLLM, een interne proxy) die niet een van de hierboven genoemde leveranciers is. Stijl bepaalt welk protocol de basis-URL spreekt. Voer de ID van dit eindpunt in als leverancier voor een roltoewijzing hierboven.",
+    "endpointId": "ID",
+    "endpointStyle": "Stijl",
+    "addEndpoint": "Eindpunt toevoegen"
   }
 }

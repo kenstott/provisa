@@ -36,14 +36,15 @@ import {
   JEV_KEY,
   LLM_VENDORS,
   setAiModels,
+  type AiEndpoint,
   type AiModelAssignments,
   type AiModelsState,
   type VectorModel,
 } from "../../api/aiModels";
 import { usePanelState } from "../../hooks/usePanelState";
 
-// REQ-464, REQ-419, REQ-500, REQ-370: configure per-operation AI model assignments, the
-// embedding-model registry, and the NL rate limit. All bind at startup — changes apply on restart.
+// REQ-464, REQ-419, REQ-500, REQ-370, REQ-1790: configure per-operation AI model assignments, the
+// embedding-model registry, custom AI endpoints (openai/anthropic style), and the NL rate limit.
 const ROLE_KEYS: (keyof AiModelAssignments)[] = [
   "table_description",
   "column_description",
@@ -91,6 +92,19 @@ const EMPTY_VECTOR_MODEL: VectorModel = {
   dimensions: 1536,
   api_key_env: null,
   base_url: null,
+  enabled: true,
+};
+
+const STYLE_OPTIONS = [
+  { value: "openai", label: "openai" },
+  { value: "anthropic", label: "anthropic" },
+];
+
+const EMPTY_AI_ENDPOINT: AiEndpoint = {
+  id: "",
+  style: "openai",
+  base_url: "",
+  api_key_env: null,
   enabled: true,
 };
 
@@ -152,6 +166,12 @@ export function AiModelsTab() {
     ? [...new Set(ROLE_KEYS.map((k) => roleVendor(s.ai_models[k])))].sort().join(",")
     : "";
 
+  // REQ-1790: a configured ai_endpoints id is a valid `vendor` for a role assignment too — offer
+  // it in the same picker alongside the named vendors and local keyless ones.
+  const vendorOptions = s
+    ? [...OPERATION_VENDOR_OPTIONS, ...s.ai_endpoints.map((ep) => ep.id).filter(Boolean)]
+    : OPERATION_VENDOR_OPTIONS;
+
   useEffect(() => {
     for (const vendor of activeVendors.split(",").filter(Boolean)) {
       // The ref, not the state map, guards the fetch: state lands a render later, so two roles
@@ -185,6 +205,7 @@ export function AiModelsTab() {
       const res = await setAiModels({
         ai_models,
         vector_models: s.vector_models,
+        ai_endpoints: s.ai_endpoints,
         nl: s.nl,
         ...(Object.keys(api_keys).length ? { api_keys } : {}),
       });
@@ -248,6 +269,28 @@ export function AiModelsTab() {
   const removeVector = (i: number) =>
     setS((prev) =>
       prev ? { ...prev, vector_models: prev.vector_models.filter((_, idx) => idx !== i) } : prev,
+    );
+
+  const setEndpoint = (i: number, patch: Partial<AiEndpoint>) =>
+    setS((prev) =>
+      prev
+        ? {
+            ...prev,
+            ai_endpoints: prev.ai_endpoints.map((ep, idx) =>
+              idx === i ? { ...ep, ...patch } : ep,
+            ),
+          }
+        : prev,
+    );
+
+  const addEndpoint = () =>
+    setS((prev) =>
+      prev ? { ...prev, ai_endpoints: [...prev.ai_endpoints, { ...EMPTY_AI_ENDPOINT }] } : prev,
+    );
+
+  const removeEndpoint = (i: number) =>
+    setS((prev) =>
+      prev ? { ...prev, ai_endpoints: prev.ai_endpoints.filter((_, idx) => idx !== i) } : prev,
     );
 
   if (error && !s) return <Alert color="red">{error}</Alert>;
@@ -338,7 +381,7 @@ export function AiModelsTab() {
                   <Autocomplete
                     label={t("aiModelsTab.vendorLabel")}
                     data-testid={`ai-model-${k}-vendor`}
-                    data={OPERATION_VENDOR_OPTIONS}
+                    data={vendorOptions}
                     value={vendor}
                     onChange={(val) => setRoleVendor(k, val)}
                     style={{ width: 200 }}
@@ -459,6 +502,98 @@ export function AiModelsTab() {
             data-testid="ai-models-add-vector"
           >
             {t("aiModelsTab.addVectorModel")}
+          </Button>
+        </Group>
+      </Panel>
+
+      <Panel testId="ai-models-endpoints-panel" title={t("aiModelsTab.endpointsHeading")}>
+        <Text c="dimmed" size="sm">
+          {t("aiModelsTab.endpointsIntro")}
+        </Text>
+        <Table data-testid="ai-models-endpoints-table">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("aiModelsTab.endpointId")}</Table.Th>
+              <Table.Th>{t("aiModelsTab.endpointStyle")}</Table.Th>
+              <Table.Th>{t("aiModelsTab.endpointBaseUrl")}</Table.Th>
+              <Table.Th>{t("aiModelsTab.endpointApiKeyEnv")}</Table.Th>
+              <Table.Th>{t("aiModelsTab.vectorEnabled")}</Table.Th>
+              <Table.Th />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {s.ai_endpoints.map((ep, i) => (
+              <Table.Tr key={i}>
+                <Table.Td>
+                  <TextInput
+                    aria-label={t("aiModelsTab.endpointId")}
+                    data-testid={`ai-models-endpoint-${i}-id`}
+                    placeholder="openrouter"
+                    value={ep.id}
+                    onChange={(e) => setEndpoint(i, { id: e.currentTarget.value })}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <Select
+                    aria-label={t("aiModelsTab.endpointStyle")}
+                    data-testid={`ai-models-endpoint-${i}-style`}
+                    data={STYLE_OPTIONS}
+                    value={ep.style}
+                    onChange={(val) =>
+                      setEndpoint(i, { style: (val as "openai" | "anthropic") ?? "openai" })
+                    }
+                    allowDeselect={false}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <TextInput
+                    aria-label={t("aiModelsTab.endpointBaseUrl")}
+                    data-testid={`ai-models-endpoint-${i}-base-url`}
+                    placeholder="https://openrouter.ai/api/v1"
+                    value={ep.base_url}
+                    onChange={(e) => setEndpoint(i, { base_url: e.currentTarget.value })}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <TextInput
+                    aria-label={t("aiModelsTab.endpointApiKeyEnv")}
+                    data-testid={`ai-models-endpoint-${i}-key-env`}
+                    placeholder="OPENROUTER_API_KEY"
+                    value={ep.api_key_env ?? ""}
+                    onChange={(e) =>
+                      setEndpoint(i, { api_key_env: e.currentTarget.value || null })
+                    }
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <Checkbox
+                    aria-label={t("aiModelsTab.vectorEnabled")}
+                    checked={ep.enabled}
+                    onChange={(e) => setEndpoint(i, { enabled: e.currentTarget.checked })}
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <ActionIcon
+                    color="red"
+                    variant="subtle"
+                    aria-label={t("aiModelsTab.removeEndpoint")}
+                    onClick={() => removeEndpoint(i)}
+                  >
+                    <Trash2 size={16} />
+                  </ActionIcon>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+        <Group>
+          <Button
+            variant="light"
+            leftSection={<Plus size={14} />}
+            onClick={addEndpoint}
+            data-testid="ai-models-add-endpoint"
+          >
+            {t("aiModelsTab.addEndpoint")}
           </Button>
         </Group>
       </Panel>

@@ -168,6 +168,47 @@ class TestAiModels:
         r = client.put("/admin/ai-models", json={"vector_models": [{"id": "x"}]})
         assert r.status_code == 400
 
+    # --- Custom AI endpoints (REQ-1790) ---
+
+    def test_get_returns_no_endpoints_by_default(self, client, org_overrides):
+        assert client.get("/admin/ai-models").json()["ai_endpoints"] == []
+
+    def test_put_persists_ai_endpoint(self, client, org_overrides):
+        r = client.put(
+            "/admin/ai-models",
+            json={
+                "ai_endpoints": [
+                    {
+                        "id": "openrouter",
+                        "style": "openai",
+                        "base_url": "https://openrouter.ai/api/v1",
+                        "api_key_env": "OPENROUTER_API_KEY",
+                    }
+                ]
+            },
+        )
+        assert r.status_code == 200
+        assert org_overrides["ai_endpoints"][0]["id"] == "openrouter"
+        assert client.get("/admin/ai-models").json()["ai_endpoints"][0]["style"] == "openai"
+
+    def test_put_ai_endpoint_missing_fields_rejected(self, client, org_overrides):
+        r = client.put("/admin/ai-models", json={"ai_endpoints": [{"id": "x"}]})
+        assert r.status_code == 400
+
+    def test_put_ai_endpoint_bad_style_rejected(self, client, org_overrides):
+        r = client.put(
+            "/admin/ai-models",
+            json={
+                "ai_endpoints": [{"id": "x", "style": "bedrock", "base_url": "https://example.com"}]
+            },
+        )
+        assert r.status_code == 400
+
+    def test_put_ai_endpoint_duplicate_id_rejected(self, client, org_overrides):
+        entry = {"id": "x", "style": "openai", "base_url": "https://example.com"}
+        r = client.put("/admin/ai-models", json={"ai_endpoints": [entry, dict(entry)]})
+        assert r.status_code == 400
+
 
 # --- Cache-storage: warm tier + MV default TTL (REQ-240, REQ-543) ---------------
 
@@ -548,6 +589,87 @@ class TestVendorModelListing:
         r = client.get("/admin/ai-models/vendors/openai/models")
         assert r.status_code == 502
         assert "rejected the model listing: HTTP 401" in r.json()["detail"]
+
+    # --- Custom AI endpoints as a vendor (REQ-1790) ---
+
+    def test_lists_the_models_a_custom_endpoint_serves(self, client, org_overrides, monkeypatch):
+        import provisa.llm.vendor_models as vendor_models_mod
+
+        org_overrides["ai_endpoints"] = [
+            {
+                "id": "my-gateway",
+                "style": "openai",
+                "base_url": "https://gw.internal/v1",
+                "api_key_env": "MY_GATEWAY_KEY",
+                "enabled": True,
+            }
+        ]
+        monkeypatch.setenv("MY_GATEWAY_KEY", "gw-secret")
+
+        seen: dict = {}
+
+        async def _fetch(style, base_url, api_key, **_kw):
+            seen["style"], seen["base_url"], seen["api_key"] = style, base_url, api_key
+            return ["gpt-4o", "gpt-4o-mini"]
+
+        monkeypatch.setattr(vendor_models_mod, "fetch_endpoint_models", _fetch)
+
+        r = client.get("/admin/ai-models/vendors/my-gateway/models")
+        assert r.status_code == 200
+        assert r.json() == {"vendor": "my-gateway", "models": ["gpt-4o", "gpt-4o-mini"]}
+        assert seen == {
+            "style": "openai",
+            "base_url": "https://gw.internal/v1",
+            "api_key": "gw-secret",
+        }
+
+    def test_custom_endpoint_with_no_key_env_lists_unauthenticated(
+        self, client, org_overrides, monkeypatch
+    ):
+        import provisa.llm.vendor_models as vendor_models_mod
+
+        org_overrides["ai_endpoints"] = [
+            {"id": "local-gw", "style": "openai", "base_url": "http://localhost:4000/v1"}
+        ]
+        seen: dict = {}
+
+        async def _fetch(style, base_url, api_key, **_kw):
+            seen["api_key"] = api_key
+            return ["local-model"]
+
+        monkeypatch.setattr(vendor_models_mod, "fetch_endpoint_models", _fetch)
+        r = client.get("/admin/ai-models/vendors/local-gw/models")
+        assert r.status_code == 200
+        assert seen["api_key"] is None
+
+    def test_custom_endpoint_missing_key_env_value_is_rejected(
+        self, client, org_overrides, monkeypatch
+    ):
+        org_overrides["ai_endpoints"] = [
+            {
+                "id": "my-gateway",
+                "style": "openai",
+                "base_url": "https://gw.internal/v1",
+                "api_key_env": "UNSET_GATEWAY_KEY_FOR_TEST",
+            }
+        ]
+        monkeypatch.delenv("UNSET_GATEWAY_KEY_FOR_TEST", raising=False)
+        r = client.get("/admin/ai-models/vendors/my-gateway/models")
+        assert r.status_code == 400
+        assert "UNSET_GATEWAY_KEY_FOR_TEST" in r.json()["detail"]
+
+    def test_disabled_custom_endpoint_is_not_listable(self, client, org_overrides):
+        org_overrides["ai_endpoints"] = [
+            {"id": "off-gw", "style": "openai", "base_url": "https://gw", "enabled": False}
+        ]
+        r = client.get("/admin/ai-models/vendors/off-gw/models")
+        assert r.status_code == 400
+        assert "publishes no list-models API" in r.json()["detail"]
+
+    def test_unknown_vendor_and_unknown_endpoint_id_is_rejected(self, client, org_overrides):
+        r = client.get("/admin/ai-models/vendors/nonexistent/models")
+        assert r.status_code == 400
+        assert "publishes no list-models API" in r.json()["detail"]
 
     @pytest.mark.parametrize(
         "payload,expected",

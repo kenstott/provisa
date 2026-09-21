@@ -56,6 +56,13 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         # no key configured here (e.g. a local ollama/lmstudio endpoint) fall through to
         # aisuite's own env/config resolution.
         self._api_keys = api_keys
+        # REQ-1790: custom endpoints (id -> {style, base_url, api_key_env}), keyed by the `id` a
+        # role assignment names as its "vendor". A role that names one of these is dispatched to
+        # aisuite's openai/anthropic provider (per `style`) with `base_url` overridden, rather
+        # than to a vendor aisuite knows by that name.
+        self._endpoints = {
+            ep["id"]: ep for ep in (cfg.get("ai_endpoints", []) or []) if ep.get("enabled", True)
+        }
         ai_models = cfg.get("ai_models", {})
         op_cfg = ai_models.get(operation, {})
 
@@ -101,14 +108,37 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
     def _complete_sync(
         self, vendor: str, model: str, prompt: str, system: str, max_tokens: int
     ) -> str:
+        import os
+
         import aisuite as ai
 
-        key = (self._api_keys or {}).get(vendor)
-        if key:
-            client = ai.Client({vendor: {"api_key": key}})
+        endpoint = self._endpoints.get(vendor)
+        if endpoint is not None:
+            # REQ-1790: dispatch to the wire protocol named by `style`, pointed at this
+            # endpoint's base_url instead of the vendor's own. No fallback key invention: a
+            # configured api_key_env that isn't set in the environment is a config error, not a
+            # reason to try the call unauthenticated.
+            key = None
+            if endpoint.get("api_key_env"):
+                key = os.environ.get(endpoint["api_key_env"])
+                if not key:
+                    raise ValueError(
+                        f"ai_endpoints '{vendor}': api_key_env '{endpoint['api_key_env']}' "
+                        "is not set"
+                    )
+            provider_vendor = endpoint["style"]
+            provider_cfg: dict = {"base_url": endpoint["base_url"]}
+            if key:
+                provider_cfg["api_key"] = key
+            client = ai.Client({provider_vendor: provider_cfg})
+            model_id = self._make_aisuite_model_id(provider_vendor, model)
         else:
-            client = ai.Client()
-        model_id = self._make_aisuite_model_id(vendor, model)
+            key = (self._api_keys or {}).get(vendor)
+            if key:
+                client = ai.Client({vendor: {"api_key": key}})
+            else:
+                client = ai.Client()
+            model_id = self._make_aisuite_model_id(vendor, model)
         messages = self._build_messages(prompt, system)
         response = client.chat.completions.create(
             model=model_id,

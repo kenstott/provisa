@@ -18953,3 +18953,17 @@ MCP tool jev_evaluate exposes TypeSafe AI's Jev "System One" decision-evaluation
 **Code:** `provisa/api/mcp/server.py`, `provisa/api/mcp/tools.py`, `provisa/jev/`
 
 **Tests:** `tests/unit/test_jev_client.py`, `tests/unit/test_mcp_server.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1790 · Admin Configuration {#REQ-1790}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** structural
+
+Provisa supports configuring custom AI/LLM endpoints reachable over either the OpenAI-compatible or Anthropic-compatible wire protocol. A custom endpoint is configured by a URI (base_url), a style selector ("openai" or "anthropic"), and an optional API key environment variable reference. This lets a deployment point AI-model role assignments at a self-hosted or third-party gateway (e.g. LiteLLM, OpenRouter, an internal proxy) that isn't one of the natively named vendors. Custom endpoints are configured under a new `ai_endpoints` list in ProvisaConfig, are org-overridable (ORG_OVERRIDABLE_KEYS), and editable through the existing AI Models admin surface. The admin surface's live model-listing picker ([REQ-1409](#REQ-1409)) also lists a custom endpoint's models: GET /admin/ai-models/vendors/{vendor}/models resolves `vendor` against configured ai_endpoints when it names no built-in vendor, and reads the endpoint's own list-models API (OpenAI-style: {base_url}/models; Anthropic-style: {base_url}/v1/models).
+
+**Use case:** Deployments can integrate LLM gateways and proxies (LiteLLM, OpenRouter, internal reverse proxies) without waiting for Provisa to hardcode each vendor, reducing integration friction and enabling multi-region failover patterns.
+
+**Code:** `provisa/core/models.py`, `provisa/core/org_settings.py`, `provisa/api/admin/ai_models_router.py`, `provisa/llm/client.py`, `provisa/llm/vendor_models.py`, `provisa-ui/src/api/aiModels.ts`, `provisa-ui/src/components/admin/AiModelsTab.tsx`
+
+**Tests:** `tests/unit/test_admin_config_tabs.py`, `tests/unit/test_llm_client_endpoints.py`, `tests/unit/test_org_scoped_admin_rights.py`

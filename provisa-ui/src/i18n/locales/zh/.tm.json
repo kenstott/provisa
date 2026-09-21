@@ -1,4 +1,12 @@
 {
+  "aiModelsTab.json::aiModelsTab.addEndpoint": "Add endpoint",
+  "aiModelsTab.json::aiModelsTab.endpointApiKeyEnv": "API key env var",
+  "aiModelsTab.json::aiModelsTab.endpointBaseUrl": "Base URL",
+  "aiModelsTab.json::aiModelsTab.endpointId": "ID",
+  "aiModelsTab.json::aiModelsTab.endpointStyle": "Style",
+  "aiModelsTab.json::aiModelsTab.endpointsHeading": "Custom AI Endpoints",
+  "aiModelsTab.json::aiModelsTab.endpointsIntro": "Point a role assignment's vendor at a self-hosted or third-party gateway (e.g. OpenRouter, LiteLLM, an internal proxy) that isn't one of the named vendors above. Style selects which wire protocol the base URL speaks. Enter this endpoint's id as the vendor for any role assignment above.",
+  "aiModelsTab.json::aiModelsTab.removeEndpoint": "Remove",
   "onboardOrg.json::onboardOrg.checkoutNotSettled": "Your payment has not reached us yet. Reload this page in a minute to finish setting up your organization.",
   "onboardOrg.json::onboardOrg.planDesc": "Every plan bills by the engine hour against a monthly minimum — the minimum is drawn against, not added to.",
   "onboardOrg.json::onboardOrg.planEgress": "{{gb}} GB of query results a month included, then {{amount}} per GB",
@@ -208,6 +216,8 @@
   "zh/aiModelsTab.json::aiModelsTab.apiKeyWillClear": "The key will be cleared when you save.",
   "zh/aiModelsTab.json::aiModelsTab.apiKeysHeading": "AI Vendor API Keys",
   "zh/aiModelsTab.json::aiModelsTab.apiKeysIntro": "Your org's own API key for each vendor, used for AI-assisted operations assigned to that vendor. If unset for a vendor, the deployment's default key is used. Keys are never shown once saved. You may paste a vault reference instead of the key itself — ${secret:NAME} is resolved against your org's secrets each time it is used.",
+  "zh/aiModelsTab.json::aiModelsTab.jevHeading": "Jev (TypeSafe AI)",
+  "zh/aiModelsTab.json::aiModelsTab.jevIntro": "Optional. When set, Provisa uses Jev's calibrated-confidence decision API to score glossary relationship-type proposals and discovered foreign-key relationships, instead of relying only on the generating model's self-reported confidence. If unset, those features fall back to their existing model-only behavior. If unset here, the deployment's TYPESAFEAI_API_KEY env var is used when present.",
   "zh/aiModelsTab.json::aiModelsTab.loading": "Loading…",
   "zh/aiModelsTab.json::aiModelsTab.modelLabel": "Model",
   "zh/aiModelsTab.json::aiModelsTab.modelsHeading": "AI Model Assignments",
@@ -3496,7 +3506,5 @@
   "zh/viewDefinitionForm.json::viewDefinitionForm.save": "Save view",
   "zh/viewDefinitionForm.json::viewDefinitionForm.saveFailed": "Save failed",
   "zh/viewDefinitionForm.json::viewDefinitionForm.sqlCreateHint": "Free-hand views are authored in the SQL editor: write the SELECT, run it, then save it as a view.",
-  "zh/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor.",
-  "zh/aiModelsTab.json::aiModelsTab.jevHeading": "Jev (TypeSafe AI)",
-  "zh/aiModelsTab.json::aiModelsTab.jevIntro": "Optional. When set, Provisa uses Jev's calibrated-confidence decision API to score glossary relationship-type proposals and discovered foreign-key relationships, instead of relying only on the generating model's self-reported confidence. If unset, those features fall back to their existing model-only behavior. If unset here, the deployment's TYPESAFEAI_API_KEY env var is used when present."
+  "zh/viewDefinitionForm.json::viewDefinitionForm.sqlEditHint": "This view's SQL is edited in the SQL editor."
 }

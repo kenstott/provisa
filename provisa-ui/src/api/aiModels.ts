@@ -33,6 +33,17 @@ export interface VectorModel {
   enabled: boolean;
 }
 
+// REQ-1790: a custom LLM endpoint reached over the OpenAI or Anthropic wire protocol — lets a
+// role assignment's `vendor` name a self-hosted or third-party gateway (LiteLLM, OpenRouter, an
+// internal proxy) that isn't one of LLM_VENDORS.
+export interface AiEndpoint {
+  id: string;
+  style: "openai" | "anthropic";
+  base_url: string;
+  api_key_env: string | null;
+  enabled: boolean;
+}
+
 // REQ-1398: aisuite vendors that take a plain api_key — mirrors
 // provisa.core.org_secrets.LLM_VENDORS. Any operation's ai_models.<op>.vendor may name one of
 // these (or a keyless local vendor like ollama, which needs no entry here).
@@ -60,6 +71,7 @@ export const JEV_KEY = "jev" as const;
 export interface AiModelsState {
   ai_models: AiModelAssignments;
   vector_models: VectorModel[];
+  ai_endpoints: AiEndpoint[];
   nl: { rate_limit: number | null };
   // REQ-1395, REQ-1398: which vendors the org has set its own key for. Keys themselves are
   // never returned.
@@ -72,6 +84,7 @@ export interface AiModelsUpdate {
   // {vendor, model, fallback?} object — the same two forms AiModelsState.ai_models accepts.
   ai_models?: Partial<Record<keyof AiModelAssignments, string | Record<string, unknown>>>;
   vector_models?: VectorModel[];
+  ai_endpoints?: AiEndpoint[];
   nl?: { rate_limit: number | null };
   // REQ-1395, REQ-1398: per-vendor keys to set/replace/clear. A non-empty string sets/replaces;
   // an empty string clears; a vendor omitted from the map is left unchanged.

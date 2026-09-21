@@ -35,6 +35,14 @@
     "saved": "Salvo.",
     "savedRestartRequired": "Salvo. Reinicie o serviço para aplicar.",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "Opcional. Quando definida, o Provisa usa a API de decisões com confiança calibrada da Jev para pontuar as propostas de tipo de relacionamento do glossário e os relacionamentos de chave estrangeira descobertos, em vez de depender apenas da confiança autodeclarada pelo modelo gerador. Se não estiver definida, esses recursos mantêm o comportamento atual baseado somente no modelo. Se não for definida aqui, a variável de ambiente TYPESAFEAI_API_KEY da instalação é usada quando presente."
+    "jevIntro": "Opcional. Quando definida, o Provisa usa a API de decisões com confiança calibrada da Jev para pontuar as propostas de tipo de relacionamento do glossário e os relacionamentos de chave estrangeira descobertos, em vez de depender apenas da confiança autodeclarada pelo modelo gerador. Se não estiver definida, esses recursos mantêm o comportamento atual baseado somente no modelo. Se não for definida aqui, a variável de ambiente TYPESAFEAI_API_KEY da instalação é usada quando presente.",
+    "endpointBaseUrl": "URL base",
+    "endpointApiKeyEnv": "Variável de ambiente da chave de API",
+    "removeEndpoint": "Remover",
+    "endpointsHeading": "Endpoints de IA personalizados",
+    "endpointsIntro": "Aponte o fornecedor de uma atribuição de função para um gateway auto-hospedado ou de terceiros (por ex., OpenRouter, LiteLLM, um proxy interno) que não seja um dos fornecedores nomeados acima. O estilo seleciona qual protocolo de transporte a URL base utiliza. Insira o ID deste endpoint como fornecedor em qualquer atribuição de função acima.",
+    "endpointId": "ID",
+    "endpointStyle": "Estilo",
+    "addEndpoint": "Adicionar endpoint"
   }
 }

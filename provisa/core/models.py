@@ -16,6 +16,7 @@
 
 import re
 from enum import Enum
+from typing import Literal
 
 from pydantic import (
     AliasChoices,
@@ -1582,6 +1583,22 @@ class VectorModelConfig(BaseModel):  # REQ-500
     enabled: bool = True
 
 
+class AiEndpointConfig(BaseModel):  # REQ-1790
+    """A custom LLM endpoint reachable over the OpenAI or Anthropic wire protocol.
+
+    Lets a deployment point AI-model role assignments at a self-hosted or third-party gateway
+    (LiteLLM, OpenRouter, an internal proxy) that isn't one of aisuite's named vendors. ``style``
+    selects which wire protocol ``base_url`` speaks; ``id`` is what the role-assignment vendor
+    picker offers alongside the built-in vendors.
+    """
+
+    id: str
+    style: Literal["openai", "anthropic"]
+    base_url: str
+    api_key_env: str | None = None  # env var holding the API key
+    enabled: bool = True
+
+
 class AIModelsConfig(BaseModel):  # REQ-464
     """AI model configuration for various operations.
 
@@ -1859,6 +1876,7 @@ class ProvisaConfig(BaseModel):
     metadata_export: MetadataExportConfig = Field(default_factory=MetadataExportConfig)  # REQ-1068
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)
+    ai_endpoints: list[AiEndpointConfig] = Field(default_factory=list)  # REQ-1790
     nl: NlConfig = Field(default_factory=NlConfig)
     govdata_sources: list[GovDataSource] = Field(default_factory=list)
     govdata_subscriptions: list[GovDataSubscription] = Field(default_factory=list)
