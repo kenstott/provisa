@@ -70,7 +70,10 @@ def test_tsql_type_mapping():
     assert _tsql_type("text") == "VARCHAR(8000)"
     assert _tsql_type("double") == "FLOAT"
     assert _tsql_type("boolean") == "BIT"
-    assert _tsql_type("timestamptz") == "DATETIME2"  # native spelling normalizes via to_ir
+    # REQ-1633: Fabric Warehouse rejects bare DATETIME2/TIME ("An integer precision value between
+    # 0 and 6 must be specified" — verified live, 2026-09-21); explicit precision is now required.
+    assert _tsql_type("timestamptz") == "DATETIME2(6)"  # native spelling normalizes via to_ir
+    assert _tsql_type("time") == "TIME(6)"
     with pytest.raises(ValueError, match="not in the IR vocabulary"):
         _tsql_type("geography")
 

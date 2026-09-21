@@ -51,8 +51,12 @@ _IR_TO_TSQL: dict[str, str] = {
     "double": "FLOAT",
     "numeric": "DECIMAL(38,9)",
     "date": "DATE",
-    "timestamp": "DATETIME2",
-    "time": "TIME",
+    # REQ-1633: Fabric Warehouse rejects bare DATETIME2/TIME with "An integer precision value
+    # between 0 and 6 must be specified" — unlike plain SQL Server (which defaults to 7
+    # fractional-second digits when no precision is given), Fabric requires it explicit and caps
+    # it at 6. Verified live (REQ-1730 engine-swap harness, 2026-09-21).
+    "timestamp": "DATETIME2(6)",
+    "time": "TIME(6)",
     "uuid": "VARCHAR(64)",
     "bytea": "VARBINARY(8000)",
     "json": "VARCHAR(8000)",
@@ -64,6 +68,29 @@ def _tsql_type(ir_type: str) -> str:
     if t is None:
         raise ValueError(f"no T-SQL type mapping for IR type {ir_type!r}")
     return t
+
+
+def _coerce(value: Any, ir_type: str) -> Any:
+    """A landed value, ODBC-bindable for its column's T-SQL type (REQ-1633/REQ-1730): a source's own
+    adapter hands back its native string forms (Elasticsearch's own ``date`` fields are ISO-8601 with
+    a trailing ``Z``, e.g. ``"2025-03-01T09:15:00Z"``), which pyodbc cannot implicitly cast to
+    DATETIME2/DATE/TIME — verified live, ``Invalid character value for cast specification``. Parsed
+    into a native ``datetime``/``date``/``time`` here so pyodbc binds a proper SQL_TIMESTAMP/
+    SQL_DATE/SQL_TIME parameter instead of a raw string, the same class of coercion Snowflake's own
+    ``_bind_value`` does for its driver."""
+    if value is None:
+        return None
+    canonical = to_ir(ir_type)
+    if canonical in ("timestamp", "date", "time") and isinstance(value, str):
+        import datetime
+
+        parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if canonical == "date":
+            return parsed.date()
+        if canonical == "time":
+            return parsed.timetz() if parsed.tzinfo else parsed.time()
+        return parsed
+    return value
 
 
 class MssqlWarehouseRuntime:  # Fabric / Synapse
@@ -122,6 +149,14 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
 
     def _ensure_schema(self, cur: Any, schema: str) -> None:
         cur.execute(f"IF SCHEMA_ID('{schema}') IS NULL EXEC('CREATE SCHEMA [{schema}]')")
+
+    def _existing_columns(self, cur: Any, schema: str, table: str) -> list[str]:
+        cur.execute(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
+            (schema, table),
+        )
+        return [str(r[0]) for r in cur.fetchall()]
 
     # -- source exposure -------------------------------------------------------
 
@@ -216,6 +251,92 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         append = select_landing_shape(change_signal, watermark_column) == APPEND
         await asyncio.to_thread(self._land, source, columns, rows, append)
 
+    async def attach_landed_source(
+        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+    ) -> str:
+        """Eager reconcile (boot/registration, REQ-1632/REQ-1633): converge the landed table to
+        ``columns`` (DDL only, no data), so the catalog is complete at startup and survives
+        restart. REQ-1633: MssqlWarehouseRuntime (Fabric/Synapse) had neither this nor
+        ``land_table`` before this — one of only two engines (with ClickHouse) implementing none
+        of the three landing terminals at all."""
+        import asyncio
+
+        del pk_columns  # T-SQL PRIMARY KEY is not a landing concern here — REQ-1651 tracks it
+        return await asyncio.to_thread(self._reconcile, source, columns)
+
+    def _reconcile(self, source: Any, columns: list[tuple[str, str]]) -> str:
+        _database, schema, table = self._phys_parts(source)
+        fq = f"[{schema}].[{table}]"
+        want = [name for name, _ in columns]
+        cur = self._conn.cursor()
+        try:
+            self._ensure_schema(cur, schema)
+            have = self._existing_columns(cur, schema, table)
+            if not have:
+                cols_ddl = ", ".join(f"[{n}] {_tsql_type(t)}" for n, t in columns)
+                cur.execute(f"CREATE TABLE {fq} ({cols_ddl})")
+                outcome = "created"
+            elif have == want:
+                outcome = "kept"
+            else:
+                cur.execute(f"DROP TABLE {fq}")
+                cols_ddl = ", ".join(f"[{n}] {_tsql_type(t)}" for n, t in columns)
+                cur.execute(f"CREATE TABLE {fq} ({cols_ddl})")
+                outcome = "recreated"
+            self._conn.commit()
+            return outcome
+        finally:
+            cur.close()
+
+    async def land_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        change_signal: str = "ttl",
+        watermark_column: str | None = None,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+        shape: str | None = None,
+    ) -> str:
+        """The ``NativeEngineBackend.land_source_table``/``hasattr(runtime, "land_table")`` seam
+        every other native engine's runtime uses (REQ-1730) — before this,
+        ``MssqlWarehouseRuntime`` had no method by this name (only ``materialize_source``, a
+        different signature taking a full ``source`` object), so the seam silently fell through to
+        the BASE ``EngineBackend`` default: landing through ``store_writer``'s async path against
+        ``self.engine.materialize_store()`` — the shared PLATFORM Postgres by default
+        (``_build_mssql_warehouse_engine``'s old ``_platform_db_materialize_default``, also fixed by
+        this change), not Fabric/Synapse itself, which has no bridge reading from a separate
+        Postgres landing table. Same class of bug as BigQuery's/Databricks'/ClickHouse's own.
+
+        Adapts to ``materialize_source``'s own signature: ``_phys_parts`` (used internally) needs
+        only ``schema_name``/``table_name`` on the source object — the catalog is the fixed
+        warehouse database (``self._database``), never per-source (module doc), so unlike
+        Databricks/ClickHouse this needs no catalog-folding through ``schema`` at all. CDC is not
+        a shape ``_land`` implements (REPLACE/APPEND only) — raising loud on CDC rather than
+        silently mishandling it."""
+        from types import SimpleNamespace
+
+        from provisa.core.change_signal import CDC, select_landing_shape
+
+        del match_floor, pk_columns
+        landing_shape = shape or select_landing_shape(change_signal, watermark_column)
+        if landing_shape == CDC:
+            raise NotImplementedError(
+                "Fabric/Synapse native landing has no CDC shape; use replace or append"
+            )
+        source = SimpleNamespace(schema_name=schema, table_name=table)
+        await self.materialize_source(
+            source,
+            columns,
+            rows,
+            change_signal=change_signal,
+            watermark_column=watermark_column,
+        )
+        return f"{self._database}.{schema}.{table}"
+
     def _land(self, source: Any, columns, rows: list[dict], append: bool) -> None:
         _database, schema, table = self._phys_parts(source)
         fq = f"[{schema}].[{table}]"
@@ -233,9 +354,10 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
                 collist = ", ".join(f"[{c}]" for c in colnames)
                 ph = "(" + ", ".join("?" * len(colnames)) + ")"
                 cur.fast_executemany = True
+                col_types = dict(columns)
                 cur.executemany(
                     f"INSERT INTO {fq} ({collist}) VALUES {ph}",
-                    [tuple(r.get(c) for c in colnames) for r in rows],
+                    [tuple(_coerce(r.get(c), col_types[c]) for c in colnames) for r in rows],
                 )
             self._conn.commit()
         finally:

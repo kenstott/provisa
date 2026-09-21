@@ -1907,6 +1907,22 @@ test.describe("scenario 1 extended: same source survives an engine change to a w
       await runRebootCase(page, (p) => registerElasticsearch(p), {}, ["clickhouse"]);
     });
   });
+
+  test.describe("elasticsearch -> fabric", () => {
+    test.skip(
+      !(process.env.FABRIC_SQL_SERVER && process.env.FABRIC_DATABASE),
+      "no live Fabric credentials: set FABRIC_SQL_SERVER/FABRIC_DATABASE in the root .env",
+    );
+    test.beforeAll(() => startDemoSources(["elasticsearch"]));
+    test.afterAll(() => removeDemoSources(["elasticsearch"]));
+
+    test("elasticsearch registered once under DuckDB resolves after rebooting into fabric, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(300000);
+      await runRebootCase(page, (p) => registerElasticsearch(p), {}, ["fabric"]);
+    });
+  });
 });
 
 // REQ-1730 extended, continued: mssql and pg as the PRIMARY (registration) engine — the reverse

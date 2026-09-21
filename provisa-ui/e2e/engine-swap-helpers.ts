@@ -609,7 +609,7 @@ export async function waitForTrinoStable(budgetMs = 330000): Promise<void> {
 // far (the ones with either live e2e credentials already in .env — snowflake/databricks/bigquery,
 // same creds source-to-query-cloud-warehouse.spec.ts's own tests gate on — or a fully local Docker
 // fixture — mssql, reusing demo/sources/sqlserver, no cloud dependency at all).
-export type RebootEngineKind = "duckdb" | "trino" | "pg" | "snowflake" | "databricks" | "bigquery" | "mssql" | "clickhouse";
+export type RebootEngineKind = "duckdb" | "trino" | "pg" | "snowflake" | "databricks" | "bigquery" | "mssql" | "clickhouse" | "fabric";
 
 // Per-engine live-credential/fixture availability, mirroring the exact env vars this file's own
 // source-type tests already gate on (SINGLESTORE_AVAILABLE's own pattern) — reused here unchanged
@@ -684,6 +684,11 @@ function rebootEngineExtraEnv(engineKind: RebootEngineKind): Record<string, stri
       return {
         PROVISA_ENGINE_URL: `clickhouse://default:provisa@localhost:${RDB_WIDGETS_PORTS.clickhouse}/default`,
       };
+    case "fabric":
+      // No DSN: MssqlWarehouseRuntime connects from FABRIC_SQL_SERVER/FABRIC_DATABASE directly
+      // (Azure AD via DefaultAzureCredential, no password), already ambient via ...process.env —
+      // same "no URL needed, just inherited env" shape as bigquery above.
+      return {};
     default:
       return {};
   }

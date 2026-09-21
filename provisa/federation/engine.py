@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from enum import Enum
 from dataclasses import dataclass
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
 from provisa.federation.connector_base import CatalogEntry, Connector
@@ -910,6 +910,34 @@ def build_bigquery_engine() -> FederationEngine:  # REQ — BigQuery federation 
     )
 
 
+def _mssql_warehouse_materialize_default(
+    name: str,
+) -> Callable[[], str | None]:  # REQ-1730/REQ-1633
+    """The DECLARED default materialization store for a SELF-ONLY warehouse engine (Fabric/Synapse):
+    the warehouse itself — same reasoning as ``_own_warehouse_materialize_default`` (Snowflake/
+    BigQuery/Databricks/ClickHouse), but built from ``FABRIC_SQL_SERVER``/``FABRIC_DATABASE`` (or
+    the ``SYNAPSE_*`` pair) directly rather than ``configured_engine_url()``/``$PROVISA_ENGINE_URL``:
+    ``MssqlWarehouseRuntime`` connects from those two separate env vars, never a single DSN (its own
+    ``_new_runtime``/``__init__``), so there is no URL for ``_own_warehouse_materialize_default`` to
+    read. The synthetic ``mssql://server/database`` DSN this returns is never actually connected
+    with — only ``store_scope.store_schema``'s own scheme check (``_schema_capable``, "not sqlite")
+    consults it, deciding the landing SCHEMA name; the real connection is
+    ``MssqlWarehouseRuntime``'s own, already-open one."""
+    server_env = "FABRIC_SQL_SERVER" if name == "fabric" else "SYNAPSE_SQL_SERVER"
+    database_env = "FABRIC_DATABASE" if name == "fabric" else "SYNAPSE_DATABASE"
+
+    def _default() -> str | None:
+        import os
+
+        server = os.environ.get(server_env)
+        database = os.environ.get(database_env)
+        if not server or not database:
+            return None
+        return f"mssql://{server}/{database}"
+
+    return _default
+
+
 def _build_mssql_warehouse_engine(name: str) -> FederationEngine:  # Fabric / Synapse
     """Microsoft Fabric Warehouse / Azure Synapse — a T-SQL MPP partial-federator warehouse. Object/
     lake sources on OneLake/ADLS ATTACH as zero-copy views over ``OPENROWSET`` (SCAN); every other
@@ -938,7 +966,10 @@ def _build_mssql_warehouse_engine(name: str) -> FederationEngine:  # Fabric / Sy
                 EngineCapability.ARROW_STREAM,
             }
         ),
-        default_materialize_store=_platform_db_materialize_default,
+        # REQ-1730/REQ-1633: Fabric/Synapse is its own warehouse — a MATERIALIZED source must land
+        # INTO it, not into the platform Postgres (the old default here), which it has no automatic
+        # bridge reading FROM. Same fix already applied for Snowflake/BigQuery/Databricks/ClickHouse.
+        default_materialize_store=_mssql_warehouse_materialize_default(name),
     )
 
 

@@ -30,6 +30,29 @@ class _MssqlWarehouseBackend(NativeEngineBackend):
     def dialect(self) -> str:
         return "tsql"
 
+    def landing_target(
+        self,
+        *,
+        store_schema: str,
+        source_id: str,
+        source_type: Any,
+        schema_name: str,
+        table_name: str,
+    ) -> tuple[str, str]:
+        """EVERY MATERIALIZED source's replica lands at its REGISTERED address — same reasoning and
+        same fix as ``BigQueryBackend``/``PgBackend``/``SqlAlchemyBackend`` (REQ-1730): there is no
+        DuckDB-style mangled-name+separate-view indirection to redirect a MATERIALIZE_ONLY source
+        through here. ``MssqlWarehouseRuntime.attach_landed_source``/``land_table`` (REQ-1633's own
+        gap — Fabric/Synapse had neither before this) address the landed table directly at
+        ``self._database``.``schema_name``.``table_name`` — the catalog is the FIXED warehouse
+        database (module doc: "T-SQL is database.schema.table, a fixed warehouse database +
+        per-source schema"), never per-source, so unlike Databricks/ClickHouse this needs no
+        catalog-folding through ``schema_name`` at all. The base ``EngineBackend`` default (a
+        mangled name under the ``store_schema`` this function receives) would send
+        ``land_table``'s row LOAD to a schema nothing ever DDL-reconciles."""
+        del store_schema, source_id, source_type  # never chooses a different table
+        return schema_name, table_name
+
     def _new_runtime(self) -> Any:
         from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
 
