@@ -415,7 +415,7 @@
       }
     },
     "database_filename" : "/Users/kennethstott/.provisa_askamerica/data/.duckdb/govdata.duckdb",
-    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model10717031981781819648.json",
     "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
     "dataLagYears" : 1,
     "views" : [ {
@@ -428,7 +428,7 @@
       "accessKeyId" : "********",
       "secretAccessKey" : "********",
       "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
-      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGs1TnpZMU55d2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09UQXdNREV5TlRkOS5xMld5TDkxd2RCWVZ0YTNHN1Zqd2pFX2hldlZSRXNrNzVfOVItSTVid2Fj",
       "region" : "auto"
     },
     "refreshInterval" : "PT1H",
@@ -438,7 +438,7 @@
       "accessKeyId" : "****e4dc",
       "secretAccessKey" : "********",
       "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
-      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGs1TnpZMU55d2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09UQXdNREV5TlRkOS5xMld5TDkxd2RCWVZ0YTNHN1Zqd2pFX2hldlZSRXNrNzVfOVItSTVid2Fj",
       "region" : "auto"
     },
     "executionEngine" : "duckdb",
@@ -4343,6 +4343,6 @@
     "dataSource" : "geo"
   },
   "parentSchema" : "",
-  "generatedAt" : "2026-09-19T10:18:02.762382Z",
+  "generatedAt" : "2026-09-21T13:35:06.748952Z",
   "schemaName" : "geo"
 }

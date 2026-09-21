@@ -6,7 +6,7 @@
       "accessKeyId" : "********",
       "secretAccessKey" : "********",
       "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
-      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGs1TnpZMU55d2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09UQXdNREV5TlRkOS5xMld5TDkxd2RCWVZ0YTNHN1Zqd2pFX2hldlZSRXNrNzVfOVItSTVid2Fj",
       "region" : "auto"
     },
     "actualSchemaName" : "edu",
@@ -15,7 +15,7 @@
       "accessKeyId" : "****e4dc",
       "secretAccessKey" : "********",
       "endpoint" : "https://21cd637936a05913431a608f3f6d73bb.r2.cloudflarestorage.com",
-      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGd4TXpBME1pd2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09EazRNVFkyTkRKOS4zSFZGWlhiYkpZREFtTHJNdnJ3Z25RNHkzbkxod3ZOSmlIbWpQZTQzTGpF",
+      "sessionToken" : "and0L2V5SmhiR2NpT2lKSVV6STFOaUlzSW5SNWNDSTZJa3BYVkNKOS5leUppZFdOclpYUWlPaUpuYjNaa1lYUmhMWEJoY25GMVpYUXRkakVpTENKelkyOXdaU0k2SW05aWFtVmpkQzF5WldGa0xXOXViSGtpTENKemRXSWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpSXNJbWxoZENJNk1UYzRPVGs1TnpZMU55d2lhWE56SWpvaU5HRmxNalJtTldOaVpUYzNOV0l3TldNM05UVTFPVFUwWVRGaE4yVTBaR01pTENKaGRXUWlPaUl5TVdOa05qTTNPVE0yWVRBMU9URXpORE14WVRZd09HWXpaalprTnpOaVlpNXlNaTVqYkc5MVpHWnNZWEpsYzNSdmNtRm5aUzVqYjIwaUxDSmxlSEFpT2pFM09UQXdNREV5TlRkOS5xMld5TDkxd2RCWVZ0YTNHN1Zqd2pFX2hldlZSRXNrNzVfOVItSTVid2Fj",
       "region" : "auto"
     },
     "schemaName" : "edu",
@@ -3059,7 +3059,7 @@
         }
       }
     } ],
-    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model3623246733399356269.json",
+    "modelUri" : "/Users/kennethstott/.provisa_askamerica/data/govdata-multi-model10717031981781819648.json",
     "comment" : "Institutional education data for K-12 districts, schools, and higher education. K-12 tables cover NCES Common Core of Data (CCD), Civil Rights Data Collection (CRDC), and NAEP assessments. Higher-ed tables cover IPEDS directory, completions, financials, and College Scorecard outcomes. All sourced via the Urban Institute Education Data Portal API (free, unauthenticated) except College Scorecard (free API key required). Complements census.acs_education (population attainment) — this schema describes the institutions themselves.\n",
     "baseDirectory" : "/Users/kennethstott/.provisa_askamerica/data",
     "compaction_defaults" : {
@@ -3120,6 +3120,6 @@
     "materializeDirectory" : "s3://govdata-parquet-v1"
   },
   "parentSchema" : "",
-  "generatedAt" : "2026-09-19T10:18:46.226509Z",
+  "generatedAt" : "2026-09-21T13:35:08.752574Z",
   "schemaName" : "edu"
 }

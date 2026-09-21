@@ -1,16 +1,29 @@
 Business Source License 1.1
 
+License text copyright (c) 2017 MariaDB Corporation Ab, All Rights Reserved.
+"Business Source License" is a trademark of MariaDB Corporation Ab.
+
+-----------------------------------------------------------------------------
+
 Parameters
 
 Licensor:             Kenneth Stott
 Licensed Work:        Provisa (this repository and any accompanying code, data,
                       or assets). The Licensed Work is (c) 2026 Kenneth Stott.
-Additional Use Grant: In addition to non-production use, production use by
-                      individuals and organizations with fewer than 100 total
-                      employees and contractors and with less than 1,000,000 USD
-                      (or equivalent) total revenue in the prior tax year is
-                      permitted. Any production use by larger organizations
-                      requires a separate commercial license.
+Additional Use Grant: In addition to non-production use, production use is
+                      permitted by any individual or organization that,
+                      together with its Affiliates, has fewer than 100
+                      employees and contractors counted together and less than
+                      1,000,000 USD (or equivalent) in total revenue, budget,
+                      or expenditures in its most recently completed fiscal
+                      year (or, if it has not completed a fiscal year, on an
+                      annualized basis). "Affiliate" means any entity that
+                      controls, is controlled by, or is under common control
+                      with that organization. An organization that ceases to
+                      meet these thresholds may continue production use for 90
+                      days thereafter in order to obtain a commercial license.
+                      Any other production use requires a separate commercial
+                      license.
 Change Date:          The fourth anniversary of the date on which each released
                       version of the Licensed Work is first made publicly
                       available by the Licensor.
@@ -19,7 +32,15 @@ Change License:       GNU General Public License, Version 2.0 or later.
 For information about alternative licensing arrangements for the Licensed Work,
 please contact: kennethstott@gmail.com
 
+-----------------------------------------------------------------------------
+
 Notice
+
+The Business Source License (this document, or the "License") is not an Open
+Source license. However, the Licensed Work will eventually be made available
+under an Open Source License, as stated in this License.
+
+-----------------------------------------------------------------------------
 
 Business Source License 1.1
 
