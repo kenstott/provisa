@@ -331,7 +331,11 @@ def test_require_governed_plan_callers_are_the_known_surface_set():
     out = [
         path
         for path in subprocess.run(
-            ["grep", "-rln", "require_governed_plan", "provisa"],
+            # The call-site spelling, not the bare name: a file that only MENTIONS
+            # require_governed_plan in prose (e.g. execution_auth.py's REQ-1760 docstring,
+            # documenting the invariant its own separate stamp_is_valid re-check relies on)
+            # is not a govern-then-stream terminal and must not trip this check.
+            ["grep", "-rln", "require_governed_plan(", "provisa"],
             cwd=REPO,
             capture_output=True,
             text=True,

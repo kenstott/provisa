@@ -384,6 +384,8 @@ jobs:
     name: Build and test Python client
     runs-on: ubuntu-latest
     needs: metadata
+    permissions:
+      contents: write   # attaches its SBOM + CVE report to the draft release
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -405,6 +407,39 @@ jobs:
           pip install build -q
           python -m build provisa-client/ --outdir provisa-client/dist/
 
+      # SBOM + vulnerability gate for what actually ships: the venv "Install and test" resolved
+      # for provisa-client (its own pyproject has no lockfile, unlike the root package's uv.lock).
+      # pip-audit's non-zero exit on any finding fails this job, which fails publish-pypi via its
+      # existing `needs: build-python-client` — no separate gating job/needs wiring required.
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          mkdir -p sbom
+          pip install cyclonedx-bom -q
+          cyclonedx-py environment --of JSON -o sbom/provisa-client-sbom.cdx.json
+
+      - name: CVE scan (gates PyPI publish)
+        run: |
+          set -o pipefail
+          pip install pip-audit -q
+          pip-audit -f json | tee sbom/provisa-client-cve-report.json
+
+      - name: Ensure release exists
+        uses: ./.github/actions/ensure-release
+
+      # Kept OUT of provisa-client/dist/ (a sibling sbom/ dir): pypa/gh-action-pypi-publish globs
+      # packages-dir for everything to upload to PyPI, and these attestation-adjacent JSON files
+      # are not packages — they attach to the GitHub Release only.
+      - name: Attach SBOM + CVE report to draft release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            sbom/provisa-client-sbom.cdx.json \
+            sbom/provisa-client-cve-report.json \
+            --clobber
+
       - name: Upload dist
         uses: actions/upload-artifact@v4
         with:
@@ -416,6 +451,8 @@ jobs:
     name: Build provisa server wheel (embedded tier)
     runs-on: ubuntu-latest
     needs: metadata
+    permissions:
+      contents: write   # attaches its SBOM + CVE report to the draft release
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -424,6 +461,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
 
       - name: Set up Node 20 (vite build)
         uses: actions/setup-node@v4
@@ -457,6 +497,44 @@ jobs:
           print(f"OK: {wheel} self-contained ({len(names)} members)")
           PY
 
+      # SBOM + vulnerability gate for what actually ships: the root uv.lock (same locked
+      # dependency set cve-audit.yml already scans continuously) rather than the build runner's
+      # own pip environment, which only has `build`/mkdocs installed, not provisa's own deps.
+      # pip-audit's non-zero exit on any finding fails this job, which fails publish-provisa-pypi
+      # via its existing `needs: build-provisa-wheel` — no separate gating job/needs wiring needed.
+      - name: Export locked dependencies
+        run: |
+          uv export --frozen --all-extras --no-emit-project --no-hashes --format requirements-txt \
+            | grep -vE '^-e |@ file://|^[[:space:]]*#' > requirements-audit.txt
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          mkdir -p sbom
+          uvx --from cyclonedx-bom cyclonedx-py requirements requirements-audit.txt \
+            --of JSON -o sbom/provisa-sbom.cdx.json
+
+      - name: CVE scan (gates PyPI publish)
+        run: |
+          set -o pipefail
+          uvx pip-audit -r requirements-audit.txt --no-deps -f json | tee sbom/provisa-cve-report.json
+
+      - name: Ensure release exists
+        uses: ./.github/actions/ensure-release
+
+      # Kept OUT of dist/ (a sibling sbom/ dir): pypa/gh-action-pypi-publish globs packages-dir
+      # for everything to upload to PyPI, and these attestation-adjacent JSON files are not
+      # packages — they attach to the GitHub Release only.
+      - name: Attach SBOM + CVE report to draft release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            sbom/provisa-sbom.cdx.json \
+            sbom/provisa-cve-report.json \
+            --clobber
+
       - name: Upload dist
         uses: actions/upload-artifact@v4
         with:
@@ -468,6 +546,11 @@ jobs:
     name: Publish provisa server to PyPI
     runs-on: ubuntu-latest
     needs: build-provisa-wheel
+    # id-token: write is what lets gh-action-pypi-publish request a Sigstore-signed PEP 740
+    # attestation for each uploaded file — PyPI removed GPG signature uploads in 2023, so this
+    # (not a detached .asc) is the only signing PyPI currently accepts.
+    permissions:
+      id-token: write
     steps:
       - name: Download dist
         uses: actions/download-artifact@v4
@@ -481,11 +564,16 @@ jobs:
           packages-dir: dist/
           password: ${{ secrets.PYPI_API_TOKEN }}
           skip-existing: true
+          attestations: true
 
   build-jdbc:
     name: Build JDBC driver
     runs-on: ubuntu-latest
     needs: metadata
+    permissions:
+      contents: write   # attest-build-provenance + attach SBOM/CVE report to the draft release
+      id-token: write   # actions/attest-build-provenance signs via Sigstore/OIDC
+      attestations: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -504,6 +592,45 @@ jobs:
           mv jdbc-driver/target/provisa-jdbc-*.jar \
              "jdbc-driver/target/${{ needs.metadata.outputs.jdbc_name }}"
 
+      # CycloneDX Maven plugin (invoked ad hoc — not added to jdbc-driver/pom.xml, this is a
+      # CI-only concern) has the real dependency tree; grype below only sees the shaded jar's
+      # flattened classes, so the two are complementary rather than redundant.
+      - name: Generate SBOM (CycloneDX Maven plugin)
+        run: |
+          mvn -f jdbc-driver/pom.xml -q org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom
+          mkdir -p sbom
+          cp jdbc-driver/target/bom.json sbom/provisa-jdbc-sbom.cdx.json
+
+      - name: Install grype
+        run: curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: CVE scan (gates the release — fails on any medium+ finding)
+        run: |
+          grype "jdbc-driver/target/${{ needs.metadata.outputs.jdbc_name }}" \
+            -o json --file sbom/provisa-jdbc-cve-report.json --fail-on medium
+
+      # GitHub-native artifact attestation (Sigstore-backed, same trust root as PyPI's PEP 740):
+      # this jar is attached to the Release, never published to Maven Central, so there is no
+      # gh-action-pypi-publish step to hook attestations:true into.
+      - name: Sign JAR (Sigstore attestation)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "jdbc-driver/target/${{ needs.metadata.outputs.jdbc_name }}"
+
+      - name: Ensure release exists
+        uses: ./.github/actions/ensure-release
+
+      - name: Attach SBOM + CVE report to draft release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            sbom/provisa-jdbc-sbom.cdx.json \
+            sbom/provisa-jdbc-cve-report.json \
+            --clobber
+
       - name: Upload JDBC JAR
         uses: actions/upload-artifact@v4
         with:
@@ -515,6 +642,8 @@ jobs:
     name: Publish Python client to PyPI
     runs-on: ubuntu-latest
     needs: build-python-client
+    permissions:
+      id-token: write
     steps:
       - name: Download dist
         uses: actions/download-artifact@v4
@@ -528,6 +657,7 @@ jobs:
           packages-dir: dist/
           password: ${{ secrets.PYPI_API_TOKEN }}
           skip-existing: true
+          attestations: true
 
   # ── macOS build jobs ─────────────────────────────────────────────────────────
 

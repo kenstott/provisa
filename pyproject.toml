@@ -116,6 +116,7 @@ dependencies = [
     # there and does not use the embedded plane (it runs a real PostgreSQL), so it must resolve;
     # `provisa run` on linux/aarch64 aborts with the explanation instead (cli._require_embedded_pg).
     "pgserver; sys_platform != 'linux' or platform_machine != 'aarch64'",
+    "anyio>=4.14.2",
 ]
 
 [project.scripts]

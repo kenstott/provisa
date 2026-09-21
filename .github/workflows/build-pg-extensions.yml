@@ -143,6 +143,9 @@ jobs:
     name: Build + publish provisa-pg-ext wheel
     needs: unix
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches SBOM/CVE report + upload release assets (workflow default)
+      id-token: write   # PEP 740 Sigstore attestation via gh-action-pypi-publish
     steps:
       - uses: actions/checkout@v4
 
@@ -174,16 +177,44 @@ jobs:
           python -m pip install --upgrade build
           python -m build --wheel --sdist --outdir dist-pg-ext packaging/pg-ext
 
+      # Same caveat as build-duckdb-extensions.yml's own wheel job: this package bundles
+      # THIRD-PARTY BINARY .so/.dylib FDW builds (scripts/ci/build_pg_extensions.sh), not a
+      # Python dependency graph, so the CVE scan below only covers the build-time toolchain.
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          mkdir -p sbom
+          pip install cyclonedx-bom -q
+          cyclonedx-py environment --of JSON -o sbom/provisa-pg-ext-sbom.cdx.json
+
+      - name: CVE scan of the build toolchain (gates PyPI publish)
+        run: |
+          set -o pipefail
+          pip install pip-audit -q
+          pip-audit -f json | tee sbom/provisa-pg-ext-cve-report.json
+
       - name: Publish provisa-pg-ext to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist-pg-ext/
           password: ${{ secrets.PYPI_API_TOKEN }}
           skip-existing: true
+          attestations: true
 
       - name: Ensure release exists
         if: startsWith(github.ref, 'refs/tags/')
         uses: ./.github/actions/ensure-release
+
+      - name: Attach SBOM + CVE report to draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            sbom/provisa-pg-ext-sbom.cdx.json \
+            sbom/provisa-pg-ext-cve-report.json \
+            --clobber
 
       # gh release upload only ADDS assets — never flips draft/prerelease.
       - name: Attach wheel to draft release

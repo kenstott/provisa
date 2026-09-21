@@ -12,7 +12,7 @@
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <arrow.version>14.0.1</arrow.version>
+    <arrow.version>19.0.0</arrow.version>
   </properties>
 
   <dependencyManagement>
@@ -20,57 +20,57 @@
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-buffer</artifactId>
-        <version>4.1.96.Final</version>
+        <version>4.1.138.Final</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-codec</artifactId>
-        <version>4.1.96.Final</version>
+        <version>4.1.138.Final</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-codec-http</artifactId>
-        <version>4.1.96.Final</version>
+        <version>4.1.138.Final</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-codec-http2</artifactId>
-        <version>4.1.96.Final</version>
+        <version>4.1.138.Final</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-codec-socks</artifactId>
-        <version>4.1.96.Final</version>
+        <version>4.1.138.Final</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-common</artifactId>
-        <version>4.1.96.Final</version>
+        <version>4.1.138.Final</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-handler</artifactId>
-        <version>4.1.96.Final</version>
+        <version>4.1.138.Final</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-handler-proxy</artifactId>
-        <version>4.1.96.Final</version>
+        <version>4.1.138.Final</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-resolver</artifactId>
-        <version>4.1.96.Final</version>
+        <version>4.1.138.Final</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-transport</artifactId>
-        <version>4.1.96.Final</version>
+        <version>4.1.138.Final</version>
       </dependency>
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-transport-native-unix-common</artifactId>
-        <version>4.1.96.Final</version>
+        <version>4.1.138.Final</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
@@ -93,12 +93,30 @@
     <dependency>
       <groupId>com.google.protobuf</groupId>
       <artifactId>protobuf-java</artifactId>
-      <version>3.25.5</version>
+      <!-- Must match protobuf-java-util's own version (Arrow 19.0.0's transitive dep) — a lower
+           direct pin here wins over the transitive one and mixes two incompatible protobuf
+           runtimes on the classpath (verified live: NoClassDefFoundError on
+           Flight$Ticket/RuntimeVersion$RuntimeDomain, added in the 4.x line). -->
+      <version>4.33.4</version>
+    </dependency>
+    <!-- netty-codec-http2 is pinned in dependencyManagement above (with every other netty-*
+         artifact); a separate, lower-pinned direct dependency here would win over it (Maven
+         resolves a direct dependency's own version before dependencyManagement), silently
+         undoing the bump — removed so the whole netty family stays on one consistent version. -->
+
+    <!-- CVE overrides: Arrow 14.0.1 pulls in jackson-core/jackson-databind 2.15.1 transitively,
+         which has known CVEs (GHSA-r7wm-3cxj-wff9, GHSA-rmj7-2vxq-3g9f, GHSA-j3rv-43j4-c7qm) —
+         verified live via grype against the shaded jar. Pinned here in dependencyManagement so
+         every transitive consumer converges on the patched version. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-core</artifactId>
+      <version>2.22.2</version>
     </dependency>
     <dependency>
-      <groupId>io.netty</groupId>
-      <artifactId>netty-codec-http2</artifactId>
-      <version>4.1.134.Final</version>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>2.22.2</version>
     </dependency>
 
     <!-- JSON -->
