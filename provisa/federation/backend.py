@@ -102,6 +102,22 @@ async def landing_worklist(
             # its "mismatched" shape. Excluding ingest here leaves its own DDL/write path as the
             # sole owner of its table, the same way it already is for the DuckDB-native tier.
             continue
+        if src.type.value == "govdata":
+            # REQ-1730: govdata is in _MATERIALIZE_ONLY (strategy.py) because no federation engine
+            # has a live connector for it, but unlike every other member of that set its READS never
+            # go through the engine at all, materialized or otherwise: pgwire/_pipeline.py's query
+            # dispatch special-cases it (`state.source_types[...] == "govdata"`) straight to
+            # `_execute_govdata`, which runs the query LIVE against the askamerica JDBC connection
+            # (provisa.govdata.source.execute_query) on every request — bypassing Route.ENGINE,
+            # materialize_pending, and SourceRowLoader entirely, regardless of which engine is
+            # active. Landing it here would build a replica no query path ever reads, AND fail loud
+            # doing so: SourceRowLoader's generic engine-scan fallback (no adapter loader is wired
+            # for govdata, nor could one usefully be — its own dedicated live path already IS the
+            # complete read) would try `SELECT * FROM {per_source_catalog}...` against a relation no
+            # engine has ever created. Same shape as ingest's own exclusion just above: a
+            # _MATERIALIZE_ONLY type with a complete, independent path of its own must never enter
+            # this generic pipeline.
+            continue
         # Native-filter columns are synthetic query args (LIMIT/path params, etc.), not landed
         # data. REQ-1742 gap: this used to skip the WHOLE table the instant ANY column carried a
         # native_filter_type, on the theory that such a table is a pure "function f(args) -> rows"

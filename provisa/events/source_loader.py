@@ -425,6 +425,31 @@ def make_mongodb_loader() -> AdapterLoader:
     return _load
 
 
+def make_kafka_loader() -> AdapterLoader:
+    """Build the Kafka row-fetch (REQ-1730): every message currently on the topic, drained via
+    aiokafka and landed like any other fetched source. Wired only on an engine with no live Kafka
+    connector of its own; Trino keeps scanning through its own connector (``TrinoKafkaConnector`,
+    itself only reachable when a Confluent Schema Registry is configured). Same gap
+    REQ-1672/1675/1676/(this REQ's own mongodb loader) already closed for
+    Elasticsearch/Redis/Cassandra/MongoDB — every self-only warehouse engine and DuckDB itself had
+    no live Kafka reach at all. ``kafka.fetch``'s own module doc explains the "current rows of an
+    unbounded log" semantics this loader relies on."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.kafka.fetch import KafkaConnection, fetch_rows
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        conn = KafkaConnection.build(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            getattr(source, "port", None),
+        )
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+        return await fetch_rows(conn, table.table_name, names)
+
+    return _load
+
+
 def make_cassandra_loader() -> AdapterLoader:
     """Build the Cassandra row-fetch (REQ-1676): the table's registered data columns, SELECTed from
     ``<keyspace>.<table>`` over CQL and landed like any other fetched source. Wired only on an engine

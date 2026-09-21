@@ -24,6 +24,36 @@ class ClickHouseBackend(NativeEngineBackend):
     governed physical SQL runs against it. The runtime is a server (``clickhouse://``) or embedded
     chdb (``chdb://`` / default) per the configured engine URL."""
 
+    def landing_target(
+        self,
+        *,
+        store_schema: str,
+        source_id: str,
+        source_type: Any,
+        schema_name: str,
+        table_name: str,
+    ) -> tuple[str, str]:
+        """EVERY MATERIALIZED source's replica lands at its REGISTERED address — same reasoning and
+        same fix as ``PgBackend`` (REQ-1730/REQ-1633): there is no DuckDB-style mangled-name+
+        separate-view indirection to redirect a MATERIALIZE_ONLY source through here.
+        ``attach_landed_source``/``land_table`` (``ClickHouseFederationRuntime``, REQ-1633's own
+        gap — ClickHouse had neither before this) address the landed table directly at
+        ``{catalog}_{schema_name}``.``table_name``, the SAME fold ``ClickHouseFederationRuntime.
+        attach_source`` uses for a live-attached source: real ClickHouse has no catalog/schema
+        split at all (verified live, REQ-1730 — a literal 3-part reference is a SYNTAX_ERROR), so
+        ``build_clickhouse_engine``'s own ``catalog_qualified=False`` (this same change) makes the
+        compiler fold the per-source catalog into the schema half of every compiled reference
+        (``sql_rewrite.fold_catalog_into_schema``) rather than keep it 3-part or drop it —
+        preserving the catalog is what keeps two MATERIALIZED sources sharing a native
+        ``schema_name`` (e.g. two elasticsearch sources both reporting "default") from colliding
+        once ClickHouse's flat namespace is all that's left to address with. The base
+        ``EngineBackend`` default (a mangled name under the ``store_schema`` this function
+        receives) would send ``land_table``'s row LOAD to a schema nothing ever DDL-reconciles."""
+        del store_schema, source_type  # never chooses a different table
+        from provisa.compiler.naming import source_to_catalog
+
+        return f"{source_to_catalog(source_id)}_{schema_name}", table_name
+
     def _new_runtime(self) -> Any:
         from provisa.federation.engine import configured_engine_url
 

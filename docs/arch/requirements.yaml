@@ -57624,6 +57624,13 @@
   - docker-compose.core.yml
   - provisa/federation/strategy.py
   - provisa/events/app_wiring.py
+  - provisa/mongodb/fetch.py
+  - provisa/kafka/fetch.py
+  - provisa/federation/snowflake_backend.py
+  - provisa/federation/snowflake_runtime.py
+  - provisa/federation/databricks_backend.py
+  - provisa/federation/databricks_runtime.py
+  - provisa/transpiler/transpile.py
   tests:
   - provisa-ui/e2e/engine-swap.spec.ts
   - provisa-ui/e2e/engine-swap-helpers.ts
@@ -57633,6 +57640,7 @@
   - tests/unit/test_transpile.py
   - provisa-ui/src/pages/sql/__tests__/wrapSampledSql.test.ts
   - tests/unit/test_duckdb_community_connectors.py
+  - tests/unit/test_kafka_fetch.py
   - tests/unit/test_federation_strategy.py
   - tests/unit/test_pg_pgwire_connectors.py
   - tests/unit/test_clickhouse_pgwire_connectors.py

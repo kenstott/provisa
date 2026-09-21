@@ -609,7 +609,7 @@ export async function waitForTrinoStable(budgetMs = 330000): Promise<void> {
 // far (the ones with either live e2e credentials already in .env — snowflake/databricks/bigquery,
 // same creds source-to-query-cloud-warehouse.spec.ts's own tests gate on — or a fully local Docker
 // fixture — mssql, reusing demo/sources/sqlserver, no cloud dependency at all).
-export type RebootEngineKind = "duckdb" | "trino" | "pg" | "snowflake" | "databricks" | "bigquery" | "mssql";
+export type RebootEngineKind = "duckdb" | "trino" | "pg" | "snowflake" | "databricks" | "bigquery" | "mssql" | "clickhouse";
 
 // Per-engine live-credential/fixture availability, mirroring the exact env vars this file's own
 // source-type tests already gate on (SINGLESTORE_AVAILABLE's own pattern) — reused here unchanged
@@ -675,6 +675,14 @@ function rebootEngineExtraEnv(engineKind: RebootEngineKind): Record<string, stri
       // needs the equivalent TrustServerCertificate flag against the same cert.
       return {
         PROVISA_ENGINE_URL: `mssql+pyodbc://sa:Provisa_2026!@localhost:${RDB_WIDGETS_PORTS.sqlserver}/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes`,
+      };
+    case "clickhouse":
+      // clickhouse:// (HTTP transport, ClickHouseFederationRuntime.from_url's own doc) at the same
+      // local Docker fixture RDB_WIDGETS_SOURCES's own "clickhouse" SOURCE-type case already
+      // provisions (default/provisa, RDB_WIDGETS_PORTS.clickhouse) — reused as the engine's own
+      // landing store instead of a federated source this time, same shape as mssql above.
+      return {
+        PROVISA_ENGINE_URL: `clickhouse://default:provisa@localhost:${RDB_WIDGETS_PORTS.clickhouse}/default`,
       };
     default:
       return {};

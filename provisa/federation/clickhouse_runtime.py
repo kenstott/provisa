@@ -322,6 +322,17 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
 
         ``columns`` (name, clickhouse_type) is required only for engines that cannot infer their
         schema (MongoDB); file/relational engines ignore it.
+
+        Bare ``schema_name`` (no catalog fold), unchanged by REQ-1730's ``catalog_qualified=False``:
+        a live-attached source reaches this method only via ``Route.DIRECT`` (a single VIRTUAL
+        source), which ``strip_catalog`` already drops the catalog for entirely — the SAME
+        unqualified name this method has always created. ``fold_catalog_into_schema`` (this
+        engine's OWN new ``catalog_qualified=False``) only ever applies to ``Route.ENGINE``, which
+        MATERIALIZED sources take (``attach_landed_source``/``land_table``, below, fold their own
+        naming independently) — a live-attached source under Route.ENGINE (e.g. joined with
+        another source) is a genuinely untested combination this session's scope did not reach;
+        reverted here after breaking test_clickhouse_runtime_e2e.py's own ``"fin"."widget"``
+        assertions, which exercise this exact method directly and predate REQ-1730.
         """
         entry = self._engine.resolve(source)  # picks the (clickhouse, source_type) connector
         details = entry.details
@@ -349,6 +360,76 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         else:  # file engine — ClickHouse infers the columns
             self._backend.command(f"CREATE TABLE IF NOT EXISTS {staged} ENGINE = {clause}")
         self._backend.command(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {staged}")
+
+    # -- landing terminals (REQ-1730/REQ-1633) ----------------------------------
+
+    async def attach_landed_source(
+        self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
+    ) -> str:
+        """Eager reconcile (boot/registration): converge the landed table at the physical name
+        WITHOUT landing data (DDL only), so the catalog is complete at startup and survives
+        restart. REQ-1633: ClickHouse had neither this nor ``land_table`` before — one of only two
+        engines (with MssqlWarehouseRuntime) implementing none of the three landing terminals."""
+        import asyncio
+
+        from provisa.compiler.naming import source_to_catalog
+        from provisa.federation.clickhouse_store import reconcile_clickhouse_native
+
+        database = f"{source_to_catalog(source.id)}_{source.schema_name}"
+        parts = (database, source.table_name)
+        return await asyncio.to_thread(
+            reconcile_clickhouse_native,
+            self._backend,
+            parts=parts,
+            columns=columns,
+            pk_columns=pk_columns,
+        )
+
+    async def land_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        change_signal: str = "ttl",
+        watermark_column: str | None = None,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+        shape: str | None = None,
+    ) -> str:
+        """The ``NativeEngineBackend.land_source_table``/``hasattr(runtime, "land_table")`` seam
+        every other native engine's runtime uses (REQ-1730) — before this, ``ClickHouseFederationRuntime``
+        had no landing terminal at all (REQ-1633), so this seam silently fell through to the BASE
+        ``EngineBackend`` default: landing through ``store_writer``'s async path against
+        ``self.engine.materialize_store()`` — the PLATFORM Postgres by default
+        (``build_clickhouse_engine``'s old ``_platform_db_materialize_default``, also fixed by this
+        change to ``_own_warehouse_materialize_default``), not ClickHouse itself, and ClickHouse has
+        no automatic bridge reading FROM a separate Postgres landing table.
+
+        ``schema`` here is ``ClickHouseBackend.landing_target``'s own already-folded
+        ``{catalog}_{schema_name}`` (REQ-1730) — used directly as the database, unlike
+        ``attach_landed_source`` above (which folds it itself from a full ``source`` object)."""
+        import asyncio
+
+        from provisa.core.change_signal import CDC, select_landing_shape
+        from provisa.federation.clickhouse_store import land_clickhouse_native
+
+        del match_floor
+        landing_shape = shape or select_landing_shape(change_signal, watermark_column)
+        if landing_shape == CDC:
+            raise NotImplementedError(
+                "ClickHouse native landing has no CDC shape; use replace or append"
+            )
+        parts = (schema, table)
+        return await asyncio.to_thread(
+            land_clickhouse_native,
+            self._backend,
+            parts=parts,
+            columns=columns,
+            rows=rows,
+            shape=landing_shape,
+        )
 
     # -- metadata --------------------------------------------------------------
 

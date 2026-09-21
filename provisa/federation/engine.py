@@ -744,8 +744,17 @@ def build_clickhouse_engine() -> FederationEngine:  # REQ-909 OLAP partial feder
         file_native=True,  # S3/URL/File + Iceberg/DeltaLake table engines scan in place (REQ-897)
         pooled=True,  # server-side connection handling
         transactional=False,  # OLAP store — no general multi-statement transactions
+        # REQ-1730: real ClickHouse has no catalog/schema split at all — verified live, a literal
+        # 3-part reference is a SYNTAX_ERROR (position after the second dot) — same limitation as
+        # real PostgreSQL's own "no cross-database queries", which is why pg carries this identical
+        # trait. ClickHouseBackend.landing_target and ClickHouseFederationRuntime.attach_source both
+        # fold the per-source catalog into the schema half instead (fold_catalog_into_schema).
+        catalog_qualified=False,
         backend_factory=ClickHouseBackend,  # in-process terminal driving ClickHouseFederationRuntime
-        default_materialize_store=_platform_db_materialize_default,
+        # REQ-1730/REQ-1633: ClickHouse is its own warehouse — a MATERIALIZED source must land INTO
+        # it, not into the platform Postgres (the old default here), which ClickHouse has no
+        # automatic bridge reading FROM. Same fix already applied for Snowflake/BigQuery/Databricks.
+        default_materialize_store=_own_warehouse_materialize_default,
         capabilities=frozenset(
             {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
         ),  # query_arrow + query_arrow_stream over HTTP / chdb ArrowStream (REQ-909, REQ-986)

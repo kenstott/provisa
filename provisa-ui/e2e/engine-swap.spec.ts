@@ -1891,6 +1891,22 @@ test.describe("scenario 1 extended: same source survives an engine change to a w
       await runRebootCase(page, (p) => registerElasticsearch(p), {}, ["mssql"]);
     });
   });
+
+  test.describe("elasticsearch -> clickhouse", () => {
+    test.beforeAll(() => provisionSwapSource("clickhouse", "up"));
+    test.afterAll(async () => {
+      await provisionSwapSource("clickhouse", "down");
+    });
+    test.beforeAll(() => startDemoSources(["elasticsearch"]));
+    test.afterAll(() => removeDemoSources(["elasticsearch"]));
+
+    test("elasticsearch registered once under DuckDB resolves after rebooting into clickhouse, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(300000);
+      await runRebootCase(page, (p) => registerElasticsearch(p), {}, ["clickhouse"]);
+    });
+  });
 });
 
 // REQ-1730 extended, continued: mssql and pg as the PRIMARY (registration) engine — the reverse
