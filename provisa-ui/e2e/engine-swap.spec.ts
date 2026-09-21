@@ -1923,6 +1923,25 @@ test.describe("scenario 1 extended: same source survives an engine change to a w
       await runRebootCase(page, (p) => registerElasticsearch(p), {}, ["fabric"]);
     });
   });
+
+  test.describe("elasticsearch -> oracle", () => {
+    // gvenzl/oracle-free creates its database from scratch on first boot (demo/sources/oracle's
+    // own documented start_period/retries) — several minutes, same reason RDB_WIDGETS_SOURCES's
+    // own oracle entry carries a bootTimeoutMs of 480000 rather than the others' default.
+    test.beforeAll(() => provisionSwapSource("oracle", "up"));
+    test.afterAll(async () => {
+      await provisionSwapSource("oracle", "down");
+    });
+    test.beforeAll(() => startDemoSources(["elasticsearch"]));
+    test.afterAll(() => removeDemoSources(["elasticsearch"]));
+
+    test("elasticsearch registered once under DuckDB resolves after rebooting into oracle, no replay", async ({
+      page,
+    }) => {
+      test.setTimeout(600000);
+      await runRebootCase(page, (p) => registerElasticsearch(p), {}, ["oracle"]);
+    });
+  });
 });
 
 // REQ-1730 extended, continued: mssql and pg as the PRIMARY (registration) engine — the reverse

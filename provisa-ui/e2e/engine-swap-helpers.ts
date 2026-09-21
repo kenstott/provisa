@@ -609,7 +609,7 @@ export async function waitForTrinoStable(budgetMs = 330000): Promise<void> {
 // far (the ones with either live e2e credentials already in .env — snowflake/databricks/bigquery,
 // same creds source-to-query-cloud-warehouse.spec.ts's own tests gate on — or a fully local Docker
 // fixture — mssql, reusing demo/sources/sqlserver, no cloud dependency at all).
-export type RebootEngineKind = "duckdb" | "trino" | "pg" | "snowflake" | "databricks" | "bigquery" | "mssql" | "clickhouse" | "fabric";
+export type RebootEngineKind = "duckdb" | "trino" | "pg" | "snowflake" | "databricks" | "bigquery" | "mssql" | "clickhouse" | "fabric" | "oracle";
 
 // Per-engine live-credential/fixture availability, mirroring the exact env vars this file's own
 // source-type tests already gate on (SINGLESTORE_AVAILABLE's own pattern) — reused here unchanged
@@ -689,6 +689,14 @@ function rebootEngineExtraEnv(engineKind: RebootEngineKind): Record<string, stri
       // (Azure AD via DefaultAzureCredential, no password), already ambient via ...process.env —
       // same "no URL needed, just inherited env" shape as bigquery above.
       return {};
+    case "oracle":
+      // oracle+oracledb DSN (thin mode, no Instant Client) at demo/sources/oracle's own fixed
+      // port/credentials (RDB_WIDGETS_PORTS.oracle, RDB_WIDGETS_SOURCES's "oracle" entry) — reused
+      // as the engine's own landing store instead of a federated source this time, same shape as
+      // mssql/clickhouse above.
+      return {
+        PROVISA_ENGINE_URL: `oracle+oracledb://system:provisa@localhost:${RDB_WIDGETS_PORTS.oracle}/?service_name=FREEPDB1`,
+      };
     default:
       return {};
   }

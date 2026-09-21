@@ -107,11 +107,11 @@ class Capabilities:
         if not self.schemas:
             return None
         if self.dialect == "postgresql":
-            return f"SET search_path TO {schema}"
+            return f'SET search_path TO "{schema}"'
         if self.dialect in ("mysql", "mariadb"):
-            return f"USE {schema}"
+            return f"USE `{schema}`"
         if self.dialect == "oracle":
-            return f"ALTER SESSION SET CURRENT_SCHEMA = {schema}"
+            return f'ALTER SESSION SET CURRENT_SCHEMA = "{schema}"'
         return None
 
     @classmethod

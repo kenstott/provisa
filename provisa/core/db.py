@@ -43,7 +43,7 @@ async def create_org_role(
     await conn.execute(
         f"DO $$ BEGIN CREATE ROLE {role_name}; EXCEPTION WHEN duplicate_object THEN NULL; END $$"
     )
-    await conn.execute(f"GRANT USAGE, CREATE ON SCHEMA {schema_name} TO {role_name}")
+    await conn.execute(f'GRANT USAGE, CREATE ON SCHEMA "{schema_name}" TO {role_name}')
 
 
 def _validate_org_id(org_id: str) -> None:
@@ -314,7 +314,7 @@ async def init_schema(
             await conn.execute_core(
                 CreateSchema(org_schema(org_id, env, "_mv_cache"), if_not_exists=True)
             )
-            await conn.execute(f"SET search_path TO {schema_name}")
+            await conn.execute(f'SET search_path TO "{schema_name}"')
             # schema_sql is a multi-statement script (DO $$ blocks). Raw asyncpg
             # runs it natively; the control-plane Database shim auto-detects the
             # multi-statement case and routes to the raw driver.
@@ -462,7 +462,7 @@ async def apply_tenancy_role_grants(  # REQ-1337
         await _apply_tenancy_role_grants_portable(pool, multitenancy=multitenancy)
         return
     async with pool.acquire() as conn:
-        await conn.execute(f"SET search_path TO {org_schema(org_id, env)}")  # REQ-1623
+        await conn.execute(f'SET search_path TO "{org_schema(org_id, env)}"')  # REQ-1623
         # REQ-1337: cross_org is withdrawn in BOTH modes — org authority is confined to the org
         # being acted in, so org_admin never holds it however the deployment is configured. Only
         # platform_admin carries it (schema.sql), and holding it is what marks a role control-plane.

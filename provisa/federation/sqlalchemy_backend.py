@@ -29,7 +29,7 @@ class SqlAlchemyBackend(NativeEngineBackend):
         url = configured_engine_url()
         if not url:
             raise RuntimeError("sqlalchemy engine requires a URL ($PROVISA_ENGINE_URL)")
-        return SqlAlchemyFederationRuntime(url=url)
+        return SqlAlchemyFederationRuntime(url=url, catalog_qualified=self.engine.catalog_qualified)
 
     def landing_target(
         self,
@@ -58,10 +58,20 @@ class SqlAlchemyBackend(NativeEngineBackend):
         Same reasoning as ``fixed_catalog_for``'s own doc: this engine has no DuckDB-style
         ATTACH+view layer to redirect a mangled ``mat``-schema name back to the physical name the
         compiler emits, so for EVERY source here (not just adapter-only ones) the landing address
-        IS the physical address."""
-        del (
-            store_schema,
-            source_id,
-            source_type,
-        )  # unconditional: never chooses an alternate address
+        IS the physical address.
+
+        REQ-1730: for a member of this family with ``catalog_qualified=False`` (Oracle — verified
+        live: a genuine 3-part ``catalog.schema.table`` FROM-clause reference is
+        ``ORA-03048: SQL reserved word '.' is not syntactically valid``, unlike mssql/sybase's own
+        real 3-part T-SQL support, ``build_sqlalchemy_engine``'s own per-``native_store`` doc), the
+        compiler folds the catalog into the schema half of every compiled reference
+        (``sql_rewrite.fold_catalog_into_schema``) instead of a bare 2-part reference — the
+        registered ``schema_name`` alone would ALSO be syntactically valid for Oracle, but the fold
+        keeps this consistent with every other ``catalog_qualified=False`` engine (pg/ClickHouse)
+        rather than adding a third naming convention for one member of this family."""
+        del store_schema, source_type  # never chooses a different table
+        if not self.engine.catalog_qualified:
+            from provisa.compiler.naming import source_to_catalog
+
+            return f"{source_to_catalog(source_id)}_{schema_name}", table_name
         return schema_name, table_name

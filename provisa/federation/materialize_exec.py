@@ -32,6 +32,7 @@ import json
 from typing import Any, Protocol
 
 from sqlalchemy import JSON, Column, MetaData, Table
+from sqlalchemy.sql.elements import quoted_name
 from sqlalchemy.schema import CreateTable
 
 from provisa.core.ir_types import to_sqlalchemy
@@ -63,6 +64,8 @@ def build_table(
     table: str,
     columns: list[tuple[str, str]],
     pk_columns: tuple[str, ...] | list[str] = (),
+    *,
+    dialect_name: str | None = None,
 ) -> Table:
     """A Core ``Table`` for the landed relation on a fresh ``MetaData``. ``columns`` are
     (name, sql_type) pairs — the projected source result shape. ``pk_columns`` names the primary
@@ -71,13 +74,41 @@ def build_table(
     A PRIMARY KEY column gets ``indexed=True`` (REQ-1730): an unbounded IR ``text`` column cannot
     be a key/index column on several dialects (verified live: SQL Server refused a
     ``VARCHAR(max)`` primary key) — ``to_sqlalchemy`` substitutes a bounded, config-driven
-    ``String`` for exactly this case, the one place that substitution happens."""
+    ``String`` for exactly this case, the one place that substitution happens.
+
+    ``dialect_name == "oracle"`` (REQ-1730) bounds EVERY text column, not just keyed ones: Oracle's
+    CLOB (the physical rendering of an unbounded ``Text``) cannot be used as a comparison key in
+    ANY context — ``ORDER BY``/``GROUP BY``/``DISTINCT``, not just an index/PK — verified live,
+    2026-09-21: ``ORA-22848: cannot use CLOB type as comparison key`` ordering by a plain
+    (non-PK) VARCHAR-sourced column. Every other dialect this hub lands into tolerates unbounded
+    text in those contexts, so the restriction is scoped to Oracle alone rather than widening the
+    PK-only bound for everyone.
+
+    Every identifier is wrapped ``quoted_name(..., quote=True)`` (REQ-1730/REQ-1633): a no-op for
+    every lowercase-folding dialect this hub already lands into (Postgres/MySQL/MSSQL/…, where
+    quoted-lowercase and unquoted-lowercase are the same physical name), but load-bearing for
+    Oracle specifically — its dialect leaves a plain lowercase Python identifier UNQUOTED by
+    default (verified live, REQ-1730: ``CreateTable`` compiled ``product_id`` bare), which Oracle
+    then folds to uppercase at the physical level, while the compiled governed query
+    (``stage2.py``'s ``_expand_star``) always quotes its column references — a materialized
+    replica landed via this hub's default output a table Oracle-as-engine's own compiled queries
+    could never resolve."""
     pk = set(pk_columns)
+    bound_all = dialect_name == "oracle"
     cols = [
-        Column(name, _sa_type(sql_type, indexed=name in pk), primary_key=name in pk)
+        Column(
+            quoted_name(name, quote=True),
+            _sa_type(sql_type, indexed=bound_all or name in pk),
+            primary_key=name in pk,
+        )
         for name, sql_type in columns
     ]
-    return Table(table, MetaData(), *cols, schema=schema or None)
+    return Table(
+        quoted_name(table, quote=True),
+        MetaData(),
+        *cols,
+        schema=quoted_name(schema, quote=True) if schema else None,
+    )
 
 
 def _json_columns(table: Table) -> frozenset[str]:
@@ -99,6 +130,45 @@ def _coerce_json_row(row: dict, json_cols: frozenset[str]) -> dict:
         val = out.get(name)
         if isinstance(val, str):
             out[name] = json.loads(val)  # loud on malformed JSON — upstream contract violation
+    return out
+
+
+def temporal_columns(columns: list[tuple[str, str]]) -> dict[str, str]:
+    """Column name -> canonical IR type, restricted to the three temporal IR buckets (REQ-1730)."""
+    from provisa.core.ir_types import to_ir
+
+    out = {}
+    for name, sql_type in columns:
+        canonical = to_ir(sql_type)
+        if canonical in ("timestamp", "date", "time"):
+            out[name] = canonical
+    return out
+
+
+def coerce_temporal_row(row: dict, temporal_cols: dict[str, str]) -> dict:
+    """Parse ISO-8601 string values for DATE/TIME/TIMESTAMP columns into native Python objects
+    before bind (REQ-1730): a source's own adapter hands back its native string form (e.g.
+    Elasticsearch's ISO-8601-with-trailing-``Z``, ``"2025-03-01T09:15:00Z"``), which several DBAPI
+    drivers cannot implicitly cast on a BOUND parameter — verified live: Oracle's python-oracledb
+    raised ``ORA-01861: literal does not match format string``; pyodbc/mssql raised ``Invalid
+    character value for cast specification`` (mirrors ``mssql_warehouse_runtime._coerce``, which
+    predates this shared version). Postgres/MySQL accept the raw string on bind (their protocol
+    casts text to the column's own type), so this is a no-op there in practice."""
+    if not temporal_cols:
+        return row
+    import datetime
+
+    out = dict(row)
+    for name, canonical in temporal_cols.items():
+        val = out.get(name)
+        if isinstance(val, str):
+            parsed = datetime.datetime.fromisoformat(val.replace("Z", "+00:00"))
+            if canonical == "date":
+                out[name] = parsed.date()
+            elif canonical == "time":
+                out[name] = parsed.timetz() if parsed.tzinfo else parsed.time()
+            else:
+                out[name] = parsed
     return out
 
 

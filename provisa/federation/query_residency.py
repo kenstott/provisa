@@ -45,6 +45,31 @@ def _node(schema_name: str, table_name: str) -> str:
     return f"{schema_name}.{table_name}"
 
 
+def _physical_node(backend: Any, engine: Any, source: Any, table: Any) -> str:
+    """The lock key for ``land_lock`` — the PHYSICAL (post-fold) address a land actually writes to,
+    not the registered logical one (REQ-1730). ``events/boot.py``'s own poll-node wiring locks on
+    this same ``backend.landing_target(...)`` result (its ``land_schema``/``land_table``), and
+    ``EngineBackend.materialize_pending`` recomputes the identical fold internally right after this
+    function's caller acquires its lock — so the two lands ``land_lock``'s own docstring promises
+    never interleave must key on the SAME string. Keying on the registered name instead (as this
+    used to) is a no-op fold for most engines but diverges from boot.py's key for any
+    ``catalog_qualified=False`` engine (pg/ClickHouse/Oracle): the query path's lock then guards a
+    different node than the event loop's own scheduled land, and the two run truly concurrently —
+    confirmed live, REQ-1730, 2026-09-21: Oracle's REPLACE land interleaved (DELETE, DELETE, INSERT,
+    INSERT) across two OS threads, landing every row twice."""
+    from provisa.federation.backend import _env_store_schema
+
+    store_schema = _env_store_schema(engine.engine.materialize_store())
+    schema, name = backend.landing_target(
+        store_schema=store_schema,
+        source_id=source.id,
+        source_type=source.type,
+        schema_name=table.schema_name,
+        table_name=table.table_name,
+    )
+    return _node(schema, name)
+
+
 def stale_sources(
     sources: list[Any],
     tables_by_source: dict[str, list[Any]],
@@ -137,7 +162,9 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
         # never interleave on one replica; every node of the source is held for the source's land.
         async with AsyncExitStack() as held:
             for t in tables_by_source.get(source.id, []):
-                await held.enter_async_context(land_lock(_node(t.schema_name, t.table_name)))
+                await held.enter_async_context(
+                    land_lock(_physical_node(backend, engine, source, t))
+                )
             try:
                 clock_stale = is_stale_of(sources, stamps, oks, now)
                 # REQ-1730: OR in this backend INSTANCE's own first-touch signal — see

@@ -43,11 +43,12 @@ def _is_row_returning(sql: str) -> bool:
 
 
 class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
-    def __init__(self, *, url: str) -> None:
+    def __init__(self, *, url: str, catalog_qualified: bool = True) -> None:
         from sqlalchemy import create_engine
 
         self._sa = create_engine(url)
         self._con = self._sa.raw_connection()  # a DBAPI connection (cursor) — cache terminal + run
+        self._catalog_qualified = catalog_qualified
 
     # -- source exposure -------------------------------------------------------
 
@@ -156,6 +157,14 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         directly at ``(schema_name, table_name)`` — the same address the compiler emits — so there
         is no separate replica/view indirection to converge here, just the one table.
 
+        REQ-1730 (Oracle): for a ``catalog_qualified=False`` member of this family, the compiler
+        folds the catalog into the schema half of every compiled reference
+        (``sql_rewrite.fold_catalog_into_schema``, mirrored by ``SqlAlchemyBackend.landing_target``).
+        This DDL path must apply the SAME fold to ``schema`` before creating the table — otherwise
+        the boot-time DDL creates the table at the plain registered schema while the query path
+        looks for it at the folded address (verified live, 2026-09-21: Oracle's
+        ``ORA-00942: table or view does not exist`` on the very first query after reboot).
+
         METADATA DRIFT (required, REQ-846/REQ-1651's own contract — mirrors
         ``snowflake_store.reconcile_snowflake_native`` exactly, generalized via SQLAlchemy Core's
         ``Inspector`` instead of an information_schema query hand-written per dialect): an existing
@@ -167,7 +176,13 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         from provisa.federation.materialize_exec import build_table
 
         schema, table = source.schema_name, source.table_name
-        tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
+        if not self._catalog_qualified:
+            from provisa.compiler.naming import source_to_catalog
+
+            schema = f"{source_to_catalog(source.id)}_{schema}"
+        tbl = build_table(
+            schema, table, columns, tuple(pk_columns or ()), dialect_name=self._sa.dialect.name
+        )
 
         def _run() -> str:
             with self._sa.begin() as conn:
@@ -211,12 +226,19 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         when ``pk_columns`` is given), CDC (per-event upsert/delete by PK — requires ``pk_columns``).
         """
         from provisa.core.change_signal import APPEND, CDC, REPLACE, select_landing_shape
-        from provisa.federation.materialize_exec import _coerce_json_row, _json_columns, build_table
+        from provisa.federation.materialize_exec import (
+            _coerce_json_row,
+            _json_columns,
+            build_table,
+            coerce_temporal_row,
+            temporal_columns,
+        )
 
         del match_floor  # REQ-960 idempotency window — not yet applicable to this sync path
         pk = list(pk_columns or ())
         landing_shape = shape or select_landing_shape(change_signal, watermark_column)
-        tbl = build_table(schema, table, columns, tuple(pk))
+        tbl = build_table(schema, table, columns, tuple(pk), dialect_name=self._sa.dialect.name)
+        temporal_cols = temporal_columns(columns)
 
         def _run() -> str:
             with self._sa.begin() as conn:
@@ -224,7 +246,9 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
                     _ensure_schema(conn, schema)
                 _ensure_table(conn, tbl)
                 json_cols = _json_columns(tbl)
-                coerced = [_coerce_json_row(r, json_cols) for r in rows]
+                coerced = [
+                    coerce_temporal_row(_coerce_json_row(r, json_cols), temporal_cols) for r in rows
+                ]
                 if landing_shape == REPLACE:
                     conn.execute(tbl.delete())
                     if coerced:
@@ -262,11 +286,20 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         already landed in this engine's own store (REQ-1733) — the sync equivalent of
         materialize_exec.py's ``apply_cdc``, for the same reason ``land_table`` above reimplements
         REPLACE/APPEND/CDC synchronously rather than going through the async ``store_writer`` path."""
-        from provisa.federation.materialize_exec import _coerce_json_row, _json_columns, build_table
+        from provisa.federation.materialize_exec import (
+            _coerce_json_row,
+            _json_columns,
+            build_table,
+            coerce_temporal_row,
+            temporal_columns,
+        )
 
         if not pk_columns:
             raise ValueError(f"CDC land into {schema}.{table} requires primary key columns")
-        tbl = build_table(schema, table, columns, tuple(pk_columns))
+        tbl = build_table(
+            schema, table, columns, tuple(pk_columns), dialect_name=self._sa.dialect.name
+        )
+        temporal_cols = temporal_columns(columns)
 
         def _run() -> dict[str, int]:
             counts = {"upsert": 0, "delete": 0}
@@ -284,7 +317,7 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
                         _sync_upsert(
                             conn,
                             tbl,
-                            _coerce_json_row(ev.row, json_cols),
+                            coerce_temporal_row(_coerce_json_row(ev.row, json_cols), temporal_cols),
                             index_elements=pk_columns,
                         )
                         counts["upsert"] += 1
@@ -309,8 +342,22 @@ def _ensure_schema(conn: Any, schema: str) -> None:
     from sqlalchemy import inspect
     from sqlalchemy.schema import CreateSchema
 
-    if not inspect(conn).has_schema(schema):
-        conn.execute(CreateSchema(schema))
+    if inspect(conn).has_schema(schema):
+        return
+    if conn.dialect.name == "oracle":
+        # Oracle has no free-standing schema/namespace object — a schema IS a database user
+        # (verified live, REQ-1730, 2026-09-21: ``CreateSchema`` raised
+        # ``ORA-02420: missing schema authorization clause``). ``CREATE USER`` is the only way
+        # to get a new addressable schema; the fixed password is never used to authenticate —
+        # every later DDL/DML runs through the configured connection (a DBA account), simply
+        # addressing the new schema by name.
+        from sqlalchemy import text
+
+        ident = f'"{schema}"'
+        conn.execute(text(f'CREATE USER {ident} IDENTIFIED BY "Provisa_1730x"'))
+        conn.execute(text(f"GRANT UNLIMITED TABLESPACE TO {ident}"))
+        return
+    conn.execute(CreateSchema(schema))
 
 
 def _ensure_table(conn: Any, table: Any) -> None:

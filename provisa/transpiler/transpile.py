@@ -290,7 +290,13 @@ def transpile(pg_sql: str, target_dialect: str) -> str:  # REQ-066, REQ-068, REQ
     # mongodb -> snowflake query, "invalid identifier 'PRODUCT_ID'". `identify=True` forces every
     # identifier in the OUTPUT to be quoted regardless of how it was written in the input, which is
     # a no-op for the already-quoted governed path and the fix for the raw-SQL path.
-    identify = target_dialect == "snowflake"
+    # REQ-1730: Oracle joins Snowflake here, for the identical reason — an unquoted identifier
+    # folds to UPPERCASE by default. Unlike Snowflake (whose store DDL already always quotes,
+    # REQ-1652), Oracle's own SQLAlchemy dialect used to leave a plain lowercase Python identifier
+    # UNQUOTED (verified live: `CreateTable` compiled `product_id` bare) — fixed at the DDL side
+    # too (materialize_exec.py's `build_table`, `quoted_name(..., quote=True)`) so both sides of
+    # the seam agree on always-quoted.
+    identify = target_dialect in ("snowflake", "oracle")
     results = sqlglot.transpile(pg_sql, read="postgres", write=target_dialect, identify=identify)
     if not results:
         raise ValueError(f"SQLGlot produced no output for: {pg_sql!r}")

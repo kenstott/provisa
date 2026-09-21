@@ -802,6 +802,15 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
         file_native=False,  # no file scanner — every source lands into the store (REQ-897)
         pooled=True,  # SQLAlchemy engine holds a server-side connection pool
         transactional=True,  # a generic RDB store is transactional
+        # REQ-1730: T-SQL/Sybase genuinely support 3-part database.schema.table (mssql already
+        # verified live with the default True) — Oracle does not: verified live, a real 3-part
+        # FROM-clause reference is "ORA-03048: SQL reserved word '.' is not syntactically valid"
+        # (Oracle's own grammar is [schema.]table[@dblink], never database.schema.table). Only
+        # Oracle is narrowed here — the other ~12 `_RDB_KINDS` members (mariadb, greenplum,
+        # cockroachdb, …) are UNVERIFIED for this trait, tracked rather than guessed at, same
+        # discipline as the sqlglot-dialect-name gap `EngineBackend._SQLGLOT_DIALECT_ALIASES`'s own
+        # comment already documents for this family.
+        catalog_qualified=backend != "oracle",
         backend_factory=SqlAlchemyBackend,  # in-process terminal driving SqlAlchemyFederationRuntime
         # REQ-1730: was `_platform_db_materialize_default` — the shared PLATFORM Postgres, not this
         # engine's own store. A SELF_ONLY engine's whole point is "every source lands into me" (see
