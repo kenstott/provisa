@@ -87,11 +87,17 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
         return self._engine
 
     def _phys_parts(self, source: Any) -> tuple[str, str, str]:
-        """(database, schema, table) — the governed physical name. The compiler pins the catalog to a
-        per-source database (source id, hyphen→underscore); schema/table are the source's."""
-        from provisa.core.catalog import _to_catalog_name
-
-        return _to_catalog_name(source.id), source.schema_name, source.table_name
+        """(database, schema, table) — the governed physical name. Snowflake is a SINGLE
+        fixed-catalog engine (REQ-1730, ``engine.fixed_catalog_for`` — snowflake is not in
+        ``_PER_SOURCE_CATALOG_ENGINES``), so the compiler pins EVERY source's catalog to the one
+        landing database (``ensure_materialize_attached()``), never a per-source one — matching
+        ``BigQueryFederationRuntime._phys_parts``'s own use of ``self._project`` for the identical
+        reason. A stale per-source catalog here (``_to_catalog_name(source.id)``, predating that
+        model) built the ``attach_landed_source`` view in a database the compiled query never
+        looks in: reconcile succeeded (the view existed) but every query saw "schema does not
+        exist" because it was addressing a DIFFERENT database entirely. Verified live (REQ-1730
+        engine-swap harness, 2026-09-20): the first-ever live mongodb -> snowflake run."""
+        return self.ensure_materialize_attached(), source.schema_name, source.table_name
 
     # -- source exposure -------------------------------------------------------
 

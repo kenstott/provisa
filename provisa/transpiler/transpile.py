@@ -278,7 +278,20 @@ def transpile(pg_sql: str, target_dialect: str) -> str:  # REQ-066, REQ-068, REQ
     Returns:
         SQL string in target dialect.
     """
-    results = sqlglot.transpile(pg_sql, read="postgres", write=target_dialect)
+    # REQ-1730: an identifier UNQUOTED in the source SQL (the common case for a raw/direct query —
+    # governed GraphQL/Cypher-compiled queries already force `quoted=True`, see stage2.py's
+    # `_expand_star`) stays unquoted through the transpile by default, which is harmless for every
+    # target whose own unquoted-identifier folding already matches Provisa's lowercase DDL
+    # (Postgres/Trino/DuckDB/MySQL fold to lowercase; BigQuery is case-insensitive) — but Snowflake
+    # is the one dialect here that folds an UNQUOTED identifier to UPPERCASE by default, so
+    # `product_id` (unquoted) resolved to a column literally named `PRODUCT_ID`, which never
+    # exists — every landed/attached table's columns are created quoted-lowercase (REQ-1652's own
+    # convention). Verified live (REQ-1730 engine-swap harness, 2026-09-20): first-ever live
+    # mongodb -> snowflake query, "invalid identifier 'PRODUCT_ID'". `identify=True` forces every
+    # identifier in the OUTPUT to be quoted regardless of how it was written in the input, which is
+    # a no-op for the already-quoted governed path and the fix for the raw-SQL path.
+    identify = target_dialect == "snowflake"
+    results = sqlglot.transpile(pg_sql, read="postgres", write=target_dialect, identify=identify)
     if not results:
         raise ValueError(f"SQLGlot produced no output for: {pg_sql!r}")
     result = results[0]

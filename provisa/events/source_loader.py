@@ -396,6 +396,35 @@ def make_redis_loader() -> AdapterLoader:
     return _load
 
 
+def make_mongodb_loader() -> AdapterLoader:
+    """Build the MongoDB row-fetch (REQ-1730): the table's registered data columns, projected from
+    ``<database>.<collection>`` over pymongo and landed like any other fetched source. Wired only on
+    an engine with no live MongoDB connector of its own; Trino keeps scanning through its own
+    connector (``TrinoMongoConnector``). Same gap REQ-1672/1675/1676 already closed for
+    Elasticsearch/Redis/Cassandra — every self-only warehouse engine (Snowflake, BigQuery,
+    Databricks, mssql/Fabric/Synapse) and DuckDB itself had no live MongoDB reach at all, so
+    ``SourceRowLoader``'s generic ``SELECT * FROM {per_source_catalog}...`` engine-scan assumption
+    (this module's own fallback, below) always failed for mongodb on any of them — unexercised
+    until REQ-1730's engine-swap harness first queried a mongodb source under one live."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.mongodb.fetch import MongoConnection, fetch_rows
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        conn = MongoConnection.build(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            int(getattr(source, "port", 0) or 27017),
+            username=getattr(source, "username", None) or None,
+            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        database = getattr(source, "database", None) or table.schema_name
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+        return await asyncio.to_thread(fetch_rows, conn, database, table.table_name, names)
+
+    return _load
+
+
 def make_cassandra_loader() -> AdapterLoader:
     """Build the Cassandra row-fetch (REQ-1676): the table's registered data columns, SELECTed from
     ``<keyspace>.<table>`` over CQL and landed like any other fetched source. Wired only on an engine

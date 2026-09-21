@@ -1439,9 +1439,17 @@ def configured_engine_url() -> str | None:
 # 'e2e_swap_es_<id>.default.support_tickets'`, SQL Server parsing the per-source identity string as
 # a literal 3-part object reference). The federator set changes far less often than the set of
 # selectable single-store products, so excluding it is the stable side to maintain.
-_PER_SOURCE_CATALOG_ENGINES = frozenset(
-    {"duckdb", "trino", "trino-byo", "pg", "clickhouse", "clickhouse-server"}
-)
+#
+# Keyed on the RUNTIME identity (`FederationEngine.name`), not `_ENGINE_BUILDERS`' selection keys —
+# they differ for two of these (`"trino-byo"`/`"clickhouse-server"` both share their base engine's
+# own runtime and `.name`; `build_pg_engine()` names itself `"postgres"`, never `"pg"` — see this
+# module's own comment a few lines above `_ENGINE_BUILDERS`). A selection key here would silently
+# never match `fixed_catalog_for`'s `engine.name in ...` check: verified live (REQ-1730,
+# 2026-09-21) — `"pg"` sat in this set for as long as `fixed_catalog_for` has existed, so pg was
+# never actually treated as per-source-catalog by that function; it fell through to the generic
+# `make_url(url).database` branch instead, dormant only because pg's own `catalog_qualified=False`
+# + `fold_catalog_into_schema` compiler-side fold overrides whatever catalog that branch produced.
+_PER_SOURCE_CATALOG_ENGINES = frozenset({"duckdb", "trino", "postgres", "clickhouse"})
 
 
 def fixed_catalog_for(engine: FederationEngine) -> str | None:
@@ -1471,6 +1479,20 @@ def fixed_catalog_for(engine: FederationEngine) -> str | None:
     url = configured_engine_url()
     if not url:
         return None
+    if engine.name == "snowflake":
+        # Snowflake's own engine URL convention is TWO path segments
+        # (snowflake://user:pass@account/<database>/<schema>, see SnowflakeFederationRuntime's own
+        # module doc) — make_url(url).database (the generic branch below) assumes the single-segment
+        # SQLAlchemy DSN convention and returns the WHOLE unsplit remainder, e.g. "_landing/PUBLIC"
+        # for a real URL with database=_landing, schema=PUBLIC. That malformed string then became
+        # the compiler's physical catalog, sent to Snowflake as one quoted identifier — verified
+        # live (REQ-1730 engine-swap harness, 2026-09-20): "Database '\"_landing/PUBLIC\"' does not
+        # exist or not authorized" on the very first live mongodb -> snowflake run. Split the same
+        # way the runtime's own constructor does, so both agree on the database segment alone.
+        from urllib.parse import urlparse
+
+        path_parts = [p for p in (urlparse(url).path or "").split("/") if p]
+        return path_parts[0] if path_parts else None
     from sqlalchemy.engine import make_url
 
     return make_url(url).database

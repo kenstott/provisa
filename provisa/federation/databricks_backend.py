@@ -27,6 +27,30 @@ class DatabricksBackend(NativeEngineBackend):
     def dialect(self) -> str:
         return "databricks"
 
+    def landing_target(
+        self,
+        *,
+        store_schema: str,
+        source_id: str,
+        source_type: Any,
+        schema_name: str,
+        table_name: str,
+    ) -> tuple[str, str]:
+        """EVERY MATERIALIZED source's replica lands at its REGISTERED address, same reasoning as
+        ``BigQueryBackend``/``SnowflakeBackend`` (REQ-1730) — but Databricks additionally lands each
+        source into its OWN per-source Unity Catalog (``DatabricksFederationRuntime._phys_parts``'s
+        own docstring; ``engine.fixed_catalog_for`` returns ``None`` for ``"databricks"``, confirming
+        the compiler resolves a per-source catalog here too, unlike BigQuery/Snowflake's ONE fixed
+        one). ``land_table``'s hook signature only carries plain ``(schema, table)`` strings — no
+        source id — so the catalog is folded into the ``schema`` half here (NUL-joined; never a
+        legal identifier character, so it can never collide with a real schema name) and unpacked
+        by ``DatabricksFederationRuntime.land_table``, which calls ``_to_catalog_name`` the identical
+        way ``_phys_parts`` does so both agree on the exact same physical catalog."""
+        del store_schema, source_type  # never chooses a different table
+        from provisa.core.catalog import _to_catalog_name
+
+        return f"{_to_catalog_name(source_id)}\x00{schema_name}", table_name
+
     def _new_runtime(self) -> Any:
         from provisa.federation.databricks_runtime import DatabricksFederationRuntime
         from provisa.federation.engine import configured_engine_url

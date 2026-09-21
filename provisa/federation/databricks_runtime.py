@@ -209,6 +209,72 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         finally:
             cur.close()
 
+    async def land_table(
+        self,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        rows: list[dict],
+        change_signal: str = "ttl",
+        watermark_column: str | None = None,
+        pk_columns: list[str] | None = None,
+        match_floor: float = 0.0,
+        shape: str | None = None,
+    ) -> str:
+        """The ``NativeEngineBackend.land_source_table``/``hasattr(runtime, "land_table")`` seam
+        every other native engine's runtime uses (REQ-1730) — before this,
+        ``DatabricksFederationRuntime`` had no method by this name (only ``materialize_source``, a
+        different signature taking a full ``source`` object), so the seam silently fell through to
+        the BASE ``EngineBackend`` default: landing through ``store_writer``'s async path against
+        ``self.engine.materialize_store()`` — the shared PLATFORM Postgres, not Databricks itself.
+        Same class of bug as BigQuery's own (``BigQueryFederationRuntime.land_table``), found by the
+        same live probe (REQ-1730 engine-swap harness, 2026-09-21): a redis source rebooted into
+        Databricks queried 0 rows with no error.
+
+        UNLIKE BigQuery/Snowflake (a fixed catalog independent of the source), Databricks lands each
+        source into its OWN per-source Unity Catalog (``_phys_parts``'s own docstring; confirmed via
+        ``engine.fixed_catalog_for`` returning ``None`` for ``"databricks"`` — the compiler resolves
+        a per-source name here too), which needs ``source.id`` — the ONE thing this hook's plain
+        ``(schema, table)`` strings don't carry. ``DatabricksBackend.landing_target`` (REQ-1730)
+        folds the catalog into the ``schema`` half it returns (NUL-joined — never a legal identifier
+        character, so it never collides) precisely so this seam can recover it; unpacked here rather
+        than duplicating ``_phys_parts``'s own catalog derivation, so both stay driven by the exact
+        same ``_to_catalog_name(source_id)`` call. ``match_floor``/CDC are not shapes
+        ``land_databricks_native`` implements (REPLACE/APPEND only) — raising loud on CDC rather
+        than silently mishandling it."""
+        import asyncio
+
+        from provisa.core.change_signal import CDC, select_landing_shape
+        from provisa.federation.databricks_store import land_databricks_native
+
+        del match_floor
+        landing_shape = shape or select_landing_shape(change_signal, watermark_column)
+        if landing_shape == CDC:
+            raise NotImplementedError(
+                "Databricks native landing has no CDC shape; use replace or append"
+            )
+        catalog, real_schema = schema.split("\x00", 1)
+        stage = self._stage_from_env()
+        cur = self._conn.cursor()
+        try:
+            await asyncio.to_thread(
+                land_databricks_native,
+                cur,
+                catalog=catalog,
+                schema=real_schema,
+                table=table,
+                columns=columns,
+                rows=rows,
+                change_signal=change_signal,
+                watermark_column=watermark_column,
+                stage=stage,
+                pk_columns=pk_columns,
+            )
+        finally:
+            cur.close()
+        return f"{catalog}.{real_schema}.{table}"
+
     async def attach_landed_source(
         self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
     ) -> None:

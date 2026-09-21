@@ -54546,11 +54546,12 @@
     landing works uniformly regardless of which engine is configured, AND `land_table` (the event-queue-triggered
     full-data landing terminal dispatched from land_source_table() via `hasattr(runtime, "land_table")`),
     so a MATERIALIZE_ONLY source''s rows land in that engine''s own store rather than silently falling
-    back to the generic store_writer DSN path against the platform database (REQ-1730). As of 2026-09-20:
-    DuckDBFederationRuntime, SnowflakeFederationRuntime, BigQueryFederationRuntime, PgFederationRuntime,
-    and SqlAlchemyFederationRuntime implement both `land_table` and `attach_landed_source`. DatabricksFederationRuntime
-    implements `attach_landed_source` and lands data through the separate poll/refresh-cadence terminal
-    `materialize_source` instead of `land_table` (equivalent coverage via a different seam). ClickHouseFederationRuntime
+    back to the generic store_writer DSN path against the platform database (REQ-1730). As of 2026-09-21:
+    DuckDBFederationRuntime, SnowflakeFederationRuntime, BigQueryFederationRuntime, DatabricksFederationRuntime,
+    PgFederationRuntime, and SqlAlchemyFederationRuntime implement both `land_table` and `attach_landed_source`
+    (Databricks'' `land_table` adapts to its own `materialize_source` signature, same pattern as BigQuery''s —
+    verified live via the engine-swap harness, a redis source rebooted into Databricks queried 0 rows with
+    no error before this). ClickHouseFederationRuntime
     and MssqlWarehouseRuntime (backing both fabric and synapse) implement none of the three terminals —
     for these, NativeEngineBackend.reconcile_landed_tables() (native_backend.py:315-316) silently returns
     an empty list with no error, so REQ-1632''s zero-row replica never appears in that engine''s own catalog,

@@ -151,6 +151,7 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
         make_firebird_loader,
         make_graphql_remote_loader,
         make_hive_s3_loader,
+        make_mongodb_loader,
         make_openapi_loader,
         make_pinot_loader,
         make_prometheus_loader,
@@ -200,6 +201,8 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
         loaders["redis"] = make_redis_loader()
     if not engine_attaches(bare_engine, "cassandra"):  # REQ-1676
         loaders["cassandra"] = make_cassandra_loader()
+    if not engine_attaches(bare_engine, "mongodb"):  # REQ-1730
+        loaders["mongodb"] = make_mongodb_loader()
     if not engine_attaches(bare_engine, "prometheus"):  # REQ-1689
         loaders["prometheus"] = make_prometheus_loader()
     if not engine_attaches(bare_engine, "pinot"):  # REQ-1730
