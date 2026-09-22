@@ -83,7 +83,7 @@ Des capacités affectées indépendamment, avec une hiérarchie de rôles facult
 
 ### Héritage de rôles
 
-Les rôles peuvent hériter des capacités et de l'accès aux domaines d'un rôle parent via `parent_role_id`. (REQ-215) La hiérarchie est aplatie au démarrage — les rôles enfants fusionnent les capacités et l'accès aux domaines de leur parent avec les leurs. (REQ-215)
+Les rôles peuvent hériter d'un seul rôle parent via `parent_role_id`, défini dans la configuration ou sur la page Sécurité sous « Hérite de ». (REQ-215) La chaîne est repliée au démarrage : un enfant détient l'union des capacités et de l'accès aux domaines de ses ancêtres, chaque octroi de colonne, métrique, fonction et webhook qui nomme un ancêtre, et les règles RLS des ancêtres par table avec priorité à l'enfant — le rôle le plus proche dans la chaîne possédant une règle pour une table fournit le prédicat de cette table, et une règle enregistrée pour l'enfant remplace celle du parent pour cette table. (REQ-1677)
 
 ```yaml
 roles:
@@ -173,6 +173,8 @@ rls_rules:
 
 Le filtre est combiné par ET à la clause WHERE de la requête. Fonctionne aussi bien pour les requêtes que pour les mutations (UPDATE/DELETE). (REQ-035, REQ-041)
 
+Un terme `current_setting('provisa.<name>')` se résout par rapport aux variables de session que la requête lie : `user_id` provenant de l'identité authentifiée, `role` provenant du rôle agissant, et chaque revendication scalaire du jeton sous son nom en minuscules avec un préfixe `x-hasura-` initial retiré, de sorte qu'un filtre Hasura importé sur `X-Hasura-User-Id` se lit `provisa.user_id`. Les `session_vars` configurées d'un rôle constituent les constantes sous-jacentes ; les liaisons de la requête les surchargent. En mode non sécurisé, un en-tête `x-provisa-session-<name>` lie `<name>`. Une variable liée nulle part se résout en NULL et ne correspond à aucune ligne. (REQ-1682)
+
 ## Masquage au niveau des colonnes
 
 Le masquage est défini une fois par colonne — c'est une propriété de la colonne, non du rôle. Le champ `unmasked_to` régit quels rôles le contournent. (REQ-249)
@@ -184,6 +186,18 @@ Le masquage est défini une fois par colonne — c'est une propriété de la col
 | `truncate` | Date/Timestamp | `DATE_TRUNC(precision, col)` |
 
 Le masquage est poussé dans la projection SELECT du SQL — c'est la base de données qui renvoie des données masquées. (REQ-263) Les données non masquées ne traversent jamais le réseau pour les rôles masqués. (REQ-263) Les colonnes masquées sont également bloquées dans les clauses `WHERE` et `HAVING` (garde-fou des prédicats, couche 5) afin d'empêcher d'inférer la valeur non masquée par filtrage. (REQ-263, REQ-531)
+
+## Gouvernance des réponses d'action
+
+La réponse d'une fonction ou d'un webhook suivi est gouvernée comme les lignes d'une table. (REQ-1679) Les lignes qu'une action renvoie sont liées comme une relation dont les colonnes sont le contrat de sortie déclaré de l'action — `output_columns` pour une fonction, `inline_return_type` pour un webhook, ou les propriétés d'objet du `return_schema` de type tableau d'une fonction — et cette relation traverse la même étape de gouvernance que toute lecture de table, sur un CTE VALUES contenant les lignes. (REQ-1679) Rien concernant la RLS, le masquage ou la visibilité n'est réimplémenté pour les actions.
+
+Trois éléments s'appliquent, dans le même ordre que pour une table. (REQ-1679)
+
+- Un filtre de lignes : la règle RLS du rôle enregistrée contre l'action par son nom (`upsertRlsRule` avec `actionName`), ou, lorsque l'action n'en a pas de propre, la règle de domaine du domaine de l'action. Le prédicat est validé contre le contrat à l'enregistrement, de la même manière qu'une règle de table. (REQ-1676)
+- Visibilité des colonnes : une colonne du contrat qui déclare `visible_to` est supprimée pour un rôle que la liste ne nomme pas ; une colonne qui n'en déclare aucun fait partie de la forme publique de l'action et reste visible.
+- Masques : une colonne du contrat peut porter `mask_type`, `mask_pattern`, `mask_replace`, `mask_value`, `mask_precision` et `unmasked_to`, les mêmes champs qu'une colonne de table.
+
+L'héritage de rôle résout la chaîne pour les trois. (REQ-1677) Une réponse qui renvoie une colonne hors du contrat déclaré est refusée avec un 502 plutôt que transmise sans gouvernance. Une action qui ne déclare aucun contrat de colonne renvoie un scalaire et n'a rien à lier ; elle est renvoyée telle quelle. Le test d'invocation de l'interface d'administration rapporte les filtres, exclusions et masques appliqués, et l'instruction gouvernée est écrite dans le journal d'audit des requêtes.
 
 ## Échantillonnage
 

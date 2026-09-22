@@ -65,6 +65,26 @@ Provisa running:
 
 `--demo` — Inicia orígenes de datos de demostración adicionales (esquema PostgreSQL pet-store, mock de OpenAPI petstore, SQLite y un GraphQL remoto). Siembra automáticamente usuarios y pedidos de petstore. [tool-verified: start-ui.sh lines 17, 55–171]
 
+`--source=<name>` (solo `start-ui-install.sh`, repetible) — Aprovisiona un origen de datos opcional junto con `--demo`. Cada nombre corresponde a `demo/sources/<name>/`. El inicio llama a `demo/sources/provision.py up`, que levanta el `compose.yml` del origen como su propio proyecto de Docker Compose (`provisa-demo-<name>`), espera su comprobación de estado (health check) y ejecuta `prime.py` cuando el origen tiene uno para sembrar datos. Luego el inicio escribe una configuración envolvente en `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml` que incluye la configuración base más el `fragment.yaml` de cada origen, y arranca desde ella. [tool-verified: `start-ui-install.sh` (search `SOURCES`), `demo/sources/provision.py`] (REQ-1669)
+
+El mismo `provision.py` es lo que llama la suite de extremo a extremo de la UI para levantar estos orígenes (bajo el prefijo de proyecto `provisa-e2e-<name>` en sus propios puertos), de modo que los datos de siembra que muestra una demo y las filas que verifica la suite se definen una sola vez. [tool-verified: `provisa-ui/e2e/demo-source-containers.ts`] (REQ-1671)
+
+En un inicio con Docker (sin `--demo`/`--native`) el coordinador es un contenedor, por lo que cada origen se une a la red del stack principal y se registra como `<name>:<container port>`; en un inicio nativo se registra como `localhost:<published port>`. Se rechaza un origen cuyo archivo `demo/sources/<name>/engine` nombre un motor que el inicio no ejecuta.
+
+Orígenes incluidos:
+
+| Nombre | Puerto(s) | Notas |
+|------|---------|-------|
+| `neo4j` | HTTP 27474, Bolt 27687 | Dos tablas Cypher (`adopter`, `adopter_referral`); grafo sembrado por `seed.cypher`; tablas registradas desde el fragmento |
+| `mongodb` | 27117 | Origen registrado; colección `product_reviews` sembrada por `db/mongo-init.js`; registre las tablas manualmente mediante Register Table |
+| `redis` | 26379 | Origen registrado; hashes `support_agent:*` y `agent_status:*` sembrados por `prime.py`; cada prefijo se registra como tabla mediante Register Table (REQ-1675) |
+| `cassandra` | 29042 | Origen registrado; `shelter_ops.intake_events` sembrado por `prime.py` (necesita el extra `cassandra`); el keyspace se registra como esquema mediante Register Table (REQ-1676) |
+| `sparql` | 23030 | Apache Jena Fuseki; origen y una tabla respaldada por consulta (`volunteer`) registrados desde el fragmento, grafo sembrado por `prime.py`; más tablas mediante Register Table (consulta + Preview) (REQ-1683) |
+| `prometheus` | 29090 | Origen registrado; el servidor se autoescanea, por lo que `up` y las métricas `prometheus_*` se registran como tablas mediante Register Table (REQ-1689) |
+| `elasticsearch` | 29200 | Origen y mapeo de índice registrados; índice `support_tickets` sembrado por `prime.py`; leído por HTTP por el motor nativo (REQ-1672), a través del conector en Trino |
+| `splunk` | mgmt 8089, HEC 8088 | Origen registrado con autenticación por token y `disable_ssl_validation` (el certificado del contenedor es autofirmado); un índice, siete eventos de alerta de refugio y el Data Model `shelter_alerts` sembrados por `prime.py`, que también genera el token de API que el fragmento lee como `PROVISA_DEMO_SPLUNK_TOKEN`. Los Data Models se registran como tablas mediante Register Table — en Trino a través del catálogo `splunk`, en el resto de los motores a través del servidor pgwire de Calcite incluido que el motor adjunta (REQ-1694) |
+| `chinook` | 25433 | Postgres con el subconjunto Chinook en snake_case que rastrean los metadatos de muestra de Hasura, sembrado por `prime.py` desde `tests/fixtures/hasura_v2_t1_seed.sql`; origen registrado desde el fragmento, y el origen sobre el que aterriza una importación de Hasura v2 de `tests/fixtures/hasura_v2_t1_metadata.json` (REQ-1687) |
+
 `--idp=basic|firebase` — Habilita un proveedor de identidad para la autenticación. Sin este indicador, el backend se ejecuta sin proveedor de autenticación y todas las solicitudes se tratan como `admin`. [tool-verified: start-ui.sh line 18; provisa/auth/wiring.py lines 57–60; provisa/auth/middleware.py lines 57–68] (REQ-120, REQ-124)
 
 ---

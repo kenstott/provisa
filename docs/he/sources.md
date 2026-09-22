@@ -186,7 +186,9 @@ SharePoint ו-Splunk נרשמים דרך מחברי Apache Calcite (kenstott/cal
 | `database` | `tenant-id` | UUID דייר (tenant) של Azure |
 | `mapping.auth_type` | `auth-type` | `CLIENT_CREDENTIALS` (ברירת מחדל) או `CERTIFICATE` |
 | `mapping.certificate_path` | `certificate-path` | נתיב PFX כאשר `auth_type: CERTIFICATE` |
-| `mapping.certificate_password` | `certificate-password` | סיסמת PFX |
+| `mapping.certificate_password` | `certificate-password` | סיסמת PFX — המפתח חייב להיות נוכח, מחרוזת ריקה עבור PFX ללא סיסמה |
+
+אימות תעודה (certificate) על המנועים שאינם Trino נושא שני כללים נוספים, שניהם נאכפים כאשר האופרנד `model.json` של שרת ה-Calcite pgwire נבנה (REQ-1693). `certificate_path` חייב להיות מוחלט: השרת רץ עם תיקיית החבילה שלו כתיקיית העבודה, כך שנתיב יחסי נפתר בתוך מטמון runtime-deps והקובץ PFX אינו נמצא. `certificate_password` חייב להיות נוכח ב-`mapping` גם כאשר ל-PFX אין סיסמה, ובמקרה זה הוא מחרוזת ריקה — מתאם ה-Calcite דוחה סיסמת null באופן מוחלט, ומפתח נעדר מטופל כשגיאת הגדרות ולא נקרא בשקט כסיסמה ריקה. ערך חסר או יחסי מעלה `MissingConnectorConfig` הנוקב בשדה. [tool-verified: `provisa/federation/pgwire_replica.py` `_sharepoint_operand`]
 
 כאשר המחבר לא חושף `information_schema.columns`, יש לרשום את הטבלה עם הגדרות עמודה מפורשות (המתקבלות מ-Microsoft Graph API) דרך המוטציה `registerTable` (REQ-732).
 
@@ -199,6 +201,20 @@ SharePoint ו-Splunk נרשמים דרך מחברי Apache Calcite (kenstott/cal
   database: ${env:SP_TENANT_ID}
   mapping:
     auth_type: CLIENT_CREDENTIALS
+```
+
+אימות תעודה, עם הנתיב המוחלט והסיסמה הנוכחת-תמיד:
+
+```yaml
+- id: hr-sharepoint
+  type: sharepoint
+  base_url: https://kenstott.sharepoint.com
+  username: ${env:SP_CLIENT_ID}
+  database: ${env:SP_TENANT_ID}
+  mapping:
+    auth_type: CERTIFICATE
+    certificate_path: /etc/provisa/certs/sharepoint.pfx
+    certificate_password: ${env:SP_CERT_PASSWORD}
 ```
 
 #### `splunk`
@@ -274,6 +290,39 @@ sources:
 | `subject` | כן | — | אחד מערכי הנושא שלעיל |
 | `domain_id` | כן | — | הדומיין שאליו שייך מקור זה |
 | `description` | לא | `""` | תיאור קריא לבני אדם |
+
+### היכן חיה סיסמת המקור
+
+סיסמת מקור לעולם אינה נשמרת לצד שאר הגדרות החיבור שלו. שורת ה-`sources` של מישור הבקרה
+נושאת עמודת `password_ref` המחזיקה *הפניה* —
+`${env:PG_PASSWORD}`, `${secret:SNOWFLAKE_KEY}` — הנפתרת ברגע שהמקור
+נחייג, בתוך הארגון שהבקשה רצה כמותו (REQ-1695). [tool-verified:
+`provisa/core/schema_org.py`, `provisa/core/repositories/source.py`]
+
+`${env:VAR}` קורא את סביבת התהליך של הפריסה ואינו זקוק לכריכה כלשהי. `${secret:NAME}`
+נוקב סוד בבעלות ארגון, כך שהוא נפתר רק בתוך הפעולות של אותו ארגון: תפרי חשיפת הניהול
+ומסוף השאילתות שכל משטח מגיע אליו מכוננים את
+הכריכה הזו. [tool-verified: `provisa/pgwire/_pipeline.py` `_execute_plan`]
+
+לאן ההפניה מצביעה תלוי באופן שבו המקור נרשם:
+
+- **מקובץ הגדרות.** כתוב את ההפניה בעצמך. `${env:VAR}` קורא את סביבת התהליך
+  של הפריסה; `${secret:NAME}` קורא את הכספת של הארגון (ראה [סודות](secrets.md)). ה-
+  קובץ הוא הרשומה, ו-Provisa מעתיקה את ההפניה אל `password_ref` כלשונה.
+- **מטופס המקורות.** הפניה שהוקלדה לתוך שדה הסיסמה נשמרת גם היא
+  כלשונה. סיסמה *מילולית* נכתבת לתוך הכספת של הארגון תחת
+  `source_<id>_password` — מוצפנת במנוחה, ולעולם לא ניתנת לקריאה חזרה לפי שם — והשורה שומרת
+  את `${secret:source_<id>_password}` הנוקב בה. [tool-verified:
+  `provisa/api/admin/schema_common.py` `persist_source_password`]
+
+הקלדת הסיסמה מחדש על מקור קיים מסובבת (rotate) את אותה רשומת כספת יחידה במקום ליצור
+שנייה. מחיקת המקור מסירה את הרשומה ש-Provisa טבעה עבורו, ורק אותה: הפניה
+שכתבת בעצמך נוקבת בסוד שאתה הבעלים שלו מסיבותיך שלך, כך שהיא נותרת ללא שינוי.
+[tool-verified: `provisa/api/admin/schema_mutation.py` `delete_source`]
+
+`password_ref` אינה עוברת בין סביבות (REQ-1491). ענף או סביבה משוכפלת
+מספקים ערכי חיבור משלהם, והכספת שההפניה נוקבת בה שייכת לאיזו
+סביבה שסיפקה אותה. [tool-verified: `provisa/core/env_classes.py` `BINDING_COLUMNS`]
 
 ### בודקי איכות נתונים (REQ-1443)
 
@@ -802,6 +851,64 @@ auth:
 
 שאילתות Cypher חייבות להשתמש בגישה למאפיין (property accessor) במשפט `RETURN` (`RETURN n.id AS id, n.name AS name`) — החזרת אובייקטי node נדחית בזמן הרישום (REQ-296).
 
+#### רישום מקובץ הגדרות (REQ-1668)
+
+הצהר על מקור `neo4j` והטבלאות שלו ב-YAML. כל טבלה דורשת `query_template` (ה-Cypher שמפיק את שורותיה) ועמודות מוקלדות. המפתח `query_template` אינו תקף תחת כל סוג מקור אחר. [tool-verified: `provisa/core/config_loader.py:456-511`]
+
+מקור דורש `host`, `port`, ו-`database`. [tool-verified: `provisa/core/config_loader.py:456-468`] שורות נשלפות על ידי POST של `{"statements": [{"statement": <cypher>}]}` אל `/db/<database>/tx/commit` (ה-API של עסקאות HTTP של Neo4j). תגובה עם רשימת `errors` לא-ריקה מטופלת כשאילתה כושלת, לא כתוצאה ריקה. [tool-verified: `provisa/neo4j/source.py:71-82`, `provisa/api_source/caller.py:344-347`, `provisa/api_source/normalizers.py:49-74`]
+
+כל עמודה דורשת `data_type`. הטוען ממפה טיפוסי הגדרות לטיפוס העמודה של ה-API הנמצא בשימוש בזמן השאילתה [tool-verified: `provisa/neo4j/persist.py:31-64`]:
+
+| `data_type` בהגדרות | טיפוס API |
+|---|---|
+| `varchar`, `text`, `string`, `char` | string |
+| `integer`, `int`, `bigint`, `smallint` | integer |
+| `float`, `double`, `real`, `decimal`, `numeric`, `number` | number |
+| `boolean`, `bool` | boolean |
+| `json`, `jsonb` | jsonb |
+
+`varchar(N)` ו-`decimal(10,2)` מתקבלים — הטיפוס הבסיסי לפני הסוגריים הוא הנמצא בשימוש.
+
+הרישום שומר שורת `api_sources` ושורת `api_endpoints` אחת לכל טבלה, כך שהטבלאות שורדות הפעלה מחדש ללא קריאה חוזרת של הקובץ. נקודות הקצה של REST הניהול תחת `/admin/sources/neo4j` כותבות את אותן שורות. [tool-verified: `provisa/neo4j/persist.py:77-120`]
+
+```yaml
+sources:
+  - id: graph
+    type: neo4j
+    host: neo4j
+    port: 7474
+    database: neo4j
+    cache_ttl: 300
+
+tables:
+  - source_id: graph
+    schema: neo4j
+    table: person_skills
+    query_template: >-
+      MATCH (p:Person)-[:HAS_SKILL]->(s:Skill)
+      RETURN p.name AS name, s.skill AS skill, p.experience AS years
+    columns:
+      - name: name
+        data_type: varchar
+      - name: skill
+        data_type: varchar
+      - name: years
+        data_type: integer
+```
+
+#### רישום טבלה ב-UI (REQ-1670)
+
+למקור neo4j אין טבלאות לרשימה, כך שטופס Register Table שואל לגבי הטבלה במקום להציע אחת. [tool-verified: `provisa-ui/src/pages/tables/RegisterTableForm.tsx` (`isNeo4j`)]
+
+1. בחר את מקור ה-neo4j ותחום. בוררי הסכמה והטבלה, תיבת הסימון discover ובורר ה-watermark אינם מופיעים; המקור לעולם אינו נבדק (introspected).
+2. הקלד שם טבלה ואת ה-Cypher. ה-Cypher חייב להקרין סקלרים (`RETURN a.name AS name`); הקרנה המחזירה node או רשימה מדווחת כשגיאה.
+3. לחץ Preview. הטופס מריץ את ה-Cypher עם `LIMIT 5` דרך שאילתת ה-GraphQL‏ `neo4jPreview` וממלא את רשימת העמודות מהשורות המתקבלות, מוקלדות כ-`text`, `integer`, `double`, `boolean` או `json`. [tool-verified: `provisa/api/admin/_neo4j_registration.py` `preview_neo4j`] תצוגה מקדימה כושלת משאירה את ה-Cypher בעורך ומציגה את ההודעה.
+4. התאם נראות, כינויים או מיסוך כמו לכל טבלה, ואז רשום. הטופס מסרב להגיש עד שתצוגה מקדימה הקלידה את העמודות, והשרת מסרב לטבלת neo4j שאינה נושאת Cypher (`schema.neo4j_query_required`). [tool-verified: `provisa/api/admin/schema_mutation_ops.py` `persist_neo4j_registration`]
+
+ה-Cypher נשמר עם הטבלה כ-`queryTemplate`, מוצג בתצוגת הקריאה של הטבלה, ונשמר בדיוק כפי שרישום מקובץ הגדרות עושה: שורת `api_sources` ושורת `api_endpoints` שההפעלה הבאה מטעינה. עריכת הטבלה שומרת מחדש Cypher ערוך.
+
+#### רישום REST ניהול
+
 ```bash
 # Register via admin API (no YAML config required)
 POST /admin/sources/neo4j
@@ -850,6 +957,30 @@ POST /admin/sources/sparql/knowledge-graph/tables
 שני המחברים משתמשים בצינור המטמון של מקור ה-API — התוצאות מאוחסנות ב-PostgreSQL עם TTL הניתן להגדרה, מה שהופך אותן לזמינות עבור joins מפודררים חוצי-מקורות (REQ-295, REQ-297, REQ-299).
 
 ---
+
+#### רישום מקובץ הגדרות ו-UI (REQ-1683)
+
+ה-`host` של מקור `sparql` הוא כתובת ה-URL של נקודת הקצה SPARQL שלו (טופס המקורות שומר אותו באותה דרך). כל טבלה תחתיו נושאת `query_template`, שאילתת SELECT שמשתניה הם העמודות; כל כריכה (binding) היא `text`. [tool-verified: `provisa/core/config_loader.py` `_validate_neo4j_sources`, `_handle_sparql_table`]
+
+```yaml
+sources:
+- id: sparql-demo
+  type: sparql
+  host: http://localhost:23030/provisa/query
+tables:
+- source_id: sparql-demo
+  domain_id: shelter
+  schema: sparql
+  table: volunteer
+  query_template: >-
+    PREFIX s: <http://provisa.dev/shelter#>
+    SELECT ?volunteer_id ?name WHERE { ?v a s:Volunteer ; s:id ?volunteer_id ; s:name ?name }
+  columns:
+  - { name: volunteer_id, data_type: text, visible_to: [org_admin] }
+  - { name: name, data_type: text, visible_to: [org_admin] }
+```
+
+Register Table עובד באותה דרך כמו עבור Neo4j: בחר את המקור, הקלד שם טבלה ואת ה-SELECT, לחץ Preview (שאילתת ה-`sparqlPreview` מריצה אותה עם `LIMIT 5` וממלאת את רשימת העמודות), ואז רשום. הרישום שומר שורת `api_sources` ושורת `api_endpoints` (POST מקודד-טופס לנתיב נקודת הקצה, מנרמל `sparql_bindings`), אותן שורות שרישום מקובץ הגדרות כותב, והמנוע הילידי מנחית את השורות דרך אותה שרשרת שליפה כמו Neo4j. [tool-verified: `provisa/api/admin/_query_api_registration.py`, `provisa/sparql/persist.py`]
 
 ## דוגמאות חיבור
 

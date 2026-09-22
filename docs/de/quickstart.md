@@ -65,6 +65,26 @@ Provisa running:
 
 `--demo` — Startet zusätzliche Demo-Datenquellen (PostgreSQL-Pet-Store-Schema, OpenAPI-Petstore-Mock, SQLite und ein GraphQL-Remote). Befüllt automatisch Petstore-Benutzer und -Bestellungen. [tool-verified: start-ui.sh lines 17, 55–171]
 
+`--source=<name>` (nur `start-ui-install.sh`, wiederholbar) — Stellt eine optionale Datenquelle zusätzlich zu `--demo` bereit. Jeder Name entspricht `demo/sources/<name>/`. Der Start ruft `demo/sources/provision.py up` auf, das die `compose.yml` der Quelle als eigenes Docker-Compose-Projekt (`provisa-demo-<name>`) startet, auf dessen Health-Check wartet und `prime.py` ausführt, sofern die Quelle eines hat, um Daten einzusäen. Der Start schreibt anschließend eine Wrapper-Konfiguration unter `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml`, die die Basiskonfiguration sowie das `fragment.yaml` jeder Quelle einbindet, und bootet daraus. [tool-verified: `start-ui-install.sh` (search `SOURCES`), `demo/sources/provision.py`] (REQ-1669)
+
+Dasselbe `provision.py` ruft auch die End-to-End-Testsuite der UI auf, um diese Quellen bereitzustellen (unter dem Projektpräfix `provisa-e2e-<name>` auf eigenen Ports), sodass die in der Demo gezeigten Seed-Daten und die von der Suite geprüften Datensätze einmalig definiert werden. [tool-verified: `provisa-ui/e2e/demo-source-containers.ts`] (REQ-1671)
+
+Bei einem Docker-Start (ohne `--demo`/`--native`) ist der Koordinator ein Container, sodass jede Quelle dem Netzwerk des Kern-Stacks beitritt und unter `<name>:<container port>` registriert wird; bei einem nativen Start erfolgt die Registrierung unter `localhost:<published port>`. Eine Quelle, deren Datei `demo/sources/<name>/engine` eine Engine benennt, die der Start nicht ausführt, wird abgelehnt.
+
+Mitgelieferte Quellen:
+
+| Name | Port(s) | Hinweise |
+|------|---------|-------|
+| `neo4j` | HTTP 27474, Bolt 27687 | Zwei Cypher-Tabellen (`adopter`, `adopter_referral`); Graph wird durch `seed.cypher` eingesät; Tabellen werden aus dem Fragment registriert |
+| `mongodb` | 27117 | Quelle registriert; Collection `product_reviews` wird durch `db/mongo-init.js` eingesät; Tabellen manuell über Register Table registrieren |
+| `redis` | 26379 | Quelle registriert; Hashes `support_agent:*` und `agent_status:*` werden durch `prime.py` eingesät; jedes Präfix wird über Register Table als Tabelle registriert (REQ-1675) |
+| `cassandra` | 29042 | Quelle registriert; `shelter_ops.intake_events` wird durch `prime.py` eingesät (benötigt das `cassandra`-Extra); der Keyspace wird über Register Table als Schema registriert (REQ-1676) |
+| `sparql` | 23030 | Apache Jena Fuseki; Quelle und eine abfragebasierte Tabelle (`volunteer`) werden aus dem Fragment registriert, Graph wird durch `prime.py` eingesät; weitere Tabellen über Register Table (Query + Preview) (REQ-1683) |
+| `prometheus` | 29090 | Quelle registriert; der Server scraped sich selbst, sodass `up` und die `prometheus_*`-Metriken über Register Table als Tabellen registriert werden (REQ-1689) |
+| `elasticsearch` | 29200 | Quelle und Index-Mapping registriert; Index `support_tickets` wird durch `prime.py` eingesät; wird von der nativen Engine über HTTP gelesen (REQ-1672), über den Connector auf Trino |
+| `splunk` | mgmt 8089, HEC 8088 | Quelle mit Token-Auth und `disable_ssl_validation` registriert (das Zertifikat des Containers ist selbstsigniert); ein Index, sieben Shelter-Alert-Ereignisse und das Data Model `shelter_alerts` werden durch `prime.py` eingesät, das auch das API-Token erzeugt, das das Fragment als `PROVISA_DEMO_SPLUNK_TOKEN` liest. Data Models werden über Register Table als Tabellen registriert — auf Trino über den `splunk`-Katalog, auf allen anderen Engines über den mitgelieferten Calcite-pgwire-Server, den die Engine anbindet (REQ-1694) |
+| `chinook` | 25433 | Postgres mit der snake_case-Chinook-Teilmenge, die Hasuras Metadaten-Beispiel abbildet, eingesät durch `prime.py` aus `tests/fixtures/hasura_v2_t1_seed.sql`; Quelle aus dem Fragment registriert und die Quelle, auf der ein Hasura-v2-Import von `tests/fixtures/hasura_v2_t1_metadata.json` landet (REQ-1687) |
+
 `--idp=basic|firebase` — Aktiviert einen Identity Provider für die Authentifizierung. Ohne dieses Flag läuft das Backend ohne Authentifizierungsanbieter, und alle Anfragen werden als `admin` behandelt. [tool-verified: start-ui.sh line 18; provisa/auth/wiring.py lines 57–60; provisa/auth/middleware.py lines 57–68] (REQ-120, REQ-124)
 
 ---

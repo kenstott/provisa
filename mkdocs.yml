@@ -143,7 +143,9 @@ nav:
   - Clients:
       - Python Client: python-client.md
   - Administration:
+      - CLI Reference: cli.md
       - Admin API: admin.md
+      - Admin GraphQL Reference: admin-graphql.md
       - Releasing: releasing.md
   - Architecture:
       - Overview: architecture.md

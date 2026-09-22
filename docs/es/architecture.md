@@ -586,7 +586,7 @@ Cada tabla registrada obtiene un campo raíz `{table}_aggregate` autogenerado (`
 
 ## Roles heredados
 
-Los roles en `core/models.py` pueden referenciar un `parent_role_id`. (REQ-215) `flatten_roles()` resuelve de forma recursiva la cadena de herencia y combina las cláusulas WHERE de RLS (con AND), la visibilidad de columnas (unión, prevalece la más restrictiva) y las políticas de enmascaramiento (el hijo sobrescribe al padre por columna). Esto evita duplicar conjuntos de permisos entre roles similares (p. ej., `analyst` heredando de `reader`). (REQ-215)
+Un rol nombra como máximo un padre mediante `parent_role_id`. (REQ-215) En la construcción en tiempo de ejecución, `security/inheritance.py` recorre la cadena de cada rol desde el hijo hacia arriba y la pliega en las propias copias de los datos cargados de la construcción, de modo que cada búsqueda posterior sigue indexada por el id del rol actuante. (REQ-1677) Las capacidades y el acceso a dominios son la unión de la cadena. El `visible_to`, `writable_by` y `unmasked_to` de una columna, y el `visible_to` de una métrica, función o webhook, rigen para un rol cuando lo nombran a él o a un ancestro. La RLS se resuelve por tabla con el hijo teniendo precedencia: el rol más cercano en la cadena que tenga una regla para la tabla — su propia regla de tabla antes que su regla de dominio — suministra el único predicado que se ejecuta; la regla de un ancestro nunca se combina con ella. Un rol hereda el límite de tasa de su padre cuando no establece ninguno. Un padre debe existir, no puede ser el propio rol y no puede cerrar un ciclo; un rol del que heredan otros roles no puede eliminarse hasta que se les reasigne un nuevo padre. (REQ-1677)
 
 ## Gancho de aprobación ABAC
 

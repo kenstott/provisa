@@ -60,19 +60,27 @@ Options :
 | Concept Hasura | Équivalent Provisa |
 | --------------- | ------------------- |
 | Table suivie | `tables[]` avec `publish: true` |
-| Relation objet | `relationships[]` avec `cardinality: many-to-one` |
+| Relation objet | `relationships[]` avec `cardinality: many-to-one`. Une relation déclarée par la seule colonne FK (`foreign_key_constraint_on: artist_id`) ne nomme aucune cible dans l'export ; le convertisseur la résout via la relation tableau inverse, et l'abandonne avec un avertissement `[relationships]` lorsqu'il n'y en a aucune. (REQ-1680) |
 | Relation tableau | `relationships[]` avec `cardinality: one-to-many` |
-| Autorisation select | Visibilité de rôle + filtre RLS |
+| Autorisation select | Visibilité de rôle + filtre RLS. Un terme de variable de session (`X-Hasura-User-Id`) devient `current_setting('provisa.user_id')`, que la requête lie à l'id utilisateur et aux revendications de l'identité au moment de la requête. (REQ-1682) |
 | Autorisation colonne | `visible_to` / `writable_by` |
 | Autorisation insert/update/delete | `writable_by` de mutation + RLS |
-| Schéma distant | Enregistrement de source `graphql_remote` |
+| Schéma distant | Enregistrement de source `graphql_remote` plus une table atterrie par champ racine Query que les SDL de rôle exposent ; une colonne est visible pour tout rôle dont le SDL l'expose, un argument racine non nul devient une colonne de filtre natif `_nf_`, les champs imbriqués sont nommés dans un avertissement. (REQ-1681) |
 | Champ calculé | Entrée `functions[]` avec `kind: query` |
+
+### Connexions et domaines dans l'onglet d'import
+
+L'export nomme ses bases de données par variable d'environnement, donc après la première conversion, l'onglet liste chaque source SQL avec la connexion devinée par la conversion. Renseignez l'hôte, le port, la base de données, le nom d'utilisateur et le mot de passe, puis reconvertissez ; seuls les champs modifiés sont transmis, comme des surcharges de source. Les lignes de domaine couvrent chaque schéma, sous-graphe et schéma distant que porte le téléversement ; chacune est un sélecteur parmi les domaines existants de l'organisation qui accepte aussi un nom saisi, marqué « nouveau domaine » quand il ne correspond à aucun. Appliquer fusionne avec ce que l'organisation possède déjà, sauf si la case à cocher de remplacement est activée. (REQ-1687)
+
+### Les types proviennent de la source à l'aperçu
+
+Un export Hasura nomme les colonnes sans types, et une table suivie sans autorisation ne nomme aucune colonne. L'aperçu s'exécute avec les connexions de source fournies, donc il lit le `information_schema.columns` de chaque source SQL accessible : chaque colonne non typée reçoit le type de la source mappé vers le vocabulaire IR, et une table sans colonnes prend toutes les colonnes que la source possède, visibles pour `org_admin` seul, puisque Hasura ne les exposait à aucun autre rôle. Une source que l'aperçu ne peut pas atteindre est signalée par un avertissement `[sources]` et ses colonnes restent non typées, à finaliser avant l'application. (REQ-1691, REQ-1684)
 
 ### Limitations
 
 - **Actions** : converties automatiquement — les actions à gestionnaire HTTP deviennent des mutations `webhooks[]` ; les actions avec un gestionnaire non-HTTP (base de données) deviennent un espace réservé `functions[]` et émettent un avertissement invitant à réviser le gestionnaire
 - **Déclencheurs d'événements** : convertis en configuration `event_triggers` par table (opérations, URL de webhook, politique de nouvelle tentative) et émettent un avertissement signalant une fidélité limitée
-- **Schémas distants** : convertis en entrées de source `graphql_remote`
+- **Schémas distants** : convertis en entrées de source `graphql_remote` et atterris comme tables depuis les SDL de permission de rôle ; un schéma distant sans permissions n'atterrit rien, puisque l'export ne porte aucune autre déclaration de sa forme (REQ-1681)
 - **Fonctions SQL personnalisées** : nécessitent une révision — les cas simples se convertissent en entrées `functions[]`, les cas complexes nécessitent un travail manuel
 - **Déclencheurs cron** : convertis en entrées de configuration `scheduler`, en préservant l'expression cron et l'indicateur d'activation
 

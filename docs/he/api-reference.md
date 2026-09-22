@@ -1056,6 +1056,8 @@ X-Provisa-Redirect-Threshold: 1000
 
 נקודת קצה Strawberry GraphQL עבור כל פעולות הניהול: CRUD של מקורות וטבלאות, ניהול קשרים, תצורת תחום, כללי RLS, בקרת מטמון, מוסכמות שמות, ניהול משימות מתוזמנות, והידור שאילתה. (REQ-164) [tool-verified: `provisa/api/app.py:2171`]
 
+להפניה המלאה לסכמה — כל שדה Query, שדה Mutation, וטיפוס קלט/פלט — ראו [הפניית Admin GraphQL API](admin-graphql.md).
+
 **מוטציות מפתח:**
 
 ```graphql

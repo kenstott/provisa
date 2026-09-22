@@ -65,6 +65,26 @@ Provisa running:
 
 `--demo` — Démarre des sources de données de démonstration supplémentaires (schéma PostgreSQL pet-store, mock OpenAPI petstore, SQLite et un GraphQL distant). Alimente automatiquement les utilisateurs et commandes petstore. [tool-verified: start-ui.sh lines 17, 55–171]
 
+`--source=<name>` (`start-ui-install.sh` uniquement, répétable) — Provisionne une source de données optionnelle en plus de `--demo`. Chaque nom correspond à `demo/sources/<name>/`. Le démarrage appelle `demo/sources/provision.py up`, qui démarre le `compose.yml` de la source comme son propre projet Docker Compose (`provisa-demo-<name>`), attend son bilan de santé, et exécute `prime.py` lorsque la source en possède un pour alimenter les données. Le démarrage écrit ensuite une configuration enveloppe dans `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml` qui inclut la configuration de base plus le `fragment.yaml` de chaque source, puis démarre à partir de celle-ci. [tool-verified: `start-ui-install.sh` (search `SOURCES`), `demo/sources/provision.py`] (REQ-1669)
+
+Le même `provision.py` est appelé par la suite de tests de bout en bout de l'interface pour mettre en place ces sources (sous le préfixe de projet `provisa-e2e-<name>` sur ses propres ports), de sorte que les données de démonstration montrées et les lignes vérifiées par la suite sont définies une seule fois. [tool-verified: `provisa-ui/e2e/demo-source-containers.ts`] (REQ-1671)
+
+Lors d'un démarrage Docker (sans `--demo`/`--native`), le coordinateur est un conteneur, donc chaque source est jointe au réseau de la pile principale et enregistrée sous `<name>:<container port>` ; lors d'un démarrage natif, elle est enregistrée sous `localhost:<published port>`. Une source dont le fichier `demo/sources/<name>/engine` nomme un moteur que le démarrage n'exécute pas est refusée.
+
+Sources fournies :
+
+| Nom | Port(s) | Notes |
+|------|---------|-------|
+| `neo4j` | HTTP 27474, Bolt 27687 | Deux tables Cypher (`adopter`, `adopter_referral`) ; graphe alimenté par `seed.cypher` ; tables enregistrées depuis le fragment |
+| `mongodb` | 27117 | Source enregistrée ; collection `product_reviews` alimentée par `db/mongo-init.js` ; enregistrer les tables manuellement via Register Table |
+| `redis` | 26379 | Source enregistrée ; hachages `support_agent:*` et `agent_status:*` alimentés par `prime.py` ; chaque préfixe s'enregistre comme table via Register Table (REQ-1675) |
+| `cassandra` | 29042 | Source enregistrée ; `shelter_ops.intake_events` alimenté par `prime.py` (nécessite l'extra `cassandra`) ; le keyspace s'enregistre comme schéma via Register Table (REQ-1676) |
+| `sparql` | 23030 | Apache Jena Fuseki ; source et une table adossée à une requête (`volunteer`) enregistrées depuis le fragment, graphe alimenté par `prime.py` ; d'autres tables via Register Table (requête + Aperçu) (REQ-1683) |
+| `prometheus` | 29090 | Source enregistrée ; le serveur s'auto-scrute, de sorte que `up` et les métriques `prometheus_*` s'enregistrent comme tables via Register Table (REQ-1689) |
+| `elasticsearch` | 29200 | Source et mapping d'index enregistrés ; index `support_tickets` alimenté par `prime.py` ; lu en HTTP par le moteur natif (REQ-1672), via le connecteur sur Trino |
+| `splunk` | mgmt 8089, HEC 8088 | Source enregistrée avec authentification par jeton et `disable_ssl_validation` (le certificat du conteneur est autosigné) ; un index, sept événements d'alerte shelter et le Data Model `shelter_alerts` alimentés par `prime.py`, qui génère aussi le jeton API lu par le fragment comme `PROVISA_DEMO_SPLUNK_TOKEN`. Les Data Models s'enregistrent comme tables via Register Table — sur Trino via le catalogue `splunk`, sur tous les autres moteurs via le serveur pgwire Calcite intégré que le moteur rattache (REQ-1694) |
+| `chinook` | 25433 | Postgres contenant le sous-ensemble Chinook en snake_case que suit l'échantillon de métadonnées Hasura, alimenté par `prime.py` depuis `tests/fixtures/hasura_v2_t1_seed.sql` ; source enregistrée depuis le fragment, et la source sur laquelle atterrit un import Hasura v2 de `tests/fixtures/hasura_v2_t1_metadata.json` (REQ-1687) |
+
 `--idp=basic|firebase` — Active un fournisseur d'identité pour l'authentification. Sans cet indicateur, le backend s'exécute sans fournisseur d'authentification et toutes les requêtes sont traitées comme `admin`. [tool-verified: start-ui.sh line 18; provisa/auth/wiring.py lines 57–60; provisa/auth/middleware.py lines 57–68] (REQ-120, REQ-124)
 
 ---

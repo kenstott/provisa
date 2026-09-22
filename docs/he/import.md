@@ -1,26 +1,34 @@
 # ייבוא מ-Hasura
 
-Provisa יכולה להמיר metadata קיים של Hasura ל-`config.yaml` של Provisa, תוך שימור טבלאות עקובות, קשרים (relationships), הרשאות, וסכמות מרוחקות (remote schemas).
+Provisa יכולה להמיר מטא-דאטה קיים של Hasura ל-`config.yaml` של Provisa, תוך שמירה על טבלאות מעוקבות, קשרים, הרשאות וסכמות מרוחקות.
 
-## ייבוא אינטראקטיבי (Admin → Import Hasura Config)
+## ייבוא אינטראקטיבי (Admin ← Import Hasura Config)
 
-משטח הניהול (admin surface) מריץ את אותם ממירים (converters), כך שייבוא לא דורש גישת shell ולא דורש round-trip של קובץ config. דורש את היכולת (capability) `org_settings`; הייבוא נוחת בארגון שבו הסשן פועל.
+משטח הניהול מריץ את אותם ממירים, כך שהייבוא לא דורש גישת shell ולא מחזור קובץ תצורה
+הלוך-ושוב. נדרשת יכולת `org_settings`; הייבוא נוחת בארגון שבו הסשן פועל.
 
-1. **העלאה.** בחרו תיקיית metadata מגובזת (zipped) של Hasura v2, פרויקט DDN מגובז, ייצוא metadata מאוחד (`.yaml`/`.json`, כולל המעטפה (envelope) `{resource_version, metadata}` שמחזיר ה-metadata API), או קובץ `.hml` בודד. השאירו את הפורמט על *זיהוי אוטומטי* אלא אם ההעלאה דו-משמעית.
-2. **מיפוי דומיינים** (אופציונלי). כל זוג ממפה סכמת v2 או subgraph של DDN לדומיין ב-Provisa; כל דבר שלא ממופה שומר על שמו המקורי.
-3. **המרה ותצוגה מקדימה.** השרת ממיר ומחזיר ספירות, אזהרות ממיר, ואת הקונפיגורציה שנוצרה. שום דבר לא נכתב בשלב הזה.
-4. **סקירה ועריכה.** הקונפיגורציה ניתנת לעריכה במקום — פרטי חיבור, שמות דומיינים, שמות תפקידים (roles). מה שמיישמים הוא מה שמוצג.
-5. **החלה.** *Replace the existing semantic layer* מוחקת כל מקור, טבלה, תפקיד וכלל שנעדרים מהקונפיגורציה; ללא הפעלה, הייבוא ממוזג לתוך מה שקיים בארגון. ההחלה טוענת את הקונפיגורציה ובונה מחדש את הסכמות של הארגון.
+1. **העלאה.** בחרו תיקיית מטא-דאטה מכווצת (zip) של Hasura v2, פרויקט DDN מכווץ, ייצוא מטא-דאטה
+   מאוחד (`.yaml`/`.json`, כולל המעטפת `{resource_version, metadata}` שה-API של המטא-דאטה מחזיר),
+   או `.hml` בודד. השאירו את הפורמט על *זיהוי אוטומטי* אלא אם ההעלאה מעורפלת.
+2. **מיפוי תחומים** (אופציונלי). כל זוג ממפה סכמת v2 או תת-גרף DDN לתחום Provisa;
+   כל מה שלא ממופה שומר על שמו המקורי.
+3. **המרה ותצוגה מקדימה.** השרת ממיר ומחזיר ספירות, אזהרות ממיר, ואת
+   התצורה שנוצרה. שום דבר לא נכתב בשלב הזה.
+4. **סקירה ועריכה.** התצורה ניתנת לעריכה במקום — פרטי חיבור, שמות תחומים,
+   שמות תפקידים. מה שמיישמים הוא מה שמוצג.
+5. **החלה.** *החלפת השכבה הסמנטית הקיימת* מוחקת כל מקור, טבלה, תפקיד וכלל
+   שאינם בתצורה; אם לא מסומן, הייבוא מתמזג לתוך מה שיש לארגון. ההחלה
+   טוענת את התצורה ובונה מחדש את הסכמות של הארגון.
 
-נקודות קצה: `POST /admin/import/hasura/preview` ו-`POST /admin/import/hasura/apply`.
+נקודות קצה: `POST /admin/import/hasura/preview` וגם `POST /admin/import/hasura/apply`.
 
 ---
 
 ## Hasura v2
 
-### ייצוא Metadata
+### ייצוא מטא-דאטה
 
-מהקונסולה או ה-CLI של Hasura:
+מתוך קונסולת Hasura שלכם או ה-CLI:
 
 ```bash
 hasura metadata export --output metadata.yaml
@@ -37,44 +45,52 @@ curl -X POST http://localhost:8080/v1/metadata \
 
 ### המרה
 
-ממיר ה-v2 קורא **תיקיית** metadata של Hasura (המבנה שמפיק `hasura metadata export`, או המבנה השטוח `tables.yaml` / `actions.yaml`) וכותב קונפיגורציית Provisa:
+ממיר ה-v2 קורא **תיקיית** מטא-דאטה של Hasura (הפריסה שמופקת על ידי `hasura metadata export`, או הפריסה השטוחה `tables.yaml` / `actions.yaml`) וכותב תצורת Provisa:
 
 ```bash
 python -m provisa.hasura_v2 ./metadata -o config.yaml
 ```
 
-השמיטו את `-o` כדי לכתוב את הקונפיגורציה ל-stdout.
+השמיטו את `-o` כדי לכתוב את התצורה ל-stdout.
 
-דגלים (flags):
+דגלים:
 
 | דגל | מטרה |
 | ------ | --------- |
-| `-o`, `--output` | נתיב פלט YAML (ברירת מחדל: stdout) |
-| `--source-overrides` | קובץ YAML עם דריסות חיבור פר-מקור (host, port, credentials) |
-| `--domain-map` | מיפויי סכמה-לדומיין כזוגות `SCHEMA=DOMAIN` |
-| `--auth-env-file` | קובץ `.env` עם קונפיגורציית אימות; ממיר JWT/JWK, admin secret, ומיפוי claims |
-| `--dry-run` | ניתוח (parse) ואימות ללא כתיבת פלט |
+| `-o`, `--output` | נתיב YAML לפלט (ברירת מחדל: stdout) |
+| `--source-overrides` | קובץ YAML עם דריסות חיבור לפי מקור (host, port, credentials) |
+| `--domain-map` | מיפויי סכמה-לתחום כזוגות `SCHEMA=DOMAIN` |
+| `--auth-env-file` | קובץ `.env` עם תצורת אימות; ממיר JWT/JWK, סוד מנהל, ומיפוי claims |
+| `--dry-run` | פירוק ואימות בלי לכתוב פלט |
 
 ### מה מומר
 
-| מושג ב-Hasura | מקביל ב-Provisa |
+| מושג Hasura | מקבילה ב-Provisa |
 | --------------- | ------------------- |
-| טבלה עקובה (Tracked table) | `tables[]` עם `publish: true` |
-| קשר אובייקט (Object relationship) | `relationships[]` עם `cardinality: many-to-one` |
+| טבלה מעוקבת | `tables[]` עם `publish: true` |
+| קשר אובייקט (Object relationship) | `relationships[]` עם `cardinality: many-to-one`. קשר שמוצהר רק לפי עמודת FK (`foreign_key_constraint_on: artist_id`) אינו נוקב ביעד בייצוא; הממיר פותר אותו דרך קשר המערך ההפוך, ומשמיט אותו עם אזהרת `[relationships]` כשאין כזה. (REQ-1680) |
 | קשר מערך (Array relationship) | `relationships[]` עם `cardinality: one-to-many` |
-| הרשאת Select | נראות תפקיד (role) + מסנן RLS |
+| הרשאת Select | נראות תפקיד + מסנן RLS. משתנה session-variable (`X-Hasura-User-Id`) הופך ל-`current_setting('provisa.user_id')`, שהבקשה קושרת מזהה המשתמש של הזהות ומה-claims שלה בזמן השאילתה. (REQ-1682) |
 | הרשאת עמודה | `visible_to` / `writable_by` |
-| הרשאת Insert/update/delete | Mutation `writable_by` + RLS |
-| סכמה מרוחקת (Remote schema) | רישום מקור `graphql_remote` |
-| שדה מחושב (Computed field) | ערך `functions[]` עם `kind: query` |
+| הרשאת Insert/update/delete | `writable_by` של Mutation + RLS |
+| סכמה מרוחקת | רישום מקור `graphql_remote` בתוספת טבלה נחתת אחת לכל שדה שורש Query שה-SDL של התפקיד חושף; עמודה נראית לכל תפקיד שה-SDL שלו חושף אותה, ארגומנט שורש שאינו null הופך לעמודת סינון-מקורי (native-filter) `_nf_`, שדות מקוננים נקובים באזהרה. (REQ-1681) |
+| שדה מחושב | רשומת `functions[]` עם `kind: query` |
+
+### חיבורים ותחומים בלשונית הייבוא
+
+הייצוא נוקב את מסדי הנתונים שלו לפי משתנה סביבה, כך שאחרי ההמרה הראשונה הלשונית מציגה כל מקור SQL עם החיבור שההמרה ניחשה. מלאו את המארח (host), הפורט, מסד הנתונים, שם המשתמש והסיסמה, והמירו שוב; רק השדות ששיניתם נוסעים הלאה, כדריסות מקור. שורות התחום מכסות כל סכמה, תת-גרף וסכמה מרוחקת שההעלאה נושאת; כל אחת היא בורר על פני התחומים הקיימים של הארגון שגם מקבל שם מוקלד, מסומן "תחום חדש" כשהוא לא תואם אף אחד. ההחלה מתמזגת לתוך מה שכבר יש לארגון אלא אם תיבת ההחלפה מסומנת. (REQ-1687)
+
+### הטיפוסים מגיעים מהמקור בתצוגה המקדימה
+
+ייצוא Hasura נוקב עמודות בלי טיפוסים, וטבלה מעוקבת ללא הרשאה לא נוקבת עמודות כלל. התצוגה המקדימה רצה עם חיבורי המקור שסיפקתם, כך שהיא קוראת את `information_schema.columns` של כל מקור SQL בר-הגעה: כל עמודה לא-מטופסת מקבלת את הטיפוס של המקור ממופה לאוצר המילים של ה-IR, וטבלה ללא עמודות לוקחת כל עמודה שיש למקור, נראית ל-`org_admin` בלבד, מכיוון ש-Hasura חשפה אותה לאף תפקיד אחר. מקור שהתצוגה המקדימה לא יכולה להגיע אליו מדווח כאזהרת `[sources]` והעמודות שלו נשארות לא-מטופסות עד שתסיימו לפני ההחלה. (REQ-1691, REQ-1684)
 
 ### מגבלות
 
-- **Actions** מומרות אוטומטית: actions עם handler מסוג HTTP הופכות ל-mutations תחת `webhooks[]`; actions עם handler שאינו HTTP (מסד נתונים) הופכות ל-placeholder תחת `functions[]` ומוציאות אזהרה לסקירת ה-handler
-- **Event triggers** מומרות לקונפיגורציית `event_triggers` פר-טבלה (פעולות, כתובת webhook, מדיניות retry) ומוציאות אזהרה המציינת נאמנות (fidelity) מוגבלת
-- **סכמות מרוחקות** מומרות לערכי מקור `graphql_remote`
-- **פונקציות SQL מותאמות אישית** דורשות סקירה — מקרים פשוטים מומרים לערכי `functions[]`, מורכבים דורשים עבודה ידנית
-- **Cron triggers** מומרים לערכי קונפיגורציית `scheduler`, תוך שימור ביטוי ה-cron ודגל ההפעלה (enabled flag)
+- **Actions** מומרות אוטומטית: פעולות מטפל-HTTP הופכות ל-Mutations של `webhooks[]`; פעולות עם מטפל שאינו HTTP (מסד נתונים) הופכות ל-placeholder של `functions[]` ופולטות אזהרה לסקירת המטפל
+- **Event triggers** מומרים לתצורת `event_triggers` לכל טבלה (פעולות, כתובת webhook, מדיניות ניסיון חוזר) ופולטים אזהרה שמציינת נאמנות מוגבלת
+- **סכמות מרוחקות** מומרות לרשומות מקור `graphql_remote` ונוחתות כטבלאות מתוך ה-SDL של הרשאות התפקיד; סכמה מרוחקת ללא הרשאות לא נוחתת דבר, מכיוון שהייצוא לא נושא כל הצהרה אחרת על צורתה (REQ-1681)
+- **פונקציות SQL מותאמות אישית** דורשות סקירה — מקרים פשוטים מומרים לרשומות `functions[]`, מקרים מורכבים דורשים עבודה ידנית
+- **Cron triggers** מומרים לרשומות תצורת `scheduler`, תוך שמירה על ביטוי ה-cron ודגל ההפעלה
 
 ---
 
@@ -82,7 +98,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 
 ### איתור פרויקט ה-HML
 
-ממיר ה-DDN קורא ישירות את **תיקיית** פרויקט ה-DDN של קבצי `.hml` — אין צורך בשלב build של supergraph. רכיב התיקייה הראשון תחת שורש הפרויקט נלקח כשם ה-subgraph; קבצים תחת `globals/` משויכים ל-subgraph בשם `globals`.
+ממיר ה-DDN קורא ישירות את **תיקיית** פרויקט ה-DDN של קבצי `.hml` — אין צורך בשלב build של supergraph. רכיב התיקייה הראשון תחת שורש הפרויקט נלקח כשם תת-הגרף; קבצים תחת `globals/` משויכים לתת-הגרף `globals`.
 
 ### המרה
 
@@ -90,34 +106,34 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 python -m provisa.ddn ./my-ddn-project -o config.yaml
 ```
 
-השמיטו את `-o` כדי לכתוב את הקונפיגורציה ל-stdout.
+השמיטו את `-o` כדי לכתוב את התצורה ל-stdout.
 
 דגלים:
 
 | דגל | מטרה |
 | ------ | --------- |
-| `-o`, `--output` | נתיב פלט YAML (ברירת מחדל: stdout) |
-| `--source-overrides` | קובץ YAML עם דריסות חיבור פר-מקור |
-| `--domain-map` | מיפויי subgraph-לדומיין כזוגות `SUBGRAPH=DOMAIN` |
-| `--aggregates-output` | נתיב פלט לקובץ הצדדי (sidecar) של ביטויי aggregate (ברירת מחדל: `<output>-aggregates.yaml`) |
-| `--dry-run` | ניתוח ואימות ללא כתיבת פלט |
+| `-o`, `--output` | נתיב YAML לפלט (ברירת מחדל: stdout) |
+| `--source-overrides` | קובץ YAML עם דריסות חיבור לפי מקור |
+| `--domain-map` | מיפויי תת-גרף-לתחום כזוגות `SUBGRAPH=DOMAIN` |
+| `--aggregates-output` | נתיב פלט לקובץ הצד (sidecar) של ביטויי צבירה (ברירת מחדל: `<output>-aggregates.yaml`) |
+| `--dry-run` | פירוק ואימות בלי לכתוב פלט |
 
-metadata מסוג `AggregateExpression` נשמר בקובץ צדדי `*-aggregates.yaml`.
+מטא-דאטה מסוג `AggregateExpression` נשמר בקובץ צד `*-aggregates.yaml`.
 
 ### מה מומר
 
-| מושג ב-DDN | מקביל ב-Provisa |
+| מושג DDN | מקבילה ב-Provisa |
 | ------------ | ------------------- |
-| מודל Subgraph | `tables[]` תחת מקור |
-| קשר (Relationship) | `relationships[]` |
+| מודל תת-גרף | `tables[]` תחת מקור |
+| קשר | `relationships[]` |
 | כלל הרשאה | מסנן RLS |
-| Command | Mutation מסוג webhook או תצוגה (view) |
-| מחבר (Connector) | ערך מקור עם פרטי חיבור |
+| Command | Mutation של webhook או View |
+| Connector | רשומת מקור עם פרטי חיבור |
 
 ### מגבלות
 
 - **מחברי Lambda** (פונקציות TypeScript/Python) דורשים הגדרת webhook ידנית
-- **Lifecycle plugins** אין להם מקביל ישיר
+- **תוספי מחזור חיים (Lifecycle plugins)** אין להם מקבילה ישירה
 - **מצבי אימות DDN** ממופים לספקי אימות של Provisa אך נתיבי claim של JWT עשויים לדרוש התאמה
 
 ---
@@ -125,7 +141,7 @@ metadata מסוג `AggregateExpression` נשמר בקובץ צדדי `*-aggregat
 ## אחרי הייבוא
 
 1. סקרו את `config.yaml` שנוצר — שימו לב ל-`warnings` מהממיר
-2. אמתו את פרטי ההזדהות לחיבור (הממיר משתמש בערכי placeholder)
-3. הפעילו את Provisa וודאו שהטבלאות מופיעות ב-Explorer
-4. הריצו את שאילתות ה-GraphQL הקיימות שלכם — הסכמה תואמת לדפוסים נפוצים
-5. הגישו שאילתות לאישור דרך Admin API או ה-UI לפני הפעלת ממשל production
+2. אמתו פרטי גישה לחיבור (הממיר משתמש בערכי placeholder)
+3. הפעילו את Provisa ואמתו שהטבלאות מופיעות ב-Explorer
+4. הריצו את שאילתות ה-GraphQL הקיימות שלכם — הסכמה תואמת לתבניות נפוצות
+5. הגישו שאילתות לאישור דרך ה-Admin API או ה-UI לפני הפעלת ממשל בסביבת ייצור

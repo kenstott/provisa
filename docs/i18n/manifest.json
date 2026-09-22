@@ -27,6 +27,8 @@
     "migration/hasura-v2.md",
     "secrets.md",
     "glossary.md",
-    "environments.md"
+    "environments.md",
+    "cli.md",
+    "admin-graphql.md"
   ]
 }

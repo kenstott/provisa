@@ -38,7 +38,7 @@ Solo los catálogos con un concepto nativo de producto de datos lo publican como
 
 | Catálogo | Publicado como |
 | --- | --- |
-| Snowflake Horizon | SHARE + ficha de organización (Data Product nativo); `publish=false` lo mantiene como DRAFT, `publish=true` lo pone en activo |
+| Snowflake Horizon | SHARE + ficha de organización (Data Product nativo); `publish=false` lo mantiene como DRAFT, `publish=true` lo pone en activo. El diccionario de datos de la ficha cubre cada miembro y columna; los primeros cinco miembros se destacan y las columnas enmascaradas se ocultan en la vista previa (REQ-1656) |
 | BigQuery Analytics Hub | Ficha de Analytics Hub (nativo) |
 | OpenMetadata | Entidad `DataProduct` (nativa) |
 | DataHub | Entidad URN `dataProduct` nativa con sus propios aspectos de propiedades/propiedad |

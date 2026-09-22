@@ -72,7 +72,7 @@ Capacidades asignadas de forma independiente, con jerarquía de roles opcional m
 | `admin` | Superusuario — otorga todas |
 
 ### Herencia de roles
-Los roles pueden heredar capacidades y acceso por dominio de un rol padre mediante `parent_role_id`. (REQ-215) La jerarquía se aplana al iniciar — los roles hijos combinan las capacidades y el acceso por dominio del padre con los propios. (REQ-215)
+Los roles pueden heredar de un único rol padre mediante `parent_role_id`, establecido en la configuración o en la página de Security como "Inherits from". (REQ-215) La cadena se pliega en el arranque: un hijo tiene la unión de las capacidades y el acceso por dominio de sus ancestros, cada concesión de columna, métrica, función y webhook que nombre a un ancestro, y las reglas de RLS de los ancestros por tabla con el hijo teniendo precedencia — el rol más cercano en la cadena que tenga una regla para una tabla suministra el predicado de esa tabla, y una regla guardada para el hijo reemplaza la del padre para esa tabla. (REQ-1677)
 
 ```yaml
 roles:
@@ -155,6 +155,8 @@ rls_rules:
 
 El filtro se combina con AND en la cláusula WHERE de la consulta. Funciona tanto para consultas como para mutaciones (UPDATE/DELETE). (REQ-035, REQ-041)
 
+Un término `current_setting('provisa.<name>')` se resuelve contra las variables de sesión que la solicitud vincula: `user_id` de la identidad autenticada, `role` del rol actuante, y cada claim escalar del token bajo su nombre en minúsculas con un `x-hasura-` inicial eliminado, de modo que un filtro de Hasura importado sobre `X-Hasura-User-Id` se lee como `provisa.user_id`. Los `session_vars` configurados de un rol son las constantes subyacentes; los vínculos de la solicitud se superponen a ellas. En modo no asegurado, un encabezado `x-provisa-session-<name>` vincula `<name>`. Una variable que no se vincula en ningún lado se resuelve como NULL y no coincide con ninguna fila. (REQ-1682)
+
 ## Enmascaramiento a nivel de columna
 El enmascaramiento se define una vez por columna — es una propiedad de la columna, no del rol. El campo `unmasked_to` controla qué roles lo omiten. (REQ-249)
 
@@ -165,6 +167,18 @@ El enmascaramiento se define una vez por columna — es una propiedad de la colu
 | `truncate` | Fecha/Timestamp | `DATE_TRUNC(precision, col)` |
 
 El enmascaramiento se traslada a la proyección SQL SELECT — la base de datos devuelve los datos enmascarados. (REQ-263) Los datos sin enmascarar nunca atraviesan la red para los roles enmascarados. (REQ-263) Las columnas enmascaradas también se bloquean en las cláusulas `WHERE` y `HAVING` (protección de predicados de la capa 5) para evitar la inferencia del valor sin enmascarar mediante filtrado. (REQ-263, REQ-531)
+
+## Gobierno de las respuestas de acciones
+
+La respuesta de una función rastreada o un webhook se gobierna igual que las filas de una tabla. (REQ-1679) Las filas que devuelve una acción se vinculan como una relación cuyas columnas son el contrato de salida declarado de la acción — `output_columns` para una función, `inline_return_type` para un webhook, o las propiedades de objeto del `return_schema` de array de una función — y esa relación pasa por la misma etapa de gobierno por la que pasa cualquier lectura de tabla, sobre un CTE VALUES que contiene las filas. (REQ-1679) Nada de RLS, enmascaramiento o visibilidad se reimplementa para las acciones.
+
+Se aplican tres cosas, en el mismo orden que para una tabla. (REQ-1679)
+
+- Un filtro de filas: la regla de RLS del rol guardada contra la acción por nombre (`upsertRlsRule` con `actionName`), o, cuando la acción no tiene una propia, la regla de dominio del dominio de la acción. El predicado se valida contra el contrato al guardar, igual que una regla de tabla. (REQ-1676)
+- Visibilidad de columnas: una columna del contrato que declara `visible_to` se elimina para un rol que la lista no nombra; una columna que no declara ninguno forma parte de la forma pública de la acción y permanece.
+- Máscaras: una columna del contrato puede llevar `mask_type`, `mask_pattern`, `mask_replace`, `mask_value`, `mask_precision` y `unmasked_to`, los mismos campos que lleva una columna de tabla.
+
+La herencia de roles resuelve la cadena para los tres. (REQ-1677) Una respuesta que devuelve una columna fuera del contrato declarado se rechaza con un 502 en lugar de pasarse sin gobernar. Una acción que no declara ningún contrato de columnas devuelve un escalar y no tiene nada que vincular; se devuelve tal cual. La invocación de prueba de administración informa los filtros, exclusiones y máscaras que se aplicaron, y la sentencia gobernada se escribe en el registro de auditoría de consultas.
 
 ## Muestreo
 Todos los roles ven resultados muestreados (predeterminado: 100 filas) a menos que tengan la capacidad `full_results`. (REQ-554) Se controla mediante la variable de entorno `PROVISA_SAMPLE_SIZE`. (REQ-554)

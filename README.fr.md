@@ -102,11 +102,12 @@ Ce sont les protocoles de connexion. SQL, GraphQL et Cypher circulent dessus —
 
 ### Sources de données
 
-- **53 types de sources** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, triplestores SPARQL, Kafka, Google Sheets et d'autres encore à travers une seule API ; les sources graphe et RDF sont de première classe, non des adaptateurs
+- **54 types de sources** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, triplestores SPARQL, Kafka, Google Sheets, Kaggle et d'autres encore à travers une seule API ; les sources graphe et RDF sont de première classe, non des adaptateurs
 - **Routage intelligent** — Les requêtes mono-source contournent la fédération (sous les 100 ms) ; les requêtes multi-sources passent par la couche de fédération — apportez votre propre cluster ou employez les workers embarqués
 - **Sources API** — Enregistrez des endpoints REST, GraphQL, gRPC, WebSocket ou RSS comme tables interrogeables ; assistants SPARQL inclus ; les jointures fédérées entre sources API et sources relationnelles fonctionnent de façon transparente
 - **Introspection de schémas distants** — Pointez vers n'importe quel endpoint GraphQL, OpenAPI ou gRPC ; les opérations documentées sont automatiquement exposées comme tables interrogeables, nœuds et arêtes de graphe, avec toute la gouvernance appliquée par-dessus
 - **Sources fichiers** — Fichiers CSV, Parquet et SQLite comme tables interrogeables ; prend en charge les chemins locaux et le stockage objet distant (`s3://`, `ftp://`, `sftp://`)
+- **Jeux de données Kaggle** — recherchez le catalogue public de Kaggle et enregistrez un jeu de données par recherche en direct authentifiée par jeton, sans téléchargement manuel ; s'enregistre comme une source de fichiers unique dont les tables sont découvertes automatiquement, uniquement pour les paquets CSV/Parquet
 - **Intégration Kafka** — Topics comme tables en lecture seule ; résultats de requêtes comme receveurs Kafka
 - **Déclencheurs planifiés** — Déclencheurs cron et par intervalle (APScheduler) qui appellent des webhooks, des mutations ou des publications vers un receveur Kafka
 - **Indications de fédération** — Des indications de routage en commentaire SQL surchargent les décisions de routage automatiques

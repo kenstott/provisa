@@ -2,6 +2,30 @@
 
 Provisa se configura mediante un archivo YAML (por defecto: `config/provisa.yaml`). (REQ-528)
 
+## Includes (REQ-1669)
+
+Divida una configuración entre varios archivos con `includes:`. El archivo que incluye enumera rutas de fragmentos bajo esta clave; Provisa las combina antes de la validación, produciendo el mismo resultado que escribir todo en un solo archivo.
+
+```yaml
+# provisa-with-sources.yaml — wrapper that adds a Neo4j source to the base config
+includes:
+  - /path/to/config/provisa-install.yaml
+  - /path/to/demo/sources/neo4j/fragment.yaml
+```
+
+Un archivo wrapper que solo contiene `includes:` es válido. `load_control_plane` lee a través de los includes, así que la sección `control_plane:` se toma del archivo incluido que la establezca. [tool-verified: `provisa/core/config_loader.py:154-166`]
+
+**Reglas de combinación** [tool-verified: `provisa/core/config_loader.py:104-146`]
+
+- Las rutas se resuelven en relación con el archivo que incluye. Las rutas absolutas se usan tal cual.
+- Las secciones de tipo lista (`sources`, `tables`, `domains`, `relationships`, `roles`, …) se anexan — las entradas del fragmento van después de las entradas del archivo que incluye.
+- Una clave escalar o de mapeo que el archivo que incluye no establece se toma del fragmento.
+- Una clave que ambos archivos establecen con valores distintos es un conflicto; la carga falla, nombrando la clave.
+- Valores idénticos en ambos archivos no son un conflicto.
+- Los includes se anidan. Un archivo que se incluye a sí mismo — directamente o a través de otro fragmento — se rechaza.
+- `includes` se consume en el momento de la carga y nunca aparece en la configuración validada.
+
+
 ## Orígenes
 
 ```yaml
@@ -425,6 +449,8 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
+**Los conjuntos de datos de Kaggle** no pueden agregarse mediante este archivo — requieren un token en vivo y el selector de conjuntos de datos disponible en el formulario de Orígenes (Orígenes → Suscripciones → Kaggle). Un origen de Kaggle exportado a YAML aparece como `type: files` con `kaggle_owner` y `kaggle_ref` en `federation_hints`. Volver a descargar desde Kaggle requiere la mutación `refreshKaggleSource` o el flujo de actualización de la UI, no una edición de YAML. Véase [Conjuntos de datos de Kaggle](sources.md#kaggle-datasets) en la referencia de tipos de origen.
+
 #### Orígenes de API / remotos
 
 **openapi** — configure `base_url` con la URL base de OpenAPI. El descubrimiento de esquema lee la especificación OpenAPI al inicio.
@@ -766,7 +792,7 @@ roles:
     parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
 
-Los roles con `parent_role_id` heredan capacidades y acceso a dominios del padre. (REQ-215) La jerarquía se aplana al inicio. (REQ-215)
+Los roles con `parent_role_id` heredan capacidades, acceso a dominios, concesiones de columnas y objetos, y reglas de RLS del padre, con la regla de RLS propia del hijo para una tabla teniendo precedencia. (REQ-215, REQ-1677) La cadena se aplana al inicio. (REQ-215)
 
 ### Capacidades
 
@@ -1070,7 +1096,7 @@ Las columnas de preajuste se inyectan durante la compilación de la mutación, a
 
 ## Roles heredados
 
-Los roles pueden heredar capacidades y acceso a dominios de un rol padre mediante `parent_role_id`. (REQ-215) La jerarquía se aplana al inicio. (REQ-215)
+Los roles pueden heredar de un único rol padre mediante `parent_role_id`. (REQ-215) La cadena se aplana al inicio. (REQ-215) Un hijo tiene la unión de las capacidades y el acceso a dominios de sus ancestros; una columna, métrica, función o webhook concedido a un ancestro queda concedido al hijo; y las reglas de RLS de un ancestro se aplican al hijo por tabla, empezando por el rol más cercano, con la regla propia del hijo para una tabla reemplazando la del padre. (REQ-1677)
 
 ```yaml
 roles:
@@ -1090,7 +1116,7 @@ roles:
     parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
 ```
 
-Se admite herencia multinivel. (REQ-215) Las capacidades y domain_access explícitos del rol hijo se combinan con los del padre. (REQ-215)
+Se admite herencia multinivel. (REQ-215) Las capacidades y domain_access explícitos del rol hijo se combinan con los del padre. (REQ-215) Un padre debe ser un rol existente, no puede ser el propio rol y no puede cerrar un ciclo; cualquiera de estos casos se rechaza al guardar. (REQ-1677)
 
 ## Disparadores programados
 

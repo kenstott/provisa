@@ -60,19 +60,27 @@ Flags:
 | Concepto de Hasura | Equivalente en Provisa |
 | --------------- | ------------------- |
 | Tabla rastreada | `tables[]` con `publish: true` |
-| Relación de objeto | `relationships[]` con `cardinality: many-to-one` |
+| Relación de objeto | `relationships[]` con `cardinality: many-to-one`. Una declarada solo por columna FK (`foreign_key_constraint_on: artist_id`) no nombra un destino en la exportación; el conversor la resuelve a través de la relación de array inversa, y la descarta con una advertencia `[relationships]` cuando no hay ninguna. (REQ-1680) |
 | Relación de array | `relationships[]` con `cardinality: one-to-many` |
-| Permiso de select | Visibilidad de rol + filtro RLS |
+| Permiso de select | Visibilidad de rol + filtro RLS. Un término de variable de sesión (`X-Hasura-User-Id`) se convierte en `current_setting('provisa.user_id')`, que la solicitud vincula desde el id de usuario y los claims de la identidad en el momento de la consulta. (REQ-1682) |
 | Permiso de columna | `visible_to` / `writable_by` |
 | Permiso de insert/update/delete | Mutación `writable_by` + RLS |
-| Esquema remoto | Registro de origen `graphql_remote` |
+| Esquema remoto | Registro de origen `graphql_remote` más una tabla aterrizada por cada campo raíz de Query que los SDL de rol exponen; una columna es visible para cada rol cuyo SDL la expone, un argumento raíz no nulo se convierte en una columna de filtro nativo `_nf_`, los campos anidados se nombran en una advertencia. (REQ-1681) |
 | Campo calculado | Entrada de `functions[]` con `kind: query` |
+
+### Conexiones y dominios en la pestaña de importación
+
+La exportación nombra sus bases de datos por variable de entorno, así que después de la primera conversión la pestaña lista cada origen SQL con la conexión que la conversión adivinó. Complete el host, puerto, base de datos, usuario y contraseña, y convierta de nuevo; solo los campos que cambió viajan, como anulaciones de origen. Las filas de dominio cubren cada esquema, subgrafo y esquema remoto que trae la carga; cada una es un selector sobre los dominios existentes de la organización que también acepta un nombre escrito, marcado como "new domain" cuando no coincide con ninguno. Aplicar hace merge con lo que la organización ya tiene, a menos que la casilla de reemplazo esté activada. (REQ-1687)
+
+### Los tipos provienen del origen en la vista previa
+
+Una exportación de Hasura nombra columnas sin tipos, y una tabla rastreada sin permisos no nombra columnas. La vista previa se ejecuta con las conexiones de origen que usted suministra, así que lee `information_schema.columns` de cada origen SQL alcanzable: cada columna sin tipo obtiene el tipo del origen mapeado al vocabulario de la IR, y una tabla sin columnas toma cada columna que tiene el origen, visible solo para `org_admin`, ya que Hasura no la expuso a ningún otro rol. Un origen que la vista previa no puede alcanzar se reporta como una advertencia `[sources]` y sus columnas quedan sin tipo para que usted las complete antes de aplicar. (REQ-1691, REQ-1684)
 
 ### Limitaciones
 
 - **Actions**: se convierten automáticamente: las actions con handler HTTP se convierten en mutaciones `webhooks[]`; las actions con handler no HTTP (base de datos) se convierten en un placeholder de `functions[]` y emiten una advertencia para revisar el handler
 - **Event triggers**: se convierten en configuración `event_triggers` por tabla (operaciones, URL de webhook, política de reintentos) y emiten una advertencia señalando fidelidad limitada
-- **Esquemas remotos**: se convierten en entradas de origen `graphql_remote`
+- **Esquemas remotos**: se convierten en entradas de origen `graphql_remote` y se aterrizan como tablas a partir de los SDL de permisos de rol; un esquema remoto sin permisos no aterriza nada, ya que la exportación no lleva ninguna otra declaración de su forma (REQ-1681)
 - **Funciones SQL personalizadas**: requieren revisión — los casos simples se convierten en entradas de `functions[]`, los complejos requieren trabajo manual
 - **Cron triggers**: se convierten en entradas de configuración de `scheduler`, preservando la expresión cron y el flag de habilitado
 

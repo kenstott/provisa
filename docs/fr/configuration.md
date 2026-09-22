@@ -2,6 +2,30 @@
 
 Provisa se configure via un fichier YAML (par défaut : `config/provisa.yaml`). (REQ-528)
 
+## Inclusions (REQ-1669)
+
+Répartissez une configuration sur plusieurs fichiers avec `includes:`. Le fichier incluant liste les chemins de fragments sous cette clé ; Provisa les fusionne avant validation, produisant le même résultat que si tout était écrit dans un seul fichier.
+
+```yaml
+# provisa-with-sources.yaml — wrapper that adds a Neo4j source to the base config
+includes:
+  - /path/to/config/provisa-install.yaml
+  - /path/to/demo/sources/neo4j/fragment.yaml
+```
+
+Un fichier enveloppe ne contenant que `includes:` est valide. `load_control_plane` lit à travers les inclusions, donc la section `control_plane:` est prise du fichier inclus qui la définit. [tool-verified: `provisa/core/config_loader.py:154-166`]
+
+**Règles de fusion** [tool-verified: `provisa/core/config_loader.py:104-146`]
+
+- Les chemins se résolvent relativement au fichier incluant. Les chemins absolus sont utilisés tels quels.
+- Les sections de liste (`sources`, `tables`, `domains`, `relationships`, `roles`, …) s'ajoutent — les entrées du fragment suivent celles du fichier incluant.
+- Une clé scalaire ou de mappage que le fichier incluant ne définit pas est prise du fragment.
+- Une clé définie par les deux fichiers avec des valeurs différentes est un conflit ; le chargement échoue en nommant la clé.
+- Des valeurs identiques dans les deux fichiers ne constituent pas un conflit.
+- Les inclusions s'imbriquent. Un fichier qui s'inclut lui-même — directement ou via un autre fragment — est refusé.
+- `includes` est consommé au chargement et n'apparaît jamais dans la configuration validée.
+
+
 ## Sources
 
 ```yaml
@@ -425,6 +449,8 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
+**Jeux de données Kaggle** ne peuvent pas être ajoutés via ce fichier — ils nécessitent un jeton actif et le sélecteur de jeux de données disponible dans le formulaire Sources (Sources → Abonnements → Kaggle). Une source Kaggle exportée en YAML apparaît comme `type: files` avec `kaggle_owner` et `kaggle_ref` dans `federation_hints`. Retélécharger depuis Kaggle nécessite la mutation `refreshKaggleSource` ou le flux de rafraîchissement de l'interface, pas une modification YAML. Voir [Jeux de données Kaggle](sources.md#kaggle-datasets) dans la référence des types de source.
+
 #### Sources API / distantes
 
 **openapi** — définissez `base_url` sur l'URL de base OpenAPI. La découverte de schéma lit la spécification OpenAPI au démarrage.
@@ -766,7 +792,7 @@ roles:
     parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
 
-Les rôles dotés d'un `parent_role_id` héritent des capacités et de l'accès aux domaines du parent. (REQ-215) La hiérarchie est aplatie au démarrage. (REQ-215)
+Les rôles dotés d'un `parent_role_id` héritent des capacités, de l'accès aux domaines, des octrois de colonnes et d'objets, ainsi que des règles RLS du parent, la règle RLS propre de l'enfant pour une table étant prioritaire. (REQ-215, REQ-1677) La chaîne est aplatie au démarrage. (REQ-215)
 
 ### Capacités
 
@@ -1070,7 +1096,7 @@ Les colonnes prédéfinies sont injectées pendant la compilation de la mutation
 
 ## Rôles hérités
 
-Les rôles peuvent hériter des capacités et de l'accès aux domaines d'un rôle parent via `parent_role_id`. (REQ-215) La hiérarchie est aplatie au démarrage. (REQ-215)
+Les rôles peuvent hériter d'un seul rôle parent via `parent_role_id`. (REQ-215) La chaîne est aplatie au démarrage. (REQ-215) Un enfant détient l'union des capacités et de l'accès aux domaines de ses ancêtres ; une colonne, une métrique, une fonction ou un webhook accordé à un ancêtre est accordé à l'enfant ; et les règles RLS d'un ancêtre s'appliquent à l'enfant par table, en commençant par le rôle le plus proche, la règle propre de l'enfant pour une table remplaçant celle du parent. (REQ-1677)
 
 ```yaml
 roles:
@@ -1090,7 +1116,7 @@ roles:
     parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
 ```
 
-L'héritage sur plusieurs niveaux est pris en charge. (REQ-215) Les capacités et le `domain_access` explicites du rôle enfant sont fusionnés avec ceux du parent. (REQ-215)
+L'héritage sur plusieurs niveaux est pris en charge. (REQ-215) Les capacités et le `domain_access` explicites du rôle enfant sont fusionnés avec ceux du parent. (REQ-215) Un parent doit être un rôle existant, ne peut pas être le rôle lui-même et ne peut pas fermer un cycle ; chacun de ces cas est refusé à l'enregistrement. (REQ-1677)
 
 ## Déclencheurs planifiés
 

@@ -1056,6 +1056,8 @@ All endpoints are under `/admin/invites`. [tool-verified: `provisa/api/admin/inv
 
 Strawberry GraphQL endpoint for all admin operations: source and table CRUD, relationship management, domain configuration, RLS rules, cache control, naming conventions, scheduled task management, and query compilation. (REQ-164) [tool-verified: `provisa/api/app.py:2171`]
 
+For the full schema reference — every Query field, Mutation field, and input/output type — see [Admin GraphQL API Reference](admin-graphql.md).
+
 **Key mutations:**
 
 ```graphql

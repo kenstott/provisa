@@ -2,6 +2,30 @@
 
 Provisa מוגדרת דרך קובץ YAML (ברירת מחדל: `config/provisa.yaml`). (REQ-528)
 
+## הכללות (Includes) (REQ-1669)
+
+פיצול הגדרות על פני מספר קבצים באמצעות `includes:`. הקובץ המכליל נוקב נתיבי מקטע (fragment) תחת מפתח זה; Provisa ממזגת אותם לפני האימות, ומפיקה את אותה תוצאה כמו כתיבת הכל בקובץ אחד.
+
+```yaml
+# provisa-with-sources.yaml — wrapper that adds a Neo4j source to the base config
+includes:
+  - /path/to/config/provisa-install.yaml
+  - /path/to/demo/sources/neo4j/fragment.yaml
+```
+
+קובץ עוטף המכיל רק `includes:` תקף. `load_control_plane` קורא דרך ההכללות, כך שהמקטע `control_plane:` נלקח מאיזה קובץ מוכלל שקובע אותו. [tool-verified: `provisa/core/config_loader.py:154-166`]
+
+**כללי מיזוג** [tool-verified: `provisa/core/config_loader.py:104-146`]
+
+- נתיבים נפתרים ביחס לקובץ המכליל. נתיבים מוחלטים משמשים כלשונם.
+- מקטעי רשימה (`sources`, `tables`, `domains`, `relationships`, `roles`, …) מצטרפים — רשומות המקטע (fragment) עוקבות אחרי רשומות הקובץ המכליל.
+- מפתח סקלרי או מיפוי שהקובץ המכליל אינו קובע נלקח מהמקטע.
+- מפתח ששני הקבצים קובעים לערכים שונים הוא קונפליקט; הטעינה נכשלת, ונוקבת את המפתח.
+- ערכים זהים בשני הקבצים אינם קונפליקט.
+- הכללות מקוננות. קובץ המכליל את עצמו — ישירות או דרך מקטע אחר — נדחה.
+- `includes` נצרך בזמן הטעינה ולעולם אינו מופיע בהגדרות המאומתות.
+
+
 ## מקורות (Sources)
 
 ```yaml
@@ -424,6 +448,8 @@ sources:
     type: files
     path: /data/lake/         # directory; each file becomes a table
 ```
+
+**ערכות נתונים של Kaggle** לא ניתנות להוספה דרך קובץ זה — הן דורשות אסימון חי ובורר ערכת נתונים הזמינים בטופס המקורות (Sources → Subscriptions → Kaggle). מקור Kaggle שיוצא ל-YAML מופיע כ-`type: files` עם `kaggle_owner` ו-`kaggle_ref` תחת `federation_hints`. הורדה מחדש מ-Kaggle דורשת את ה-mutation‏ `refreshKaggleSource` או את תהליך הרענון ב-UI, לא עריכת YAML. ראו [ערכות נתונים של Kaggle](sources.md#kaggle-datasets) בהפניה של סוגי המקורות.
 
 #### מקורות API / מרוחקים
 
