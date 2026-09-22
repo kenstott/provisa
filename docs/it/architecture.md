@@ -586,7 +586,7 @@ Ogni tabella registrata riceve un campo root `{table}_aggregate` generato automa
 
 ## Ruoli ereditati
 
-I ruoli in `core/models.py` possono fare riferimento a un `parent_role_id`. (REQ-215) `flatten_roles()` risolve ricorsivamente la catena di ereditarietà, unendo le clausole WHERE RLS (con AND), la visibilità delle colonne (unione, vince la più restrittiva) e le policy di mascheramento (il figlio sovrascrive il genitore per colonna). Questo evita set di permessi duplicati tra ruoli simili (es. `analyst` eredita da `reader`). (REQ-215)
+Un ruolo nomina al massimo un padre tramite `parent_role_id`. (REQ-215) Al build a runtime, `security/inheritance.py` percorre la catena di ogni ruolo dal figlio verso l'alto e la ripiega nelle copie proprie del build dei dati caricati, cosicché ogni ricerca successiva rimane indicizzata dall'id del ruolo agente. (REQ-1677) Le capability e l'accesso al dominio sono l'unione della catena. Il `visible_to`, `writable_by` e `unmasked_to` di una colonna, e il `visible_to` di una metrica, funzione o webhook, valgono per un ruolo quando lo nominano o nominano un suo antenato. L'RLS si risolve per tabella con il figlio che ha la precedenza: il ruolo più vicino nella catena che ha una regola per la tabella, la propria regola di tabella prima della propria regola di dominio, fornisce l'unico predicato che viene eseguito; la regola di un antenato non viene mai combinata con essa. Un ruolo eredita il rate limit del padre quando non ne imposta uno proprio. Un padre deve esistere, non può essere il ruolo stesso e non può chiudere un ciclo; un ruolo da cui altri ruoli ereditano non può essere eliminato finché non viene ri-assegnato a un nuovo padre. (REQ-1677)
 
 ## Hook di approvazione ABAC
 
