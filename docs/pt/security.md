@@ -83,7 +83,7 @@ Capacidades atribuídas de forma independente, com hierarquia de função opcion
 
 ### Herança de Função
 
-Funções podem herdar capacidades e acesso a domínio de uma função pai via `parent_role_id`. (REQ-215) A hierarquia é achatada na inicialização — funções filhas mesclam as capacidades e o acesso a domínio do pai com os seus. (REQ-215)
+Funções podem herdar de uma função pai via `parent_role_id`, definido na configuração ou na página de Segurança como "Inherits from". (REQ-215) A cadeia é achatada na inicialização: uma função filha detém a união das capacidades e do acesso a domínio de seus ancestrais, toda concessão de coluna, métrica, função e webhook que nomeia um ancestral, e as regras de RLS dos ancestrais por tabela, com a filha tendo precedência — a função mais próxima na cadeia com uma regra para uma tabela fornece o predicado daquela tabela, e uma regra salva para a filha substitui a do pai para aquela tabela. (REQ-1677)
 
 ```yaml
 roles:
@@ -173,6 +173,8 @@ rls_rules:
 
 O filtro entra com AND na cláusula WHERE da consulta. Funciona tanto para consultas quanto para mutações (UPDATE/DELETE). (REQ-035, REQ-041)
 
+Um termo `current_setting('provisa.<name>')` resolve contra as variáveis de sessão que a requisição vincula: `user_id` a partir da identidade autenticada, `role` a partir da função atuante, e toda claim escalar do token sob seu nome em minúsculas com um `x-hasura-` inicial removido, de modo que um filtro Hasura importado sobre `X-Hasura-User-Id` lê `provisa.user_id`. Os `session_vars` configurados de uma função são as constantes por baixo; os vínculos da requisição os sobrepõem. Em modo não protegido, um cabeçalho `x-provisa-session-<name>` vincula `<name>`. Uma variável não vinculada em lugar nenhum resolve para NULL e não corresponde a nenhuma linha. (REQ-1682)
+
 ## Mascaramento em Nível de Coluna
 
 O mascaramento é definido uma vez por coluna — é uma propriedade da coluna, não da função. O campo `unmasked_to` controla quais funções o contornam. (REQ-249)
@@ -184,6 +186,18 @@ O mascaramento é definido uma vez por coluna — é uma propriedade da coluna, 
 | `truncate` | Data/Timestamp | `DATE_TRUNC(precision, col)` |
 
 O mascaramento é empurrado para a projeção SELECT do SQL — o banco de dados retorna dados mascarados. (REQ-263) Dados não mascarados nunca cruzam a rede para funções mascaradas. (REQ-263) Colunas mascaradas também são bloqueadas em cláusulas `WHERE` e `HAVING` (guarda de predicado da camada 5) para impedir a dedução do valor não mascarado por filtragem. (REQ-263, REQ-531)
+
+## Governança de Respostas de Ação
+
+A resposta de uma função rastreada ou de um webhook é governada como as linhas de uma tabela. (REQ-1679) As linhas que uma ação retorna são vinculadas como uma relação cujas colunas são o contrato de saída declarado da ação — `output_columns` para uma função, `inline_return_type` para um webhook, ou as propriedades de objeto do `return_schema` de array de uma função — e essa relação passa pelo mesmo estágio de governança por que passa toda leitura de tabela, sobre um CTE VALUES contendo as linhas. (REQ-1679) Nada em RLS, mascaramento ou visibilidade é reimplementado para ações.
+
+Três coisas se aplicam, na mesma ordem que para uma tabela. (REQ-1679)
+
+- Um filtro de linha: a regra de RLS da função salva contra a ação pelo nome (`upsertRlsRule` com `actionName`), ou, quando a ação não tem uma própria, a regra de domínio do domínio da ação. O predicado é validado contra o contrato ao salvar, da mesma forma que uma regra de tabela. (REQ-1676)
+- Visibilidade de coluna: uma coluna do contrato que declara `visible_to` é descartada para uma função que a lista não nomeia; uma coluna que não declara nenhuma faz parte da forma pública da ação e permanece.
+- Máscaras: uma coluna do contrato pode carregar `mask_type`, `mask_pattern`, `mask_replace`, `mask_value`, `mask_precision` e `unmasked_to`, os mesmos campos que uma coluna de tabela carrega.
+
+A herança de função resolve a cadeia para as três. (REQ-1677) Uma resposta que retorna uma coluna fora do contrato declarado é recusada com 502 em vez de ser repassada sem governança. Uma ação que não declara contrato de coluna retorna um escalar e não tem nada a vincular; ela é retornada como está. O test-invoke de admin reporta os filtros, exclusões e máscaras que se aplicaram, e a declaração governada é gravada no log de auditoria de consultas.
 
 ## Amostragem
 
