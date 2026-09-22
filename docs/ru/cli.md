@@ -114,16 +114,16 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 ### Пример
 
 ```bash
-# Запуск с демонстрационными данными
+# Start with the demo data
 provisa run --demo
 
-# Запуск на нестандартных портах, без браузера
+# Start on non-default ports, no browser
 provisa run --api-port 8080 --ui-port 4000 --no-browser
 
-# Обновление: сначала сбросить плоскость управления, затем запустить
+# Upgrade: reset the control plane first, then start
 provisa run --reset
 
-# Указать на внешний кластер Trino вместо встроенного движка DuckDB
+# Point at an external Trino cluster instead of the embedded DuckDB engine
 TRINO_HOST=trino.internal TRINO_PORT=8080 provisa run
 ```
 
@@ -204,7 +204,7 @@ provisa metadata export \
   --api  https://acme.provisa.org \
   --token "$PROVISA_API_TOKEN"
 
-# Пример для cron — ежедневно в 06:00
+# Cron example — daily at 06:00
 # 0 6 * * *  provisa metadata export --api https://acme.provisa.org >> /var/log/provisa-export.log 2>&1
 ```
 
@@ -249,7 +249,7 @@ provisa env deploy --org ORG --env ENV --ref REF
 был бы неправ. [tool-verified: cli.py:416-417]
 
 ```bash
-# Получить удалённые ветки, затем развернуть
+# Fetch remote branches, then deploy
 provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 
 provisa env deploy \

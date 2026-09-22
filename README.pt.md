@@ -102,11 +102,12 @@ Estes são os protocolos de conexão. SQL, GraphQL e Cypher trafegam sobre eles 
 
 ### Fontes de dados
 
-- **53 tipos de fonte** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, triplestores SPARQL, Kafka, Google Sheets e mais através de uma única API; fontes de grafo e RDF são de primeira classe, não adaptadores
+- **54 tipos de fonte** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, triplestores SPARQL, Kafka, Google Sheets, Kaggle e mais através de uma única API; fontes de grafo e RDF são de primeira classe, não adaptadores
 - **Roteamento inteligente** — Consultas de fonte única contornam a federação (sub-100ms); consultas de múltiplas fontes são roteadas pela camada de federação — traga seu próprio cluster ou use os workers embutidos
 - **Fontes de API** — Registre endpoints REST, GraphQL, gRPC, WebSocket ou RSS como tabelas consultáveis; helpers SPARQL incluídos; joins federados entre fontes de API e fontes relacionais funcionam de forma transparente
 - **Introspecção de esquema remoto** — Aponte para qualquer endpoint GraphQL, OpenAPI ou gRPC; operações documentadas são automaticamente expostas como tabelas consultáveis, nós de grafo e arestas com governança completa aplicada por cima
 - **Fontes de arquivo** — Arquivos CSV, Parquet e SQLite como tabelas consultáveis; suporta caminhos locais e armazenamento de objetos remoto (`s3://`, `ftp://`, `sftp://`)
+- **Conjuntos de dados Kaggle** — busque o catálogo público do Kaggle e registre um conjunto de dados por busca ao vivo autenticada por token, sem download manual; registra como uma única fonte de arquivo cujas tabelas são descobertas automaticamente, somente pacotes CSV/Parquet
 - **Integração Kafka** — Tópicos como tabelas somente-leitura; resultados de consulta como sinks Kafka
 - **Gatilhos programados** — Gatilhos cron e por intervalo (APScheduler) que disparam webhooks, mutações ou publicações em sinks Kafka
 - **Dicas de desempenho de federação** — Dicas de roteamento via comentário SQL sobrepõem decisões automáticas de roteamento
