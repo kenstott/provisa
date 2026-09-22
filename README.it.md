@@ -102,11 +102,12 @@ Questi sono i protocolli di connessione. SQL, GraphQL e Cypher vi transitano sop
 
 ### Origini dati
 
-- **53 tipi di origine** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, triplestore SPARQL, Kafka, Google Sheets e altre tramite un'unica API; le origini grafo e RDF sono di prima classe, non adattatori
+- **54 tipi di origine** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, triplestore SPARQL, Kafka, Google Sheets, Kaggle e altre tramite un'unica API; le origini grafo e RDF sono di prima classe, non adattatori
 - **Routing intelligente** — Le query su singola origine bypassano la federazione (sub-100ms); le query multi-origine vengono instradate attraverso il layer di federazione — porta il tuo cluster o usa i worker integrati
 - **Origini API** — Registra endpoint REST, GraphQL, gRPC, WebSocket o RSS come tabelle interrogabili; helper SPARQL inclusi; i join federati tra origini API e origini relazionali funzionano in modo trasparente
 - **Introspezione degli schemi remoti** — Punta a qualsiasi endpoint GraphQL, OpenAPI o gRPC; le operazioni documentate vengono automaticamente esposte come tabelle interrogabili, nodi e archi del grafo con governance completa applicata sopra
 - **Origini file** — File CSV, Parquet e SQLite come tabelle interrogabili; supporta percorsi locali e object storage remoto (`s3://`, `ftp://`, `sftp://`)
+- **Dataset Kaggle** — cerca nel catalogo pubblico di Kaggle e registra un dataset tramite ricerca live autenticata da token, senza download manuale; si registra come un'unica origine file le cui tabelle vengono scoperte automaticamente, solo bundle CSV/Parquet
 - **Integrazione Kafka** — I topic come tabelle in sola lettura; i risultati delle query come sink Kafka
 - **Trigger pianificati** — Trigger cron e a intervallo (APScheduler) che scatenano webhook, mutation o pubblicazioni sink Kafka
 - **Hint di prestazione della federazione** — Hint di routing tramite commento SQL che sovrascrivono le decisioni di routing automatico
