@@ -2,6 +2,29 @@
 
 Provisa wird über eine YAML-Datei konfiguriert (Standard: `config/provisa.yaml`). (REQ-528)
 
+## Includes (REQ-1669)
+
+Teilen Sie eine Konfiguration mit `includes:` auf mehrere Dateien auf. Die einbindende Datei listet Fragmentpfade unter diesem Schlüssel auf; Provisa führt sie vor der Validierung zusammen, was zum gleichen Ergebnis führt wie das Schreiben von allem in einer einzigen Datei.
+
+```yaml
+# provisa-with-sources.yaml — wrapper that adds a Neo4j source to the base config
+includes:
+  - /path/to/config/provisa-install.yaml
+  - /path/to/demo/sources/neo4j/fragment.yaml
+```
+
+Eine Wrapper-Datei, die nur `includes:` enthält, ist gültig. `load_control_plane` liest durch Includes hindurch, sodass der Abschnitt `control_plane:` aus derjenigen eingebundenen Datei stammt, die ihn setzt. [tool-verified: `provisa/core/config_loader.py:154-166`]
+
+**Merge-Regeln** [tool-verified: `provisa/core/config_loader.py:104-146`]
+
+- Pfade werden relativ zur einbindenden Datei aufgelöst. Absolute Pfade werden unverändert übernommen.
+- Listenabschnitte (`sources`, `tables`, `domains`, `relationships`, `roles`, …) werden angehängt — Fragmenteinträge folgen auf die Einträge der einbindenden Datei.
+- Ein skalarer oder Mapping-Schlüssel, den die einbindende Datei nicht setzt, wird aus dem Fragment übernommen.
+- Ein Schlüssel, den beide Dateien auf unterschiedliche Werte setzen, ist ein Konflikt; das Laden schlägt fehl und nennt den Schlüssel.
+- Identische Werte in beiden Dateien sind kein Konflikt.
+- Includes können verschachtelt werden. Eine Datei, die sich selbst einbindet — direkt oder über ein anderes Fragment — wird abgelehnt.
+- `includes` wird beim Laden konsumiert und erscheint nie in der validierten Konfiguration.
+
 ## Quellen
 
 ```yaml
@@ -424,6 +447,8 @@ sources:
     type: files
     path: /data/lake/         # directory; each file becomes a table
 ```
+
+**Kaggle-Datasets** können nicht über diese Datei hinzugefügt werden — sie erfordern ein Live-Token und einen im Quellen-Formular verfügbaren Dataset-Picker (Quellen → Abonnements → Kaggle). Eine nach YAML exportierte Kaggle-Quelle erscheint als `type: files` mit `kaggle_owner` und `kaggle_ref` in `federation_hints`. Ein erneuter Download von Kaggle erfordert die Mutation `refreshKaggleSource` oder den UI-Refresh-Ablauf, keine YAML-Bearbeitung. Siehe [Kaggle-Datasets](sources.md#kaggle-datasets) in der Referenz der Quellentypen.
 
 #### API-/Remote-Quellen
 
