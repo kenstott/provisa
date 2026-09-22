@@ -201,3 +201,40 @@ class TestPayloadRoundTrip:
         assert rebuilt.table_name == "rev"
         assert rebuilt.view_sql == "SELECT 1 AS id"
         assert rebuilt.columns[0].name == "id"
+
+    async def test_table_input_round_trips_with_unique_constraints(self):  # REQ-1792
+        from provisa.api.admin.schema import _rebuild_table_input
+        from provisa.api.admin.types import ColumnInput, TableInput, UniqueConstraintInput
+
+        ti = TableInput(
+            source_id="pg1",
+            domain_id="sales",
+            schema_name="public",
+            table_name="orders",
+            columns=[ColumnInput(name="id", visible_to=["admin"])],
+            unique_constraints=[UniqueConstraintInput(name="uq_orders_id", columns=["id"])],
+        )
+        rebuilt = _rebuild_table_input(dataclasses.asdict(ti))
+        assert rebuilt.unique_constraints[0].name == "uq_orders_id"
+        assert rebuilt.unique_constraints[0].columns == ["id"]
+
+    async def test_source_input_round_trips(self):  # REQ-1792
+        from provisa.api.admin.schema import _rebuild_source_input
+        from provisa.api.admin.types import SourceInput
+
+        si = SourceInput(id="new_pg", type="postgresql", host="db.internal", port=5432)
+        rebuilt = _rebuild_source_input(dataclasses.asdict(si))
+        assert rebuilt.id == "new_pg"
+        assert rebuilt.host == "db.internal"
+
+    async def test_source_input_round_trips_with_cdc(self):  # REQ-1792
+        from provisa.api.admin.schema import _rebuild_source_input
+        from provisa.api.admin.types import SourceCdcConfigInput, SourceInput
+
+        si = SourceInput(
+            id="new_pg",
+            type="postgresql",
+            cdc=SourceCdcConfigInput(bootstrap_servers="kafka:9092", topic_prefix="pg."),
+        )
+        rebuilt = _rebuild_source_input(dataclasses.asdict(si))
+        assert rebuilt.cdc.bootstrap_servers == "kafka:9092"

@@ -238,6 +238,25 @@ async def provider_type():
     return {"provider": provider}
 
 
+@router.get("/license-status")  # REQ-1137
+async def license_status():
+    """Whether this deployment is licensed, for the UI's persistent "Unregistered" indicator.
+
+    Unauthenticated and cheap: it reads the already-evaluated in-process licensing state (REQ-1137)
+    rather than re-checking the filesystem. ``licensed`` is shown regardless of trial status —
+    unlike the post-trial nag, which only appears once the 30-day trial has elapsed."""
+    from provisa.licensing import emit
+
+    state = emit.current_state()
+    if state is None:
+        return {"licensed": False, "should_nag": False, "nag_text": None}
+    return {
+        "licensed": state.licensed,
+        "should_nag": state.should_nag,
+        "nag_text": state.nag_text if state.should_nag else None,
+    }
+
+
 @router.get("/bootstrap-status")
 async def bootstrap_status():  # REQ-1288
     """Whether the sole platform-admin slot is still unclaimed.

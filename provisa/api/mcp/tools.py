@@ -547,6 +547,78 @@ async def jev_evaluate(state: Any, role: str, jev_state: Any, questions: list[di
     return await evaluate(await _jev_api_key(state), jev_state, questions)
 
 
+async def _queue_mcp_proposal(
+    state: Any, role: str, request_type: str, capability: str, reason: str, rebuilt_input: Any
+) -> dict:
+    """Shared REQ-1792 tail: persist a pending creation request from an MCP-side proposal.
+
+    Never creates the live entity itself — always lands in the same REQ-434 queue a low-privilege
+    GraphQL caller falls back to, so a rights-holder must execute or reject it via the admin UI
+    (Requests page) regardless of what capability the MCP credential itself carries."""
+    import dataclasses
+
+    from provisa.core.repositories import creation_request as cr_repo
+
+    if not reason or not reason.strip():
+        raise ValueError("reason is required — say why this was discovered/proposed")
+
+    payload = dataclasses.asdict(rebuilt_input)
+    payload["_proposed_reason"] = reason.strip()
+    payload["_proposed_via"] = "mcp"
+
+    pool = state.tenant_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        request_id = await cr_repo.create(conn, request_type, capability, payload, role)
+    return {
+        "request_id": request_id,
+        "status": "pending",
+        "message": (
+            f"Queued as creation request #{request_id} — awaiting a user holding "
+            f"{capability!r} to review and approve on the Requests page."
+        ),
+    }
+
+
+async def propose_source(state: Any, role: str, source: dict, reason: str) -> dict:  # REQ-1792
+    """Queue a discovered data source as a pending creation request for a human to approve.
+
+    `source` is validated as a well-formed SourceInput (required fields: id, type) before it is
+    queued, so a malformed proposal fails fast rather than sitting in the queue as garbage a human
+    has to puzzle out. See `_queue_mcp_proposal` for why this never creates a live Source."""
+    require_role(role, state)
+    from provisa.api.admin.schema_common import _rebuild_source_input
+
+    try:
+        source_input = _rebuild_source_input(dict(source))
+    except TypeError as exc:
+        raise ValueError(f"malformed source proposal: {exc}") from exc
+    return await _queue_mcp_proposal(
+        state, role, "source", "source_registration", reason, source_input
+    )
+
+
+async def propose_table(state: Any, role: str, table: dict, reason: str) -> dict:  # REQ-1792
+    """Queue a table to register from an already-registered source, for a human to approve.
+
+    `table` is a TableInput-shaped dict (required: source_id, domain_id, schema_name, table_name,
+    columns — each column at minimum {"name", "visible_to"}). Column presets and unique constraints
+    are optional. This proposes a PHYSICAL table registration, not a view: set `view_sql` in `table`
+    only if you mean to propose a view instead — `register_table` (called at approval time) branches
+    on that field the same way it does for a direct GraphQL caller. See `_queue_mcp_proposal` for why
+    this never registers the table itself."""
+    require_role(role, state)
+    from provisa.api.admin.schema_common import _rebuild_table_input
+
+    try:
+        table_input = _rebuild_table_input(dict(table))
+    except TypeError as exc:
+        raise ValueError(f"malformed table proposal: {exc}") from exc
+    return await _queue_mcp_proposal(
+        state, role, "table", "table_registration", reason, table_input
+    )
+
+
 def _row_to_json(cols: list[str], row: Any) -> dict:
     """Map a result tuple to a JSON-safe {column: value} dict."""
     out: dict[str, Any] = {}

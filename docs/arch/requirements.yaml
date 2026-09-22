@@ -61342,3 +61342,70 @@
       is more flexible than Hasura's or Dremio's hardcoded vendor lists. It allows any OpenAI- or Anthropic-compatible
       service to be integrated without code changes, including multi-region proxies and cost-optimizing
       gateways.
+- id: REQ-1791
+  status: in-progress
+  group: 11. Platform, Infrastructure & Delivery
+  category: Licensing
+  priority: SHOULD
+  type: ui
+  description: >-
+    A persistent "Unregistered" indicator appears in the web UI footer whenever the deployment is not
+    licensed, regardless of trial status. This is distinct from REQ-1137 (the post-trial license nag, which
+    only fires after trial expiry via server logs and protocol-level notices, never touching the UI).
+  use_case: >-
+    Users need a constant visual signal that their deployment is unlicensed, independent of trial period.
+    This keeps the licensure status always visible pre- and post-trial-expiry for unlicensed installs
+    without interfering with the trial experience or the post-expiry nag mechanism.
+  code:
+  - provisa/api/auth_router.py
+  - provisa-ui/src/api/license.ts
+  - provisa-ui/src/components/LicenseBadge.tsx
+  - provisa-ui/src/App.tsx
+  tests:
+  - tests/unit/test_licensing.py
+  scenario: |
+    Given an unlicensed Provisa deployment within or after a trial period
+    When the web UI is loaded
+    Then an "Unregistered" indicator is always visible in the footer
+    And it carries no functional gating or warnings (purely informational)
+  e2e: true
+  e2e_reason: >-
+    UI indicator behavior is only verifiable through a live browser round-trip, including the footer
+    render and license-status endpoint response.
+- id: REQ-1792
+  status: complete
+  group: 8. Client Access & Protocols
+  category: MCP Server
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    MCP server exposes two new discovery and proposal tools: `propose_source` and `propose_table`.
+    Both tools allow an MCP-connected agent to discover and propose new data sources or tables for a
+    human to review and approve—never creating/registering them directly, regardless of what capability
+    the MCP session's credential holds.
+  use_case: >-
+    Enables agent-assisted data discovery and governance: an AI planner can identify candidate sources
+    and tables for federation, propose them through the governed creation-request queue (REQ-434), and
+    leave final approval to a human authorized to execute source registration or table registration.
+  code:
+  - provisa/api/mcp/tools.py
+  - provisa/api/mcp/server.py
+  - provisa/api/admin/schema_common.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/api/admin/schema.py
+  tests:
+  - tests/unit/test_creation_requests.py
+  - tests/unit/test_mcp_propose.py
+  scenario: |
+    Given an MCP-connected agent with any role (including elevated credentials)
+    When the agent calls `propose_source` or `propose_table` with a discovery proposal
+    Then the proposal queues into the creation-request table with request_type "source" or "table"
+    And no source or table is created/registered until an authorized user executes the request
+    And the proposal is visible on the Requests page for human review
+  competitive_position:
+    status: ahead
+    rationale: >-
+      Agent-assisted schema discovery with human-in-the-loop approval (never agent-driven direct
+      creation) is unique to Provisa. Competitors like Trino and Denodo lack an MCP interface; Hasura
+      has no MCP and no similar propose-vs-execute separation for agent workflows.

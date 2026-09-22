@@ -36,6 +36,7 @@ from provisa.api.admin._table_ops import (  # noqa: F401
 )
 from provisa.api.admin.schema_common import (  # noqa: F401
     _rebuild_relationship_input,
+    _rebuild_source_input,
     _rebuild_table_input,
 )
 

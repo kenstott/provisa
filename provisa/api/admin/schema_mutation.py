@@ -85,6 +85,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _prime_govdata_cache,
     _queue_creation_request,
     _rebuild_relationship_input,
+    _rebuild_source_input,
     _rebuild_table_input,
     _register_source_on_engine,
     _remove_view_mv,
@@ -2205,8 +2206,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 info,
                 _rebuild_relationship_input(req["payload"]),  # pyright: ignore[reportCallIssue]
             )
-        elif req["request_type"] == "view":
+        elif req["request_type"] in ("view", "table"):  # REQ-1792: "table" is the MCP-proposal kind
             result = await self.register_table(info, _rebuild_table_input(req["payload"]))  # pyright: ignore[reportCallIssue]
+        elif req["request_type"] == "source":  # REQ-1792
+            result = await self.create_source(info, _rebuild_source_input(req["payload"]))  # pyright: ignore[reportCallIssue]
         elif req["request_type"] == "webhook":
             # REQ-209: approving a webhook only requires marking this request executed (done
             # below) — the schema-build gate then exposes the webhook whose latest request is

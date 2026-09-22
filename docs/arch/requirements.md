@@ -18967,3 +18967,17 @@ Provisa supports configuring custom AI/LLM endpoints reachable over either the O
 **Code:** `provisa/core/models.py`, `provisa/core/org_settings.py`, `provisa/api/admin/ai_models_router.py`, `provisa/llm/client.py`, `provisa/llm/vendor_models.py`, `provisa-ui/src/api/aiModels.ts`, `provisa-ui/src/components/admin/AiModelsTab.tsx`
 
 **Tests:** `tests/unit/test_admin_config_tabs.py`, `tests/unit/test_llm_client_endpoints.py`, `tests/unit/test_org_scoped_admin_rights.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1791 · Licensing {#REQ-1791}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** ui
+
+A persistent "Unregistered" indicator appears in the web UI footer whenever the deployment is not licensed, regardless of trial status. This is distinct from [REQ-1137](#REQ-1137) (the post-trial license nag, which only fires after trial expiry via server logs and protocol-level notices, never touching the UI).
+
+**Use case:** Users need a constant visual signal that their deployment is unlicensed, independent of trial period. This keeps the licensure status always visible pre- and post-trial-expiry for unlicensed installs without interfering with the trial experience or the post-expiry nag mechanism.
+
+**Code:** `provisa/api/auth_router.py`, `provisa-ui/src/api/license.ts`, `provisa-ui/src/components/LicenseBadge.tsx`, `provisa-ui/src/App.tsx`
+
+**Tests:** `tests/unit/test_licensing.py`

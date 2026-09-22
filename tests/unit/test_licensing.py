@@ -328,6 +328,71 @@ def test_flight_license_stream_attaches_app_metadata(monkeypatch):
     assert isinstance(stream2, flight.RecordBatchStream)
 
 
+# ------------------------------------------------------- REQ-1791 /auth/license-status
+
+
+@pytest.mark.asyncio
+async def test_license_status_reflects_licensed_state_regardless_of_nag():
+    # REQ-1791: `licensed` must be readable before the 30-day trial ever expires — that is the whole
+    # point of the always-on UI indicator, as opposed to REQ-1137's post-trial-only nag.
+    from provisa.api.auth_router import license_status
+    from provisa.licensing import emit
+    from provisa.licensing.state import LicensingState
+
+    emit.set_state(
+        LicensingState(
+            machine_id=MID,
+            first_seen="2026-01-01",
+            elapsed_days=1.0,
+            trial_expired=False,
+            licensed=False,
+            license_reason="no license present",
+        )
+    )
+    try:
+        body = await license_status()
+        assert body == {"licensed": False, "should_nag": False, "nag_text": None}
+    finally:
+        emit.set_state(None)
+
+
+@pytest.mark.asyncio
+async def test_license_status_omits_nag_text_unless_nagging():
+    from provisa.api.auth_router import license_status
+    from provisa.licensing import emit
+    from provisa.licensing.state import LicensingState
+
+    emit.set_state(
+        LicensingState(
+            machine_id=MID,
+            first_seen="2020-01-01",
+            elapsed_days=400.0,
+            trial_expired=True,
+            licensed=False,
+            license_reason="no license present",
+        )
+    )
+    try:
+        body = await license_status()
+        assert body["licensed"] is False
+        assert body["should_nag"] is True
+        assert body["nag_text"] is not None and MID in body["nag_text"]
+    finally:
+        emit.set_state(None)
+
+
+@pytest.mark.asyncio
+async def test_license_status_with_no_evaluated_state():
+    # A defensive case: startup licensing evaluation failing (REQ-1137's own catch-all) must not
+    # break this endpoint — it degrades to "unlicensed, no nag" rather than erroring.
+    from provisa.api.auth_router import license_status
+    from provisa.licensing import emit
+
+    emit.set_state(None)
+    body = await license_status()
+    assert body == {"licensed": False, "should_nag": False, "nag_text": None}
+
+
 def test_pgwire_notice_frame_encoding():
     import io
     import struct

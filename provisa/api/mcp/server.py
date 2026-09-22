@@ -282,6 +282,31 @@ def build_mcp_server(state: Any):
             state, _role(role), metric, dimensions or [], filters=filters
         )
 
+    @mcp.tool()
+    async def propose_source(source: dict, reason: str, role: str | None = None) -> dict:
+        """Propose a newly-discovered data source for a human to review and register (REQ-1792).
+
+        Never creates a live Source — this always queues a pending creation request (the same
+        REQ-434 queue a low-privilege GraphQL caller falls back to) for a rights-holder to execute
+        or reject on the admin UI's Requests page, regardless of what capability this MCP session's
+        own credential carries. `source` is a SourceInput-shaped dict: at minimum {"id", "type"},
+        plus whatever of host/port/database/username/password/path/description/allowed_domains the
+        discovery turned up. `reason` should say what led to this proposal.
+        """
+        return await tools.propose_source(state, _role(role), source, reason)
+
+    @mcp.tool()
+    async def propose_table(table: dict, reason: str, role: str | None = None) -> dict:
+        """Propose registering a table from an already-registered source (REQ-1792).
+
+        Never registers the table itself — queues a pending creation request the same way
+        propose_source does; a rights-holder must execute or reject it on the Requests page.
+        `table` is a TableInput-shaped dict: at minimum {"source_id", "domain_id", "schema_name",
+        "table_name", "columns"} where each column is at least {"name", "visible_to"}. `reason`
+        should say what led to this proposal.
+        """
+        return await tools.propose_table(state, _role(role), table, reason)
+
     # Optional: only registered when a Jev credential is configured, so an agent never sees
     # a tool it cannot use — no fallback, the tool simply does not exist without the key.
     if os.environ.get("TYPESAFEAI_API_KEY", "").strip():
