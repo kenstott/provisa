@@ -1056,6 +1056,8 @@ Tous les points de terminaison sont sous `/admin/invites`. [tool-verified: `prov
 
 Point de terminaison GraphQL Strawberry pour toutes les opérations admin : CRUD de source et de table, gestion des relations, configuration de domaine, règles RLS, contrôle du cache, conventions de nommage, gestion des tâches planifiées, et compilation de requêtes. (REQ-164) [tool-verified: `provisa/api/app.py:2171`]
 
+Pour la référence complète du schéma — chaque champ Query, champ Mutation, et type d'entrée/sortie — voir la [Référence de l'API GraphQL admin](admin-graphql.md).
+
 **Mutations clés :**
 
 ```graphql
