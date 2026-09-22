@@ -114,16 +114,16 @@ Impostale per sovrascrivere i default che `load_profile("native", ...)` altrimen
 ### Esempio
 
 ```bash
-# Avvia con i dati demo
+# Start with the demo data
 provisa run --demo
 
-# Avvia su porte non predefinite, senza browser
+# Start on non-default ports, no browser
 provisa run --api-port 8080 --ui-port 4000 --no-browser
 
-# Aggiornamento: reimposta prima il control plane, poi avvia
+# Upgrade: reset the control plane first, then start
 provisa run --reset
 
-# Punta a un cluster Trino esterno invece del motore DuckDB embedded
+# Point at an external Trino cluster instead of the embedded DuckDB engine
 TRINO_HOST=trino.internal TRINO_PORT=8080 provisa run
 ```
 
@@ -204,7 +204,7 @@ provisa metadata export \
   --api  https://acme.provisa.org \
   --token "$PROVISA_API_TOKEN"
 
-# Esempio cron — ogni giorno alle 06:00
+# Cron example — daily at 06:00
 # 0 6 * * *  provisa metadata export --api https://acme.provisa.org >> /var/log/provisa-export.log 2>&1
 ```
 
@@ -249,7 +249,7 @@ Il codice di uscita 2 è intenzionale. Una pipeline che trattasse un'approvazion
 rilasciato sarebbe scorretta. [tool-verified: cli.py:416-417]
 
 ```bash
-# Recupera i branch remoti, poi distribuisci
+# Fetch remote branches, then deploy
 provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 
 provisa env deploy \

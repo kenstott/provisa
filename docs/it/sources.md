@@ -1010,6 +1010,28 @@ Registra qualsiasi triplestore conforme a SPARQL 1.1 (Apache Jena Fuseki, Virtuo
 
 Le query devono essere query `SELECT`. I nomi delle variabili nella clausola `SELECT` diventano automaticamente nomi di colonna (REQ-297).
 
+```bash
+# Register via admin API
+POST /admin/sources/sparql
+{
+  "source_id": "knowledge-graph",
+  "endpoint_url": "http://fuseki:3030/ds/sparql",
+  "default_graph_uri": "http://example.org/graph"
+}
+
+# Register a table (executes LIMIT 5 probe to validate and infer columns)
+POST /admin/sources/sparql/knowledge-graph/tables
+{
+  "table_name": "product_categories",
+  "sparql_query": "SELECT ?product ?label ?category WHERE { ?product a :Product ; rdfs:label ?label ; :hasCategory ?category . }",
+  "ttl": 600
+}
+```
+
+Entrambi i connettori usano la pipeline di cache delle origini API — i risultati vengono memorizzati in PostgreSQL con TTL configurabile, rendendoli disponibili per JOIN federati cross-source (REQ-295, REQ-297, REQ-299).
+
+---
+
 #### Registrazione da file di configurazione e da UI (REQ-1683)
 
 L'`host` di un'origine `sparql` è l'URL del suo endpoint SPARQL (il modulo Sources lo memorizza allo stesso modo). Ogni tabella sotto di essa porta `query_template`, un SELECT le cui variabili sono le colonne; ogni binding è `text`. [tool-verified: `provisa/core/config_loader.py` `_validate_neo4j_sources`, `_handle_sparql_table`]
@@ -1033,26 +1055,6 @@ tables:
 ```
 
 Registra tabella funziona allo stesso modo di Neo4j: scegli l'origine, digita un nome tabella e il SELECT, premi Anteprima (la query `sparqlPreview` lo esegue con `LIMIT 5` e compila l'elenco delle colonne), poi registra. La registrazione persiste una riga `api_sources` e una riga `api_endpoints` (POST form-encoded al percorso dell'endpoint, normalizzatore `sparql_bindings`), le stesse righe che scrive una registrazione da file di configurazione, e il motore nativo atterra le righe tramite la stessa catena di fetch di Neo4j. [tool-verified: `provisa/api/admin/_query_api_registration.py`, `provisa/sparql/persist.py`]
-
-```bash
-# Register via admin API
-POST /admin/sources/sparql
-{
-  "source_id": "knowledge-graph",
-  "endpoint_url": "http://fuseki:3030/ds/sparql",
-  "default_graph_uri": "http://example.org/graph"
-}
-
-# Register a table (executes LIMIT 5 probe to validate and infer columns)
-POST /admin/sources/sparql/knowledge-graph/tables
-{
-  "table_name": "product_categories",
-  "sparql_query": "SELECT ?product ?label ?category WHERE { ?product a :Product ; rdfs:label ?label ; :hasCategory ?category . }",
-  "ttl": 600
-}
-```
-
-Entrambi i connettori usano la pipeline di cache delle origini API — i risultati vengono memorizzati in PostgreSQL con TTL configurabile, rendendoli disponibili per JOIN federati cross-source (REQ-295, REQ-297, REQ-299).
 
 ---
 

@@ -7,7 +7,7 @@ Provisa viene configurato tramite un file YAML (default: `config/provisa.yaml`).
 Suddividi una configurazione tra più file con `includes:`. Il file che include elenca i percorsi dei frammenti sotto questa chiave; Provisa li unisce prima della validazione, producendo lo stesso risultato che si otterrebbe scrivendo tutto in un unico file.
 
 ```yaml
-# provisa-with-sources.yaml — wrapper che aggiunge un'origine Neo4j alla config di base
+# provisa-with-sources.yaml — wrapper that adds a Neo4j source to the base config
 includes:
   - /path/to/config/provisa-install.yaml
   - /path/to/demo/sources/neo4j/fragment.yaml
