@@ -83,7 +83,7 @@ Capacità assegnate in modo indipendente, con gerarchia di ruoli opzionale trami
 
 ### Ereditarietà dei ruoli
 
-I ruoli possono ereditare capacità e accesso al dominio da un ruolo padre tramite `parent_role_id`. (REQ-215) La gerarchia viene appiattita all'avvio — i ruoli figli uniscono le capacità e l'accesso al dominio del padre con i propri. (REQ-215)
+Un ruolo può ereditare da un solo ruolo padre tramite `parent_role_id`, impostato in config o nella pagina Security come "Inherits from". (REQ-215) La catena viene ripiegata all'avvio: un figlio possiede l'unione delle capacità e dell'accesso al dominio dei suoi antenati, ogni concessione di colonna, metrica, funzione e webhook che nomina un antenato, e le regole RLS degli antenati per tabella con il figlio che ha la precedenza — il ruolo più vicino nella catena con una regola per una tabella fornisce il predicato di quella tabella, e una regola salvata per il figlio sostituisce quella del padre per quella tabella. (REQ-1677)
 
 ```yaml
 roles:
@@ -173,6 +173,8 @@ rls_rules:
 
 Il filtro viene combinato con AND nella clausola WHERE della query. Funziona sia per le query sia per le mutazioni (UPDATE/DELETE). (REQ-035, REQ-041)
 
+Un termine `current_setting('provisa.<name>')` viene risolto rispetto alle variabili di sessione che la richiesta collega: `user_id` dall'identità autenticata, `role` dal ruolo agente, e ogni claim scalare del token con il proprio nome in minuscolo e un `x-hasura-` iniziale rimosso, cosicché un filtro Hasura importato su `X-Hasura-User-Id` legge `provisa.user_id`. I `session_vars` configurati di un ruolo sono le costanti sottostanti; i binding della richiesta le sovrascrivono. In modalità non protetta un header `x-provisa-session-<name>` collega `<name>`. Una variabile non collegata da nessuna parte viene risolta a NULL e non corrisponde a nessuna riga. (REQ-1682)
+
 ## Mascheramento a livello di colonna
 
 Il mascheramento viene definito una sola volta per colonna — è una proprietà della colonna, non del ruolo. Il campo `unmasked_to` controlla quali ruoli lo bypassano. (REQ-249)
@@ -184,6 +186,18 @@ Il mascheramento viene definito una sola volta per colonna — è una proprietà
 | `truncate` | Data/Timestamp | `DATE_TRUNC(precision, col)` |
 
 Il mascheramento viene applicato direttamente nella proiezione SQL SELECT — il database restituisce dati mascherati. (REQ-263) I dati non mascherati non attraversano mai la rete per i ruoli mascherati. (REQ-263) Le colonne mascherate sono inoltre bloccate nelle clausole `WHERE` e `HAVING` (protezione dei predicati del livello 5) per impedire di dedurre il valore non mascherato tramite filtraggio. (REQ-263, REQ-531)
+
+## Governance delle risposte delle action
+
+La risposta di una funzione o di un webhook tracciato viene governata come le righe di una tabella. (REQ-1679) Le righe restituite da un'action vengono associate come una relazione le cui colonne sono il contratto di output dichiarato dall'action — `output_columns` per una funzione, `inline_return_type` per un webhook, o le proprietà dell'oggetto dello `return_schema` array di una funzione — e quella relazione attraversa la stessa fase di governance attraversata da ogni lettura di tabella, sopra una VALUES CTE che contiene le righe. (REQ-1679) Nulla riguardo RLS, mascheramento o visibilità viene reimplementato per le action.
+
+Si applicano tre cose, nello stesso ordine di una tabella. (REQ-1679)
+
+- Un filtro di riga: la regola RLS del ruolo salvata rispetto all'action per nome (`upsertRlsRule` con `actionName`), oppure, quando l'action non ne ha una propria, la regola di dominio del dominio dell'action. Il predicato viene validato rispetto al contratto al momento del salvataggio nello stesso modo di una regola di tabella. (REQ-1676)
+- Visibilità delle colonne: una colonna del contratto che dichiara `visible_to` viene eliminata per un ruolo che l'elenco non nomina; una colonna che non ne dichiara nessuno fa parte della forma pubblica dell'action e rimane.
+- Maschere: una colonna del contratto può portare `mask_type`, `mask_pattern`, `mask_replace`, `mask_value`, `mask_precision` e `unmasked_to`, gli stessi campi che porta una colonna di tabella.
+
+L'ereditarietà dei ruoli risolve la catena per tutte e tre. (REQ-1677) Una risposta che restituisce una colonna al di fuori del contratto dichiarato viene rifiutata con un 502 invece di essere passata senza governance. Un'action che non dichiara alcun contratto di colonna restituisce uno scalare e non ha nulla da associare; viene restituita così com'è. Il test-invoke di amministrazione riporta i filtri, le esclusioni e le maschere applicati, e l'istruzione governata viene scritta nel log di audit delle query.
 
 ## Campionamento
 
