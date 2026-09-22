@@ -23,7 +23,7 @@ Le origini **Materialize** non hanno un connettore federato. Provisa recupera i 
 
 ## Tutte le origini
 
-Provisa registra **53** tipi di origine. Le tabelle qui sotto le coprono tutte e 53; l'indice è il conteggio. [tool-verified: `provisa/core/models.py` `SourceType`]
+Provisa registra **54** tipi di origine. Le tabelle qui sotto le coprono tutte e 54; l'indice è il conteggio. [tool-verified: `provisa/core/models.py` `SourceType`; Kaggle contato come origine distinta anche se si registra internamente tramite il connettore `files`]
 
 | # | Gruppo | Tipi di origine |
 | --- | --- | --- |
@@ -41,6 +41,7 @@ Provisa registra **53** tipi di origine. Le tabelle qui sotto le coprono tutte e
 | 48–50 | [Origini API](#origini-api) | `openapi`, `graphql_remote`, `grpc_remote` |
 | 51 | [GovData](#govdata) | `govdata` |
 | 52–53 | [Controlli di qualità dei dati (REQ-1443)](#controlli-di-qualita-dei-dati-req-1443) | `soda`, `great_expectations` |
+| 54 | [Dataset Kaggle](#dataset-kaggle) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#dataset-kaggle)) |
 
 Riferimento per ogni tipo di origine supportato da Provisa. "Driver diretto" significa che le query a singola origine vengono eseguite nativamente contro l'origine (sub-100ms) (REQ-027). "Nome connettore" è il connettore federato usato quando l'origine partecipa a JOIN multi-source (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
@@ -89,7 +90,7 @@ I database wire-compatible riusano il driver JDBC, il driver async nativo e il d
 | `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | Federata | Legge via clickhouse-connect (HTTP); `secure: "true"` in `federation_hints` per TLS (REQ-986) |
 | `druid` | — | druid | druid | No | — |
 | `exasol` | — | exasol | exasol | No | — |
-| `elasticsearch` | — | elasticsearch | — | No | Le proprietà del connettore provengono dal DSL di mapping del tipo [tool-verified: `trino_connectors.py:309`] |
+| `elasticsearch` | HTTP (motori nativi) | elasticsearch (Trino) | — | No | Su Trino il connettore lo legge, le sue proprietà provengono dal DSL di mapping del tipo [tool-verified: `trino_connectors.py:309`]; su ogni altro motore Provisa legge l'indice via HTTP (indici e mapping per Registra tabella, una scroll read per l'atterraggio) e atterra le righe [tool-verified: `provisa/elasticsearch/fetch.py`, `provisa/events/source_loader.py` `make_elasticsearch_loader`] (REQ-1672) |
 | `pinot` | — | pinot | — | No | Connettore Trino `pinot`; `pinot.controller-urls` = host:porta del controller Pinot [tool-verified: `trino_connectors.py:199`] |
 
 ### Data Lake / formati tabella aperti
@@ -111,8 +112,8 @@ Questi tipi di origine sono solo-federazione — nessun driver diretto, nessun d
 | Tipo di origine | Nome connettore | Mutation |
 | ------------ | ----------------- | ----------- |
 | `mongodb` | mongodb | No |
-| `cassandra` | cassandra | No |
-| `redis` | redis | No |
+| `cassandra` | cassandra (Trino); lettura CQL tramite cassandra-driver su ogni altro motore | No | I keyspace sono schemi; Registra tabella elenca le tabelle di un keyspace e tipizza le colonne dai metadati di schema del cluster (partition key come chiavi primarie); l'extra `cassandra` installa il driver [tool-verified: `provisa/cassandra/fetch.py`] (REQ-1676) |
+| `redis` | redis (Trino); lettura redis-py senza HTTP su ogni altro motore | No | Un prefisso di chiave `<table>:*` è una tabella e un hash è una riga; Registra tabella elenca i prefissi presenti e tipizza le colonne di un prefisso dai suoi hash (una voce `mapping.tables` sovrascrive pattern, colonna chiave, tipo valore e colonne) [tool-verified: `provisa/redis/fetch.py`] (REQ-1675) |
 
 ### Streaming
 
@@ -161,6 +162,30 @@ I bucket privati richiedono credenziali (regione AWS e chiavi dall'ambiente). Pe
   path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
 ```
 
+Sul motore DuckDB, `files` viene letta nativamente — una vista scanner `read_csv_auto` per ogni `<table>.csv` sotto la directory risolta (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. Su un motore senza un proprio connettore `files`, le righe atterrano tramite lo stesso server pgwire Calcite integrato nel connettore (`pgwire-file`) usato da sharepoint/splunk (REQ-954) — vedere [Connettori SaaS enterprise](#connettori-saas-enterprise) sotto. La copertura end-to-end della UI (modulo Sources → Registra tabella → query SQL) e il percorso di atterraggio pgwire sono verificati in REQ-1694.
+
+#### Dataset Kaggle (REQ-1780, REQ-1781, REQ-1782, REQ-1783)
+
+Kaggle è una piattaforma di download di file. Un dataset Kaggle messo in stage si registra come origine di tipo `files` e viene interrogato tramite lo stesso connettore pgwire-file usato da qualsiasi altra origine `files` — non esiste un `SourceType` `kaggle` nell'enum. [tool-verified: `provisa/kaggle/downloader.py`; `provisa/core/models.py` `SourceType` — nessun letterale `kaggle`]
+
+**Aggiungere un dataset.** Apri Sources → Subscriptions → Kaggle. Il modulo esegue due passaggi sequenziali, perché l'endpoint di ricerca dataset di Kaggle richiede l'autenticazione — il selettore non può apparire prima che il token sia validato. [tool-verified: `provisa-ui/src/pages/sources/KaggleFormSection.tsx`] (REQ-1783)
+
+1. **Token** — inserisci un token API Kaggle e clicca "Validate". La validazione chiama `POST https://www.kaggle.com/api/v1/datasets/create/new` con corpo vuoto. Un `401` significa non valido; qualsiasi altra risposta significa valido (la validazione del payload propria di Kaggle scatta prima che venga creato qualsiasi dataset — nulla viene persistito). [tool-verified: `provisa/kaggle/client.py` `validate_token`] (REQ-1782)
+2. **Selettore** — un campo di ricerca live-as-you-type interroga `GET /api/v1/datasets/list`. Ogni risultato mostra titolo e descrizione del dataset. Selezionane uno, poi clicca "Add Dataset".
+
+Cliccare "Add Dataset" scarica il bundle da `GET /api/v1/datasets/download/{owner}/{ref}`, decomprime i membri CSV e Parquet in `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, e crea **una** origine di tipo `files` il cui `path` è quella directory radice. Il token non viene mai memorizzato lato server. [tool-verified: `provisa/kaggle/downloader.py` `stage_dataset`; `provisa-ui/src/pages/sources/KaggleFormSection.tsx` `handleConfirmDataset`] (REQ-1780, REQ-1781)
+
+Dopo aver aggiunto l'origine, registra le sue tabelle tramite la normale schermata Registra tabella. La discovery ricorsiva delle directory del connettore pgwire-file elenca ogni file come propria tabella — lo stesso meccanismo usato da qualsiasi altra origine `files` (REQ-1690). (REQ-1783)
+
+**Limitazione v1.** Un bundle contenente un file `.sqlite` o `.db` viene rifiutato immediatamente con un errore chiaro. Vengono messi in stage solo file CSV e Parquet. [tool-verified: `provisa/kaggle/downloader.py` `UnsupportedKaggleDataset`, `_UNSUPPORTED_EXTENSIONS`]
+
+**Denominazione delle tabelle.** Ogni file atterra nella propria sottodirectory `<file-stem>/` sotto la radice del dataset. Il connettore pgwire-file nomina la tabella risultante `<subdir>__<stem>` dopo la normalizzazione SMART_CASING. Per esempio: `StatewiseTestingDetails.csv` atterra in `statewise_testing_details/StatewiseTestingDetails.csv` e diventa la tabella `statewise_testing_details__statewise_testing_details`. Lo stem raddoppiato è atteso per i dataset a file singolo. Un dataset multi-file produce una coppia per file: `orders__orders`, `customers__customers`. (REQ-471)
+
+**Aggiornamento.** Per riscaricare un dataset dopo che Kaggle pubblica una nuova versione, chiama la mutation GraphQL `refreshKaggleSource` con l'ID dell'origine e un token valido. Questo rimette in stage i file sul posto e invalida la cache dell'endpoint pgwire-file, cosicché il connettore recepisce eventuali modifiche allo schema alla query successiva. `kaggle_owner` e `kaggle_ref` memorizzati in `federation_hints` al momento della creazione identificano quale dataset riscaricare. [tool-verified: `provisa/api/admin/schema_mutation.py` `refresh_kaggle_source`] (REQ-1780)
+
+**Nessun percorso di configurazione YAML statico.** Le origini Kaggle vengono create solo tramite il modulo Sources. Un'origine Kaggle esportata in YAML appare come `type: files` con `kaggle_owner` e `kaggle_ref` in `federation_hints`. Riscaricare da Kaggle richiede il flusso di aggiornamento della UI o la mutation `refreshKaggleSource` — puntare il `path` YAML a una directory già in stage è l'alternativa per ambienti air-gapped.
+
+
 ### Osservabilità e altro
 
 `prometheus` ha un connettore Trino (proprietà costruite dal DSL di mapping del tipo). `google_sheets` è un tipo di origine registrato senza connettore Trino e materializza attraverso la pipeline di cache API. [tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` lines 87–88]
@@ -168,11 +193,11 @@ I bucket privati richiedono credenziali (regione AWS e chiavi dall'ambiente). Pe
 | Tipo di origine | Nome connettore | Mutation |
 | ------------ | ----------------- | ----------- |
 | `google_sheets` | — (materializzata) | No |
-| `prometheus` | prometheus | No |
+| `prometheus` | prometheus | No | Una metrica è una tabella e un campione è una riga (`timestamp`, `value`, una colonna per etichetta); su ogni motore privo di connettore live Provisa legge l'API HTTP — nomi delle metriche ed etichette per Registra tabella, `query_range` sull'intervallo della tabella per l'atterraggio [tool-verified: `provisa/prometheus/fetch.py`] (REQ-1689) |
 
 ### Connettori SaaS enterprise
 
-SharePoint e Splunk si registrano tramite connettori Apache Calcite (fork kenstott/calcite). Nessuno dei due ha un driver diretto — Provisa materializza le loro righe avviando il server pgwire Calcite integrato del connettore (`pgwire-sharepoint`, `pgwire-splunk`), connettendosi a esso come endpoint PostgreSQL generico, e atterrando le righe nello store di materializzazione per la federazione (REQ-954). Entrambi i connettori abilitano sempre il matching dei nomi case-insensitive, corrispondente alla semantica case-insensitive propria di ciascun prodotto (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+SharePoint e Splunk si registrano tramite connettori Apache Calcite (fork kenstott/calcite). Nessuno dei due ha un driver diretto — Provisa avvia il server pgwire Calcite integrato del connettore (`pgwire-sharepoint`, `pgwire-splunk`) e lo raggiunge come endpoint PostgreSQL generico. Sul motore DuckDB quell'endpoint viene collegato live tramite l'estensione postgres: Registra tabella elenca le tabelle del connettore dal catalogo collegato, le query leggono il connettore sul posto, e i filtri e le proiezioni vengono spinti fino a Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Ogni altro motore atterra le righe nello store di materializzazione per la federazione (REQ-954). I bundle vengono scaricati per OS/architettura dalla release fissata di `kenstott/calcite` (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`]. Entrambi i connettori abilitano sempre il matching dei nomi case-insensitive, corrispondente alla semantica case-insensitive propria di ciascun prodotto (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
 #### `sharepoint`
 
@@ -185,8 +210,10 @@ Le liste SharePoint vengono enumerate come schemi ed esposte come tabelle interr
 | `password` | `client-secret` | Client secret dell'app Azure |
 | `database` | `tenant-id` | UUID del tenant Azure |
 | `mapping.auth_type` | `auth-type` | `CLIENT_CREDENTIALS` (default) o `CERTIFICATE` |
-| `mapping.certificate_path` | `certificate-path` | Percorso PFX quando `auth_type: CERTIFICATE` |
-| `mapping.certificate_password` | `certificate-password` | Password PFX |
+| `mapping.certificate_path` | `certificate-path` | Percorso PFX quando `auth_type: CERTIFICATE` — deve essere ASSOLUTO |
+| `mapping.certificate_password` | `certificate-password` | Password PFX — la chiave deve essere presente, stringa vuota per un PFX senza password |
+
+L'autenticazione a certificato sui motori diversi da Trino porta due regole aggiuntive, entrambe applicate quando viene costruito l'operando `model.json` del server pgwire Calcite (REQ-1693). `certificate_path` deve essere assoluto: il server viene eseguito con la directory del proprio bundle come directory di lavoro, quindi un percorso relativo si risolve dentro la cache dei runtime-deps e il PFX non viene trovato. `certificate_password` deve essere presente in `mapping` anche quando il PFX non ha password, nel qual caso è la stringa vuota — l'adapter Calcite rifiuta categoricamente una password null, e una chiave assente viene trattata come errore di configurazione anziché letta silenziosamente come password vuota. Un valore mancante o relativo solleva `MissingConnectorConfig` nominando il campo. [tool-verified: `provisa/federation/pgwire_replica.py` `_sharepoint_operand`]
 
 Quando il connettore non espone `information_schema.columns`, registra la tabella con definizioni di colonna esplicite (ottenute dall'API Microsoft Graph) tramite la mutation `registerTable` (REQ-732).
 
@@ -201,6 +228,20 @@ Quando il connettore non espone `information_schema.columns`, registra la tabell
     auth_type: CLIENT_CREDENTIALS
 ```
 
+Autenticazione a certificato, con il percorso assoluto e la password sempre presente:
+
+```yaml
+- id: hr-sharepoint
+  type: sharepoint
+  base_url: https://kenstott.sharepoint.com
+  username: ${env:SP_CLIENT_ID}
+  database: ${env:SP_TENANT_ID}
+  mapping:
+    auth_type: CERTIFICATE
+    certificate_path: /etc/provisa/certs/sharepoint.pfx
+    certificate_password: ${env:SP_CERT_PASSWORD}
+```
+
 #### `splunk`
 
 I risultati di ricerca Splunk sono interrogabili come tabelle (es. `internal_server`) (REQ-721). L'URL del connettore proviene da `base_url`, oppure viene costruito come `https://{host}:{port}` con porta di default `8089` (REQ-722). Auth: quando `mapping.use_token` è `true` (default), `password` viene passata come token API; quando `false`, `username` e `password` vengono passate come credenziali separate (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]
@@ -213,6 +254,8 @@ I risultati di ricerca Splunk sono interrogabili come tabelle (es. `internal_ser
 | `database` | `app` | restringe a un'app Splunk |
 | `mapping.datamodel_filter` | `datamodel-filter` | filtra a un data model |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | per certificati self-signed (REQ-724) |
+
+Sul percorso pgwire-replica (ogni motore tranne Trino) le stesse quattro impostazioni opzionali diventano le chiavi dell'operando Calcite `model.json` `app`, `token`/`username`+`password`, `datamodelFilter` e `disableSslValidation` — le ultime due nei tipi in cui `SplunkSchemaFactory` le converte, una stringa e un booleano (REQ-1694). [tool-verified: `provisa/federation/pgwire_replica.py` `_splunk_operand`]
 
 ```yaml
 - id: ops-splunk
@@ -276,6 +319,39 @@ sources:
 | `description` | No | `""` | Descrizione leggibile |
 
 ---
+
+### Dove risiede la password di un'origine
+
+La password di un'origine non viene mai memorizzata insieme al resto delle sue impostazioni di
+connessione. La riga `sources` del control plane porta una colonna `password_ref` che contiene un
+*riferimento* — `${env:PG_PASSWORD}`, `${secret:SNOWFLAKE_KEY}` — che viene risolto nel momento in
+cui l'origine viene contattata, all'interno dell'organizzazione in cui la richiesta è in esecuzione
+(REQ-1695). [tool-verified: `provisa/core/schema_org.py`, `provisa/core/repositories/source.py`]
+
+`${env:VAR}` legge l'ambiente di processo del deployment e non richiede alcun binding. `${secret:NAME}`
+nomina un secret di proprietà di un'organizzazione, quindi si risolve solo all'interno delle
+operazioni proprie di quell'organizzazione: le seam di introspezione admin e il terminale di query
+che ogni superficie raggiunge stabiliscono quel binding. [tool-verified: `provisa/pgwire/_pipeline.py` `_execute_plan`]
+
+Dove punta il riferimento dipende da come l'origine è stata registrata:
+
+- **Da config.** Scrivi tu stesso il riferimento. `${env:VAR}` legge l'ambiente di processo del
+  deployment; `${secret:NAME}` legge il vault dell'organizzazione (vedi [Secrets](secrets.md)). Il
+  file è il record, e Provisa copia il riferimento in `password_ref` alla lettera.
+- **Dal modulo Sources.** Un riferimento digitato nel campo password viene parimenti memorizzato
+  alla lettera. Una password *letterale* viene scritta nel vault dell'organizzazione sotto
+  `source_<id>_password` — cifrata a riposo, e mai leggibile di nuovo per nome — e la riga conserva
+  `${secret:source_<id>_password}` che la nomina. [tool-verified:
+  `provisa/api/admin/schema_common.py` `persist_source_password`]
+
+Riscrivere la password su un'origine esistente ruota quella singola voce del vault invece di
+crearne una seconda. Eliminare l'origine rimuove la voce che Provisa ha coniato per essa, e solo
+quella: un riferimento scritto da te nomina un secret di tua proprietà per i tuoi motivi, quindi
+viene lasciato intatto. [tool-verified: `provisa/api/admin/schema_mutation.py` `delete_source`]
+
+`password_ref` non viaggia tra ambienti (REQ-1491). Un branch o un ambiente copiato fornisce i
+propri valori di connessione, e il vault che un riferimento nomina appartiene a qualunque ambiente
+lo abbia fornito. [tool-verified: `provisa/core/env_classes.py` `BINDING_COLUMNS`]
 
 ### Controlli di qualità dei dati (REQ-1443)
 
@@ -553,7 +629,7 @@ Tutte le origini condividono un insieme comune di campi. [tool-verified: `provis
 | `port` | No | `0` | Numero di porta |
 | `database` | No | `""` | Nome del database |
 | `username` | No | `""` | Nome utente |
-| `password` | No | `""` | Password; usa `${env:VAR}` per la risoluzione del secret |
+| `password` | No | `""` | Password; usa `${env:VAR}` o `${secret:NAME}` invece di un letterale (vedi sotto) |
 | `path` | No | `null` | Percorso file o URI cloud per origini basate su file e object/lake |
 | `base_url` | No | `null` | URL base per origini OpenAPI |
 | `pool_min` | No | `1` | Dimensione minima del connection pool (REQ-052) |
@@ -849,6 +925,64 @@ Registra un database a grafo Neo4j come origine interrogabile. Gli steward scriv
 
 Le query Cypher devono usare accessori di proprietà nella clausola `RETURN` (`RETURN n.id AS id, n.name AS name`) — restituire oggetti nodo viene rifiutato al momento della registrazione (REQ-296).
 
+#### Registrazione da file di configurazione (REQ-1668)
+
+Dichiara un'origine `neo4j` e le sue tabelle in YAML. Ogni tabella richiede un `query_template` (il Cypher che produce le sue righe) e colonne tipizzate. La chiave `query_template` non è valida sotto nessun altro tipo di origine. [tool-verified: `provisa/core/config_loader.py:456-511`]
+
+Un'origine richiede `host`, `port` e `database`. [tool-verified: `provisa/core/config_loader.py:456-468`] Le righe vengono recuperate con un POST di `{"statements": [{"statement": <cypher>}]}` a `/db/<database>/tx/commit` (l'API delle transazioni HTTP di Neo4j). Una risposta con un elenco `errors` non vuoto viene trattata come query fallita, non come risultato vuoto. [tool-verified: `provisa/neo4j/source.py:71-82`, `provisa/api_source/caller.py:344-347`, `provisa/api_source/normalizers.py:49-74`]
+
+Ogni colonna richiede `data_type`. Il loader mappa i tipi di config al tipo di colonna API usato al momento della query [tool-verified: `provisa/neo4j/persist.py:31-64`]:
+
+| `data_type` di config | Tipo API |
+|---|---|
+| `varchar`, `text`, `string`, `char` | string |
+| `integer`, `int`, `bigint`, `smallint` | integer |
+| `float`, `double`, `real`, `decimal`, `numeric`, `number` | number |
+| `boolean`, `bool` | boolean |
+| `json`, `jsonb` | jsonb |
+
+`varchar(N)` e `decimal(10,2)` sono accettati — viene usato il tipo base prima della parentesi.
+
+La registrazione persiste una riga `api_sources` e una riga `api_endpoints` per tabella, cosicché le tabelle sopravvivono a un riavvio senza rileggere il file. Gli endpoint REST admin sotto `/admin/sources/neo4j` scrivono le stesse righe. [tool-verified: `provisa/neo4j/persist.py:77-120`]
+
+```yaml
+sources:
+  - id: graph
+    type: neo4j
+    host: neo4j
+    port: 7474
+    database: neo4j
+    cache_ttl: 300
+
+tables:
+  - source_id: graph
+    schema: neo4j
+    table: person_skills
+    query_template: >-
+      MATCH (p:Person)-[:HAS_SKILL]->(s:Skill)
+      RETURN p.name AS name, s.skill AS skill, p.experience AS years
+    columns:
+      - name: name
+        data_type: varchar
+      - name: skill
+        data_type: varchar
+      - name: years
+        data_type: integer
+```
+
+#### Registra tabella nella UI (REQ-1670)
+
+Un'origine neo4j non ha tabelle da elencare, quindi il modulo Registra tabella chiede la tabella invece di offrirne una. [tool-verified: `provisa-ui/src/pages/tables/RegisterTableForm.tsx` (`isNeo4j`)]
+
+1. Scegli l'origine neo4j e un dominio. I selettori di schema e tabella, la checkbox di discovery e il selettore del watermark non appaiono; l'origine non viene mai introspezionata.
+2. Digita un nome tabella e il Cypher. Il Cypher deve proiettare scalari (`RETURN a.name AS name`); una proiezione che restituisce un nodo o una lista viene segnalata come errore.
+3. Premi Anteprima. Il modulo esegue il Cypher con `LIMIT 5` tramite la query GraphQL `neo4jPreview` e compila l'elenco delle colonne dalle righe restituite, tipizzate come `text`, `integer`, `double`, `boolean` o `json`. [tool-verified: `provisa/api/admin/_neo4j_registration.py` `preview_neo4j`] Un'anteprima fallita mantiene il Cypher nell'editor e mostra il messaggio.
+4. Regola visibilità, alias o mascheramento come per qualsiasi tabella, poi registra. Il modulo rifiuta l'invio finché un'anteprima non ha tipizzato le colonne, e il server rifiuta una tabella neo4j priva di Cypher (`schema.neo4j_query_required`). [tool-verified: `provisa/api/admin/schema_mutation_ops.py` `persist_neo4j_registration`]
+
+Il Cypher viene memorizzato con la tabella come `queryTemplate`, appare nella vista di lettura della tabella, e persiste esattamente come fa una registrazione da file di configurazione: una riga `api_sources` e una riga `api_endpoints` che il riavvio successivo idrata. Modificare la tabella ripersiste un Cypher modificato.
+
+#### Registrazione REST admin
+
 ```bash
 # Register via admin API (no YAML config required)
 POST /admin/sources/neo4j
@@ -875,6 +1009,30 @@ L'endpoint di preview (`POST /admin/sources/neo4j/{id}/preview`) restituisce rig
 Registra qualsiasi triplestore conforme a SPARQL 1.1 (Apache Jena Fuseki, Virtuoso, Stardog, ecc.) come origine interrogabile (REQ-297).
 
 Le query devono essere query `SELECT`. I nomi delle variabili nella clausola `SELECT` diventano automaticamente nomi di colonna (REQ-297).
+
+#### Registrazione da file di configurazione e da UI (REQ-1683)
+
+L'`host` di un'origine `sparql` è l'URL del suo endpoint SPARQL (il modulo Sources lo memorizza allo stesso modo). Ogni tabella sotto di essa porta `query_template`, un SELECT le cui variabili sono le colonne; ogni binding è `text`. [tool-verified: `provisa/core/config_loader.py` `_validate_neo4j_sources`, `_handle_sparql_table`]
+
+```yaml
+sources:
+- id: sparql-demo
+  type: sparql
+  host: http://localhost:23030/provisa/query
+tables:
+- source_id: sparql-demo
+  domain_id: shelter
+  schema: sparql
+  table: volunteer
+  query_template: >-
+    PREFIX s: <http://provisa.dev/shelter#>
+    SELECT ?volunteer_id ?name WHERE { ?v a s:Volunteer ; s:id ?volunteer_id ; s:name ?name }
+  columns:
+  - { name: volunteer_id, data_type: text, visible_to: [org_admin] }
+  - { name: name, data_type: text, visible_to: [org_admin] }
+```
+
+Registra tabella funziona allo stesso modo di Neo4j: scegli l'origine, digita un nome tabella e il SELECT, premi Anteprima (la query `sparqlPreview` lo esegue con `LIMIT 5` e compila l'elenco delle colonne), poi registra. La registrazione persiste una riga `api_sources` e una riga `api_endpoints` (POST form-encoded al percorso dell'endpoint, normalizzatore `sparql_bindings`), le stesse righe che scrive una registrazione da file di configurazione, e il motore nativo atterra le righe tramite la stessa catena di fetch di Neo4j. [tool-verified: `provisa/api/admin/_query_api_registration.py`, `provisa/sparql/persist.py`]
 
 ```bash
 # Register via admin API
