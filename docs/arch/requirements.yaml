@@ -61409,3 +61409,43 @@
       Agent-assisted schema discovery with human-in-the-loop approval (never agent-driven direct
       creation) is unique to Provisa. Competitors like Trino and Denodo lack an MCP interface; Hasura
       has no MCP and no similar propose-vs-execute separation for agent workflows.
+- id: REQ-1793
+  status: in-progress
+  group: 11. Platform, Infrastructure & Delivery
+  category: Licensing
+  priority: MUST
+  type: behavioral
+  description: >-
+    Double opt-in web registration for free Provisa licenses: users submit a registration form on /register
+    (company, position, role, first/last name, email, phone optional, machine_id), receive a time-limited
+    confirmation email with a link, and clicking the link signs and sends the license.json file. Replaces
+    manual email-based registration flow.
+  use_case: >-
+    Users can self-register for a free license without contacting support. The confirmation email ensures
+    email validity and allows asynchronous completion. License signing happens only after email verification.
+  code:
+  - site/register.html
+  - site/functions/api/register.js
+  - site/functions/api/register/confirm.js
+  - site/functions/_lib/license.js
+  - site/schema.sql
+  - site/wrangler.jsonc
+  - site/index.html
+  - site/README.md
+  - scripts/generate_license_keypair.py
+  target: "2026-Q4"
+  scenario: |
+    Given a user visiting provisa.dev/register
+    When they fill and submit the registration form with valid email and machine_id
+    Then they see a confirmation message and receive a time-limited confirmation email
+    When they click the confirmation link
+    Then they see a success message and receive the signed license.json as an attachment
+  unit_test: false
+  unit_test_reason: Registration form and email flow live in Cloudflare Pages (static HTML) and Cloudflare
+    Functions (serverless), outside the main test harness. Cross-runtime signature verification (JS and
+    Python signing) was performed during development; deployment and D1 schema application remain manual
+    follow-up steps.
+  relates_to:
+  - REQ-1137
+  - REQ-1138
+  - REQ-1139

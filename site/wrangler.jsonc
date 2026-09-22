@@ -15,4 +15,13 @@
       "database_id": "cd0145bc-e48d-441b-8305-99c9fa90a6dc"
     }
   ]
+
+  // REQ-1793 (license registration, functions/api/register.js + functions/api/register/confirm.js)
+  // needs two secrets, set once via `wrangler pages secret put <NAME> --project-name provisa-dev`
+  // (never in this file — see scripts/generate_license_keypair.py for how to produce them):
+  //   RESEND_API_KEY                  — same provider as the app's own transactional email
+  //   LICENSE_PRIVATE_KEY_PKCS8_B64   — the Ed25519 signing key, PKCS8 DER, base64. Its public
+  //                                     half must match provisa/licensing/keys.py's
+  //                                     _DEFAULT_LICENSE_PUBKEY_HEX, or every issued license
+  //                                     fails verification on every Provisa install.
 }

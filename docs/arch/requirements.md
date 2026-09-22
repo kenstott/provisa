@@ -18981,3 +18981,31 @@ A persistent "Unregistered" indicator appears in the web UI footer whenever the 
 **Code:** `provisa/api/auth_router.py`, `provisa-ui/src/api/license.ts`, `provisa-ui/src/components/LicenseBadge.tsx`, `provisa-ui/src/App.tsx`
 
 **Tests:** `tests/unit/test_licensing.py`
+
+## 8. Client Access & Protocols
+
+### REQ-1792 · MCP Server {#REQ-1792}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+MCP server exposes two new discovery and proposal tools: `propose_source` and `propose_table`. Both tools allow an MCP-connected agent to discover and propose new data sources or tables for a human to review and approve—never creating/registering them directly, regardless of what capability the MCP session's credential holds.
+
+**Use case:** Enables agent-assisted data discovery and governance: an AI planner can identify candidate sources and tables for federation, propose them through the governed creation-request queue ([REQ-434](#REQ-434)), and leave final approval to a human authorized to execute source registration or table registration.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/server.py`, `provisa/api/admin/schema_common.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema.py`
+
+**Tests:** `tests/unit/test_creation_requests.py`, `tests/unit/test_mcp_propose.py`
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1793 · Licensing {#REQ-1793}
+
+**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
+
+Double opt-in web registration for free Provisa licenses: users submit a registration form on /register (company, position, role, first/last name, email, phone optional, machine_id), receive a time-limited confirmation email with a link, and clicking the link signs and sends the license.json file. Replaces manual email-based registration flow.
+
+**Use case:** Users can self-register for a free license without contacting support. The confirmation email ensures email validity and allows asynchronous completion. License signing happens only after email verification.
+
+**Code:** `site/register.html`, `site/functions/api/register.js`, `site/functions/api/register/confirm.js`, `site/functions/_lib/license.js`, `site/schema.sql`, `site/wrangler.jsonc`, `site/index.html`, `site/README.md`, `scripts/generate_license_keypair.py`
+
+**Tests:** —

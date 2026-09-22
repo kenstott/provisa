@@ -5,13 +5,16 @@ Static, framework-free landing page for provisa.dev. No build step.
 ```text
 site/
   index.html            hero, interfaces, governance, sources, download, CTA + signup
+  register.html         free license registration form (REQ-1793)
   styles.css            brand tokens mirror provisa-ui/src/theme/tokens.css (dark)
   favicon.svg           the Provisa "P" mark
   _headers              Cloudflare Pages caching + security headers
   assets/               product screenshots (graph view, query explorer)
   wrangler.jsonc        Pages project config (name, output dir, D1 binding)
-  functions/api/        Pages Functions — subscribe.js (mailing-list endpoint)
-  schema.sql            D1 table for the mailing list
+  functions/_lib/       license.js — canonicalization/signing shared by the two endpoints below
+  functions/api/        Pages Functions — subscribe.js (mailing list), register.js +
+                         register/confirm.js (double opt-in license registration)
+  schema.sql            D1 tables for the mailing list and license registrations
   deploy.sh             manual Cloudflare Pages deploy
 ```
 
@@ -95,3 +98,39 @@ The API token used by `deploy.sh` needs both **Pages: Edit** and **D1: Edit**.
 Spam is handled by the honeypot; for a stronger guard, add
 [Turnstile](https://developers.cloudflare.com/turnstile/) to the form and verify
 the token in `subscribe.js`.
+
+## License registration (REQ-1793, double opt-in)
+
+`/register` collects the fields `provisa/licensing/license.py` requires (company, position,
+role, name, email, machine ID), stores them unconfirmed in D1, and emails a confirmation link
+([functions/api/register.js](functions/api/register.js)). Clicking the link
+([functions/api/register/confirm.js](functions/api/register/confirm.js)) signs the license with
+the production Ed25519 key and emails `license.json` — nothing is signed or sent before that
+click, so an email you don't control can never receive a working license.
+
+One-time setup (in addition to the mailing-list steps above, same D1 database):
+
+```bash
+# 1. Generate the ONE production signing keypair (do this once, ever, offline)
+python3 scripts/generate_license_keypair.py
+
+# 2. Paste its public key into provisa/licensing/keys.py's _DEFAULT_LICENSE_PUBKEY_HEX
+#    and ship that change — every Provisa install verifies against it offline.
+
+# 3. Set the two secrets this Pages project needs (never in wrangler.jsonc)
+npx --yes wrangler pages secret put RESEND_API_KEY --project-name provisa-dev
+npx --yes wrangler pages secret put LICENSE_PRIVATE_KEY_PKCS8_B64 --project-name provisa-dev
+
+# 4. Apply the schema addition (same command as the mailing list; schema.sql now
+#    has both tables, and CREATE TABLE IF NOT EXISTS is idempotent)
+npx --yes wrangler d1 execute provisa-subscribers --remote --file=site/schema.sql
+
+# 5. Deploy
+./site/deploy.sh
+```
+
+`scripts/generate_license_keypair.py` also prints the raw private-key seed hex for
+`PROVISA_LICENSE_PRIVKEY`, Provisa's own manual issuance path
+([scripts/issue_license.py](../scripts/issue_license.py)) for a license requested outside this
+form (e.g. by email). Both paths sign for the same public key — keep the seed and the PKCS8
+secret in sync if either is ever rotated.

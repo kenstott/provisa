@@ -328,6 +328,50 @@ def test_flight_license_stream_attaches_app_metadata(monkeypatch):
     assert isinstance(stream2, flight.RecordBatchStream)
 
 
+# ------------------------------------------------------- REQ-1793 SaaS instance skips licensing
+
+
+class TestSaasInstanceSkipsLicensing:
+    def test_multitenancy_flag_marks_licensed_and_never_nags(self, monkeypatch):
+        # REQ-1793: a SaaS-instance user already gave contact details at sign-up, so neither the
+        # post-trial nag (REQ-1137) nor the "Unregistered" badge (REQ-1791) should ever appear.
+        import logging
+
+        from provisa.api.app_startup import _evaluate_licensing
+        from provisa.licensing import emit
+
+        monkeypatch.setenv("PROVISA_MULTITENANCY", "true")
+        emit.set_state(None)
+        try:
+            _evaluate_licensing(logging.getLogger("test"))
+            state = emit.current_state()
+            assert state is not None
+            assert state.licensed is True
+            assert state.should_nag is False
+        finally:
+            emit.set_state(None)
+
+    def test_multitenancy_flag_unset_evaluates_normally(self, monkeypatch):
+        import logging
+
+        from provisa.api.app_startup import _evaluate_licensing
+        from provisa.licensing import emit
+
+        monkeypatch.delenv("PROVISA_MULTITENANCY", raising=False)
+        emit.set_state(None)
+        try:
+            _evaluate_licensing(logging.getLogger("test"))
+            state = emit.current_state()
+            assert state is not None
+            # A brand-new trial on this test machine is neither licensed nor nag-worthy yet, but
+            # it must have gone through the REAL evaluate() path, not the SaaS short-circuit.
+            assert (
+                state.license_reason != "SaaS instance — registration already captured at sign-up"
+            )
+        finally:
+            emit.set_state(None)
+
+
 # ------------------------------------------------------- REQ-1791 /auth/license-status
 
 

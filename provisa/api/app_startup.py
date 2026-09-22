@@ -235,11 +235,35 @@ def _evaluate_licensing(_log: logging.Logger) -> None:
     The evaluated state is shared with every protocol surface via ``licensing.emit``; the surfaces
     emit the nag through their own out-of-band notice channels. When the trial has expired with no
     valid license, the "persistent shell banner" is the startup log line here. Fully offline —
-    never blocks boot."""
+    never blocks boot.
+
+    REQ-1793: skipped entirely on the SaaS instance (PROVISA_MULTITENANCY). The nag and the
+    "Unregistered" badge both exist to capture registration contact details in place of telemetry
+    (REQ-1137) — on the hosted SaaS instance a user already supplied those at sign-in/sign-up, so
+    both would be redundant and are never shown there."""
     try:
-        import datetime
+        import os
 
         from provisa.licensing import emit
+
+        if os.environ.get("PROVISA_MULTITENANCY", "").strip().lower() in ("1", "true", "yes"):
+            from provisa.licensing.machine_id import stable_machine_id
+            from provisa.licensing.state import LicensingState
+
+            emit.set_state(
+                LicensingState(
+                    machine_id=stable_machine_id(),
+                    first_seen="",
+                    elapsed_days=0.0,
+                    trial_expired=False,
+                    licensed=True,
+                    license_reason="SaaS instance — registration already captured at sign-up",
+                )
+            )
+            return
+
+        import datetime
+
         from provisa.licensing.state import evaluate
 
         today = datetime.date.today()

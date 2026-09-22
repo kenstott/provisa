@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Register — Provisa</title>
+  <meta name="description" content="Free Provisa license registration. We collect basic usage information only — Provisa collects no telemetry and never phones home." />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="canonical" href="https://provisa.dev/register" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Register</span></p>
+        <h1>Register your Provisa install</h1>
+        <p class="lead">
+          A license is FREE — it exists only so we can gather basic usage information, because
+          Provisa collects <strong>no telemetry</strong> and never phones home. Functionality is
+          not affected or degraded whether or not you register.
+        </p>
+      </div>
+
+      <form id="register" class="signup" style="max-width:520px;" novalidate>
+        <div class="signup-row" style="flex-direction:column;align-items:stretch;gap:.75rem;">
+          <input type="text" name="company" placeholder="Company" autocomplete="organization" aria-label="Company" required />
+          <input type="text" name="position" placeholder="Position / title" autocomplete="organization-title" aria-label="Position / title" required />
+          <input type="text" name="role" placeholder="Role (e.g. admin, engineer)" aria-label="Role" required />
+          <input type="text" name="first_name" placeholder="First name" autocomplete="given-name" aria-label="First name" required />
+          <input type="text" name="last_name" placeholder="Last name" autocomplete="family-name" aria-label="Last name" required />
+          <input type="email" name="email" placeholder="you@company.com" autocomplete="email" aria-label="Email address" required />
+          <input type="tel" name="phone" placeholder="Phone (optional)" autocomplete="tel" aria-label="Phone (optional)" />
+          <input type="text" name="machine_id" placeholder="Machine ID (from `provisa license status`)" aria-label="Machine ID" required />
+          <button type="submit" class="btn btn-primary">Register</button>
+        </div>
+        <!-- honeypot: hidden from users; bots fill it and get silently dropped -->
+        <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+        <p class="signup-status" role="status" aria-live="polite"></p>
+        <p class="signup-fine">
+          We'll email a confirmation link — click it to receive your signed license file. See the
+          <a href="/privacy">privacy policy</a> and <a href="/terms">terms</a>.
+        </p>
+      </form>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/docs">Docs</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="mailto:license@provisa.dev">License questions</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      const form = document.getElementById('register');
+      const status = form.querySelector('.signup-status');
+      const btn = form.querySelector('button[type="submit"]');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        status.className = 'signup-status';
+        const data = {};
+        for (const el of form.elements) {
+          if (el.name && el.name !== 'website') data[el.name] = el.value.trim();
+        }
+        data.website = form.website.value;
+        btn.disabled = true;
+        try {
+          const r = await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (r.ok && j.ok) {
+            form.reset();
+            status.textContent = "Check your email — click the confirmation link to receive your license file.";
+            status.classList.add('is-ok');
+          } else {
+            status.textContent = j.error || 'Something went wrong. Try again.';
+            status.classList.add('is-error');
+          }
+        } catch {
+          status.textContent = 'Network error. Try again.';
+          status.classList.add('is-error');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
