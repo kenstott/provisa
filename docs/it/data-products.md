@@ -32,13 +32,13 @@ Aprendo un prodotto dati nella UI di amministrazione vengono mostrati questi pan
 
 Solo le tabelle assegnate a un prodotto vengono pubblicate nei cataloghi esterni per impostazione predefinita. `build_snapshot` applica un filtro `data_products_only`: le tabelle non assegnate vengono trattenute, insieme ai loro archi di relazione, archi di lineage e tag di governance. Le origini dati e i domini vengono sempre pubblicati a prescindere. [tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
 
-Un prodotto senza membri esportati non viene pubblicato — un elenco vuoto rivendicherebbe l'esistenza di un prodotto senza nulla dietro. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]
+Un prodotto senza membri esportati non genera una voce nello snapshot — un elenco senza membri rappresenterebbe in modo scorretto il prodotto verso il catalogo. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]
 
 Solo i cataloghi con un concetto nativo di prodotto dati lo pubblicano come entità di prima classe; gli altri pubblicano le tabelle membro (già filtrate) senza un raggruppamento di prodotto:
 
 | Catalogo | Pubblicato come |
 | --- | --- |
-| Snowflake Horizon | SHARE + organization listing (Data Product nativo); `publish=false` mantiene lo stato DRAFT, `publish=true` lo rende attivo |
+| Snowflake Horizon | SHARE + organization listing (Data Product nativo); `publish=false` mantiene lo stato DRAFT, `publish=true` lo rende attivo. Il dizionario dati del listing copre ogni membro e colonna; i primi cinque membri sono in evidenza e le colonne mascherate sono nascoste nell'anteprima (REQ-1656) |
 | BigQuery Analytics Hub | Listing di Analytics Hub (nativo) |
 | OpenMetadata | Entità `DataProduct` (nativa) |
 | DataHub | Entità URN `dataProduct` nativa con propri aspetti di proprietà/proprietà |
