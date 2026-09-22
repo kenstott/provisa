@@ -209,7 +209,7 @@ curl http://localhost:8001/proto/analyst > provisa_analyst.proto
 
 ---
 
-## 跨协议调用命令
+## 跨协议调用命令 {: #invoking-commands-across-protocols }
 
 **命令**是在 Provisa 语义层注册的已跟踪函数或 webhook —— 一个可调用元素，具有 `kind`（`query` 或 `mutation`）及描述其运行方式的 `impl_kind`。所有接口都通过单一受治理的执行器（`invoke_tracked_function`）路由调用，统一强制执行 `writable_by` 及治理（REQ-1156）。[tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
 
@@ -281,7 +281,7 @@ Provisa 会响应 `_entities` 查询，以进行跨子图连接。任何具有�
 
 ## Kafka
 
-有关将 Kafka 主题配置为只读表及查询结果接收端，请参阅 [docs/sources.md](sources.md#kafka)。
+有关将 Kafka 主题配置为只读表及查询结果接收端，请参阅 [docs/sources.md](sources.md#kafka-sources)。
 
 ---
 
@@ -291,7 +291,7 @@ Soda Core 和 Great Expectations 连接 Provisa 的方式与任何其他 postgre
 
 扫描运行在一个子解释器中——`python -m provisa.dq.worker`——这是唯一导入 `soda_core` 或 `great_expectations` 的地方。两者都不会链接进服务器进程，检查器崩溃只会拖垮一个子进程，而不会拖垮事件循环。[tool-verified: `provisa/dq/runner.py` `build_command`]
 
-扫描结果落地为普通的数据源行，因此节奏、新鲜度、事件、血缘、治理、RLS、表格和导出全部无需第二套机制即可适用。合约编写、结果信封和派生注册在 [docs/sources.md](sources.md#req-1443) 中有说明。
+扫描结果落地为普通的数据源行，因此节奏、新鲜度、事件、血缘、治理、RLS、表格和导出全部无需第二套机制即可适用。合约编写、结果信封和派生注册在 [docs/sources.md](sources.md#data-quality-checkers-req-1443) 中有说明。
 
 ### 安装检查器
 

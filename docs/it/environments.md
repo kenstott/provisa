@@ -279,7 +279,7 @@ commit fissato, non di quello nuovo. [tool-verified: `request_deploy()` at env_a
     il dettaglio oggetto per oggetto. [tool-verified: `environmentsTab.json` keys `requestsTitle`, `colReport`,
     `approve`, `reject`]
 
-## I comandi CLI `env`
+## I comandi CLI `env` {: #the-env-cli-commands }
 
 `provisa env deploy` invia in un ambiente il modello presente a un dato ref. Esce con 0 quando il
 deployment è stato applicato o era una prova a vuoto, e con 2 quando l'ambiente è protetto e il

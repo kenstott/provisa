@@ -18,7 +18,7 @@ linux x86_64, macOS, או Windows x86_64. ל-Linux aarch64 אין wheel של pgs
 
 ---
 
-## אפשרויות משותפות
+## אפשרויות משותפות {: #shared-options }
 
 מספר תת-פקודות קוראות ל-API של HTTP של Provisa. הן חולקות שלושה דגלים ושני משתני
 סביבה. [tool-verified: `_api_call()` at cli.py:345-376; each subcommand's argparse block

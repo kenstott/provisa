@@ -171,7 +171,7 @@ lines 47-53]
     合併請求的 UI 在環境面板的**合併請求**分頁下。**報告**欄以計數顯示會有什麼變動；展開該資料行可看到逐物件的細節。[tool-verified: `environmentsTab.json` keys `requestsTitle`, `colReport`,
     `approve`, `reject`]
 
-## `env` CLI 命令
+## `env` CLI 命令 {: #the-env-cli-commands }
 
 `provisa env deploy` 把某個 ref 上的模型送進一個環境。部署已套用或屬試跑時結束碼為 0；環境受保護而部署只是被提案時，結束碼為 2——把待批准當成已發佈部署的管線是錯的，而結束碼就是這麼說的。[tool-verified: `_cmd_env_deploy()` at cli.py lines 389-411]
 

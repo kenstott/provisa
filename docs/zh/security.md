@@ -253,7 +253,7 @@ rls_rules:
 
 该矩阵由 `tests/unit/test_auth_surface_conformance.py` 强制执行，它驱动每个接口真实的校验入口，并在新增接口而未添加对应行时失败。
 
-### 个人访问令牌
+### 个人访问令牌 {: #personal-access-tokens }
 
 PAT 是用户为无法完成交互式登录的客户端——脚本、BI 工具、驱动程序——铸造的长期 bearer 密钥。（REQ-1263）它自带组织与角色，且每个接口都通过同一个校验器解析它，因此任何接口都无需知道 PAT 为何物。
 

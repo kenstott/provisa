@@ -15,7 +15,7 @@ Jede Abfrage wird letztlich über die Federation-Engine ausgeführt, die Federat
 
 **Nur-Federation**-Quellen werden immer über die Federation-Schicht abgefragt. Es existiert kein direkter Treiber (REQ-229).
 
-**Direktlesen (Replikat)**-Quellen haben einen DirectDriver, der nativ aus dem Warehouse liest (wo verfügbar Arrow-nativ), ein Replikat in den Materialisierungs-Store der aktiven Engine landet, und Abfragen laufen dann gegen dieses Replikat. Siehe [Warehouses als benannte Quellen](#warehouses-als-benannte-quellen).
+**Direktlesen (Replikat)**-Quellen haben einen DirectDriver, der nativ aus dem Warehouse liest (wo verfügbar Arrow-nativ), ein Replikat in den Materialisierungs-Store der aktiven Engine landet, und Abfragen laufen dann gegen dieses Replikat. Siehe [Warehouses als benannte Quellen](#warehouses-as-named-sources).
 
 **Materialize**-Quellen haben keinen föderierten Connector. Provisa ruft ihre Daten ab (beim Start oder zur Abfragezeit) und cacht sie als Parquet in S3 oder in PostgreSQL, wodurch sie für quellenübergreifende Abfragen durch die Federation-Engine erreichbar werden (REQ-309).
 
@@ -40,7 +40,7 @@ Provisa registriert **54** Quelltypen. Die folgenden Tabellen decken alle 54 ab;
 | 46–47 | [Enterprise-SaaS](#enterprise-saas-connectors) | `sharepoint`, `splunk` |
 | 48–50 | [API-Quellen](#api-quellen) | `openapi`, `graphql_remote`, `grpc_remote` |
 | 51 | [GovData](#govdata) | `govdata` |
-| 52–53 | [Data-Quality-Checker](#data-quality-checker-req-1443) | `soda`, `great_expectations` |
+| 52–53 | [Data-Quality-Checker](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
 | 54 | [Kaggle-Datasets](#kaggle-datasets) | Kaggle (über das Sources-Formular bereitgestellt; registriert als `files`-Quelle — siehe [Kaggle-Datasets](#kaggle-datasets)) |
 
 Referenz für jeden Quelltyp, den Provisa unterstützt. „Direkter Treiber" bedeutet, dass Einzelquellen-Abfragen nativ gegen die Quelle ausgeführt werden (unter 100 ms) (REQ-027). „Connector-Name" ist der föderierte Connector, der verwendet wird, wenn die Quelle an Mehrquellen-JOINs teilnimmt (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
@@ -123,7 +123,7 @@ Diese Quelltypen sind nur-Federation — kein direkter Treiber, kein Dialekt. [t
 | `websocket` | Externer WebSocket-Feed — verbinden, abonnieren, Ereignisse empfangen; Ergebnisse materialisiert (REQ-338) | Nein |
 | `rss` | RSS-2.0-/Atom-Feed — pollen, Watermark nach pubDate/updated; Ergebnisse materialisiert (REQ-342, REQ-343) | Nein |
 
-### Push-Empfänger
+### Push-Empfänger {: #push-empfänger }
 
 | Quelltyp | Mechanismus | Mutations |
 | ------------ | ----------- | ----------- |
@@ -164,7 +164,7 @@ Private Buckets benötigen Zugangsdaten (AWS-Region und Keys aus der Umgebung). 
 
 Auf der DuckDB-Engine wird `files` nativ gelesen — eine `read_csv_auto`-Scanner-View pro `<table>.csv` unter dem aufgelösten Verzeichnis (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. Auf einer Engine ohne eigenen `files`-Connector landen Zeilen über denselben connector-gebündelten Calcite-pgwire-Server (`pgwire-file`), den auch sharepoint/splunk verwenden (REQ-954) — siehe [Enterprise-SaaS-Connectors](#enterprise-saas-connectors) unten. Die End-to-End-UI-Abdeckung (Sources-Formular → Register Table → SQL-Abfrage) und der pgwire-Landepfad sind in REQ-1694 nachgewiesen.
 
-#### Kaggle-Datasets (REQ-1780, REQ-1781, REQ-1782, REQ-1783)
+#### Kaggle-Datasets (REQ-1780, REQ-1781, REQ-1782, REQ-1783) {: #kaggle-datasets }
 
 Kaggle ist eine Datei-Download-Plattform. Ein bereitgestellter Kaggle-Datensatz registriert sich als Quelle vom Typ `files` und wird über denselben pgwire-file-Connector abgefragt, den jede andere `files`-Quelle verwendet — es gibt keinen `kaggle`-SourceType im Enum. [tool-verified: `provisa/kaggle/downloader.py`; `provisa/core/models.py` `SourceType` — kein `kaggle`-Literal]
 
@@ -352,7 +352,7 @@ Secret, das Ihnen aus eigenen Gründen gehört, also bleibt sie unangetastet.
 liefert ihre eigenen Verbindungswerte, und der Vault, den eine Referenz benennt, gehört zu welcher
 Umgebung auch immer sie geliefert hat. [tool-verified: `provisa/core/env_classes.py` `BINDING_COLUMNS`]
 
-### Data-Quality-Checker (REQ-1443)
+### Data-Quality-Checker (REQ-1443) {: #data-quality-checkers-req-1443 }
 
 Ein Data-Quality-Checker ist ein Quelltyp, kein Subsystem. Seine Scan-Ausgabe sind Daten: Ein Check-Ergebnis ist eine Beobachtung, sodass es über den gewöhnlichen Quellpfad landet und Kadenz, Freshness, Events, Lineage, Governance, RLS, Grid und Export von jeder anderen Quelle erbt. [tool-verified: `provisa/core/models.py` lines 110–116 `SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py` `make_dq_loader`]
 
@@ -514,7 +514,7 @@ Sobald einer der beiden Deskriptoren vorhanden ist, routet die Registrierung ein
 
 ---
 
-## Warehouses als benannte Quellen
+## Warehouses als benannte Quellen {: #warehouses-as-named-sources }
 
 Snowflake, Databricks und ClickHouse können unabhängig davon, welche Federation-Engine aktiv ist, als benannte Quellen registriert werden. [tool-verified: `executor/drivers/snowflake.py` (REQ-988), `executor/drivers/databricks.py` (REQ-987), `executor/drivers/clickhouse.py` (REQ-986)]
 

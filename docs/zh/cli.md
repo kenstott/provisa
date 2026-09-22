@@ -17,7 +17,7 @@ linux x86_64、macOS 或 Windows x86_64。Linux aarch64 既没有 pgserver wheel
 
 ---
 
-## 共享选项
+## 共享选项 {: #shared-options }
 
 多个子命令会调用 Provisa HTTP API。它们共享三个标志和两个环境
 变量。[tool-verified: `_api_call()` at cli.py:345-376; each subcommand's argparse block

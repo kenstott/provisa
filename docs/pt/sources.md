@@ -163,7 +163,7 @@ Buckets privados precisam de credenciais (região e chaves AWS do ambiente). Par
 
 No motor DuckDB, `files` é lido nativamente — uma view scanner `read_csv_auto` por `<table>.csv` sob o diretório resolvido (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. Em um motor sem conector `files` próprio, as linhas pousam através do mesmo servidor pgwire Calcite empacotado pelo conector (`pgwire-file`) que sharepoint/splunk usam (REQ-954) — veja [Conectores SaaS Empresariais](#conectores-saas-empresariais) abaixo. A cobertura end-to-end da UI (formulário de Fontes → Register Table → consulta SQL) e o caminho de pouso pgwire são comprovados na REQ-1694.
 
-#### Conjuntos de dados Kaggle (REQ-1780, REQ-1781, REQ-1782, REQ-1783)
+#### Conjuntos de dados Kaggle (REQ-1780, REQ-1781, REQ-1782, REQ-1783) {: #kaggle-datasets }
 
 O Kaggle é uma plataforma de download de arquivos. Um conjunto de dados Kaggle preparado se registra como uma Fonte do tipo `files` e é consultado através do mesmo conector pgwire-file que qualquer outra fonte `files` usa — não há um `SourceType` `kaggle` no enum. [tool-verified: `provisa/kaggle/downloader.py`; `provisa/core/models.py` `SourceType` — sem literal `kaggle`]
 

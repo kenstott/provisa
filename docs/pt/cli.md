@@ -18,7 +18,7 @@ aarch64. [tool-verified: `_require_supported_interpreter()` at cli.py:513-546]
 
 ---
 
-## Opções compartilhadas
+## Opções compartilhadas {: #opções-compartilhadas }
 
 Vários subcomandos chamam a API HTTP do Provisa. Eles compartilham três flags e duas variáveis
 de ambiente. [tool-verified: `_api_call()` at cli.py:345-376; each subcommand's argparse block

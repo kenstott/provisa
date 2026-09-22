@@ -23,7 +23,7 @@
 
 ## כל המקורות
 
-Provisa רושמת **53** סוגי מקור. הטבלאות שלהלן מכסות את כל 53; המספור הוא הספירה. [tool-verified: `provisa/core/models.py` `SourceType`]
+Provisa רושמת **54** סוגי מקור. הטבלאות שלהלן מכסות את כל 54; המספור הוא הספירה. [tool-verified: `provisa/core/models.py` `SourceType`; Kaggle נספר כמקור נפרד למרות שהוא נרשם באופן פנימי דרך מחבר `files`]
 
 | # | קבוצה | סוגי מקור |
 | --- | --- | --- |
@@ -41,6 +41,7 @@ Provisa רושמת **53** סוגי מקור. הטבלאות שלהלן מכסו�
 | 48–50 | [מקורות API](#api) | `openapi`, `graphql_remote`, `grpc_remote` |
 | 51 | [GovData](#govdata) | `govdata` |
 | 52–53 | [בודקי איכות נתונים](#req-1443) | `soda`, `great_expectations` |
+| 54 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
 
 מסמך עזר לכל סוג מקור שנתמך על ידי Provisa. "דרייבר ישיר" פירושו ששאילתות חד-מקוריות מבוצעות מול המקור באופן ילידי (מתחת ל-100ms) (REQ-027). "שם המחבר" הוא המחבר המפודרר שבו נעשה שימוש כאשר המקור משתתף ב-JOIN רב-מקורי (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
 
@@ -160,6 +161,29 @@ Provisa רושמת **53** סוגי מקור. הטבלאות שלהלן מכסו�
   type: files
   path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
 ```
+
+במנוע DuckDB, `files` נקרא באופן ילידי — תצוגת סורק `read_csv_auto` לכל `<table>.csv` תחת הספרייה שנפתרה (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. במנוע ללא מחבר `files` משלו, השורות מונחתות דרך אותו שרת pgwire המצורף למחבר של Calcite (`pgwire-file`) ש-sharepoint/splunk משתמשים בו (REQ-954) — ראו [מחברי SaaS ארגוניים](#saas) בהמשך. כיסוי UI מקצה-לקצה (טופס Sources → Register Table → שאילתת SQL) ונתיב הנחיתה של pgwire מוכחים ב-REQ-1694.
+
+#### ערכות נתונים של Kaggle (REQ-1780, REQ-1781, REQ-1782, REQ-1783) {: #kaggle-datasets }
+
+Kaggle היא פלטפורמת הורדת קבצים. ערכת נתונים של Kaggle שהוכנה נרשמת כמקור מסוג `files` ונשאלת דרך אותו מחבר pgwire-file שבו משתמש כל מקור `files` אחר — אין SourceType בשם `kaggle` בטיפוס המנוי. [tool-verified: `provisa/kaggle/downloader.py`; `provisa/core/models.py` `SourceType` — אין ליטרל `kaggle`]
+
+**הוספת ערכת נתונים.** פתחו Sources → Subscriptions → Kaggle. הטופס מריץ שני שלבים רצופים, מכיוון שנקודת הקצה לחיפוש ערכות נתונים של Kaggle עצמה דורשת אימות — הבורר אינו יכול להופיע לפני שהטוקן מאומת. [tool-verified: `provisa-ui/src/pages/sources/KaggleFormSection.tsx`] (REQ-1783)
+
+1. **טוקן** — הזינו טוקן API של Kaggle ולחצו על "Validate". האימות קורא ל-`POST https://www.kaggle.com/api/v1/datasets/create/new` עם גוף ריק. `401` משמעו לא תקף; כל תגובה אחרת משמעה תקף (אימות המטען של Kaggle עצמו מופעל לפני שנוצרת ערכת נתונים כלשהי — שום דבר אינו נשמר). [tool-verified: `provisa/kaggle/client.py` `validate_token`] (REQ-1782)
+2. **בורר** — שדה חיפוש חי מסוג type-as-you-search שולח שאילתה אל `GET /api/v1/datasets/list`. כל תוצאה מציגה כותרת ותיאור של ערכת הנתונים. בחרו אחת, ואז לחצו על "Add Dataset".
+
+לחיצה על "Add Dataset" מורידה את החבילה מ-`GET /api/v1/datasets/download/{owner}/{ref}`, מחלצת את איברי ה-CSV וה-Parquet אל `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, ויוצרת מקור **אחד** מסוג `files` שה-`path` שלו הוא ספריית השורש הזו. הטוקן לעולם אינו נשמר בצד השרת. [tool-verified: `provisa/kaggle/downloader.py` `stage_dataset`; `provisa-ui/src/pages/sources/KaggleFormSection.tsx` `handleConfirmDataset`] (REQ-1780, REQ-1781)
+
+לאחר הוספת המקור, רשמו את הטבלאות שלו דרך מסך Register Table הרגיל. הגילוי הרקורסיבי של ספריות של מחבר pgwire-file מציג כל קובץ כטבלה משלו — אותו מנגנון שבו משתמש כל מקור `files` אחר (REQ-1690). (REQ-1783)
+
+**מגבלת v1.** חבילה המכילה קובץ `.sqlite` או `.db` נדחית מיידית עם שגיאה ברורה. רק קבצי CSV ו-Parquet מוכנים. [tool-verified: `provisa/kaggle/downloader.py` `UnsupportedKaggleDataset`, `_UNSUPPORTED_EXTENSIONS`]
+
+**מתן שם לטבלה.** כל קובץ נוחת בתת-ספרייה `<file-stem>/` משלו תחת שורש ערכת הנתונים. מחבר pgwire-file נותן לטבלה המתקבלת את השם `<subdir>__<stem>` לאחר נורמליזציית SMART_CASING. לדוגמה: `StatewiseTestingDetails.csv` נוחת ב-`statewise_testing_details/StatewiseTestingDetails.csv` והופך לטבלה `statewise_testing_details__statewise_testing_details`. הכפילות בגזע השם צפויה עבור ערכות נתונים בעלות קובץ יחיד. ערכת נתונים מרובת קבצים מייצרת זוג אחד לכל קובץ: `orders__orders`, `customers__customers`. (REQ-471)
+
+**רענון.** כדי לאחזר מחדש ערכת נתונים לאחר ש-Kaggle מפרסמת גרסה חדשה, קראו ל-mutation מסוג GraphQL בשם `refreshKaggleSource` עם מזהה המקור וטוקן תקף. פעולה זו מכינה מחדש את הקבצים במקומם ומפנה את מטמון נקודת הקצה של pgwire-file כך שהמחבר יקלוט כל שינוי סכימה בשאילתה הבאה שלו. `kaggle_owner` ו-`kaggle_ref`, השמורים ב-`federation_hints` בעת היצירה, מזהים איזו ערכת נתונים לאחזר מחדש. [tool-verified: `provisa/api/admin/schema_mutation.py` `refresh_kaggle_source`] (REQ-1780)
+
+**אין נתיב תצורת YAML סטטי.** מקורות Kaggle נוצרים רק דרך טופס Sources. מקור Kaggle שיוצא ל-YAML מופיע כ-`type: files` עם `kaggle_owner` ו-`kaggle_ref` תחת `federation_hints`. הורדה מחדש מ-Kaggle דורשת את תהליך הרענון ב-UI או את ה-mutation בשם `refreshKaggleSource` — הפניית ה-`path` ב-YAML לספרייה שכבר הוכנה היא החלופה עבור סביבות מבודדות (air-gapped).
 
 ### Observability ואחרים
 

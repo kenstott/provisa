@@ -261,7 +261,7 @@ env_approvals.py lines 47-53]
     показывая подробности по объектам. [tool-verified: `environmentsTab.json` keys `requestsTitle`,
     `colReport`, `approve`, `reject`]
 
-## Команды CLI `env`
+## Команды CLI `env` {: #the-env-cli-commands }
 
 `provisa env deploy` отправляет модель по ref в окружение. Она завершается с кодом 0, когда
 развёртывание применено или было пробным, и с кодом 2, когда окружение защищено и развёртывание было

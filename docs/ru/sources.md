@@ -67,7 +67,7 @@ Provisa регистрирует **54** типа источников. Прив�
 
 `firebird` (Firebird 3/4/5) и `airport` (сервер Arrow Flight) — зарегистрированные типы источников, достигаемые на месте через community-расширения DuckDB, когда DuckDB является активным движком — без прямого драйвера, без федеративного коннектора. [tool-verified: `provisa/core/models.py` lines 44, 93] (REQ-899)
 
-### Облачные хранилища данных
+### Облачные хранилища данных {: #cloud-data-warehouses }
 
 [tool-verified: `executor/drivers/snowflake.py`, `executor/drivers/databricks.py`, `executor/drivers/registry.py`]
 
@@ -81,7 +81,7 @@ Provisa регистрирует **54** типа источников. Прив�
 | `synapse` | MssqlWarehouseDriver | — | tsql | Федеративные | Azure Synapse SQL; T-SQL поверх TDS, аутентификация Azure AD; создаёт реплику (REQ-995) |
 | `trino` | SQLAlchemyDriver | — | — | Федеративные | Удалённый координатор Trino/Presto, чтение через диалект trino SQLAlchemy; создаёт реплику на любом движке (REQ-994) |
 
-### Аналитика / OLAP
+### Аналитика / OLAP {: #analytics-olap }
 
 [tool-verified: `executor/drivers/clickhouse.py`]
 
@@ -93,7 +93,7 @@ Provisa регистрирует **54** типа источников. Прив�
 | `elasticsearch` | HTTP (нативные движки) | elasticsearch (Trino) | — | Нет | В Trino коннектор читает его, а свойства берёт из DSL сопоставления (mapping DSL) этого типа [tool-verified: `trino_connectors.py:309`]; на любом другом движке Provisa читает индекс по HTTP (индексы и сопоставление для регистрации таблицы, scroll-чтение для создания реплики) и загружает строки [tool-verified: `provisa/elasticsearch/fetch.py`, `provisa/events/source_loader.py` `make_elasticsearch_loader`] (REQ-1672) |
 | `pinot` | — | pinot | — | Нет | Коннектор Trino `pinot`; `pinot.controller-urls` = хост:порт контроллера Pinot [tool-verified: `trino_connectors.py:199`] |
 
-### Data Lake / открытые табличные форматы
+### Data Lake / открытые табличные форматы {: #data-lake-open-table-formats }
 
 Эти типы источников работают только через федерацию — без прямого драйвера, без диалекта. [tool-verified: `LAKE_ONLY_SOURCES` in `provisa/core/source_registry.py`] (REQ-229)
 
@@ -115,7 +115,7 @@ Provisa регистрирует **54** типа источников. Прив�
 | `cassandra` | cassandra (Trino); чтение CQL через cassandra-driver на любом другом движке | Нет | Keyspace являются схемами; регистрация таблицы перечисляет таблицы keyspace и типизирует столбцы из метаданных схемы кластера (ключи партиции — как первичные ключи); экстра `cassandra` устанавливает драйвер [tool-verified: `provisa/cassandra/fetch.py`] (REQ-1676) |
 | `redis` | redis (Trino); чтение через redis-py без HTTP на любом другом движке | Нет | Префикс ключа `<table>:*` — это таблица, а хеш — это строка; регистрация таблицы перечисляет присутствующие префиксы и типизирует столбцы префикса по его хешам (запись `mapping.tables` переопределяет шаблон, столбец ключа, тип значения и столбцы) [tool-verified: `provisa/redis/fetch.py`] (REQ-1675) |
 
-### Потоковая передача
+### Потоковая передача {: #streaming }
 
 | Тип источника | Механизм | Мутации |
 | ------------ | ----------- | ----------- |
@@ -123,20 +123,20 @@ Provisa регистрирует **54** типа источников. Прив�
 | `websocket` | Внешний источник WebSocket — подключение, подписка, получение событий; результаты материализуются (REQ-338) | Нет |
 | `rss` | Лента RSS 2.0 / Atom — опрос, водяной знак по pubDate/updated; результаты материализуются (REQ-342, REQ-343) | Нет |
 
-### Приёмник push-данных
+### Приёмник push-данных {: #push-receiver }
 
 | Тип источника | Механизм | Мутации |
 | ------------ | ----------- | ----------- |
 | `ingest` | Внешние сервисы отправляют события через POST JSON; результаты материализуются (REQ-331, REQ-335) | Нет |
 
-### Граф и семантика
+### Граф и семантика {: #graph-semantic }
 
 | Тип источника | Механизм | Мутации |
 | ------------ | ----------- | ----------- |
 | `neo4j` | Cypher через HTTP API, результаты кешируются в PostgreSQL (REQ-295) | Нет |
 | `sparql` | SPARQL 1.1 через POST, результаты кешируются в PostgreSQL (REQ-297) | Нет |
 
-### На основе файлов
+### На основе файлов {: #file-based }
 
 Два механизма охватывают файлы. Оба используют поле `path` вместо `host`/`port`. [tool-verified: `provisa/core/models.py`] (REQ-553)
 
@@ -164,7 +164,7 @@ Provisa регистрирует **54** типа источников. Прив�
 
 На движке DuckDB `files` читается нативно — представление-сканер `read_csv_auto` для каждого `<table>.csv` в разрешённой директории (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. На движке без собственного коннектора `files` строки загружаются через тот же встроенный в коннектор сервер Calcite pgwire (`pgwire-file`), который используют sharepoint/splunk (REQ-954) — см. [Корпоративные SaaS-коннекторы](#enterprise-saas-connectors) ниже. Сквозное покрытие UI (форма Sources → регистрация таблицы → SQL-запрос) и путь загрузки через pgwire подтверждены в REQ-1694.
 
-#### Наборы данных Kaggle (REQ-1780, REQ-1781, REQ-1782, REQ-1783)
+#### Наборы данных Kaggle (REQ-1780, REQ-1781, REQ-1782, REQ-1783) {: #kaggle-datasets }
 
 Kaggle — это платформа для загрузки файлов. Загруженный набор данных Kaggle регистрируется как источник типа `files` и опрашивается через тот же коннектор pgwire-file, который используют любые другие источники `files` — в перечислении SourceType нет отдельного типа `kaggle`. [tool-verified: `provisa/kaggle/downloader.py`; `provisa/core/models.py` `SourceType` — no `kaggle` literal]
 
@@ -186,7 +186,7 @@ Kaggle — это платформа для загрузки файлов. За�
 **Нет статического пути конфигурации YAML.** Источники Kaggle создаются только через форму Sources. Источник Kaggle, экспортированный в YAML, отображается как `type: files` с `kaggle_owner` и `kaggle_ref` в `federation_hints`. Повторная загрузка из Kaggle требует потока обновления через UI или мутации `refreshKaggleSource` — указание `path` в YAML на уже загруженную директорию — альтернатива для сред без доступа к интернету (air-gapped).
 
 
-### Наблюдаемость и прочее
+### Наблюдаемость и прочее {: #observability-other }
 
 `prometheus` имеет коннектор Trino (свойства строятся из DSL сопоставления этого типа). `google_sheets` — зарегистрированный тип источника без коннектора Trino, материализующийся через конвейер API-кеша. [tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` lines 87–88]
 
@@ -195,7 +195,7 @@ Kaggle — это платформа для загрузки файлов. За�
 | `google_sheets` | — (материализуется) | Нет |
 | `prometheus` | prometheus | Нет | Метрика — это таблица, а образец — это строка (`timestamp`, `value`, по одному столбцу на метку); на любом движке без живого коннектора Provisa читает HTTP API — имена метрик и метки для регистрации таблицы, `query_range` по диапазону таблицы для создания реплики [tool-verified: `provisa/prometheus/fetch.py`] (REQ-1689)
 
-### Корпоративные SaaS-коннекторы
+### Корпоративные SaaS-коннекторы {: #enterprise-saas-connectors }
 
 SharePoint и Splunk регистрируются через коннекторы Apache Calcite (форк kenstott/calcite). Ни у одного нет прямого драйвера — Provisa запускает встроенный в коннектор сервер Calcite pgwire (`pgwire-sharepoint`, `pgwire-splunk`) и обращается к нему как к обычной конечной точке PostgreSQL. На движке DuckDB эта конечная точка подключается вживую через расширение postgres: регистрация таблицы перечисляет таблицы коннектора из подключённого каталога, запросы читают коннектор на месте, а фильтры и проекции проталкиваются в Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Любой другой движок загружает строки в хранилище материализации для федерации (REQ-954). Пакеты загружаются под конкретную ОС/архитектуру из закреплённого релиза `kenstott/calcite` (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`]. Оба коннектора всегда включают сопоставление имён без учёта регистра, что соответствует собственной регистронезависимой семантике каждого продукта (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
 
@@ -268,7 +268,7 @@ SharePoint и Splunk регистрируются через коннектор�
     disable_ssl_validation: true
 ```
 
-### API-источники
+### API-источники {: #api-sources }
 
 Зарегистрируйте любую HTTP-конечную точку как запрашиваемую таблицу. [tool-verified: `provisa/core/models.py` `SourceType` enum] (REQ-314, REQ-307, REQ-322)
 
@@ -352,7 +352,7 @@ sources:
 предоставляет собственные значения подключения, а хранилище секретов, которое именует ссылка, принадлежит
 тому окружению, которое её предоставило. [tool-verified: `provisa/core/env_classes.py` `BINDING_COLUMNS`]
 
-### Проверки качества данных (REQ-1443)
+### Проверки качества данных (REQ-1443) {: #data-quality-checkers-req-1443 }
 
 Проверка качества данных — это тип источника, а не подсистема. Результат её сканирования — это данные: результат проверки — это наблюдение, поэтому он проходит через обычный путь источника и наследует периодичность, свежесть, события, происхождение (lineage), управление (governance), RLS, сетку (grid) и экспорт наравне с любым другим источником. [tool-verified: `provisa/core/models.py` lines 110–116 `SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py` `make_dq_loader`]
 
@@ -514,7 +514,7 @@ connectors:
 
 ---
 
-## Хранилища как именованные источники
+## Хранилища как именованные источники {: #warehouses-as-named-sources }
 
 Snowflake, Databricks и ClickHouse можно зарегистрировать как именованные источники независимо от того, какой движок федерации активен. [tool-verified: `executor/drivers/snowflake.py` (REQ-988), `executor/drivers/databricks.py` (REQ-987), `executor/drivers/clickhouse.py` (REQ-986)]
 

@@ -18,7 +18,7 @@ linux x86_64, macOS или Windows x86_64. У Linux aarch64 нет ни коле
 
 ---
 
-## Общие параметры
+## Общие параметры {: #shared-options }
 
 Несколько подкоманд вызывают HTTP API Provisa. Они разделяют три флага и две переменные
 окружения. [tool-verified: `_api_call()` at cli.py:345-376; each subcommand's argparse block

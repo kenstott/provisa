@@ -256,7 +256,7 @@ lines 47-53]
     לכל אובייקט. [tool-verified: `environmentsTab.json` keys `requestsTitle`, `colReport`,
     `approve`, `reject`]
 
-## פקודות ה-CLI ‏`env`
+## פקודות ה-CLI ‏`env` {: #the-env-cli-commands }
 
 ‏`provisa env deploy` שולחת את המודל ב-ref לתוך סביבה. היא יוצאת עם 0 כשהפריסה
 יושמה או הייתה הרצה יבשה, ועם 2 כשהסביבה מוגנת והפריסה רק הוצעה

@@ -171,7 +171,7 @@ lines 47-53]
     **报告**列按数量展示会有什么变化；展开该行可查看逐对象的详情。[tool-verified: `environmentsTab.json` keys `requestsTitle`, `colReport`,
     `approve`, `reject`]
 
-## `env` CLI 命令
+## `env` CLI 命令 {: #the-env-cli-commands }
 
 `provisa env deploy` 把某个 ref 上的模型送入一个环境。当部署已应用或是一次演练时退出码为 0；当环境受保护、部署只是被提出为提案时退出码为 2——把待批准当作已发布部署的流水线会是错的，退出码把这一点说清楚。[tool-verified: `_cmd_env_deploy()` at cli.py lines 389-411]
 

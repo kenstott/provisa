@@ -1226,7 +1226,7 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 Provisa 会根据端点 URL 的 scheme 选择 OTLP/HTTP 或 OTLP/gRPC。（REQ-549）以 `http://` 或 `https://` 开头的 URL 使用 OTLP/HTTP，并自动附加 `/v1/traces`、`/v1/metrics`、`/v1/logs`。（REQ-549）其他任何 scheme 都使用 `insecure=True` 的 OTLP/gRPC。（REQ-549）[tool-verified: `provisa/api/otel_setup.py` lines 60–70]
 
-## 联邦引擎
+## 联邦引擎 {: #federation-engine }
 
 配置联邦引擎是可选的。默认值为 `duckdb`——零配置、进程内运行、无需外部服务（REQ-989）。当你需要 MPP 规模，或想复用现有数据仓库时，可选择其他引擎。
 

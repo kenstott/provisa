@@ -164,7 +164,7 @@ Private buckets need credentials (AWS region and keys from the environment). For
 
 On the DuckDB engine, `files` is read natively — a `read_csv_auto` scanner view per `<table>.csv` under the resolved directory (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. On an engine with no `files` connector of its own, rows land through the same connector-bundled Calcite pgwire server (`pgwire-file`) that sharepoint/splunk use (REQ-954) — see [Enterprise SaaS Connectors](#enterprise-saas-connectors) below. End-to-end UI coverage (Sources form → Register Table → SQL query) and the pgwire landing path are proven in REQ-1694.
 
-#### Kaggle datasets (REQ-1780, REQ-1781, REQ-1782, REQ-1783)
+#### Kaggle datasets (REQ-1780, REQ-1781, REQ-1782, REQ-1783) {: #kaggle-datasets }
 
 Kaggle is a file-download platform. A staged Kaggle dataset registers as a `files`-type Source and is queried through the same pgwire-file connector any other `files` source uses — there is no `kaggle` SourceType in the enum. [tool-verified: `provisa/kaggle/downloader.py`; `provisa/core/models.py` `SourceType` — no `kaggle` literal]
 

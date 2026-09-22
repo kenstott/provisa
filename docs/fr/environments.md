@@ -282,7 +282,7 @@ lit le rapport du commit épinglé, non du nouveau. [tool-verified: `request_dep
     déplie pour montrer le détail objet par objet. [tool-verified: `environmentsTab.json` keys `requestsTitle`, `colReport`,
     `approve`, `reject`]
 
-## Les commandes CLI `env`
+## Les commandes CLI `env` {: #the-env-cli-commands }
 
 `provisa env deploy` envoie le modèle situé à une référence dans un environnement. Elle sort avec 0
 lorsque le déploiement a été appliqué ou n'était qu'une simulation, et avec 2 lorsque

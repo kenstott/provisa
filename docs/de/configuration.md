@@ -1225,7 +1225,7 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 Provisa wählt OTLP/HTTP oder OTLP/gRPC anhand des URL-Schemas des Endpunkts. (REQ-549) URLs, die mit `http://` oder `https://` beginnen, verwenden OTLP/HTTP, wobei `/v1/traces`, `/v1/metrics` und `/v1/logs` automatisch angehängt werden. (REQ-549) Jedes andere Schema verwendet OTLP/gRPC mit `insecure=True`. (REQ-549) [tool-verified: `provisa/api/otel_setup.py` Zeilen 60–70]
 
-## Föderations-Engine
+## Föderations-Engine {: #federation-engine }
 
 Die Konfiguration einer Föderations-Engine ist optional. Der Standard ist `duckdb` — keine Konfiguration nötig, In-Process, kein externer Dienst erforderlich (REQ-989). Wählen Sie eine andere Engine, wenn Sie MPP-Skalierung benötigen oder ein bestehendes Warehouse wiederverwenden möchten.
 
