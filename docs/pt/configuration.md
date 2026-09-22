@@ -2,6 +2,29 @@
 
 O Provisa é configurado via um arquivo YAML (padrão: `config/provisa.yaml`). (REQ-528)
 
+## Includes (REQ-1669)
+
+Divida uma config em vários arquivos com `includes:`. O arquivo que inclui lista caminhos de fragmento sob essa chave; o Provisa os mescla antes da validação, produzindo o mesmo resultado que escrever tudo em um único arquivo.
+
+```yaml
+# provisa-with-sources.yaml — wrapper that adds a Neo4j source to the base config
+includes:
+  - /path/to/config/provisa-install.yaml
+  - /path/to/demo/sources/neo4j/fragment.yaml
+```
+
+Um arquivo wrapper contendo apenas `includes:` é válido. `load_control_plane` lê através dos includes, então a seção `control_plane:` é tomada de qualquer arquivo incluído que a defina. [tool-verified: `provisa/core/config_loader.py:154-166`]
+
+**Regras de merge** [tool-verified: `provisa/core/config_loader.py:104-146`]
+
+- Caminhos são resolvidos em relação ao arquivo que inclui. Caminhos absolutos são usados como estão.
+- Seções de lista (`sources`, `tables`, `domains`, `relationships`, `roles`, …) são anexadas — as entradas do fragmento seguem as entradas do arquivo que inclui.
+- Uma chave escalar ou de mapeamento que o arquivo que inclui não define é tomada do fragmento.
+- Uma chave que os dois arquivos definem com valores diferentes é um conflito; o carregamento falha, nomeando a chave.
+- Valores idênticos em ambos os arquivos não são um conflito.
+- Includes se aninham. Um arquivo que inclui a si mesmo — diretamente ou através de outro fragmento — é recusado.
+- `includes` é consumido no momento do carregamento e nunca aparece na config validada.
+
 ## Fontes
 
 ```yaml
@@ -425,6 +448,8 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
+**Conjuntos de dados Kaggle** não podem ser adicionados através deste arquivo — eles exigem um token ao vivo e o seletor de conjunto de dados disponível no formulário de Fontes (Fontes → Subscriptions → Kaggle). Uma fonte Kaggle exportada para YAML aparece como `type: files` com `kaggle_owner` e `kaggle_ref` em `federation_hints`. Baixar novamente do Kaggle exige a mutação `refreshKaggleSource` ou o fluxo de atualização da UI, não uma edição de YAML. Veja [Conjuntos de dados Kaggle](sources.md#kaggle-datasets) na referência de tipos de fonte.
+
 #### Fontes de API / Remotas
 
 **openapi** — defina `base_url` para a URL base do OpenAPI. A descoberta de esquema lê a especificação OpenAPI na inicialização.
@@ -766,7 +791,7 @@ roles:
     parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
 
-Funções com `parent_role_id` herdam capacidades e acesso a domínio da função pai. (REQ-215) A hierarquia é achatada na inicialização. (REQ-215)
+Funções com `parent_role_id` herdam capacidades, acesso a domínio, concessões de coluna e objeto, e regras de RLS do pai, com a própria regra de RLS da filha para uma tabela tendo precedência. (REQ-215, REQ-1677) A cadeia é achatada na inicialização. (REQ-215)
 
 ### Capacidades
 
@@ -1070,7 +1095,7 @@ Colunas preset são injetadas durante a compilação da mutação, antes da gera
 
 ## Funções Herdadas
 
-Funções podem herdar capacidades e acesso a domínio de uma função pai via `parent_role_id`. (REQ-215) A hierarquia é achatada na inicialização. (REQ-215)
+Funções podem herdar de uma função pai via `parent_role_id`. (REQ-215) A cadeia é achatada na inicialização. (REQ-215) Uma função filha detém a união das capacidades e do acesso a domínio de seus ancestrais; uma coluna, métrica, função ou webhook concedido a um ancestral é concedido à filha; e as regras de RLS de um ancestral se aplicam à filha por tabela, função mais próxima primeiro, com a própria regra da filha para uma tabela substituindo a do pai. (REQ-1677)
 
 ```yaml
 roles:
@@ -1090,7 +1115,7 @@ roles:
     parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
 ```
 
-Herança em múltiplos níveis é suportada. (REQ-215) As capacidades e domain_access explícitos da função filha são mesclados com os da função pai. (REQ-215)
+Herança em múltiplos níveis é suportada. (REQ-215) As capacidades e domain_access explícitos da função filha são mesclados com os da função pai. (REQ-215) Um pai precisa ser uma função existente, não pode ser a própria função e não pode fechar um ciclo; cada caso é recusado ao salvar. (REQ-1677)
 
 ## Gatilhos Programados
 
