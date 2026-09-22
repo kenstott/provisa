@@ -16,6 +16,7 @@ build-backend = "setuptools.build_meta"
 name = "provisa-pg-ext"
 version = "0.1.0"
 description = "Pinned, per-platform PostgreSQL extension/FDW binaries for the Provisa embedded tier (PyPI-delivered, offline)."
+readme = "README.md"
 requires-python = ">=3.10"
 
 [tool.setuptools]

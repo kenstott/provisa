@@ -16,6 +16,7 @@ build-backend = "setuptools.build_meta"
 name = "provisa-duckdb-ext"
 version = "0.1.0"
 description = "Pinned, per-platform DuckDB extension binaries for the Provisa embedded tier (PyPI-delivered, offline)."
+readme = "README.md"
 requires-python = ">=3.10"
 # Extensions are locked to the exact DuckDB build they were mirrored from — pin it hard so an
 # incompatible duckdb can never silently load a mismatched extension.
