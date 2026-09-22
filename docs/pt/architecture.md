@@ -586,7 +586,7 @@ Toda tabela registrada recebe um campo raiz auto-gerado `{table}_aggregate` (`co
 
 ## Funções Herdadas
 
-Funções em `core/models.py` podem referenciar um `parent_role_id`. (REQ-215) `flatten_roles()` resolve recursivamente a cadeia de herança e mescla cláusulas WHERE de RLS (com AND), visibilidade de coluna (união, a mais restritiva vence), e políticas de mascaramento (filho sobrepõe pai por coluna). Isso evita duplicar conjuntos de permissão entre funções semelhantes (ex.: `analyst` herdando de `reader`). (REQ-215)
+Uma função nomeia no máximo um pai através de `parent_role_id`. (REQ-215) Na construção em tempo de execução, `security/inheritance.py` percorre a cadeia de cada função do filho para cima e a incorpora às próprias cópias dos dados carregados da construção, de modo que toda busca posterior permanece indexada pelo id da função atuante. (REQ-1677) Capacidades e acesso a domínio são a união da cadeia. O `visible_to`, `writable_by` e `unmasked_to` de uma coluna, e o `visible_to` de uma métrica, função ou webhook, valem para uma função quando a nomeiam a ela ou a um ancestral. O RLS se resolve por tabela com a filha tendo precedência: a função mais próxima na cadeia que tem uma regra para a tabela — sua própria regra de tabela antes da sua regra de domínio — fornece o único predicado que roda; a regra de um ancestral nunca é combinada com ela. Uma função herda o limite de taxa do pai quando não define um próprio. Um pai precisa existir, não pode ser a própria função e não pode fechar um ciclo; uma função da qual outras funções herdam não pode ser excluída até ser reatribuída a outro pai. (REQ-1677)
 
 ## Hook de Aprovação ABAC
 
