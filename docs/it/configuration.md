@@ -2,6 +2,30 @@
 
 Provisa viene configurato tramite un file YAML (default: `config/provisa.yaml`). (REQ-528)
 
+## Include (REQ-1669)
+
+Suddividi una configurazione tra più file con `includes:`. Il file che include elenca i percorsi dei frammenti sotto questa chiave; Provisa li unisce prima della validazione, producendo lo stesso risultato che si otterrebbe scrivendo tutto in un unico file.
+
+```yaml
+# provisa-with-sources.yaml — wrapper che aggiunge un'origine Neo4j alla config di base
+includes:
+  - /path/to/config/provisa-install.yaml
+  - /path/to/demo/sources/neo4j/fragment.yaml
+```
+
+Un file wrapper che contiene solo `includes:` è valido. `load_control_plane` legge attraverso gli include, quindi la sezione `control_plane:` viene presa dal file incluso che la imposta. [tool-verified: `provisa/core/config_loader.py:154-166`]
+
+**Regole di unione** [tool-verified: `provisa/core/config_loader.py:104-146`]
+
+- I percorsi vengono risolti relativamente al file che include. I percorsi assoluti vengono usati così come sono.
+- Le sezioni elenco (`sources`, `tables`, `domains`, `relationships`, `roles`, …) vengono accodate — le voci del frammento seguono quelle del file che include.
+- Una chiave scalare o mapping non impostata dal file che include viene presa dal frammento.
+- Una chiave impostata da entrambi i file con valori diversi è un conflitto; il caricamento fallisce, nominando la chiave.
+- Valori identici in entrambi i file non sono un conflitto.
+- Gli include si annidano. Un file che include se stesso — direttamente o tramite un altro frammento — viene rifiutato.
+- `includes` viene consumato al momento del caricamento e non compare mai nella configurazione validata.
+
+
 ## Origini
 
 ```yaml
@@ -425,6 +449,8 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
+**I dataset Kaggle** non possono essere aggiunti tramite questo file — richiedono un token live e un selettore di dataset disponibili nel modulo Sources (Sources → Subscriptions → Kaggle). Un'origine Kaggle esportata in YAML appare come `type: files` con `kaggle_owner` e `kaggle_ref` in `federation_hints`. Riscaricare da Kaggle richiede la mutation `refreshKaggleSource` o il flusso di aggiornamento nella UI, non una modifica YAML. Vedere [Dataset Kaggle](sources.md#dataset-kaggle) nel riferimento dei tipi di origine.
+
 #### Origini API / Remote
 
 **openapi** — imposta `base_url` all'URL base OpenAPI. La scoperta dello schema legge la spec OpenAPI all'avvio.
@@ -766,7 +792,7 @@ roles:
     parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
 
-I ruoli con `parent_role_id` ereditano capability e accesso ai domini dal ruolo padre. (REQ-215) La gerarchia viene appiattita all'avvio. (REQ-215)
+I ruoli con `parent_role_id` ereditano capability, accesso ai domini, concessioni su colonne e oggetti, e regole RLS dal ruolo padre, con la regola RLS propria del figlio per una tabella che ha la precedenza. (REQ-215, REQ-1677) La catena viene appiattita all'avvio. (REQ-215)
 
 ### Capability
 
@@ -1070,7 +1096,7 @@ Le colonne preset vengono iniettate durante la compilazione della mutation prima
 
 ## Ruoli ereditati
 
-I ruoli possono ereditare capability e accesso ai domini da un ruolo padre tramite `parent_role_id`. (REQ-215) La gerarchia viene appiattita all'avvio. (REQ-215)
+I ruoli possono ereditare da un solo ruolo padre tramite `parent_role_id`. (REQ-215) La catena viene appiattita all'avvio. (REQ-215) Un figlio possiede l'unione delle capability e dell'accesso ai domini dei suoi antenati; una colonna, metrica, funzione o webhook concessi a un antenato sono concessi al figlio; e le regole RLS di un antenato si applicano al figlio per tabella, a partire dal ruolo più vicino, con la regola propria del figlio per una tabella che sostituisce quella del padre. (REQ-1677)
 
 ```yaml
 roles:
@@ -1090,7 +1116,7 @@ roles:
     parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
 ```
 
-L'ereditarietà multilivello è supportata. (REQ-215) Le capability esplicite e il domain_access del ruolo figlio vengono uniti con quelli del padre. (REQ-215)
+L'ereditarietà multilivello è supportata. (REQ-215) Le capability esplicite e il domain_access del ruolo figlio vengono uniti con quelli del padre. (REQ-215) Un padre deve essere un ruolo esistente, non può essere il ruolo stesso e non può chiudere un ciclo; ciascuno di questi casi viene rifiutato al salvataggio. (REQ-1677)
 
 ## Trigger pianificati
 
