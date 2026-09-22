@@ -26,5 +26,6 @@
   "secrets.md": "b2aaac449244bba69fd476ec8e4cafafb2ff9b01a2f0161510cc0e201fe6d14f",
   "glossary.md": "eabb5db20b3b1af1b33747cbb3de11aa2ea6877146622d21619fcc9b1298f64a",
   "environments.md": "523782dd3fc1ece2bb7f34c226ec5ecd67fc199acd3c875656d91986ae358687",
-  "data-products.md": "8b66d78f5541b9d880f7e7433c52787b19ea5e2b611f08882f50b5b75c22c6b6"
+  "data-products.md": "8b66d78f5541b9d880f7e7433c52787b19ea5e2b611f08882f50b5b75c22c6b6",
+  "admin-graphql.md": "da2fd9a22e746be16bb8df02ab6a661fc61f51996d1362a12cf3ae40cc6f1752"
 }
