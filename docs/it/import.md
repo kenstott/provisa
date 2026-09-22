@@ -60,19 +60,27 @@ Flag:
 | Concetto Hasura | Equivalente Provisa |
 | --------------- | ------------------- |
 | Tabella tracciata | `tables[]` con `publish: true` |
-| Relazione object | `relationships[]` con `cardinality: many-to-one` |
+| Relazione object | `relationships[]` con `cardinality: many-to-one`. Una dichiarata solo tramite colonna FK (`foreign_key_constraint_on: artist_id`) non nomina alcun target nell'export; il convertitore la risolve tramite la relazione array inversa, e la scarta con un avviso `[relationships]` quando non ne esiste una. (REQ-1680) |
 | Relazione array | `relationships[]` con `cardinality: one-to-many` |
-| Permesso select | Visibilità ruolo + filtro RLS |
+| Permesso select | Visibilità ruolo + filtro RLS. Un termine da variabile di sessione (`X-Hasura-User-Id`) diventa `current_setting('provisa.user_id')`, che la richiesta collega all'id utente e alle claim dell'identità al momento della query. (REQ-1682) |
 | Permesso colonna | `visible_to` / `writable_by` |
 | Permesso insert/update/delete | `writable_by` mutation + RLS |
-| Schema remoto | Registrazione origine `graphql_remote` |
+| Schema remoto | Registrazione origine `graphql_remote` più una tabella atterrata per ogni campo root Query che l'SDL del ruolo espone; una colonna è visibile a ogni ruolo il cui SDL la espone, un argomento root non-null diventa una colonna native-filter `_nf_`, i campi annidati vengono citati in un avviso. (REQ-1681) |
 | Campo calcolato | Voce `functions[]` con `kind: query` |
+
+### Connessioni e domini nella scheda di importazione
+
+L'export identifica i propri database tramite variabile d'ambiente, quindi dopo la prima conversione la scheda elenca ogni origine SQL con la connessione ipotizzata dalla conversione. Compila host, porta, database, nome utente e password, e converti di nuovo; solo i campi modificati vengono inviati, come override dell'origine. Le righe dei domini coprono ogni schema, subgraph e schema remoto presenti nel caricamento; ciascuna è un selettore sui domini esistenti dell'organizzazione che accetta anche un nome digitato, contrassegnato come "nuovo dominio" quando non corrisponde a nessuno. Applica esegue l'unione con ciò che l'organizzazione già possiede a meno che la casella di sostituzione non sia attiva. (REQ-1687)
+
+### I tipi provengono dall'origine in anteprima
+
+Un export Hasura nomina le colonne senza tipi, e una tabella tracciata senza permessi non nomina colonne. L'anteprima viene eseguita con le connessioni origine fornite, quindi legge lo `information_schema.columns` di ogni origine SQL raggiungibile: ogni colonna non tipizzata riceve il tipo dell'origine mappato al vocabolario IR, e una tabella senza colonne prende tutte le colonne dell'origine, visibili solo a `org_admin`, poiché Hasura non le esponeva ad alcun altro ruolo. Un'origine che l'anteprima non riesce a raggiungere viene segnalata con un avviso `[sources]` e le sue colonne restano non tipizzate, da completare prima dell'applicazione. (REQ-1691, REQ-1684)
 
 ### Limitazioni
 
 - **Le Action** vengono convertite automaticamente: le action con handler HTTP diventano mutation `webhooks[]`; le action con handler non-HTTP (database) diventano un placeholder `functions[]` ed emettono un avviso per revisionare l'handler
 - **Gli Event trigger** vengono convertiti in config `event_triggers` per tabella (operazioni, URL webhook, policy di retry) ed emettono un avviso sulla fedeltà limitata
-- **Gli Schema remoti** vengono convertiti in voci origine `graphql_remote`
+- **Gli Schema remoti** vengono convertiti in voci origine `graphql_remote` e atterrati come tabelle a partire dagli SDL dei permessi di ruolo; uno schema remoto senza permessi non atterra nulla, poiché l'export non porta alcuna altra dichiarazione della sua forma (REQ-1681)
 - **Le funzioni SQL custom** richiedono revisione — i casi semplici vengono convertiti in voci `functions[]`, quelli complessi necessitano di lavoro manuale
 - **I Cron trigger** vengono convertiti in voci config `scheduler`, preservando l'espressione cron e il flag enabled
 
