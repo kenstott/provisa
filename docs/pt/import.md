@@ -70,19 +70,27 @@ Flags:
 | Conceito Hasura | Equivalente Provisa |
 | --------------- | ------------------- |
 | Tabela rastreada | `tables[]` com `publish: true` |
-| Relacionamento de objeto | `relationships[]` com `cardinality: many-to-one` |
+| Relacionamento de objeto | `relationships[]` com `cardinality: many-to-one`. Um declarado apenas por coluna de FK (`foreign_key_constraint_on: artist_id`) não nomeia um alvo na exportação; o conversor o resolve através do relacionamento de array inverso, e o descarta com um aviso `[relationships]` quando não há nenhum. (REQ-1680) |
 | Relacionamento de array | `relationships[]` com `cardinality: one-to-many` |
-| Permissão de select | Visibilidade de função + filtro RLS |
+| Permissão de select | Visibilidade de função + filtro RLS. Um termo de variável de sessão (`X-Hasura-User-Id`) se torna `current_setting('provisa.user_id')`, que a requisição vincula ao id de usuário e às claims da identidade no momento da consulta. (REQ-1682) |
 | Permissão de coluna | `visible_to` / `writable_by` |
 | Permissão de insert/update/delete | Mutação `writable_by` + RLS |
-| Esquema remoto | Registro de fonte `graphql_remote` |
+| Esquema remoto | Registro de fonte `graphql_remote` mais uma tabela pousada por campo raiz de Query que os SDLs de função expõem; uma coluna fica visível a toda função cujo SDL a expõe, um argumento raiz não anulável se torna uma coluna de filtro nativo `_nf_`, campos aninhados são nomeados em um aviso. (REQ-1681) |
 | Campo computado | Entrada `functions[]` com `kind: query` |
+
+### Conexões e domínios na aba de importação
+
+A exportação nomeia seus bancos de dados por variável de ambiente, então, após a primeira conversão, a aba lista cada fonte SQL com a conexão que a conversão adivinhou. Preencha o host, a porta, o banco de dados, o usuário e a senha, e converta novamente; somente os campos que você alterou viajam, como sobreposições de fonte. As linhas de domínio cobrem todo esquema, subgrafo e esquema remoto que o upload carrega; cada uma é um seletor sobre os domínios existentes da organização que também aceita um nome digitado, marcado como *new domain* quando não corresponde a nenhum. Aplicar faz merge com o que a organização já tem, a menos que a caixa de seleção replace esteja marcada. (REQ-1687)
+
+### Os tipos vêm da fonte na pré-visualização
+
+Uma exportação do Hasura nomeia colunas sem tipos, e uma tabela rastreada sem permissão não nomeia colunas. A pré-visualização roda com as conexões de fonte que você fornece, então ela lê o `information_schema.columns` de cada fonte SQL alcançável: toda coluna sem tipo recebe o tipo da fonte mapeado para o vocabulário IR, e uma tabela sem colunas recebe toda coluna que a fonte tem, visível somente a `org_admin`, já que o Hasura não a expôs a nenhuma outra função. Uma fonte que a pré-visualização não consegue alcançar é reportada como um aviso `[sources]` e suas colunas permanecem sem tipo para você concluir antes de aplicar. (REQ-1691, REQ-1684)
 
 ### Limitações
 
 - **Actions** convertem automaticamente: actions com handler HTTP se tornam mutações `webhooks[]`; actions com handler não-HTTP (banco de dados) se tornam um placeholder `functions[]` e emitem um aviso para revisar o handler
 - **Event triggers** convertem para config `event_triggers` por tabela (operações, URL do webhook, política de retry) e emitem um aviso observando fidelidade limitada
-- **Esquemas remotos** convertem para entradas de fonte `graphql_remote`
+- **Esquemas remotos** convertem para entradas de fonte `graphql_remote` e são pousados como tabelas a partir dos SDLs de permissão de função; um esquema remoto sem permissões não pousa nada, já que a exportação não carrega nenhuma outra declaração de seu formato (REQ-1681)
 - **Funções SQL personalizadas** exigem revisão — casos simples convertem para entradas `functions[]`, casos complexos exigem trabalho manual
 - **Cron triggers** convertem para entradas de config `scheduler`, preservando a expressão cron e a flag enabled
 
