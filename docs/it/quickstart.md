@@ -65,6 +65,26 @@ Provisa running:
 
 `--demo` — Avvia origini dati demo aggiuntive (schema PostgreSQL pet-store, mock OpenAPI petstore, SQLite e un GraphQL remoto). Popola automaticamente utenti e ordini petstore. [tool-verified: start-ui.sh lines 17, 55–171]
 
+`--source=<name>` (solo `start-ui-install.sh`, ripetibile) — Effettua il provisioning di un'origine dati opzionale insieme a `--demo`. Ogni nome corrisponde a `demo/sources/<name>/`. L'avvio chiama `demo/sources/provision.py up`, che avvia il `compose.yml` dell'origine come proprio progetto Docker Compose (`provisa-demo-<name>`), attende il suo health check ed esegue `prime.py` quando l'origine ne ha uno, per popolare i dati. L'avvio scrive poi una configurazione wrapper in `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml` che include la configurazione di base più il `fragment.yaml` di ciascuna origine, ed effettua il boot da essa. [tool-verified: `start-ui-install.sh` (search `SOURCES`), `demo/sources/provision.py`] (REQ-1669)
+
+Lo stesso `provision.py` è quello che la suite end-to-end dell'UI chiama per avviare queste origini (sotto il prefisso di progetto `provisa-e2e-<name>` su porte proprie), cosicché i dati demo mostrati e le righe verificate dalla suite sono definiti una sola volta. [tool-verified: `provisa-ui/e2e/demo-source-containers.ts`] (REQ-1671)
+
+Con un avvio Docker (senza `--demo`/`--native`) il coordinator è un container, quindi ogni origine viene collegata alla rete dello stack principale e registrata come `<name>:<container port>`; con un avvio nativo viene registrata come `localhost:<published port>`. Un'origine il cui file `demo/sources/<name>/engine` indica un motore non eseguito dall'avvio viene rifiutata.
+
+Origini fornite:
+
+| Nome | Porte | Note |
+|------|---------|-------|
+| `neo4j` | HTTP 27474, Bolt 27687 | Due tabelle Cypher (`adopter`, `adopter_referral`); grafo popolato da `seed.cypher`; tabelle registrate dal fragment |
+| `mongodb` | 27117 | Origine registrata; collezione `product_reviews` popolata da `db/mongo-init.js`; registrare le tabelle manualmente tramite Registra tabella |
+| `redis` | 26379 | Origine registrata; hash `support_agent:*` e `agent_status:*` popolati da `prime.py`; ogni prefisso si registra come tabella tramite Registra tabella (REQ-1675) |
+| `cassandra` | 29042 | Origine registrata; `shelter_ops.intake_events` popolato da `prime.py` (richiede l'extra `cassandra`); il keyspace si registra come schema tramite Registra tabella (REQ-1676) |
+| `sparql` | 23030 | Apache Jena Fuseki; origine e una tabella basata su query (`volunteer`) registrate dal fragment, grafo popolato da `prime.py`; altre tabelle tramite Registra tabella (query + Anteprima) (REQ-1683) |
+| `prometheus` | 29090 | Origine registrata; il server esegue lo scraping di se stesso, quindi `up` e le metriche `prometheus_*` si registrano come tabelle tramite Registra tabella (REQ-1689) |
+| `elasticsearch` | 29200 | Origine e mapping dell'indice registrati; indice `support_tickets` popolato da `prime.py`; letto via HTTP dal motore nativo (REQ-1672), tramite il connettore su Trino |
+| `splunk` | mgmt 8089, HEC 8088 | Origine registrata con autenticazione a token e `disable_ssl_validation` (il certificato del container è autofirmato); un indice, sette eventi shelter-alert e il Data Model `shelter_alerts` popolati da `prime.py`, che genera anche il token API letto dal fragment come `PROVISA_DEMO_SPLUNK_TOKEN`. I Data Model si registrano come tabelle tramite Registra tabella — su Trino tramite il catalogo `splunk`, su ogni altro motore tramite il server pgwire Calcite integrato a cui il motore si collega (REQ-1694) |
+| `chinook` | 25433 | Postgres contenente il sottoinsieme Chinook in snake_case tracciato dal metadata sample di Hasura, popolato da `prime.py` da `tests/fixtures/hasura_v2_t1_seed.sql`; origine registrata dal fragment, e origine su cui atterra un import Hasura v2 di `tests/fixtures/hasura_v2_t1_metadata.json` (REQ-1687) |
+
 `--idp=basic|firebase` — Abilita un provider di identità per l'autenticazione. Senza questo flag, il backend viene eseguito senza provider di autenticazione e tutte le richieste vengono trattate come `admin`. [tool-verified: start-ui.sh line 18; provisa/auth/wiring.py lines 57–60; provisa/auth/middleware.py lines 57–68] (REQ-120, REQ-124)
 
 ---
