@@ -180,17 +180,20 @@ jobs:
       # Same caveat as build-duckdb-extensions.yml's own wheel job: this package bundles
       # THIRD-PARTY BINARY .so/.dylib FDW builds (scripts/ci/build_pg_extensions.sh), not a
       # Python dependency graph, so the CVE scan below only covers the build-time toolchain.
-      - name: Generate SBOM (CycloneDX)
-        run: |
-          mkdir -p sbom
-          pip install cyclonedx-bom -q
-          cyclonedx-py environment --of JSON -o sbom/provisa-pg-ext-sbom.cdx.json
-
-      - name: CVE scan of the build toolchain (gates PyPI publish)
+      # `pip-audit`/`cyclonedx-py environment` with no scope audit the ACTIVE interpreter's entire
+      # site-packages — on a GitHub-hosted runner that's the whole preinstalled toolset (boto3,
+      # azure-cli deps, ansible/bcc, …), not this job's build toolchain, and produced a false-positive
+      # gate failure in build-duckdb-extensions.yml (an ambient old `certifi`, unrelated to anything
+      # the wheel ships). Scope both tools to a clean venv containing only `build`.
+      - name: Generate SBOM + CVE scan of the build toolchain (gates PyPI publish)
         run: |
           set -o pipefail
-          pip install pip-audit -q
-          pip-audit -f json | tee sbom/provisa-pg-ext-cve-report.json
+          python -m venv /tmp/toolchain-venv
+          /tmp/toolchain-venv/bin/pip install --upgrade build cyclonedx-bom pip-audit -q
+          mkdir -p sbom
+          /tmp/toolchain-venv/bin/cyclonedx-py environment --of JSON \
+            -o sbom/provisa-pg-ext-sbom.cdx.json
+          /tmp/toolchain-venv/bin/pip-audit -f json | tee sbom/provisa-pg-ext-cve-report.json
 
       - name: Publish provisa-pg-ext to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
