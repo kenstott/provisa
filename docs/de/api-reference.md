@@ -1056,6 +1056,8 @@ Alle Endpunkte liegen unter `/admin/invites`. [tool-verified: `provisa/api/admin
 
 Strawberry-GraphQL-Endpunkt für alle Admin-Operationen: Quellen- und Tabellen-CRUD, Beziehungsverwaltung, Domänenkonfiguration, RLS-Regeln, Cache-Steuerung, Namenskonventionen, Verwaltung geplanter Tasks und Abfragekompilierung. (REQ-164) [tool-verified: `provisa/api/app.py:2171`]
 
+Die vollständige Schemareferenz — jedes Query-Feld, Mutation-Feld und jeder Input-/Output-Typ — finden Sie in der [Admin-GraphQL-API-Referenz](admin-graphql.md).
+
 **Schlüssel-Mutationen:**
 
 ```graphql
