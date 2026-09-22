@@ -117,9 +117,9 @@ class _Pool:
 @pytest.mark.parametrize(
     ("env", "expected"),
     [
-        (None, "SET search_path TO org_acme"),
-        (PROD, "SET search_path TO org_acme"),
-        ("feature_x", "SET search_path TO org_acme_env_feature_x"),
+        (None, 'SET search_path TO "org_acme"'),
+        (PROD, 'SET search_path TO "org_acme"'),
+        ("feature_x", 'SET search_path TO "org_acme_env_feature_x"'),
     ],
 )
 @pytest.mark.asyncio

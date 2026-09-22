@@ -24,7 +24,9 @@ class _RecordingEngine:
         self._tables = list(tables)
         self.executed = []
 
-    async def execute_engine(self, sql):
+    async def execute_engine(self, sql, *, authorization=None):
+        del authorization  # REQ-1760: execute_engine's caller-accountability param; this fake
+        # only records the SQL, verify_execution_authorization has its own unit tests.
         self.executed.append(sql)
         if sql.startswith("SHOW TABLES"):
             return type("R", (), {"rows": [(t,) for t in self._tables]})()

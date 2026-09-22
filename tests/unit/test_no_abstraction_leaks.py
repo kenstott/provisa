@@ -39,6 +39,14 @@ OWNERS: dict[str, set[str]] = {
         "provisa/federation/duckdb_runtime.py",
         "provisa/federation/backend.py",
         "provisa/executor/drivers/duckdb_driver.py",
+        # REQ-1730: a scratch in-memory DuckDB connection is the only available reader for a
+        # source type DuckDB reaches only by community extension (firebird/airport) and no other
+        # engine reaches at all — there is no separate Python client library for either wire
+        # protocol in this codebase.
+        "provisa/events/source_loader.py",
+        # A scratch in-memory DuckDB connection with S3 access via CREATE SECRET — reads Hive-on-S3
+        # data, not federating through the live engine connection.
+        "provisa/hive/fetch.py",
     },
     "trino": {
         "provisa/federation/trino_types.py",  # REQ-1678: the connection/exception alias leaf
@@ -88,7 +96,12 @@ OWNERS: dict[str, set[str]] = {
     },
     "aiosqlite": set(),
     "motor": set(),
-    "pymongo": set(),
+    "pymongo": {
+        # REQ-1730: the native (non-Trino) MongoDB source reader, mirroring redis/fetch.py's own
+        # role — an adapter loader for materializing a mongodb source under an engine with no
+        # live connector for it.
+        "provisa/mongodb/fetch.py",
+    },
     "redis": {
         "provisa/cache/store.py",  # caching feature, not a federated source — see Context
         "provisa/api/admin/system_health.py",  # health-check ping, not a federated source
@@ -119,6 +132,10 @@ OWNERS: dict[str, set[str]] = {
     },
     "aiokafka": {
         "provisa/kafka/source.py",  # kafka as federated source, per owner map
+        # REQ-1730: the native (non-Trino) Kafka source reader, mirroring source.py's own role —
+        # an adapter loader for materializing a kafka source under an engine with no live
+        # connector for it (draining a topic from earliest offset, not delivery/sink work).
+        "provisa/kafka/fetch.py",
     },
     "kafka": set(),
     "aiomysql": {

@@ -204,16 +204,24 @@ _DEMONSTRATED_ROLES: dict[str, list[str]] = {
 
 
 def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
-    """Additive column reconciliation: ADD COLUMN any metadata column absent from a live table.
+    """Additive schema reconciliation: CREATE any metadata table absent from the live database, and
+    ADD COLUMN any metadata column absent from a live table.
 
     V1 ships no migrations, so the SQLAlchemy metadata IS the schema's source of truth — but
-    ``create_all`` skips tables that already exist, so a column added to the metadata never reaches
-    a database created before it. This closes that gap for every plane: the portable tenant
-    bootstrap, the platform registry, and — scoped by ``schema`` to one ``org_<id>`` schema — the
-    PostgreSQL tenant plane, where ``schema.sql``'s ``ADD COLUMN IF NOT EXISTS`` blocks had to be
-    hand-written for every new column and a forgotten one broke every upgrade at startup
-    (cloud-dev: ``column "body_encoding" does not exist``). Additive only: drops and type changes
-    stay out of scope.
+    ``create_all`` skips tables that already exist, so a table (or a column on an existing table)
+    added to the metadata after a database's initial creation never reaches it. This closes that
+    gap for every plane: the portable tenant bootstrap (previously masked by boot eagerly copying a
+    fresh SQLite file every time, which always saw a truly empty database and let ``create_all``
+    create everything from scratch — no longer true now that boot persists the file, so an existing
+    SQLite deployment hits the exact same gap Postgres always had), the platform registry, and —
+    scoped by ``schema`` to one ``org_<id>`` schema — the PostgreSQL tenant plane, where
+    ``schema.sql``'s ``ADD COLUMN IF NOT EXISTS`` blocks had to be hand-written for every new column
+    and a forgotten one broke every upgrade at startup (cloud-dev: ``column "body_encoding" does not
+    exist``; REQ-1742: ``provisa_sources`` added to schema_org.py's metadata but never to
+    schema.sql's raw DDL, so it was never created for a Postgres deployment at all). Additive only:
+    drops and type changes stay out of scope. A missing table is created via SQLAlchemy Core
+    (``checkfirst=True``, on the SAME connection its own search_path/database already scopes) —
+    already has every column from the metadata, so it needs no further column diffing this pass.
     """
     from sqlalchemy import inspect as _inspect
 
@@ -222,6 +230,7 @@ def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
     qualify = (lambda name: f'"{schema}"."{name}"') if schema else (lambda name: f'"{name}"')
     for table in tables:
         if table.name not in existing_tables:
+            table.create(sync_conn, checkfirst=True)
             continue
         live = {c["name"] for c in inspector.get_columns(table.name, schema=schema)}
         for column in table.columns:

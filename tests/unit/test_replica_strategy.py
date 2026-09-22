@@ -102,6 +102,15 @@ def test_files_model_json_missing_path_is_loud():
         pr.build_model_json(_files_source(path=None))
 
 
+def test_files_model_json_strips_glob_from_path():
+    # Calcite's FileSchemaFactory "directory" operand is a plain directory, not a glob (verified
+    # live: a literal trailing "**" makes it look for a subdirectory actually named "**", finding
+    # nothing) — the Sources form's "Path / Glob" field still accepts one for parity with
+    # TrinoFilesConnector (which DOES glob-match), so _files_operand strips it here.
+    operand = pr.build_model_json(_files_source(path="/data/reports/**"))["schemas"][0]["operand"]
+    assert operand["directory"] == "/data/reports"
+
+
 def test_sharepoint_model_json():
     operand = pr.build_model_json(_sharepoint_source())["schemas"][0]["operand"]
     assert operand["siteUrl"] == "https://contoso.sharepoint.com/sites/team"

@@ -191,17 +191,25 @@ async def test_cdc_landing_consumer_drains_provider():
         _Event("delete", {"id": 1, "status": None}),
     ]
     provider = _FakeProvider(events)
-    conn = _FakeConn()
+    landed_batches: list[list[_Event]] = []
+
+    # REQ-1733/REQ-989: consume_cdc_into_store no longer holds a connection itself — it drains
+    # the provider and applies each batch through the caller's own write face (land_fn), the same
+    # way push_wiring.py's real _land closure wraps EngineRuntime.apply_cdc_events.
+    async def _land(batch: list) -> dict[str, int]:
+        landed_batches.append(batch)
+        return {
+            "upsert": sum(1 for e in batch if e.operation != "delete"),
+            "delete": sum(1 for e in batch if e.operation == "delete"),
+        }
 
     totals = await consume_cdc_into_store(
         provider,
-        conn,
+        _land,
         schema="mat",
         table="pets",
-        columns=COLUMNS,
-        pk_columns=["id"],
         disconnect=asyncio.Event(),
     )
     assert totals == {"upsert": 2, "delete": 1}
     assert provider.closed
-    assert any(s.startswith("DELETE FROM") for s in conn.sql())
+    assert sum(len(b) for b in landed_batches) == 3

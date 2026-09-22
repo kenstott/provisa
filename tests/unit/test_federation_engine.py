@@ -267,9 +267,12 @@ def test_warehouse_native_lands_into_self():
 
 
 def test_unreachable_source_rejected_at_resolve():
-    # Trino has no connector for parquet → rejected, not landed.
+    # saphana: no Trino connector AND not in strategy.py's _MATERIALIZE_ONLY landable set, so it
+    # is genuinely unreachable — parquet no longer fits this case since Trino gained a real
+    # (SCAN-only) parquet connector, and several other candidates (airport, sqlite) turned out to
+    # already be reachable too (landable, or a real Trino connector exists), verified live.
     with pytest.raises(UnreachableSource):
-        build_trino_engine().resolve(_src("ku", SourceType.parquet, path="/o.parquet"))
+        build_trino_engine().resolve(_src("ku", SourceType.saphana, path="/o.parquet"))
 
 
 # ---- derived catalog + reconcile (REQ-843) ----------------------------------

@@ -39,9 +39,13 @@ def test_sqlglot_dialect_none_for_unmapped_or_nonrelational():
 def test_writable_requires_both_gates():
     # postgresql: native driver (asyncpg, always installed) + sqlglot dialect → writable.
     assert is_writable("postgresql") is True
-    # a type with a sqlglot dialect but no direct driver is NOT writable.
+    # redshift: registry.py's own "redshift+psycopg2" fallback closed the driver gap (REQ-1730) —
+    # both gates now satisfied, so it's writable.
     assert sqlglot_write_dialect("redshift") == "redshift"
-    assert is_writable("redshift") is False  # no direct driver registered
+    assert is_writable("redshift") is True
+    # sqlserver: a sqlglot dialect but genuinely no direct driver registered is still NOT writable.
+    assert sqlglot_write_dialect("sqlserver") is not None
+    assert is_writable("sqlserver") is False
     # a type with neither gate.
     assert is_writable("iceberg") is False
 

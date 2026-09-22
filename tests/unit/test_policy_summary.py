@@ -101,11 +101,13 @@ def test_unreachable_no_prefer_caching_disabled_is_frozen():
 
 
 def test_reachability_is_engine_specific():
-    # csv SCANs live on DuckDB (file_native) but is unreachable-live on a Trino build without a csv
-    # connector — the SAME source's summary differs per engine (REQ-1143/REQ-826).
-    s = _src("c", SourceType.csv, path="/c.csv")
+    # airport (DuckDB's own airport community extension, REQ-899) attaches live on DuckDB but has
+    # no Trino connector at all (still materializable there, so FROZEN rather than raising) — csv
+    # no longer fits this case since Trino gained a real csv connector (matching parquet/
+    # delta_lake/iceberg's Hive-metastore-backed lake connectors).
+    s = _src("c", SourceType.airport, path="/c.csv")
     s.prefer_materialized = True
     on_duck = describe_refresh_policy(s, _tbl("c"), build_duckdb_engine())
     on_trino = describe_refresh_policy(s, _tbl("c"), build_trino_engine())
-    assert on_duck.serving is Serving.LIVE  # inert flag, served live (SCAN)
-    assert on_trino.serving is Serving.FROZEN  # no csv connector → not live → frozen
+    assert on_duck.serving is Serving.LIVE  # inert flag, served live (ATTACH)
+    assert on_trino.serving is Serving.FROZEN  # no airport connector → not live → frozen

@@ -51,7 +51,8 @@ def _make_source_row(source_id: str = "mongo-src", source_type: str = "mongodb")
 class TestCallDiscoverMongoDBNoPool:
     """_call_discover for MongoDB must raise 503 when no pool entry exists."""
 
-    def test_raises_503_when_pool_has_no_entry(self):
+    @pytest.mark.asyncio
+    async def test_raises_503_when_pool_has_no_entry(self):
         """Regression test for issue #13: empty sample docs were silently
         returned instead of a 503 error when no live connection is available.
         """
@@ -68,12 +69,13 @@ class TestCallDiscoverMongoDBNoPool:
 
         with patch("provisa.api.admin.discovery_schema._get_source_pool", return_value=empty_pool):
             with pytest.raises(HTTPException) as exc_info:
-                _call_discover(adapter, "mongodb", row, hints)
+                await _call_discover(adapter, "mongodb", row, hints)
 
         assert exc_info.value.status_code == 503
         assert "no live connection" in exc_info.value.detail.lower()
 
-    def test_returns_columns_when_pool_has_live_entry(self):
+    @pytest.mark.asyncio
+    async def test_returns_columns_when_pool_has_live_entry(self):
         """When a live pool entry exists with sample_documents, columns are returned."""
         from provisa.api.admin.discovery_schema import _call_discover, DiscoverRequest
         from provisa.source_adapters.registry import get_adapter
@@ -95,7 +97,7 @@ class TestCallDiscoverMongoDBNoPool:
         live_pool.get.return_value = mock_driver
 
         with patch("provisa.api.admin.discovery_schema._get_source_pool", return_value=live_pool):
-            cols = _call_discover(adapter, "mongodb", row, hints)
+            cols = await _call_discover(adapter, "mongodb", row, hints)
 
         assert len(cols) > 0
         names = {c["name"] for c in cols}

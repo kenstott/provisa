@@ -93,6 +93,13 @@ class _Backend:
     def __init__(self, fail=False):
         self.calls = []
         self.fail = fail
+        self._landed_this_process: set[str] = set()
+
+    def is_first_touch(self, source_id: str) -> bool:
+        return source_id not in self._landed_this_process
+
+    def mark_landed(self, source_id: str) -> None:
+        self._landed_this_process.add(source_id)
 
     async def materialize_pending(self, state, *, loader, is_stale, source_ids, **kw):
         self.calls.append((set(source_ids), kw["now"]))
@@ -104,9 +111,21 @@ class _Backend:
                 landed += [(sid, t.table_name) for t in state.config.tables if t.source_id == sid]
         return landed
 
+    def landing_target(self, *, store_schema, source_id, source_type, schema_name, table_name):
+        # REQ-1730: a stand-in for the default (catalog_qualified=True) fold — the registered
+        # address, unchanged, matching this fake's own snowflake native_store.
+        del store_schema, source_id, source_type
+        return schema_name, table_name
+
 
 def _state(sources, tables, backend):
-    engine = SimpleNamespace(engine=SimpleNamespace(backend=backend, native_store="snowflake"))
+    engine = SimpleNamespace(
+        engine=SimpleNamespace(
+            backend=backend,
+            native_store="snowflake",
+            materialize_store=lambda: "postgresql://localhost/materialize",
+        )
+    )
     return SimpleNamespace(
         federation_engine=engine,
         config=SimpleNamespace(sources=sources, tables=tables),
@@ -155,6 +174,11 @@ async def test_a_never_landed_source_is_landed_and_stamped(wiring):
 @pytest.mark.asyncio
 async def test_a_resident_source_is_left_alone(wiring):
     backend = _Backend()
+    # REQ-1730: staleness is the persisted stamp OR this backend INSTANCE's own first-touch
+    # signal (a genuine reboot reads as stale even with a fresh stamp, since THIS engine has
+    # never held the row) — "already resident" here means both: a fresh stamp AND this process
+    # has already landed it once.
+    backend.mark_landed("pets-db")
     state = _state([_source("pets-db")], [_table("pets-db", "pets")], backend)
     state.tenant_db.states["pet_store.pets"] = {"last_refresh_at": 1.0, "last_refresh_ok": True}
     assert await ensure_resident(state, {"pets-db"}) == []

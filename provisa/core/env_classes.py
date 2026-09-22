@@ -113,6 +113,10 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "admin_audit_log",
         "catalog_bindings",
         "email_send_authority_audit",
+        # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's
+        # grpc_remote sources — nothing else reads it, and it belongs to the environment that
+        # produced the registration, same as the other operational logs above.
+        "provisa_sources",
     }
 )
 

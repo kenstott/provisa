@@ -59,7 +59,7 @@ async def test_pg_realization_hardens_with_a_per_org_role():
 
     issued = [c.args[0] for c in conn.execute.await_args_list if c.args]
     assert any("role_acme" in s for s in issued)
-    assert any("GRANT USAGE, CREATE ON SCHEMA org_acme TO role_acme" in s for s in issued)
+    assert any('GRANT USAGE, CREATE ON SCHEMA "org_acme" TO role_acme' in s for s in issued)
 
 
 # ---------------------------------------------------------------------------

@@ -45,8 +45,10 @@ def test_attach_reachable_backend_is_valid():
 
 
 def test_backend_with_no_connector_rejected():
+    # airport (DuckDB's own airport community extension, REQ-899) has no Trino connector at all —
+    # parquet no longer fits this case since Trino gained a real (SCAN-only) parquet connector.
     with pytest.raises(InvalidMaterializationBackend, match="no connector"):
-        validate_materialization_backend(build_trino_engine(), "parquet")
+        validate_materialization_backend(build_trino_engine(), "airport")
 
 
 def test_land_only_backend_rejected_as_regress():

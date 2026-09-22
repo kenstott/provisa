@@ -162,7 +162,7 @@ class TestInitSchema:
             assert any(f"CREATE SCHEMA IF NOT EXISTS {expected}" in s for s in core_sql), core_sql
             assert any(f"{expected}_mv_cache" in s for s in core_sql), core_sql
             executed = [c.args[0] for c in mock_conn.execute.await_args_list if c.args]
-            assert any(s == f"SET search_path TO {expected}" for s in executed), executed
+            assert any(s == f'SET search_path TO "{expected}"' for s in executed), executed
 
     @pytest.mark.asyncio
     async def test_create_org_role_grants_each_environment_to_the_one_org_role(self):  # REQ-1488
@@ -175,7 +175,7 @@ class TestInitSchema:
 
         granted = [c.args[0] for c in conn.execute.await_args_list if c.args]
         assert any(
-            "GRANT USAGE, CREATE ON SCHEMA org_acme_env_dev TO role_acme" in s for s in granted
+            'GRANT USAGE, CREATE ON SCHEMA "org_acme_env_dev" TO role_acme' in s for s in granted
         ), granted
 
     def test_validate_org_id_rejects_invalid_chars(self):  # REQ-697
@@ -290,7 +290,7 @@ class TestCreateOrgRole:
 
         executed = [c.args[0] for c in conn.execute.await_args_list if c.args]
         assert any("role_acme" in s for s in executed)
-        assert any("GRANT USAGE, CREATE ON SCHEMA org_acme TO role_acme" in s for s in executed)
+        assert any('GRANT USAGE, CREATE ON SCHEMA "org_acme" TO role_acme' in s for s in executed)
 
     @pytest.mark.asyncio
     async def test_create_org_role_is_noop_on_non_pg_backend(self):  # REQ-889

@@ -92,6 +92,10 @@ METADATA_ONLY_TABLES = REGISTRY_ONLY_TABLES | {
     # superadmin_bootstrap: the platform superadmin singleton (schema_admin), portable
     # metadata created via metadata.create_all — no raw SQL DDL to mirror.
     "superadmin_bootstrap",
+    # provisa_sources (REQ-1742): grpc_remote_router.py's own registration log, added directly
+    # to schema_org.py's portable metadata (metadata.create_all) — same shape as
+    # superadmin_bootstrap, never defined in raw schema.sql.
+    "provisa_sources",
 }
 
 _CONSTRAINT_KW = {

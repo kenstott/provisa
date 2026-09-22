@@ -101,12 +101,14 @@ class TestFilesConnectorGlobPattern:
         props = _build_catalog_properties(src, "")
         assert props["schema-name"] == "my_lake"
 
-    def test_catalog_properties_execution_engine_linq4j(self):
+    def test_catalog_properties_execution_engine_duckdb(self):
+        # TrinoFilesConnector forces DUCKDB (not the LINQ4J/PARQUET default): PARQUET silently
+        # discovered zero tables for a plain csv directory, verified live.
         from provisa.core.catalog import _build_catalog_properties
 
         src = Source(id="lake1", type=SourceType.files, path="/data/*.csv")
         props = _build_catalog_properties(src, "")
-        assert props["execution-engine"] == "LINQ4J"
+        assert props["execution-engine"] == "DUCKDB"
 
     def test_catalog_properties_case_insensitive_matching(self):
         from provisa.core.catalog import _build_catalog_properties

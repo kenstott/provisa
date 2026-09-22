@@ -18002,7 +18002,7 @@ A Calcite-pgwire connector source (sharepoint, splunk) is attached live on the D
 
 **Code:** `provisa/federation/connector_duckdb.py`, `provisa/federation/clickhouse_connectors.py`, `provisa/federation/pgwire_replica.py`, `provisa/federation/engine.py`, `provisa/runtime_deps/pgwire_bundles.py`, `provisa/api/app.py`, `provisa/api/admin/schema_common.py`, `provisa/api/admin/introspect.py`, `provisa/api/admin/schema_mutation.py`
 
-**Tests:** `tests/unit/test_replica_strategy.py`, `tests/unit/test_federation_strategy.py`, `tests/unit/test_pg_pgwire_connectors.py`, `tests/unit/test_clickhouse_pgwire_connectors.py`, `tests/integration/test_duckdb_attach_calcite_pgwire.py`, `tests/integration/test_splunk_duckdb_attach.py`, `tests/integration/test_files_pgwire_replica.py`, `provisa-ui/e2e/file-connector-multi-format.spec.ts`, `provisa-ui/e2e/make-multi-format-fixtures.py`
+**Tests:** `tests/unit/test_replica_strategy.py`, `tests/unit/test_federation_strategy.py`, `tests/unit/test_pg_pgwire_connectors.py`, `tests/unit/test_clickhouse_pgwire_connectors.py`, `tests/integration/test_duckdb_attach_calcite_pgwire.py`, `tests/integration/test_splunk_duckdb_attach.py`, `tests/integration/test_files_pgwire_replica.py`, `provisa-ui/e2e/file-connector-multi-format.spec.ts`, `provisa-ui/e2e/make-multi-format-fixtures.py`, `tests/unit/test_duckdb_files_connector.py`
 
 ## 12. Migration & Compatibility (Hasura)
 

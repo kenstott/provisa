@@ -5,19 +5,27 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""Unit tests for DuckDBFilesConnector — the SCAN connector for files-type sources."""
+"""Unit tests for DuckDBFilesConnector (REQ-1690): a hand-rolled Python ``read_csv_auto`` scanner
+here predated REQ-1690's pgwire bridge and was never converted (verified live: an xlsx-only
+``files`` source silently only ever matched/read csv, because the extension in ``source.path`` was
+never consulted) — ``files`` is one of ``strategy.py``'s ``_CONNECTOR_PGWIRE_REPLICA`` types (with
+sharepoint/splunk), attached LIVE via ``_DuckDBPgwireConnector`` exactly like those two. The old
+CSV-specific scan behavior this file used to test (camelCase header aliasing, missing-file
+wildcard fallback) moved into the bundled Calcite ``FileSchemaFactory`` (LINQ4J-side, not
+Python-reachable); the path glob-stripping piece that stayed on the Python side is covered by
+``test_replica_strategy.py``'s ``test_files_model_json_strips_glob_from_path`` instead.
+"""
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-
-from provisa.federation.connector_duckdb import DuckDBFilesConnector
+from provisa.core.models import Source, SourceType
+from provisa.federation import pgwire_replica as pr
 from provisa.federation.connector_base import Mechanism
+from provisa.federation.connector_duckdb import DuckDBFilesConnector
 
 
-def _source(path: str, table_name: str = "customers") -> SimpleNamespace:
-    return SimpleNamespace(path=path, table_name=table_name, id="e2e-northwind")
+def _files_source(**kw) -> Source:
+    return Source(**{"id": "local-files", "type": SourceType.files, "path": "/data/reports", **kw})
 
 
 # ── connector metadata ─────────────────────────────────────────────────────────
@@ -32,57 +40,30 @@ def test_files_connector_source_type():
 
 
 def test_files_connector_mechanism():
-    assert DuckDBFilesConnector.mechanism == Mechanism.SCAN
+    # REQ-1690: files' only real reader is the bundled Calcite FileSchemaFactory, attached live —
+    # not a local DuckDB scan.
+    assert DuckDBFilesConnector.mechanism == Mechanism.ATTACH_R
 
 
-# ── details(): glob-to-CSV path derivation ────────────────────────────────────
+# ── details(): pgwire attach (mirrors test_duckdb_splunk_attaches_the_pgwire_endpoint) ─────────
 
 
-def test_details_camelcase_headers_aliased_to_snake(tmp_path):
-    csv_file = tmp_path / "customers.csv"
-    csv_file.write_text("customerID,companyName,postalCode\nALFKI,Alfreds,12209\n")
+def test_duckdb_files_attaches_the_pgwire_endpoint(monkeypatch):
+    """The DuckDB connector attaches the server the endpoint registry started, read-only, under the
+    private alias, and names the Calcite schema the tables live in."""
+    started: list[str] = []
 
-    conn = DuckDBFilesConnector()
-    result = conn.details(_source(str(tmp_path / "**")))
+    def _ensure(source):
+        started.append(source.id)
+        return pr.PortPair(5441, "127.0.0.1", 5541)
 
-    assert "view_ddl" in result
-    ddl = result["view_ddl"]
-    assert '"customerID" AS "customer_id"' in ddl
-    assert '"companyName" AS "company_name"' in ddl
-    assert '"postalCode" AS "postal_code"' in ddl
-    assert f"read_csv_auto('{tmp_path / 'customers.csv'}')" in ddl
-
-
-def test_details_already_snake_headers_not_aliased(tmp_path):
-    csv_file = tmp_path / "orders.csv"
-    csv_file.write_text("order_id,customer_id\n1,ALFKI\n")
-
-    conn = DuckDBFilesConnector()
-    result = conn.details(_source(str(tmp_path / "**"), table_name="orders"))
-
-    ddl = result["view_ddl"]
-    # No " AS " when header is already snake_case
-    assert '" AS "' not in ddl or "order_id" in ddl
-
-
-def test_details_missing_csv_falls_back_to_wildcard(tmp_path):
-    conn = DuckDBFilesConnector()
-    result = conn.details(_source(str(tmp_path / "**"), table_name="nonexistent"))
-
-    assert "view_ddl" in result
-    ddl = result["view_ddl"]
-    assert "SELECT * FROM read_csv_auto(" in ddl
-
-
-def test_details_glob_directory_resolved_correctly(tmp_path):
-    """Non-glob prefix of a glob path is used as directory."""
-    subdir = tmp_path / "northwind"
-    subdir.mkdir()
-    csv = subdir / "products.csv"
-    csv.write_text("productID,productName\n1,Chai\n")
-
-    conn = DuckDBFilesConnector()
-    result = conn.details(_source(str(subdir / "**"), table_name="products"))
-    ddl = result["view_ddl"]
-    assert "products" in ddl
-    assert '"productID" AS "product_id"' in ddl
+    monkeypatch.setattr(pr, "ensure_endpoint", _ensure)
+    src = _files_source(id="local-files")
+    details = DuckDBFilesConnector().details(src)
+    assert started == ["local-files"]
+    assert details["attach"] == (
+        "ATTACH 'host=127.0.0.1 port=5441 user=provisa dbname=provisa' "
+        'AS "_src_local-files" (TYPE postgres, READ_ONLY)'
+    )
+    assert details["raw_alias"] == "_src_local-files"
+    assert details["remote_schema"] == "local_files"

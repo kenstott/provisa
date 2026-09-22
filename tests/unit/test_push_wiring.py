@@ -43,7 +43,7 @@ def test_kafka_missing_bootstrap_servers_returns_none(caplog):
     with caplog.at_level(logging.WARNING):
         result = _build_provider(src, tbl, node="s.t")
     assert result is None
-    assert "no bootstrap_servers" in caplog.text
+    assert "no host configured" in caplog.text
 
 
 def test_kafka_builds_provider_with_topic_as_watch_target():
