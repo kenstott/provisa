@@ -61838,3 +61838,228 @@
     And an inline CloseButton in the panel header closes the panel while open
   relates_to:
   - REQ-1795
+- id: REQ-1805
+  status: complete
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
+  category: Chat UI
+  priority: SHOULD
+  type: ui
+  description: >-
+    Mic button next to Polly chat input uses browser's native Web Speech API (SpeechRecognition/webkitSpeechRecognition)
+    for client-side speech-to-text. Button only renders when the API is present (checked via useSpeechToText hook);
+    unsupported browsers simply don't show it rather than showing a broken control. One utterance per click; transcript
+    is appended to draft, not a replacement. TypeScript types for Web Speech API added at provisa-ui/src/types/speech-recognition.d.ts.
+  use_case: >-
+    Users can speak their questions into Polly instead of typing, improving accessibility and reducing friction
+    for long queries. No backend involvement; browser handles audio processing locally and securely.
+  code:
+  - provisa-ui/src/hooks/useSpeechToText.ts
+  - provisa-ui/src/types/speech-recognition.d.ts
+  - provisa-ui/src/components/ChatPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given the browser supports Web Speech API
+    When the user clicks the mic button next to chat input
+    Then the browser listens for speech
+    And the transcript is appended to whatever's already typed in the draft
+    And once the browser detects silence, listening stops
+    When the browser does not support Web Speech API
+    Then the mic button does not render at all
+  relates_to:
+  - REQ-1795
+  - REQ-1803
+- id: REQ-1806
+  status: complete
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
+  category: Chat UI
+  priority: SHOULD
+  type: ui
+  description: >-
+    Polly shows a numbered list of clickable suggested questions when the panel opens with no conversation yet.
+    Suggestions cover personality ("Why are you named Polly?"), context awareness (REQ-1800 "What page am I on?"),
+    catalog discovery ("What data sources are registered?"), and subscription sources (REQ-1798 inflation example).
+    Clicking a suggestion sends it immediately. The list disappears once the first real message is sent.
+  use_case: >-
+    New users quickly discover what Polly can do without typing. Suggestions guide them toward helpful capabilities
+    they might not think to ask about (page context, subscription sources).
+  code:
+  - provisa-ui/src/components/ChatPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given Polly's panel is open and no messages have been sent yet
+    When the user sees the chat area
+    Then a numbered list of suggested questions is displayed
+    And each question is clickable
+    When the user clicks one
+    Then it is sent immediately as a message
+    And the suggested questions list disappears
+    When the user sends a message manually
+    Then the suggestions also disappear
+  relates_to:
+  - REQ-1795
+  - REQ-1800
+  - REQ-1798
+- id: REQ-1807
+  status: complete
+  since: 2026-09
+  group: 1. Access Governance & Security
+  category: Capabilities & Rights
+  priority: MUST
+  type: behavioral
+  description: >-
+    When a request is made with "Role: All" mode, _role_has_capability checks the union of capabilities
+    across ALL of the caller's real role assignments (AuthMiddleware-verified request.state.assignments),
+    not just the single pinned x-provisa-role header. "Role: All" means the union of every role granted to the
+    user, and the UI's activeRoles[0] collapse to a single header could lose data-plane capabilities if the first
+    role is a control-plane role (e.g., platform_admin) that holds zero data capabilities by design (REQ-1297).
+    The check falls back to the single pinned role only when a request object is unavailable.
+  use_case: >-
+    Users in "Role: All" mode (union of all granted roles) can access MCP confirm_required and direct-create
+    shortcuts even if their first role assignment is platform_admin. Previously, the single pinned role collapsed
+    all assignments to just activeRoles[0], breaking the shortcut for users whose first role was control-plane-only.
+  code:
+  - provisa/api/mcp/tools.py
+  tests:
+  - tests/unit/test_mcp_propose.py
+  scenario: |
+    Given a user with both platform_admin and org_admin role assignments
+    When they use the UI with "Role: All" (union mode)
+    And they attempt confirm_required or direct-create via MCP
+    Then _role_has_capability checks capabilities across both roles
+    And if org_admin holds the required capability, the request succeeds
+    When the same user's activeRoles[0] is platform_admin (control-plane only, no data caps)
+    Then _role_has_capability still checks org_admin's data-plane capabilities
+    And the shortcut succeeds instead of failing
+  relates_to:
+  - REQ-1799
+  - REQ-1297
+- id: REQ-1808
+  status: complete
+  since: 2026-09
+  group: 5. Query Languages, Compilation & Operations
+  category: Chat / AI Endpoints
+  priority: MUST
+  type: behavioral
+  description: >-
+    Custom AI endpoints (REQ-1790) are routed through aisuite's multi-vendor dispatch (REQ-1797)
+    with full secrets and environment variable resolution on every configuration field. When a request
+    uses a custom endpoint's id, the system resolves that endpoint's configuration (base_url, api_key_env)
+    through the ${env:...}/${secret:...}/${user:...}/${scope:...} reference grammar (provisa.core.secrets),
+    then routes the call through aisuite's underlying provider (openai or anthropic) named in the endpoint's style field.
+  use_case: >-
+    Custom endpoints can store secrets and URLs indirectly via references (e.g., ${secret:openrouter_key}),
+    separating endpoint configuration from credential values and enabling rotation without editing the endpoint definition.
+  code:
+  - provisa/api/mcp/chat.py
+  tests:
+  - tests/unit/test_mcp_chat.py
+  scenario: |
+    Given a custom AI endpoint configured with id "openrouter", style "openai", and api_key_env "${secret:openrouter_api_key}"
+    When the chat system routes a request through that endpoint
+    Then the system resolves the secret reference to the actual API key from the org vault
+    And routes the request through aisuite's openai provider with the endpoint's base_url and resolved key
+    And the model correctly sees the tool definitions and can make tool calls
+    When the endpoint's base_url is itself a reference like "${env:OPENROUTER_URL}"
+    Then the environment variable is resolved and used for the request
+  relates_to:
+  - REQ-1790
+  - REQ-1797
+- id: REQ-1809
+  status: complete
+  since: 2026-09
+  group: 5. Query Languages, Compilation & Operations
+  category: Chat / Tools
+  priority: MUST
+  type: behavioral
+  description: >-
+    Tool-calling works on all aisuite-supported vendors (Ollama, OpenRouter, generic OpenAI-compatible)
+    by routing directly through the aisuite ProviderFactory instead of the aisuite Client wrapper,
+    which was silently dropping tool definitions when max_turns was not set. The fix ensures tool schemas
+    are passed to the model and model tool calls are correctly dispatched through the governed _execute_tool mechanism.
+  use_case: >-
+    Users querying via non-Anthropic vendors (local Ollama, OpenRouter, or any custom endpoint) can use
+    tool calls (e.g., list_schemas) to refine their queries, matching the behavior on Anthropic models.
+    Previously, tools were silently never sent to the model on any non-Anthropic vendor, breaking all tool-dependent workflows.
+  code:
+  - provisa/api/mcp/chat.py
+  tests:
+  - tests/unit/test_mcp_chat.py
+  scenario: |
+    Given a chat session using an Ollama or OpenRouter model via aisuite dispatch
+    When the assistant needs to explore a schema and calls the list_schemas tool
+    Then the tool schema is sent to the model in the request
+    And the model recognizes it as a callable tool and requests its execution
+    And the tool is dispatched through _execute_tool (with role/domain governance applied)
+    And the result is fed back to the model for final summarization
+    When the same flow runs on an Anthropic model
+    Then the behavior is identical (tools work the same way across all vendors)
+  relates_to:
+  - REQ-1797
+  - REQ-1808
+- id: REQ-1810
+  status: complete
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
+  category: Chat UI / Widgets
+  priority: SHOULD
+  type: ui
+  description: >-
+    New client tool present_choice allows the assistant to offer users a structured choice widget instead of
+    describing options in prose. Modes: single (radio buttons), multi (checkboxes), yes_no (Yes/No buttons).
+    Choices render as a Modal with appropriate controls and return the user's selection (string, array, or boolean)
+    back to the assistant for continued conversation.
+  use_case: >-
+    Concrete decisions (table selection, filter operator choice, confirmation) are faster and less error-prone
+    via a UI widget than asking the user to type a reply. The system prompt directs the model to prefer
+    present_choice over prose descriptions for yes/no confirmations and bounded option sets.
+  code:
+  - provisa/api/mcp/chat.py
+  - provisa-ui/src/mcp/clientTools.ts
+  - provisa-ui/src/components/ChatPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given the assistant needs the user to confirm a proposed source creation
+    When the assistant calls present_choice with mode "yes_no" and no options list
+    Then the UI renders a Modal with Yes and No buttons
+    And the user clicks one button
+    And the choice (boolean) is sent back to the assistant for parsing
+    When the assistant needs a single selection from three filter operators (=, >, <)
+    Then the UI renders a Modal with radio buttons for each option
+    And the user selects one and submits
+    And the option string is returned to the assistant
+  relates_to:
+  - REQ-1795
+  - REQ-1799
+- id: REQ-1811
+  status: complete
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
+  category: Chat UI / Widgets
+  priority: MAY
+  type: ui
+  description: >-
+    Each message bubble in the chat panel (user and assistant messages) shows a copy-to-clipboard button
+    on hover or keyboard focus. The button uses Mantine's CopyButton component and is hidden by default (opacity 0),
+    revealed only on hover/focus to avoid cluttering the conversation view.
+  use_case: >-
+    Users can quickly copy any message from the conversation for pasting into other tools or documentation,
+    improving usability without adding visual noise.
+  code:
+  - provisa-ui/src/components/ChatPanel.tsx
+  - provisa-ui/src/App.css
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given a message is displayed in the chat panel
+    When the user hovers over or focuses on the message bubble
+    Then a copy button appears (opacity changes from 0 to 1)
+    And the user can click it or press Enter to copy the message text to clipboard
+    When the user moves focus away or hovers away
+    Then the button disappears (opacity returns to 0)
+  relates_to:
+  - REQ-1795

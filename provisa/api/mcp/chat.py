@@ -267,6 +267,33 @@ _CLIENT_TOOLS: list[Any] = [
             "required": ["mv_id"],
         },
     },
+    {
+        "name": "present_choice",
+        "description": (
+            "Ask the user to pick from a small set of options via a real UI widget — a multiple "
+            "choice list, a checklist, or a yes/no — instead of asking them to type a free-text "
+            "reply. Use this whenever you're offering the user a decision among a handful of "
+            "concrete options (e.g. 'which source?', 'which of these tables?', 'proceed?') rather "
+            "than describing the options in prose and waiting for them to type one back. "
+            "mode='single' renders radio buttons and returns the one option string picked; "
+            "mode='multi' renders checkboxes and returns an array of the options picked (zero or "
+            "more); mode='yes_no' renders Yes/No buttons and returns a boolean, no 'options' "
+            "needed. The tool result names exactly which option(s) — or true/false — were picked."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "description": "What you're asking."},
+                "mode": {"type": "string", "enum": ["single", "multi", "yes_no"]},
+                "options": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Required for 'single'/'multi'; omit for 'yes_no'.",
+                },
+            },
+            "required": ["question", "mode"],
+        },
+    },
 ]
 _CLIENT_TOOL_NAMES = frozenset(t["name"] for t in _CLIENT_TOOLS)
 
@@ -297,7 +324,10 @@ _SYSTEM = (
     "datasets, describe_table to confirm structure, and explain_sql before run_sql on non-trivial "
     "queries. Never invent table, column, or schema names — discover them with the tools. If a "
     "tool returns an error or empty result, say so plainly. Keep answers concise and lead with the "
-    "answer.\n\n"
+    "answer. When you're offering the user a decision among a handful of concrete options — which "
+    "source, which table, proceed or not, pick some of these — call present_choice rather than "
+    "listing options in prose and waiting for a typed reply; it's a real UI widget (multiple "
+    "choice, checklist, or yes/no) and reads better than typing a number or a name back.\n\n"
     "If asked to find, add, connect, or register a new data source, or a new table from an "
     "existing source: first check search_catalog/list_schemas to avoid proposing a duplicate. "
     "Then, for a topical data request (e.g. 'find me inflation data'), check this org's "
@@ -321,11 +351,11 @@ _SYSTEM = (
     "propose_source/propose_table normally queue a pending request a human approves on the "
     "Requests page and never create anything directly. REQ-1799 EXCEPTION: if the result's status "
     "is 'confirm_required' instead of 'pending', nothing was queued — the caller's own role "
-    "already holds the needed capability. In that case, ASK the user in plain text whether to "
-    "create/register it right now instead of queuing it for someone else's approval; wait for "
-    "their reply. Only if they clearly say yes, call create_source_now/register_table_now with "
-    "the exact same source/table and reason. If they say no or don't confirm, do nothing further "
-    "— do not queue it as a fallback and do not create it. Never call create_source_now or "
+    "already holds the needed capability. In that case, ask via present_choice (mode='yes_no') "
+    "whether to create/register it right now instead of queuing it for someone else's approval; "
+    "wait for their answer. Only if they answer yes, call create_source_now/register_table_now "
+    "with the exact same source/table and reason. If they answer no, do nothing further — do not "
+    "queue it as a fallback and do not create it. Never call create_source_now or "
     "register_table_now without that explicit confirmation in the same conversation."
 )
 
@@ -674,6 +704,87 @@ async def _run_chat_anthropic(
     yield {"type": "done"}
 
 
+async def _resolve_aisuite_routing(state: Any, vendor: str, model: str) -> tuple[str, dict]:
+    """(model_id, provider_configs) for aisuite, given the resolved vendor/model (REQ-1808).
+
+    ``vendor`` is EITHER one of aisuite's own named providers (openai, ollama, google, ...) — in
+    which case aisuite already knows how to reach it and needs no override — OR the `id` of a
+    configured custom AI endpoint (REQ-1790: an OpenAI- or Anthropic-wire-protocol server aisuite
+    has no name for, e.g. a local Ollama, LiteLLM, or OpenRouter gateway). aisuite's own model
+    string can only ever name a provider IT recognizes (``Client.create`` looks `provider_key` up
+    in its fixed registry and rejects anything else), so a custom endpoint is reached by
+    overriding the underlying "openai"/"anthropic" provider's `base_url` (whichever the
+    endpoint's `style` says it speaks) via `provider_configs`, and the model string names THAT
+    provider, not the endpoint's own id.
+
+    EVERY field taken from config here — base_url as much as the API key — is resolved through
+    ``${secret:NAME}``/``${user:NAME}`` when its value uses that grammar (provisa.core.secrets),
+    not just the key: an operator may just as reasonably want a private gateway's base_url held
+    in the vault (it can itself carry embedded credentials, e.g. a signed URL or a ``user:pass@``
+    authority) as they want the API key held there. The same indirection provisa.core.org_secrets
+    already gives named vendor keys, generalized to every config field on a custom endpoint.
+    """
+    cfg = await _effective_config(state)
+    endpoints = {ep["id"]: ep for ep in (cfg.get("ai_endpoints") or [])}
+    endpoint = endpoints.get(vendor)
+    if endpoint is None:
+        return f"{vendor}:{model}", {}
+
+    style = endpoint["style"]  # "openai" | "anthropic"
+    api_key = await _resolve_api_key_field(endpoint.get("api_key_env"))
+    resolved_base_url = await _resolve_config_field(endpoint["base_url"])
+    provider_config: dict[str, Any] = {"base_url": resolved_base_url}
+    if api_key:
+        provider_config["api_key"] = api_key
+    elif style == "openai":
+        # aisuite's OpenAI provider requires a non-empty api_key even when the server behind
+        # base_url doesn't check one at all (e.g. Ollama's OpenAI-compatible endpoint) — a
+        # placeholder here is not a credential, just satisfying that constructor guard.
+        provider_config["api_key"] = "not-required"
+    return f"{style}:{model}", {style: provider_config}
+
+
+async def _resolve_config_field(value: str) -> str:
+    """``value`` as-is, unless it contains a ``${env:NAME}``/``${secret:NAME}``/``${user:NAME}``
+    reference (provisa.core.secrets' full reference grammar), in which case that's resolved
+    first — so ANY custom-endpoint field can be a literal, an env-var indirection, or a vault
+    reference, the caller's choice, not a fixed convention per field.
+
+    Only ``${secret:...}``/``${user:...}`` need the org vault bound (see
+    secrets_store.bound_to_request_org) — ``${env:...}``/``${scope:...}`` resolve against the
+    process environment alone, so requiring org context for THOSE too would needlessly fail a
+    deployment with no admin_db reachable from this call for a field that never touches the vault.
+    """
+    if "${" not in value:
+        return value
+    from provisa.core.secrets import resolve_secrets
+
+    if "${secret:" in value or "${user:" in value:
+        from provisa.core.secrets_store import bound_to_request_org
+
+        async with bound_to_request_org():
+            return resolve_secrets(value)
+    return resolve_secrets(value)
+
+
+async def _resolve_api_key_field(api_key_env: str | None) -> str | None:
+    """The endpoint's API key, from its ``api_key_env`` field (REQ-1790, REQ-1808).
+
+    Despite the field's name, it is no longer ONLY "the name of an env var": a value containing
+    ``${...}`` is resolved directly as the reference it is (``${secret:NAME}``, ``${env:NAME}``,
+    ``${user:NAME}``) — the key itself, not a variable naming where to find it. A plain string
+    with no ``${`` keeps the field's original, narrower meaning: literally an env var name, whose
+    OWN value is then resolved the same way (so an env var can itself hold a ``${secret:...}``
+    reference one layer down, e.g. for a credential injected by the deployment environment that
+    should still resolve against the org's vault)."""
+    if not api_key_env:
+        return None
+    if "${" in api_key_env:
+        return await _resolve_config_field(api_key_env)
+    raw = os.environ.get(api_key_env)
+    return await _resolve_config_field(raw) if raw else None
+
+
 async def _run_chat_aisuite(
     state: Any,
     role: str,
@@ -692,24 +803,37 @@ async def _run_chat_aisuite(
 
     Speaks the SAME wire format as the Anthropic path (Anthropic-shaped content blocks) for every
     SSE event and for `convo` itself — see _wire_convo_to_openai_messages/
-    _openai_message_to_wire_blocks — so useMcpChat.ts on the frontend needs no vendor awareness."""
+    _openai_message_to_wire_blocks — so useMcpChat.ts on the frontend needs no vendor awareness.
+
+    Calls the aisuite PROVIDER directly (``ProviderFactory.create_provider`` + its own
+    ``chat_completions_create``), not ``aisuite.Client().chat.completions.create()`` — verified
+    live (REQ-1809) that aisuite 0.1.14's own wrapper POPS ``tools`` out of kwargs and only ever
+    forwards it back to the provider when ``max_turns`` is also given, which instead routes
+    through aisuite's OWN automatic tool-execution loop (`Client._tool_runner`) — one that
+    requires real Python callables, not the JSON tool schemas this loop's own governed dispatch
+    needs. Passing `tools` with no `max_turns`, the documented-looking way, silently drops it: the
+    model never saw a single tool definition and could never have called one, on ANY non-Anthropic
+    vendor, since REQ-1797 first shipped. Calling the provider directly is exactly what
+    ``Client.create()`` itself does in the max_turns-less case — except this actually keeps
+    `tools` in the call."""
     import asyncio
 
-    import aisuite as ai
+    from aisuite.provider import ProviderFactory
 
     model = await _resolve_model(state)
     assert model is not None  # _llm_configured() guarantees this
-    model_id = f"{vendor}:{model}"
-    client = ai.Client()
+    model_id, provider_configs = await _resolve_aisuite_routing(state, vendor, model)
+    provider_key, model_name = model_id.split(":", 1)
+    provider = ProviderFactory.create_provider(provider_key, provider_configs.get(provider_key, {}))
     openai_tools = [_to_openai_tool(t) for t in _TOOLS + _CLIENT_TOOLS]
     system_message = {"role": "system", "content": _system_prompt(current_route)}
 
     for _ in range(max_iterations):
         oa_messages = [system_message, *_wire_convo_to_openai_messages(convo)]
-        # aisuite is a synchronous library (no async client) — off the event loop, same reasoning
+        # aisuite providers are synchronous (no async client) — off the event loop, same reasoning
         # as every other sync-SDK call in this codebase (e.g. provisa/llm/client.py).
         resp = await asyncio.to_thread(
-            client.chat.completions.create, model=model_id, messages=oa_messages, tools=openai_tools
+            provider.chat_completions_create, model_name, oa_messages, tools=openai_tools
         )
         message = resp.choices[0].message
         if message.content:

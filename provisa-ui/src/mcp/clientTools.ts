@@ -24,18 +24,34 @@ import type { NavigateFunction } from "react-router-dom";
  * unchanged, no new privilege surface. `confirm` similarly defers the actual dialog to ChatPanel.
  */
 
+/** REQ-1810: what present_choice asks for and what it resolves with. */
+export type ChoiceMode = "single" | "multi" | "yes_no";
+export type ChoiceAnswer = string | string[] | boolean;
+
+export interface PresentChoiceRequest {
+  question: string;
+  mode: ChoiceMode;
+  options?: string[];
+}
+
 export interface ClientToolContext {
   navigate: NavigateFunction;
   confirm: (opts: { title: string; message: string }) => Promise<boolean>;
   runMutation: (name: string, variables: Record<string, unknown>) => Promise<ClientToolResult>;
+  // REQ-1810: renders a multiple-choice / checklist / yes-no widget and resolves with the user's
+  // answer — the same pause-the-loop-and-wait pattern `confirm` already uses for refresh_mv.
+  presentChoice: (req: PresentChoiceRequest) => Promise<ChoiceAnswer>;
 }
 
 export interface ClientToolResult {
   success: boolean;
   message: string;
+  // REQ-1810: present_choice's actual answer, read by the model from the tool_result content —
+  // every other client tool leaves this unset.
+  selected?: ChoiceAnswer;
 }
 
-export const CLIENT_TOOL_NAMES = new Set(["navigate", "refresh_mv"]);
+export const CLIENT_TOOL_NAMES = new Set(["navigate", "refresh_mv", "present_choice"]);
 
 export async function executeClientTool(
   name: string,
@@ -58,6 +74,21 @@ export async function executeClientTool(
     });
     if (!ok) return { success: false, message: "Cancelled by the user." };
     return ctx.runMutation("refresh_mv", { mvId });
+  }
+
+  if (name === "present_choice") {
+    const question = String(input.question ?? "");
+    const mode = input.mode as ChoiceMode;
+    if (!question) return { success: false, message: "present_choice: 'question' is required" };
+    if (mode !== "single" && mode !== "multi" && mode !== "yes_no") {
+      return { success: false, message: `present_choice: unknown mode ${JSON.stringify(mode)}` };
+    }
+    const options = Array.isArray(input.options) ? input.options.map(String) : undefined;
+    if (mode !== "yes_no" && (!options || options.length === 0)) {
+      return { success: false, message: `present_choice: 'options' is required for mode ${mode}` };
+    }
+    const selected = await ctx.presentChoice({ question, mode, options });
+    return { success: true, message: "Answered.", selected };
   }
 
   throw new Error(`unknown client tool ${JSON.stringify(name)}`);

@@ -2093,6 +2093,17 @@ main {
   margin-inline-end: 0.4em;
 }
 
+/* REQ-1811: a small copy button on each chat message bubble, visible only on hover — kept out of
+   the way of reading the conversation until you actually want to grab one message's text. */
+.chat-message-copy {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.chat-message:hover .chat-message-copy,
+.chat-message-copy:focus-visible {
+  opacity: 1;
+}
+
 /* REQ-1559: Admin's navigation is a vertical rail beside the page, not a horizontal bar above it —
    two dozen entries fit down the left edge and only crowd the top. `.app-body` is the row that
    holds the two; off an admin route the rail renders nothing and main takes the full width. */

@@ -16,30 +16,45 @@ import {
   Badge,
   Box,
   Button,
+  Checkbox,
   CloseButton,
+  CopyButton,
   Group,
   Modal,
+  Radio,
   ScrollArea,
+  Stack,
   Text,
   Textarea,
   Title,
   Tooltip,
 } from "@mantine/core";
 import { useMutation } from "@apollo/client/react";
-import { MessageCircle } from "lucide-react";
+import { Check, Copy, MessageCircle, Mic, MicOff } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "../context/AuthContext";
 import { useMcpChat } from "../hooks/useMcpChat";
+import { useSpeechToText } from "../hooks/useSpeechToText";
 import { RefreshMv } from "../hooks/admin.graphql";
 import { fetchMcpChatStatus } from "../api/mcpChat";
 import type { MutationResult } from "../types/admin";
-import type { ClientToolResult } from "../mcp/clientTools";
+import type { ChoiceAnswer, ClientToolResult, PresentChoiceRequest } from "../mcp/clientTools";
 import { useLocalStorage } from "./graph/graph-persistence";
 
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 900;
 const DEFAULT_WIDTH = 420;
+
+// REQ-1806: a brief, enumerated demo prompt list shown only before the first message — picked to
+// showcase distinct real capabilities (catalog search, subscription sources, page awareness),
+// plus one that's just for personality.
+const SUGGESTED_QUESTIONS = [
+  "Why are you named Polly?",
+  "What page am I on?",
+  "What data sources are registered?",
+  "Find me inflation data",
+];
 
 /**
  * REQ-1795: the chat assistant panel — a v1 slice proving the client-tool pause/resume
@@ -125,6 +140,23 @@ export function ChatPanel() {
     pendingResolveRef.current = null;
   };
 
+  // REQ-1810: present_choice's widget — a single pending question at a time, same await-a-Promise
+  // shape as `confirm` above, generalized to carry the answer's actual value (not just ok/cancel).
+  const pendingChoiceResolveRef = useRef<((answer: ChoiceAnswer) => void) | null>(null);
+  const [choiceState, setChoiceState] = useState<PresentChoiceRequest | null>(null);
+  const [choiceDraft, setChoiceDraft] = useState<string[]>([]);
+  const presentChoice = (req: PresentChoiceRequest): Promise<ChoiceAnswer> =>
+    new Promise((resolve) => {
+      pendingChoiceResolveRef.current = resolve;
+      setChoiceDraft([]);
+      setChoiceState(req);
+    });
+  const resolveChoice = (answer: ChoiceAnswer) => {
+    setChoiceState(null);
+    pendingChoiceResolveRef.current?.(answer);
+    pendingChoiceResolveRef.current = null;
+  };
+
   // REQ-1795: the ONLY place clientTools.ts's `refresh_mv` dispatch actually touches GraphQL —
   // via useMutation, matching the repo's Apollo-client-usage rule (only App.tsx may import the
   // raw client). Add a case here for each new admin-mutation client tool.
@@ -143,15 +175,27 @@ export function ChatPanel() {
 
   const { messages, tools, busy, error, send } = useMcpChat(
     roleId,
-    { navigate, confirm, runMutation },
+    { navigate, confirm, runMutation, presentChoice },
     location.pathname,
   );
 
   const onSend = () => {
-    const text = draft;
+    // REQ-1806: while the suggestions are showing, typing just the number of one ("1", "2", …)
+    // and sending it means the same thing as clicking it — send the full question, not the digit.
+    const asIndex = messages.length === 0 ? Number(draft.trim()) : NaN;
+    const text =
+      Number.isInteger(asIndex) && asIndex >= 1 && asIndex <= SUGGESTED_QUESTIONS.length
+        ? SUGGESTED_QUESTIONS[asIndex - 1]
+        : draft;
     setDraft("");
     void send(text);
   };
+
+  // REQ-1805: mic-to-text — appends the transcript to whatever's already typed, so a person can
+  // dictate a follow-on clause instead of only replacing the draft.
+  const speech = useSpeechToText((transcript) =>
+    setDraft((prev) => (prev.trim() ? `${prev.trim()} ${transcript}` : transcript)),
+  );
 
   if (!open) {
     return (
@@ -208,6 +252,11 @@ export function ChatPanel() {
         style={{
           position: "relative",
           flex: `0 0 ${width}px`,
+          // Without this, a flex item's min-height defaults to its content's natural height, so
+          // a tall message list grows the panel (and the whole `.app-body` row) taller than the
+          // viewport instead of clipping here — the page then scrolls as one unit, taking `<main>`
+          // with it, instead of each panel's own ScrollArea scrolling independently.
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
           borderLeft: "1px solid var(--mantine-color-default-border)",
@@ -272,9 +321,30 @@ export function ChatPanel() {
         )}
 
         <ScrollArea style={{ flex: 1 }} mb="sm">
+          {messages.length === 0 && (
+            <Stack gap={6} data-testid="chat-panel-suggestions">
+              <Text size="xs" c="dimmed">
+                Try asking:
+              </Text>
+              {SUGGESTED_QUESTIONS.map((q, i) => (
+                <Button
+                  key={q}
+                  variant="light"
+                  size="xs"
+                  justify="flex-start"
+                  onClick={() => void send(q)}
+                  disabled={busy}
+                >
+                  {i + 1}. {q}
+                </Button>
+              ))}
+            </Stack>
+          )}
           {messages.map((m, i) => (
             <Box
               key={i}
+              className="chat-message"
+              pos="relative"
               mb="sm"
               p="xs"
               style={{
@@ -286,6 +356,25 @@ export function ChatPanel() {
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {m.text || (busy && i === messages.length - 1 ? "…" : "")}
               </ReactMarkdown>
+              {m.text && (
+                <CopyButton value={m.text} timeout={1500}>
+                  {({ copied, copy }) => (
+                    <Tooltip label={copied ? "Copied" : "Copy"} withArrow>
+                      <ActionIcon
+                        className="chat-message-copy"
+                        size="xs"
+                        variant="subtle"
+                        color={copied ? "teal" : "gray"}
+                        onClick={copy}
+                        data-testid="chat-message-copy"
+                        style={{ position: "absolute", top: 2, right: 2 }}
+                      >
+                        {copied ? <Check size={12} /> : <Copy size={12} />}
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                </CopyButton>
+              )}
             </Box>
           ))}
         </ScrollArea>
@@ -304,6 +393,23 @@ export function ChatPanel() {
           autosize
           minRows={2}
           maxRows={6}
+          rightSectionPointerEvents="auto"
+          rightSection={
+            speech.supported && (
+              <Tooltip label={speech.listening ? "Stop listening" : "Speak to Polly"}>
+                <ActionIcon
+                  variant={speech.listening ? "filled" : "subtle"}
+                  color={speech.listening ? "red" : undefined}
+                  size="sm"
+                  data-testid="chat-panel-mic"
+                  disabled={busy}
+                  onClick={() => (speech.listening ? speech.stop() : speech.start())}
+                >
+                  {speech.listening ? <MicOff size={14} /> : <Mic size={14} />}
+                </ActionIcon>
+              </Tooltip>
+            )
+          }
         />
         <Button mt="xs" onClick={onSend} disabled={busy || !draft.trim()} loading={busy}>
           Send
@@ -324,6 +430,54 @@ export function ChatPanel() {
           </Button>
           <Button onClick={() => resolveConfirm(true)}>Confirm</Button>
         </Group>
+      </Modal>
+
+      <Modal
+        opened={choiceState !== null}
+        onClose={() => resolveChoice(choiceState?.mode === "multi" ? [] : "")}
+        title={choiceState?.question}
+        data-testid="chat-panel-choice-modal"
+      >
+        {choiceState?.mode === "yes_no" && (
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => resolveChoice(false)}>
+              No
+            </Button>
+            <Button onClick={() => resolveChoice(true)}>Yes</Button>
+          </Group>
+        )}
+
+        {choiceState?.mode === "single" && (
+          <Stack gap="sm">
+            <Radio.Group value={choiceDraft[0] ?? ""} onChange={(v) => setChoiceDraft([v])}>
+              <Stack gap={6} mt="xs">
+                {choiceState.options?.map((opt) => (
+                  <Radio key={opt} value={opt} label={opt} />
+                ))}
+              </Stack>
+            </Radio.Group>
+            <Group justify="flex-end">
+              <Button disabled={!choiceDraft[0]} onClick={() => resolveChoice(choiceDraft[0])}>
+                Submit
+              </Button>
+            </Group>
+          </Stack>
+        )}
+
+        {choiceState?.mode === "multi" && (
+          <Stack gap="sm">
+            <Checkbox.Group value={choiceDraft} onChange={setChoiceDraft}>
+              <Stack gap={6} mt="xs">
+                {choiceState.options?.map((opt) => (
+                  <Checkbox key={opt} value={opt} label={opt} />
+                ))}
+              </Stack>
+            </Checkbox.Group>
+            <Group justify="flex-end">
+              <Button onClick={() => resolveChoice(choiceDraft)}>Submit</Button>
+            </Group>
+          </Stack>
+        )}
       </Modal>
     </>
   );

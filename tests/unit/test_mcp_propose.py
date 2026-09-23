@@ -128,6 +128,45 @@ class TestProposeSource:
                 pending = await cr_repo.list_pending(conn)
             assert pending == []  # nothing queued — the human confirms in-chat instead
 
+    async def test_all_role_gets_confirm_required_via_any_held_assignment(
+        self, tmp_path
+    ):  # REQ-1799
+        # The UI's "Role: All" means every role GRANTED to the user, unioned — its single
+        # x-provisa-role header collapses to whichever assignment is first client-side (often a
+        # control-plane role like platform_admin, which correctly holds NO data capability), even
+        # when the person also holds org_admin. The pinned `role` string alone can't see that; the
+        # caller's real request.state.assignments (AuthMiddleware-verified) can.
+        import types as _types
+
+        from provisa.api.mcp import tools
+
+        async with _db(tmp_path) as db:
+            state = _state(db)
+            state.contexts["platform_admin"] = object()
+            state.roles = {
+                "platform_admin": {"capabilities": []},
+                "org_admin": {"capabilities": ["source_registration"]},
+            }
+            fake_request = _types.SimpleNamespace(
+                state=_types.SimpleNamespace(
+                    assignments=[
+                        _types.SimpleNamespace(role_id="platform_admin", domain_id="*"),
+                        _types.SimpleNamespace(role_id="org_admin", domain_id="*"),
+                    ]
+                )
+            )
+            # The pinned MCP role is "platform_admin" (activeRoles[0], the first assignment) —
+            # exactly what the UI's "All" mode sends as x-provisa-role — but the request carries
+            # BOTH assignments, so the union correctly finds org_admin's capability.
+            result = await tools.propose_source(
+                state,
+                "platform_admin",
+                {"id": "new_pg", "type": "postgresql"},
+                "found via network scan",
+                request=fake_request,
+            )
+            assert result["status"] == "confirm_required"
+
     async def test_role_with_capability_but_no_request_still_queues(self, tmp_path):  # REQ-1799
         # No verified request context (e.g. a non-HTTP caller) — always falls back to the queue,
         # even if the role would otherwise qualify for the confirm_required shortcut.

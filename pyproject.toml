@@ -32,6 +32,11 @@ dependencies = [
     # the server is ported.
     "mcp>=1.2.0,<2",
     "aisuite>=0.1",
+    # REQ-1808: aisuite's own "openai" provider (used for vendor="openai" and for ANY REQ-1790
+    # custom AI endpoint, since that's how a custom endpoint's base_url/api_key are actually
+    # routed — see chat.py's _resolve_aisuite_routing) lazily imports the openai SDK itself;
+    # aisuite does not declare it as a dependency (it ships every provider's import as optional).
+    "openai",
     "apscheduler>=3.10",
     "inflect",
     "jsonpath-ng",

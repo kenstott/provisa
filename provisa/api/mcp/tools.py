@@ -616,16 +616,27 @@ async def _queue_mcp_proposal(
     }
 
 
-def _role_has_capability(state: Any, role: str, capability: str) -> bool:
-    """Whether `role` — already verified by AuthMiddleware against the caller's real identity
-    before it ever reaches an MCP tool (see provisa/api/mcp/status.py) — carries `capability`.
+def _role_has_capability(state: Any, role: str, capability: str, *, request: Any = None) -> bool:
+    """Whether the caller carries `capability` — through EITHER the single pinned `role` (already
+    verified by AuthMiddleware, see provisa/api/mcp/status.py) OR, when `request` is given, the
+    UNION of every role assignment the caller's real identity holds (REQ-1799 follow-up).
 
-    Same resolution search_glossary_terms already uses (state.roles, capabilities_for_claims):
-    the role name IS the identity on this surface, so its capabilities are read directly rather
-    than through a request's raw claims."""
+    The UI's "Role: All" means every role GRANTED to the user, unioned — not a literal role named
+    "All" (there is no such role in the registry). Its single `x-provisa-role` header collapses to
+    whichever assignment happens to be first (see AuthContext.tsx's `activeRoles[0]`), which can
+    be a control-plane role like platform_admin even when the same person also holds org_admin.
+    Checking only that one pinned role — as this function originally did — answered "does
+    platform_admin hold source_registration" (correctly no, by REQ-1297) instead of "does this
+    PERSON hold it through ANY of their roles" (the question REQ-1799 actually needs answered),
+    so a person who genuinely holds org_admin never got the confirm_required shortcut while acting
+    as "All". `request.state.assignments` (also AuthMiddleware-verified) is the real fix: it is
+    the SAME list AuthContext.tsx's "All" unions client-side, checked here server-side instead of
+    trusted from the client."""
     from provisa.security.rights import capabilities_for_claims
 
-    return capability in capabilities_for_claims([role], state.roles)
+    assignments = getattr(getattr(request, "state", None), "assignments", None) if request else None
+    role_ids = [a.role_id for a in assignments] if assignments else [role]
+    return capability in capabilities_for_claims(role_ids, state.roles)
 
 
 async def propose_source(
@@ -651,7 +662,9 @@ async def propose_source(
     except TypeError as exc:
         raise ValueError(f"malformed source proposal: {exc}") from exc
 
-    if request is not None and _role_has_capability(state, role, "source_registration"):
+    if request is not None and _role_has_capability(
+        state, role, "source_registration", request=request
+    ):
         return {
             "status": "confirm_required",
             "capability": "source_registration",
@@ -688,7 +701,9 @@ async def propose_table(
     except TypeError as exc:
         raise ValueError(f"malformed table proposal: {exc}") from exc
 
-    if request is not None and _role_has_capability(state, role, "table_registration"):
+    if request is not None and _role_has_capability(
+        state, role, "table_registration", request=request
+    ):
         return {
             "status": "confirm_required",
             "capability": "table_registration",
@@ -719,7 +734,7 @@ async def create_source_now(
     minimal Info shim wrapping the real `request` — so validation, secret handling, and engine
     provisioning behave identically to that path, not a second reimplementation of it."""
     require_role(role, state)
-    if not _role_has_capability(state, role, "source_registration"):
+    if not _role_has_capability(state, role, "source_registration", request=request):
         raise PermissionError(f"role {role!r} does not hold source_registration")
     from provisa.api.admin.schema_common import _rebuild_source_input
     from provisa.api.admin.schema_mutation import Mutation
@@ -745,7 +760,7 @@ async def register_table_now(
     after propose_table told the model to ask the user for confirmation first (REQ-1799); see
     create_source_now for the trust model and why the same GraphQL resolver is reused verbatim."""
     require_role(role, state)
-    if not _role_has_capability(state, role, "table_registration"):
+    if not _role_has_capability(state, role, "table_registration", request=request):
         raise PermissionError(f"role {role!r} does not hold table_registration")
     from provisa.api.admin.schema_common import _rebuild_table_input
     from provisa.api.admin.schema_mutation import Mutation

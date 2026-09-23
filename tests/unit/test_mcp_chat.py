@@ -10,6 +10,7 @@ The Anthropic client is faked with a scripted response sequence, so the tool-use
 loop is exercised offline with no model call.
 """
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -53,38 +54,33 @@ def _install_fake_anthropic(monkeypatch, responses):
     return holder
 
 
-class _FakeAisuiteCompletions:
+class _FakeAisuiteProvider:
+    """REQ-1808/1809: chat.py calls the aisuite PROVIDER directly (ProviderFactory.create_provider
+    + its chat_completions_create), not aisuite.Client().chat.completions.create() — see
+    _run_chat_aisuite's own docstring for why (aisuite 0.1.14 silently drops `tools` through that
+    wrapper unless `max_turns` is also given, which triggers a THEN-incompatible auto-exec loop)."""
+
     def __init__(self, responses):
         self._responses = list(responses)
         self.calls = []
 
-    def create(self, **kwargs):
-        self.calls.append(kwargs)
+    def chat_completions_create(self, model_name, messages, **kwargs):
+        self.calls.append({"model": model_name, "messages": messages, **kwargs})
         return self._responses.pop(0)
-
-
-class _FakeAisuiteChat:
-    def __init__(self, responses):
-        self.completions = _FakeAisuiteCompletions(responses)
-
-
-class _FakeAisuiteClient:
-    def __init__(self, responses):
-        self.chat = _FakeAisuiteChat(responses)
 
 
 def _install_fake_aisuite(monkeypatch, responses):
     """REQ-1797: aisuite is sync (run via asyncio.to_thread), so its fake needs no `async def`."""
     holder = {}
 
-    def _factory(*_a, **_k):
-        client = _FakeAisuiteClient(responses)
-        holder["client"] = client
-        return client
+    def _factory(_provider_key, _config):
+        provider = _FakeAisuiteProvider(responses)
+        holder["provider"] = provider
+        return provider
 
-    import aisuite
+    from aisuite.provider import ProviderFactory
 
-    monkeypatch.setattr(aisuite, "Client", _factory)
+    monkeypatch.setattr(ProviderFactory, "create_provider", staticmethod(_factory))
     return holder
 
 
@@ -401,9 +397,7 @@ class TestWebTools:  # REQ-1796
         async for _ in chat_mod.run_chat(_state(), "analyst", [{"role": "user", "content": "hi"}]):
             pass
 
-        tool_names = {
-            t["function"]["name"] for t in holder["client"].chat.completions.calls[0]["tools"]
-        }
+        tool_names = {t["function"]["name"] for t in holder["provider"].calls[0]["tools"]}
         assert "web_search" not in tool_names
         assert "web_fetch" not in tool_names
 
@@ -675,3 +669,144 @@ class TestModelResolution:
         cfg.write_text("sources: []\n")
         monkeypatch.setitem(os.environ, "PROVISA_CONFIG", str(cfg))
         assert await chat_mod._resolve_model(_state()) == "claude-opus-4-8"
+
+
+@pytest.mark.asyncio
+class TestCustomEndpointRouting:  # REQ-1790, REQ-1808
+    """A configured ai_endpoint is reached via aisuite's underlying openai/anthropic provider
+    with base_url/api_key overridden — never by aisuite recognizing the endpoint's own id (it
+    can't; Client.create only accepts its fixed provider registry)."""
+
+    def _state_with_endpoint(self, tmp_path, endpoint: dict, monkeypatch):
+        cfg = tmp_path / "provisa.yaml"
+        import yaml
+
+        cfg.write_text(yaml.dump({"sources": [], "ai_endpoints": [endpoint]}))
+        monkeypatch.setenv("PROVISA_CONFIG", str(cfg))
+        return _state()
+
+    async def test_native_vendor_gets_no_provider_override(self, tmp_path, monkeypatch):
+        state = self._state_with_endpoint(
+            tmp_path, {"id": "my-gateway", "style": "openai", "base_url": "https://x"}, monkeypatch
+        )
+        model_id, provider_configs = await chat_mod._resolve_aisuite_routing(
+            state, "ollama", "llama3.1:8b"
+        )
+        assert model_id == "ollama:llama3.1:8b"
+        assert provider_configs == {}
+
+    async def test_custom_endpoint_routes_through_its_style_provider(self, tmp_path, monkeypatch):
+        state = self._state_with_endpoint(
+            tmp_path,
+            {"id": "ollama-local", "style": "openai", "base_url": "http://localhost:11434/v1"},
+            monkeypatch,
+        )
+        model_id, provider_configs = await chat_mod._resolve_aisuite_routing(
+            state, "ollama-local", "llama3.1:8b"
+        )
+        # The model string names "openai" (the provider aisuite actually knows), not the
+        # endpoint's own id — that id only ever resolves through provider_configs.
+        assert model_id == "openai:llama3.1:8b"
+        assert provider_configs == {
+            "openai": {"base_url": "http://localhost:11434/v1", "api_key": "not-required"}
+        }
+
+    async def test_anthropic_style_gets_no_placeholder_key(self, tmp_path, monkeypatch):
+        state = self._state_with_endpoint(
+            tmp_path,
+            {"id": "claude-gateway", "style": "anthropic", "base_url": "https://gateway.internal"},
+            monkeypatch,
+        )
+        model_id, provider_configs = await chat_mod._resolve_aisuite_routing(
+            state, "claude-gateway", "claude-x"
+        )
+        assert model_id == "anthropic:claude-x"
+        assert provider_configs == {"anthropic": {"base_url": "https://gateway.internal"}}
+
+    async def test_api_key_env_names_a_plain_env_var(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("MY_GATEWAY_KEY", "literal-key-value")
+        state = self._state_with_endpoint(
+            tmp_path,
+            {
+                "id": "gw",
+                "style": "openai",
+                "base_url": "https://gw",
+                "api_key_env": "MY_GATEWAY_KEY",
+            },
+            monkeypatch,
+        )
+        _, provider_configs = await chat_mod._resolve_aisuite_routing(state, "gw", "m")
+        assert provider_configs["openai"]["api_key"] == "literal-key-value"
+
+    async def test_api_key_env_value_is_itself_an_env_reference(self, tmp_path, monkeypatch):
+        # The env var NAMED by api_key_env holds a further ${env:...} reference — one layer of
+        # indirection resolves into another, per the general reference grammar.
+        monkeypatch.setenv("REAL_KEY", "the-actual-key")
+        monkeypatch.setenv("INDIRECTION_VAR", "${env:REAL_KEY}")
+        state = self._state_with_endpoint(
+            tmp_path,
+            {
+                "id": "gw",
+                "style": "openai",
+                "base_url": "https://gw",
+                "api_key_env": "INDIRECTION_VAR",
+            },
+            monkeypatch,
+        )
+        _, provider_configs = await chat_mod._resolve_aisuite_routing(state, "gw", "m")
+        assert provider_configs["openai"]["api_key"] == "the-actual-key"
+
+    async def test_api_key_env_field_can_be_a_direct_env_reference(self, tmp_path, monkeypatch):
+        # No indirection at all: api_key_env holds "${env:...}" directly rather than naming a
+        # var — the field's value IS the reference, not a name to look up.
+        monkeypatch.setenv("DIRECT_KEY", "direct-key-value")
+        state = self._state_with_endpoint(
+            tmp_path,
+            {
+                "id": "gw",
+                "style": "openai",
+                "base_url": "https://gw",
+                "api_key_env": "${env:DIRECT_KEY}",
+            },
+            monkeypatch,
+        )
+        _, provider_configs = await chat_mod._resolve_aisuite_routing(state, "gw", "m")
+        assert provider_configs["openai"]["api_key"] == "direct-key-value"
+
+    async def test_base_url_can_be_a_direct_env_reference(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GATEWAY_URL", "https://resolved-gateway.internal")
+        state = self._state_with_endpoint(
+            tmp_path, {"id": "gw", "style": "openai", "base_url": "${env:GATEWAY_URL}"}, monkeypatch
+        )
+        _, provider_configs = await chat_mod._resolve_aisuite_routing(state, "gw", "m")
+        assert provider_configs["openai"]["base_url"] == "https://resolved-gateway.internal"
+
+    async def test_base_url_can_be_a_secret_reference(self, tmp_path, monkeypatch):
+        # ${secret:...} needs the org vault bound — verify it's actually invoked, not just that
+        # ${env:...} happens to work (which needs no org context at all).
+        def fake_resolve_secrets(value):
+            assert value == "${secret:gateway_url}"
+            return "https://from-the-vault.internal"
+
+        @asynccontextmanager
+        async def fake_bound_to_request_org():
+            yield
+
+        monkeypatch.setattr("provisa.core.secrets.resolve_secrets", fake_resolve_secrets)
+        monkeypatch.setattr(
+            "provisa.core.secrets_store.bound_to_request_org", fake_bound_to_request_org
+        )
+        state = self._state_with_endpoint(
+            tmp_path,
+            {"id": "gw", "style": "openai", "base_url": "${secret:gateway_url}"},
+            monkeypatch,
+        )
+        _, provider_configs = await chat_mod._resolve_aisuite_routing(state, "gw", "m")
+        assert provider_configs["openai"]["base_url"] == "https://from-the-vault.internal"
+
+    async def test_no_api_key_env_and_anthropic_style_stays_keyless(self, tmp_path, monkeypatch):
+        state = self._state_with_endpoint(
+            tmp_path, {"id": "gw", "style": "anthropic", "base_url": "https://gw"}, monkeypatch
+        )
+        _, provider_configs = await chat_mod._resolve_aisuite_routing(state, "gw", "m")
+        assert "api_key" not in provider_configs["anthropic"]
