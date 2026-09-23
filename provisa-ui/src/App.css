@@ -2104,6 +2104,37 @@ main {
   opacity: 1;
 }
 
+/* REQ-1815: the send button's busy state is a pulsing red stop-square, not a spinner. */
+@keyframes chat-panel-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.chat-panel-stop-icon {
+  animation: chat-panel-pulse 1s ease-in-out infinite;
+}
+
+/* REQ-1815: clicking Stop briefly "lights up" the prompt box so it's obvious focus returned there
+   and typing can continue right away. */
+@keyframes chat-panel-textarea-flash {
+  0% {
+    box-shadow: 0 0 0 0 var(--mantine-color-blue-5);
+  }
+  50% {
+    box-shadow: 0 0 0 4px var(--mantine-color-blue-5);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+.chat-panel-textarea-flash textarea {
+  animation: chat-panel-textarea-flash 650ms ease-out;
+}
+
 /* REQ-1559: Admin's navigation is a vertical rail beside the page, not a horizontal bar above it —
    two dozen entries fit down the left edge and only crowd the top. `.app-body` is the row that
    holds the two; off an admin route the rail renders nothing and main takes the full width. */

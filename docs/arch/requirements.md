@@ -19287,3 +19287,39 @@ The Requests page's reject dialog populates its reason dropdown from GET /admin/
 **Code:** `provisa/api/admin/creation_requests_router.py`
 
 **Tests:** `tests/unit/test_creation_requests.py`
+
+### REQ-1815 · Chat UI / Send Control {#REQ-1815}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The Polly chat panel's Send button is now a media-style stop/go control that renders as a pulsing red stop square while a request is in flight; clicking it aborts the in-flight fetch via AbortController and re-focuses the prompt textarea with a brief CSS flash highlight so the user can immediately continue typing. When idle, it renders as a plain play-triangle icon. An AbortError (user-initiated abort) is not surfaced as an error banner.
+
+**Use case:** Stop/go controls are familiar to media players; the visual feedback (pulsing stop icon, textarea re-focus and flash) makes it clear that the request was interrupted and the user can start typing again immediately.
+
+**Code:** `provisa-ui/src/hooks/useMcpChat.ts`, `provisa-ui/src/components/ChatPanel.tsx`, `provisa-ui/src/App.css`
+
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
+### REQ-1816 · Chat UI / present_choice {#REQ-1816}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The present_choice widget (yes_no, single, multi modes) now offers a free-text "Something else…" escape hatch so users are never forced into the model-supplied options. The "Something else…" choice renders as a radio/checkbox option (or toggle for yes_no) that reveals a TextInput field; typed text is what present_choice resolves with (ChoiceAnswer already permitted string values).
+
+**Use case:** Users may wish to provide an answer not anticipated by the model; the escape hatch prevents frustration and allows the LLM to refine its search or strategy based on user feedback.
+
+**Code:** `provisa-ui/src/components/ChatPanel.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
+### REQ-1817 · Chat UI / present_choice {#REQ-1817}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+Three prompt wording refinements for present_choice and confirm_required scenarios. (a) The choice-overlay Box in the UI is now a child of the chat panel's Box (not a sibling), so position:absolute centers within the panel. (b) confirm_required yes_no when the caller already holds the capability uses plain "Create the X source now?" instead of mentioning a non-existent review queue. (c) The single-candidate yes_no confirmation before propose_source/propose_table says "Would you like to create a request for the <name> source/table?" with no mention of proposing/queuing/review.
+
+**Use case:** Accurate, jargon-free prompts prevent user confusion when Polly asks for confirmation; centering the overlay within the chat panel keeps the UX interaction visually contained.
+
+**Code:** `provisa-ui/src/components/ChatPanel.tsx`, `provisa/api/mcp/chat.py`
+
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`

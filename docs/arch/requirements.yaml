@@ -62156,3 +62156,93 @@
     Given a webhook registration request
     When an admin clicks Reject
     Then the reason dropdown is non-empty and functional
+- id: REQ-1815
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Chat UI / Send Control
+  priority: SHOULD
+  type: ui
+  description: >-
+    The Polly chat panel's Send button is now a media-style stop/go control that renders
+    as a pulsing red stop square while a request is in flight; clicking it aborts the
+    in-flight fetch via AbortController and re-focuses the prompt textarea with a brief
+    CSS flash highlight so the user can immediately continue typing. When idle, it renders
+    as a plain play-triangle icon. An AbortError (user-initiated abort) is not surfaced
+    as an error banner.
+  use_case: >-
+    Stop/go controls are familiar to media players; the visual feedback (pulsing stop icon,
+    textarea re-focus and flash) makes it clear that the request was interrupted and the
+    user can start typing again immediately.
+  code:
+  - provisa-ui/src/hooks/useMcpChat.ts
+  - provisa-ui/src/components/ChatPanel.tsx
+  - provisa-ui/src/App.css
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given an in-flight MCP request
+    When the user clicks the pulsing red stop button
+    Then the fetch is aborted via AbortController
+    And the textarea is re-focused with a CSS flash
+    And no error banner appears
+    When idle
+    Then the button renders as a play-triangle icon
+- id: REQ-1816
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Chat UI / present_choice
+  priority: SHOULD
+  type: ui
+  description: >-
+    The present_choice widget (yes_no, single, multi modes) now offers a free-text
+    "Something else…" escape hatch so users are never forced into the model-supplied
+    options. The "Something else…" choice renders as a radio/checkbox option (or toggle
+    for yes_no) that reveals a TextInput field; typed text is what present_choice resolves
+    with (ChoiceAnswer already permitted string values).
+  use_case: >-
+    Users may wish to provide an answer not anticipated by the model; the escape hatch
+    prevents frustration and allows the LLM to refine its search or strategy based on
+    user feedback.
+  code:
+  - provisa-ui/src/components/ChatPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given present_choice is displayed in single or multi-candidate mode
+    When the user selects "Something else…"
+    Then a TextInput appears for free-form text entry
+    And the typed text is resolved as the choice answer
+    And the choice is recorded in conversation history
+- id: REQ-1817
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Chat UI / present_choice
+  priority: SHOULD
+  type: ui
+  description: >-
+    Three prompt wording refinements for present_choice and confirm_required scenarios.
+    (a) The choice-overlay Box in the UI is now a child of the chat panel's Box (not a
+    sibling), so position:absolute centers within the panel. (b) confirm_required yes_no
+    when the caller already holds the capability uses plain "Create the X source now?"
+    instead of mentioning a non-existent review queue. (c) The single-candidate yes_no
+    confirmation before propose_source/propose_table says "Would you like to create a
+    request for the <name> source/table?" with no mention of proposing/queuing/review.
+  use_case: >-
+    Accurate, jargon-free prompts prevent user confusion when Polly asks for confirmation;
+    centering the overlay within the chat panel keeps the UX interaction visually contained.
+  code:
+  - provisa-ui/src/components/ChatPanel.tsx
+  - provisa/api/mcp/chat.py
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given the overlay is rendered
+    When it appears on screen
+    Then it is centered within the chat panel container (not the full document)
+    And the confirm_required prompt for a user who already holds capability says only
+    "Create the X source now?"
+    And the single-candidate prompt says "Would you like to create a request for the
+    <name> source/table?"

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { executeClientTool, type ClientToolContext } from "../mcp/clientTools";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
@@ -46,6 +46,8 @@ export function useMcpChat(roleId: string, toolCtx: ClientToolContext, currentRo
   const [tools, setTools] = useState<ToolEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
+  // REQ-1815: the in-flight fetch a "Stop" click aborts.
+  const abortRef = useRef<AbortController | null>(null);
 
   const markToolResolved = (name: string, isError: boolean) => {
     setTools((prev) => {
@@ -65,11 +67,13 @@ export function useMcpChat(roleId: string, toolCtx: ClientToolContext, currentRo
   const streamOnce = async (
     convo: RawTurn[],
     onText: (chunk: string) => void,
+    signal: AbortSignal,
   ): Promise<Record<string, unknown> | null> => {
     const resp = await fetch(`${API_BASE}/admin/mcp/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-provisa-role": roleId },
       body: JSON.stringify({ messages: convo, current_route: currentRoute }),
+      signal,
     });
     if (!resp.ok || !resp.body) throw new Error(`chat failed: ${resp.status}`);
 
@@ -110,6 +114,8 @@ export function useMcpChat(roleId: string, toolCtx: ClientToolContext, currentRo
     const assistantIndex = displayHistory.length;
     setMessages([...displayHistory, { role: "assistant" as const, text: "" }]);
     setBusy(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     let assistantText = "";
     const appendAssistant = (chunk: string) => {
@@ -129,7 +135,7 @@ export function useMcpChat(roleId: string, toolCtx: ClientToolContext, currentRo
 
     try {
       for (;;) {
-        const awaiting = await streamOnce(convo, appendAssistant);
+        const awaiting = await streamOnce(convo, appendAssistant, controller.signal);
         if (!awaiting) break; // the model finished for real — no pending client tools
 
         const pending = awaiting.pending as { id: string; name: string; input: unknown }[];
@@ -165,8 +171,12 @@ export function useMcpChat(roleId: string, toolCtx: ClientToolContext, currentRo
         // Loop continues: re-POSTs `convo` to resume the model's turn.
       }
     } catch (e) {
-      setError({ message: e instanceof Error ? e.message : String(e) });
+      // A user-initiated Stop (REQ-1815) is not a failure — don't surface an error banner for it.
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        setError({ message: e instanceof Error ? e.message : String(e) });
+      }
     } finally {
+      abortRef.current = null;
       setBusy(false);
     }
   };
@@ -177,6 +187,7 @@ export function useMcpChat(roleId: string, toolCtx: ClientToolContext, currentRo
     busy,
     error,
     send,
+    cancel: () => abortRef.current?.abort(),
     clear: () => setMessages([]),
     pushMessage: (msg: ChatMsg) => setMessages((prev) => [...prev, msg]),
   };

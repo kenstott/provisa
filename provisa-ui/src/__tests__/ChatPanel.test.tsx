@@ -406,3 +406,116 @@ describe("ChatPanel — present_choice answer recorded in conversation (REQ-1813
     expect(screen.getByText("B")).toBeInTheDocument();
   });
 });
+
+describe("ChatPanel — present_choice modal positioning (REQ-1812)", () => {
+  it("renders the choice overlay INSIDE the docked chat panel, not as a sibling of it", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([
+        {
+          type: "awaiting_client_tools",
+          assistant_content: [
+            { type: "tool_use", id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } },
+          ],
+          server_tool_results: [],
+          pending: [{ id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } }],
+        },
+        { type: "done" },
+      ]),
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "do it" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => screen.getByTestId("chat-panel-choice-modal"));
+    expect(screen.getByTestId("chat-panel")).toContainElement(
+      screen.getByTestId("chat-panel-choice-modal"),
+    );
+    fetchMock.mockRestore();
+  });
+});
+
+describe("ChatPanel — present_choice 'Something else' free text (REQ-1816)", () => {
+  it("single mode resolves with typed text instead of a listed option", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            type: "awaiting_client_tools",
+            assistant_content: [
+              {
+                type: "tool_use",
+                id: "c1",
+                name: "present_choice",
+                input: { question: "Which source?", mode: "single", options: ["A", "B"] },
+              },
+            ],
+            server_tool_results: [],
+            pending: [
+              {
+                id: "c1",
+                name: "present_choice",
+                input: { question: "Which source?", mode: "single", options: ["A", "B"] },
+              },
+            ],
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockResolvedValueOnce(sseResponse([{ type: "text", text: "Ok." }, { type: "done" }]));
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "find a source" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => screen.getByLabelText("Something else…"));
+    fireEvent.click(screen.getByLabelText("Something else…"));
+    fireEvent.change(screen.getByPlaceholderText("Type your answer…"), {
+      target: { value: "Neither, use C" },
+    });
+    fireEvent.click(screen.getByText("Submit"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const [, secondInit] = fetchMock.mock.calls[1];
+    const sentBody = JSON.parse((secondInit as RequestInit).body as string);
+    const resultContent = JSON.parse(sentBody.messages.at(-1).content[0].content);
+    expect(resultContent.selected).toBe("Neither, use C");
+    expect(screen.getByText("Neither, use C")).toBeInTheDocument();
+    fetchMock.mockRestore();
+  });
+});
+
+describe("ChatPanel — Stop/Go send control (REQ-1815)", () => {
+  it("shows Stop while busy; clicking it aborts the request and refocuses the prompt", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    let capturedSignal: AbortSignal | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          capturedSignal = (init as RequestInit).signal ?? undefined;
+          capturedSignal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        }) as Promise<Response>,
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "do something slow" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => screen.getByText("Stop"));
+    fireEvent.click(screen.getByTestId("chat-panel-send"));
+
+    await waitFor(() => screen.getByText("Send"));
+    expect(textarea).toHaveFocus();
+  });
+});

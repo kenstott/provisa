@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   ActionIcon,
@@ -22,6 +22,7 @@ import {
   Group,
   Modal,
   Paper,
+  TextInput,
   Radio,
   ScrollArea,
   Stack,
@@ -31,7 +32,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { useMutation } from "@apollo/client/react";
-import { Check, Copy, Eraser, MessageCircle, Mic, MicOff } from "lucide-react";
+import { Check, Copy, Eraser, MessageCircle, Mic, MicOff, Play, Square } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "../context/AuthContext";
@@ -154,23 +155,29 @@ export function ChatPanel() {
   const pendingChoiceResolveRef = useRef<((answer: ChoiceAnswer) => void) | null>(null);
   const [choiceState, setChoiceState] = useState<PresentChoiceRequest | null>(null);
   const [choiceDraft, setChoiceDraft] = useState<string[]>([]);
+  // REQ-1816: the listed options are never exhaustive — every mode also offers a free-text
+  // "Something else" escape hatch rather than forcing the user into one of the model's options.
+  const OTHER = "__other__";
+  const [otherText, setOtherText] = useState("");
+  const [yesNoOther, setYesNoOther] = useState(false);
   const presentChoice = (req: PresentChoiceRequest): Promise<ChoiceAnswer> =>
     new Promise((resolve) => {
       pendingChoiceResolveRef.current = resolve;
       setChoiceDraft([]);
+      setOtherText("");
+      setYesNoOther(false);
       setChoiceState(req);
     });
   // REQ-1813: record what was picked as an ordinary chat message, so the choice has a visible,
   // scrollable trace in the conversation instead of vanishing once the widget closes.
-  const describeChoice = (req: PresentChoiceRequest, answer: ChoiceAnswer): string => {
-    if (req.mode === "yes_no") return answer ? "Yes" : "No";
+  const describeChoice = (answer: ChoiceAnswer): string => {
+    if (typeof answer === "boolean") return answer ? "Yes" : "No";
     if (Array.isArray(answer)) return answer.length > 0 ? answer.join(", ") : "(none selected)";
-    return String(answer);
+    return answer;
   };
   const resolveChoice = (answer: ChoiceAnswer) => {
-    const req = choiceState;
     setChoiceState(null);
-    if (req) pushMessage({ role: "user", text: describeChoice(req, answer) });
+    pushMessage({ role: "user", text: describeChoice(answer) });
     pendingChoiceResolveRef.current?.(answer);
     pendingChoiceResolveRef.current = null;
   };
@@ -191,7 +198,7 @@ export function ChatPanel() {
     return { success: false, message: `no mutation wired for client tool ${name}` };
   };
 
-  const { messages, tools, busy, error, send, clear, pushMessage } = useMcpChat(
+  const { messages, tools, busy, error, send, cancel, clear, pushMessage } = useMcpChat(
     roleId,
     { navigate, confirm, runMutation, presentChoice },
     location.pathname,
@@ -208,6 +215,27 @@ export function ChatPanel() {
     setDraft("");
     void send(text);
   };
+
+  // REQ-1815: Stop refocuses + briefly highlights the prompt box so the user can immediately
+  // continue typing, instead of just silently killing the request. The textarea is still
+  // `disabled={busy}` at the instant Stop is clicked — a disabled element can't take focus — so
+  // the actual focus+flash is deferred to the effect below, which fires once `busy` (and the
+  // `disabled` attribute with it) has actually flipped back to false.
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [flashPrompt, setFlashPrompt] = useState(false);
+  const stoppedRef = useRef(false);
+  const stopSend = () => {
+    stoppedRef.current = true;
+    cancel();
+  };
+  useEffect(() => {
+    if (busy || !stoppedRef.current) return;
+    stoppedRef.current = false;
+    textareaRef.current?.focus();
+    setFlashPrompt(true);
+    const t = window.setTimeout(() => setFlashPrompt(false), 650);
+    return () => window.clearTimeout(t);
+  }, [busy]);
 
   // REQ-1805: mic-to-text — appends the transcript to whatever's already typed, so a person can
   // dictate a follow-on clause instead of only replacing the draft.
@@ -411,6 +439,8 @@ export function ChatPanel() {
         </ScrollArea>
 
         <Textarea
+          ref={textareaRef}
+          className={flashPrompt ? "chat-panel-textarea-flash" : undefined}
           placeholder="Ask the assistant, or tell it what to do…"
           value={draft}
           onChange={(e) => setDraft(e.currentTarget.value)}
@@ -442,31 +472,33 @@ export function ChatPanel() {
             )
           }
         />
-        <Button mt="xs" onClick={onSend} disabled={busy || !draft.trim()} loading={busy}>
-          Send
+        {/* REQ-1815: a media-style stop/go control, not a spinner — while busy this IS a red
+            "stop" square (pulsing to show the request is still running) whose click aborts the
+            in-flight fetch and refocuses + flashes the prompt box so the user can immediately
+            type a follow-up; idle, it's a plain "go" triangle. */}
+        <Button
+          mt="xs"
+          color={busy ? "red" : undefined}
+          leftSection={
+            busy ? (
+              <Square size={14} fill="currentColor" className="chat-panel-stop-icon" />
+            ) : (
+              <Play size={14} fill="currentColor" />
+            )
+          }
+          onClick={busy ? stopSend : onSend}
+          disabled={!busy && !draft.trim()}
+          data-testid="chat-panel-send"
+        >
+          {busy ? "Stop" : "Send"}
         </Button>
-      </Box>
 
-      <Modal
-        opened={confirmState !== null}
-        onClose={() => resolveConfirm(false)}
-        title={confirmState?.title}
-      >
-        <Text size="sm" mb="md">
-          {confirmState?.message}
-        </Text>
-        <Group justify="flex-end">
-          <Button variant="default" onClick={() => resolveConfirm(false)}>
-            Cancel
-          </Button>
-          <Button onClick={() => resolveConfirm(true)}>Confirm</Button>
-        </Group>
-      </Modal>
-
-      {/* REQ-1812: centered WITHIN the chat panel, not the viewport — a plain absolutely-positioned
-          overlay inside the panel's own (position: relative) Box, rather than Mantine's <Modal>,
-          which portals to the document body and centers over the whole app regardless of where
-          the panel is docked. */}
+      {/* REQ-1812: centered WITHIN the chat panel, not the viewport. Must be a DESCENDANT of this
+          Box (not a sibling rendered after it closes) — position: absolute centers against the
+          nearest POSITIONED ancestor, and rendering it outside the panel meant its ancestor was
+          effectively the document, so it centered over the whole app regardless of where the
+          panel was docked. A plain overlay Box here, not Mantine's <Modal> (which portals to
+          document.body and can't be confined to an arbitrary container at all). */}
       {choiceState && (
         <Box
           data-testid="chat-panel-choice-modal"
@@ -489,14 +521,40 @@ export function ChatPanel() {
               {choiceState.question}
             </Text>
 
-            {choiceState.mode === "yes_no" && (
-              <Group justify="flex-end">
-                <Button variant="default" onClick={() => resolveChoice(false)}>
-                  No
-                </Button>
-                <Button onClick={() => resolveChoice(true)}>Yes</Button>
-              </Group>
-            )}
+            {choiceState.mode === "yes_no" &&
+              (yesNoOther ? (
+                <Stack gap="sm">
+                  <TextInput
+                    placeholder="Type your answer…"
+                    value={otherText}
+                    onChange={(e) => setOtherText(e.currentTarget.value)}
+                    autoFocus
+                  />
+                  <Group justify="space-between">
+                    <Button variant="subtle" size="xs" onClick={() => setYesNoOther(false)}>
+                      Back to Yes/No
+                    </Button>
+                    <Button
+                      disabled={!otherText.trim()}
+                      onClick={() => resolveChoice(otherText.trim())}
+                    >
+                      Submit
+                    </Button>
+                  </Group>
+                </Stack>
+              ) : (
+                <Stack gap="sm">
+                  <Group justify="flex-end">
+                    <Button variant="default" onClick={() => resolveChoice(false)}>
+                      No
+                    </Button>
+                    <Button onClick={() => resolveChoice(true)}>Yes</Button>
+                  </Group>
+                  <Button variant="subtle" size="xs" onClick={() => setYesNoOther(true)}>
+                    Something else…
+                  </Button>
+                </Stack>
+              ))}
 
             {choiceState.mode === "single" && (
               <Stack gap="sm">
@@ -505,10 +563,26 @@ export function ChatPanel() {
                     {choiceState.options?.map((opt) => (
                       <Radio key={opt} value={opt} label={opt} />
                     ))}
+                    <Radio value={OTHER} label="Something else…" />
                   </Stack>
                 </Radio.Group>
+                {choiceDraft[0] === OTHER && (
+                  <TextInput
+                    placeholder="Type your answer…"
+                    value={otherText}
+                    onChange={(e) => setOtherText(e.currentTarget.value)}
+                    autoFocus
+                  />
+                )}
                 <Group justify="flex-end">
-                  <Button disabled={!choiceDraft[0]} onClick={() => resolveChoice(choiceDraft[0])}>
+                  <Button
+                    disabled={
+                      !choiceDraft[0] || (choiceDraft[0] === OTHER && !otherText.trim())
+                    }
+                    onClick={() =>
+                      resolveChoice(choiceDraft[0] === OTHER ? otherText.trim() : choiceDraft[0])
+                    }
+                  >
                     Submit
                   </Button>
                 </Group>
@@ -522,16 +596,50 @@ export function ChatPanel() {
                     {choiceState.options?.map((opt) => (
                       <Checkbox key={opt} value={opt} label={opt} />
                     ))}
+                    <Checkbox value={OTHER} label="Something else…" />
                   </Stack>
                 </Checkbox.Group>
+                {choiceDraft.includes(OTHER) && (
+                  <TextInput
+                    placeholder="Type your answer…"
+                    value={otherText}
+                    onChange={(e) => setOtherText(e.currentTarget.value)}
+                    autoFocus
+                  />
+                )}
                 <Group justify="flex-end">
-                  <Button onClick={() => resolveChoice(choiceDraft)}>Submit</Button>
+                  <Button
+                    onClick={() => {
+                      const rest = choiceDraft.filter((v) => v !== OTHER);
+                      const extra = choiceDraft.includes(OTHER) && otherText.trim() ? [otherText.trim()] : [];
+                      resolveChoice([...rest, ...extra]);
+                    }}
+                  >
+                    Submit
+                  </Button>
                 </Group>
               </Stack>
             )}
           </Paper>
         </Box>
       )}
+      </Box>
+
+      <Modal
+        opened={confirmState !== null}
+        onClose={() => resolveConfirm(false)}
+        title={confirmState?.title}
+      >
+        <Text size="sm" mb="md">
+          {confirmState?.message}
+        </Text>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={() => resolveConfirm(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => resolveConfirm(true)}>Confirm</Button>
+        </Group>
+      </Modal>
     </>
   );
 }
