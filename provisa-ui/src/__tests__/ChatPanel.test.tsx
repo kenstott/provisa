@@ -595,4 +595,48 @@ describe("ChatPanel — tool call log (REQ-1821)", () => {
     fireEvent.mouseEnter(badge);
     await waitFor(() => screen.getByText(/"query": "orders"/));
   });
+
+  it("shows a check icon (not the running spinner) once the tool completes", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([
+        { type: "tool_use", name: "search_catalog", input: { query: "orders" } },
+        { type: "tool_result", name: "search_catalog", is_error: false },
+        { type: "text", text: "Found it." },
+        { type: "done" },
+      ]),
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "find it" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => screen.getByText("Found it."));
+    expect(screen.getByTestId("chat-panel-tool-done-icon")).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-panel-tool-spinner")).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-panel-tool-badge")).toHaveAttribute("data-running", "false");
+  });
+
+  it("shows an error icon when the tool fails", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([
+        { type: "tool_use", name: "run_sql", input: { sql: "SELECT 1" } },
+        { type: "tool_result", name: "run_sql", is_error: true },
+        { type: "text", text: "That query failed." },
+        { type: "done" },
+      ]),
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "run it" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => screen.getByText("That query failed."));
+    expect(screen.getByTestId("chat-panel-tool-error-icon")).toBeInTheDocument();
+  });
 });

@@ -20,6 +20,7 @@ import {
   CloseButton,
   CopyButton,
   Group,
+  Loader,
   Modal,
   Paper,
   TextInput,
@@ -32,7 +33,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { useApolloClient, useMutation } from "@apollo/client/react";
-import { Check, Copy, Eraser, MessageCircle, Mic, MicOff, Play, Square } from "lucide-react";
+import { Check, Copy, Eraser, MessageCircle, Mic, MicOff, Play, Square, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "../context/AuthContext";
@@ -397,8 +398,18 @@ export function ChatPanel() {
                   <Badge
                     size="sm"
                     variant={tl.running ? "outline" : "light"}
-                    color={tl.error ? "red" : "grape"}
+                    color={tl.error ? "red" : tl.running ? "grape" : "teal"}
                     data-testid="chat-panel-tool-badge"
+                    data-running={tl.running ? "true" : "false"}
+                    leftSection={
+                      tl.running ? (
+                        <Loader size={10} color="grape" data-testid="chat-panel-tool-spinner" />
+                      ) : tl.error ? (
+                        <X size={10} data-testid="chat-panel-tool-error-icon" />
+                      ) : (
+                        <Check size={10} data-testid="chat-panel-tool-done-icon" />
+                      )
+                    }
                   >
                     {tl.name}
                   </Badge>

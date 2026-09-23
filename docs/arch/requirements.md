@@ -19375,3 +19375,15 @@ The Polly chat panel's tool-call log (the row of badges above the conversation w
 **Code:** `provisa-ui/src/components/ChatPanel.tsx`
 
 **Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
+### REQ-1822 · Chat UI / Tool Call Log {#REQ-1822}
+
+**Status:** ✅ complete · **Priority:** MAY · **Type:** ui
+
+The Polly chat panel's tool-call badges now display an animated Mantine Loader spinner in the badge's leftSection while a tool is executing, swapping to a check icon on success or an X icon on failure once the tool_result event arrives. This replaces the previous plain outline/light variant-only distinction with a genuine in-progress indicator that unambiguously signals ongoing work versus completion.
+
+**Use case:** An animated spinner reads more clearly as in-progress than a static badge variant change or flashing state, providing explicit visual feedback that work is underway without the ambiguity of stylistic changes that may be misinterpreted as warnings or errors.
+
+**Code:** `provisa-ui/src/components/ChatPanel.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`

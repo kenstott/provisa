@@ -62367,3 +62367,33 @@
     And the scroll area never exceeds its maximum height
     When hovering over a tool badge
     Then a tooltip appears with the tool's call parameters as formatted JSON
+- id: REQ-1822
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Chat UI / Tool Call Log
+  priority: MAY
+  type: ui
+  description: >-
+    The Polly chat panel's tool-call badges now display an animated Mantine Loader
+    spinner in the badge's leftSection while a tool is executing, swapping to a check
+    icon on success or an X icon on failure once the tool_result event arrives. This
+    replaces the previous plain outline/light variant-only distinction with a genuine
+    in-progress indicator that unambiguously signals ongoing work versus completion.
+  use_case: >-
+    An animated spinner reads more clearly as in-progress than a static badge variant
+    change or flashing state, providing explicit visual feedback that work is underway
+    without the ambiguity of stylistic changes that may be misinterpreted as warnings
+    or errors.
+  code:
+  - provisa-ui/src/components/ChatPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given a tool is called via the chat panel
+    When the tool begins executing
+    Then the tool badge displays a spinner icon in its leftSection
+    When the tool completes successfully
+    Then the spinner swaps to a check icon
+    When the tool fails
+    Then the spinner swaps to an X icon
