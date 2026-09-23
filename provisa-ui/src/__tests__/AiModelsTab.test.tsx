@@ -47,6 +47,7 @@ function state(overrides: Partial<AiModelsState> = {}): AiModelsState {
       relationship_inference: "claude-haiku-4-5-20251001",
       sql_generation: "claude-opus-4-6",
       table_selection: "claude-haiku-4-5-20251001",
+      mcp_chat: "claude-opus-4-8",
     },
     vector_models: [
       {
@@ -278,7 +279,7 @@ describe("AiModelsTab", () => {
     );
     render(<AiModelsTab />);
 
-    await waitFor(() => expect(screen.getAllByText(/set an API key for anthropic/).length).toBe(5));
+    await waitFor(() => expect(screen.getAllByText(/set an API key for anthropic/).length).toBe(6));
     fireEvent.change(screen.getByTestId("ai-model-sql_generation"), {
       target: { value: "some-custom-model" },
     });

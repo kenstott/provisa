@@ -31,6 +31,9 @@ export function EngineWakingBanner() {
 
   useEffect(() => {
     if (!waking) {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect --
+         syncing local `seconds` state to the external `waking` subscription's transition, before
+         the interval below takes over ticking it */
       setSeconds(null);
       return;
     }

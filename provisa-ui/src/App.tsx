@@ -28,6 +28,7 @@ import { TitleTooltips } from "./components/TitleTooltips";
 import { PlatformAdminWelcomeModal } from "./components/PlatformAdminWelcomeModal";
 import { MaintenanceBanner } from "./components/MaintenanceBanner"; // REQ-1466
 import { LicenseBadge } from "./components/LicenseBadge";
+import { ChatPanel } from "./components/ChatPanel";
 import { fetchSetupStatus } from "./api/setup";
 import { TourProvider } from "./tour/useTour";
 import { TourAutoStart } from "./tour/TourAutoStart";
@@ -259,6 +260,9 @@ function App() {
                         {/* Persistent "Unregistered" indicator, distinct from REQ-1137's post-trial
                     nag: visible from day one whenever unlicensed, never gates anything. */}
                         <LicenseBadge />
+                        {/* REQ-1795: the chat assistant panel — available on every route, not just
+                    the dedicated MCP Explore page. */}
+                        <ChatPanel />
                         <NavBar />
                         {/* REQ-1559: the admin rail stands beside the page rather than above it, so
                     the row is the shell for both. It renders nothing off an admin route. */}

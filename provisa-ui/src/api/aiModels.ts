@@ -14,7 +14,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 // --- AI models / vector models / NL rate limit (REQ-464, REQ-419, REQ-500, REQ-370) ---
 
-/** The five model-role assignments. Each value is a model-name string (full dict form is
+/** The model-role assignments. Each value is a model-name string (full dict form is
  *  returned verbatim by the API but edited as a string in the UI). */
 export interface AiModelAssignments {
   table_description: string | Record<string, unknown>;
@@ -22,6 +22,8 @@ export interface AiModelAssignments {
   relationship_inference: string | Record<string, unknown>;
   sql_generation: string | Record<string, unknown>;
   table_selection: string | Record<string, unknown>;
+  // REQ-1794: the model behind the right-hand chat assistant panel (provisa/api/mcp/chat.py).
+  mcp_chat: string | Record<string, unknown>;
 }
 
 export interface VectorModel {

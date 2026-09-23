@@ -16,6 +16,15 @@ payload and asks the provider to wrap it; only the wrapped DEK is stored. The
 provider is where the trust boundary lives — LocalKeychain keeps the master key on
 the machine (OS keychain / configured secret); the cloud KMS variants (REQ-690-694)
 keep it in AWS/Azure/GCP and never expose it.
+
+REQ-1802: "on the machine" does not require an OS keychain specifically. When ``keyring`` is not
+installed, or is installed but has no usable backend (headless Linux with no session keyring,
+sandboxed CI, a locked desktop session), the admin UI's "Generate key" button must still work end
+to end with no manual step — an operator should never have to fall back to hand-editing
+PROVISA_ENCRYPTION_KEY just because a Python package is missing. The fallback is a plain file under
+this host's Provisa data directory (0600, never in the database, never in git) — the same trust
+boundary an OS keychain offers (this machine, and only this machine, holds it), just without the
+OS integration.
 """
 
 from __future__ import annotations
@@ -23,6 +32,7 @@ from __future__ import annotations
 import base64
 import os
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -89,13 +99,33 @@ class LocalKeychain(MasterKeyProvider):  # REQ-684
         return cls(key)
 
 
+def _local_keystore_dir() -> Path:
+    """Root of the file-based fallback keystore (REQ-1802) — this host's own Provisa data
+    directory, matching the convention env_source_files.py/env_repo.py already use."""
+    return Path(os.environ.get("PROVISA_DATA_DIR") or (Path.home() / ".provisa")) / "encryption"
+
+
+def _file_keystore_path(key_id: str | None) -> Path:
+    return _local_keystore_dir() / f"{key_id or 'master'}.key"
+
+
 def _load_from_keychain(key_id: str | None) -> str | None:
-    """Return the base64 master key from the OS keychain, or None when unavailable."""
+    """Return the base64 master key from the OS keychain, else the file fallback keystore
+    (REQ-1802), else None when neither holds one."""
     try:
         import keyring  # noqa: PLC0415
-    except ImportError:
+
+        value = keyring.get_password(_KEYCHAIN_SERVICE, key_id or "master")
+        if value:
+            return value
+    except Exception:  # noqa: BLE001 - no keyring package, or an unusable backend, is the same
+        # "nothing here" answer to this caller; a specific reason is unrecoverable either way, so
+        # the fallback below is tried unconditionally.
+        pass
+    try:
+        return _file_keystore_path(key_id).read_text().strip() or None
+    except OSError:
         return None
-    return keyring.get_password(_KEYCHAIN_SERVICE, key_id or "master")
 
 
 class AwsKmsMasterKey(MasterKeyProvider):  # REQ-690
@@ -244,13 +274,23 @@ def generate_master_key_b64() -> str:
 
 
 def store_master_key(key_b64: str, key_id: str | None = None) -> bool:
-    """Store a base64 master key in the OS keychain under ``key_id``. Returns True on success,
-    False when no OS keychain is available (the caller then supplies it via the env var)."""
+    """Store a base64 master key under ``key_id``: the OS keychain when it has a usable backend,
+    else a file under this host's Provisa data directory (REQ-1802, 0600, never in the database
+    or git — see the module docstring). Always returns True on this host having SOME place to
+    hold it; only a genuine filesystem failure (e.g. an unwritable home directory) propagates as
+    an exception, since that is a real problem worth seeing, not a silent "no keystore" answer."""
     if len(base64.b64decode(key_b64)) != _MASTER_KEY_BYTES:
         raise ValueError(f"master key must decode to {_MASTER_KEY_BYTES} bytes (AES-256)")
     try:
         import keyring  # noqa: PLC0415
-    except ImportError:
-        return False
-    keyring.set_password(_KEYCHAIN_SERVICE, key_id or "master", key_b64)
+
+        keyring.set_password(_KEYCHAIN_SERVICE, key_id or "master", key_b64)
+        return True
+    except Exception:  # noqa: BLE001 - no keyring package, or an unusable backend, falls through
+        # to the file keystore below rather than failing the whole operation.
+        pass
+    path = _file_keystore_path(key_id)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.write_text(key_b64)
+    os.chmod(path, 0o600)
     return True

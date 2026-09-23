@@ -185,7 +185,7 @@ async def _catalog_async():
 class TestSearchCatalogEndpoint:
     """The browser-facing REST wrapper /admin/mcp/search-catalog."""
 
-    def _client(self, monkeypatch, fake_search):
+    def _client(self, monkeypatch, fake_search, *, verified_role: str | None = None):
         import provisa.api.app as app_mod
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
@@ -196,10 +196,20 @@ class TestSearchCatalogEndpoint:
         monkeypatch.setattr(app_mod, "state", SimpleNamespace(), raising=False)
         monkeypatch.setattr(tools_mod, "search_catalog", fake_search)
         app = FastAPI()
+        if verified_role is not None:
+            # Stand-in for AuthMiddleware setting request.state.role after verifying the caller
+            # actually holds it (REQ-1799) — this test only needs the RESULT of that step.
+            @app.middleware("http")
+            async def _set_verified_role(request, call_next, _role=verified_role):
+                request.state.role = _role
+                return await call_next(request)
+
         app.include_router(router)
         return TestClient(app)
 
-    def test_passes_role_header_and_returns_results(self, monkeypatch):
+    def test_passes_verified_state_role_and_returns_results(self, monkeypatch):
+        # REQ-1799: role comes from request.state.role (AuthMiddleware-verified), never trusted
+        # from a raw client header. Simulate the middleware's job with a tiny pass-through here.
         seen = {}
 
         async def fake_search(state, role, query, k=5):
@@ -208,15 +218,33 @@ class TestSearchCatalogEndpoint:
             seen["k"] = k
             return [{"schema": "sales", "table": "customers"}]
 
-        client = self._client(monkeypatch, fake_search)
+        client = self._client(monkeypatch, fake_search, verified_role="analyst")
         r = client.post(
             "/admin/mcp/search-catalog",
             json={"query": "customer email", "k": 3},
-            headers={"x-provisa-role": "analyst"},
+            headers={"x-provisa-role": "someone-else"},  # must be ignored, not trusted
         )
         assert r.status_code == 200
         assert r.json()["results"][0]["table"] == "customers"
         assert seen == {"role": "analyst", "query": "customer email", "k": 3}
+
+    def test_raw_header_alone_is_not_trusted_as_role(self, monkeypatch):  # REQ-1799
+        # No middleware sets request.state.role here — a spoofed x-provisa-role header alone
+        # must NOT reach the tool as the role; only the body fallback (or state.role) may.
+        seen = {}
+
+        async def fake_search(state, role, query, k=5):
+            seen["role"] = role
+            return []
+
+        client = self._client(monkeypatch, fake_search)
+        r = client.post(
+            "/admin/mcp/search-catalog",
+            json={"query": "x"},
+            headers={"x-provisa-role": "admin"},
+        )
+        assert r.status_code == 200
+        assert seen["role"] == ""
 
     def test_permission_error_maps_to_403(self, monkeypatch):
         async def fake_search(state, role, query, k=5):

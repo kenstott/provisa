@@ -104,6 +104,7 @@ def _make_state():
         contexts={"analyst": ctx},
         roles={"analyst": {"id": "analyst"}},
         config=config,
+        tenant_db=object(),  # _catalog() only checks truthiness; _build_catalog_tables_async is mocked
     )
 
 
@@ -114,8 +115,12 @@ def state():
 
 @pytest.fixture(autouse=True)
 def _patch_catalog(monkeypatch):
-    """build_catalog_tables normally hits tenant_db; feed the fixed catalog."""
-    monkeypatch.setattr(tools, "build_catalog_tables", lambda _state: list(_CATALOG))
+    """_build_catalog_tables_async normally hits tenant_db; feed the fixed catalog."""
+
+    async def _fake(_state):
+        return list(_CATALOG)
+
+    monkeypatch.setattr(tools, "_build_catalog_tables_async", _fake)
 
 
 # --- drill-down -------------------------------------------------------------
@@ -213,6 +218,7 @@ def _make_prefixed_state():
         contexts={"analyst": ctx},
         roles={"analyst": {"id": "analyst"}},
         config=config,
+        tenant_db=object(),
     )
 
 
@@ -232,7 +238,11 @@ _PREFIXED_CATALOG = [
 
 async def test_names_are_semantic_not_raw(monkeypatch):
     """schema 'pet-store' → 'pet_store'; FK target field 'ps__users' → 'users'."""
-    monkeypatch.setattr(tools, "build_catalog_tables", lambda _s: list(_PREFIXED_CATALOG))
+
+    async def _fake(_state):
+        return list(_PREFIXED_CATALOG)
+
+    monkeypatch.setattr(tools, "_build_catalog_tables_async", _fake)
     state = _make_prefixed_state()
 
     schemas = await tools.list_schemas(state, "analyst")
@@ -479,6 +489,10 @@ async def test_jev_tool_present_with_api_key(monkeypatch):
 
 async def test_jev_evaluate_calls_client_with_configured_key(state, monkeypatch):
     monkeypatch.setenv("TYPESAFEAI_API_KEY", "ts_test_key")
+    # resolve_jev_api_key treats tenant_db=None as "no org override, env var only" — the sentinel
+    # `object()` this fixture otherwise carries (for _catalog()'s truthiness check) isn't a real
+    # Database and would blow up read_org_secret's `.acquire()` call.
+    state.tenant_db = None
     mock = AsyncMock(return_value={"answers": {"q1": {"noul": 0.7}}})
     monkeypatch.setattr("provisa.jev.client.evaluate", mock)
     result = await tools.jev_evaluate(
@@ -496,6 +510,7 @@ async def test_jev_evaluate_requires_role(state, monkeypatch):
 
 async def test_jev_evaluate_fails_loud_without_api_key(state, monkeypatch):
     monkeypatch.delenv("TYPESAFEAI_API_KEY", raising=False)
+    state.tenant_db = None  # see note in test_jev_evaluate_calls_client_with_configured_key
     with pytest.raises(ValueError):
         await tools.jev_evaluate(state, "analyst", None, [{"id": "q1", "type": "noul"}])
 

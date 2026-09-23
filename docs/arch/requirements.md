@@ -13824,9 +13824,9 @@ Org-scoped admin rights define two new capabilities: `org_settings` (surfaces wh
 
 **Use case:** Org admins need independent control over their org's configuration (AI models, NL providers, domains, tasks) and observability without access to platform-level or cross-org settings. Request-time resolution of org config (resolve_org_config) allows configuration changes to take effect immediately on the next query without restart.
 
-**Code:** `provisa/security/rights.py`, `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/org_settings.py`, `provisa/api/admin_router.py`
+**Code:** `provisa/security/rights.py`, `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/org_settings.py`, `provisa/api/admin_router.py`, `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
 
-**Tests:** `tests/unit/test_org_scoped_admin_rights.py`, `tests/integration/test_tenancy_role_grants.py`, `tests/integration/test_org_settings_overrides.py`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`
+**Tests:** `tests/unit/test_org_scoped_admin_rights.py`, `tests/integration/test_tenancy_role_grants.py`, `tests/integration/test_org_settings_overrides.py`, `provisa-ui/src/__tests__/adminNavCapabilities.test.ts`, `tests/unit/test_mcp_org_scoped_config.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -19009,3 +19009,123 @@ Double opt-in web registration for free Provisa licenses: users submit a registr
 **Code:** `site/register.html`, `site/functions/api/register.js`, `site/functions/api/register/confirm.js`, `site/functions/_lib/license.js`, `site/schema.sql`, `site/wrangler.jsonc`, `site/index.html`, `site/README.md`, `scripts/generate_license_keypair.py`
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-1794 · AI Models Configuration {#REQ-1794}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The chat assistant's LLM (mcp_chat) is configurable via admin AI Models settings. An org can set vendor/model per deployment config or override it per org (org_settings, [REQ-1349](#REQ-1349)). The run_chat() endpoint fails fast with an actionable "Open AI Models settings" message (never an opaque SDK auth error mid-call) when the configured vendor's credential is missing.
+
+**Use case:** Org admins choose which LLM vendor and model power the chat assistant without impacting other operations (table_description, sql_generation, etc.). The preflight check (_llm_configured) surfaces configuration gaps to the user immediately, with a one-click path to the settings page, rather than failing partway through a conversation.
+
+**Code:** `provisa/api/mcp/chat.py`, `provisa/api/admin/ai_models_router.py`, `provisa-ui/src/components/admin/AiModelsTab.tsx`, `provisa-ui/src/api/aiModels.ts`
+
+**Tests:** `tests/unit/test_mcp_chat.py`
+
+### REQ-1795 · Chat UI Interactions {#REQ-1795}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Client-side tools (navigate, refresh_mv) pause the model's tool-use loop mid-turn. The server yields awaiting_client_tools with the assistant's content so far plus any already-computed server tool results. The frontend executes the client tool(s) itself, appends the assistant message and tool_result(s), and POSTs the full history back to resume — all within one send() call, so the user sees the exchange complete seamlessly. Also fixes an async-event-loop catalog bug: _catalog() now calls _build_catalog_tables_async directly (not via sync wrapper) so state.tenant_db's pool is used on the caller's own loop, never shared across event loops.
+
+**Use case:** App navigation and mutation triggers (refresh materialized view, future admin actions) integrate naturally into the agent's conversation flow without requiring the server to execute browser-specific actions. The catalog bug fix allows the chat agent to list schemas/tables/search without connection-pool errors.
+
+**Code:** `provisa/api/mcp/chat.py`, `provisa/api/mcp/tools.py`, `provisa-ui/src/hooks/useMcpChat.ts`, `provisa-ui/src/components/ChatPanel.tsx`, `provisa-ui/src/mcp/clientTools.ts`
+
+**Tests:** `tests/unit/test_mcp_chat.py`, `tests/unit/test_mcp_server.py`, `tests/unit/test_mcp_catalog_real_db.py`
+
+## 8. Client Access & Protocols
+
+### REQ-1796 · MCP Tool Coverage {#REQ-1796}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Anthropic's hosted web_search and web_fetch tools (executed entirely on Anthropic's servers within the same model turn, never by Provisa or the browser) are available to the chat assistant when the vendor is anthropic. The SDK returns their results as ordinary content blocks (web_search_tool_result, web_fetch_tool_result); the loop yields UI badges (tool_use/tool_result events) so the user sees a search/fetch happened, but never dispatches them to _execute_tool.
+
+**Use case:** The chat assistant can search the open web and fetch web pages as part of its reasoning, using Anthropic's native tools. No additional plumbing or cost beyond the model call itself.
+
+**Code:** `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_chat.py`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-1797 · Multi-Vendor LLM Support {#REQ-1797}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+run_chat() branches on the configured vendor: "anthropic" uses Anthropic's native Messages API (including [REQ-1796](#REQ-1796)'s hosted web tools); any other vendor (openai/ollama/google/...) goes through aisuite's OpenAI-normalized tool-calling via _run_chat_aisuite, run in a thread (aisuite is synchronous). Both paths emit identical SSE event shapes using the Anthropic-shaped wire format, so the frontend needs zero vendor awareness. Per-vendor credential checks in _llm_configured (ollama needs nothing; google needs Vertex AI env vars; others need an API key env var), with no fallback model guess for a non-Anthropic vendor (the admin names one explicitly).
+
+**Use case:** Organizations can choose LLM vendors (Anthropic, OpenAI, Ollama, Google, etc.) for the chat assistant without changing any frontend or governance code. The wire format is vendor-neutral, making it easy to add new vendor support.
+
+**Code:** `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_chat.py`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1798 · Data Source Discovery {#REQ-1798}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+For topical data requests, the chat assistant checks this org's subscribed/preferred sources (GovData via askamerica, Kaggle) BEFORE web_search or propose_source — both tools called unconditionally (never asking permission to check the second). search_govdata_subjects keyword-matches a static catalog snapshot (built by scripts/build_govdata_catalog.py from govdata engine's real schema/table YAML descriptions), reports matches and whether the org is subscribed. search_kaggle_datasets reads the Kaggle API token from a FIXED secret name (kaggle_api_token, never user-chosen or model-chosen), falling back gracefully if the secret doesn't exist.
+
+**Use case:** Preferred data sources are checked first, allowing orgs to surface subscribed GovData topics and Kaggle datasets before the open web. The static catalog avoids a live askamerica dependency for chat discovery.
+
+**Code:** `provisa/api/mcp/chat.py`, `provisa/api/mcp/tools.py`, `provisa/govdata/subjects.py`, `provisa/govdata/catalog_metadata.json`, `scripts/build_govdata_catalog.py`
+
+**Tests:** `tests/unit/test_mcp_chat.py`, `tests/unit/test_mcp_subscription_sources.py`, `tests/unit/test_govdata_subjects.py`
+
+### REQ-1799 · Chat-Assisted Direct Registration {#REQ-1799}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Chat assistant may create/register sources and tables directly when the calling role already holds the source_registration/table_registration capability, with human confirmation in the conversation first, using the caller's verified identity. Fixes role-spoofing vulnerability in /admin/mcp/chat and /admin/mcp/search-catalog endpoints by reading verified request.state.role instead of trusting client-supplied x-provisa-role header.
+
+**Use case:** Privileged users calling the chat API get a faster path to create sources/tables without queueing a separate review request ([REQ-1792](#REQ-1792)). The role verification fix closes a security gap that would otherwise let unverified headers bypass the [REQ-434](#REQ-434) review queue once direct creation exists.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`, `provisa/api/mcp/status.py`
+
+**Tests:** `tests/unit/test_mcp_propose.py`, `tests/unit/test_mcp_chat.py`, `tests/unit/test_mcp_search.py`
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-1800 · Chat Page Awareness {#REQ-1800}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The chat assistant knows the user's current application page without a tool call. Frontend passes current_route (from react-router) to useMcpChat hook, which includes it as current_route in every POST to /admin/mcp/chat. The mcp_chat endpoint reads body.get("current_route") and passes it to run_chat(). The system prompt is amended with the current route before calling the model, allowing direct answers to questions like "what page am I on?" without extra round-trips.
+
+**Use case:** Users can ask the assistant context-sensitive questions about the current page without requiring a separate tool call to discover which page they are viewing. The browser already knows the route; including it in the request is free.
+
+**Code:** `provisa/api/mcp/chat.py`, `provisa/api/mcp/status.py`, `provisa-ui/src/hooks/useMcpChat.ts`, `provisa-ui/src/components/ChatPanel.tsx`
+
+**Tests:** `tests/unit/test_mcp_chat.py`, `provisa-ui/src/__tests__/useMcpChat.test.tsx`
+
+## 1. Access Governance & Security
+
+### REQ-1801 · Encryption {#REQ-1801}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Generating or rotating the local-keychain master encryption key via the admin UI (POST /admin/encryption/generate-key) takes effect immediately in the running process. No restart is required. After the key is successfully stored in the OS keychain, the generate-key endpoint calls configure_encryption() directly to rebuild the process-wide EncryptionService, replacing the stale cached instance. This is safe specifically for local-keychain provider key rotation because the provider type itself remains unchanged (only the key material changes); provider swaps (e.g., local -> AWS KMS) still require a restart.
+
+**Use case:** Users generating a new master key via the admin UI should see the change take effect immediately, allowing them to save secrets without a process restart. Previously, the cached EncryptionService built at startup prevented the new key from being used until a full restart.
+
+**Code:** `provisa/api/admin/settings_router.py`, `provisa-ui/src/components/admin/EncryptionTab.tsx`, `provisa-ui/src/i18n/locales/en/encryptionTab.json`
+
+**Tests:** `tests/unit/test_admin_config_tabs.py`
+
+### REQ-1802 · Encryption {#REQ-1802}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Master-key storage falls back to a local file when no OS keychain backend is usable, ensuring the admin UI's "Generate key" always works with no manual step.
+
+**Use case:** Users can generate/rotate the master encryption key via the admin UI on any host with a writable home directory, even if keyring is not installed or is unusable (headless Linux, sandboxed CI, locked desktop session). The file fallback maintains the same security property (held on this machine) without requiring OS keychain.
+
+**Code:** `provisa/encryption/providers.py`, `pyproject.toml`
+
+**Tests:** `tests/unit/test_encryption_keystore.py`, `tests/unit/test_secrets_store_cipher.py`

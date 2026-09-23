@@ -41544,11 +41544,14 @@
   - provisa/core/schema_org.py
   - provisa/core/org_settings.py
   - provisa/api/admin_router.py
+  - provisa/api/mcp/tools.py
+  - provisa/api/mcp/chat.py
   tests:
   - tests/unit/test_org_scoped_admin_rights.py
   - tests/integration/test_tenancy_role_grants.py
   - tests/integration/test_org_settings_overrides.py
   - provisa-ui/src/__tests__/adminNavCapabilities.test.ts
+  - tests/unit/test_mcp_org_scoped_config.py
   scenario: 'Given an org_admin in an org without platform_settings or cross_org capabilities
 
     When the org_admin modifies org AI model overrides via PUT /admin/ai-models
@@ -61449,3 +61452,322 @@
   - REQ-1137
   - REQ-1138
   - REQ-1139
+- id: REQ-1794
+  status: complete
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
+  category: AI Models Configuration
+  priority: MUST
+  type: behavioral
+  description: >-
+    The chat assistant's LLM (mcp_chat) is configurable via admin AI Models settings. An org can set
+    vendor/model per deployment config or override it per org (org_settings, REQ-1349). The run_chat()
+    endpoint fails fast with an actionable "Open AI Models settings" message (never an opaque SDK auth
+    error mid-call) when the configured vendor's credential is missing.
+  use_case: >-
+    Org admins choose which LLM vendor and model power the chat assistant without impacting other operations
+    (table_description, sql_generation, etc.). The preflight check (_llm_configured) surfaces configuration
+    gaps to the user immediately, with a one-click path to the settings page, rather than failing partway
+    through a conversation.
+  code:
+  - provisa/api/mcp/chat.py
+  - provisa/api/admin/ai_models_router.py
+  - provisa-ui/src/components/admin/AiModelsTab.tsx
+  - provisa-ui/src/api/aiModels.ts
+  tests:
+  - tests/unit/test_mcp_chat.py
+  scenario: |
+    Given an org with no mcp_chat vendor configured
+    When the user opens the chat assistant and sends a message
+    Then the endpoint yields an error event with an action to open AI Models settings
+    And no model call happens
+    When the org_admin configures a vendor/model and the user retries
+    Then the model is called via the configured vendor
+    And the conversation proceeds normally
+- id: REQ-1795
+  status: complete
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
+  category: Chat UI Interactions
+  priority: MUST
+  type: behavioral
+  description: >-
+    Client-side tools (navigate, refresh_mv) pause the model's tool-use loop mid-turn. The server yields
+    awaiting_client_tools with the assistant's content so far plus any already-computed server tool results.
+    The frontend executes the client tool(s) itself, appends the assistant message and tool_result(s), and
+    POSTs the full history back to resume — all within one send() call, so the user sees the exchange
+    complete seamlessly. Also fixes an async-event-loop catalog bug: _catalog() now calls _build_catalog_tables_async
+    directly (not via sync wrapper) so state.tenant_db's pool is used on the caller's own loop, never shared
+    across event loops.
+  use_case: >-
+    App navigation and mutation triggers (refresh materialized view, future admin actions) integrate naturally
+    into the agent's conversation flow without requiring the server to execute browser-specific actions.
+    The catalog bug fix allows the chat agent to list schemas/tables/search without connection-pool errors.
+  code:
+  - provisa/api/mcp/chat.py
+  - provisa/api/mcp/tools.py
+  - provisa-ui/src/hooks/useMcpChat.ts
+  - provisa-ui/src/components/ChatPanel.tsx
+  - provisa-ui/src/mcp/clientTools.ts
+  tests:
+  - tests/unit/test_mcp_chat.py
+  - tests/unit/test_mcp_server.py
+  - tests/unit/test_mcp_catalog_real_db.py
+  scenario: |
+    Given a model turn where the assistant calls both search_catalog (server) and navigate (client)
+    When the loop executes search_catalog and returns its result
+    Then it detects the pending navigate call and yields awaiting_client_tools
+    When the frontend executes navigate and POSTs the full history back
+    Then the resume loop appends the assistant content + tool results and calls the model again
+    And the browser navigates to the requested route
+- id: REQ-1796
+  status: complete
+  since: 2026-09
+  group: 8. Client Access & Protocols
+  category: MCP Tool Coverage
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Anthropic's hosted web_search and web_fetch tools (executed entirely on Anthropic's servers within
+    the same model turn, never by Provisa or the browser) are available to the chat assistant when the
+    vendor is anthropic. The SDK returns their results as ordinary content blocks (web_search_tool_result,
+    web_fetch_tool_result); the loop yields UI badges (tool_use/tool_result events) so the user sees a
+    search/fetch happened, but never dispatches them to _execute_tool.
+  use_case: >-
+    The chat assistant can search the open web and fetch web pages as part of its reasoning, using
+    Anthropic's native tools. No additional plumbing or cost beyond the model call itself.
+  code:
+  - provisa/api/mcp/chat.py
+  tests:
+  - tests/unit/test_mcp_chat.py
+  scenario: |
+    Given a user asking the assistant to find a public API's documentation
+    When the model calls web_search (an Anthropic hosted tool)
+    Then the SDK executes it internally and returns a web_search_tool_result block in the same response
+    And the loop yields a tool_use and tool_result event for the UI badge
+    And no server-side tool dispatch happens
+- id: REQ-1797
+  status: complete
+  since: 2026-09
+  group: 5. Query Languages, Compilation & Operations
+  category: Multi-Vendor LLM Support
+  priority: MUST
+  type: behavioral
+  description: >-
+    run_chat() branches on the configured vendor: "anthropic" uses Anthropic's native Messages API (including
+    REQ-1796's hosted web tools); any other vendor (openai/ollama/google/...) goes through aisuite's OpenAI-normalized
+    tool-calling via _run_chat_aisuite, run in a thread (aisuite is synchronous). Both paths emit identical SSE event
+    shapes using the Anthropic-shaped wire format, so the frontend needs zero vendor awareness. Per-vendor credential
+    checks in _llm_configured (ollama needs nothing; google needs Vertex AI env vars; others need an API key env var),
+    with no fallback model guess for a non-Anthropic vendor (the admin names one explicitly).
+  use_case: >-
+    Organizations can choose LLM vendors (Anthropic, OpenAI, Ollama, Google, etc.) for the chat assistant without
+    changing any frontend or governance code. The wire format is vendor-neutral, making it easy to add new vendor support.
+  code:
+  - provisa/api/mcp/chat.py
+  tests:
+  - tests/unit/test_mcp_chat.py
+  scenario: |
+    Given an org configured with vendor: openai and a model name
+    When the user sends a message to the chat assistant
+    Then run_chat() detects vendor != "anthropic" and dispatches to _run_chat_aisuite
+    And the model is called via aisuite's OpenAI-normalized interface
+    And the loop yields identical SSE events as the Anthropic path would
+    When the org switches to vendor: ollama (a local server, no credential needed)
+    Then _llm_configured accepts it (no env var check for ollama)
+    And _run_chat_aisuite calls the local ollama server via aisuite
+- id: REQ-1798
+  status: complete
+  since: 2026-09
+  group: 3. Source Registration & Data Modeling
+  category: Data Source Discovery
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    For topical data requests, the chat assistant checks this org's subscribed/preferred sources (GovData via
+    askamerica, Kaggle) BEFORE web_search or propose_source — both tools called unconditionally (never asking
+    permission to check the second). search_govdata_subjects keyword-matches a static catalog snapshot (built by
+    scripts/build_govdata_catalog.py from govdata engine's real schema/table YAML descriptions), reports matches
+    and whether the org is subscribed. search_kaggle_datasets reads the Kaggle API token from a FIXED secret name
+    (kaggle_api_token, never user-chosen or model-chosen), falling back gracefully if the secret doesn't exist.
+  use_case: >-
+    Preferred data sources are checked first, allowing orgs to surface subscribed GovData topics and Kaggle datasets
+    before the open web. The static catalog avoids a live askamerica dependency for chat discovery.
+  code:
+  - provisa/api/mcp/chat.py
+  - provisa/api/mcp/tools.py
+  - provisa/govdata/subjects.py
+  - provisa/govdata/catalog_metadata.json
+  - scripts/build_govdata_catalog.py
+  tests:
+  - tests/unit/test_mcp_chat.py
+  - tests/unit/test_mcp_subscription_sources.py
+  - tests/unit/test_govdata_subjects.py
+  scenario: |
+    Given an org subscribed to GovData's ECONOMY subject and a user asking "find inflation data"
+    When the assistant calls search_govdata_subjects with the user's query
+    Then it returns matching schemas (econ) and reports subscribed: true for the ECONOMY subject
+    When the assistant calls search_kaggle_datasets with the same query
+    Then it reads the org's kaggle_api_token secret (FIXED name) and searches Kaggle
+    And if the secret doesn't exist, the tool fails gracefully and the assistant tells the user
+    When neither GovData nor Kaggle has a match
+    Then the assistant falls back to web_search and propose_source
+  relates_to:
+  - REQ-540
+  - REQ-541
+  - REQ-1780
+  - REQ-1781
+  - REQ-1782
+  - REQ-1783
+  - REQ-1792
+- id: REQ-1799
+  status: complete
+  since: 2026-09
+  group: 3. Source Registration & Data Modeling
+  category: Chat-Assisted Direct Registration
+  priority: MUST
+  type: behavioral
+  description: >-
+    Chat assistant may create/register sources and tables directly when the calling role already holds the
+    source_registration/table_registration capability, with human confirmation in the conversation first,
+    using the caller's verified identity. Fixes role-spoofing vulnerability in /admin/mcp/chat and
+    /admin/mcp/search-catalog endpoints by reading verified request.state.role instead of trusting
+    client-supplied x-provisa-role header.
+  use_case: >-
+    Privileged users calling the chat API get a faster path to create sources/tables without queueing
+    a separate review request (REQ-1792). The role verification fix closes a security gap that would
+    otherwise let unverified headers bypass the REQ-434 review queue once direct creation exists.
+  code:
+  - provisa/api/mcp/tools.py
+  - provisa/api/mcp/chat.py
+  - provisa/api/mcp/status.py
+  tests:
+  - tests/unit/test_mcp_propose.py
+  - tests/unit/test_mcp_chat.py
+  - tests/unit/test_mcp_search.py
+  scenario: |
+    Given a privileged user (holding source_registration capability) calling the chat assistant
+    When they ask the assistant to create a data source
+    Then the assistant checks the capability via request.state.role (verified identity)
+    And responds with confirm_required asking for explicit user confirmation
+    When the user says "yes, create it" in the conversation
+    Then the assistant calls create_source_now (new tool)
+    And create_source_now re-checks the capability (defense in depth) and executes via the exact GraphQL resolver a web caller would use
+    And the source is created
+    When an unverified client tries to POST /admin/mcp/chat with a spoofed x-provisa-role header
+    Then run_chat() reads the verified request.state.role instead
+    And the call is authorized correctly based on the caller's real identity, not the header
+  relates_to:
+  - REQ-1792
+  - REQ-434
+  - REQ-042
+  - REQ-060
+  - REQ-1297
+- id: REQ-1800
+  status: complete
+  since: 2026-09
+  group: 5. Query Languages, Compilation & Operations
+  category: Chat Page Awareness
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The chat assistant knows the user's current application page without a tool call.
+    Frontend passes current_route (from react-router) to useMcpChat hook, which includes
+    it as current_route in every POST to /admin/mcp/chat. The mcp_chat endpoint reads
+    body.get("current_route") and passes it to run_chat(). The system prompt is amended
+    with the current route before calling the model, allowing direct answers to questions
+    like "what page am I on?" without extra round-trips.
+  use_case: >-
+    Users can ask the assistant context-sensitive questions about the current page
+    without requiring a separate tool call to discover which page they are viewing.
+    The browser already knows the route; including it in the request is free.
+  code:
+  - provisa/api/mcp/chat.py
+  - provisa/api/mcp/status.py
+  - provisa-ui/src/hooks/useMcpChat.ts
+  - provisa-ui/src/components/ChatPanel.tsx
+  tests:
+  - tests/unit/test_mcp_chat.py
+  - provisa-ui/src/__tests__/useMcpChat.test.tsx
+  scenario: |
+    Given a user on the sources page asking the chat assistant "what page am I on?"
+    When the assistant receives the request with current_route: "/admin/sources"
+    Then the system prompt includes the current route
+    And the model answers "You are on the sources page" directly
+    When the user navigates to the governance page and asks the same question
+    Then current_route is updated to "/admin/governance"
+    And the model answers "You are on the governance page"
+  relates_to:
+  - REQ-1008
+  - REQ-1795
+- id: REQ-1801
+  status: complete
+  since: 2026-09
+  group: 1. Access Governance & Security
+  category: Encryption
+  priority: MUST
+  type: behavioral
+  description: >-
+    Generating or rotating the local-keychain master encryption key via the admin UI (POST
+    /admin/encryption/generate-key) takes effect immediately in the running process. No restart is required.
+    After the key is successfully stored in the OS keychain, the generate-key endpoint calls configure_encryption()
+    directly to rebuild the process-wide EncryptionService, replacing the stale cached instance. This is safe
+    specifically for local-keychain provider key rotation because the provider type itself remains unchanged
+    (only the key material changes); provider swaps (e.g., local -> AWS KMS) still require a restart.
+  use_case: >-
+    Users generating a new master key via the admin UI should see the change take effect immediately,
+    allowing them to save secrets without a process restart. Previously, the cached EncryptionService
+    built at startup prevented the new key from being used until a full restart.
+  code:
+  - provisa/api/admin/settings_router.py
+  - provisa-ui/src/components/admin/EncryptionTab.tsx
+  - provisa-ui/src/i18n/locales/en/encryptionTab.json
+  tests:
+  - tests/unit/test_admin_config_tabs.py
+  scenario: |
+    Given a user on the admin Encryption tab with no master key configured
+    When they click "Generate master key"
+    Then the key is generated and stored in the OS keychain
+    And the endpoint calls configure_encryption() to rebuild the EncryptionService
+    And the UI confirms the key is in effect immediately (no restart needed)
+    When they try to save a secret immediately after
+    Then the secret is encrypted/stored successfully (the new key is active)
+  relates_to:
+  - REQ-1574
+  - REQ-685
+  - REQ-684
+- id: REQ-1802
+  status: complete
+  since: 2026-09
+  group: 1. Access Governance & Security
+  category: Encryption
+  priority: MUST
+  type: behavioral
+  description: >-
+    Master-key storage falls back to a local file when no OS keychain backend is usable,
+    ensuring the admin UI's "Generate key" always works with no manual step.
+  use_case: >-
+    Users can generate/rotate the master encryption key via the admin UI on any host
+    with a writable home directory, even if keyring is not installed or is unusable
+    (headless Linux, sandboxed CI, locked desktop session). The file fallback maintains
+    the same security property (held on this machine) without requiring OS keychain.
+  code:
+  - provisa/encryption/providers.py
+  - pyproject.toml
+  tests:
+  - tests/unit/test_encryption_keystore.py
+  - tests/unit/test_secrets_store_cipher.py
+  scenario: |
+    Given an environment where keyring is not installed or its backend is unusable
+    When the user clicks "Generate master key" in the admin UI
+    Then store_master_key falls back to writing the key to <data_dir>/encryption/<key_id>.key
+    And the file is written with 0600 permissions on this host only
+    And the operation succeeds with no manual PROVISA_ENCRYPTION_KEY environment variable required
+    When keyring is installed and usable
+    Then the OS-native path is used instead and the file fallback is never triggered
+  relates_to:
+  - REQ-684
+  - REQ-685
+  - REQ-918
+  - REQ-1801
+  - REQ-1574

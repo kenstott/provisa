@@ -151,15 +151,16 @@ async def mcp_search_catalog(request: Request):  # REQ-1008
     """Browser-callable wrapper over the MCP ``search_catalog`` tool.
 
     The MCP transport speaks the MCP protocol; the UI Explore page needs plain
-    HTTP, so this exposes the same governed tool. Role comes from the
-    ``x-provisa-role`` header (or the body), and results are filtered to that
-    role's accessible domains exactly as the MCP tool does.
+    HTTP, so this exposes the same governed tool. Role comes from
+    ``request.state.role`` — set by AuthMiddleware after verifying the caller
+    actually holds it (never a raw, unverified header/body value) — and results
+    are filtered to that role's accessible domains exactly as the MCP tool does.
     """
     from provisa.api.app import state
     from provisa.api.mcp import tools
 
     body = await request.json()
-    role = request.headers.get("x-provisa-role") or body.get("role") or ""
+    role = getattr(request.state, "role", None) or body.get("role") or ""
     query = body.get("query", "")
     k = int(body.get("k", 5))
     try:
@@ -176,7 +177,12 @@ async def mcp_chat(request: Request):  # REQ-1008
     """Stream an LLM chat that drives the MCP tools, governed by the caller's role.
 
     Server-Sent Events: each line is ``data: {json}`` with a ``type`` of text / tool_use /
-    tool_result / done / error. Role comes from the ``x-provisa-role`` header (or body).
+    tool_result / done / error. Role comes from ``request.state.role`` — set by AuthMiddleware
+    after verifying the caller actually holds it, never a raw client-supplied header/body value
+    (a spoofed header here would otherwise let a caller pick which role's governance the chat
+    tools run under). The real request is threaded into run_chat too, so a tool that needs the
+    caller's verified identity (e.g. a capability check before bypassing a review queue) can use
+    the SAME trust boundary the admin GraphQL mutations do, not the bare role string.
     """
     import json as _json
 
@@ -186,12 +192,15 @@ async def mcp_chat(request: Request):  # REQ-1008
     from provisa.api.mcp.chat import run_chat
 
     body = await request.json()
-    role = request.headers.get("x-provisa-role") or body.get("role") or ""
+    role = getattr(request.state, "role", None) or body.get("role") or ""
     messages = body.get("messages") or []
+    current_route = body.get("current_route") or None  # REQ-1800
 
     async def _events():
         try:
-            async for event in run_chat(state, role, messages):
+            async for event in run_chat(
+                state, role, messages, request=request, current_route=current_route
+            ):
                 yield f"data: {_json.dumps(event)}\n\n"
         except (PermissionError, ValueError) as exc:
             yield f"data: {_json.dumps({'type': 'error', 'error': str(exc)})}\n\n"

@@ -1612,6 +1612,9 @@ class AIModelsConfig(BaseModel):  # REQ-464
     relationship_inference: str | dict = "claude-haiku-4-5-20251001"
     sql_generation: str | dict = "claude-opus-4-6"
     table_selection: str | dict = "claude-haiku-4-5-20251001"
+    # REQ-1794: the right-hand chat assistant panel's model (provisa/api/mcp/chat.py
+    # _resolve_model() falls back to this same default when unconfigured).
+    mcp_chat: str | dict = "claude-opus-4-8"
 
 
 class NlConfig(BaseModel):  # REQ-464

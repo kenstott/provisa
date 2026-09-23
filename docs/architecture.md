@@ -462,7 +462,7 @@ The admin Strawberry GraphQL API is mounted at `/admin/graphql` (HTTP port 8001)
 
 Settings are **org-scoped**: each org's choices layer over the deployment config and take effect on the next request — no restart required. (REQ-1349) [tool-verified: `provisa/api/admin/ai_models_router.py:38-39`]
 
-**Per-operation model assignments.** Five NL operations each have a configurable vendor and model string:
+**Per-operation model assignments.** Six operations each have a configurable vendor and model string:
 
 | Operation | What it drives |
 | --------- | -------------- |
@@ -471,6 +471,7 @@ Settings are **org-scoped**: each org's choices layer over the deployment config
 | `relationship_inference` | FK candidate discovery |
 | `sql_generation` | NL → SQL generation |
 | `table_selection` | Choosing which tables to include in the NL prompt |
+| `mcp_chat` | The chat assistant panel's tool-use loop (REQ-1794) |
 
 The vendor field accepts any `aisuite`-compatible vendor (`anthropic`, `openai`, `groq`, `mistral`, `cohere`, and others) or a local endpoint (`ollama`, `lmstudio`). Blank model string removes the org's override and reverts to the deployment default. [tool-verified: `provisa/api/admin/ai_models_router.py:29-35`, `provisa-ui/src/components/admin/AiModelsTab.tsx:43-60`]
 

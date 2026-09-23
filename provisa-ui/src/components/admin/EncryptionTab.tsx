@@ -20,8 +20,10 @@ import {
   type EncryptionState,
 } from "../../api/admin";
 
-// REQ-918: manage the encryption provider + master key. The provider binds at startup, so provider
-// changes take effect on restart; generating a key stores it in the OS keychain immediately.
+// REQ-918: manage the encryption provider + master key. Switching PROVIDER (Save) binds at
+// startup, so that change takes effect on restart. Generating/rotating a master key under the
+// CURRENT "local" provider (REQ-1801) is different: it stores the key in the OS keychain and
+// rebuilds the running process's encryption service immediately — no restart, ever.
 export function EncryptionTab() {
   const { t } = useTranslation();
   const [s, setS] = useState<EncryptionState | null>(null);

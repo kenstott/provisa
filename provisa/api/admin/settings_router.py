@@ -1143,7 +1143,7 @@ async def set_secrets_service(request: Request):  # REQ-1557, REQ-1558
 
 
 @router.post("/admin/encryption/generate-key")
-async def generate_encryption_key(request: Request):  # REQ-918, REQ-1574
+async def generate_encryption_key(request: Request):  # REQ-918, REQ-1574, REQ-1801
     """Generate a fresh AES-256 master key into the OS keychain under ``key_id``. Never returns it.
 
     REQ-1574 amends REQ-918, whose one-time display was the last place a key was ever shown by any
@@ -1152,8 +1152,18 @@ async def generate_encryption_key(request: Request):  # REQ-918, REQ-1574
     rather than printing it, and the operator generates one out of band and sets
     ``PROVISA_ENCRYPTION_KEY`` themselves. The key generated here exists in the keychain and
     nowhere else.
+
+    REQ-1801: takes effect immediately, no restart. Storing the key is only half the job — the
+    running process's EncryptionService was built once at startup from whatever key existed then
+    (or none), and nothing rebuilt it after this endpoint wrote a new one, so a freshly-generated
+    key sat in the keychain unused until the next restart. Since the provider here is always
+    "local" (the only one this endpoint's keychain path applies to) and its config hasn't changed
+    — only the key material backing it has — re-running configure_encryption with the SAME
+    provider/config is exactly the idempotent re-provision it's documented to support, not a
+    provider swap (which is what still legitimately needs the PUT /admin/encryption restart note).
     """
     require_platform_settings(request)  # REQ-1337
+    from provisa.encryption import configure_encryption
     from provisa.encryption.providers import generate_master_key_b64, store_master_key
 
     body = await request.json()
@@ -1167,6 +1177,12 @@ async def generate_encryption_key(request: Request):  # REQ-918, REQ-1574
             "PROVISA_ENCRYPTION_KEY.",
             env_var="PROVISA_ENCRYPTION_KEY",
         )
+
+    # REQ-1801: rebuild the live service NOW, from the SAME provider/config already active — this
+    # is a key rotation on the running "local" provider, not a provider change, so none of
+    # PUT /admin/encryption's restart caveats apply.
+    enc_cfg = read_config().get("encryption", {}) or {}
+    configure_encryption("local", key_id=key_id, config=enc_cfg.get("local", {}))
     return {"stored": True, "key_id": key_id or "master"}
 
 

@@ -387,6 +387,80 @@ class TestEncryptionProviders:
         assert read_config()["encryption"]["acme_hsm"]["endpoint"] == "https://hsm.internal"
 
 
+class TestGenerateEncryptionKey:  # REQ-918, REQ-1801
+    """POST /admin/encryption/generate-key must take effect immediately, no restart."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_encryption_service(self):
+        from provisa.encryption.runtime import reset_encryption
+
+        reset_encryption()
+        yield
+        reset_encryption()
+
+    def test_no_keystore_returns_503_and_does_not_touch_the_live_service(self, client, monkeypatch):
+        monkeypatch.setattr(
+            "provisa.encryption.providers.store_master_key", lambda key_b64, key_id: False
+        )
+        r = client.post("/admin/encryption/generate-key", json={})
+        assert r.status_code == 503
+        assert "no OS keychain" in r.json()["detail"]
+
+    def test_success_rebuilds_the_live_encryption_service_without_a_restart(
+        self, client, monkeypatch
+    ):
+        # Simulate an OS keychain: store_master_key "writes" the key, _load_from_keychain "reads"
+        # the same key back — exactly what configure_encryption's rebuild depends on.
+        keychain: dict[str | None, str] = {}
+
+        def _fake_store(key_b64: str, key_id: str | None) -> bool:
+            keychain[key_id] = key_b64
+            return True
+
+        def _fake_load(key_id: str | None) -> str | None:
+            return keychain.get(key_id)
+
+        monkeypatch.setattr("provisa.encryption.providers.store_master_key", _fake_store)
+        monkeypatch.setattr("provisa.encryption.providers._load_from_keychain", _fake_load)
+
+        from provisa.encryption.runtime import encryption_service
+        from provisa.encryption.service import NullEncryption
+
+        # Before: no key configured, so the process serves the passthrough (matches the reported
+        # bug's symptom — an encrypted write would fail/no-op here).
+        assert isinstance(encryption_service(), NullEncryption)
+
+        r = client.post("/admin/encryption/generate-key", json={})
+        assert r.status_code == 200
+        assert r.json() == {"stored": True, "key_id": "master"}
+
+        # After: the SAME already-running process now serves a real envelope service — no
+        # configure_encryption() call, PUT /admin/encryption, or restart needed by the caller.
+        service = encryption_service()
+        assert not isinstance(service, NullEncryption)
+        plaintext = b"a secret value"
+        assert service.decrypt(service.encrypt(plaintext)) == plaintext
+
+    def test_success_with_a_key_id_rebuilds_under_that_key_id(self, client, monkeypatch):
+        keychain: dict[str | None, str] = {}
+        monkeypatch.setattr(
+            "provisa.encryption.providers.store_master_key",
+            lambda key_b64, key_id: keychain.__setitem__(key_id, key_b64) or True,
+        )
+        monkeypatch.setattr(
+            "provisa.encryption.providers._load_from_keychain", lambda key_id: keychain.get(key_id)
+        )
+
+        r = client.post("/admin/encryption/generate-key", json={"key_id": "org-42"})
+        assert r.status_code == 200
+        assert r.json() == {"stored": True, "key_id": "org-42"}
+
+        from provisa.encryption.runtime import encryption_service
+        from provisa.encryption.service import NullEncryption
+
+        assert not isinstance(encryption_service(), NullEncryption)
+
+
 # --- Secrets service registry (REQ-1557, REQ-1558) ------------------------------
 
 

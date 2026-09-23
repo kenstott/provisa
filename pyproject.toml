@@ -43,6 +43,11 @@ dependencies = [
     "websockets>=11.0",
     "boto3",
     "cryptography",
+    # REQ-1802: OS-keychain-backed master key storage for the local encryption provider. When no
+    # OS keychain backend is usable (headless Linux, sandboxed CI, a locked session) the same
+    # provider falls back to a file under this host's Provisa data directory — but keyring should
+    # be present so the OS-native path is the one actually used wherever one exists.
+    "keyring",
     "sqlalchemy>=2",
     "duckdb-engine",
     "clickhouse-connect",

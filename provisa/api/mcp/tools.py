@@ -21,11 +21,11 @@ here — this module only shapes catalog metadata and paginates results.
 
 from __future__ import annotations
 
-import asyncio
 import os
+import types
 from typing import Any
 
-from provisa.api.flight.catalog import CatalogTable, build_catalog_tables
+from provisa.api.flight.catalog import CatalogTable, _build_catalog_tables_async
 
 # Row ceiling for run_sql. An agent context must never absorb an unbounded
 # result set, so every run_sql caps rows. Configurable via env; the role's own
@@ -120,10 +120,17 @@ async def _catalog(state: Any) -> list[CatalogTable]:
     """The virtual catalog (schemas/tables/columns) via the Flight reference builder,
     with every schema/table identifier normalized to its semantic (SQL-queryable) name.
 
-    build_catalog_tables is sync and drives its own event loop, so it runs in a worker
-    thread to avoid nesting inside the MCP async loop.
-    """
-    raw = await asyncio.to_thread(build_catalog_tables, state)
+    Calls the ASYNC builder directly, on the caller's own event loop — not the sync
+    ``build_catalog_tables`` wrapper (used by the Arrow Flight server, whose RPC handlers run on
+    plain threads with no event loop of their own, so it must spin one up). Routing through that
+    wrapper here via ``asyncio.to_thread`` created a SECOND event loop and tried to use
+    ``state.tenant_db``'s pool — bound to the main loop — from within it, which async DB drivers
+    reject (a cross-event-loop connection reuse, not something the driver treats as safe to
+    share). Every MCP tool that reaches here (list_schemas, list_tables, search_catalog) was
+    failing on that mismatch."""
+    if not state.tenant_db:
+        return []
+    raw = await _build_catalog_tables_async(state)
     return _semantic_catalog(raw, _meta_index(state))
 
 
@@ -387,7 +394,36 @@ def _role_domains(state: Any, role: str) -> set[str]:
     return set()
 
 
-def _resolve_embedding_model(state: Any) -> Any:
+async def effective_config(state: Any) -> dict:
+    """Deployment config with the acting org's overrides applied (REQ-1349).
+
+    The SAME merge provisa/api/admin/ai_models_router.py's admin surface reads from
+    (resolve_org_config) — vector_models, ai_models.mcp_chat, and ai_endpoints are all org-scoped
+    settings an admin can change through the AI Models UI without a restart. Reading `state.config`
+    (the static deployment object built once at startup) or the bare deployment file instead of
+    this misses every org override entirely: an org that registers an embedding model or an MCP
+    chat vendor through the UI would see none of it here. Falls back to `state.config` itself
+    (not a disk re-read) when no tenant_db is bound — there is no org to layer overrides from, and
+    a fresh read would ignore a config a caller (e.g. a test) built in memory rather than on disk.
+    """
+    tenant_db = getattr(state, "tenant_db", None)
+    if tenant_db is None:
+        config = getattr(state, "config", None)
+        if config is None:
+            return {}
+        return config.model_dump() if hasattr(config, "model_dump") else vars(config)
+    from provisa.core.org_settings import resolve_org_config
+
+    return await resolve_org_config(tenant_db)
+
+
+def _cfg_get(entry: Any, key: str, default: Any = None) -> Any:
+    """Read `key` off a config entry that may be a plain dict (org_settings/deployment-YAML JSON)
+    or an attribute-style object (a Pydantic model, or a test's SimpleNamespace)."""
+    return entry.get(key, default) if isinstance(entry, dict) else getattr(entry, key, default)
+
+
+async def _resolve_embedding_model(state: Any) -> Any:
     """The embedding model for catalog search — the first enabled ``vector_models`` entry.
 
     No silent fallback (CLAUDE.md): with no enabled embedding model registered, catalog
@@ -395,14 +431,14 @@ def _resolve_embedding_model(state: Any) -> Any:
     """
     from provisa.vector.registry import VectorModel
 
-    config = getattr(state, "config", None)
-    for vm in getattr(config, "vector_models", None) or []:
-        if getattr(vm, "enabled", True):
+    cfg = await effective_config(state)
+    for vm in cfg.get("vector_models") or []:
+        if _cfg_get(vm, "enabled", True):
             return VectorModel(
-                id=vm.id,
-                provider=vm.provider,
-                dimensions=vm.dimensions,
-                base_url=getattr(vm, "base_url", None),
+                id=_cfg_get(vm, "id"),
+                provider=_cfg_get(vm, "provider"),
+                dimensions=_cfg_get(vm, "dimensions"),
+                base_url=_cfg_get(vm, "base_url"),
             )
     raise ValueError(
         "catalog search requires an enabled embedding model — register one in "
@@ -418,7 +454,7 @@ async def build_catalog_index(state: Any, provider: Any = None) -> int:
     """
     from provisa.api.mcp.search import CatalogSearchIndex
 
-    model = _resolve_embedding_model(state)
+    model = await _resolve_embedding_model(state)
     catalog = await _catalog(state)
     index = CatalogSearchIndex(model, provider)
     await index.build(catalog, _domain_descriptions(state))
@@ -580,12 +616,33 @@ async def _queue_mcp_proposal(
     }
 
 
-async def propose_source(state: Any, role: str, source: dict, reason: str) -> dict:  # REQ-1792
-    """Queue a discovered data source as a pending creation request for a human to approve.
+def _role_has_capability(state: Any, role: str, capability: str) -> bool:
+    """Whether `role` — already verified by AuthMiddleware against the caller's real identity
+    before it ever reaches an MCP tool (see provisa/api/mcp/status.py) — carries `capability`.
+
+    Same resolution search_glossary_terms already uses (state.roles, capabilities_for_claims):
+    the role name IS the identity on this surface, so its capabilities are read directly rather
+    than through a request's raw claims."""
+    from provisa.security.rights import capabilities_for_claims
+
+    return capability in capabilities_for_claims([role], state.roles)
+
+
+async def propose_source(
+    state: Any, role: str, source: dict, reason: str, *, request: Any = None
+) -> dict:  # REQ-1792, REQ-1799
+    """Queue a discovered data source as a pending creation request for a human to approve —
+    UNLESS `role` already carries `source_registration` and `request` (the real, authenticated
+    HTTP request AuthMiddleware verified `role` against) is available, in which case this returns
+    a `confirm_required` result instead of queuing (REQ-1799): the chat assistant must ask the
+    user before calling create_source_now with the same source/reason, rather than silently
+    creating a live source or leaving a redundant pending request nobody but this same user would
+    approve.
 
     `source` is validated as a well-formed SourceInput (required fields: id, type) before it is
-    queued, so a malformed proposal fails fast rather than sitting in the queue as garbage a human
-    has to puzzle out. See `_queue_mcp_proposal` for why this never creates a live Source."""
+    queued or offered, so a malformed proposal fails fast rather than sitting in the queue as
+    garbage a human has to puzzle out. See `_queue_mcp_proposal` for why the queued path never
+    creates a live Source."""
     require_role(role, state)
     from provisa.api.admin.schema_common import _rebuild_source_input
 
@@ -593,20 +650,36 @@ async def propose_source(state: Any, role: str, source: dict, reason: str) -> di
         source_input = _rebuild_source_input(dict(source))
     except TypeError as exc:
         raise ValueError(f"malformed source proposal: {exc}") from exc
+
+    if request is not None and _role_has_capability(state, role, "source_registration"):
+        return {
+            "status": "confirm_required",
+            "capability": "source_registration",
+            "source": source,
+            "reason": reason,
+            "message": (
+                "Your role already holds source_registration. Ask the user whether to create "
+                "this source now instead of queuing it for someone else to approve; if they say "
+                "yes, call create_source_now with this same source and reason."
+            ),
+        }
     return await _queue_mcp_proposal(
         state, role, "source", "source_registration", reason, source_input
     )
 
 
-async def propose_table(state: Any, role: str, table: dict, reason: str) -> dict:  # REQ-1792
-    """Queue a table to register from an already-registered source, for a human to approve.
+async def propose_table(
+    state: Any, role: str, table: dict, reason: str, *, request: Any = None
+) -> dict:  # REQ-1792, REQ-1799
+    """Queue a table to register from an already-registered source, for a human to approve —
+    UNLESS `role` already carries `table_registration` and `request` is available, in which case
+    this returns a `confirm_required` result instead of queuing (REQ-1799) — see propose_source.
 
     `table` is a TableInput-shaped dict (required: source_id, domain_id, schema_name, table_name,
     columns — each column at minimum {"name", "visible_to"}). Column presets and unique constraints
     are optional. This proposes a PHYSICAL table registration, not a view: set `view_sql` in `table`
-    only if you mean to propose a view instead — `register_table` (called at approval time) branches
-    on that field the same way it does for a direct GraphQL caller. See `_queue_mcp_proposal` for why
-    this never registers the table itself."""
+    only if you mean to propose a view instead — `register_table` (called at approval time, or by
+    register_table_now) branches on that field the same way it does for a direct GraphQL caller."""
     require_role(role, state)
     from provisa.api.admin.schema_common import _rebuild_table_input
 
@@ -614,9 +687,143 @@ async def propose_table(state: Any, role: str, table: dict, reason: str) -> dict
         table_input = _rebuild_table_input(dict(table))
     except TypeError as exc:
         raise ValueError(f"malformed table proposal: {exc}") from exc
+
+    if request is not None and _role_has_capability(state, role, "table_registration"):
+        return {
+            "status": "confirm_required",
+            "capability": "table_registration",
+            "table": table,
+            "reason": reason,
+            "message": (
+                "Your role already holds table_registration. Ask the user whether to register "
+                "this table now instead of queuing it for someone else to approve; if they say "
+                "yes, call register_table_now with this same table and reason."
+            ),
+        }
     return await _queue_mcp_proposal(
         state, role, "table", "table_registration", reason, table_input
     )
+
+
+async def create_source_now(
+    state: Any, role: str, source: dict, reason: str, *, request: Any
+) -> dict:  # REQ-1799
+    """Create a live Source directly, bypassing the REQ-434 review queue — only reachable after
+    propose_source told the model to ask the user for confirmation first (REQ-1799); the model
+    must never call this without that prior human confirmation in the SAME chat turn.
+
+    Re-checks the capability itself (defense in depth: never trust that the caller only reaches
+    this after propose_source's own check) against `role`, which AuthMiddleware already verified
+    the real caller holds before this request reached any MCP tool. Executes through the EXACT
+    same resolver a GraphQL caller with the capability would (`Mutation.create_source`), via a
+    minimal Info shim wrapping the real `request` — so validation, secret handling, and engine
+    provisioning behave identically to that path, not a second reimplementation of it."""
+    require_role(role, state)
+    if not _role_has_capability(state, role, "source_registration"):
+        raise PermissionError(f"role {role!r} does not hold source_registration")
+    from provisa.api.admin.schema_common import _rebuild_source_input
+    from provisa.api.admin.schema_mutation import Mutation
+
+    try:
+        source_input = _rebuild_source_input(dict(source))
+    except TypeError as exc:
+        raise ValueError(f"malformed source proposal: {exc}") from exc
+    if not reason or not reason.strip():
+        raise ValueError("reason is required — say why this is being created")
+
+    info = types.SimpleNamespace(context={"request": request})
+    # pyright mistypes strawberry.mutation-decorated methods' call signature (confirmed correct at
+    # runtime via inspect.signature: (self, info, input) -> MutationResult).
+    result = await Mutation().create_source(info, source_input)  # pyright: ignore[reportCallIssue]
+    return {"success": result.success, "message": result.message, "code": result.code}
+
+
+async def register_table_now(
+    state: Any, role: str, table: dict, reason: str, *, request: Any
+) -> dict:  # REQ-1799
+    """Register a live Table/view directly, bypassing the REQ-434 review queue — only reachable
+    after propose_table told the model to ask the user for confirmation first (REQ-1799); see
+    create_source_now for the trust model and why the same GraphQL resolver is reused verbatim."""
+    require_role(role, state)
+    if not _role_has_capability(state, role, "table_registration"):
+        raise PermissionError(f"role {role!r} does not hold table_registration")
+    from provisa.api.admin.schema_common import _rebuild_table_input
+    from provisa.api.admin.schema_mutation import Mutation
+
+    try:
+        table_input = _rebuild_table_input(dict(table))
+    except TypeError as exc:
+        raise ValueError(f"malformed table proposal: {exc}") from exc
+    if not reason or not reason.strip():
+        raise ValueError("reason is required — say why this is being created")
+
+    info = types.SimpleNamespace(context={"request": request})
+    # pyright mistypes strawberry.mutation-decorated methods' call signature — see create_source_now.
+    result = await Mutation().register_table(info, table_input)  # pyright: ignore[reportCallIssue]
+    return {"success": result.success, "message": result.message, "code": result.code}
+
+
+async def search_govdata_subjects(state: Any, role: str, query: str) -> list[dict]:  # REQ-1798
+    """Match a free-text topic against GovData's (askamerica) real schema/table catalog.
+
+    This org's GovData/Kaggle sources are its subscription sources (REQ-1798) — the chat
+    assistant checks these before web_search or propose_source for a topical data request. Scores
+    schemas by keyword hits against their real descriptions and table names/descriptions (see
+    provisa.govdata.subjects.search_catalog, built from the govdata engine's own schema YAML — not
+    a guessed synonym list), and reports whether this tenant is already subscribed to each match's
+    subject, so the model can distinguish "already available" from "would need a subscription
+    first"."""
+    require_role(role, state)
+    from provisa.core.models import GovDataSubject
+    from provisa.govdata.subjects import search_catalog
+
+    subscribed: set[GovDataSubject] = set()
+    for sub in getattr(state.config, "govdata_subscriptions", None) or []:
+        subscribed.update(sub.subjects)
+    already_all = GovDataSubject.all in subscribed
+
+    results = []
+    for hit in search_catalog(query)[:8]:
+        subject = GovDataSubject(hit["subject"]) if hit["subject"] else None
+        results.append(
+            {
+                "schema": hit["schema"],
+                "subject": hit["subject"],
+                "tables": hit["tables"],
+                "subscribed": subject is not None and (already_all or subject in subscribed),
+            }
+        )
+    return results
+
+
+KAGGLE_TOKEN_SECRET_NAME = "kaggle_api_token"  # REQ-1798: fixed name, not user-chosen — see below.
+
+
+async def search_kaggle_datasets(state: Any, role: str, query: str) -> list[dict]:  # REQ-1798
+    """Search Kaggle's public dataset catalog by keyword.
+
+    This org's GovData/Kaggle sources are its subscription sources (REQ-1798) — check this
+    (and search_govdata_subjects) before web_search or propose_source for a topical data request.
+    The Kaggle API token is read from the org secret named KAGGLE_TOKEN_SECRET_NAME, resolved via
+    the standard ``${secret:NAME}`` grammar (provisa.core.secrets) — never taken as a raw token
+    argument (that would put a credential in chat history/logs). The name is FIXED, not chosen per
+    call: the model should never ask the user what to name it, only tell them (once, if the secret
+    doesn't exist yet) to create one under exactly this name on the Secrets page (/admin/secrets)
+    with their Kaggle API token as the value."""
+    require_role(role, state)
+    from provisa.core.secrets import resolve_secrets
+    from provisa.kaggle.client import search_datasets
+
+    token = resolve_secrets(f"${{secret:{KAGGLE_TOKEN_SECRET_NAME}}}")
+    results = await search_datasets(token, query=query)
+    return [
+        {
+            "ref": d.get("ref"),
+            "title": d.get("title"),
+            "description": d.get("subtitle") or d.get("description", ""),
+        }
+        for d in results[:10]
+    ]
 
 
 def _row_to_json(cols: list[str], row: Any) -> dict:

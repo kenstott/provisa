@@ -33,6 +33,7 @@ _AI_MODEL_ROLES = (
     "relationship_inference",
     "sql_generation",
     "table_selection",
+    "mcp_chat",  # REQ-1794: the right-hand chat assistant panel's model (provisa/api/mcp/chat.py)
 )
 
 # REQ-1349: org-scoped writes are read back per request, so no restart is involved. The note is

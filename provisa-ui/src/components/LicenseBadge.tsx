@@ -71,7 +71,7 @@ export function LicenseBadge() {
         style={{
           position: "fixed",
           bottom: 8,
-          right: 8,
+          left: 8,
           zIndex: 100,
           cursor: "pointer",
         }}

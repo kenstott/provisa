@@ -15,6 +15,7 @@
     "role_relationship_inference": "Relationship inference",
     "role_sql_generation": "SQL generation",
     "role_table_selection": "Table selection",
+    "role_mcp_chat": "Chat assistant",
     "vendorLabel": "Vendor",
     "modelLabel": "Model",
     "nlHeading": "Natural-Language Query",

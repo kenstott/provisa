@@ -16,7 +16,7 @@
     "generateKey": "Generate master key",
     "restartWarning": "{{note}} Rotating a master key while encrypted data exists may make prior rows unreadable — rotate before storing sensitive data, or plan a re-encryption.",
     "saveTitle": "Save encryption settings",
-    "keyGeneratedStored": "Master key generated and stored in the OS keychain (key id: {{keyId}}).",
+    "keyGeneratedStored": "Master key generated and stored in the OS keychain (key id: {{keyId}}) — in effect immediately, no restart needed.",
     "keyGeneratedNoKeychain": "No OS keychain available — copy this key and set it as {{envVar}}. It will not be shown again.",
     "savedRestartRequired": "Saved. Restart the service to apply.",
     "saved": "Saved.",
