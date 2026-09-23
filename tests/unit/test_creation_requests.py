@@ -238,3 +238,24 @@ class TestPayloadRoundTrip:
         )
         rebuilt = _rebuild_source_input(dataclasses.asdict(si))
         assert rebuilt.cdc.bootstrap_servers == "kafka:9092"
+
+
+class TestRejectionReasons:  # REQ-1814
+    """Every request_type a creation request can actually be stored with must have a non-empty
+    rejection-reason list — an unlisted request_type resolves to [] and the Requests page's
+    reject dialog has nothing to offer, silently blocking rejection outright."""
+
+    @pytest.mark.parametrize(
+        "request_type",
+        [
+            "relationship",  # provisa/api/admin/schema_mutation.py
+            "view",  # provisa/api/admin/schema_mutation_ops.py
+            "webhook",  # provisa/api/admin/actions_router.py — NOT "webhook_registration"
+            "source",  # provisa/api/mcp/tools.py propose_source (REQ-1792/1798)
+            "table",  # provisa/api/mcp/tools.py propose_table (REQ-1792/1798)
+        ],
+    )
+    async def test_every_real_request_type_has_rejection_reasons(self, request_type):
+        from provisa.api.admin.creation_requests_router import _REJECTION_REASONS
+
+        assert _REJECTION_REASONS.get(request_type)

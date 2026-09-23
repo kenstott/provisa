@@ -19247,3 +19247,43 @@ Each message bubble in the chat panel (user and assistant messages) shows a copy
 **Code:** `provisa-ui/src/components/ChatPanel.tsx`, `provisa-ui/src/App.css`
 
 **Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
+## 2. Authentication & Identity
+
+### REQ-1812 · MCP Authentication {#REQ-1812}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The MCP chat's x-provisa-role header must carry every role the user holds (comma-joined), not just the single "acting" role. In unsecured auth mode, the server reconstructs request.state.assignments by splitting this header on commas; a single-role value broke Polly's confirm_required shortcut (asking "create it now?" when the user already holds the required capability via a second role).
+
+**Use case:** Users with multiple roles (e.g., analyst + org_admin) need their full role union sent to the server so that Polly can detect when they already hold a creation capability and ask for immediate confirmation instead of queueing a pending request.
+
+**Code:** `provisa-ui/src/components/ChatPanel.tsx`, `provisa-ui/src/context/AuthContext.tsx`, `provisa/auth/middleware.py`, `provisa/api/mcp/tools.py`
+
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1813 · Chat UI / Widgets {#REQ-1813}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+Polly's present_choice widget is positioned centered within the docked chat panel (not the full viewport) via an absolutely-positioned overlay confined to the panel's relatively-positioned container. User selections are recorded as ordinary chat messages in the conversation history, providing a scrollable trace instead of the widget vanishing after use. A "clear conversation" button (trash icon) resets chat history to the initial suggested-questions view.
+
+**Use case:** In-panel choice widgets keep user focus within the active conversation; recording choices as messages makes interaction history transparent and scrollable, improving debugging and auditability. A clear button lets users reset the conversation without reloading.
+
+**Code:** `provisa-ui/src/components/ChatPanel.tsx`, `provisa-ui/src/hooks/useMcpChat.ts`
+
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
+### REQ-1814 · Admin UI / Requests {#REQ-1814}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The Requests page's reject dialog populates its reason dropdown from GET /admin/creation-requests/rejection-reasons, keyed by request_type. The _REJECTION_REASONS dict in creation_requests_router.py was missing entries for "source" and "table" (request_type values used by MCP propose_source/propose_table), and miskeyed "webhook_registration" when the stored request_type is "webhook". Both defects resulted in empty dropdowns and impossible rejection.
+
+**Use case:** Rejection reasons must be available for every request_type (relationship, view, webhook, source, table) so that admins can apply governance by rejecting non-compliant requests and providing structured feedback.
+
+**Code:** `provisa/api/admin/creation_requests_router.py`
+
+**Tests:** `tests/unit/test_creation_requests.py`

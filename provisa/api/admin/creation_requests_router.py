@@ -44,10 +44,31 @@ _REJECTION_REASONS: dict[str, list[str]] = {
         "out_of_scope",
         "insufficient_detail",
     ],
-    "webhook_registration": [
+    # REQ-1814: keyed by the stored request_type ("webhook" — see actions_router.py's
+    # cr_repo.create call), not by its capability name ("webhook_registration"). The old key here
+    # never matched any real row's request_type, so this dropdown was empty too.
+    "webhook": [
         "duplicate",
         "endpoint_unreachable",
         "schema_mismatch",
+        "governance_violation",
+        "insufficient_detail",
+    ],
+    # REQ-1814: propose_source/propose_table (REQ-1792/1798) land in this same queue but had no
+    # entry here — the Requests page's reject dialog requires picking a reason, and an unknown
+    # request_type resolves to an empty list, so the dropdown had nothing to offer and rejection
+    # was impossible for every MCP-proposed source/table.
+    "source": [
+        "duplicate",
+        "endpoint_unreachable",
+        "governance_violation",
+        "out_of_scope",
+        "insufficient_detail",
+    ],
+    "table": [
+        "duplicate",
+        "schema_mismatch",
+        "source_not_registered",
         "governance_violation",
         "insufficient_detail",
     ],

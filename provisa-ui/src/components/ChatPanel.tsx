@@ -21,6 +21,7 @@ import {
   CopyButton,
   Group,
   Modal,
+  Paper,
   Radio,
   ScrollArea,
   Stack,
@@ -30,7 +31,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { useMutation } from "@apollo/client/react";
-import { Check, Copy, MessageCircle, Mic, MicOff } from "lucide-react";
+import { Check, Copy, Eraser, MessageCircle, Mic, MicOff } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "../context/AuthContext";
@@ -72,8 +73,16 @@ const SUGGESTED_QUESTIONS = [
  * persisting the panel's conversation are explicit follow-ups.
  */
 export function ChatPanel() {
-  const { role } = useAuth();
-  const roleId = role?.id ?? "";
+  const { role, selectedRoles } = useAuth();
+  // REQ-1812: local-dev/demo (unsecured) auth reconstructs request.state.assignments purely from
+  // this header, splitting it on commas (see provisa/auth/middleware.py) — sending only role?.id
+  // (the single collapsed "acting" role) meant the "Role: All" case never actually carried the
+  // rest of the user's held roles to the server, so a capability held only via a second role (e.g.
+  // org_admin's source_registration) never triggered REQ-1799's confirm_required shortcut and
+  // Polly always queued a pending request instead of asking permission to act directly. In the
+  // real authenticated path this is harmless: the server ignores extra ids there and re-derives
+  // the true assignment set from the DB/claims regardless of what the header says.
+  const roleId = selectedRoles.map((r) => r.id).join(",") || (role?.id ?? "");
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -151,8 +160,17 @@ export function ChatPanel() {
       setChoiceDraft([]);
       setChoiceState(req);
     });
+  // REQ-1813: record what was picked as an ordinary chat message, so the choice has a visible,
+  // scrollable trace in the conversation instead of vanishing once the widget closes.
+  const describeChoice = (req: PresentChoiceRequest, answer: ChoiceAnswer): string => {
+    if (req.mode === "yes_no") return answer ? "Yes" : "No";
+    if (Array.isArray(answer)) return answer.length > 0 ? answer.join(", ") : "(none selected)";
+    return String(answer);
+  };
   const resolveChoice = (answer: ChoiceAnswer) => {
+    const req = choiceState;
     setChoiceState(null);
+    if (req) pushMessage({ role: "user", text: describeChoice(req, answer) });
     pendingChoiceResolveRef.current?.(answer);
     pendingChoiceResolveRef.current = null;
   };
@@ -173,7 +191,7 @@ export function ChatPanel() {
     return { success: false, message: `no mutation wired for client tool ${name}` };
   };
 
-  const { messages, tools, busy, error, send } = useMcpChat(
+  const { messages, tools, busy, error, send, clear, pushMessage } = useMcpChat(
     roleId,
     { navigate, confirm, runMutation, presentChoice },
     location.pathname,
@@ -283,7 +301,20 @@ export function ChatPanel() {
 
         <Group justify="space-between" mb="xs">
           <Title order={5}>Polly</Title>
-          <CloseButton data-testid="chat-panel-close" onClick={() => setOpen(false)} />
+          <Group gap={4}>
+            <Tooltip label="Clear conversation">
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                data-testid="chat-panel-clear"
+                disabled={messages.length === 0 || busy}
+                onClick={clear}
+              >
+                <Eraser size={16} />
+              </ActionIcon>
+            </Tooltip>
+            <CloseButton data-testid="chat-panel-close" onClick={() => setOpen(false)} />
+          </Group>
         </Group>
 
         {tools.length > 0 && (
@@ -432,53 +463,75 @@ export function ChatPanel() {
         </Group>
       </Modal>
 
-      <Modal
-        opened={choiceState !== null}
-        onClose={() => resolveChoice(choiceState?.mode === "multi" ? [] : "")}
-        title={choiceState?.question}
-        data-testid="chat-panel-choice-modal"
-      >
-        {choiceState?.mode === "yes_no" && (
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => resolveChoice(false)}>
-              No
-            </Button>
-            <Button onClick={() => resolveChoice(true)}>Yes</Button>
-          </Group>
-        )}
+      {/* REQ-1812: centered WITHIN the chat panel, not the viewport — a plain absolutely-positioned
+          overlay inside the panel's own (position: relative) Box, rather than Mantine's <Modal>,
+          which portals to the document body and centers over the whole app regardless of where
+          the panel is docked. */}
+      {choiceState && (
+        <Box
+          data-testid="chat-panel-choice-modal"
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "var(--mantine-spacing-md)",
+            background: "rgba(0, 0, 0, 0.35)",
+            zIndex: 20,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) resolveChoice(choiceState.mode === "multi" ? [] : "");
+          }}
+        >
+          <Paper shadow="md" radius="md" p="md" withBorder style={{ maxWidth: "90%", width: 340 }}>
+            <Text fw={600} size="sm" mb="sm">
+              {choiceState.question}
+            </Text>
 
-        {choiceState?.mode === "single" && (
-          <Stack gap="sm">
-            <Radio.Group value={choiceDraft[0] ?? ""} onChange={(v) => setChoiceDraft([v])}>
-              <Stack gap={6} mt="xs">
-                {choiceState.options?.map((opt) => (
-                  <Radio key={opt} value={opt} label={opt} />
-                ))}
-              </Stack>
-            </Radio.Group>
-            <Group justify="flex-end">
-              <Button disabled={!choiceDraft[0]} onClick={() => resolveChoice(choiceDraft[0])}>
-                Submit
-              </Button>
-            </Group>
-          </Stack>
-        )}
+            {choiceState.mode === "yes_no" && (
+              <Group justify="flex-end">
+                <Button variant="default" onClick={() => resolveChoice(false)}>
+                  No
+                </Button>
+                <Button onClick={() => resolveChoice(true)}>Yes</Button>
+              </Group>
+            )}
 
-        {choiceState?.mode === "multi" && (
-          <Stack gap="sm">
-            <Checkbox.Group value={choiceDraft} onChange={setChoiceDraft}>
-              <Stack gap={6} mt="xs">
-                {choiceState.options?.map((opt) => (
-                  <Checkbox key={opt} value={opt} label={opt} />
-                ))}
+            {choiceState.mode === "single" && (
+              <Stack gap="sm">
+                <Radio.Group value={choiceDraft[0] ?? ""} onChange={(v) => setChoiceDraft([v])}>
+                  <Stack gap={6} mt="xs">
+                    {choiceState.options?.map((opt) => (
+                      <Radio key={opt} value={opt} label={opt} />
+                    ))}
+                  </Stack>
+                </Radio.Group>
+                <Group justify="flex-end">
+                  <Button disabled={!choiceDraft[0]} onClick={() => resolveChoice(choiceDraft[0])}>
+                    Submit
+                  </Button>
+                </Group>
               </Stack>
-            </Checkbox.Group>
-            <Group justify="flex-end">
-              <Button onClick={() => resolveChoice(choiceDraft)}>Submit</Button>
-            </Group>
-          </Stack>
-        )}
-      </Modal>
+            )}
+
+            {choiceState.mode === "multi" && (
+              <Stack gap="sm">
+                <Checkbox.Group value={choiceDraft} onChange={setChoiceDraft}>
+                  <Stack gap={6} mt="xs">
+                    {choiceState.options?.map((opt) => (
+                      <Checkbox key={opt} value={opt} label={opt} />
+                    ))}
+                  </Stack>
+                </Checkbox.Group>
+                <Group justify="flex-end">
+                  <Button onClick={() => resolveChoice(choiceDraft)}>Submit</Button>
+                </Group>
+              </Stack>
+            )}
+          </Paper>
+        </Box>
+      )}
     </>
   );
 }

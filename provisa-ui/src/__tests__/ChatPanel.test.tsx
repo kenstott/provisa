@@ -17,7 +17,10 @@ import { render, screen, waitFor, fireEvent } from "../test-utils/render";
 import { ChatPanel } from "../components/ChatPanel";
 
 vi.mock("../context/AuthContext", () => ({
-  useAuth: () => ({ role: { id: "analyst" } }),
+  useAuth: () => ({
+    role: { id: "analyst" },
+    selectedRoles: [{ id: "analyst" }, { id: "org_admin" }],
+  }),
 }));
 
 const fetchMcpChatStatus = vi.fn();
@@ -311,5 +314,95 @@ describe("ChatPanel — copy button (REQ-1811)", () => {
     fireEvent.click(copyButtons[copyButtons.length - 1]);
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Poly means many!");
+  });
+});
+
+describe("ChatPanel — role header carries every held role (REQ-1812)", () => {
+  it("sends every selected role, not just the acting one, in x-provisa-role", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(sseResponse([{ type: "text", text: "ok" }, { type: "done" }]));
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "hi" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, init] = fetchMock.mock.calls[0];
+    expect((init as RequestInit).headers).toMatchObject({
+      "x-provisa-role": "analyst,org_admin",
+    });
+  });
+});
+
+describe("ChatPanel — clear conversation (REQ-1813)", () => {
+  it("clears messages and is disabled when there is nothing to clear", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse([{ type: "text", text: "Poly means many!" }, { type: "done" }]),
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    expect(screen.getByTestId("chat-panel-clear")).toBeDisabled();
+
+    fireEvent.change(textarea, { target: { value: "why polly" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    await waitFor(() => screen.getByText("Poly means many!"));
+
+    expect(screen.getByTestId("chat-panel-clear")).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId("chat-panel-clear"));
+
+    expect(screen.queryByText("Poly means many!")).not.toBeInTheDocument();
+    expect(screen.getByTestId("chat-panel-suggestions")).toBeInTheDocument();
+  });
+});
+
+describe("ChatPanel — present_choice answer recorded in conversation (REQ-1813)", () => {
+  it("appends the picked option as a chat message once resolved", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            type: "awaiting_client_tools",
+            assistant_content: [
+              {
+                type: "tool_use",
+                id: "c1",
+                name: "present_choice",
+                input: { question: "Which source?", mode: "single", options: ["A", "B"] },
+              },
+            ],
+            server_tool_results: [],
+            pending: [
+              {
+                id: "c1",
+                name: "present_choice",
+                input: { question: "Which source?", mode: "single", options: ["A", "B"] },
+              },
+            ],
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockResolvedValueOnce(sseResponse([{ type: "text", text: "Ok." }, { type: "done" }]));
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "find a source" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => screen.getByLabelText("B"));
+    fireEvent.click(screen.getByLabelText("B"));
+    fireEvent.click(screen.getByText("Submit"));
+
+    await waitFor(() => screen.getByText("Ok."));
+    expect(screen.getByText("B")).toBeInTheDocument();
   });
 });

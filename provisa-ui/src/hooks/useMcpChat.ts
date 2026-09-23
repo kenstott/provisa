@@ -104,6 +104,10 @@ export function useMcpChat(roleId: string, toolCtx: ClientToolContext, currentRo
     setError(null);
     setTools([]);
     const displayHistory = [...messages, { role: "user" as const, text }];
+    // Tracked by index rather than "whatever is last": a present_choice answer recorded mid-turn
+    // (REQ-1813) appends its own message while this same turn is still streaming, which would
+    // otherwise become the new "last" element and get clobbered by the next appendAssistant call.
+    const assistantIndex = displayHistory.length;
     setMessages([...displayHistory, { role: "assistant" as const, text: "" }]);
     setBusy(true);
 
@@ -113,7 +117,7 @@ export function useMcpChat(roleId: string, toolCtx: ClientToolContext, currentRo
       const current = assistantText;
       setMessages((prev) => {
         const next = [...prev];
-        next[next.length - 1] = { role: "assistant", text: current };
+        next[assistantIndex] = { role: "assistant", text: current };
         return next;
       });
     };
@@ -167,5 +171,13 @@ export function useMcpChat(roleId: string, toolCtx: ClientToolContext, currentRo
     }
   };
 
-  return { messages, tools, busy, error, send, clear: () => setMessages([]) };
+  return {
+    messages,
+    tools,
+    busy,
+    error,
+    send,
+    clear: () => setMessages([]),
+    pushMessage: (msg: ChatMsg) => setMessages((prev) => [...prev, msg]),
+  };
 }

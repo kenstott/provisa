@@ -62063,3 +62063,96 @@
     Then the button disappears (opacity returns to 0)
   relates_to:
   - REQ-1795
+- id: REQ-1812
+  status: complete
+  since: 2026-09
+  group: "2. Authentication & Identity"
+  category: MCP Authentication
+  priority: MUST
+  type: behavioral
+  description: >-
+    The MCP chat's x-provisa-role header must carry every role the user holds (comma-joined),
+    not just the single "acting" role. In unsecured auth mode, the server reconstructs
+    request.state.assignments by splitting this header on commas; a single-role value broke
+    Polly's confirm_required shortcut (asking "create it now?" when the user already holds
+    the required capability via a second role).
+  use_case: >-
+    Users with multiple roles (e.g., analyst + org_admin) need their full role union sent
+    to the server so that Polly can detect when they already hold a creation capability
+    and ask for immediate confirmation instead of queueing a pending request.
+  code:
+  - provisa-ui/src/components/ChatPanel.tsx
+  - provisa-ui/src/context/AuthContext.tsx
+  - provisa/auth/middleware.py
+  - provisa/api/mcp/tools.py
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given a user with multiple roles (analyst, org_admin)
+    When the MCP chat sends the x-provisa-role header
+    Then the header includes both role IDs, comma-joined
+    And the server reconstructs the full role set on receipt
+    And Polly can detect multi-role capability checks correctly
+- id: REQ-1813
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Chat UI / Widgets
+  priority: SHOULD
+  type: ui
+  description: >-
+    Polly's present_choice widget is positioned centered within the docked chat panel
+    (not the full viewport) via an absolutely-positioned overlay confined to the panel's
+    relatively-positioned container. User selections are recorded as ordinary chat messages
+    in the conversation history, providing a scrollable trace instead of the widget vanishing
+    after use. A "clear conversation" button (trash icon) resets chat history to the initial
+    suggested-questions view.
+  use_case: >-
+    In-panel choice widgets keep user focus within the active conversation; recording choices
+    as messages makes interaction history transparent and scrollable, improving debugging
+    and auditability. A clear button lets users reset the conversation without reloading.
+  code:
+  - provisa-ui/src/components/ChatPanel.tsx
+  - provisa-ui/src/hooks/useMcpChat.ts
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given the assistant calls present_choice with mode "yes_no"
+    When the UI renders the choice widget
+    Then the widget is centered within the chat panel container (not full viewport)
+    And the user clicks Yes or No
+    Then the choice is recorded as a chat message (visible in history)
+    And the assistant receives the choice for parsing
+    When the user clicks the clear button
+    Then chat history resets to the initial suggested-questions view
+- id: REQ-1814
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Admin UI / Requests
+  priority: MUST
+  type: behavioral
+  description: >-
+    The Requests page's reject dialog populates its reason dropdown from GET
+    /admin/creation-requests/rejection-reasons, keyed by request_type. The _REJECTION_REASONS
+    dict in creation_requests_router.py was missing entries for "source" and "table"
+    (request_type values used by MCP propose_source/propose_table), and miskeyed "webhook_registration"
+    when the stored request_type is "webhook". Both defects resulted in empty dropdowns
+    and impossible rejection.
+  use_case: >-
+    Rejection reasons must be available for every request_type (relationship, view, webhook,
+    source, table) so that admins can apply governance by rejecting non-compliant requests
+    and providing structured feedback.
+  code:
+  - provisa/api/admin/creation_requests_router.py
+  tests:
+  - tests/unit/test_creation_requests.py
+  scenario: |
+    Given an MCP-proposed source or table creation request
+    When an admin clicks Reject on the Requests page
+    Then the reason dropdown populates with (duplicate, endpoint_unreachable, governance_violation,
+    out_of_scope, insufficient_detail, schema_mismatch, source_not_registered)
+    And the admin can select a reason and confirm rejection
+    Given a webhook registration request
+    When an admin clicks Reject
+    Then the reason dropdown is non-empty and functional
