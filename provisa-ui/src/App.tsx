@@ -260,12 +260,11 @@ function App() {
                         {/* Persistent "Unregistered" indicator, distinct from REQ-1137's post-trial
                     nag: visible from day one whenever unlicensed, never gates anything. */}
                         <LicenseBadge />
-                        {/* REQ-1795: the chat assistant panel — available on every route, not just
-                    the dedicated MCP Explore page. */}
-                        <ChatPanel />
                         <NavBar />
                         {/* REQ-1559: the admin rail stands beside the page rather than above it, so
-                    the row is the shell for both. It renders nothing off an admin route. */}
+                    the row is the shell for both. It renders nothing off an admin route.
+                    REQ-1803: the chat assistant panel is a flex sibling of `<main>` here too —
+                    docked, not an overlay, so opening it shrinks `<main>` instead of covering it. */}
                         <div className="app-body">
                           <AdminRail />
                           <main>
@@ -593,6 +592,7 @@ function App() {
                               </Routes>
                             </Suspense>
                           </main>
+                          <ChatPanel />
                         </div>
                       </SubnavExtraProvider>
                     </TourProvider>

@@ -61700,6 +61700,47 @@
   relates_to:
   - REQ-1008
   - REQ-1795
+- id: REQ-1804
+  status: complete
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
+  category: Chat UI
+  priority: SHOULD
+  type: ui
+  description: >-
+    Chat assistant panel checks LLM configuration before opening, preventing error messages after the panel
+    opens. The frontend calls GET /admin/mcp/chat/status to verify LLM vendor/model/credentials are configured
+    before opening the panel. If not configured, a modal explains the issue and offers navigation to /admin/ai-models
+    instead of opening the panel. Network failures on the status check itself open the panel anyway.
+  use_case: >-
+    Users avoid confusion by seeing a clear preflight check before opening the chat, preventing the experience
+    of typing a message only to receive an error from the SSE stream because Polly isn't set up yet.
+  code:
+  - provisa/api/mcp/status.py
+  - provisa/api/mcp/chat.py
+  - provisa-ui/src/api/mcpChat.ts
+  - provisa-ui/src/components/ChatPanel.tsx
+  tests:
+  - tests/unit/test_mcp_status.py
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given a user with the chat toggle button visible but no LLM configured
+    When they click the toggle button
+    Then the frontend calls GET /admin/mcp/chat/status
+    And receives {configured: false, reason: "..."}
+    Then a modal appears explaining the issue with the specific reason
+    And an "Open AI Models" button navigates to /admin/ai-models
+    And the chat panel does NOT open
+    When the user has LLM properly configured
+    Then the status check returns {configured: true}
+    And the chat panel opens as normal
+    When the status check fails due to network error
+    Then the panel opens anyway rather than blocking on a second failure mode
+  relates_to:
+  - REQ-1008
+  - REQ-1794
+  - REQ-1795
+  - REQ-1803
 - id: REQ-1801
   status: complete
   since: 2026-09
@@ -61771,3 +61812,29 @@
   - REQ-918
   - REQ-1801
   - REQ-1574
+- id: REQ-1803
+  status: complete
+  since: 2026-09
+  group: 10. UI & Admin Surfaces
+  category: UI Layout
+  priority: SHOULD
+  type: ui
+  description: >-
+    Chat assistant panel changed from Mantine Drawer (portal-based overlay) to a docked flex sibling
+    of <main> in the .app-body row, avoiding content coverage.
+  use_case: >-
+    Users can see both the chat panel and main content simultaneously; opening the chat panel shrinks
+    the main content's available width instead of covering it, consistent with how .admin-rail
+    relates to <main>.
+  code:
+  - provisa-ui/src/components/ChatPanel.tsx
+  - provisa-ui/src/App.tsx
+  scenario: |
+    Given the chat panel is open
+    When the user views the main content area
+    Then the main content is shrunk to fit alongside the fixed-width panel instead of being covered
+    And the resize handle and width persistence (localStorage) are unchanged
+    And the floating toggle button only renders when the panel is closed
+    And an inline CloseButton in the panel header closes the panel while open
+  relates_to:
+  - REQ-1795

@@ -19104,6 +19104,20 @@ The chat assistant knows the user's current application page without a tool call
 
 **Tests:** `tests/unit/test_mcp_chat.py`, `provisa-ui/src/__tests__/useMcpChat.test.tsx`
 
+## 10. UI & Admin Surfaces
+
+### REQ-1804 · Chat UI {#REQ-1804}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+Chat assistant panel checks LLM configuration before opening, preventing error messages after the panel opens. The frontend calls GET /admin/mcp/chat/status to verify LLM vendor/model/credentials are configured before opening the panel. If not configured, a modal explains the issue and offers navigation to /admin/ai-models instead of opening the panel. Network failures on the status check itself open the panel anyway.
+
+**Use case:** Users avoid confusion by seeing a clear preflight check before opening the chat, preventing the experience of typing a message only to receive an error from the SSE stream because Polly isn't set up yet.
+
+**Code:** `provisa/api/mcp/status.py`, `provisa/api/mcp/chat.py`, `provisa-ui/src/api/mcpChat.ts`, `provisa-ui/src/components/ChatPanel.tsx`
+
+**Tests:** `tests/unit/test_mcp_status.py`, `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
 ## 1. Access Governance & Security
 
 ### REQ-1801 · Encryption {#REQ-1801}
@@ -19129,3 +19143,17 @@ Master-key storage falls back to a local file when no OS keychain backend is usa
 **Code:** `provisa/encryption/providers.py`, `pyproject.toml`
 
 **Tests:** `tests/unit/test_encryption_keystore.py`, `tests/unit/test_secrets_store_cipher.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1803 · UI Layout {#REQ-1803}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+Chat assistant panel changed from Mantine Drawer (portal-based overlay) to a docked flex sibling of <main> in the .app-body row, avoiding content coverage.
+
+**Use case:** Users can see both the chat panel and main content simultaneously; opening the chat panel shrinks the main content's available width instead of covering it, consistent with how .admin-rail relates to <main>.
+
+**Code:** `provisa-ui/src/components/ChatPanel.tsx`, `provisa-ui/src/App.tsx`
+
+**Tests:** —

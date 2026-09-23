@@ -182,3 +182,40 @@ def test_active_scheme_overrides_request_proto(monkeypatch):
     s = mcp_status(_FakeRequest({"x-forwarded-proto": "http", "host": "acme.com:3000"}))
     assert s["url"] == "https://acme.com:8009/mcp"
     assert s["tls"] is True
+
+
+# -- REQ-1804: chat preflight status, checked before the UI opens the panel ----------
+
+
+class TestMcpChatStatus:
+    def _client(self, monkeypatch, configured: bool, reason: str = ""):
+        from types import SimpleNamespace
+
+        import provisa.api.app as app_mod
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from provisa.api.mcp import chat as chat_mod
+        from provisa.api.mcp.status import router
+
+        monkeypatch.setattr(app_mod, "state", SimpleNamespace(), raising=False)
+
+        async def fake_llm_configured(_state):
+            return configured, reason
+
+        monkeypatch.setattr(chat_mod, "_llm_configured", fake_llm_configured)
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app)
+
+    def test_reports_configured_true_with_no_reason(self, monkeypatch):
+        client = self._client(monkeypatch, True, "")
+        r = client.get("/admin/mcp/chat/status")
+        assert r.status_code == 200
+        assert r.json() == {"configured": True, "reason": ""}
+
+    def test_reports_configured_false_with_reason(self, monkeypatch):
+        client = self._client(monkeypatch, False, "ANTHROPIC_API_KEY is not set")
+        r = client.get("/admin/mcp/chat/status")
+        assert r.status_code == 200
+        assert r.json() == {"configured": False, "reason": "ANTHROPIC_API_KEY is not set"}

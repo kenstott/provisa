@@ -809,12 +809,21 @@ async def search_kaggle_datasets(state: Any, role: str, query: str) -> list[dict
     argument (that would put a credential in chat history/logs). The name is FIXED, not chosen per
     call: the model should never ask the user what to name it, only tell them (once, if the secret
     doesn't exist yet) to create one under exactly this name on the Secrets page (/admin/secrets)
-    with their Kaggle API token as the value."""
+    with their Kaggle API token as the value.
+
+    ``${secret:...}`` resolves against whichever org's vault is BOUND to this context
+    (provisa.core.secrets_store's ``bound_to_request_org``) — the same binding
+    provisa/api/admin/schema_mutation.py's create_source wraps around its own secret reads. The
+    MCP chat request never establishes that binding on its own (unlike a GraphQL admin mutation),
+    so this tool must bind it explicitly or every resolution fails with "no organization is bound
+    to this context" regardless of whether the secret actually exists."""
     require_role(role, state)
     from provisa.core.secrets import resolve_secrets
+    from provisa.core.secrets_store import bound_to_request_org
     from provisa.kaggle.client import search_datasets
 
-    token = resolve_secrets(f"${{secret:{KAGGLE_TOKEN_SECRET_NAME}}}")
+    async with bound_to_request_org():
+        token = resolve_secrets(f"${{secret:{KAGGLE_TOKEN_SECRET_NAME}}}")
     results = await search_datasets(token, query=query)
     return [
         {

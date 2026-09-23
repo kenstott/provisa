@@ -146,6 +146,21 @@ async def get_mcp_server(request: Request):  # REQ-1008
     return mcp_status(request)
 
 
+@router.get("/admin/mcp/chat/status")
+async def mcp_chat_status():  # REQ-1804
+    """Whether Polly (the chat assistant, REQ-1008) has a usable vendor/model/credential.
+
+    A cheap preflight the UI calls BEFORE opening the chat panel (REQ-1804), so an unconfigured
+    LLM shows an explanatory modal at the toggle button instead of an open, seemingly-broken panel
+    that only reveals the problem after the user has already typed a message and sent it.
+    """
+    from provisa.api.app import state
+    from provisa.api.mcp.chat import _llm_configured
+
+    configured, reason = await _llm_configured(state)
+    return {"configured": configured, "reason": reason}
+
+
 @router.post("/admin/mcp/search-catalog")
 async def mcp_search_catalog(request: Request):  # REQ-1008
     """Browser-callable wrapper over the MCP ``search_catalog`` tool.

@@ -16,12 +16,13 @@ import {
   Badge,
   Box,
   Button,
-  Drawer,
+  CloseButton,
   Group,
   Modal,
   ScrollArea,
   Text,
   Textarea,
+  Title,
   Tooltip,
 } from "@mantine/core";
 import { useMutation } from "@apollo/client/react";
@@ -31,6 +32,7 @@ import remarkGfm from "remark-gfm";
 import { useAuth } from "../context/AuthContext";
 import { useMcpChat } from "../hooks/useMcpChat";
 import { RefreshMv } from "../hooks/admin.graphql";
+import { fetchMcpChatStatus } from "../api/mcpChat";
 import type { MutationResult } from "../types/admin";
 import type { ClientToolResult } from "../mcp/clientTools";
 import { useLocalStorage } from "./graph/graph-persistence";
@@ -40,9 +42,14 @@ const MAX_WIDTH = 900;
 const DEFAULT_WIDTH = 420;
 
 /**
- * REQ-1795: the right-hand chat assistant panel — a v1 slice proving the client-tool
- * pause/resume plumbing end to end (navigate + refresh_mv), separate from the existing
- * McpExplorePage.tsx (a dedicated page using the same backend but not yet sharing this hook).
+ * REQ-1795: the chat assistant panel — a v1 slice proving the client-tool pause/resume
+ * plumbing end to end (navigate + refresh_mv), separate from the existing McpExplorePage.tsx
+ * (a dedicated page using the same backend but not yet sharing this hook).
+ *
+ * Docked, not an overlay (REQ-1803): rendered as a flex sibling of `<main>` inside `.app-body`,
+ * so opening it SHRINKS the main content's flex-basis rather than covering it — the same layout
+ * relationship `.admin-rail` already has with `<main>`. `App.tsx` places `<ChatPanel />` after
+ * `<main>` in that row; this component owns only its own width and contents, not the row layout.
  *
  * Kept deliberately minimal: no persisted history, no input recall, no Claude Desktop panel —
  * those are McpExplorePage.tsx concerns. This proves the mechanism; broadening the client-tool
@@ -56,6 +63,29 @@ export function ChatPanel() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
+
+  // REQ-1804: checked on toggle click, before opening the panel — an unconfigured LLM shows an
+  // explanatory modal at the button instead of an open panel that only reveals the problem after
+  // the user has already typed and sent a message.
+  const [checkingConfig, setCheckingConfig] = useState(false);
+  const [unconfiguredReason, setUnconfiguredReason] = useState<string | null>(null);
+  const openChat = async () => {
+    setCheckingConfig(true);
+    try {
+      const status = await fetchMcpChatStatus();
+      if (status.configured) {
+        setOpen(true);
+      } else {
+        setUnconfiguredReason(status.reason || "no vendor or credential is configured");
+      }
+    } catch {
+      // The status check itself failed (network/server error) — open anyway and let the chat's
+      // own error handling surface it, rather than blocking the toggle on a second failure mode.
+      setOpen(true);
+    } finally {
+      setCheckingConfig(false);
+    }
+  };
 
   // Resizable width (REQ-1795), persisted per browser so it survives closing/reopening the
   // panel and page reloads. Dragged from a handle on the drawer's left edge.
@@ -123,31 +153,68 @@ export function ChatPanel() {
     void send(text);
   };
 
+  if (!open) {
+    return (
+      <>
+        <Tooltip label="Polly, your data assistant" position="left">
+          <ActionIcon
+            variant="filled"
+            size="xl"
+            radius="xl"
+            data-testid="chat-panel-toggle"
+            loading={checkingConfig}
+            style={{ position: "fixed", bottom: 16, right: 16, zIndex: 200 }}
+            onClick={() => void openChat()}
+          >
+            <MessageCircle size={20} />
+          </ActionIcon>
+        </Tooltip>
+
+        <Modal
+          opened={unconfiguredReason !== null}
+          onClose={() => setUnconfiguredReason(null)}
+          title="Polly isn't set up yet"
+          data-testid="chat-panel-unconfigured-modal"
+        >
+          <Text size="sm" mb="md">
+            Polly needs an LLM vendor and credential configured before it can chat
+            {unconfiguredReason ? ` (${unconfiguredReason})` : ""}.
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setUnconfiguredReason(null)}>
+              Not now
+            </Button>
+            <Button
+              onClick={() => {
+                setUnconfiguredReason(null);
+                navigate("/admin/ai-models");
+              }}
+            >
+              Open AI Models settings
+            </Button>
+          </Group>
+        </Modal>
+      </>
+    );
+  }
+
   return (
     <>
-      <Tooltip label="Chat assistant" position="left">
-        <ActionIcon
-          variant="filled"
-          size="xl"
-          radius="xl"
-          data-testid="chat-panel-toggle"
-          style={{ position: "fixed", bottom: 16, right: 16, zIndex: 200 }}
-          onClick={() => setOpen(true)}
-        >
-          <MessageCircle size={20} />
-        </ActionIcon>
-      </Tooltip>
-
-      <Drawer
-        opened={open}
-        onClose={() => setOpen(false)}
-        position="right"
-        title="Chat assistant"
-        size={width}
+      {/* Docked flex sibling of `<main>` inside `.app-body` (REQ-1803) — a fixed flex-basis, not
+          an overlay, so `<main>` (flex: 1; min-width: 0) shrinks to the remaining width instead
+          of being covered. */}
+      <Box
         data-testid="chat-panel"
+        style={{
+          position: "relative",
+          flex: `0 0 ${width}px`,
+          display: "flex",
+          flexDirection: "column",
+          borderLeft: "1px solid var(--mantine-color-default-border)",
+          padding: "var(--mantine-spacing-sm)",
+        }}
       >
-        {/* Drag handle: resizes the drawer by adjusting its `size` (REQ-1795). Sits on the
-            drawer's left edge, over Mantine's own content padding. */}
+        {/* Drag handle: resizes the panel by adjusting its flex-basis (REQ-1795). */}
         <div
           role="separator"
           aria-orientation="vertical"
@@ -164,81 +231,84 @@ export function ChatPanel() {
             zIndex: 10,
           }}
         />
-        <Box style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-          {tools.length > 0 && (
-            <Group gap={6} mb="xs" wrap="wrap">
-              {tools.map((tl, i) => (
-                <Badge
-                  key={i}
-                  size="sm"
-                  variant={tl.running ? "outline" : "light"}
-                  color={tl.error ? "red" : "grape"}
-                >
-                  {tl.name}
-                </Badge>
-              ))}
-            </Group>
-          )}
 
-          {error && (
-            <Alert color="red" mb="xs">
-              {error.message}
-              {error.action && (
-                <Button
-                  size="xs"
-                  variant="light"
-                  mt={6}
-                  onClick={() => {
-                    setOpen(false);
-                    navigate(error.action!.route);
-                  }}
-                >
-                  {error.action.label}
-                </Button>
-              )}
-            </Alert>
-          )}
+        <Group justify="space-between" mb="xs">
+          <Title order={5}>Polly</Title>
+          <CloseButton data-testid="chat-panel-close" onClick={() => setOpen(false)} />
+        </Group>
 
-          <ScrollArea style={{ flex: 1 }} mb="sm">
-            {messages.map((m, i) => (
-              <Box
+        {tools.length > 0 && (
+          <Group gap={6} mb="xs" wrap="wrap">
+            {tools.map((tl, i) => (
+              <Badge
                 key={i}
-                mb="sm"
-                p="xs"
-                style={{
-                  borderRadius: 8,
-                  background:
-                    m.role === "user" ? "var(--mantine-color-blue-light)" : "transparent",
-                  fontSize: "var(--mantine-font-size-xs)",
+                size="sm"
+                variant={tl.running ? "outline" : "light"}
+                color={tl.error ? "red" : "grape"}
+              >
+                {tl.name}
+              </Badge>
+            ))}
+          </Group>
+        )}
+
+        {error && (
+          <Alert color="red" mb="xs">
+            {error.message}
+            {error.action && (
+              <Button
+                size="xs"
+                variant="light"
+                mt={6}
+                onClick={() => {
+                  setOpen(false);
+                  navigate(error.action!.route);
                 }}
               >
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {m.text || (busy && i === messages.length - 1 ? "…" : "")}
-                </ReactMarkdown>
-              </Box>
-            ))}
-          </ScrollArea>
+                {error.action.label}
+              </Button>
+            )}
+          </Alert>
+        )}
 
-          <Textarea
-            placeholder="Ask the assistant, or tell it what to do…"
-            value={draft}
-            onChange={(e) => setDraft(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                onSend();
-              }
-            }}
-            disabled={busy}
-            autosize
-            minRows={2}
-            maxRows={6}
-          />
-          <Button mt="xs" onClick={onSend} disabled={busy || !draft.trim()} loading={busy}>
-            Send
-          </Button>
-        </Box>
-      </Drawer>
+        <ScrollArea style={{ flex: 1 }} mb="sm">
+          {messages.map((m, i) => (
+            <Box
+              key={i}
+              mb="sm"
+              p="xs"
+              style={{
+                borderRadius: 8,
+                background: m.role === "user" ? "var(--mantine-color-blue-light)" : "transparent",
+                fontSize: "var(--mantine-font-size-xs)",
+              }}
+            >
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {m.text || (busy && i === messages.length - 1 ? "…" : "")}
+              </ReactMarkdown>
+            </Box>
+          ))}
+        </ScrollArea>
+
+        <Textarea
+          placeholder="Ask the assistant, or tell it what to do…"
+          value={draft}
+          onChange={(e) => setDraft(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              onSend();
+            }
+          }}
+          disabled={busy}
+          autosize
+          minRows={2}
+          maxRows={6}
+        />
+        <Button mt="xs" onClick={onSend} disabled={busy || !draft.trim()} loading={busy}>
+          Send
+        </Button>
+      </Box>
 
       <Modal
         opened={confirmState !== null}

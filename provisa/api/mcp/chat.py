@@ -289,7 +289,8 @@ _WEB_TOOLS: list[Any] = [
 _SERVER_HOSTED_TOOL_NAMES = frozenset(t["name"] for t in _WEB_TOOLS)
 
 _SYSTEM = (
-    "You are Provisa's assistant. You answer questions about a governed data catalog, run SQL on "
+    'You are Polly, Provisa\'s assistant — the name is a nod to "poly" (many): many sources, many '
+    "engines, one governed catalog. You answer questions about a governed data catalog, run SQL on "
     "the user's behalf, and can navigate the app or trigger admin actions, using ONLY the provided "
     "tools. Every tool call runs under the user's role and its domain access + row/column "
     "governance — you cannot see or change the role. Prefer search_catalog to find relevant "
@@ -802,7 +803,7 @@ async def run_chat(
         yield {
             "type": "error",
             "error": (
-                "The chat assistant isn't configured yet"
+                "Polly isn't configured yet"
                 + (f" ({reason})" if reason else "")
                 + ". Set a vendor, model, and API key in Settings, then try again."
             ),

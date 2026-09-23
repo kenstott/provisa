@@ -12,13 +12,17 @@ never appears in a tool-call argument, chat history, or log line.
 """
 
 import types
+from contextlib import asynccontextmanager
 
 import httpx
 import pytest
 import respx
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from provisa.api.mcp import tools as mcp_tools
+from provisa.core.database import Database
 from provisa.core.models import GovDataSubject, GovDataSubscription
+from provisa.core.schema_admin import secrets_store
 
 pytestmark = pytest.mark.asyncio
 
@@ -57,7 +61,38 @@ class TestSearchGovdataSubjects:
             await mcp_tools.search_govdata_subjects(_state(), "ghost", "inflation")
 
 
+@asynccontextmanager
+async def _admin_db(tmp_path):
+    """A real (SQLite) admin_db holding secrets_store — REQ-1799/1802's `bound_to_request_org`
+    always queries this table for the org's vault, regardless of whether resolve_secrets itself
+    is mocked, so every test below needs a real one, not a bare mock."""
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'secrets.db'}")
+    async with engine.begin() as c:
+        await c.run_sync(lambda s: secrets_store.metadata.create_all(s, tables=[secrets_store]))
+    db = Database(engine, name="admin")
+    try:
+        yield db
+    finally:
+        await engine.dispose()
+
+
 class TestSearchKaggleDatasets:
+    @pytest.fixture(autouse=True)
+    async def _bind_request_org(self, tmp_path, monkeypatch):
+        # REQ-1799/1802: search_kaggle_datasets resolves ${secret:...} inside
+        # secrets_store.bound_to_request_org(), which needs an installed request-org resolver —
+        # exactly the plumbing the real API layer installs at import (provisa.api.app). Without
+        # this, resolution fails with "no organization is bound to this context" regardless of
+        # whether the secret exists, which is the bug this fixture's own existence proves was
+        # previously untested (the tests below used to mock resolve_secrets entirely, papering
+        # over the real ${secret:...} resolution path).
+        from provisa.core import secrets_store as secrets_store_mod
+
+        async with _admin_db(tmp_path) as db:
+            self.admin_db = db
+            monkeypatch.setattr(secrets_store_mod, "_request_org", lambda: (db, "test_org"))
+            yield
+
     async def test_resolves_fixed_secret_name_never_a_raw_token_argument(self, monkeypatch):
         seen_reference = {}
 
@@ -79,11 +114,41 @@ class TestSearchKaggleDatasets:
         assert seen_reference["value"] == f"${{secret:{mcp_tools.KAGGLE_TOKEN_SECRET_NAME}}}"
         assert result[0]["ref"] == "owner/inflation"
 
-    async def test_missing_secret_fails_closed(self, monkeypatch):
-        def fake_resolve_secrets(value):
-            raise KeyError("no such secret: kaggle_api_token")
-
-        monkeypatch.setattr("provisa.core.secrets.resolve_secrets", fake_resolve_secrets)
-
-        with pytest.raises(KeyError):
+    async def test_missing_secret_fails_closed(self):
+        # No mocking of resolve_secrets here — the org vault is real (empty), so this exercises
+        # the ACTUAL ${secret:...} resolution path end to end and proves it fails closed rather
+        # than silently returning an empty/garbage token.
+        with pytest.raises(KeyError, match=mcp_tools.KAGGLE_TOKEN_SECRET_NAME):
             await mcp_tools.search_kaggle_datasets(_state(), "analyst", "inflation")
+
+    async def test_real_secret_resolution_end_to_end(self, monkeypatch):
+        # REQ-1799/1802: proves the actual bug (org-context binding, not just the fixed-name
+        # convention) is fixed — a real secret, stored the same way the Secrets page stores one,
+        # resolves through the real ${secret:...} provider with no mocking of resolve_secrets.
+        from provisa.core import secrets_store as secrets_store_mod
+
+        monkeypatch.setattr(
+            secrets_store_mod,
+            "_cipher",
+            lambda: types.SimpleNamespace(encrypt=lambda b: b, decrypt=lambda b: b),
+        )
+        await secrets_store_mod.put(
+            self.admin_db,
+            "test_org",
+            mcp_tools.KAGGLE_TOKEN_SECRET_NAME,
+            "KGAT_stored_token",
+            owner_id=secrets_store_mod.ORG_OWNER,
+        )
+
+        seen_token = {}
+
+        async def fake_search_datasets(token, *, query):
+            seen_token["token"] = token
+            return [{"ref": "owner/inflation", "title": "Inflation"}]
+
+        monkeypatch.setattr("provisa.kaggle.client.search_datasets", fake_search_datasets)
+
+        result = await mcp_tools.search_kaggle_datasets(_state(), "analyst", "inflation")
+
+        assert seen_token["token"] == "KGAT_stored_token"
+        assert result[0]["ref"] == "owner/inflation"
