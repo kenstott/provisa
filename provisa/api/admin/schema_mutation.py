@@ -89,6 +89,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _rebuild_table_input,
     _register_source_on_engine,
     _remove_view_mv,
+    _stage_kaggle_if_needed,
     _sync_view_mv,
     _cache_prometheus_label_columns,
     _synthesize_mapping_dsl_tables,
@@ -645,6 +646,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # operator wrote rather than a literal, and the pool resolves what it was given.
         try:
             async with bound_to_request_org():
+                # REQ-1819: BEFORE connection validation — a Kaggle-hinted source's files must
+                # exist on disk before _add_source_pool can validate a connection to them. Runs
+                # for every path that reaches create_source (this direct call, create_source_now,
+                # and a queued propose_source request executed on approval), overwriting
+                # input.path with the real staged directory regardless of what the caller sent.
+                _kaggle_refusal = await _stage_kaggle_if_needed(input)
+                if _kaggle_refusal is not None:
+                    return _kaggle_refusal
                 await _add_source_pool(state, input)
         except Exception as _conn_err:
             logging.getLogger(__name__).exception(

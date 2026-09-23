@@ -62246,3 +62246,124 @@
     "Create the X source now?"
     And the single-candidate prompt says "Would you like to create a request for the
     <name> source/table?"
+
+- id: REQ-1818
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Chat UI / present_choice
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    The chat transcript now records present_choice questions in full: when the widget opens,
+    provisa-ui/src/components/ChatPanel.tsx's presentChoice function pushes the question
+    itself as an assistant message into the conversation, so both question and answer are
+    visible in the chat window, making the exchange readable and complete.
+  use_case: >-
+    Chat history must be readable without needing to remember the context; recording the
+    question alongside the answer ensures a complete record of the entire exchange.
+  code:
+  - provisa-ui/src/components/ChatPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given present_choice widget is opened by the model
+    When the widget appears
+    Then the question text is pushed as an assistant message into the conversation
+    And the user's answer is recorded as a user message
+    And both appear sequentially in the chat history
+- id: REQ-1819
+  status: complete
+  since: 2026-09
+  group: "3. Source Registration & Data Modeling"
+  category: Kaggle Source Creation
+  priority: MUST
+  type: constraint
+  description: >-
+    All source creation paths (admin form, MCP chat, request approval) funnel through a
+    single resolver (Mutation.create_source in provisa/api/admin/schema_mutation.py) which
+    now centralizes Kaggle staging: a new _stage_kaggle_if_needed helper in
+    provisa/api/admin/schema_common.py detects kaggle_owner/kaggle_ref in the source's
+    federation_hints_json, downloads and extracts the dataset to a real staging directory,
+    and UNCONDITIONALLY OVERWRITES the input path with the actual staged path. No caller's
+    path is ever trusted for Kaggle-hinted sources, making it impossible to create a source
+    with zero backing files.
+  use_case: >-
+    Before this fix, a caller could create a Kaggle source without staging the dataset,
+    bypassing the mandatory download step that only the admin form's UI ensured. Centralizing
+    staging inside the resolver closes that hole for all callers.
+  code:
+  - provisa/api/admin/schema_common.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/kaggle/downloader.py
+  - provisa/api/mcp/tools.py
+  - provisa/api/mcp/chat.py
+  tests:
+  - tests/unit/test_schema_common_kaggle_staging.py
+  scenario: |
+    Given a source creation request with kaggle_owner and kaggle_ref hints
+    When the source is created via admin form, MCP chat, or request approval
+    Then _stage_kaggle_if_needed is invoked inside Mutation.create_source
+    And the dataset is downloaded and extracted to a real directory
+    And the input path is overwritten with the actual staging directory
+    And the source creation proceeds with the guaranteed-populated directory
+- id: REQ-1820
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Chat UI / Admin Integration
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Admin pages (Sources, Tables, etc.) now refresh their Apollo queries automatically
+    after Polly creates a source or table via create_source_now or register_table_now.
+    An optional onServerToolResult callback is threaded through provisa-ui/src/hooks/useMcpChat.ts
+    and invoked whenever a server tool's SSE tool_result event arrives; ChatPanel.tsx uses
+    it to call Apollo's client.refetchQueries({ include: "active" }) after those specific
+    tools complete, refetching whatever admin query is currently mounted without needing
+    to know which page or query it is.
+  use_case: >-
+    Server-side tools (create_source_now, register_table_now) have no way to trigger a
+    GraphQL mutation from the browser, so the page doesn't know its cached data is stale
+    until a page refresh. Automatic refetching keeps the admin UI in sync with Polly's
+    server-side actions.
+  code:
+  - provisa-ui/src/hooks/useMcpChat.ts
+  - provisa-ui/src/components/ChatPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given an admin page with an active Apollo query for sources or tables
+    When Polly executes create_source_now or register_table_now
+    Then the MCP tool_result event is received in ChatPanel
+    And onServerToolResult is invoked
+    And Apollo's refetchQueries is called to refresh active queries
+    And the admin page shows the newly created source or table
+- id: REQ-1821
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Chat UI / Tool Call Log
+  priority: MAY
+  type: ui
+  description: >-
+    The Polly chat panel's tool-call log (the row of badges above the conversation while
+    Polly is working) now has a maximum height with its own scroll area that auto-scrolls to
+    the newest entry as tools are added. Each tool badge shows a tooltip on hover displaying
+    the call parameters as formatted JSON, so users can see exactly what arguments Polly
+    invoked the tool with, not just its name.
+  use_case: >-
+    Long chains of tool calls would push earlier badges off screen; self-scrolling keeps
+    the latest action visible. Tooltips make debugging and verification easier by showing
+    exactly what the model called, especially when parameter choices matter.
+  code:
+  - provisa-ui/src/components/ChatPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  scenario: |
+    Given multiple tools are called in sequence
+    When each tool completes
+    Then the badge list auto-scrolls to show the newest tool badge
+    And the scroll area never exceeds its maximum height
+    When hovering over a tool badge
+    Then a tooltip appears with the tool's call parameters as formatted JSON

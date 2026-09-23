@@ -26,6 +26,7 @@ import types
 from typing import Any
 
 from provisa.api.flight.catalog import CatalogTable, _build_catalog_tables_async
+from provisa.kaggle.downloader import KAGGLE_TOKEN_SECRET_NAME  # REQ-1798/1819: one shared name
 
 # Row ceiling for run_sql. An agent context must never absorb an unbounded
 # result set, so every run_sql caps rows. Configurable via env; the role's own
@@ -809,9 +810,6 @@ async def search_govdata_subjects(state: Any, role: str, query: str) -> list[dic
             }
         )
     return results
-
-
-KAGGLE_TOKEN_SECRET_NAME = "kaggle_api_token"  # REQ-1798: fixed name, not user-chosen — see below.
 
 
 async def search_kaggle_datasets(state: Any, role: str, query: str) -> list[dict]:  # REQ-1798

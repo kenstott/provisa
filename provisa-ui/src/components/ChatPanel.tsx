@@ -31,7 +31,7 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
-import { useMutation } from "@apollo/client/react";
+import { useApolloClient, useMutation } from "@apollo/client/react";
 import { Check, Copy, Eraser, MessageCircle, Mic, MicOff, Play, Square } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -167,6 +167,10 @@ export function ChatPanel() {
       setOtherText("");
       setYesNoOther(false);
       setChoiceState(req);
+      // REQ-1818: the question itself is tool INPUT, never part of the model's own streamed text
+      // — without this the transcript shows the answer with no question it was answering. Recorded
+      // as the assistant's own message so the chat window stays a complete record of the exchange.
+      pushMessage({ role: "assistant", text: req.question });
     });
   // REQ-1813: record what was picked as an ordinary chat message, so the choice has a visible,
   // scrollable trace in the conversation instead of vanishing once the widget closes.
@@ -198,10 +202,23 @@ export function ChatPanel() {
     return { success: false, message: `no mutation wired for client tool ${name}` };
   };
 
+  // REQ-1820: create_source_now/register_table_now run entirely server-side — no Apollo mutation
+  // is ever issued from the browser for them, so nothing tells an already-open admin page (e.g.
+  // Sources) that its list is now stale. Refetch every ACTIVE query on the page whenever one of
+  // these tools completes, success or failure, so the UI reconciles with whatever the server
+  // actually did rather than staying frozen at pre-chat state.
+  const apolloClient = useApolloClient();
+  const onServerToolResult = (name: string) => {
+    if (name === "create_source_now" || name === "register_table_now") {
+      void apolloClient.refetchQueries({ include: "active" });
+    }
+  };
+
   const { messages, tools, busy, error, send, cancel, clear, pushMessage } = useMcpChat(
     roleId,
     { navigate, confirm, runMutation, presentChoice },
     location.pathname,
+    onServerToolResult,
   );
 
   const onSend = () => {
@@ -236,6 +253,15 @@ export function ChatPanel() {
     const t = window.setTimeout(() => setFlashPrompt(false), 650);
     return () => window.clearTimeout(t);
   }, [busy]);
+
+  // REQ-1821: the tool-call log has a max height (it can grow long over a multi-step turn), so it
+  // needs to auto-scroll to the newest entry the same way the message list would, rather than
+  // leaving new badges to appear below the visible area.
+  const toolsScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = toolsScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [tools]);
 
   // REQ-1805: mic-to-text — appends the transcript to whatever's already typed, so a person can
   // dictate a follow-on clause instead of only replacing the draft.
@@ -346,18 +372,40 @@ export function ChatPanel() {
         </Group>
 
         {tools.length > 0 && (
-          <Group gap={6} mb="xs" wrap="wrap">
-            {tools.map((tl, i) => (
-              <Badge
-                key={i}
-                size="sm"
-                variant={tl.running ? "outline" : "light"}
-                color={tl.error ? "red" : "grape"}
-              >
-                {tl.name}
-              </Badge>
-            ))}
-          </Group>
+          <ScrollArea.Autosize
+            mah={96}
+            mb="xs"
+            viewportRef={toolsScrollRef}
+            data-testid="chat-panel-tool-log"
+          >
+            <Group gap={6} wrap="wrap">
+              {tools.map((tl, i) => (
+                <Tooltip
+                  key={i}
+                  label={
+                    <Text
+                      component="pre"
+                      size="xs"
+                      style={{ margin: 0, whiteSpace: "pre-wrap", maxWidth: 280 }}
+                    >
+                      {tl.input !== undefined ? JSON.stringify(tl.input, null, 2) : "(no params)"}
+                    </Text>
+                  }
+                  withArrow
+                  multiline
+                >
+                  <Badge
+                    size="sm"
+                    variant={tl.running ? "outline" : "light"}
+                    color={tl.error ? "red" : "grape"}
+                    data-testid="chat-panel-tool-badge"
+                  >
+                    {tl.name}
+                  </Badge>
+                </Tooltip>
+              ))}
+            </Group>
+          </ScrollArea.Autosize>
         )}
 
         {error && (
@@ -551,7 +599,7 @@ export function ChatPanel() {
                     <Button onClick={() => resolveChoice(true)}>Yes</Button>
                   </Group>
                   <Button variant="subtle" size="xs" onClick={() => setYesNoOther(true)}>
-                    Something else…
+                    Type something else
                   </Button>
                 </Stack>
               ))}
@@ -563,7 +611,7 @@ export function ChatPanel() {
                     {choiceState.options?.map((opt) => (
                       <Radio key={opt} value={opt} label={opt} />
                     ))}
-                    <Radio value={OTHER} label="Something else…" />
+                    <Radio value={OTHER} label="Type something else" />
                   </Stack>
                 </Radio.Group>
                 {choiceDraft[0] === OTHER && (
@@ -596,7 +644,7 @@ export function ChatPanel() {
                     {choiceState.options?.map((opt) => (
                       <Checkbox key={opt} value={opt} label={opt} />
                     ))}
-                    <Checkbox value={OTHER} label="Something else…" />
+                    <Checkbox value={OTHER} label="Type something else" />
                   </Stack>
                 </Checkbox.Group>
                 {choiceDraft.includes(OTHER) && (

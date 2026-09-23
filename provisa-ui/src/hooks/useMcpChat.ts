@@ -41,7 +41,16 @@ type RawTurn = { role: "user" | "assistant"; content: unknown };
  * so callers just see the exchange complete once the model is done, whether or not it paused
  * along the way.
  */
-export function useMcpChat(roleId: string, toolCtx: ClientToolContext, currentRoute?: string) {
+export function useMcpChat(
+  roleId: string,
+  toolCtx: ClientToolContext,
+  currentRoute?: string,
+  // REQ-1820: server tools (create_source_now, register_table_now, ...) run entirely on the
+  // backend — this is the ONLY signal the frontend gets that one succeeded, since the actual
+  // mutation never went through Apollo. Callers use it to refetch whatever page is showing the
+  // thing that just changed (e.g. the Sources admin page's own query), which nothing did before.
+  onServerToolResult?: (name: string, isError: boolean) => void,
+) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [tools, setTools] = useState<ToolEvent[]>([]);
   const [busy, setBusy] = useState(false);
@@ -94,7 +103,10 @@ export function useMcpChat(roleId: string, toolCtx: ClientToolContext, currentRo
         if (ev.type === "text") onText(ev.text);
         else if (ev.type === "tool_use")
           setTools((p) => [...p, { name: ev.name, input: ev.input, running: true }]);
-        else if (ev.type === "tool_result") markToolResolved(ev.name, ev.is_error);
+        else if (ev.type === "tool_result") {
+          markToolResolved(ev.name, ev.is_error);
+          onServerToolResult?.(ev.name, ev.is_error);
+        }
         else if (ev.type === "awaiting_client_tools") awaiting = ev;
         else if (ev.type === "error") setError({ message: ev.error, action: ev.action });
       }

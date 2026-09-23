@@ -13,6 +13,7 @@
 // only reveals the problem after a message is sent.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { ApolloClient } from "@apollo/client";
 import { render, screen, waitFor, fireEvent } from "../test-utils/render";
 import { ChatPanel } from "../components/ChatPanel";
 
@@ -475,8 +476,8 @@ describe("ChatPanel — present_choice 'Something else' free text (REQ-1816)", (
     fireEvent.change(textarea, { target: { value: "find a source" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
-    await waitFor(() => screen.getByLabelText("Something else…"));
-    fireEvent.click(screen.getByLabelText("Something else…"));
+    await waitFor(() => screen.getByLabelText("Type something else"));
+    fireEvent.click(screen.getByLabelText("Type something else"));
     fireEvent.change(screen.getByPlaceholderText("Type your answer…"), {
       target: { value: "Neither, use C" },
     });
@@ -517,5 +518,81 @@ describe("ChatPanel — Stop/Go send control (REQ-1815)", () => {
 
     await waitFor(() => screen.getByText("Send"));
     expect(textarea).toHaveFocus();
+  });
+});
+
+describe("ChatPanel — server tool result triggers a data refresh (REQ-1820)", () => {
+  it("refetches active queries after create_source_now completes", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    const refetchSpy = vi
+      .spyOn(ApolloClient.prototype, "refetchQueries")
+      .mockResolvedValue([]);
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([
+        { type: "tool_use", name: "create_source_now", input: { source: { id: "kaggle_x" } } },
+        { type: "tool_result", name: "create_source_now", is_error: false },
+        { type: "text", text: "Created it." },
+        { type: "done" },
+      ]),
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "create it" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => screen.getByText("Created it."));
+    expect(refetchSpy).toHaveBeenCalledWith(expect.objectContaining({ include: "active" }));
+    refetchSpy.mockRestore();
+  });
+
+  it("does not refetch for tools that don't mutate the catalog", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    const refetchSpy = vi
+      .spyOn(ApolloClient.prototype, "refetchQueries")
+      .mockResolvedValue([]);
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([
+        { type: "tool_use", name: "search_catalog", input: { query: "orders" } },
+        { type: "tool_result", name: "search_catalog", is_error: false },
+        { type: "text", text: "Found it." },
+        { type: "done" },
+      ]),
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "find it" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => screen.getByText("Found it."));
+    expect(refetchSpy).not.toHaveBeenCalled();
+    refetchSpy.mockRestore();
+  });
+});
+
+describe("ChatPanel — tool call log (REQ-1821)", () => {
+  it("shows a tooltip with the tool's params on hover", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([
+        { type: "tool_use", name: "search_catalog", input: { query: "orders" } },
+        { type: "tool_result", name: "search_catalog", is_error: false },
+        { type: "text", text: "Found it." },
+        { type: "done" },
+      ]),
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "find it" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    const badge = await screen.findByTestId("chat-panel-tool-badge");
+    fireEvent.mouseEnter(badge);
+    await waitFor(() => screen.getByText(/"query": "orders"/));
   });
 });

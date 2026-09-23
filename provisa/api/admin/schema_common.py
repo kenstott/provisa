@@ -195,6 +195,64 @@ async def _validate_govdata_api_key(input: SourceInput) -> Optional[MutationResu
     return None
 
 
+async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult]:  # REQ-1819
+    """The ONE place a Kaggle-derived source's actual files get downloaded — called from inside
+    create_source itself, the single resolver every creation path (the admin form's own createSource
+    call, MCP chat's create_source_now, and a queued propose_source request executed later on
+    Requests-page approval) funnels through.
+
+    Before this existed, staging was a separate step (stageKaggleDataset) a caller had to remember
+    to run first and hand the resulting directory into `path` — reachable but not required, so a
+    caller that skipped it (confirmed live: an MCP chat proposal) created a Source pointing at a
+    directory nothing had ever populated. Centralizing it here means no caller's `path` is ever
+    trusted for a Kaggle-hinted source: this always re-stages (stage_dataset is idempotent — it
+    overwrites the same directory) and OVERWRITES `input.path` with the real result, so skipping
+    the old separate step is no longer possible from any path, present or future.
+
+    Detected by federation_hints_json carrying kaggle_owner/kaggle_ref (stashed by
+    KaggleFormSection.tsx at creation, or set the same way by an MCP proposal) — not by
+    input.type, since a caller could set anything there.
+
+    Must run inside `bound_to_request_org()` (same requirement as search_kaggle_datasets) — the
+    fixed KAGGLE_TOKEN_SECRET_NAME secret resolves against whichever org's vault is bound."""
+    import json as _json
+
+    hints = _json.loads(input.federation_hints_json or "{}")
+    owner, ref = hints.get("kaggle_owner"), hints.get("kaggle_ref")
+    if not owner or not ref:
+        return None
+
+    from provisa.core.secrets import resolve_secrets
+    from provisa.kaggle.downloader import (
+        KAGGLE_TOKEN_SECRET_NAME,
+        UnsupportedKaggleDataset,
+        stage_dataset,
+    )
+
+    token = resolve_secrets(f"${{secret:{KAGGLE_TOKEN_SECRET_NAME}}}")
+    try:
+        staged_root = await stage_dataset(token, owner, ref)
+    except UnsupportedKaggleDataset as exc:
+        return MutationResult(
+            success=False,
+            message=f"Kaggle dataset {owner}/{ref}: {exc}",
+            code="schema.kaggle_stage_failed",
+            params={"owner": owner, "ref": ref},
+        )
+    except Exception as exc:
+        logging.getLogger(__name__).exception(
+            "_stage_kaggle_if_needed: staging failed for %s/%s", owner, ref
+        )
+        return MutationResult(
+            success=False,
+            message=f"Kaggle dataset {owner}/{ref} could not be staged: {exc}",
+            code="schema.kaggle_stage_failed",
+            params={"owner": owner, "ref": ref, "error": str(exc)},
+        )
+    input.path = str(staged_root)
+    return None
+
+
 async def _upsert_source_with_domains(pool, model, input: SourceInput) -> None:
     """Upsert the source model and update allowed_domains in the DB."""
     from provisa.core.repositories import source as source_repo

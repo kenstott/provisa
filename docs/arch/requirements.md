@@ -19323,3 +19323,55 @@ Three prompt wording refinements for present_choice and confirm_required scenari
 **Code:** `provisa-ui/src/components/ChatPanel.tsx`, `provisa/api/mcp/chat.py`
 
 **Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
+### REQ-1818 · Chat UI / present_choice {#REQ-1818}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The chat transcript now records present_choice questions in full: when the widget opens, provisa-ui/src/components/ChatPanel.tsx's presentChoice function pushes the question itself as an assistant message into the conversation, so both question and answer are visible in the chat window, making the exchange readable and complete.
+
+**Use case:** Chat history must be readable without needing to remember the context; recording the question alongside the answer ensures a complete record of the entire exchange.
+
+**Code:** `provisa-ui/src/components/ChatPanel.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1819 · Kaggle Source Creation {#REQ-1819}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
+
+All source creation paths (admin form, MCP chat, request approval) funnel through a single resolver (Mutation.create_source in provisa/api/admin/schema_mutation.py) which now centralizes Kaggle staging: a new _stage_kaggle_if_needed helper in provisa/api/admin/schema_common.py detects kaggle_owner/kaggle_ref in the source's federation_hints_json, downloads and extracts the dataset to a real staging directory, and UNCONDITIONALLY OVERWRITES the input path with the actual staged path. No caller's path is ever trusted for Kaggle-hinted sources, making it impossible to create a source with zero backing files.
+
+**Use case:** Before this fix, a caller could create a Kaggle source without staging the dataset, bypassing the mandatory download step that only the admin form's UI ensured. Centralizing staging inside the resolver closes that hole for all callers.
+
+**Code:** `provisa/api/admin/schema_common.py`, `provisa/api/admin/schema_mutation.py`, `provisa/kaggle/downloader.py`, `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_schema_common_kaggle_staging.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1820 · Chat UI / Admin Integration {#REQ-1820}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Admin pages (Sources, Tables, etc.) now refresh their Apollo queries automatically after Polly creates a source or table via create_source_now or register_table_now. An optional onServerToolResult callback is threaded through provisa-ui/src/hooks/useMcpChat.ts and invoked whenever a server tool's SSE tool_result event arrives; ChatPanel.tsx uses it to call Apollo's client.refetchQueries({ include: "active" }) after those specific tools complete, refetching whatever admin query is currently mounted without needing to know which page or query it is.
+
+**Use case:** Server-side tools (create_source_now, register_table_now) have no way to trigger a GraphQL mutation from the browser, so the page doesn't know its cached data is stale until a page refresh. Automatic refetching keeps the admin UI in sync with Polly's server-side actions.
+
+**Code:** `provisa-ui/src/hooks/useMcpChat.ts`, `provisa-ui/src/components/ChatPanel.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
+### REQ-1821 · Chat UI / Tool Call Log {#REQ-1821}
+
+**Status:** ✅ complete · **Priority:** MAY · **Type:** ui
+
+The Polly chat panel's tool-call log (the row of badges above the conversation while Polly is working) now has a maximum height with its own scroll area that auto-scrolls to the newest entry as tools are added. Each tool badge shows a tooltip on hover displaying the call parameters as formatted JSON, so users can see exactly what arguments Polly invoked the tool with, not just its name.
+
+**Use case:** Long chains of tool calls would push earlier badges off screen; self-scrolling keeps the latest action visible. Tooltips make debugging and verification easier by showing exactly what the model called, especially when parameter choices matter.
+
+**Code:** `provisa-ui/src/components/ChatPanel.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`

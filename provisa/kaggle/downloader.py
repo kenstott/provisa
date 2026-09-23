@@ -35,6 +35,11 @@ from provisa.kaggle.client import download_dataset, get_dataset_metadata
 _SUPPORTED_EXTENSIONS = (".csv", ".parquet")
 _UNSUPPORTED_EXTENSIONS = (".sqlite", ".sqlite3", ".db")
 
+# REQ-1819: the one shared secret name every Kaggle-staging caller (admin GraphQL, MCP chat) reads
+# the API token from — see provisa/api/admin/schema_common.py's _stage_kaggle_if_needed, the single
+# choke point (inside create_source itself) that actually enforces staging on every creation path.
+KAGGLE_TOKEN_SECRET_NAME = "kaggle_api_token"
+
 
 class UnsupportedKaggleDataset(Exception):
     """The dataset bundle contains a file type this v1 connector cannot ingest."""
