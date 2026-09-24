@@ -19507,3 +19507,27 @@ Three related conversational-quality bugs reported live in Polly's source-creati
 **Code:** `provisa/api/mcp/chat.py`
 
 **Tests:** —
+
+### REQ-1833 · MCP & AI Integration {#REQ-1833}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Polly could not register a table from a brand-new source at all: her only schema-reading tools (search_catalog, list_tables, describe_table) read the already-registered governed catalog, which is empty for a source with nothing registered on it yet — observed live as Polly repeatedly calling those tools against a just-created source, finding nothing, and giving up silently, when a table on that source manifestly existed natively. Added two new tools, list_native_tables and describe_native_table, that introspect a source's real native schema directly (the same available_tables/resolve_available_columns_metadata seam the admin UI's Register Table form already uses before showing a table picker) — and required the system prompt to call them, not the governed-catalog tools, before propose_table/ register_table_now for a source not yet in the catalog.
+
+**Use case:** Registering a table from a source Polly (or the user) just created should work the first time, without Polly wasting tool calls searching a catalog that cannot possibly contain it.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_native_discovery.py`
+
+### REQ-1834 · MCP & AI Integration {#REQ-1834}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+When Polly performs an action tied to a specific admin page (creating or registering a source/table, or any other action with a dedicated screen), she now navigates the user's browser to that page first, then performs the action — so the user sees the same page she's acting on, not just a chat transcript, even when the underlying tool doesn't itself require the user to be on that page.
+
+**Use case:** A user watching Polly work should see the app follow along on their own screen, not have to take Polly's word for what happened somewhere off-screen.
+
+**Code:** `provisa/api/mcp/chat.py`
+
+**Tests:** —

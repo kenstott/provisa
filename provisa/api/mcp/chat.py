@@ -243,6 +243,46 @@ _TOOLS: list[Any] = [
             "required": ["query"],
         },
     },
+    {
+        "name": "list_native_tables",
+        "description": (
+            "REQ-1833: the REAL table names of a source, introspected directly from it — NOT "
+            "the governed catalog list_tables/search_catalog read, which is EMPTY for a source "
+            "with nothing registered on it yet (a source you just created, most commonly). "
+            "REQUIRED before propose_table/register_table_now for such a source: guessing a "
+            "table_name instead means register_table_now's own validation will refuse it "
+            "outright once you call it. schema_name is source-type-specific (e.g. a 'files' "
+            "source's schema is its own id with hyphens turned to underscores) — if unsure, "
+            "call with schema_name='public' first; the tool tells you the real one either way."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source_id": {"type": "string"},
+                "schema_name": {"type": "string", "description": "Default 'public'."},
+            },
+            "required": ["source_id"],
+        },
+    },
+    {
+        "name": "describe_native_table",
+        "description": (
+            "REQ-1833: the REAL columns (name, data_type) of one table of a source, introspected "
+            "directly from it. Call list_native_tables first if you don't already have the exact "
+            "table_name from it. Building propose_table/register_table_now's columns list from "
+            "this result is what makes registration actually succeed — a guessed columns list "
+            "gets refused by the server's own validation, every time."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source_id": {"type": "string"},
+                "schema_name": {"type": "string"},
+                "table_name": {"type": "string"},
+            },
+            "required": ["source_id", "schema_name", "table_name"],
+        },
+    },
 ]
 
 # REQ-1795: executed in the BROWSER, never on the server — see the module docstring. Kept as a
@@ -385,7 +425,25 @@ _SYSTEM = (
     "short final message; never end the turn silently right after a tool call with no text at "
     "all, leaving the user unsure whether anything happened. On a successful create_source_now, "
     "also proactively suggest the natural next step — e.g. 'Would you like me to register a "
-    "table from this new source now?' — rather than just stopping and waiting to be asked."
+    "table from this new source now?' — rather than just stopping and waiting to be asked.\n\n"
+    "search_catalog/list_tables/describe_table only ever see the already-registered GOVERNED "
+    "catalog — for a source that has no tables registered on it yet (most commonly one you or the "
+    "user just created), that catalog is empty and those tools will never find anything on it, no "
+    "matter how you search. For propose_table/register_table_now on such a source, call "
+    "list_native_tables (then describe_native_table for the chosen table) instead — these read the "
+    "source's own real, native schema directly. Never guess a table_name or columns list from the "
+    "source's name/description alone; register_table_now's own validation will refuse a guessed "
+    "columns list outright, and the tool call will fail. "
+    "REQ-1834: before performing an action that corresponds to a specific admin page (creating or "
+    "registering a source/table, running a GraphQL query in Explorer, or anything else with a "
+    "dedicated screen), call navigate to that page FIRST, then perform the action — so the user "
+    "sees, on their own screen, the same page you're acting on, not just a chat transcript. Do this "
+    "even when the action's own tool doesn't require the user to be on that page to work.\n\n"
+    "If you cannot complete what was asked — no tool covers it, every avenue you tried came back "
+    "empty or erroring, or you're missing information only the user can supply — say so plainly and "
+    "specifically (e.g. 'I wasn't able to do that — <what's missing>. Can you give me more detail "
+    "and I'll try again?'). Never just stop or trail off without a closing message; the user should "
+    "never have to guess whether you're still working or already gave up."
 )
 
 
@@ -562,6 +620,14 @@ async def _execute_tool(
         return await mcp_tools.search_govdata_subjects(state, role, args["query"])
     if name == "search_kaggle_datasets":
         return await mcp_tools.search_kaggle_datasets(state, role, args["query"])
+    if name == "list_native_tables":
+        return await mcp_tools.list_native_tables(
+            state, role, args["source_id"], args.get("schema_name", "public")
+        )
+    if name == "describe_native_table":
+        return await mcp_tools.describe_native_table(
+            state, role, args["source_id"], args["schema_name"], args["table_name"]
+        )
     raise ValueError(f"unknown tool {name!r}")
 
 

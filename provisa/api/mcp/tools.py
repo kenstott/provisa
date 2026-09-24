@@ -256,6 +256,41 @@ async def describe_table(state: Any, role: str, schema: str, table: str) -> dict
     }
 
 
+async def list_native_tables(
+    state: Any, role: str, source_id: str, schema_name: str = "public"
+) -> list[dict]:  # REQ-1833
+    """Real table names introspected DIRECTLY from `source_id`'s own native schema — NOT the
+    already-registered governed catalog list_tables/describe_table read, which is empty for a
+    source that has no tables registered yet. Use this (and describe_native_table) for a source
+    you just created (or any source not yet fully registered) before calling propose_table/
+    register_table_now — those need an exact table_name and real columns, and search_catalog/
+    list_tables/describe_table can only ever see what's ALREADY registered, so they are the wrong
+    tool for a brand-new source and will always come back empty for it, no matter how you search.
+
+    This is the SAME native-introspection path (native_tables/the engine-attach fallback) the
+    admin UI's Register Table form calls before ever showing a table picker."""
+    require_role(role, state)
+    from provisa.api.admin.schema_query import Query
+
+    tables = await Query().available_tables(source_id, schema_name)  # pyright: ignore[reportCallIssue]
+    return [{"name": t.name, "comment": t.comment} for t in tables]
+
+
+async def describe_native_table(
+    state: Any, role: str, source_id: str, schema_name: str, table_name: str
+) -> list[dict]:  # REQ-1833
+    """Real columns (name, data_type) introspected DIRECTLY from one table of `source_id` — the
+    SAME resolution register_table's own validation re-checks any proposed columns against
+    (_ensure_source_column_types), so a columns list built from this call's real result will
+    always be accepted, unlike a guessed one. Call list_native_tables first if the exact
+    table_name isn't already known."""
+    require_role(role, state)
+    from provisa.api.admin.schema_query import resolve_available_columns_metadata
+
+    cols = await resolve_available_columns_metadata(source_id, schema_name, table_name)
+    return [{"name": c.name, "data_type": c.data_type, "comment": c.comment} for c in cols]
+
+
 def list_commands(state: Any, role: str) -> list[dict]:
     """Registered commands the role may invoke (REQ-1156).
 
