@@ -54,7 +54,7 @@ export function LicenseBadge() {
 
   return (
     <Tooltip
-      label="Provisa is free to register. Registered users' bug reports get priority over unregistered users (paid customers first), plus update notifications and use-case/feature showcases. Visit provisa.dev/register, or run `provisa license status` for your machine ID."
+      label="Provisa is free to register. Registered users' bug reports get priority over unregistered users (paid customers first), plus emails on major releases, use-case walkthroughs, and feature deep dives. Visit provisa.dev/register, or run `provisa license status` for your machine ID."
       multiline
       w={300}
       withArrow
