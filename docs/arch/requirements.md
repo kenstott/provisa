@@ -19495,3 +19495,15 @@ The Register Table form's auto-suggested SQL alias came out camelCase (e.g. "iri
 **Code:** `provisa/api/admin/schema_query.py`, `provisa/api/mcp/chat.py`
 
 **Tests:** `tests/unit/test_admin_schema_wiring.py`
+
+### REQ-1832 · MCP & AI Integration {#REQ-1832}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Three related conversational-quality bugs reported live in Polly's source-creation flow. (1) For a single candidate, the system prompt required TWO separate yes/no confirmations — one before ever calling propose_source ("Would you like to create the X source/table?"), and a second one after propose_source returned confirm_required ("Create the X source now?") — effectively asking the same permission twice in different words; observed live as Polly narrating "let me propose the source first and then create it" right after the user had already said yes once. Fixed by removing the pre-propose confirmation for the single- candidate case entirely: propose_source/propose_table only ever queues a low-stakes, reversible pending request at that stage, so calling it needs no permission — the ONE real confirmation that matters is still required before the actually irreversible create_source_now/register_table_now call, unchanged. For a multi-candidate result, the user's present_choice pick is now explicitly treated as the go-ahead to propose that one candidate, with no separate follow-up question either. (2) After create_source_now actually created the source, Polly gave no completion message at all — the turn ended silently right after the tool call, leaving the user unsure whether anything happened despite the source row actually appearing. (3) She also gave no proactive suggestion for the natural next step (e.g. registering a table from the source she just created). Fixed by requiring an explicit outcome message after every propose/create action completes, and a proactive next-step suggestion after a successful create_source_now.
+
+**Use case:** Polly's source/table creation flow should ask permission exactly once per irreversible action, always confirm what actually happened afterward, and proactively suggest the obvious next step rather than going silent.
+
+**Code:** `provisa/api/mcp/chat.py`
+
+**Tests:** —

@@ -62728,3 +62728,49 @@
     Given Polly (the MCP chat assistant) proposes a table via propose_table/register_table_now
     Then she does not set an explicit alias field on the table input
     And the backend's own auto-generation produces the correct snake_case alias
+- id: REQ-1832
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: MCP & AI Integration
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Three related conversational-quality bugs reported live in Polly's source-creation flow.
+    (1) For a single candidate, the system prompt required TWO separate yes/no confirmations —
+    one before ever calling propose_source ("Would you like to create the X source/table?"),
+    and a second one after propose_source returned confirm_required ("Create the X source
+    now?") — effectively asking the same permission twice in different words; observed live as
+    Polly narrating "let me propose the source first and then create it" right after the user
+    had already said yes once. Fixed by removing the pre-propose confirmation for the single-
+    candidate case entirely: propose_source/propose_table only ever queues a low-stakes,
+    reversible pending request at that stage, so calling it needs no permission — the ONE real
+    confirmation that matters is still required before the actually irreversible
+    create_source_now/register_table_now call, unchanged. For a multi-candidate result, the
+    user's present_choice pick is now explicitly treated as the go-ahead to propose that one
+    candidate, with no separate follow-up question either. (2) After create_source_now actually
+    created the source, Polly gave no completion message at all — the turn ended silently right
+    after the tool call, leaving the user unsure whether anything happened despite the source
+    row actually appearing. (3) She also gave no proactive suggestion for the natural next step
+    (e.g. registering a table from the source she just created). Fixed by requiring an explicit
+    outcome message after every propose/create action completes, and a proactive next-step
+    suggestion after a successful create_source_now.
+  use_case: >-
+    Polly's source/table creation flow should ask permission exactly once per irreversible
+    action, always confirm what actually happened afterward, and proactively suggest the
+    obvious next step rather than going silent.
+  code:
+  - provisa/api/mcp/chat.py
+  tests: []
+  e2e: false
+  scenario: |
+    Given exactly one Kaggle/GovData candidate was found for a topical data request
+    When Polly is about to propose it
+    Then she calls propose_source/propose_table directly, with no prior "may I propose this?"
+    confirmation
+    Given propose_source returns status "confirm_required"
+    Then she asks exactly one yes/no confirmation ("Create the X source now?") before calling
+    create_source_now
+    Given create_source_now completes successfully
+    Then Polly's next message reports the outcome, not silence
+    And she proactively suggests a natural next step (e.g. registering a table from it)
