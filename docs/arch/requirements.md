@@ -19595,3 +19595,15 @@ The Anthropic chat path now streams real token-by-token text (and hosted web_sea
 **Code:** `provisa/api/mcp/chat.py`
 
 **Tests:** `tests/unit/test_mcp_chat.py`
+
+### REQ-1840 · UI/UX {#REQ-1840}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The always-visible "Unregistered" footer badge's ([REQ-1137](#REQ-1137) companion) tooltip only told an unlicensed user how to register, not why. Added the concrete benefits: priority on bug reports (paid customers first), update notifications, and use-case/feature showcases.
+
+**Use case:** An unlicensed user hovering the Unregistered badge should see a reason to register, not just an instruction.
+
+**Code:** `provisa-ui/src/components/LicenseBadge.tsx`
+
+**Tests:** —

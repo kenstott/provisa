@@ -63005,3 +63005,26 @@
     Then text arrives to the browser as incremental chunks, not one block at the end
     Given a response contains a hosted web_search before its answer text
     Then the search badge is yielded before that text, preserving the model's real block order
+- id: REQ-1840
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: UI/UX
+  priority: SHOULD
+  type: ui
+  description: >-
+    The always-visible "Unregistered" footer badge's (REQ-1137 companion) tooltip only told an
+    unlicensed user how to register, not why. Added the concrete benefits: priority on bug
+    reports (paid customers first), update notifications, and use-case/feature showcases.
+  use_case: >-
+    An unlicensed user hovering the Unregistered badge should see a reason to register, not
+    just an instruction.
+  code:
+  - provisa-ui/src/components/LicenseBadge.tsx
+  tests: []
+  e2e: false
+  scenario: |
+    Given the deployment is unlicensed
+    When the user hovers the Unregistered footer badge
+    Then the tooltip names the registration benefits (bug-report priority, update
+    notifications, use-case/feature showcases), not just the registration URL
