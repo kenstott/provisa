@@ -529,6 +529,8 @@ async def test_graphql_field_names_returns_the_compiled_schemas_real_names(state
 
     resolver.assert_called_once_with(domain_id="sales", schema_name="public", table_name="orders")
     assert result["table_field"] == "s__orders"
+    assert result["grpc_query_method"] == "QuerySOrders"
+    assert result["grpc_aggregate_method"] == "QuerySOrdersAggregate"
     assert result["columns"] == [
         {"name": "id", "graphql_name": "id"},
         {"name": "customer_id", "graphql_name": "customerId"},

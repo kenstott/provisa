@@ -265,10 +265,14 @@ async def graphql_field_names(state: Any, role: str, schema: str, table: str) ->
     transform got the domain prefix wrong and the query failed schema validation. ALWAYS call
     this before writing a GraphQL query; never assume camelCase-plus-prefix yourself.
 
+    Also returns the real gRPC method names for this table (REQ-1849) — gRPC's rpc names are a
+    deterministic proto3-cased transform of this same table_field, not an independent name.
+
     `schema`/`table` are the same semantic names describe_table/list_tables use."""
     require_role(role, state)
     from provisa.api.admin._graphql_field_name import resolve_graphql_field_name
-    from provisa.compiler.naming import apply_gql_name
+    from provisa.compiler.naming import apply_gql_name, to_type_name
+    from provisa.grpc.proto_gen import _to_proto_type_name
 
     ctx = state.contexts[role]
     meta = _find_role_table(ctx, schema, table)
@@ -281,9 +285,16 @@ async def graphql_field_names(state: Any, role: str, schema: str, table: str) ->
         raise ValueError(
             f"{schema}.{table} is not exposed in any role's compiled GraphQL schema right now"
         )
+    # REQ-1849: the gRPC method name is a deterministic transform of the same table_field the
+    # GraphQL schema compiles — proto_gen.py builds it as `Query` + the GQL type name (PascalCase
+    # of table_field) re-cased to proto3 convention (PS__Pets -> PsPets), never independently
+    # named. Reusing that exact transform here means this is a real name, not a guess.
+    grpc_type_name = _to_proto_type_name(to_type_name(table_field))
     described = await describe_table(state, role, schema, table)
     return {
         "table_field": table_field,
+        "grpc_query_method": f"Query{grpc_type_name}",
+        "grpc_aggregate_method": f"Query{grpc_type_name}Aggregate",
         "columns": [
             {"name": c["name"], "graphql_name": apply_gql_name(c["name"])}
             for c in described["columns"]

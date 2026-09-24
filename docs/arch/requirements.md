@@ -19703,3 +19703,15 @@ Reported live: a Cypher query built with guessed PascalCase-plus-domain-prefix n
 **Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
 
 **Tests:** `tests/unit/test_mcp_server.py`
+
+### REQ-1849 · MCP & AI Integration {#REQ-1849}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Reported live: a gRPC query built from Polly navigating to /grpc failed. gRPC's rpc method name was documented as merely a "best-effort, unverified" derivation from GraphQL's table_field, but it is in fact fully deterministic: provisa/grpc/proto_gen.py builds it as `Query` + to_type_name(table_field) re-cased to proto3 convention (_to_proto_type_name — e.g. s__irisIris -> S__IrisIris -> SIrisIris). graphql_field_names now also returns grpc_query_method/grpc_aggregate_method computed via those exact same functions, so gRPC has a real naming-authority answer, not a guess. Also corrected: JSON:API and OpenAPI need no derived name at all — their routes key off the plain schema/table names directly (/data/jsonapi/{schema}/{table}, "GET /data/rest/{schema}/{table}"), confirmed by reading their router definitions (create_jsonapi_router, create_rest_router) and the existing "Open in gRPC/JSON:API/OpenAPI" deep-link buttons in DataProductDetailPanel.tsx (buildGrpcMethod/buildJsonApiUrl/buildOpenApiUrl), which build these exact same string formats already. The system prompt's [REQ-1846](#REQ-1846)/1847/1848 section was rewritten with the precise, verified format for all seven surfaces instead of the previous "best-effort" hedging for gRPC/JSON:API/OpenAPI. Also: Polly should name GraphQL query operations (`query Name { ... }`) rather than writing them anonymously, per general best practice.
+
+**Use case:** A gRPC/JSON:API/OpenAPI deep link Polly builds for a table should use the exact route/method format the real page expects, not a guess that may or may not resolve.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_server.py`

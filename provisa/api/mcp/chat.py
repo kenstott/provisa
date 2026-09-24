@@ -73,13 +73,16 @@ _TOOLS: list[Any] = [
     {
         "name": "graphql_field_names",
         "description": (
-            "REQ-1847: the REAL field names a GraphQL query against /query must use for this "
-            "table and its columns — NOT a guessed transform of describe_table's SQL-plane "
+            "REQ-1847/1849: the REAL field names a GraphQL query against /query must use for "
+            "this table and its columns — NOT a guessed transform of describe_table's SQL-plane "
             "names. The two planes apply DIFFERENT naming conventions and the table field "
             "additionally gets a domain-uniqueness prefix the compiled schema alone knows (e.g. "
             "registered table `iris_iris` in domain `shelter` can be GraphQL field `s__irisIris`, "
             "not `irisIris`). ALWAYS call this before writing a GraphQL query for a table; never "
-            "assume camelCase-plus-prefix yourself — guessing wrong fails schema validation."
+            "assume camelCase-plus-prefix yourself — guessing wrong fails schema validation. Also "
+            "returns the real gRPC method names (grpc_query_method/grpc_aggregate_method) for "
+            "this same table — gRPC's names are a deterministic re-casing of this same field, "
+            "always call this (not a guess) before a gRPC query too."
         ),
         "input_schema": {
             "type": "object",
@@ -447,11 +450,16 @@ _CLIENT_TOOLS: list[Any] = [
                 "state": {
                     "type": "object",
                     "description": (
-                        'Optional, one key per route: /query -> {"query": "..."}, '
-                        '/graph -> {"query": "..."}, /sql -> {"sql": "..."}, '
-                        '/grpc -> {"grpcMethod": "..."}, '
-                        '/jsonapi -> {"jsonapiUrl": "..."}, '
-                        '/openapi -> {"openApiUrl": "..."}. Always also set '
+                        'Optional, one key per route: /query -> {"query": "query Name { ... }"} '
+                        '(GraphQL — name the operation), /graph -> {"query": "MATCH ..."} '
+                        '(Cypher), /sql -> {"sql": "SELECT ..."}, '
+                        '/grpc -> {"grpcMethod": "QuerySIrisIris()"} (the exact rpc name from '
+                        "graphql_field_names' grpc_query_method, plus a literal trailing '()' — "
+                        "required by the gRPC page's parser), "
+                        '/jsonapi -> {"jsonapiUrl": "/data/jsonapi/<schema>/<table>"} (plain '
+                        "schema/table names, no lookup needed), "
+                        '/openapi -> {"openApiUrl": "GET /data/rest/<schema>/<table>"} (same '
+                        "plain names, as an HTTP method+path string). Always also set "
                         '"autoRun": true alongside whichever key applies.'
                     ),
                 },
@@ -624,24 +632,31 @@ _SYSTEM = (
     "an already-live term); say this plainly if a user asks you to just 'mark it live'. Per "
     "REQ-1834 above: navigate to /admin/glossary before calling any of these — every time, for "
     "every term you touch in the turn, not only the first.\n\n"
-    "REQ-1846/1847/1848: Provisa has SEVEN query surfaces under Explore, each its own route and "
-    "each (except SQL) with its own naming convention derived from the compiled schema — never "
-    "assume one surface's names transfer to another. Route + navigate `state` key per surface: "
-    "GraphQL /query (state.query), Cypher /graph (state.query), SQL /sql (state.sql), gRPC /grpc "
+    "REQ-1846/1847/1848/1849: Provisa has SEVEN query surfaces under Explore, each its own route "
+    "and each with its own exact deep-link format — never assume one surface's names or state "
+    "shape transfer to another. Route + navigate `state` key per surface: GraphQL /query "
+    "(state.query), Cypher /graph (state.query), SQL /sql (state.sql), gRPC /grpc "
     "(state.grpcMethod), JSON:API /jsonapi (state.jsonapiUrl), OpenAPI /openapi (state.openApiUrl), "
     "NL /nl (no state deep-link — type the question directly if asked to use the NL surface "
     "itself). Always pass state.autoRun=true alongside so the query runs immediately instead of "
     "sitting unrun in the editor.\n"
     "- SQL: your existing schema/table/column names (from list_tables/describe_table) ARE the "
-    "real SQL-plane names already — no extra lookup needed.\n"
+    "real SQL-plane names already — no extra lookup needed. Give a query a name when the surface "
+    "supports it (GraphQL: `query Name { ... }` instead of an anonymous `{ ... }`) — good practice, "
+    "and it makes the request traceable in logs.\n"
     "- GraphQL: call graphql_field_names for the table first (its SQL-plane name is usually "
-    "different, e.g. a domain-uniqueness prefix like `s__` that can't be guessed).\n"
+    "different, e.g. a domain-uniqueness prefix like `s__` that can't be guessed). Name the "
+    "query operation, e.g. `query GetIris { s__irisIris { ... } }`.\n"
     "- Cypher: call cypher_field_names for the table first (its node label and property names "
     "are a separate derivation from GraphQL's, not the same names).\n"
-    "- gRPC/JSON:API/OpenAPI: these three derive their own naming from the SAME compiled schema "
-    "GraphQL does, so graphql_field_names' `table_field` is your best starting identifier for "
-    "them too, though it isn't independently verified the way the GraphQL/Cypher tools are — if "
-    "a query on one of these three fails, say so plainly rather than guessing further.\n"
+    "- gRPC: call graphql_field_names for the table — it also returns grpc_query_method/"
+    "grpc_aggregate_method, the real rpc name. state.grpcMethod is that name plus `()`, e.g. "
+    '`"QuerySIrisIris()"` — this is deterministic, not a guess; never omit the trailing `()`, '
+    "the gRPC page's own parser requires it.\n"
+    "- JSON:API: no lookup needed — its URL is the plain schema/table names directly: "
+    'state.jsonapiUrl = `"/data/jsonapi/<schema>/<table>"`.\n'
+    "- OpenAPI: no lookup needed either — same plain schema/table names, as an HTTP method+path "
+    'string: state.openApiUrl = `"GET /data/rest/<schema>/<table>"`.\n'
     "For any of these, do the lookup (if needed) once per table, build the query, navigate with "
     "state once, then stop — report the outcome; never re-run the naming lookup, search_catalog, "
     "or navigate again for the same table in the same turn just to double-check work that already "
