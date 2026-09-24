@@ -291,6 +291,196 @@ async def describe_native_table(
     return [{"name": c.name, "data_type": c.data_type, "comment": c.comment} for c in cols]
 
 
+async def list_glossary_terms(
+    state: Any, role: str, request: Any, q: str | None = None, include_deprecated: bool = True
+) -> list[dict]:  # REQ-1835
+    """The org's glossary terms, optionally filtered by a search string. Each result carries
+    `live` (grounded to a real column, or edge-connected to one — see create/update below for
+    what 'finalizing' a term actually means) so you can tell an admitted term from a proposed
+    (draft) one without a second call."""
+    require_role(role, state)
+    from provisa.api.admin.glossary_router import _require_glossary_read, _view_scope
+    from provisa.core.repositories import glossary as glossary_repo
+
+    _require_glossary_read(request)
+    pool = state.tenant_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        return await glossary_repo.list_terms(
+            conn, q=q, include_deprecated=include_deprecated, domains=_view_scope(request, None)
+        )
+
+
+async def create_glossary_term(
+    state: Any,
+    role: str,
+    request: Any,
+    name: str,
+    definition: str | None = None,
+    domains: list[str] | None = None,
+) -> dict:  # REQ-1835
+    """Create a new abstract glossary term (a definition with no physical column yet). It starts
+    'proposed' — there is no separate live/finalized flag to flip: a term is 'live' automatically
+    once it is grounded, either by a real registered column landing on it (sync happens on table
+    registration, outside your control) or by connecting it via add_glossary_term_edge to a term
+    that is already live. If the deployment is multi-domain, at least one domain is required."""
+    require_role(role, state)
+    from provisa.api.admin.glossary_router import _declared_domains, _notify, _require_glossary_rw
+    from provisa.core.repositories import glossary as glossary_repo
+    from provisa.api.admin._guards import require_active_org_id
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.tenant_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        declared = _declared_domains(request, domains, current=set())
+        try:
+            term_id = await glossary_repo.create_abstract_term(
+                conn, name, definition=definition, domains=declared
+            )
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+    await _notify(org_id, "glossary term created")
+    return {"id": term_id}
+
+
+async def update_glossary_term(
+    state: Any,
+    role: str,
+    request: Any,
+    term_id: int,
+    name: str | None = None,
+    definition: str | None = None,
+    export_excluded: bool | None = None,
+    retired: bool | None = None,
+) -> dict:  # REQ-1835
+    """Rename a term, change its definition, exclude it from exports, or retire it. Only the
+    fields you pass are changed. Retiring is the correct way to withdraw a term that no longer
+    belongs — retired counts as curated (kept, out of service), unlike deleting it outright."""
+    require_role(role, state)
+    from provisa.api.admin.glossary_router import (
+        _notify,
+        _require_glossary_rw,
+        _require_term_curatable,
+    )
+    from provisa.core.repositories import glossary as glossary_repo
+    from provisa.api.admin._guards import require_active_org_id
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.tenant_db
+    assert pool is not None
+    found = False
+    async with pool.acquire() as conn:
+        await _require_term_curatable(conn, term_id, request)
+        try:
+            if name is not None:
+                found = await glossary_repo.rename_term(conn, term_id, name)
+            if definition is not None:
+                found = await glossary_repo.set_definition(conn, term_id, definition)
+            if export_excluded is not None:
+                found = await glossary_repo.set_export_excluded(conn, term_id, export_excluded)
+            if retired is not None:
+                found = await glossary_repo.set_retired(conn, term_id, retired)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+    if not found:
+        raise ValueError(f"glossary term {term_id} not found")
+    await _notify(org_id, "glossary term updated")
+    return {"ok": True}
+
+
+async def delete_glossary_term(
+    state: Any, role: str, request: Any, term_id: int
+) -> dict:  # REQ-1835
+    """Permanently delete a glossary term. Irreversible — confirm with the user first, the same
+    as any other irreversible action. A term that carries curator work (a definition, a
+    relationship, or a named expert) should usually be retired via update_glossary_term instead
+    of deleted, so a future column reusing its name doesn't silently get a blank term."""
+    require_role(role, state)
+    from provisa.api.admin.glossary_router import (
+        _notify,
+        _require_glossary_rw,
+        _require_term_curatable,
+    )
+    from provisa.core.repositories import glossary as glossary_repo
+    from provisa.api.admin._guards import require_active_org_id
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.tenant_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        await _require_term_curatable(conn, term_id, request)
+        try:
+            deleted = await glossary_repo.delete_term(conn, term_id)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+    if not deleted:
+        raise ValueError(f"glossary term {term_id} not found")
+    await _notify(org_id, "glossary term deleted")
+    return {"ok": True}
+
+
+async def add_glossary_term_edge(
+    state: Any, role: str, request: Any, term_id: int, to_term_id: int, rel_type: str
+) -> dict:  # REQ-1835
+    """Connect two glossary terms with a typed relationship (e.g. 'broader', 'narrower',
+    'synonym' — check existing edges via list_glossary_terms/get_term for the vocabulary this
+    org already uses). This is also how a proposed (not-yet-grounded) term is finalized without
+    waiting for a column to land on it: connect it to an already-live term and it becomes live
+    through that edge."""
+    require_role(role, state)
+    from provisa.api.admin.glossary_router import (
+        _notify,
+        _require_glossary_rw,
+        _require_term_curatable,
+    )
+    from provisa.core.repositories import glossary as glossary_repo
+    from provisa.api.admin._guards import require_active_org_id
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.tenant_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        await _require_term_curatable(conn, term_id, request)
+        await _require_term_curatable(conn, to_term_id, request)
+        try:
+            await glossary_repo.add_edge(conn, term_id, to_term_id, rel_type)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+    await _notify(org_id, "glossary edge added")
+    return {"ok": True}
+
+
+async def remove_glossary_term_edge(
+    state: Any, role: str, request: Any, term_id: int, to_term_id: int, rel_type: str
+) -> dict:  # REQ-1835
+    """Remove a relationship edge between two glossary terms."""
+    require_role(role, state)
+    from provisa.api.admin.glossary_router import (
+        _notify,
+        _require_glossary_rw,
+        _require_term_curatable,
+    )
+    from provisa.core.repositories import glossary as glossary_repo
+    from provisa.api.admin._guards import require_active_org_id
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    pool = state.tenant_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        await _require_term_curatable(conn, term_id, request)
+        removed = await glossary_repo.remove_edge(conn, term_id, to_term_id, rel_type)
+    if not removed:
+        raise ValueError("edge not found")
+    await _notify(org_id, "glossary edge removed")
+    return {"ok": True}
+
+
 def list_commands(state: Any, role: str) -> list[dict]:
     """Registered commands the role may invoke (REQ-1156).
 

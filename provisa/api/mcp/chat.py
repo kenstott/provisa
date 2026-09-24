@@ -283,6 +283,107 @@ _TOOLS: list[Any] = [
             "required": ["source_id", "schema_name", "table_name"],
         },
     },
+    {
+        "name": "list_glossary_terms",
+        "description": (
+            "REQ-1835: search/list the org's glossary terms. Each result's `live` field tells "
+            "you whether the term is admitted (grounded to a real column, or edge-connected to "
+            "one) or still 'proposed' (a draft with neither). Use this before create_glossary_"
+            "term to avoid proposing a duplicate."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "q": {"type": "string", "description": "Optional search string."},
+                "include_deprecated": {"type": "boolean"},
+            },
+        },
+    },
+    {
+        "name": "create_glossary_term",
+        "description": (
+            "REQ-1835: create a new glossary term (name + definition). It starts 'proposed' — "
+            "there is no separate flag to mark it finalized/live. A proposed term becomes live "
+            "either automatically (a real column gets registered and lands on it) or by calling "
+            "add_glossary_term_edge to connect it to a term that is already live. If the org runs "
+            "multi-domain, pass at least one domain id."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "definition": {"type": "string"},
+                "domains": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "update_glossary_term",
+        "description": (
+            "REQ-1835: rename a glossary term, change its definition, exclude it from exports, "
+            "or retire it. Only the fields you pass are changed. Prefer retiring (retired=true) "
+            "over deleting when the term carries curator work (a definition, a relationship, or "
+            "an expert) — deleting that outright is exactly the case delete_glossary_term warns "
+            "against."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "term_id": {"type": "integer"},
+                "name": {"type": "string"},
+                "definition": {"type": "string"},
+                "export_excluded": {"type": "boolean"},
+                "retired": {"type": "boolean"},
+            },
+            "required": ["term_id"],
+        },
+    },
+    {
+        "name": "delete_glossary_term",
+        "description": (
+            "REQ-1835: permanently delete a glossary term. Irreversible — always confirm with "
+            "the user first via present_choice (mode='yes_no'), the same as any other "
+            "irreversible action, before calling this."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"term_id": {"type": "integer"}},
+            "required": ["term_id"],
+        },
+    },
+    {
+        "name": "add_glossary_term_edge",
+        "description": (
+            "REQ-1835: connect two glossary terms with a typed relationship (e.g. 'broader', "
+            "'narrower', 'synonym' — check list_glossary_terms/existing edges for the vocabulary "
+            "this org already uses before inventing a new rel_type). This is also the mechanism "
+            "for finalizing a proposed term without waiting for a column: connect it to an "
+            "already-live term and it becomes live through that edge."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "term_id": {"type": "integer"},
+                "to_term_id": {"type": "integer"},
+                "rel_type": {"type": "string"},
+            },
+            "required": ["term_id", "to_term_id", "rel_type"],
+        },
+    },
+    {
+        "name": "remove_glossary_term_edge",
+        "description": "REQ-1835: remove a relationship edge between two glossary terms.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "term_id": {"type": "integer"},
+                "to_term_id": {"type": "integer"},
+                "rel_type": {"type": "string"},
+            },
+            "required": ["term_id", "to_term_id", "rel_type"],
+        },
+    },
 ]
 
 # REQ-1795: executed in the BROWSER, never on the server — see the module docstring. Kept as a
@@ -443,7 +544,16 @@ _SYSTEM = (
     "empty or erroring, or you're missing information only the user can supply — say so plainly and "
     "specifically (e.g. 'I wasn't able to do that — <what's missing>. Can you give me more detail "
     "and I'll try again?'). Never just stop or trail off without a closing message; the user should "
-    "never have to guess whether you're still working or already gave up."
+    "never have to guess whether you're still working or already gave up.\n\n"
+    "REQ-1835: manage the glossary with list_glossary_terms/create_glossary_term/update_glossary_"
+    "term/delete_glossary_term/add_glossary_term_edge/remove_glossary_term_edge directly — these "
+    "carry their own capability check (glossary_rw) and fail loud if the caller lacks it, so they "
+    "don't go through the propose/confirm_required flow above. Still always confirm with the user "
+    "(present_choice, mode='yes_no') before delete_glossary_term specifically, since it's "
+    "irreversible; create/update/edge actions are safe to do directly once asked. Check list_"
+    "glossary_terms first to avoid creating a duplicate term, and remember 'finalizing' a term "
+    "has no direct flag — it happens by grounding it (a real column, or add_glossary_term_edge to "
+    "an already-live term); say this plainly if a user asks you to just 'mark it live'."
 )
 
 
@@ -627,6 +737,49 @@ async def _execute_tool(
     if name == "describe_native_table":
         return await mcp_tools.describe_native_table(
             state, role, args["source_id"], args["schema_name"], args["table_name"]
+        )
+    if name in (
+        "list_glossary_terms",
+        "create_glossary_term",
+        "update_glossary_term",
+        "delete_glossary_term",
+        "add_glossary_term_edge",
+        "remove_glossary_term_edge",
+    ):
+        if request is None:
+            raise ValueError(f"{name} requires a verified request context")
+        if name == "list_glossary_terms":
+            return await mcp_tools.list_glossary_terms(
+                state, role, request, args.get("q"), args.get("include_deprecated", True)
+            )
+        if name == "create_glossary_term":
+            return await mcp_tools.create_glossary_term(
+                state, role, request, args["name"], args.get("definition"), args.get("domains")
+            )
+        if name == "update_glossary_term":
+            return await mcp_tools.update_glossary_term(
+                state,
+                role,
+                request,
+                int(args["term_id"]),
+                name=args.get("name"),
+                definition=args.get("definition"),
+                export_excluded=args.get("export_excluded"),
+                retired=args.get("retired"),
+            )
+        if name == "delete_glossary_term":
+            return await mcp_tools.delete_glossary_term(state, role, request, int(args["term_id"]))
+        if name == "add_glossary_term_edge":
+            return await mcp_tools.add_glossary_term_edge(
+                state,
+                role,
+                request,
+                int(args["term_id"]),
+                int(args["to_term_id"]),
+                args["rel_type"],
+            )
+        return await mcp_tools.remove_glossary_term_edge(
+            state, role, request, int(args["term_id"]), int(args["to_term_id"]), args["rel_type"]
         )
     raise ValueError(f"unknown tool {name!r}")
 

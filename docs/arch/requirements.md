@@ -19531,3 +19531,27 @@ When Polly performs an action tied to a specific admin page (creating or registe
 **Code:** `provisa/api/mcp/chat.py`
 
 **Tests:** —
+
+### REQ-1835 · MCP & AI Integration {#REQ-1835}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Polly could not manage the glossary at all — no tool let her create, rename, redefine, retire, delete, or relate a glossary term. Added list_glossary_terms, create_glossary_term, update_glossary_term, delete_glossary_term, add_glossary_term_edge, and remove_glossary_ term_edge, each reusing the exact capability checks (glossary_read/glossary_rw, per-term curatability, declared-domain validation) the /admin/glossary REST router applies to the same real, AuthMiddleware-verified request — so a permission denial through Polly matches what the identical router call would have denied. "Proposed" vs. "live" in this catalog is a derived state (grounded to a real column, or edge-connected to something grounded), not a settable flag, so there is no direct "finalize" action: a proposed term is admitted either automatically (a column registration lands on it) or by connecting it to an already-live term via add_glossary_term_edge — the system prompt documents this so Polly explains it correctly rather than claiming a flag exists.
+
+**Use case:** A user should be able to ask Polly to define, correct, retire, or relate glossary terms without switching to the Glossary admin page for every edit.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_glossary_tools.py`
+
+### REQ-1836 · UI/UX {#REQ-1836}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+On an admin page (e.g. AI Models) whose form content is taller than the viewport, the docked chat panel scrolled away with the page instead of staying put. Root cause: `main` set `min-height: 0` but no `overflow`, so a plain `.page` (most admin tabs, unlike the `.page-sticky-head` pages which already manage their own internal scroll) grew `main` past its flex height instead of clipping to it, growing `#root` past its 100vh and pushing the scroll onto the document — dragging every flex sibling in `.app-body`, including ChatPanel, along with it. Fixed by giving `main` `overflow-y: auto` so it clips and scrolls its own content, leaving the admin rail and chat panel (each already self-contained) to scroll independently.
+
+**Use case:** Scrolling a long admin form should never move the chat panel out of view.
+
+**Code:** `provisa-ui/src/App.css`
+
+**Tests:** —

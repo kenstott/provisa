@@ -62831,3 +62831,69 @@
     Given Polly is about to register a table (or perform another page-specific admin action)
     When she executes that action
     Then she calls navigate to the corresponding admin page first, then performs the action
+- id: REQ-1835
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: MCP & AI Integration
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Polly could not manage the glossary at all — no tool let her create, rename, redefine,
+    retire, delete, or relate a glossary term. Added list_glossary_terms, create_glossary_term,
+    update_glossary_term, delete_glossary_term, add_glossary_term_edge, and remove_glossary_
+    term_edge, each reusing the exact capability checks (glossary_read/glossary_rw,
+    per-term curatability, declared-domain validation) the /admin/glossary REST router applies
+    to the same real, AuthMiddleware-verified request — so a permission denial through Polly
+    matches what the identical router call would have denied. "Proposed" vs. "live" in this
+    catalog is a derived state (grounded to a real column, or edge-connected to something
+    grounded), not a settable flag, so there is no direct "finalize" action: a proposed term
+    is admitted either automatically (a column registration lands on it) or by connecting it
+    to an already-live term via add_glossary_term_edge — the system prompt documents this so
+    Polly explains it correctly rather than claiming a flag exists.
+  use_case: >-
+    A user should be able to ask Polly to define, correct, retire, or relate glossary terms
+    without switching to the Glossary admin page for every edit.
+  code:
+  - provisa/api/mcp/tools.py
+  - provisa/api/mcp/chat.py
+  tests:
+  - tests/unit/test_mcp_glossary_tools.py
+  e2e: false
+  scenario: |
+    Given a term does not yet exist in the glossary
+    When Polly is asked to define it
+    Then she checks list_glossary_terms for a duplicate, then calls create_glossary_term
+    Given a user asks Polly to delete a glossary term
+    Then she confirms via present_choice before calling delete_glossary_term
+    Given a proposed (not-yet-live) term should be connected to an existing concept
+    When Polly calls add_glossary_term_edge to an already-live term
+    Then the term is grounded through that edge instead of remaining proposed
+- id: REQ-1836
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: UI/UX
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    On an admin page (e.g. AI Models) whose form content is taller than the viewport, the
+    docked chat panel scrolled away with the page instead of staying put. Root cause: `main`
+    set `min-height: 0` but no `overflow`, so a plain `.page` (most admin tabs, unlike the
+    `.page-sticky-head` pages which already manage their own internal scroll) grew `main` past
+    its flex height instead of clipping to it, growing `#root` past its 100vh and pushing the
+    scroll onto the document — dragging every flex sibling in `.app-body`, including ChatPanel,
+    along with it. Fixed by giving `main` `overflow-y: auto` so it clips and scrolls its own
+    content, leaving the admin rail and chat panel (each already self-contained) to scroll
+    independently.
+  use_case: >-
+    Scrolling a long admin form should never move the chat panel out of view.
+  code:
+  - provisa-ui/src/App.css
+  tests: []
+  e2e: false
+  scenario: |
+    Given an admin page (e.g. AI Models) whose content is taller than the viewport
+    And the chat panel is open
+    When the user scrolls the admin page content
+    Then the chat panel stays in place and scrolls only within its own message list

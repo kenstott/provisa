@@ -445,6 +445,15 @@ main {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* REQ-1836: a plain `.page` (most admin tabs — AI Models, Email, Maintenance, etc.) sets no
+   * overflow of its own, so a form taller than the viewport used to grow `main` past its flex
+   * height instead of clipping to it (overflow: visible is the default, and min-height: 0 alone
+   * only permits shrinking — it doesn't clip). That grew #root past its 100vh and the DOCUMENT
+   * scrolled, taking every flex sibling in .app-body along with it — including ChatPanel, whose
+   * own ScrollArea/minHeight: 0 only protects it from ITS OWN content overflowing, not from the
+   * whole page scrolling out from under it. `.page-sticky-head` pages (Tables/Sources/Glossary)
+   * already scroll internally (their own overflow: hidden) and are unaffected by this. */
+  overflow-y: auto;
 }
 
 /* Page layout */
