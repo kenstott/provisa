@@ -153,7 +153,11 @@ _TOOLS: list[Any] = [
                     "description": (
                         "TableInput-shaped: at minimum {source_id, domain_id, schema_name, "
                         "table_name, columns} where each column is at least "
-                        "{name, visible_to}."
+                        "{name, visible_to}. Never set `alias` yourself — omit it entirely. "
+                        "The server generates the correct snake_case SQL alias automatically "
+                        "when it's left out; a model-supplied alias bypasses that and tends to "
+                        "come out camelCase (ordinary JSON/API habit), which is wrong for this "
+                        "app's SQL-plane naming convention."
                     ),
                 },
                 "reason": {

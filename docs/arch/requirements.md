@@ -19483,3 +19483,15 @@ Even after [REQ-1829](#REQ-1829)'s scroll-into-view fix, the Register Table form
 **Code:** `provisa-ui/src/App.css`
 
 **Tests:** —
+
+### REQ-1831 · Tables {#REQ-1831}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+The Register Table form's auto-suggested SQL alias came out camelCase (e.g. "irisIris" for a table named "Iris") instead of snake_case. Root cause: suggest_table_alias's own docstring promised "a plain snake_case alias", but the implementation actually read the SOURCE's gql_naming_convention column (default "apollo_graphql", a camelCase GraphQL convention) — the exact GraphQL-vs-SQL-plane mixup register_table's own auto-gen had already been fixed to avoid (its own comment: "deriving the alias from a source's gql_naming_convention put camelCase into the SQL plane, e.g. dim_pet -> dimPet"), left unfixed in this separate resolver. Fixed to read the deployment's global_sql_naming_convention (default "snake"), matching register_table's own correct behavior exactly, instead of a per-source GraphQL setting. Separately, propose_table/register_table_now's MCP tool schema never documented an `alias` field, but a model can still infer/set arbitrary TableInput fields from general knowledge of the shape — Polly was observed setting one herself in camelCase (an ordinary JSON/API habit), bypassing the backend's correct snake_case auto-generation entirely. Fixed the system prompt to explicitly instruct never setting `alias` on a table proposal.
+
+**Use case:** The Register Table form's suggested SQL alias should always be snake_case by the SQL-plane naming convention, regardless of the source's own GraphQL naming convention, and Polly should never override that with a self-chosen alias.
+
+**Code:** `provisa/api/admin/schema_query.py`, `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_admin_schema_wiring.py`

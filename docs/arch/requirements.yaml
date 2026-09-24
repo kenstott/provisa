@@ -62685,3 +62685,46 @@
     Given the viewport is shorter than the form's minimum height
     Then the form still shrinks and scrolls internally rather than being clipped with no
     way to reach the rest of it
+- id: REQ-1831
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Tables
+  priority: MUST
+  type: behavioral
+  description: >-
+    The Register Table form's auto-suggested SQL alias came out camelCase (e.g. "irisIris" for
+    a table named "Iris") instead of snake_case. Root cause: suggest_table_alias's own docstring
+    promised "a plain snake_case alias", but the implementation actually read the SOURCE's
+    gql_naming_convention column (default "apollo_graphql", a camelCase GraphQL convention) —
+    the exact GraphQL-vs-SQL-plane mixup register_table's own auto-gen had already been fixed to
+    avoid (its own comment: "deriving the alias from a source's gql_naming_convention put
+    camelCase into the SQL plane, e.g. dim_pet -> dimPet"), left unfixed in this separate
+    resolver. Fixed to read the deployment's global_sql_naming_convention (default "snake"),
+    matching register_table's own correct behavior exactly, instead of a per-source GraphQL
+    setting. Separately, propose_table/register_table_now's MCP tool schema never documented an
+    `alias` field, but a model can still infer/set arbitrary TableInput fields from general
+    knowledge of the shape — Polly was observed setting one herself in camelCase (an ordinary
+    JSON/API habit), bypassing the backend's correct snake_case auto-generation entirely. Fixed
+    the system prompt to explicitly instruct never setting `alias` on a table proposal.
+  use_case: >-
+    The Register Table form's suggested SQL alias should always be snake_case by the SQL-plane
+    naming convention, regardless of the source's own GraphQL naming convention, and Polly
+    should never override that with a self-chosen alias.
+  code:
+  - provisa/api/admin/schema_query.py
+  - provisa/api/mcp/chat.py
+  tests:
+  - tests/unit/test_admin_schema_wiring.py
+  e2e: false
+  scenario: |
+    Given a source's gql_naming_convention is "apollo_graphql" (camelCase)
+    And the deployment's global_sql_naming_convention is left at its "snake" default
+    When suggestTableAlias is called for a multi-word table name
+    Then the suggested alias is snake_case, not camelCase
+    Given the deployment's global_sql_naming_convention is explicitly set to a GraphQL convention
+    When suggestTableAlias is called
+    Then the suggested alias follows that convention instead
+    Given Polly (the MCP chat assistant) proposes a table via propose_table/register_table_now
+    Then she does not set an explicit alias field on the table input
+    And the backend's own auto-generation produces the correct snake_case alias

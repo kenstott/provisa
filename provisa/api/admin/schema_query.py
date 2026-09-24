@@ -900,10 +900,16 @@ class Query:  # REQ-021, REQ-042
             )
 
         async with pool.acquire() as conn:
-            _cres = await conn.execute_core(
-                select(sources.c.gql_naming_convention).where(sources.c.id == source_id)
-            )
-            convention = _cres.scalar() or "apollo_graphql"
+            # REQ-1831: this docstring has always promised "a plain snake_case alias", but this
+            # read used to fetch the SOURCE's gql_naming_convention (default "apollo_graphql",
+            # a camelCase convention) — the exact GraphQL-vs-SQL-plane mixup register_table's own
+            # auto-gen deliberately avoids (see its comment: "deriving the alias from a source's
+            # gql_naming_convention put camelCase into the SQL plane, e.g. dim_pet -> dimPet").
+            # The alias is a SQL-plane identifier; the deployment's global_sql_naming_convention
+            # is its authority, matching register_table exactly, not a per-source GraphQL setting.
+            from provisa.api.app import state as _naming_state
+
+            convention = getattr(_naming_state, "global_sql_naming_convention", "snake")
             candidate: str = apply_convention(table_name, convention)
             conflict = (await conn.execute_core(_conflict_stmt(candidate))).fetchone()
             if not conflict:
