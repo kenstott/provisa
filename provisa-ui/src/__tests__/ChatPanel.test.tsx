@@ -676,6 +676,60 @@ describe("ChatPanel — server tool result triggers a data refresh (REQ-1820)", 
   });
 });
 
+describe("ChatPanel — glossary tool result notifies the Glossary page (REQ-1845)", () => {
+  it("dispatches provisa:glossary-changed after update_glossary_term completes", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    const listener = vi.fn();
+    window.addEventListener("provisa:glossary-changed", listener);
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([
+        {
+          type: "tool_use",
+          name: "update_glossary_term",
+          input: { term_id: 1, definition: "New definition." },
+        },
+        { type: "tool_result", name: "update_glossary_term", is_error: false },
+        { type: "text", text: "Updated it." },
+        { type: "done" },
+      ]),
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "update it" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => screen.getByText("Updated it."));
+    expect(listener).toHaveBeenCalledTimes(1);
+    window.removeEventListener("provisa:glossary-changed", listener);
+  });
+
+  it("does not dispatch provisa:glossary-changed for a non-glossary tool", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    const listener = vi.fn();
+    window.addEventListener("provisa:glossary-changed", listener);
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([
+        { type: "tool_use", name: "search_catalog", input: { query: "orders" } },
+        { type: "tool_result", name: "search_catalog", is_error: false },
+        { type: "text", text: "Found it." },
+        { type: "done" },
+      ]),
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "find it" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => screen.getByText("Found it."));
+    expect(listener).not.toHaveBeenCalled();
+    window.removeEventListener("provisa:glossary-changed", listener);
+  });
+});
+
 describe("ChatPanel — tool call log (REQ-1821)", () => {
   it("shows a tooltip with the tool's params on hover", async () => {
     fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });

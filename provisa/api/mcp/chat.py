@@ -394,10 +394,28 @@ _TOOLS: list[Any] = [
 _CLIENT_TOOLS: list[Any] = [
     {
         "name": "navigate",
-        "description": "Navigate the browser to a route within the Provisa app (e.g. '/sources').",
+        "description": (
+            "Navigate the browser to a route within the Provisa app. Common ones: /sources, "
+            "/tables, /relationships, /admin/glossary, /query (the GraphQL Explorer — NOT "
+            "/explore, which is this same chat, and NOT /admin/explorer, which doesn't exist), "
+            "/graph (Cypher), /sql, /schema. When you have already prepared something for the "
+            "destination page to load (right now: a GraphQL query for /query), pass it via "
+            "`state` instead of just telling the user the text and asking them to paste it — "
+            "/query reads `state.query` (and runs it immediately if `state.autoRun` is true) the "
+            "SAME way an in-app hyperlink to it already does, so it lands in the editor with no "
+            "copy-paste needed."
+        ),
         "input_schema": {
             "type": "object",
-            "properties": {"route": {"type": "string"}},
+            "properties": {
+                "route": {"type": "string"},
+                "state": {
+                    "type": "object",
+                    "description": (
+                        'Optional. For /query: {"query": "<graphql query text>", "autoRun": true}.'
+                    ),
+                },
+            },
             "required": ["route"],
         },
     },

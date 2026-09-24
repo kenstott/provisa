@@ -512,4 +512,23 @@ describe("GlossaryTab", () => {
       expect(vi.mocked(addGlossaryExpert)).toHaveBeenCalledWith(1, "u1", "author"),
     );
   });
+
+  // REQ-1845: this page is REST-backed (never Apollo), so Polly's server-side glossary tools
+  // (create/update/delete_glossary_term, add/remove_glossary_term_edge) have no other way to
+  // tell an already-open Glossary tab its list — and the currently-open term's detail — are
+  // stale. Reported live: the page stayed frozen at pre-edit data until manually refreshed.
+  it("refetches the list and the open term's detail on a provisa:glossary-changed event", async () => {
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+    fireEvent.click(screen.getByTestId("glossary-item-1"));
+    await waitFor(() => expect(mockFetchTerm).toHaveBeenCalledWith(1));
+
+    mockList.mockClear();
+    mockFetchTerm.mockClear();
+
+    window.dispatchEvent(new CustomEvent("provisa:glossary-changed"));
+
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await waitFor(() => expect(mockFetchTerm).toHaveBeenCalledWith(1));
+  });
 });

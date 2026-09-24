@@ -146,6 +146,36 @@ async def test_last_ref_removal_deprecates_when_abstract_term_would_dangle(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_create_abstract_term_lowercases_the_name(tmp_path):  # REQ-1844
+    # Every term in this catalog is lowercase — auto-derived ones already are (normalize_term
+    # case-folds); a manually-created one that wasn't would be the one inconsistent entry, and
+    # would silently invite a same-word duplicate differing only in case.
+    async with _conn(tmp_path) as conn:
+        term_id = await glossary_repo.create_abstract_term(conn, "Sepal Length", domains=set())
+        term = await glossary_repo.get_term(conn, term_id)
+        assert term is not None
+        assert term["name"] == "sepal length"
+
+
+@pytest.mark.asyncio
+async def test_create_abstract_term_rejects_a_case_only_duplicate(tmp_path):  # REQ-1844
+    async with _conn(tmp_path) as conn:
+        await glossary_repo.create_abstract_term(conn, "sepal length", domains=set())
+        with pytest.raises(ValueError):
+            await glossary_repo.create_abstract_term(conn, "Sepal Length", domains=set())
+
+
+@pytest.mark.asyncio
+async def test_rename_term_lowercases_the_new_name(tmp_path):  # REQ-1844
+    async with _conn(tmp_path) as conn:
+        term_id = await glossary_repo.create_abstract_term(conn, "party", domains=set())
+        await glossary_repo.rename_term(conn, term_id, "Legal Entity")
+        term = await glossary_repo.get_term(conn, term_id)
+        assert term is not None
+        assert term["name"] == "legal entity"
+
+
+@pytest.mark.asyncio
 async def test_abstract_term_with_alternative_root_path_does_not_block_removal(tmp_path):
     async with _conn(tmp_path) as conn:
         await table_repo.upsert(conn, _tbl("orders", ["order_dt", "ship_dt"]))

@@ -61,7 +61,15 @@ export async function executeClientTool(
   if (name === "navigate") {
     const route = String(input.route ?? "");
     if (!route) return { success: false, message: "navigate: 'route' is required" };
-    ctx.navigate(route);
+    // REQ-1846: an optional react-router location.state payload — the SAME mechanism in-app
+    // hyperlinks already use to deep-link a prepared value into a destination page (e.g.
+    // QueryPage.tsx's AutoRunFromNav reads location.state.query/autoRun to populate and run a
+    // GraphQL query the instant the page mounts). Generic passthrough, not hardcoded to one
+    // page, so any route that already reads its own location.state keys keeps working here too.
+    const state = input.state && typeof input.state === "object"
+      ? (input.state as Record<string, unknown>)
+      : undefined;
+    ctx.navigate(route, state ? { state } : undefined);
     return { success: true, message: `Navigated to ${route}` };
   }
 

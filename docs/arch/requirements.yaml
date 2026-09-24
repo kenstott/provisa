@@ -63132,3 +63132,95 @@
     Then the dialog moves by exactly the drag distance
     Given a new present_choice question opens later
     Then the dialog starts back at its default position, not the previous drag offset
+- id: REQ-1844
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: MCP & AI Integration
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Every glossary term name in this catalog is lowercase — auto-derived ones already are
+    (normalize_term case-folds physical column/table names), but the manual-naming entry
+    points (create_abstract_term, upsert_declared_term, rename_term) only stripped
+    whitespace, so a curator or Polly could mint "Sepal Length" alongside an existing
+    "sepal length" as an effectively-duplicate, differently-cased entry. All three now
+    lowercase the name, matching the existing convention.
+  use_case: >-
+    A glossary term's name should never depend on whoever happened to type or generate it for
+    its casing to match the rest of the catalog.
+  code:
+  - provisa/core/repositories/glossary.py
+  tests:
+  - tests/unit/test_glossary_repository.py
+  e2e: false
+  scenario: |
+    Given a term is created or renamed with a mixed-case name
+    Then it is stored lowercase
+    Given a lowercase term already exists
+    Then creating the same name in a different case is rejected as a duplicate
+- id: REQ-1845
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: MCP & AI Integration
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Reported live: after Polly updated glossary terms, an already-open Glossary admin page
+    stayed showing stale data until manually refreshed. Unlike source_registration/
+    table_registration (REQ-1820), the glossary tools mutate through the REST
+    /admin/glossary/* router, never GraphQL, so Apollo's refetchQueries does nothing for it.
+    ChatPanel now dispatches a plain `window` CustomEvent ("provisa:glossary-changed") after
+    any of the five glossary-mutating tools completes, and GlossaryTab listens for it to
+    refetch its list (and the currently-open term's detail, if any) — a generic mechanism any
+    other REST-backed admin page can opt into the same way, without ChatPanel needing to know
+    which page, if any, is currently mounted.
+  use_case: >-
+    An already-open Glossary page should reconcile with whatever Polly actually did, the same
+    way the Sources page already does for source/table registration.
+  code:
+  - provisa-ui/src/components/ChatPanel.tsx
+  - provisa-ui/src/components/admin/GlossaryTab.tsx
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  - provisa-ui/src/__tests__/GlossaryTab.test.tsx
+  e2e: false
+  scenario: |
+    Given the Glossary admin page is open
+    When Polly successfully calls a glossary-mutating tool
+    Then the page's term list and open term detail refetch without a manual page reload
+    Given Polly calls a tool unrelated to the glossary
+    Then no such refetch is triggered
+- id: REQ-1846
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: MCP & AI Integration
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Reported live: asked to query the iris table via GraphQL, Polly navigated to a
+    nonexistent route (/admin/explorer — the real GraphQL Explorer is /query) and, even had
+    the route been right, had no way to actually get a prepared query into the page short of
+    printing it in chat and asking the user to paste it. The navigate client tool's route
+    catalog in its own description now names the real routes explicitly (including the two
+    wrong guesses it must NOT use), and the tool gained an optional `state` payload passed
+    straight through as react-router's `navigate(route, {state})` — the SAME mechanism an
+    in-app hyperlink to /query already uses (QueryPage.tsx's AutoRunFromNav reads
+    `state.query`/`state.autoRun`) to land a query in the editor, and run it, with no
+    copy-paste. Generic passthrough, not hardcoded to one page, so any route that already
+    reads its own location.state keys works here too.
+  use_case: >-
+    Asking Polly to run a GraphQL query should land that query directly in the Explorer,
+    without the user copy-pasting it from the chat transcript.
+  code:
+  - provisa/api/mcp/chat.py
+  - provisa-ui/src/mcp/clientTools.ts
+  tests: []
+  e2e: false
+  scenario: |
+    Given Polly is asked to run a GraphQL query
+    Then she navigates to /query (never a guessed route), passing state.query and
+    state.autoRun=true
+    Then the query appears in the Explorer's editor and runs immediately, no paste needed

@@ -60,6 +60,17 @@ const MIN_WIDTH = 320;
 const MAX_WIDTH = 900;
 const DEFAULT_WIDTH = 420;
 
+// REQ-1845: every server tool (REQ-1835) that mutates the glossary — used to decide whether to
+// dispatch "provisa:glossary-changed" so an already-open Glossary admin page (REST-backed, never
+// GraphQL) refreshes itself.
+const GLOSSARY_TOOL_NAMES = new Set([
+  "create_glossary_term",
+  "update_glossary_term",
+  "delete_glossary_term",
+  "add_glossary_term_edge",
+  "remove_glossary_term_edge",
+]);
+
 // REQ-1806: a brief, enumerated demo prompt list shown only before the first message — picked to
 // showcase distinct real capabilities (catalog search, subscription sources, page awareness),
 // plus one that's just for personality.
@@ -254,9 +265,18 @@ export function ChatPanel() {
   // these tools completes, success or failure, so the UI reconciles with whatever the server
   // actually did rather than staying frozen at pre-chat state.
   const apolloClient = useApolloClient();
+  // REQ-1845: the glossary admin page is REST-backed (`/admin/glossary/*`, never GraphQL), so
+  // Apollo's refetchQueries above does nothing for it — reported live: editing terms through
+  // Polly left an already-open Glossary page showing stale data until manually refreshed. A
+  // plain window CustomEvent (not another Apollo/context wiring) lets any REST-backed admin page
+  // opt in the same way GlossaryTab does below, without ChatPanel needing to know which page, if
+  // any, is currently mounted.
   const onServerToolResult = (name: string) => {
     if (name === "create_source_now" || name === "register_table_now") {
       void apolloClient.refetchQueries({ include: "active" });
+    }
+    if (GLOSSARY_TOOL_NAMES.has(name)) {
+      window.dispatchEvent(new CustomEvent("provisa:glossary-changed"));
     }
   };
 

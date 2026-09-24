@@ -565,7 +565,11 @@ async def create_abstract_term(
     a way around the gate in a multi-domain one, so the caller (the router, which knows the
     deployment's domain policy) decides, and the decision is never made here by omission.
     """
-    name = name.strip()
+    # REQ-1844: every term name in this catalog is lowercase — auto-derived ones already are
+    # (normalize_term case-folds), so a manually-created one that isn't would be the one
+    # inconsistent entry, and silently invite a same-word duplicate differing only in case
+    # ("Sepal Length" alongside "sepal length"). Never left to the caller to remember.
+    name = name.strip().lower()
     if not name:
         raise ValueError("term name is required")
     existing = (
@@ -595,7 +599,7 @@ async def upsert_declared_term(
     This is also how a config entry grounds an already-physical term: naming an existing
     rooted term adds a definition without touching its ``is_abstract`` flag or column refs.
     """
-    name = name.strip()
+    name = name.strip().lower()  # REQ-1844: every term name in this catalog is lowercase
     if not name:
         raise ValueError("term name is required")
     term_id = await conn.upsert_returning(
@@ -610,7 +614,7 @@ async def upsert_declared_term(
 
 
 async def rename_term(conn: "Connection", term_id: int, new_name: str) -> bool:
-    new_name = new_name.strip()
+    new_name = new_name.strip().lower()  # REQ-1844: every term name in this catalog is lowercase
     if not new_name:
         raise ValueError("term name is required")
     taken = (

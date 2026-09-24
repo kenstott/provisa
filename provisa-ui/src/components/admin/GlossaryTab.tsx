@@ -218,6 +218,18 @@ export function GlossaryTab() {
     }
   }, []);
 
+  // REQ-1845: Polly's glossary tools mutate terms entirely server-side (REST, never Apollo), so
+  // this page — reported live as staying stale until a manual refresh — has no other way to learn
+  // its list (and the currently-open term's detail, if any) is out of date.
+  useEffect(() => {
+    const handler = () => {
+      void refreshList();
+      if (selectedId !== null) void loadDetail(selectedId);
+    };
+    window.addEventListener("provisa:glossary-changed", handler);
+    return () => window.removeEventListener("provisa:glossary-changed", handler);
+  }, [refreshList, selectedId, loadDetail]);
+
   useEffect(() => {
     if (selectedId === null) return;
     // Deferred for the same set-state-in-effect rule as the list refresh above.
