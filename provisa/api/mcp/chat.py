@@ -82,7 +82,11 @@ _TOOLS: list[Any] = [
             "assume camelCase-plus-prefix yourself — guessing wrong fails schema validation. Also "
             "returns the real gRPC method names (grpc_query_method/grpc_aggregate_method) for "
             "this same table — gRPC's names are a deterministic re-casing of this same field, "
-            "always call this (not a guess) before a gRPC query too."
+            "always call this (not a guess) before a gRPC query too. REQ-1851: also returns "
+            "jsonapi_path/openapi_path — JSON:API and OpenAPI route on the table's RAW domain id, "
+            "not the sql-safe schema name `schema`/`table` are — reassembling "
+            "`/{schema}/{table}` yourself 404s for any domain id with a hyphen or space; always "
+            "call this and use jsonapi_path/openapi_path verbatim instead."
         ),
         "input_schema": {
             "type": "object",
@@ -439,7 +443,7 @@ _CLIENT_TOOLS: list[Any] = [
             "asking them to paste it — each of these six reads its own state key (see the "
             "`state` field below) the SAME way an in-app hyperlink to it already does, and runs "
             "it immediately when state.autoRun is true, landing it in the editor with no "
-            "copy-paste needed. See the system prompt's REQ-1846/1847/1848 section for which "
+            "copy-paste needed. See the system prompt's REQ-1846/1847/1848/1851 section for which "
             "tool to call first to get each surface's real field/name identifiers before "
             "building the query."
         ),
@@ -456,10 +460,11 @@ _CLIENT_TOOLS: list[Any] = [
                         '/grpc -> {"grpcMethod": "QuerySIrisIris()"} (the exact rpc name from '
                         "graphql_field_names' grpc_query_method, plus a literal trailing '()' — "
                         "required by the gRPC page's parser), "
-                        '/jsonapi -> {"jsonapiUrl": "/data/jsonapi/<schema>/<table>"} (plain '
-                        "schema/table names, no lookup needed), "
-                        '/openapi -> {"openApiUrl": "GET /data/rest/<schema>/<table>"} (same '
-                        "plain names, as an HTTP method+path string). Always also set "
+                        '/jsonapi -> {"jsonapiUrl": "..."} — use the jsonapi_path returned by '
+                        "graphql_field_names verbatim, never `/{schema}/{table}` yourself (that "
+                        "is the sql-safe name, not the raw domain id these routes key on), "
+                        '/openapi -> {"openApiUrl": "..."} — same, use the openapi_path returned '
+                        "by graphql_field_names verbatim. Always also set "
                         '"autoRun": true alongside whichever key applies.'
                     ),
                 },
@@ -632,7 +637,7 @@ _SYSTEM = (
     "an already-live term); say this plainly if a user asks you to just 'mark it live'. Per "
     "REQ-1834 above: navigate to /admin/glossary before calling any of these — every time, for "
     "every term you touch in the turn, not only the first.\n\n"
-    "REQ-1846/1847/1848/1849: Provisa has SEVEN query surfaces under Explore, each its own route "
+    "REQ-1846/1847/1848/1849/1851: Provisa has SEVEN query surfaces under Explore, each its own route "
     "and each with its own exact deep-link format — never assume one surface's names or state "
     "shape transfer to another. Route + navigate `state` key per surface: GraphQL /query "
     "(state.query), Cypher /graph (state.query), SQL /sql (state.sql), gRPC /grpc "
@@ -653,10 +658,12 @@ _SYSTEM = (
     "grpc_aggregate_method, the real rpc name. state.grpcMethod is that name plus `()`, e.g. "
     '`"QuerySIrisIris()"` — this is deterministic, not a guess; never omit the trailing `()`, '
     "the gRPC page's own parser requires it.\n"
-    "- JSON:API: no lookup needed — its URL is the plain schema/table names directly: "
-    'state.jsonapiUrl = `"/data/jsonapi/<schema>/<table>"`.\n'
-    "- OpenAPI: no lookup needed either — same plain schema/table names, as an HTTP method+path "
-    'string: state.openApiUrl = `"GET /data/rest/<schema>/<table>"`.\n'
+    "- JSON:API: call graphql_field_names for the table and use its jsonapi_path verbatim as "
+    "state.jsonapiUrl. These routes key on the table's RAW domain id, not the sql-safe schema "
+    "name describe_table/list_tables give you — reassembling `/{schema}/{table}` yourself 404s "
+    "for any domain id containing a hyphen or space (reproduced live).\n"
+    "- OpenAPI: same as JSON:API — call graphql_field_names and use its openapi_path verbatim as "
+    "state.openApiUrl, never reassembled from the plain schema/table names.\n"
     "For any of these, do the lookup (if needed) once per table, build the query, navigate with "
     "state once, then stop — report the outcome; never re-run the naming lookup, search_catalog, "
     "or navigate again for the same table in the same turn just to double-check work that already "

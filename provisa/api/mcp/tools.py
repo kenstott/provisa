@@ -268,6 +268,13 @@ async def graphql_field_names(state: Any, role: str, schema: str, table: str) ->
     Also returns the real gRPC method names for this table (REQ-1849) — gRPC's rpc names are a
     deterministic proto3-cased transform of this same table_field, not an independent name.
 
+    Also returns jsonapi_path/openapi_path (REQ-1851) — JSON:API and OpenAPI key their routes on
+    the table's RAW domain id (e.g. `pet-store`), not the sql-safe schema name
+    (`domain_to_sql_name` turns it into `pet_store`) that `schema`/`table` themselves are. Reusing
+    the sql-safe schema name in these two paths 404s for any domain id containing a character
+    domain_to_sql_name changes (hyphens, spaces, ...) — reproduced live. Always use these two
+    fields verbatim rather than reassembling `/{schema}/{table}` yourself.
+
     `schema`/`table` are the same semantic names describe_table/list_tables use."""
     require_role(role, state)
     from provisa.api.admin._graphql_field_name import resolve_graphql_field_name
@@ -295,6 +302,10 @@ async def graphql_field_names(state: Any, role: str, schema: str, table: str) ->
         "table_field": table_field,
         "grpc_query_method": f"Query{grpc_type_name}",
         "grpc_aggregate_method": f"Query{grpc_type_name}Aggregate",
+        # REQ-1851: meta.domain_id/table_name are the RAW registered names JSON:API/OpenAPI route
+        # on — NOT the sql-safe `schema` this function was called with.
+        "jsonapi_path": f"/data/jsonapi/{meta.domain_id}/{meta.table_name}",
+        "openapi_path": f"GET /data/rest/{meta.domain_id}/{meta.table_name}",
         "columns": [
             {"name": c["name"], "graphql_name": apply_gql_name(c["name"])}
             for c in described["columns"]

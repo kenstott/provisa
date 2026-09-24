@@ -19727,3 +19727,15 @@ Reported live and reproduced: after the [REQ-1847](#REQ-1847)/1848 naming-author
 **Code:** `provisa/api/mcp/chat.py`, `provisa-ui/src/hooks/useMcpChat.ts`
 
 **Tests:** `tests/unit/test_mcp_chat.py`
+
+### REQ-1851 · MCP & AI Integration {#REQ-1851}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Reported live: OpenAPI deep links Polly built never scrolled to, selected, or executed the right endpoint — total silence, the exact symptom of OpenApiPage.tsx's autoRun logic finding no matching .opblock and timing out quietly. Root cause: JSON:API/OpenAPI routes key on the table's RAW domain id (create_jsonapi_router's /{domain_id}/{table_name}, openapi_spec.py's path_key using meta["domain_id"] straight from schema_gen's table_path_maps, which is never transformed) — e.g. "pet-store" — while describe_table/list_tables/graphql_field_names' own `schema` parameter is the SQL-safe name (domain_to_sql_name applied, e.g. "pet_store"). Reassembling `/data/jsonapi/{schema}/{table}` or `GET /data/rest/{schema}/{table}` from Polly's own schema/table names therefore 404s for any domain id containing a character domain_to_sql_name changes (hyphen, space, ...) — which the demo's own "pet-store" domain has. Fixed by having graphql_field_names also return jsonapi_path/openapi_path, built from the same TableMeta (meta.domain_id/meta.table_name) it already resolves via _find_role_table — those attributes hold the raw, untransformed names throughout the compiler, the same ones schema_gen's table_path_maps embed. The system prompt now tells Polly to always use these two fields verbatim rather than reassembling the path herself, correcting the [REQ-1846](#REQ-1846)/1847/1848 "no lookup needed" guidance for these two surfaces.
+
+**Use case:** A JSON:API/OpenAPI deep link Polly builds must resolve to the real endpoint even when the table's domain id contains characters the SQL-plane schema name normalizes away.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_server.py`

@@ -531,10 +531,46 @@ async def test_graphql_field_names_returns_the_compiled_schemas_real_names(state
     assert result["table_field"] == "s__orders"
     assert result["grpc_query_method"] == "QuerySOrders"
     assert result["grpc_aggregate_method"] == "QuerySOrdersAggregate"
+    assert result["jsonapi_path"] == "/data/jsonapi/sales/orders"
+    assert result["openapi_path"] == "GET /data/rest/sales/orders"
     assert result["columns"] == [
         {"name": "id", "graphql_name": "id"},
         {"name": "customer_id", "graphql_name": "customerId"},
     ]
+
+
+async def test_graphql_field_names_jsonapi_openapi_paths_use_the_raw_domain_id(state):  # REQ-1851
+    # sql-safe schema name ("pet_store") differs from the raw domain id ("pet-store") the
+    # JSON:API/OpenAPI routers actually key on — reproduced live: reassembling the path from the
+    # sql-safe schema 404s. jsonapi_path/openapi_path must use the raw meta.domain_id instead.
+    from unittest.mock import patch
+
+    hyphen_meta = TableMeta(
+        table_id=3,
+        field_name="pets",
+        type_name="Pets",
+        source_id="pg",
+        catalog_name="pg",
+        schema_name="public",
+        table_name="pets",
+        domain_id="pet-store",
+    )
+    state.contexts["analyst"].tables["pets"] = hyphen_meta
+
+    async def _fake_describe(_state, _role, _schema, _table):
+        return {"columns": []}
+
+    with (
+        patch(
+            "provisa.api.admin._graphql_field_name.resolve_graphql_field_name",
+            return_value="ps__pets",
+        ),
+        patch.object(tools, "describe_table", _fake_describe),
+    ):
+        result = await tools.graphql_field_names(state, "analyst", "pet_store", "pets")
+
+    assert result["jsonapi_path"] == "/data/jsonapi/pet-store/pets"
+    assert result["openapi_path"] == "GET /data/rest/pet-store/pets"
 
 
 async def test_graphql_field_names_unknown_table_raises(state):
