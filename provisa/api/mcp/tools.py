@@ -344,6 +344,59 @@ async def cypher_field_names(state: Any, role: str, schema: str, table: str) -> 
     }
 
 
+async def generate_explore_queries(state: Any, role: str, question: str) -> dict:  # REQ-1852
+    """Generate ready-to-run queries for ALL SIX Explore query surfaces from one natural-language
+    question, using the SAME pipeline the NL Explore page runs (REQ-355..359) — an LLM call of
+    its own that resolves table selection, joins, and aggregation shape, not a guess. Use this
+    (never graphql_field_names/cypher_field_names plus hand-built SQL/filters) for anything beyond
+    browsing one table's plain columns: aggregation, GROUP BY, a business-term filter, or a
+    question spanning more than one table. graphql_field_names/cypher_field_names remain the
+    right, cheaper choice only for a flat single-table query with no aggregation.
+
+    Returns {target: {"query": ..., "error": ...}} for sql/graphql/cypher/grpc/jsonapi/openapi.
+    A target with `error` set could not answer this question on that surface — say so plainly to
+    the user rather than guessing a query for it. For every OTHER target, its `query` string is
+    already the exact, complete value to navigate with: for jsonapi/openapi it IS the full
+    deep-link path/method (do not reassemble it from schema/table names — see REQ-1851), for grpc
+    it IS the exact rpc call signature, for sql/graphql/cypher it IS the query text. Use it
+    verbatim; never rewrite, simplify, or re-derive it yourself."""
+    require_role(role, state)
+    from provisa.core.org_secrets import read_org_api_keys
+    from provisa.core.org_settings import resolve_org_config
+    from provisa.llm.client import ProvisaLLMClient
+    from provisa.nl.job import NlJob, make_job_store, new_job_id
+    from provisa.nl.runner import run_nl_job
+
+    # Same per-role NL rate limit /query/nl enforces (REQ-370) — this tool drives the identical
+    # LLM pipeline, so it must not become an unlimited-cost bypass of that limit.
+    limiter = getattr(state, "rate_limiter", None)
+    nl_limit = state.config.nl.rate_limit if getattr(state, "config", None) else None
+    if limiter and nl_limit and role:
+        allowed, retry_after = await limiter.allow(f"rl:nl:{role}", nl_limit, 60.0)
+        if not allowed:
+            raise ValueError(f"NL query rate limit exceeded — retry in {int(retry_after + 0.999)}s")
+
+    job_store = make_job_store()
+    job_id = new_job_id()
+    await job_store.put(NlJob(job_id=job_id, nl_query=question, role=role, strict=False))
+
+    cfg = await resolve_org_config(state.tenant_db)
+    api_keys = await read_org_api_keys(state.tenant_db)
+    # ProvisaLLMClient duck-types LLMClient's complete() (same pattern nl_router.py's own
+    # untyped `llm` param relies on) rather than subclassing it.
+    llm: Any = ProvisaLLMClient("sql_generation", config=cfg, api_keys=api_keys)
+
+    await run_nl_job(job_id, question, role, state, job_store, llm, strict=False)
+
+    job = await job_store.get(job_id)
+    if job is None:
+        raise ValueError("NL job vanished from its own job store")
+    return {
+        target: {"query": branch.query, "error": branch.error}
+        for target, branch in job.branches.items()
+    }
+
+
 async def list_native_tables(
     state: Any, role: str, source_id: str, schema_name: str = "public"
 ) -> list[dict]:  # REQ-1833

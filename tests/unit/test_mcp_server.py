@@ -629,6 +629,59 @@ async def test_cypher_field_names_not_in_compiled_graph_schema_raises(state):
             await tools.cypher_field_names(state, "analyst", "sales", "orders")
 
 
+# --- REQ-1852: full NL-pipeline generation for all Explore surfaces --------
+
+
+class _FakeJobStore:
+    """Minimal in-process stand-in for InMemoryJobStore/RedisJobStore — just enough for
+    generate_explore_queries' put/get round trip."""
+
+    def __init__(self):
+        self.job = None
+
+    async def put(self, job):
+        self.job = job
+
+    async def get(self, job_id):
+        return self.job
+
+
+async def test_generate_explore_queries_returns_per_target_queries_and_errors(state):
+    from unittest.mock import patch
+
+    from provisa.nl.job import BranchResult
+
+    state.config.nl = SimpleNamespace(rate_limit=None)  # no rate_limiter configured -> skipped
+    fake_store = _FakeJobStore()
+
+    async def fake_run_nl_job(job_id, question, role, app_state, job_store, llm, strict=False):
+        job = await job_store.get(job_id)
+        job.branches["sql"] = BranchResult(query="SELECT 1", error=None)
+        job.branches["graphql"] = BranchResult(query=None, error="NOT_APPLICABLE")
+
+    with (
+        patch("provisa.nl.job.make_job_store", return_value=fake_store),
+        patch("provisa.core.org_settings.resolve_org_config", AsyncMock(return_value={})),
+        patch("provisa.core.org_secrets.read_org_api_keys", AsyncMock(return_value={})),
+        patch("provisa.llm.client.ProvisaLLMClient"),
+        patch("provisa.nl.runner.run_nl_job", fake_run_nl_job),
+    ):
+        result = await tools.generate_explore_queries(state, "analyst", "top orders by revenue")
+
+    assert result["sql"] == {"query": "SELECT 1", "error": None}
+    assert result["graphql"] == {"query": None, "error": "NOT_APPLICABLE"}
+
+
+async def test_generate_explore_queries_enforces_the_same_nl_rate_limit(state):
+    state.config.nl = SimpleNamespace(rate_limit=5)
+    state.rate_limiter = SimpleNamespace(allow=AsyncMock(return_value=(False, 12.0)))
+
+    with pytest.raises(ValueError, match="rate limit"):
+        await tools.generate_explore_queries(state, "analyst", "top orders by revenue")
+
+    state.rate_limiter.allow.assert_called_once_with("rl:nl:analyst", 5, 60.0)
+
+
 async def test_pinned_stdio_role_requires_env(monkeypatch):
     from provisa.api.mcp import server
 

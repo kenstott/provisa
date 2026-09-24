@@ -19739,3 +19739,15 @@ Reported live: OpenAPI deep links Polly built never scrolled to, selected, or ex
 **Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
 
 **Tests:** `tests/unit/test_mcp_server.py`
+
+### REQ-1852 · MCP & AI Integration {#REQ-1852}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Corrected framing after user pushback: Polly is not limited to per-table naming lookups — she should be able to answer any complex question the NL Explore page can (joins, aggregation, GROUP BY, business-term filters), across all six query surfaces. The per-table naming-authority tools (graphql_field_names, cypher_field_names, [REQ-1847](#REQ-1847)/1848/1849/1851) only ever produce a flat single-table query; they have no notion of an AggregationPlan, join resolution, or table selection from a natural-language question. Added generate_explore_queries, a new MCP tool that runs the SAME pipeline provisa/nl/runner.py's run_nl_job drives for the NL Explore page (its own LLM call for table selection/SQL generation, then GraphQL/Cypher/gRPC/JSON:API/OpenAPI derived from the resolved plan) and returns each surface's ready query string or error. The system prompt now directs Polly to call this first for anything beyond a flat single-table browse, keeping the per-table tools only for the simple case (cheaper, no LLM call). Enforces the same per-role NL rate limit ([REQ-370](#REQ-370)) so this doesn't become an unlimited-cost bypass of it.
+
+**Use case:** A user should be able to ask Polly a complex, multi-table or aggregate question and have her build and run it on any Explore surface, not just browse one table's columns.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_server.py`

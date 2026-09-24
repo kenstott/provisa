@@ -63420,3 +63420,42 @@
     Then jsonapi_path and openapi_path use the raw domain id, not the sql-safe schema name
     Given she then navigates to /jsonapi or /openapi with that path verbatim
     Then the real endpoint is found, scrolled to, and executed
+
+- id: REQ-1852
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: MCP & AI Integration
+  priority: MUST
+  type: behavioral
+  description: >-
+    Corrected framing after user pushback: Polly is not limited to per-table naming lookups —
+    she should be able to answer any complex question the NL Explore page can (joins,
+    aggregation, GROUP BY, business-term filters), across all six query surfaces. The per-table
+    naming-authority tools (graphql_field_names, cypher_field_names, REQ-1847/1848/1849/1851)
+    only ever produce a flat single-table query; they have no notion of an AggregationPlan, join
+    resolution, or table selection from a natural-language question. Added
+    generate_explore_queries, a new MCP tool that runs the SAME pipeline
+    provisa/nl/runner.py's run_nl_job drives for the NL Explore page (its own LLM call for table
+    selection/SQL generation, then GraphQL/Cypher/gRPC/JSON:API/OpenAPI derived from the
+    resolved plan) and returns each surface's ready query string or error. The system prompt now
+    directs Polly to call this first for anything beyond a flat single-table browse, keeping the
+    per-table tools only for the simple case (cheaper, no LLM call). Enforces the same per-role
+    NL rate limit (REQ-370) so this doesn't become an unlimited-cost bypass of it.
+  use_case: >-
+    A user should be able to ask Polly a complex, multi-table or aggregate question and have her
+    build and run it on any Explore surface, not just browse one table's columns.
+  code:
+  - provisa/api/mcp/tools.py
+  - provisa/api/mcp/chat.py
+  tests:
+  - tests/unit/test_mcp_server.py
+  e2e: false
+  scenario: |
+    Given a user asks Polly a question requiring a join and an aggregation
+    When Polly calls generate_explore_queries with that question
+    Then she gets back a ready query for each surface that could answer it, and an error for
+    any surface that could not
+    Given she navigates to one of those surfaces with its query
+    Then it runs the identical query the NL Explore page would have generated for the same
+    question

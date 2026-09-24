@@ -110,6 +110,30 @@ _TOOLS: list[Any] = [
         },
     },
     {
+        "name": "generate_explore_queries",
+        "description": (
+            "REQ-1852: generate ready-to-run queries for ALL SIX Explore surfaces (sql, "
+            "graphql, cypher, grpc, jsonapi, openapi) from one natural-language question — the "
+            "SAME pipeline the NL Explore page runs, with its own LLM call resolving table "
+            "selection, joins, and aggregation shape. Use this instead of graphql_field_names/"
+            "cypher_field_names plus hand-built SQL for anything beyond a flat single-table "
+            "browse: aggregation, GROUP BY, a business-term filter ('top customers by revenue'), "
+            "or a question spanning more than one table. graphql_field_names/cypher_field_names "
+            "stay the right, cheaper choice only for a plain single-table query with no "
+            "aggregation. Returns {target: {query, error}} per surface — a target with `error` "
+            "set could not answer this question there; say so plainly rather than guessing a "
+            "query for it. Every other target's `query` is the exact, complete value to "
+            "navigate with verbatim (for jsonapi/openapi it IS the full deep-link path/method, "
+            "for grpc it IS the exact rpc call signature) — never rewrite, simplify, or "
+            "re-derive it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"question": {"type": "string"}},
+            "required": ["question"],
+        },
+    },
+    {
         "name": "search_catalog",
         "description": (
             "Semantically search the catalog for datasets matching a natural-language query. "
@@ -637,14 +661,19 @@ _SYSTEM = (
     "an already-live term); say this plainly if a user asks you to just 'mark it live'. Per "
     "REQ-1834 above: navigate to /admin/glossary before calling any of these — every time, for "
     "every term you touch in the turn, not only the first.\n\n"
-    "REQ-1846/1847/1848/1849/1851: Provisa has SEVEN query surfaces under Explore, each its own route "
-    "and each with its own exact deep-link format — never assume one surface's names or state "
-    "shape transfer to another. Route + navigate `state` key per surface: GraphQL /query "
+    "REQ-1846/1847/1848/1849/1851/1852: Provisa has SEVEN query surfaces under Explore, each its "
+    "own route and each with its own exact deep-link format — never assume one surface's names or "
+    "state shape transfer to another. Route + navigate `state` key per surface: GraphQL /query "
     "(state.query), Cypher /graph (state.query), SQL /sql (state.sql), gRPC /grpc "
     "(state.grpcMethod), JSON:API /jsonapi (state.jsonapiUrl), OpenAPI /openapi (state.openApiUrl), "
     "NL /nl (no state deep-link — type the question directly if asked to use the NL surface "
     "itself). Always pass state.autoRun=true alongside so the query runs immediately instead of "
     "sitting unrun in the editor.\n"
+    "For anything beyond browsing one table's plain columns — aggregation, GROUP BY, a "
+    "business-term filter, or a question spanning more than one table — call "
+    "generate_explore_queries with the user's question FIRST; it runs the same pipeline the NL "
+    "page does and hands back a ready query per surface. Only fall back to the per-table lookups "
+    "below for a plain single-table browse with no aggregation.\n"
     "- SQL: your existing schema/table/column names (from list_tables/describe_table) ARE the "
     "real SQL-plane names already — no extra lookup needed. Give a query a name when the surface "
     "supports it (GraphQL: `query Name { ... }` instead of an anonymous `{ ... }`) — good practice, "
@@ -812,6 +841,8 @@ async def _execute_tool(
         return await mcp_tools.graphql_field_names(state, role, args["schema"], args["table"])
     if name == "cypher_field_names":
         return await mcp_tools.cypher_field_names(state, role, args["schema"], args["table"])
+    if name == "generate_explore_queries":
+        return await mcp_tools.generate_explore_queries(state, role, args["question"])
     if name == "search_catalog":
         return await mcp_tools.search_catalog(state, role, args["query"], k=int(args.get("k", 5)))
     if name == "run_sql":
