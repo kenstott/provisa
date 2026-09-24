@@ -19607,3 +19607,15 @@ The always-visible "Unregistered" footer badge's ([REQ-1137](#REQ-1137) companio
 **Code:** `provisa-ui/src/components/LicenseBadge.tsx`
 
 **Tests:** —
+
+### REQ-1841 · MCP & AI Integration {#REQ-1841}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Two further bugs in the same live-streaming path [REQ-1838](#REQ-1838)/1839 introduced, both reproduced live and fixed. (1) ChatPanel's message ScrollArea never auto-scrolled to follow new content (only the separate tool-call log did, whose own comment incorrectly assumed the message list "would" do the same) — a long streamed reply just grew below the current scroll position, so the visible text looked permanently frozen on the first sentence even though the full reply had already arrived; fixed by adding the identical auto-scroll effect the tool log already had, keyed on `messages`. (2) resp now comes from stream. get_final_message() (ParsedMessage), whose text blocks are ParsedTextBlock — carrying an extra parsed_output field (always None; only meaningful with a structured-output param never passed here) the SDK itself marks `__api_exclude__` but plain model_dump() doesn't know to drop. Sent back verbatim in a client-tool-pause resume POST's assistant_content, Anthropic's API rejected it outright with a 400 invalid_request_error ("messages.N.content. M.text.parsed_output: Extra inputs are not permitted") — reproduced live on every turn that paused for a client tool (e.g. present_choice) after the switch to streaming; fixed by passing `exclude=getattr(b, "__api_exclude__", None)` to model_dump().
+
+**Use case:** A long streamed Polly reply must stay visible as it grows, and pausing for a client tool (present_choice, navigate, refresh_mv) must never break the turn outright.
+
+**Code:** `provisa-ui/src/components/ChatPanel.tsx`, `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_chat.py`

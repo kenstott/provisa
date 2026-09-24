@@ -264,6 +264,19 @@ export function ChatPanel() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [tools]);
 
+  // REQ-1841: the message list itself never had this — a long streamed reply (many tool round
+  // trips + a growing assistant bubble) just grows BELOW the current scroll position with the
+  // viewport never following it, so the visible text looks frozen at whatever was on screen when
+  // the turn started, even though the full reply already arrived. Verified live: the network/SSE
+  // stream completes correctly (confirmed via a server-side event log capturing the full,
+  // multi-round exchange) while the on-screen text stays stuck on the first sentence. Every
+  // update to `messages` follows the newest content, matching toolsScrollRef just above.
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+
   // REQ-1805: mic-to-text — appends the transcript to whatever's already typed, so a person can
   // dictate a follow-on clause instead of only replacing the draft.
   const speech = useSpeechToText((transcript) =>
@@ -438,7 +451,7 @@ export function ChatPanel() {
           </Alert>
         )}
 
-        <ScrollArea style={{ flex: 1 }} mb="sm">
+        <ScrollArea style={{ flex: 1 }} mb="sm" viewportRef={messagesScrollRef}>
           {messages.length === 0 && (
             <Stack gap={6} data-testid="chat-panel-suggestions">
               <Text size="xs" c="dimmed">

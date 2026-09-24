@@ -37,6 +37,7 @@ needs no new server-side session state."""
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import AsyncIterator
 from typing import Any
@@ -913,32 +914,68 @@ async def _run_chat_anthropic(
             # block order). useMcpChat.ts's beginAssistantTurn already appends chunks incrementally
             # (built for REQ-1795's tool-loop rounds, but a chunk is a chunk), so real token
             # streaming needed no frontend change.
-            async for event in stream:
-                if event.type == "content_block_delta" and event.delta.type == "text_delta":
-                    yield {"type": "text", "text": event.delta.text}
-                    continue
-                if event.type != "content_block_stop":
-                    continue
-                block = stream.current_message_snapshot.content[event.index]
-                # REQ-1796: Anthropic already executed these (see _WEB_TOOLS' note) — no dispatch
-                # needed, just a UI badge so the user can see a search/fetch happened.
-                if block.type == "server_tool_use" and block.name in _SERVER_HOSTED_TOOL_NAMES:
-                    yield {"type": "tool_use", "name": block.name, "input": block.input}
-                elif block.type == "web_search_tool_result":
-                    content_type = getattr(getattr(block, "content", None), "type", "")
-                    yield {
-                        "type": "tool_result",
-                        "name": "web_search",
-                        "is_error": content_type == "web_search_tool_result_error",
-                    }
-                elif block.type == "web_fetch_tool_result":
-                    content_type = getattr(getattr(block, "content", None), "type", "")
-                    yield {
-                        "type": "tool_result",
-                        "name": "web_fetch",
-                        "is_error": content_type == "web_fetch_tool_result_error",
-                    }
+            # REQ-1839 fix: this live event-driven badge/delta walk is a strictly-better-when-it-
+            # works PRESENTATION detail — REQ-1838's "never go silent" guarantee must not depend on
+            # it. Verified live: a real Opus 4.6 call with adaptive thinking + several tools raised
+            # partway through this loop (root cause not yet isolated — some event/snapshot shape
+            # this loop didn't anticipate), and since the exception propagated out of `async with`
+            # before `get_final_message()` ever ran, the ENTIRE round's real content was thrown
+            # away — reproduced via e2e (chat-panel-streaming.spec.ts) as a turn silently stuck at
+            # 1-12 characters of the true response, no error shown. Falling back to the complete,
+            # already-fully-generated response (still available via get_final_message() even after
+            # this loop errors — the underlying generation already finished) means a bug HERE only
+            # costs live incremental rendering for that one round, never the content itself.
+            live_text = []
+            live_walk_failed = False
+            try:
+                async for event in stream:
+                    if event.type == "content_block_delta" and event.delta.type == "text_delta":
+                        live_text.append(event.delta.text)
+                        yield {"type": "text", "text": event.delta.text}
+                        continue
+                    if event.type != "content_block_stop":
+                        continue
+                    block = stream.current_message_snapshot.content[event.index]
+                    # REQ-1796: Anthropic already executed these (see _WEB_TOOLS' note) — no
+                    # dispatch needed, just a UI badge so the user can see a search/fetch happened.
+                    if block.type == "server_tool_use" and block.name in _SERVER_HOSTED_TOOL_NAMES:
+                        yield {"type": "tool_use", "name": block.name, "input": block.input}
+                    elif block.type == "web_search_tool_result":
+                        content_type = getattr(getattr(block, "content", None), "type", "")
+                        yield {
+                            "type": "tool_result",
+                            "name": "web_search",
+                            "is_error": content_type == "web_search_tool_result_error",
+                        }
+                    elif block.type == "web_fetch_tool_result":
+                        content_type = getattr(getattr(block, "content", None), "type", "")
+                        yield {
+                            "type": "tool_result",
+                            "name": "web_fetch",
+                            "is_error": content_type == "web_fetch_tool_result_error",
+                        }
+            except Exception:
+                live_walk_failed = True
+                logging.getLogger(__name__).exception(
+                    "REQ-1839 live event walk failed mid-stream; falling back to the complete "
+                    "response instead of losing this round's content"
+                )
             resp = await stream.get_final_message()
+            if live_walk_failed:
+                # Recover whatever text the live walk didn't get to send — the full generation
+                # already completed regardless of this loop's own bug, so it's still available via
+                # get_final_message(). Send only the part not already streamed live when the
+                # already-sent prefix matches (the common case); if it doesn't line up exactly,
+                # sending the whole thing again is a rare, harmless duplicate — never dropped text.
+                already_sent = "".join(live_text)
+                full_text = "".join(b.text for b in resp.content if b.type == "text" and b.text)
+                remainder = (
+                    full_text[len(already_sent) :]
+                    if full_text.startswith(already_sent)
+                    else full_text
+                )
+                if remainder:
+                    yield {"type": "text", "text": remainder}
 
         if resp.stop_reason == "max_tokens":
             # REQ-1838: never end the turn silently on this — the user sees exactly the same
@@ -989,7 +1026,19 @@ async def _run_chat_anthropic(
                 yield {"type": "tool_use", "name": block.name, "input": block.input, "client": True}
             yield {
                 "type": "awaiting_client_tools",
-                "assistant_content": [b.model_dump() for b in resp.content],
+                # REQ-1838/1839 regression: resp now comes from stream.get_final_message()
+                # (ParsedMessage), whose text blocks are ParsedTextBlock — carrying an extra
+                # parsed_output field (always None here; only meaningful with the structured-
+                # output param we never pass) that the SDK itself marks `__api_exclude__` but
+                # plain model_dump() doesn't know to drop. Sent back verbatim in the resume POST's
+                # assistant_content, Anthropic's API rejected it outright: 400 invalid_request_error
+                # "messages.N.content.M.text.parsed_output: Extra inputs are not permitted" —
+                # verified live, reproducible on every turn that paused for a client tool (e.g.
+                # present_choice) after this switch to streaming. .create()'s plain TextBlock never
+                # had this field, so the old non-streaming path never hit it.
+                "assistant_content": [
+                    b.model_dump(exclude=getattr(b, "__api_exclude__", None)) for b in resp.content
+                ],
                 "server_tool_results": tool_results,
                 "pending": [{"id": b.id, "name": b.name, "input": b.input} for b in client_blocks],
             }

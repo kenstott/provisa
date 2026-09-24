@@ -20,9 +20,17 @@ from provisa.api.mcp import tools as mcp_tools
 
 
 def _block(**kw):
-    # `.model_dump()` mirrors the real Anthropic SDK content-block objects chat.py relies on to
-    # serialize `resp.content` for the awaiting_client_tools event (REQ-1795).
-    return SimpleNamespace(model_dump=lambda: dict(kw), **kw)
+    # `.model_dump(exclude=...)` mirrors the real Anthropic SDK content-block objects chat.py
+    # relies on to serialize `resp.content` for the awaiting_client_tools event (REQ-1795), and
+    # to drop ParsedTextBlock's SDK-internal `parsed_output` field (REQ-1838/1839's regression fix)
+    # via `exclude=getattr(b, "__api_exclude__", None)`.
+    def _dump(exclude=None):
+        d = dict(kw)
+        for field in exclude or ():
+            d.pop(field, None)
+        return d
+
+    return SimpleNamespace(model_dump=_dump, **kw)
 
 
 class _FakeStream:
@@ -273,6 +281,38 @@ class TestChatLoop:
         assert events[1]["assistant_content"][0]["name"] == "navigate"
         # Only one model call happened — the loop stopped rather than iterating further.
         assert len(holder["client"].messages.calls) == 1
+
+    async def test_assistant_content_drops_parsed_output_for_a_client_tool_pause(
+        self, monkeypatch
+    ):  # REQ-1838/1839 regression
+        # stream.get_final_message() returns ParsedTextBlock content, which carries an SDK-
+        # internal `parsed_output` field (always None here, __api_exclude__'d by the SDK itself)
+        # that plain model_dump() doesn't know to drop — sent back verbatim in a resume POST's
+        # assistant_content, Anthropic's real API rejected it with a 400 invalid_request_error.
+        # Reproduced live: any turn pausing for a client tool (e.g. present_choice) after the
+        # REQ-1838/1839 switch to streaming hit this on every resume.
+        text_block = _block(type="text", text="Sure, one moment.", parsed_output=None)
+        text_block.__api_exclude__ = {"parsed_output"}
+        resp1 = SimpleNamespace(
+            content=[
+                text_block,
+                _block(type="tool_use", name="navigate", input={"route": "/sources"}, id="c1"),
+            ],
+            stop_reason="tool_use",
+        )
+        _install_fake_anthropic(monkeypatch, [resp1])
+
+        events = [
+            ev
+            async for ev in chat_mod.run_chat(
+                _state(), "analyst", [{"role": "user", "content": "go to sources"}]
+            )
+        ]
+        awaiting = next(e for e in events if e["type"] == "awaiting_client_tools")
+        dumped_text_block = next(
+            b for b in awaiting["assistant_content"] if b.get("type") == "text"
+        )
+        assert "parsed_output" not in dumped_text_block
 
     async def test_mixed_turn_executes_server_tools_before_pausing(self, monkeypatch):  # REQ-1795
         resp1 = SimpleNamespace(
