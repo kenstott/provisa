@@ -494,7 +494,11 @@ def _generate_openapi_query(
     nm = user_nodes.get(type_name)
     if nm is None or nm.domain_id is None:
         return None, "NOT_APPLICABLE"
-    return f"GET /data/rest/{nm.domain_id}/{nm.table_name}", None
+    # REQ-1853: a plain browse with no plan is otherwise an unbounded `?limit=` (generator.py's
+    # own default), unlike _generate_jsonapi_query's equivalent branch just above, which caps the
+    # same case at ?page[size]=20 — reported live as OpenAPI silently fetching every row with no
+    # visible query param, inconsistent with the JSON:API deep link for the identical question.
+    return f"GET /data/rest/{nm.domain_id}/{nm.table_name}?limit=20", None
 
 
 async def _resolve_llm_org_ctx(app_state: AppState) -> tuple[dict | None, dict[str, str]]:

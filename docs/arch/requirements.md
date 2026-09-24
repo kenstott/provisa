@@ -19751,3 +19751,15 @@ Corrected framing after user pushback: Polly is not limited to per-table naming 
 **Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
 
 **Tests:** `tests/unit/test_mcp_server.py`
+
+### REQ-1853 · MCP & AI Integration {#REQ-1853}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Reported live via Polly: an OpenAPI deep link for a plain table browse navigated correctly but showed no query params filled in, fetching every row unbounded. Root cause: _generate_openapi_query's no-plan (plain browse) branch returned a bare "GET /data/rest/{domain}/{table}" with no params, while _generate_jsonapi_query's identical no-plan branch, just above it in the same file, caps the same case at "?page[size]=20" — an inconsistency between the two REST-family generators for the exact same input shape. Fixed by adding the equivalent "?limit=20" to the OpenAPI branch (REST's own param name, per provisa/api/rest/generator.py's rest_table_endpoint), matching JSON:API's default.
+
+**Use case:** An OpenAPI deep link for a plain table browse should show a sane default page size, the same as the equivalent JSON:API deep link for the identical question.
+
+**Code:** `provisa/nl/runner.py`
+
+**Tests:** `tests/unit/test_nl_aggregation_routing.py`

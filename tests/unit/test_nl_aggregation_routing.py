@@ -420,11 +420,13 @@ class TestGenerateOpenapiQuery:
             q == "GET /data/rest/pet_store/pets?groupBy=species&aggregate=count&includeNodes=true"
         )
 
-    def test_no_plan_falls_back_to_old_behavior(self):
+    def test_no_plan_falls_back_to_old_behavior(self):  # REQ-1853
         nm = SimpleNamespace(type_name="DimPet", domain_id="pet_store", table_name="dim_pet")
         q, e = _generate_openapi_query(None, {"DimPet"}, {"DimPet": nm})
         assert e is None
-        assert q == "GET /data/rest/pet_store/dim_pet"
+        # Matches _generate_jsonapi_query's equivalent no-plan branch (?page[size]=20) — an
+        # unbounded plain browse silently fetched every row with no query param shown at all.
+        assert q == "GET /data/rest/pet_store/dim_pet?limit=20"
 
 
 class TestExecutorRouting:
