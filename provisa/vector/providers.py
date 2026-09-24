@@ -14,12 +14,11 @@ Pluggable backends that turn text into vectors for a registered VectorModel:
 
 from __future__ import annotations
 
-import os
 from abc import ABC, abstractmethod
 
 from provisa.vector.registry import VectorModel
 
-# Requirements: REQ-420, REQ-431
+# Requirements: REQ-420, REQ-431, REQ-1827
 
 
 class EmbeddingError(RuntimeError):
@@ -33,8 +32,16 @@ class EmbeddingProvider(ABC):  # REQ-420
     async def embed(self, texts: list[str], model: VectorModel) -> list[list[float]]: ...
 
 
-def _api_key(model: VectorModel) -> str | None:
-    return os.environ.get(model.api_key_env) if model.api_key_env else None
+async def _api_key(model: VectorModel) -> str | None:  # REQ-1827
+    """The vector model's API key from its ``api_key_env`` field — the SAME shared grammar
+    (${secret:NAME}/${env:NAME}/${user:NAME}, or a bare env-var name) provisa/api/mcp/chat.py's
+    custom AI endpoints use, not a separate bare-env-var-only implementation. Before this, a
+    vault-reference value here silently resolved to nothing (a plain os.environ.get on a string
+    that is never itself a real env var name), which the OpenAI-compatible provider then treated
+    as simply "no key" rather than failing loud."""
+    from provisa.core.secrets import resolve_api_key_field
+
+    return await resolve_api_key_field(model.api_key_env)
 
 
 class OpenAICompatibleProvider(EmbeddingProvider):  # REQ-420
@@ -45,7 +52,7 @@ class OpenAICompatibleProvider(EmbeddingProvider):  # REQ-420
 
         base = (model.base_url or "https://api.openai.com/v1").rstrip("/")
         headers = {}
-        key = _api_key(model)
+        key = await _api_key(model)
         if key:
             headers["Authorization"] = f"Bearer {key}"
         async with httpx.AsyncClient(timeout=30) as client:

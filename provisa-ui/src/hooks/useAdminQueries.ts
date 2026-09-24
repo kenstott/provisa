@@ -34,6 +34,7 @@ import type {
   UserSummary,
 } from "../types/admin";
 import type { CompileResult, TableMetadata, ColumnMetadata } from "../api/admin";
+import { useStartingPoll } from "./discoveryStartingPoll";
 import {
   RolesQuery as ROLES_QUERY,
   RLSRulesQuery as RLS_RULES_QUERY, // useTourPrefetch warms the RLS rules page
@@ -859,12 +860,22 @@ export function useAvailableSchemas(sourceId: string | null) {
 }
 
 export function useAvailableTables(sourceId: string | null, schemaName: string | null) {
-  const { data, loading } = useQuery<{ availableTables: TableMetadata[] }>(AvailableTables, {
-    variables: { sourceId, schemaName },
-    skip: !sourceId || !schemaName,
-    fetchPolicy: "no-cache",
-  });
-  return { tables: data?.availableTables ?? [], loading };
+  const { data, loading, error, refetch } = useQuery<{ availableTables: TableMetadata[] }>(
+    AvailableTables,
+    {
+      variables: { sourceId, schemaName },
+      skip: !sourceId || !schemaName,
+      fetchPolicy: "no-cache",
+      errorPolicy: "all",
+    },
+  );
+  const { starting, timedOut } = useStartingPoll(error, refetch);
+  return {
+    tables: data?.availableTables ?? [],
+    loading: loading || starting,
+    starting,
+    startingTimedOut: timedOut,
+  };
 }
 
 // REQ-1783: the Kaggle source form's token-gate step. A live check, not client-side format

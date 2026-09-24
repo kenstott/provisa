@@ -683,6 +683,71 @@ def test_endpoint_never_listening_is_loud(tmp_path, monkeypatch):
         replica.endpoint()
 
 
+def test_endpoint_timeout_override(tmp_path, monkeypatch):
+    """REQ-1824: a caller-supplied ``timeout`` overrides SERVER_READY_SECONDS — used by the
+    discovery path to fail fast rather than wait the full budget a real query needs."""
+    monkeypatch.setattr(pr.time, "sleep", lambda _: None)
+    replica = pr.ConnectorReplica(
+        _splunk_source(),
+        resolver=rd.BundleResolver(cache_root=tmp_path, downloader=_lay_down_bundle),
+        allocator=pr.PortAllocator(is_free=lambda _: True),
+        spawn=_spawn_returning(_FakeProc()),
+        health_check=_health_from(lambda: False),
+        port_is_free=lambda _: True,
+    )
+    with pytest.raises(pr.ServerLifecycleError, match="within 5s"):
+        replica.endpoint(timeout=5)
+
+
+def test_ensure_endpoint_for_discovery_raises_still_starting(tmp_path, monkeypatch):
+    """REQ-1824: a discovery call that hits an unhealthy server gets SourceStillStartingError, a
+    DIFFERENT exception than the real-query path's ServerLifecycleError — so a caller (the admin
+    GraphQL resolver, ultimately the frontend) can tell "still booting, poll again" apart from a
+    genuine startup failure."""
+    monkeypatch.setattr(pr.time, "sleep", lambda _: None)
+    monkeypatch.setattr(pr, "_ENDPOINTS", {})
+    monkeypatch.setattr(pr, "DISCOVERY_READY_SECONDS", 0)
+    real_replica_cls = pr.ConnectorReplica
+
+    def _fake_replica(source, allocator):
+        return real_replica_cls(
+            source,
+            resolver=rd.BundleResolver(cache_root=tmp_path, downloader=_lay_down_bundle),
+            allocator=allocator,
+            spawn=_spawn_returning(_FakeProc()),
+            health_check=_health_from(lambda: False),
+            port_is_free=lambda _: True,
+        )
+
+    monkeypatch.setattr(pr, "ConnectorReplica", _fake_replica)
+    with pytest.raises(pr.SourceStillStartingError) as exc_info:
+        pr.ensure_endpoint_for_discovery(_files_source(id="big-kaggle-dataset"))
+    assert "big-kaggle-dataset" in str(exc_info.value)
+    assert str(exc_info.value).startswith("STARTING:")
+
+
+def test_ensure_endpoint_for_discovery_succeeds_when_ready(tmp_path, monkeypatch):
+    """A discovery call against an already-healthy server returns normally, same as a real query."""
+    monkeypatch.setattr(pr.time, "sleep", lambda _: None)
+    monkeypatch.setattr(pr, "_ENDPOINTS", {})
+    monkeypatch.setattr(pr, "_ENDPOINT_ALLOCATOR", pr.PortAllocator(is_free=lambda _: True))
+    real_replica_cls = pr.ConnectorReplica
+
+    def _fake_replica(source, allocator):
+        return real_replica_cls(
+            source,
+            resolver=rd.BundleResolver(cache_root=tmp_path, downloader=_lay_down_bundle),
+            allocator=allocator,
+            spawn=_spawn_returning(_FakeProc()),
+            health_check=_health_from(lambda: True),
+            port_is_free=lambda _: True,
+        )
+
+    monkeypatch.setattr(pr, "ConnectorReplica", _fake_replica)
+    ports = pr.ensure_endpoint_for_discovery(_files_source(id="fast-source"))
+    assert ports.pgwire_port == pr.PGWIRE_DEFAULT_PORT
+
+
 def test_duckdb_splunk_attaches_the_pgwire_endpoint(monkeypatch):
     """The DuckDB connector attaches the server the endpoint registry started, read-only, under the
     private alias, and names the Calcite schema the tables live in."""

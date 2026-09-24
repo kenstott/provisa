@@ -361,6 +361,30 @@ describe("ChatPanel — clear conversation (REQ-1813)", () => {
     expect(screen.queryByText("Poly means many!")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-panel-suggestions")).toBeInTheDocument();
   });
+
+  it("also clears the tool-call log, not just the messages", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse([
+        { type: "tool_use", name: "search_catalog", input: { query: "orders" } },
+        { type: "tool_result", name: "search_catalog", is_error: false },
+        { type: "text", text: "Found it." },
+        { type: "done" },
+      ]),
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "find it" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    await waitFor(() => screen.getByTestId("chat-panel-tool-badge"));
+
+    fireEvent.click(screen.getByTestId("chat-panel-clear"));
+
+    expect(screen.queryByTestId("chat-panel-tool-badge")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-panel-tool-log")).not.toBeInTheDocument();
+  });
 });
 
 describe("ChatPanel — present_choice answer recorded in conversation (REQ-1813)", () => {
@@ -518,6 +542,49 @@ describe("ChatPanel — Stop/Go send control (REQ-1815)", () => {
 
     await waitFor(() => screen.getByText("Send"));
     expect(textarea).toHaveFocus();
+  });
+});
+
+describe("ChatPanel — separate message per tool-loop round (REQ-1823)", () => {
+  it("does not merge text said before a tool round trip with text said after it", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        sseResponse([
+          { type: "text", text: "Let me check the catalog for that." },
+          {
+            type: "awaiting_client_tools",
+            assistant_content: [
+              { type: "text", text: "Let me check the catalog for that." },
+              { type: "tool_use", id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } },
+            ],
+            server_tool_results: [],
+            pending: [{ id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } }],
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([{ type: "text", text: "All done, it's registered now." }, { type: "done" }]),
+      );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "register it" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => screen.getByText("Let me check the catalog for that."));
+    await waitFor(() => screen.getByText("Yes"));
+    fireEvent.click(screen.getByText("Yes"));
+    await waitFor(() => screen.getByText("All done, it's registered now."));
+
+    // Two DISTINCT assistant bubbles, not one bubble containing both sentences concatenated.
+    expect(
+      screen.queryByText("Let me check the catalog for that.All done, it's registered now."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Let me check the catalog for that.")).toBeInTheDocument();
+    expect(screen.getByText("All done, it's registered now.")).toBeInTheDocument();
   });
 });
 

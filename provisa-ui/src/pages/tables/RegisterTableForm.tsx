@@ -136,7 +136,12 @@ export function RegisterTableForm({
     sourceId && !isChecker && !isQueryApi ? sourceId : null,
   );
   const isFixedSchema = availableSchemas.length === 1;
-  const { tables: availableTables, loading: loadingTables } = useAvailableTables(
+  const {
+    tables: availableTables,
+    loading: loadingTables,
+    starting: startingTables,
+    startingTimedOut: startingTablesTimedOut,
+  } = useAvailableTables(
     sourceId && schemaName && !isChecker && !isQueryApi ? sourceId : null,
     schemaName || null,
   );
@@ -692,11 +697,13 @@ export function RegisterTableForm({
               data-testid="register-table-table-select"
             >
               <option value="">
-                {loadingTables
-                  ? t("registerTableForm.tableLoading")
-                  : allTablesRegistered
-                    ? t("registerTableForm.tableAllRegistered")
-                    : t("registerTableForm.tablePlaceholder")}
+                {startingTables
+                  ? t("registerTableForm.tableStarting")
+                  : loadingTables
+                    ? t("registerTableForm.tableLoading")
+                    : allTablesRegistered
+                      ? t("registerTableForm.tableAllRegistered")
+                      : t("registerTableForm.tablePlaceholder")}
               </option>
               {availableTables.map((tbl) => (
                 <option key={tbl.name} value={tbl.name} disabled={isRegistered(tbl)}>
@@ -704,6 +711,11 @@ export function RegisterTableForm({
                 </option>
               ))}
             </select>
+            {startingTablesTimedOut && (
+              <Text size="xs" c="red" mt={4} data-testid="register-table-starting-timeout">
+                {t("registerTableForm.tableStartingTimedOut")}
+              </Text>
+            )}
           </label>
         </>
       )}

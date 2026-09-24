@@ -19387,3 +19387,87 @@ The Polly chat panel's tool-call badges now display an animated Mantine Loader s
 **Code:** `provisa-ui/src/components/ChatPanel.tsx`
 
 **Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
+### REQ-1823 · Chat UI {#REQ-1823}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+During multi-step tool-call sequences (search → present_choice → propose_source → confirm → create_source_now), Polly's response text from each round was accumulating into a single growing message bubble instead of each round producing its own new message. Fixed by introducing beginAssistantTurn() to create a fresh placeholder message per loop iteration, tracked by stable object reference (via indexOf at update time) rather than precomputed array index, making it robust against present_choice's own messages being inserted elsewhere during the round.
+
+**Use case:** Each round of a multi-turn tool-call loop should produce its own distinct message bubble in the chat panel, not accumulate text onto the previous round's message. Proper message boundaries make tool progress transparent to the user.
+
+**Code:** `provisa-ui/src/hooks/useMcpChat.ts`
+
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
+### REQ-1824 · Federation Engines {#REQ-1824}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A discovery/introspection request (the Register Table form's "available tables" list, provisa/api/admin/schema_query.py's available_tables) for a files/sharepoint/splunk source blocked the whole HTTP request for up to SERVER_READY_SECONDS (90s) waiting for a bundled Calcite JVM to fully boot and scan the source's directory. For a large files directory (e.g. a multi-GB Kaggle dataset with many CSVs) this exceeded 90s outright, so registering a table from a freshly-created large source appeared to hang then fail with zero tables. Root cause traced through available_tables -> EngineBackend.introspect_tables -> DuckDBFederationRuntime.introspect_tables -> _attached_alias -> the connector's details() -> pgwire_replica.ensure_endpoint's blocking wait loop. Fixed by adding a fast-fail discovery-only path: ConnectorReplica.endpoint()/ensure_endpoint() gained an optional timeout param (real queries keep the full SERVER_READY_SECONDS default, unchanged), a new SourceStillStartingError exception (message prefixed "STARTING:", machine-parseable), and ensure_endpoint_for_discovery() which waits only DISCOVERY_READY_SECONDS (3s) before raising that instead of hanging. duckdb_runtime.py's introspect_tables/introspect_schemas (the discovery-only seam, not the real-query attach_source path) call a _require_discovery_ready guard first. The frontend recognizes the "STARTING:" error and polls every 3s, capped at 10 minutes, showing a "Starting up, discovering files..." message instead of a hard error.
+
+**Use case:** Discovering a large files-type source's tables should not hang the browser for the full server-startup budget; it should fail fast and let the UI poll with a clear status message.
+
+**Code:** `provisa/federation/pgwire_replica.py`, `provisa/federation/duckdb_runtime.py`, `provisa-ui/src/hooks/useAdminQueries.ts`, `provisa-ui/src/hooks/discoveryStartingPoll.ts`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/i18n/locales/en/registerTableForm.json`
+
+**Tests:** `tests/unit/test_replica_strategy.py`, `tests/unit/test_duckdb_runtime_discovery_ready.py`
+
+### REQ-1825 · MCP & AI Integration {#REQ-1825}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+New e2e test proving a custom AI endpoint configured with its API key held in the org Secrets vault (a ${secret:NAME} reference, never a raw env var) works end-to-end through the /explore MCP chat surface, including a real governed tool call (list_schemas) actually executing through it. Runs live against OpenRouter using a real key from repo-root .env, skipped when that key isn't present. This test is what surfaced [REQ-1826](#REQ-1826)'s bug.
+
+**Use case:** A custom AI endpoint's credential should be safely storable in the org secrets vault and verified to work through the real chat surface end to end, not just unit-tested in isolation.
+
+**Code:** `provisa-ui/e2e/custom-ai-endpoint-secret.spec.ts`
+
+**Tests:** `provisa-ui/e2e/custom-ai-endpoint-secret.spec.ts`
+
+### REQ-1826 · MCP & AI Integration {#REQ-1826}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Found by [REQ-1825](#REQ-1825)'s e2e test: the MCP chat preflight check (_llm_configured, backs both ChatPanel's "isn't configured yet" modal and run_chat's own mid-stream check) resolved a custom endpoint's api_key_env field via a bare os.environ.get(key_env) call, which can never succeed for a ${secret:NAME}/${env:NAME} reference (that string is never itself a real env var name) — so Polly permanently reported "isn't configured yet" for the exact vault- reference pattern the AI Models UI itself recommends as the safe way to hold a credential. Fixed to resolve through the same grammar the actual chat-execution path already used (_resolve_api_key_field) instead of a separate, narrower bare-env-var check. A resolution failure's real exception is now surfaced in the reported reason instead of being swallowed into a generic "needs X set" message.
+
+**Use case:** The chat-configured preflight check must recognize a vault-reference API key as configured, matching what the actual chat call itself is able to resolve.
+
+**Code:** `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_chat.py`
+
+### REQ-1827 · MCP & AI Integration {#REQ-1827}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The same bare-env-var-only api_key_env resolution bug ([REQ-1826](#REQ-1826)) existed independently in provisa/vector/providers.py's embedding-model API key lookup: a ${secret:NAME} reference there silently resolved to nothing (no Authorization header sent) instead of failing loud or working. Root-caused as a broader pattern: the api_key_env resolution grammar had been implemented ad hoc and inconsistently in multiple places instead of shared. Fixed by extracting the one shared implementation into provisa/core/secrets.py's new resolve_api_key_field(); chat.py's _resolve_api_key_field is now a thin delegating wrapper, and vector/providers.py's embedding-model key lookup calls the shared function directly. Also fixed: the AI Models admin UI's "API key env var" labels/placeholders for both the custom ai_endpoints table and the vector_models table were stale, describing only the narrow legacy bare-env-var meaning rather than the generalized secret-vault-reference pattern the backend actually supports and recommends. Relabeled to "API key" with a ${secret:NAME} example placeholder on both fields. A separate, NOT-yet-fixed instance of the same narrow bug was also found in provisa/llm/client.py (used by table_description, column_description, relationship_inference, sql_generation, table_selection) — flagged as a follow-up, not fixed here, since that code path is synchronous and needs an architecture decision rather than a drop-in fix.
+
+**Use case:** Every credential config field across the app (chat endpoints, embedding models) should share one resolution implementation for the ${secret:}/${env:}/${user:} grammar, and the admin UI should describe that capability accurately rather than the narrower legacy meaning.
+
+**Code:** `provisa/core/secrets.py`, `provisa/api/mcp/chat.py`, `provisa/vector/providers.py`, `provisa-ui/src/components/admin/AiModelsTab.tsx`, `provisa-ui/src/i18n/locales/en/aiModelsTab.json`
+
+**Tests:** `tests/unit/test_vector.py`
+
+### REQ-1828 · Chat UI {#REQ-1828}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+ChatPanel's "clear conversation" button cleared the message history but left the tool-call log (the badges showing which MCP tools ran) still populated, showing stale tool calls from before the clear. Fixed useMcpChat's clear() to reset both messages and tools together.
+
+**Use case:** Clearing the chat conversation should reset the whole visible chat state, including the tool-call log, not leave stale tool badges from a previous conversation visible.
+
+**Code:** `provisa-ui/src/hooks/useMcpChat.ts`
+
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+
+### REQ-1829 · Tables {#REQ-1829}
+
+**Status:** ✅ complete · **Priority:** MAY · **Type:** behavioral
+
+The Register Table form, when opened while the Tables page was scrolled down (e.g. after Polly's register_table_now left the page scrolled into the table list), rendered below the current scroll position with its own top fields (Source/Domain) clipped under the sticky header — only visible by scrolling up manually. Fixed by scrolling the form into view the moment it opens.
+
+**Use case:** Opening the Register Table form should bring its full contents into view immediately, regardless of where the page happened to be scrolled beforehand.
+
+**Code:** `provisa-ui/src/pages/TablesPage.tsx`
+
+**Tests:** —

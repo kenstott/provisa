@@ -173,6 +173,45 @@ def expand_scope(value: str) -> str:  # REQ-1622
     return _SCOPE_PATTERN.sub(lambda m: _PROVIDERS["scope"].resolve(m.group(1)), value)
 
 
+async def resolve_api_key_field(value: str | None) -> str | None:  # REQ-1827
+    """A credential config field's value: either a ``${secret:NAME}``/``${env:NAME}``/
+    ``${user:NAME}`` reference (this module's grammar), or — for backward compatibility with
+    fields that only ever meant this — a bare env-var NAME whose OWN value is looked up.
+
+    The one resolution every "API key env" style config field should share (REQ-1808's actual
+    scope: any credential field, not only the MCP chat path that originally generalized it) —
+    provisa/api/mcp/chat.py's own ``_resolve_api_key_field`` and provisa/vector/providers.py's
+    embedding-model key both delegate here rather than each reimplementing (and, before this,
+    diverging on) the same grammar.
+
+    Returns ``None`` for an empty/``None`` value, or when a bare env-var name is not set. Only a
+    ``${secret:...}``/``${user:...}`` reference needs the org vault bound
+    (``provisa.core.secrets_store.bound_to_request_org``) — ``${env:...}`` resolves against the
+    process environment alone.
+    """
+
+    async def _resolve_reference(ref: str) -> str:
+        if "${secret:" in ref or "${user:" in ref:
+            from provisa.core.secrets_store import bound_to_request_org
+
+            async with bound_to_request_org():
+                return resolve_secrets(ref)
+        return resolve_secrets(ref)
+
+    if not value:
+        return None
+    if "${" in value:
+        return await _resolve_reference(value)
+    # A plain name: look up the env var. Its OWN value is returned as-is unless it too contains a
+    # reference (one layer deeper) — so a deployment can inject an env var whose own value is a
+    # ${secret:...} reference, and that still resolves against the org's vault; a plain literal
+    # value (the common case) is never re-interpreted as yet another env-var name to look up.
+    raw = os.environ.get(value)
+    if not raw:
+        return None
+    return await _resolve_reference(raw) if "${" in raw else raw
+
+
 def resolve_secrets_in_dict(data: dict) -> dict:  # REQ-251, REQ-320
     """Recursively resolve secret references in a dict."""
     result = {}

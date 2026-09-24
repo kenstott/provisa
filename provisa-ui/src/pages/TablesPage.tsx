@@ -109,6 +109,14 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // Table awaiting native-param entry before its profile sample can run.
   const [profileParamsTable, setProfileParamsTable] = useState<RegisteredTable | null>(null);
   const [showForm, setShowForm] = useState(false);
+  // REQ-1829: opening the form below the current scroll position (e.g. after Polly's
+  // register_table_now leaves the page scrolled into the table list) left its own top fields
+  // (Source/Domain) clipped under the sticky header, only visible by scrolling up manually —
+  // scroll it fully into view the moment it opens instead.
+  const registerFormRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (showForm) registerFormRef.current?.scrollIntoView({ block: "start" });
+  }, [showForm]);
   const [showModeling, setShowModeling] = useState(false); // REQ-1164: entity/fact modeling modal
   // REQ-1318: Views-page definition-mode flow (SQL editor vs metric/dimension picker).
   const [showViewForm, setShowViewForm] = useState(false);
@@ -645,7 +653,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       )}
 
       {showForm && !viewsOnly && (
-        <div className="page-aux">
+        <div className="page-aux" ref={registerFormRef}>
           <RegisterTableForm
             sources={sources}
             domainHints={domainHints}

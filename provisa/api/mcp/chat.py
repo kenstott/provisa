@@ -444,8 +444,23 @@ async def _llm_configured(state: Any) -> tuple[bool, str]:
     endpoint = endpoints.get(vendor)
     if endpoint is not None:
         key_env = endpoint.get("api_key_env")
-        if key_env and not os.environ.get(key_env):
-            return False, f"the {vendor!r} endpoint needs {key_env} set"
+        # REQ-1826: this must resolve the SAME grammar _resolve_api_key_field does at actual chat
+        # time (${secret:NAME}/${env:NAME}/${user:NAME}, or a plain env-var name) — a bare
+        # os.environ.get(key_env) check here always failed for a ${secret:...}/${env:...}
+        # reference (that string is never itself a real env var name), permanently reporting "not
+        # configured" for the exact vault-reference pattern this app's own AI Models UI recommends
+        # (REQ-1808's whole point: every config field may carry that grammar, not just literals).
+        if key_env:
+            try:
+                resolved = await _resolve_api_key_field(key_env)
+            except Exception as exc:
+                # Never swallow the real cause into a generic "needs X set" — a ${secret:...}
+                # that fails to resolve (unbound org, wrong org, the secret genuinely missing) is
+                # a DIFFERENT, more diagnosable problem than "nothing was ever configured", and
+                # reporting it as the latter hides exactly the information needed to fix it.
+                return False, f"the {vendor!r} endpoint's {key_env} could not be resolved: {exc}"
+            if not resolved:
+                return False, f"the {vendor!r} endpoint needs {key_env} set"
     elif vendor == "ollama":
         pass  # REQ-1797: no credential — a local server, reachable at OLLAMA_API_URL or the default
     elif vendor == "google":
@@ -786,21 +801,15 @@ async def _resolve_config_field(value: str) -> str:
 
 
 async def _resolve_api_key_field(api_key_env: str | None) -> str | None:
-    """The endpoint's API key, from its ``api_key_env`` field (REQ-1790, REQ-1808).
+    """The endpoint's API key, from its ``api_key_env`` field (REQ-1790, REQ-1808, REQ-1827).
 
-    Despite the field's name, it is no longer ONLY "the name of an env var": a value containing
-    ``${...}`` is resolved directly as the reference it is (``${secret:NAME}``, ``${env:NAME}``,
-    ``${user:NAME}``) — the key itself, not a variable naming where to find it. A plain string
-    with no ``${`` keeps the field's original, narrower meaning: literally an env var name, whose
-    OWN value is then resolved the same way (so an env var can itself hold a ``${secret:...}``
-    reference one layer down, e.g. for a credential injected by the deployment environment that
-    should still resolve against the org's vault)."""
-    if not api_key_env:
-        return None
-    if "${" in api_key_env:
-        return await _resolve_config_field(api_key_env)
-    raw = os.environ.get(api_key_env)
-    return await _resolve_config_field(raw) if raw else None
+    Delegates to provisa.core.secrets.resolve_api_key_field — the ONE shared implementation of
+    this grammar, also used by provisa/vector/providers.py's embedding-model key. Kept as a thin
+    wrapper (not a bare re-export) so this module's own call sites/tests don't need to know it
+    moved."""
+    from provisa.core.secrets import resolve_api_key_field
+
+    return await resolve_api_key_field(api_key_env)
 
 
 async def _run_chat_aisuite(

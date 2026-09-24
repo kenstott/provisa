@@ -9,6 +9,8 @@
     "schemaPlaceholder": "Select schema...",
     "tableLabel": "Table",
     "tableLoading": "Loading...",
+    "tableStarting": "Starting up, discovering files… this can take a while for large datasets",
+    "tableStartingTimedOut": "Still not ready after a long wait — the source's connector may have failed to start. Check the source's configuration or try again.",
     "tableAllRegistered": "All tables already registered",
     "tablePlaceholder": "Select table...",
     "aliasLabel": "SQL Alias",

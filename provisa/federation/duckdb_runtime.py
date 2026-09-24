@@ -309,6 +309,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         speed win for real catalogs (firebird, airport, the SQL warehouses) without going wrong
         for virtual ones (mongo, and presumably redis/elasticsearch/cassandra the same way).
         """
+        self._require_discovery_ready(source)
         alias = self._attached_alias(source)
         if alias is None:
             return []
@@ -330,8 +331,29 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         finally:
             cur.close()
 
+    def _require_discovery_ready(self, source: Any) -> None:
+        """REQ-1824: for a files/sharepoint/splunk source, `_attached_alias` below would otherwise
+        block for up to SERVER_READY_SECONDS (a bundled JVM's full startup — for a large `files`
+        directory, Calcite's eager schema scan can take much longer than that) inside what is meant
+        to be a quick discovery call for the Register Table form. Fail fast with
+        SourceStillStartingError instead of hanging the whole HTTP request; the caller
+        (schema_query.py's available_schemas/available_tables) lets that propagate as a
+        recognizable error the frontend polls on. A real query's own attach (attach_source, used at
+        actual SELECT time) is UNCHANGED — it still waits the full SERVER_READY_SECONDS, since a
+        query has no useful way to proceed without the attach either way."""
+        from provisa.federation.pgwire_replica import (
+            PGWIRE_REPLICA_TYPES,
+            _source_type as _pgwire_source_type,
+            ensure_endpoint_for_discovery,
+        )
+
+        if _pgwire_source_type(source) not in PGWIRE_REPLICA_TYPES:
+            return
+        ensure_endpoint_for_discovery(source)
+
     def introspect_tables(self, source: Any, schema_name: str) -> list[str]:
         """The tables of one schema of the source's remote database (see introspect_schemas)."""
+        self._require_discovery_ready(source)
         alias = self._attached_alias(source)
         if alias is None:
             return []

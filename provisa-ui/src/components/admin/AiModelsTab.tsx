@@ -463,6 +463,7 @@ export function AiModelsTab() {
                 <Table.Td>
                   <TextInput
                     aria-label={t("aiModelsTab.vectorApiKeyEnv")}
+                    placeholder="${secret:my_embedding_key}"
                     value={vm.api_key_env ?? ""}
                     onChange={(e) => setVector(i, { api_key_env: e.currentTarget.value || null })}
                   />
@@ -559,7 +560,7 @@ export function AiModelsTab() {
                   <TextInput
                     aria-label={t("aiModelsTab.endpointApiKeyEnv")}
                     data-testid={`ai-models-endpoint-${i}-key-env`}
-                    placeholder="OPENROUTER_API_KEY"
+                    placeholder="${secret:openrouter_key}"
                     value={ep.api_key_env ?? ""}
                     onChange={(e) =>
                       setEndpoint(i, { api_key_env: e.currentTarget.value || null })

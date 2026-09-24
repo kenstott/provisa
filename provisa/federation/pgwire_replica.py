@@ -77,6 +77,20 @@ class ServerLifecycleError(Exception):  # REQ-955
     """An invalid pgwire server lifecycle transition (start-when-running, health-before-start)."""
 
 
+class SourceStillStartingError(Exception):  # REQ-1824
+    """A files/sharepoint/splunk source's bundled Calcite server hasn't finished starting yet —
+    raised by a DISCOVERY call (schema/table/column introspection) that chose not to wait the full
+    SERVER_READY_SECONDS a real query needs. Not a failure: the message is machine-parseable (a
+    fixed ``STARTING:`` prefix) so the frontend can recognize it and poll again shortly instead of
+    surfacing it as a hard error."""
+
+    def __init__(self, source_id: str) -> None:
+        super().__init__(
+            f"STARTING: {source_id!r}'s connector is still starting up — try again shortly."
+        )
+        self.source_id = source_id
+
+
 def _source_type(source: Any) -> str:
     stype = source.type
     return stype.value if hasattr(stype, "value") else str(stype)
@@ -611,16 +625,25 @@ class ConnectorReplica:  # REQ-954/955/956
         self._server = server
         return server
 
-    def endpoint(self) -> PortPair:
+    def endpoint(self, *, timeout: float | None = None) -> PortPair:
         """The healthy server's endpoint: start it if needed and wait for its listener (the JVM
-        takes seconds to bind); a server that never answers is loud (REQ-955)."""
+        takes seconds to bind); a server that never answers is loud (REQ-955).
+
+        ``timeout`` (REQ-1824) overrides the default ``SERVER_READY_SECONDS`` wait — a real query
+        (the only caller that needs this default) has no useful way to proceed without the
+        attach, so it should keep waiting the full budget; a discovery/introspection caller should
+        pass a short value and treat the resulting ``ServerLifecycleError`` as "still starting",
+        not a hard failure. Never starts a SECOND server or restarts a slow one: the JVM keeps
+        booting in the background regardless of this call's own timeout, cached in ``_ENDPOINTS``,
+        so a later poll (same or longer timeout) picks up wherever it actually is."""
         server = self._ensure_server()
-        deadline = time.monotonic() + SERVER_READY_SECONDS
+        wait = SERVER_READY_SECONDS if timeout is None else timeout
+        deadline = time.monotonic() + wait
         while not server.health():
             if time.monotonic() >= deadline:
                 raise ServerLifecycleError(
                     f"pgwire server for {self._source.id!r} did not accept connections on port "
-                    f"{server.ports.pgwire_port} within {SERVER_READY_SECONDS}s"
+                    f"{server.ports.pgwire_port} within {wait}s"
                 )
             time.sleep(0.25)
         return server.ports
@@ -679,15 +702,37 @@ def _reap_on_exit() -> None:
     _ATEXIT_REGISTERED = True
 
 
-def ensure_endpoint(source: Any) -> PortPair:
+def ensure_endpoint(source: Any, *, timeout: float | None = None) -> PortPair:
     """Start (once) the source's Calcite pgwire server and return the endpoint the engine attaches
-    (REQ-1690). The server must be healthy before the ATTACH, so an unhealthy start is loud here."""
+    (REQ-1690). The server must be healthy before the ATTACH, so an unhealthy start is loud here.
+
+    ``timeout`` (REQ-1824): see ``ConnectorReplica.endpoint``."""
     replica = _ENDPOINTS.get(source.id)
     if replica is None:
         replica = ConnectorReplica(source, allocator=_ENDPOINT_ALLOCATOR)
         _ENDPOINTS[source.id] = replica
     _reap_on_exit()
-    return replica.endpoint()
+    return replica.endpoint(timeout=timeout)
+
+
+# REQ-1824: how long a DISCOVERY call (schema/table/column introspection) waits for the bundled
+# server before reporting "still starting" instead of hanging the request — a real query keeps
+# using SERVER_READY_SECONDS via plain ensure_endpoint()/endpoint(), since it has no useful way to
+# proceed without the attach either way.
+DISCOVERY_READY_SECONDS = 3
+
+
+def ensure_endpoint_for_discovery(source: Any) -> PortPair:
+    """Like ``ensure_endpoint``, but for a discovery/introspection call only: waits at most
+    ``DISCOVERY_READY_SECONDS`` (not the full ``SERVER_READY_SECONDS`` a real query needs) and
+    raises ``SourceStillStartingError`` — not ``ServerLifecycleError`` — if the server isn't ready
+    yet, so callers can tell "still booting, poll again" apart from a genuine startup failure.
+    Never starts a second server: the same cached ``ConnectorReplica`` keeps booting in the
+    background regardless of how many discovery calls time out waiting on it."""
+    try:
+        return ensure_endpoint(source, timeout=DISCOVERY_READY_SECONDS)
+    except ServerLifecycleError as exc:
+        raise SourceStillStartingError(source.id) from exc
 
 
 def stop_all_servers() -> None:

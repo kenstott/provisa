@@ -121,6 +121,53 @@ class TestProviders:
         assert captured["headers"]["Authorization"] == "Bearer sk-test"
         assert captured["json"] == {"model": "m", "input": ["a", "b"]}
 
+    async def test_openai_provider_resolves_a_secret_reference_api_key(self, monkeypatch):
+        # REQ-1827: api_key_env carrying a ${secret:NAME} reference must resolve through the SAME
+        # shared grammar the MCP chat custom-endpoint path uses — before this it silently resolved
+        # to nothing (a bare os.environ.get on a string that is never itself a real env var name),
+        # so the provider posted with no Authorization header at all.
+        captured = {}
+
+        class _Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"data": [{"embedding": [0.1, 0.2]}]}
+
+        class _Client:
+            def __init__(self, *a, **k):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, headers=None, json=None):
+                captured["headers"] = headers
+                return _Resp()
+
+        import httpx
+        from contextlib import asynccontextmanager
+
+        @asynccontextmanager
+        async def fake_bound_to_request_org():
+            yield
+
+        monkeypatch.setattr(httpx, "AsyncClient", _Client)
+        monkeypatch.setattr("provisa.core.secrets.resolve_secrets", lambda ref: "sk-from-vault")
+        monkeypatch.setattr(
+            "provisa.core.secrets_store.bound_to_request_org", fake_bound_to_request_org
+        )
+        model = VectorModel(
+            id="m", provider="openai", dimensions=2, api_key_env="${secret:my_embedding_key}"
+        )
+        vecs = await OpenAICompatibleProvider().embed(["a"], model)
+        assert vecs == [[0.1, 0.2]]
+        assert captured["headers"]["Authorization"] == "Bearer sk-from-vault"
+
     async def test_ollama_provider_embeds_per_text(self, monkeypatch):
         class _Resp:
             def __init__(self, v):

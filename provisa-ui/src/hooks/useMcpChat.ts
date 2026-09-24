@@ -114,31 +114,41 @@ export function useMcpChat(
     return awaiting;
   };
 
+  // REQ-1823: each round of the tool-call loop is its OWN assistant turn — whatever Polly says
+  // after a tool round trip is a new response, not a continuation of what she said before it — so
+  // every round gets a fresh message bubble instead of one bubble growing across the whole
+  // multi-step exchange. Tracked by a stable object REFERENCE, not an index: a present_choice
+  // question/answer recorded mid-turn (REQ-1818/1813) inserts its own messages via pushMessage
+  // while a round is still streaming, which would silently invalidate any precomputed index: the
+  // placeholder's actual position is found fresh on every update via indexOf, immune to whatever
+  // else got inserted around it. If the placeholder is gone (e.g. the conversation was cleared
+  // mid-turn), the update is simply dropped rather than resurrecting a stale message.
+  const beginAssistantTurn = (): ((chunk: string) => void) => {
+    const placeholder: ChatMsg = { role: "assistant", text: "" };
+    setMessages((prev) => [...prev, placeholder]);
+    let assistantText = "";
+    return (chunk: string) => {
+      assistantText += chunk;
+      const current = assistantText;
+      setMessages((prev) => {
+        const idx = prev.indexOf(placeholder);
+        if (idx === -1) return prev;
+        const next = [...prev];
+        next[idx] = { role: "assistant", text: current };
+        return next;
+      });
+    };
+  };
+
   const send = async (raw: string) => {
     const text = raw.trim();
     if (!text || busy) return;
     setError(null);
     setTools([]);
-    const displayHistory = [...messages, { role: "user" as const, text }];
-    // Tracked by index rather than "whatever is last": a present_choice answer recorded mid-turn
-    // (REQ-1813) appends its own message while this same turn is still streaming, which would
-    // otherwise become the new "last" element and get clobbered by the next appendAssistant call.
-    const assistantIndex = displayHistory.length;
-    setMessages([...displayHistory, { role: "assistant" as const, text: "" }]);
+    setMessages((prev) => [...prev, { role: "user" as const, text }]);
     setBusy(true);
     const controller = new AbortController();
     abortRef.current = controller;
-
-    let assistantText = "";
-    const appendAssistant = (chunk: string) => {
-      assistantText += chunk;
-      const current = assistantText;
-      setMessages((prev) => {
-        const next = [...prev];
-        next[assistantIndex] = { role: "assistant", text: current };
-        return next;
-      });
-    };
 
     let convo: RawTurn[] = [
       ...messages.map((m) => ({ role: m.role, content: m.text })),
@@ -147,6 +157,7 @@ export function useMcpChat(
 
     try {
       for (;;) {
+        const appendAssistant = beginAssistantTurn();
         const awaiting = await streamOnce(convo, appendAssistant, controller.signal);
         if (!awaiting) break; // the model finished for real — no pending client tools
 
@@ -200,7 +211,10 @@ export function useMcpChat(
     error,
     send,
     cancel: () => abortRef.current?.abort(),
-    clear: () => setMessages([]),
+    clear: () => {
+      setMessages([]);
+      setTools([]);
+    },
     pushMessage: (msg: ChatMsg) => setMessages((prev) => [...prev, msg]),
   };
 }
