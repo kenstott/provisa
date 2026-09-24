@@ -256,6 +256,72 @@ async def describe_table(state: Any, role: str, schema: str, table: str) -> dict
     }
 
 
+async def graphql_field_names(state: Any, role: str, schema: str, table: str) -> dict:  # REQ-1847
+    """The REAL field names a GraphQL query against /query must use for this table and its
+    columns — NOT a guessed transform of describe_table's SQL-plane names. The two planes apply
+    DIFFERENT naming conventions and the table name additionally gets a domain-uniqueness prefix
+    (e.g. registered table `iris_iris` in domain `shelter` can be GraphQL field `s__irisIris`,
+    not `irisIris`) that only the compiled schema itself knows — reproduced live: guessing this
+    transform got the domain prefix wrong and the query failed schema validation. ALWAYS call
+    this before writing a GraphQL query; never assume camelCase-plus-prefix yourself.
+
+    `schema`/`table` are the same semantic names describe_table/list_tables use."""
+    require_role(role, state)
+    from provisa.api.admin._graphql_field_name import resolve_graphql_field_name
+    from provisa.compiler.naming import apply_gql_name
+
+    ctx = state.contexts[role]
+    meta = _find_role_table(ctx, schema, table)
+    if meta is None:
+        raise ValueError(f"Table not found: {schema}.{table}")
+    table_field = resolve_graphql_field_name(
+        domain_id=meta.domain_id, schema_name=meta.schema_name, table_name=meta.table_name
+    )
+    if table_field is None:
+        raise ValueError(
+            f"{schema}.{table} is not exposed in any role's compiled GraphQL schema right now"
+        )
+    described = await describe_table(state, role, schema, table)
+    return {
+        "table_field": table_field,
+        "columns": [
+            {"name": c["name"], "graphql_name": apply_gql_name(c["name"])}
+            for c in described["columns"]
+        ],
+    }
+
+
+async def cypher_field_names(state: Any, role: str, schema: str, table: str) -> dict:  # REQ-1848
+    """The REAL Cypher node label, id property, and column property names for this table — NOT
+    a guessed PascalCase-plus-domain-prefix transform. Reuses the exact same CypherLabelMap the
+    real /data/graph-schema endpoint and the Bolt/Cypher execution path build from the compiled
+    schema (domain-collision handling included), so guessing is never necessary. ALWAYS call this
+    before writing a Cypher query for a table — a guessed label can collide with a different
+    table's in another domain and MATCH the wrong node type silently, or simply not exist.
+
+    `schema`/`table` are the same semantic names describe_table/list_tables use."""
+    require_role(role, state)
+    from provisa.api.rest.cypher_exec import _build_label_map
+
+    ctx = state.contexts[role]
+    meta = _find_role_table(ctx, schema, table)
+    if meta is None:
+        raise ValueError(f"Table not found: {schema}.{table}")
+    label_map = _build_label_map(ctx, role, state)
+    node = label_map.nodes.get(meta.type_name)
+    if node is None:
+        raise ValueError(
+            f"{schema}.{table} is not exposed in the compiled Cypher graph schema right now"
+        )
+    return {
+        "label": node.label,
+        "id_property": node.id_column,
+        "columns": [
+            {"name": phys, "cypher_property": cyp} for cyp, phys in node.physical_properties.items()
+        ],
+    }
+
+
 async def list_native_tables(
     state: Any, role: str, source_id: str, schema_name: str = "public"
 ) -> list[dict]:  # REQ-1833

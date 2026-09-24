@@ -515,6 +515,82 @@ async def test_jev_evaluate_fails_loud_without_api_key(state, monkeypatch):
         await tools.jev_evaluate(state, "analyst", None, [{"id": "q1", "type": "noul"}])
 
 
+# --- REQ-1847: GraphQL field-name authority --------------------------------
+
+
+async def test_graphql_field_names_returns_the_compiled_schemas_real_names(state, monkeypatch):
+    from unittest.mock import patch
+
+    with patch(
+        "provisa.api.admin._graphql_field_name.resolve_graphql_field_name",
+        return_value="s__orders",
+    ) as resolver:
+        result = await tools.graphql_field_names(state, "analyst", "sales", "orders")
+
+    resolver.assert_called_once_with(domain_id="sales", schema_name="public", table_name="orders")
+    assert result["table_field"] == "s__orders"
+    assert result["columns"] == [
+        {"name": "id", "graphql_name": "id"},
+        {"name": "customer_id", "graphql_name": "customerId"},
+    ]
+
+
+async def test_graphql_field_names_unknown_table_raises(state):
+    with pytest.raises(ValueError):
+        await tools.graphql_field_names(state, "analyst", "sales", "ghost")
+
+
+async def test_graphql_field_names_not_in_any_compiled_schema_raises(state):
+    from unittest.mock import patch
+
+    with patch(
+        "provisa.api.admin._graphql_field_name.resolve_graphql_field_name",
+        return_value=None,
+    ):
+        with pytest.raises(ValueError):
+            await tools.graphql_field_names(state, "analyst", "sales", "orders")
+
+
+# --- REQ-1848: Cypher field-name authority -----------------------------------
+
+
+async def test_cypher_field_names_returns_the_compiled_label_maps_real_names(state):
+    from unittest.mock import patch
+
+    fake_node = SimpleNamespace(
+        label="Sales:Orders",
+        id_column="id",
+        physical_properties={"id": "id", "customerId": "customer_id"},
+    )
+    fake_label_map = SimpleNamespace(nodes={"Orders": fake_node})
+    with patch(
+        "provisa.api.rest.cypher_exec._build_label_map", return_value=fake_label_map
+    ) as builder:
+        result = await tools.cypher_field_names(state, "analyst", "sales", "orders")
+
+    builder.assert_called_once()
+    assert result["label"] == "Sales:Orders"
+    assert result["id_property"] == "id"
+    assert result["columns"] == [
+        {"name": "id", "cypher_property": "id"},
+        {"name": "customer_id", "cypher_property": "customerId"},
+    ]
+
+
+async def test_cypher_field_names_unknown_table_raises(state):
+    with pytest.raises(ValueError):
+        await tools.cypher_field_names(state, "analyst", "sales", "ghost")
+
+
+async def test_cypher_field_names_not_in_compiled_graph_schema_raises(state):
+    from unittest.mock import patch
+
+    fake_label_map = SimpleNamespace(nodes={})
+    with patch("provisa.api.rest.cypher_exec._build_label_map", return_value=fake_label_map):
+        with pytest.raises(ValueError):
+            await tools.cypher_field_names(state, "analyst", "sales", "orders")
+
+
 async def test_pinned_stdio_role_requires_env(monkeypatch):
     from provisa.api.mcp import server
 

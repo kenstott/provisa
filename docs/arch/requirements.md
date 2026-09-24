@@ -19679,3 +19679,27 @@ Reported live: asked to query the iris table via GraphQL, Polly navigated to a n
 **Code:** `provisa/api/mcp/chat.py`, `provisa-ui/src/mcp/clientTools.ts`
 
 **Tests:** —
+
+### REQ-1847 · MCP & AI Integration {#REQ-1847}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Even with [REQ-1846](#REQ-1846)'s navigate+state fix landing a query in the Explorer, the query itself failed schema validation: Polly wrote field `irisIris` for registered table `iris_iris` in domain `shelter`, but the compiled GraphQL schema's real field is `s__irisIris` — the GraphQL and SQL planes apply different naming conventions, and the table name additionally gets a domain-uniqueness prefix only the compiled schema itself can resolve (the same algorithm needs every sibling table name in the domain, so it can't be guessed or re-derived client-side). Added graphql_field_names, reusing the existing resolve_graphql_field_name naming-authority lookup ([REQ-1634](#REQ-1634), state.table_path_maps) for the table field and the same apply_gql_name every column field already goes through for columns — never a parallel reimplementation. The system prompt now requires calling it for every table before writing any GraphQL query.
+
+**Use case:** A GraphQL query Polly builds for a table should use that table's REAL exposed field names, not a guessed transform that fails schema validation.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_server.py`
+
+### REQ-1848 · MCP & AI Integration {#REQ-1848}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Reported live: a Cypher query built with guessed PascalCase-plus-domain-prefix names failed. Cypher's real node label, id property, and column property names are a SEPARATE derivation from GraphQL's — same underlying compiled schema, different naming rules (domain initials, not the GraphQL domain-uniqueness prefix; PascalCase labels; property names via apply_cql_property) — and just as unguessable. Added cypher_field_names, reusing the exact same CypherLabelMap (_build_label_map/CypherLabelMap.from_schema) that the real /data/graph-schema endpoint, the Bolt/Cypher execution path, AND the NL query pipeline's own SQL-to-Cypher derivation (best_effort_cypher_for_sql) all build from — confirmed to be the same rule set the NL page already uses to go SQL -> Cypher, not a parallel reimplementation. The system prompt ([REQ-1846](#REQ-1846)/1847/1848) now documents all seven Explore query surfaces together: SQL needs no extra lookup (describe_table's names are already the real ones), GraphQL and Cypher each need their own naming-authority tool call, and gRPC/JSON:API/OpenAPI derive from the same compiled schema GraphQL does, so graphql_field_names' table_field is the best available starting identifier for those three (not independently verified the way GraphQL/Cypher are).
+
+**Use case:** A Cypher query Polly builds for a table should use that table's REAL exposed label and property names, not a guessed transform that fails or silently matches the wrong node type.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_server.py`

@@ -71,6 +71,38 @@ _TOOLS: list[Any] = [
         },
     },
     {
+        "name": "graphql_field_names",
+        "description": (
+            "REQ-1847: the REAL field names a GraphQL query against /query must use for this "
+            "table and its columns — NOT a guessed transform of describe_table's SQL-plane "
+            "names. The two planes apply DIFFERENT naming conventions and the table field "
+            "additionally gets a domain-uniqueness prefix the compiled schema alone knows (e.g. "
+            "registered table `iris_iris` in domain `shelter` can be GraphQL field `s__irisIris`, "
+            "not `irisIris`). ALWAYS call this before writing a GraphQL query for a table; never "
+            "assume camelCase-plus-prefix yourself — guessing wrong fails schema validation."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"schema": {"type": "string"}, "table": {"type": "string"}},
+            "required": ["schema", "table"],
+        },
+    },
+    {
+        "name": "cypher_field_names",
+        "description": (
+            "REQ-1848: the REAL Cypher node label, id property, and column property names for "
+            "this table — NOT a guessed PascalCase-plus-domain-prefix transform. A guessed label "
+            "can collide with a different table's in another domain and MATCH the wrong node "
+            "type silently, or simply not exist. ALWAYS call this before writing a Cypher query "
+            "for a table."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"schema": {"type": "string"}, "table": {"type": "string"}},
+            "required": ["schema", "table"],
+        },
+    },
+    {
         "name": "search_catalog",
         "description": (
             "Semantically search the catalog for datasets matching a natural-language query. "
@@ -396,14 +428,17 @@ _CLIENT_TOOLS: list[Any] = [
         "name": "navigate",
         "description": (
             "Navigate the browser to a route within the Provisa app. Common ones: /sources, "
-            "/tables, /relationships, /admin/glossary, /query (the GraphQL Explorer — NOT "
-            "/explore, which is this same chat, and NOT /admin/explorer, which doesn't exist), "
-            "/graph (Cypher), /sql, /schema. When you have already prepared something for the "
-            "destination page to load (right now: a GraphQL query for /query), pass it via "
-            "`state` instead of just telling the user the text and asking them to paste it — "
-            "/query reads `state.query` (and runs it immediately if `state.autoRun` is true) the "
-            "SAME way an in-app hyperlink to it already does, so it lands in the editor with no "
-            "copy-paste needed."
+            "/tables, /relationships, /admin/glossary, /schema. Explore's seven query surfaces "
+            "(never guess a route for these — NOT /explore, which is this same chat, and NOT "
+            "/admin/explorer, which doesn't exist): /query (GraphQL), /graph (Cypher), /sql, "
+            "/grpc, /jsonapi, /openapi, /nl (Natural Language). When you have already prepared a "
+            "query for one of these, pass it via `state` instead of telling the user the text and "
+            "asking them to paste it — each of these six reads its own state key (see the "
+            "`state` field below) the SAME way an in-app hyperlink to it already does, and runs "
+            "it immediately when state.autoRun is true, landing it in the editor with no "
+            "copy-paste needed. See the system prompt's REQ-1846/1847/1848 section for which "
+            "tool to call first to get each surface's real field/name identifiers before "
+            "building the query."
         ),
         "input_schema": {
             "type": "object",
@@ -412,7 +447,12 @@ _CLIENT_TOOLS: list[Any] = [
                 "state": {
                     "type": "object",
                     "description": (
-                        'Optional. For /query: {"query": "<graphql query text>", "autoRun": true}.'
+                        'Optional, one key per route: /query -> {"query": "..."}, '
+                        '/graph -> {"query": "..."}, /sql -> {"sql": "..."}, '
+                        '/grpc -> {"grpcMethod": "..."}, '
+                        '/jsonapi -> {"jsonapiUrl": "..."}, '
+                        '/openapi -> {"openApiUrl": "..."}. Always also set '
+                        '"autoRun": true alongside whichever key applies.'
                     ),
                 },
             },
@@ -491,7 +531,12 @@ _SYSTEM = (
     "answer. When you're offering the user a decision among a handful of concrete options — which "
     "source, which table, proceed or not, pick some of these — call present_choice rather than "
     "listing options in prose and waiting for a typed reply; it's a real UI widget (multiple "
-    "choice, checklist, or yes/no) and reads better than typing a number or a name back.\n\n"
+    "choice, checklist, or yes/no) and reads better than typing a number or a name back. Once a "
+    "tool call succeeds and accomplishes what the user actually asked for, the task is done — "
+    "report the outcome and stop. Never re-run a tool you already called successfully in this "
+    "same turn 'to be sure' or 'to do it properly' — if you notice partway through that an "
+    "earlier step in THIS turn was done correctly, that is not a reason to redo it; only redo a "
+    "step that actually failed or returned something wrong.\n\n"
     "If asked to find, add, connect, or register a new data source, or a new table from an "
     "existing source: first check search_catalog/list_schemas to avoid proposing a duplicate. "
     "Then, for a topical data request (e.g. 'find me inflation data'), check this org's "
@@ -578,7 +623,29 @@ _SYSTEM = (
     "has no direct flag — it happens by grounding it (a real column, or add_glossary_term_edge to "
     "an already-live term); say this plainly if a user asks you to just 'mark it live'. Per "
     "REQ-1834 above: navigate to /admin/glossary before calling any of these — every time, for "
-    "every term you touch in the turn, not only the first."
+    "every term you touch in the turn, not only the first.\n\n"
+    "REQ-1846/1847/1848: Provisa has SEVEN query surfaces under Explore, each its own route and "
+    "each (except SQL) with its own naming convention derived from the compiled schema — never "
+    "assume one surface's names transfer to another. Route + navigate `state` key per surface: "
+    "GraphQL /query (state.query), Cypher /graph (state.query), SQL /sql (state.sql), gRPC /grpc "
+    "(state.grpcMethod), JSON:API /jsonapi (state.jsonapiUrl), OpenAPI /openapi (state.openApiUrl), "
+    "NL /nl (no state deep-link — type the question directly if asked to use the NL surface "
+    "itself). Always pass state.autoRun=true alongside so the query runs immediately instead of "
+    "sitting unrun in the editor.\n"
+    "- SQL: your existing schema/table/column names (from list_tables/describe_table) ARE the "
+    "real SQL-plane names already — no extra lookup needed.\n"
+    "- GraphQL: call graphql_field_names for the table first (its SQL-plane name is usually "
+    "different, e.g. a domain-uniqueness prefix like `s__` that can't be guessed).\n"
+    "- Cypher: call cypher_field_names for the table first (its node label and property names "
+    "are a separate derivation from GraphQL's, not the same names).\n"
+    "- gRPC/JSON:API/OpenAPI: these three derive their own naming from the SAME compiled schema "
+    "GraphQL does, so graphql_field_names' `table_field` is your best starting identifier for "
+    "them too, though it isn't independently verified the way the GraphQL/Cypher tools are — if "
+    "a query on one of these three fails, say so plainly rather than guessing further.\n"
+    "For any of these, do the lookup (if needed) once per table, build the query, navigate with "
+    "state once, then stop — report the outcome; never re-run the naming lookup, search_catalog, "
+    "or navigate again for the same table in the same turn just to double-check work that already "
+    "succeeded."
 )
 
 
@@ -719,6 +786,10 @@ async def _execute_tool(
         return await mcp_tools.list_tables(state, role, args["schema"])
     if name == "describe_table":
         return await mcp_tools.describe_table(state, role, args["schema"], args["table"])
+    if name == "graphql_field_names":
+        return await mcp_tools.graphql_field_names(state, role, args["schema"], args["table"])
+    if name == "cypher_field_names":
+        return await mcp_tools.cypher_field_names(state, role, args["schema"], args["table"])
     if name == "search_catalog":
         return await mcp_tools.search_catalog(state, role, args["query"], k=int(args.get("k", 5)))
     if name == "run_sql":

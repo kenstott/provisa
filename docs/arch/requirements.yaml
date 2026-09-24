@@ -63224,3 +63224,76 @@
     Then she navigates to /query (never a guessed route), passing state.query and
     state.autoRun=true
     Then the query appears in the Explorer's editor and runs immediately, no paste needed
+- id: REQ-1847
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: MCP & AI Integration
+  priority: MUST
+  type: behavioral
+  description: >-
+    Even with REQ-1846's navigate+state fix landing a query in the Explorer, the query itself
+    failed schema validation: Polly wrote field `irisIris` for registered table `iris_iris` in
+    domain `shelter`, but the compiled GraphQL schema's real field is `s__irisIris` — the
+    GraphQL and SQL planes apply different naming conventions, and the table name additionally
+    gets a domain-uniqueness prefix only the compiled schema itself can resolve (the same
+    algorithm needs every sibling table name in the domain, so it can't be guessed or
+    re-derived client-side). Added graphql_field_names, reusing the existing
+    resolve_graphql_field_name naming-authority lookup (REQ-1634, state.table_path_maps) for
+    the table field and the same apply_gql_name every column field already goes through for
+    columns — never a parallel reimplementation. The system prompt now requires calling it for
+    every table before writing any GraphQL query.
+  use_case: >-
+    A GraphQL query Polly builds for a table should use that table's REAL exposed field names,
+    not a guessed transform that fails schema validation.
+  code:
+  - provisa/api/mcp/tools.py
+  - provisa/api/mcp/chat.py
+  tests:
+  - tests/unit/test_mcp_server.py
+  e2e: false
+  scenario: |
+    Given a table is registered under a domain whose compiled schema prefixes field names
+    When Polly calls graphql_field_names for that table
+    Then she gets the real, domain-prefixed field name and each column's real GraphQL name
+    Given she then builds and runs a GraphQL query using those names
+    Then it passes schema validation instead of guessing a name that doesn't exist
+- id: REQ-1848
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: MCP & AI Integration
+  priority: MUST
+  type: behavioral
+  description: >-
+    Reported live: a Cypher query built with guessed PascalCase-plus-domain-prefix names
+    failed. Cypher's real node label, id property, and column property names are a SEPARATE
+    derivation from GraphQL's — same underlying compiled schema, different naming rules
+    (domain initials, not the GraphQL domain-uniqueness prefix; PascalCase labels; property
+    names via apply_cql_property) — and just as unguessable. Added cypher_field_names,
+    reusing the exact same CypherLabelMap (_build_label_map/CypherLabelMap.from_schema) that
+    the real /data/graph-schema endpoint, the Bolt/Cypher execution path, AND the NL query
+    pipeline's own SQL-to-Cypher derivation (best_effort_cypher_for_sql) all build from —
+    confirmed to be the same rule set the NL page already uses to go SQL -> Cypher, not a
+    parallel reimplementation. The system prompt (REQ-1846/1847/1848) now documents all seven
+    Explore query surfaces together: SQL needs no extra lookup (describe_table's names are
+    already the real ones), GraphQL and Cypher each need their own naming-authority tool call,
+    and gRPC/JSON:API/OpenAPI derive from the same compiled schema GraphQL does, so
+    graphql_field_names' table_field is the best available starting identifier for those three
+    (not independently verified the way GraphQL/Cypher are).
+  use_case: >-
+    A Cypher query Polly builds for a table should use that table's REAL exposed label and
+    property names, not a guessed transform that fails or silently matches the wrong node type.
+  code:
+  - provisa/api/mcp/tools.py
+  - provisa/api/mcp/chat.py
+  tests:
+  - tests/unit/test_mcp_server.py
+  e2e: false
+  scenario: |
+    Given a table is registered under a domain
+    When Polly calls cypher_field_names for that table
+    Then she gets the real node label, id property, and each column's real Cypher property name
+    Given she then builds and runs a Cypher query using those names
+    Then it matches the correct node type instead of guessing a label that collides or doesn't
+    exist
