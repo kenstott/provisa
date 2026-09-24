@@ -99,7 +99,14 @@ export function useMcpChat(
       for (const block of blocks) {
         const line = block.trim();
         if (!line.startsWith("data:")) continue;
-        const ev = JSON.parse(line.slice(5).trim());
+        let ev;
+        try {
+          ev = JSON.parse(line.slice(5).trim());
+        } catch (parseErr) {
+          // A malformed line should never take down the whole turn's remaining events.
+          console.error("Malformed SSE event, skipped:", parseErr, line);
+          continue;
+        }
         if (ev.type === "text") onText(ev.text);
         else if (ev.type === "tool_use")
           setTools((p) => [...p, { name: ev.name, input: ev.input, running: true }]);
@@ -133,9 +140,15 @@ export function useMcpChat(
       setMessages((prev) => {
         const idx = prev.indexOf(placeholder);
         if (idx === -1) return prev;
-        const next = [...prev];
-        next[idx] = { role: "assistant", text: current };
-        return next;
+        // REQ-1842: mutate `placeholder` in place — the previous version wrote `next[idx] = {
+        // role: "assistant", text: current }`, a NEW object, replacing the very reference this
+        // closure was tracking. Every chunk after the first then searched for an object no
+        // longer in the array (indexOf always -1) and silently dropped, so the message froze on
+        // the FIRST chunk forever while the server kept streaming the whole real reply
+        // underneath — confirmed live via console logging of every onText call. A new outer
+        // array (still built below) is what tells React to re-render either way.
+        placeholder.text = current;
+        return [...prev];
       });
     };
   };

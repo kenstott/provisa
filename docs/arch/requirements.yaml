@@ -63066,3 +63066,36 @@
     Given a turn pauses for a client tool (e.g. present_choice) after at least one text block
     Then the resume request's assistant_content never includes a parsed_output field
     And the resumed turn completes instead of failing with a 400
+- id: REQ-1842
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: MCP & AI Integration
+  priority: MUST
+  type: behavioral
+  description: >-
+    Found the actual root cause of the "frozen after the first word" symptom REQ-1841's
+    auto-scroll and parsed_output fixes didn't resolve — confirmed via live console logging of
+    every parsed SSE event and every beginAssistantTurn update: the FIRST chunk always applied
+    correctly (indexOf found the placeholder), but every chunk after that logged indexOf === -1
+    forever, one hundred percent deterministically, while the server kept delivering dozens of
+    further real, distinct chunks underneath (confirmed via the EventStream network tab). Root
+    cause: the update handler wrote `next[idx] = { role: "assistant", text: current }` — a
+    BRAND NEW object — replacing the very `placeholder` reference the closure was tracking by
+    identity. Every subsequent chunk's `prev.indexOf(placeholder)` then searched for an object
+    no longer present in the array and silently no-opped. Fixed by mutating `placeholder.text`
+    in place instead of replacing it, so the tracked reference never goes stale; a fresh outer
+    array (`[...prev]`) is still returned so React always re-renders.
+  use_case: >-
+    Every chunk of a streamed Polly reply must actually reach the screen, not just the first
+    one, regardless of how many chunks or tool round trips the turn takes.
+  code:
+  - provisa-ui/src/hooks/useMcpChat.ts
+  tests:
+  - provisa-ui/src/__tests__/useMcpChat.test.tsx
+  e2e: false
+  scenario: |
+    Given a streamed assistant reply arrives as multiple separate text chunks
+    Then every chunk is applied to the visible message, not just the first
+    Given the same scenario with the pre-fix code (next[idx] = a new object)
+    Then the regression test fails, confirming it actually catches this bug

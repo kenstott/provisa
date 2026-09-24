@@ -63,3 +63,36 @@ describe("useMcpChat current_route", () => {
     expect(sentBody.current_route).toBeUndefined();
   });
 });
+
+describe("useMcpChat streaming text accumulation", () => {
+  // REQ-1842: reproduced live — the assistant bubble froze on the FIRST streamed chunk while the
+  // server kept delivering dozens more real, distinct chunks underneath. Root cause: the second
+  // arm of beginAssistantTurn's setMessages replaced the tracked placeholder object with a BRAND
+  // NEW one (`next[idx] = {...}`), so every subsequent chunk's `prev.indexOf(placeholder)` looked
+  // for an object no longer in the array and silently no-opped forever, after applying exactly
+  // one chunk successfully.
+  it("keeps applying every chunk of a multi-chunk streamed reply, not just the first", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse([
+        { type: "text", text: "Let" },
+        { type: "text", text: " me find" },
+        { type: "text", text: " the answer" },
+        { type: "text", text: "." },
+        { type: "done" },
+      ]),
+    );
+
+    const { result } = renderHook(() =>
+      useMcpChat("analyst", { navigate: vi.fn(), confirm: vi.fn(), runMutation: vi.fn(), presentChoice: vi.fn() }),
+    );
+
+    await act(async () => {
+      await result.current.send("find something");
+    });
+
+    await waitFor(() => {
+      const assistant = result.current.messages.find((m) => m.role === "assistant");
+      expect(assistant?.text).toBe("Let me find the answer.");
+    });
+  });
+});

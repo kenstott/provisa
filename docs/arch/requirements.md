@@ -19619,3 +19619,15 @@ Two further bugs in the same live-streaming path [REQ-1838](#REQ-1838)/1839 intr
 **Code:** `provisa-ui/src/components/ChatPanel.tsx`, `provisa/api/mcp/chat.py`
 
 **Tests:** `tests/unit/test_mcp_chat.py`
+
+### REQ-1842 · MCP & AI Integration {#REQ-1842}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Found the actual root cause of the "frozen after the first word" symptom [REQ-1841](#REQ-1841)'s auto-scroll and parsed_output fixes didn't resolve — confirmed via live console logging of every parsed SSE event and every beginAssistantTurn update: the FIRST chunk always applied correctly (indexOf found the placeholder), but every chunk after that logged indexOf === -1 forever, one hundred percent deterministically, while the server kept delivering dozens of further real, distinct chunks underneath (confirmed via the EventStream network tab). Root cause: the update handler wrote `next[idx] = { role: "assistant", text: current }` — a BRAND NEW object — replacing the very `placeholder` reference the closure was tracking by identity. Every subsequent chunk's `prev.indexOf(placeholder)` then searched for an object no longer present in the array and silently no-opped. Fixed by mutating `placeholder.text` in place instead of replacing it, so the tracked reference never goes stale; a fresh outer array (`[...prev]`) is still returned so React always re-renders.
+
+**Use case:** Every chunk of a streamed Polly reply must actually reach the screen, not just the first one, regardless of how many chunks or tool round trips the turn takes.
+
+**Code:** `provisa-ui/src/hooks/useMcpChat.ts`
+
+**Tests:** `provisa-ui/src/__tests__/useMcpChat.test.tsx`
