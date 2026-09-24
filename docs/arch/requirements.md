@@ -19471,3 +19471,15 @@ The Register Table form, when opened while the Tables page was scrolled down (e.
 **Code:** `provisa-ui/src/pages/TablesPage.tsx`
 
 **Tests:** —
+
+### REQ-1830 · Tables {#REQ-1830}
+
+**Status:** ✅ complete · **Priority:** MAY · **Type:** behavioral
+
+Even after [REQ-1829](#REQ-1829)'s scroll-into-view fix, the Register Table form still appeared truncated: its shared CSS layout rule (.page-sticky-head > .page-aux, also used by the Sources and Relationships pages' own add-forms) had min-height: 0, letting the flex algorithm squeeze an open form down to a sliver whenever the table list below it was tall enough to claim the remaining space — verified live: the Schema/Table fields were cut off mid-row, only reachable by scrolling inside a barely-visible internal scrollport nobody would think to look for. Fixed by giving .page-aux a generous min-height floor (60vh, capped at 520px) so an open form always gets a real, usable share of the viewport before the table below it claims the rest; it can still shrink (and scroll internally) below that floor on a genuinely short viewport, preserving the original no-invisible-clipping intent.
+
+**Use case:** An open Register Table/Source/Relationship form should always render with enough height to use comfortably, not be squeezed to near-nothing by a long list below it.
+
+**Code:** `provisa-ui/src/App.css`
+
+**Tests:** —

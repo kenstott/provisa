@@ -544,10 +544,16 @@ main {
   overflow: auto;
 }
 /* The candidates block yields its height to the table and scrolls within what is left,
- * rather than being clipped by the page's overflow. */
+ * rather than being clipped by the page's overflow. min-height: 0 let the flex algorithm
+ * squeeze an open form (Register Table/Source/Relationship) down to a sliver whenever the
+ * table below it was tall — verified live: Schema/Table fields cut off mid-row, only
+ * reachable by scrolling inside a barely-visible internal scrollport nobody would think to
+ * look for. A generous floor guarantees the form a real, usable share of the viewport
+ * before the table claims the rest; it can still shrink (and scroll internally) below that
+ * on a genuinely short viewport. */
 .page-sticky-head > .page-aux {
   flex: 0 1 auto;
-  min-height: 0;
+  min-height: min(60vh, 520px);
   overflow: auto;
 }
 .page-sticky-head .data-table {

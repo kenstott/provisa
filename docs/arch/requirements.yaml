@@ -62652,3 +62652,36 @@
     When the user opens the Register Table form
     Then the page scrolls so the form's top (Source/Domain fields) is visible
     And the user does not need to manually scroll up to see the full form
+- id: REQ-1830
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: Tables
+  priority: MAY
+  type: behavioral
+  description: >-
+    Even after REQ-1829's scroll-into-view fix, the Register Table form still appeared
+    truncated: its shared CSS layout rule (.page-sticky-head > .page-aux, also used by the
+    Sources and Relationships pages' own add-forms) had min-height: 0, letting the flex
+    algorithm squeeze an open form down to a sliver whenever the table list below it was tall
+    enough to claim the remaining space — verified live: the Schema/Table fields were cut off
+    mid-row, only reachable by scrolling inside a barely-visible internal scrollport nobody
+    would think to look for. Fixed by giving .page-aux a generous min-height floor (60vh,
+    capped at 520px) so an open form always gets a real, usable share of the viewport before
+    the table below it claims the rest; it can still shrink (and scroll internally) below that
+    floor on a genuinely short viewport, preserving the original no-invisible-clipping intent.
+  use_case: >-
+    An open Register Table/Source/Relationship form should always render with enough height to
+    use comfortably, not be squeezed to near-nothing by a long list below it.
+  code:
+  - provisa-ui/src/App.css
+  tests: []
+  e2e: false
+  scenario: |
+    Given the Tables page has a long list of registered tables
+    When the user opens the Register Table form
+    Then the form renders with a generous minimum height (60vh, capped at 520px)
+    And the form's fields (Source, Domain, Schema, Table, ...) are not cut off mid-row
+    Given the viewport is shorter than the form's minimum height
+    Then the form still shrinks and scrolls internally rather than being clipped with no
+    way to reach the rest of it
