@@ -63337,3 +63337,46 @@
     Then she also gets the real grpc_query_method and grpc_aggregate_method rpc names
     Given she then navigates to /grpc with state.grpcMethod set to that name plus "()"
     Then the gRPC page's own parser recognizes it and runs the query
+
+- id: REQ-1850
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: MCP & AI Integration
+  priority: MUST
+  type: behavioral
+  description: >-
+    Reported live and reproduced: after the REQ-1847/1848 naming-authority tools were added,
+    Polly went into an infinite loop repeating search_catalog -> graphql_field_names -> navigate
+    over and over, each cycle completing successfully, narrating "hold on, I jumped ahead" each
+    time. Root cause was NOT prompt wording (a prior fix reworded the system prompt and added a
+    general anti-re-run rule, which did not resolve this recurrence) — it was a real bug in the
+    client-tool pause/resume plumbing (REQ-1795): when a turn ran one or more server-tool rounds
+    (search_catalog, graphql_field_names) that fully resolved and were appended to the server's
+    local `convo`, then a LATER round paused on a client tool (navigate), the emitted
+    awaiting_client_tools event's assistant_content carried ONLY that final, pausing round —
+    every earlier round's assistant/tool_result messages, appended to the server's own local
+    `convo` copy, never reached the frontend, which reconstructs its own `convo` for the resume
+    POST from only what the event gives it. The resumed conversation therefore had no memory of
+    the search_catalog/graphql_field_names calls the model had already made and correctly
+    reasoned it needed to redo them — which triggered another navigate, another pause, another
+    reset, forever. Fixed in both _run_chat_anthropic and _run_chat_aisuite (provisa/api/mcp/
+    chat.py) by accumulating a `prior_messages` list of every server-only round completed so far
+    in the turn and including it in the awaiting_client_tools payload; useMcpChat.ts splices
+    `prior_messages` into its resumed `convo` ahead of the pausing round's own assistant_content/
+    tool_results.
+  use_case: >-
+    A multi-step Polly turn (look up a name, then navigate) must not lose the earlier lookups'
+    results across a client-tool pause/resume, or it repeats the whole sequence indefinitely.
+  code:
+  - provisa/api/mcp/chat.py
+  - provisa-ui/src/hooks/useMcpChat.ts
+  tests:
+  - tests/unit/test_mcp_chat.py
+  e2e: false
+  scenario: |
+    Given a turn where a server tool (search_catalog) resolves in round 1
+    And round 2 then pauses on a client tool (navigate)
+    When the frontend resumes the turn
+    Then the resumed conversation still includes round 1's assistant call and tool result
+    And the model does not repeat round 1's tool call

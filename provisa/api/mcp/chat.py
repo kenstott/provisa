@@ -995,6 +995,11 @@ async def _run_chat_anthropic(
     model = await _resolve_model(state)
     assert model is not None  # _llm_configured() guarantees this for vendor == "anthropic"
     system = _system_prompt(current_route)
+    # REQ-1850: rounds that finish entirely server-side (server tool called, result fed back)
+    # before a later round pauses on a CLIENT tool must still reach the frontend's resumed
+    # `convo` — otherwise the model resumes having "forgotten" every tool call it made earlier
+    # in this same turn and repeats them, forever, each time it reaches the client tool again.
+    prior_messages: list[Any] = []
 
     for _ in range(max_iterations):
         # REQ-1838: adaptive thinking's budget shares the max_tokens cap — 8192 let a heavily-
@@ -1151,6 +1156,10 @@ async def _run_chat_anthropic(
                 ],
                 "server_tool_results": tool_results,
                 "pending": [{"id": b.id, "name": b.name, "input": b.input} for b in client_blocks],
+                # REQ-1850: every server-only round already completed earlier in THIS turn, in
+                # wire order, so the frontend can splice them into its resumed `convo` ahead of
+                # this round's own assistant_content/server_tool_results.
+                "prior_messages": prior_messages,
             }
             yield {"type": "done"}
             return
@@ -1158,6 +1167,18 @@ async def _run_chat_anthropic(
         # No client tools this turn — append and continue exactly as before.
         convo.append({"role": "assistant", "content": resp.content})
         convo.append({"role": "user", "content": tool_results})
+        # REQ-1850: prior_messages travels over SSE as JSON (unlike `convo`, which stays in-process
+        # and can hold raw SDK block objects) — must be plain dicts, same exclusion as
+        # assistant_content below (see its comment for why __api_exclude__ matters).
+        prior_messages.append(
+            {
+                "role": "assistant",
+                "content": [
+                    b.model_dump(exclude=getattr(b, "__api_exclude__", None)) for b in resp.content
+                ],
+            }
+        )
+        prior_messages.append({"role": "user", "content": tool_results})
 
     yield {"type": "done"}
 
@@ -1279,6 +1300,7 @@ async def _run_chat_aisuite(
     provider = ProviderFactory.create_provider(provider_key, provider_configs.get(provider_key, {}))
     openai_tools = [_to_openai_tool(t) for t in _TOOLS + _CLIENT_TOOLS]
     system_message = {"role": "system", "content": _system_prompt(current_route)}
+    prior_messages: list[Any] = []  # REQ-1850, same reasoning as the Anthropic loop above
 
     for _ in range(max_iterations):
         oa_messages = [system_message, *_wire_convo_to_openai_messages(convo)]
@@ -1335,12 +1357,15 @@ async def _run_chat_aisuite(
                 "assistant_content": wire_blocks,
                 "server_tool_results": tool_results,
                 "pending": client_calls,
+                "prior_messages": prior_messages,
             }
             yield {"type": "done"}
             return
 
         convo.append({"role": "assistant", "content": wire_blocks})
         convo.append({"role": "user", "content": tool_results})
+        prior_messages.append({"role": "assistant", "content": wire_blocks})
+        prior_messages.append({"role": "user", "content": tool_results})
 
     yield {"type": "done"}
 

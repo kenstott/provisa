@@ -19715,3 +19715,15 @@ Reported live: a gRPC query built from Polly navigating to /grpc failed. gRPC's 
 **Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
 
 **Tests:** `tests/unit/test_mcp_server.py`
+
+### REQ-1850 · MCP & AI Integration {#REQ-1850}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Reported live and reproduced: after the [REQ-1847](#REQ-1847)/1848 naming-authority tools were added, Polly went into an infinite loop repeating search_catalog -> graphql_field_names -> navigate over and over, each cycle completing successfully, narrating "hold on, I jumped ahead" each time. Root cause was NOT prompt wording (a prior fix reworded the system prompt and added a general anti-re-run rule, which did not resolve this recurrence) — it was a real bug in the client-tool pause/resume plumbing ([REQ-1795](#REQ-1795)): when a turn ran one or more server-tool rounds (search_catalog, graphql_field_names) that fully resolved and were appended to the server's local `convo`, then a LATER round paused on a client tool (navigate), the emitted awaiting_client_tools event's assistant_content carried ONLY that final, pausing round — every earlier round's assistant/tool_result messages, appended to the server's own local `convo` copy, never reached the frontend, which reconstructs its own `convo` for the resume POST from only what the event gives it. The resumed conversation therefore had no memory of the search_catalog/graphql_field_names calls the model had already made and correctly reasoned it needed to redo them — which triggered another navigate, another pause, another reset, forever. Fixed in both _run_chat_anthropic and _run_chat_aisuite (provisa/api/mcp/ chat.py) by accumulating a `prior_messages` list of every server-only round completed so far in the turn and including it in the awaiting_client_tools payload; useMcpChat.ts splices `prior_messages` into its resumed `convo` ahead of the pausing round's own assistant_content/ tool_results.
+
+**Use case:** A multi-step Polly turn (look up a name, then navigate) must not lose the earlier lookups' results across a client-tool pause/resume, or it repeats the whole sequence indefinitely.
+
+**Code:** `provisa/api/mcp/chat.py`, `provisa-ui/src/hooks/useMcpChat.ts`
+
+**Tests:** `tests/unit/test_mcp_chat.py`

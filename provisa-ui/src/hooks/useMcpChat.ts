@@ -196,8 +196,13 @@ export function useMcpChat(
           });
         }
 
+        // REQ-1850: prior_messages carries every round the server already completed earlier in
+        // THIS turn (e.g. search_catalog, graphql_field_names) before it paused on a later
+        // client tool (e.g. navigate) — omitting these from the resumed `convo` made the model
+        // resume with no memory of them and repeat the whole sequence indefinitely.
         convo = [
           ...convo,
+          ...((awaiting.prior_messages as RawTurn[] | undefined) ?? []),
           { role: "assistant", content: awaiting.assistant_content },
           {
             role: "user",

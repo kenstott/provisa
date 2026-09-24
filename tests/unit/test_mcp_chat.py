@@ -345,6 +345,48 @@ class TestChatLoop:
             {"id": "c1", "name": "navigate", "input": {"route": "/tables"}}
         ]
 
+    async def test_prior_rounds_survive_a_later_pause_in_the_same_turn(
+        self, monkeypatch
+    ):  # REQ-1850
+        # A server-only round (search_catalog) resolves and gets appended to `convo` BEFORE a
+        # second, later round pauses on a client tool (navigate). The regression: the paused
+        # turn's awaiting_client_tools event only carried that final round's assistant_content,
+        # dropping the search_catalog round the model already ran — the resumed conversation then
+        # had no memory of it and the model repeated the whole sequence, forever.
+        resp1 = SimpleNamespace(
+            content=[
+                _block(type="tool_use", name="search_catalog", input={"query": "orders"}, id="s1")
+            ],
+            stop_reason="tool_use",
+        )
+        resp2 = SimpleNamespace(
+            content=[
+                _block(type="text", text="Found it, navigating."),
+                _block(type="tool_use", name="navigate", input={"route": "/tables"}, id="c1"),
+            ],
+            stop_reason="tool_use",
+        )
+        _install_fake_anthropic(monkeypatch, [resp1, resp2])
+
+        async def fake_search(state, role, query, k=5):
+            return [{"schema": "sales", "table": "orders"}]
+
+        monkeypatch.setattr(mcp_tools, "search_catalog", fake_search)
+
+        events = [
+            ev
+            async for ev in chat_mod.run_chat(
+                _state(), "analyst", [{"role": "user", "content": "find orders, go to tables"}]
+            )
+        ]
+        awaiting = next(e for e in events if e["type"] == "awaiting_client_tools")
+        prior = awaiting["prior_messages"]
+        assert len(prior) == 2  # the search_catalog round's assistant turn + its tool_result
+        assert prior[0]["role"] == "assistant"
+        assert prior[0]["content"][0]["name"] == "search_catalog"
+        assert prior[1]["role"] == "user"
+        assert prior[1]["content"][0]["tool_use_id"] == "s1"
+
     async def test_unknown_role_fails_before_any_model_call(self, monkeypatch):
         holder = _install_fake_anthropic(monkeypatch, [])
         with pytest.raises(PermissionError):
