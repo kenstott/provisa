@@ -268,7 +268,7 @@ async def graphql_field_names(state: Any, role: str, schema: str, table: str) ->
     Also returns the real gRPC method names for this table (REQ-1849) — gRPC's rpc names are a
     deterministic proto3-cased transform of this same table_field, not an independent name.
 
-    Also returns jsonapi_path/openapi_path (REQ-1851) — JSON:API and OpenAPI key their routes on
+    Also returns jsonapi_path/openapi_path (REQ-1851/1854) — JSON:API and OpenAPI key their routes on
     the table's RAW domain id (e.g. `pet-store`), not the sql-safe schema name
     (`domain_to_sql_name` turns it into `pet_store`) that `schema`/`table` themselves are. Reusing
     the sql-safe schema name in these two paths 404s for any domain id containing a character
@@ -304,8 +304,10 @@ async def graphql_field_names(state: Any, role: str, schema: str, table: str) ->
         "grpc_aggregate_method": f"Query{grpc_type_name}Aggregate",
         # REQ-1851: meta.domain_id/table_name are the RAW registered names JSON:API/OpenAPI route
         # on — NOT the sql-safe `schema` this function was called with.
-        "jsonapi_path": f"/data/jsonapi/{meta.domain_id}/{meta.table_name}",
-        "openapi_path": f"GET /data/rest/{meta.domain_id}/{meta.table_name}",
+        # REQ-1854: same default page size provisa/nl/runner.py's equivalent no-plan branches
+        # use (?page[size]=20 / ?limit=20) — otherwise a plain browse silently fetches every row.
+        "jsonapi_path": f"/data/jsonapi/{meta.domain_id}/{meta.table_name}?page[size]=20",
+        "openapi_path": f"GET /data/rest/{meta.domain_id}/{meta.table_name}?limit=20",
         "columns": [
             {"name": c["name"], "graphql_name": apply_gql_name(c["name"])}
             for c in described["columns"]

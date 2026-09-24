@@ -19763,3 +19763,15 @@ Reported live via Polly: an OpenAPI deep link for a plain table browse navigated
 **Code:** `provisa/nl/runner.py`
 
 **Tests:** `tests/unit/test_nl_aggregation_routing.py`
+
+### REQ-1854 · MCP & AI Integration {#REQ-1854}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+[REQ-1853](#REQ-1853) fixed _generate_openapi_query's (provisa/nl/runner.py) equivalent no-plan branch to default to ?limit=20, but graphql_field_names' own jsonapi_path/openapi_path (provisa/api/mcp/tools.py, [REQ-1851](#REQ-1851)) — the fields Polly actually used for a plain single- table browse in this exact live report — still had no default page size at all. Fixed both: jsonapi_path now appends ?page[size]=20, openapi_path now appends ?limit=20, matching the NL pipeline's own defaults for the identical plain-browse case.
+
+**Use case:** A JSON:API/OpenAPI deep link Polly builds for a plain table browse should show a sane default page size instead of silently fetching every row, the same as the NL page's equivalent deep link.
+
+**Code:** `provisa/api/mcp/tools.py`
+
+**Tests:** `tests/unit/test_mcp_server.py`

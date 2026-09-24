@@ -531,8 +531,8 @@ async def test_graphql_field_names_returns_the_compiled_schemas_real_names(state
     assert result["table_field"] == "s__orders"
     assert result["grpc_query_method"] == "QuerySOrders"
     assert result["grpc_aggregate_method"] == "QuerySOrdersAggregate"
-    assert result["jsonapi_path"] == "/data/jsonapi/sales/orders"
-    assert result["openapi_path"] == "GET /data/rest/sales/orders"
+    assert result["jsonapi_path"] == "/data/jsonapi/sales/orders?page[size]=20"
+    assert result["openapi_path"] == "GET /data/rest/sales/orders?limit=20"
     assert result["columns"] == [
         {"name": "id", "graphql_name": "id"},
         {"name": "customer_id", "graphql_name": "customerId"},
@@ -569,8 +569,8 @@ async def test_graphql_field_names_jsonapi_openapi_paths_use_the_raw_domain_id(s
     ):
         result = await tools.graphql_field_names(state, "analyst", "pet_store", "pets")
 
-    assert result["jsonapi_path"] == "/data/jsonapi/pet-store/pets"
-    assert result["openapi_path"] == "GET /data/rest/pet-store/pets"
+    assert result["jsonapi_path"] == "/data/jsonapi/pet-store/pets?page[size]=20"
+    assert result["openapi_path"] == "GET /data/rest/pet-store/pets?limit=20"
 
 
 async def test_graphql_field_names_unknown_table_raises(state):
