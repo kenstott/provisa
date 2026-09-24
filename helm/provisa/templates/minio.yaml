@@ -18,8 +18,9 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
+        # bitnamilegacy/minio runs as uid 1001 (its own image convention), not 1000.
+        runAsUser: 1001
+        fsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
       {{- with .Values.global.imagePullSecrets }}
@@ -36,10 +37,13 @@ spec:
       {{- end }}
       containers:
         - name: minio
-          # Docker Hub's minio/minio repo now denies anonymous pulls — see docker-compose.core.yml's
-          # minio service for the same fix and verification.
-          image: "quay.io/minio/minio:{{ .Values.minio.tag }}"
-          args: ["server", "/data", "--console-address", ":9001"]
+          # quay.io/minio/minio and docker.io/minio/minio both now deny anonymous pulls on every
+          # tag (not just :latest) — see docker-compose.core.yml's minio service for the same fix
+          # and live verification. bitnamilegacy/minio is Bitnami's still-anonymous mirror; this
+          # chart's bundled MinIO is only the batteries-included default (docs/deployment.md's
+          # s3.endpoint lets a real deployment point at any S3-compatible bucket instead).
+          image: "docker.io/bitnamilegacy/minio:{{ .Values.minio.tag }}"
+          args: ["server", "/bitnami/minio/data", "--console-address", ":9001"]
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -62,7 +66,7 @@ spec:
                   key: minio-secret-key
           volumeMounts:
             - name: minio-data
-              mountPath: /data
+              mountPath: /bitnami/minio/data
           resources:
             requests:
               cpu: 100m

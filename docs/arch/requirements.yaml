@@ -62897,3 +62897,42 @@
     And the chat panel is open
     When the user scrolls the admin page content
     Then the chat panel stays in place and scrolls only within its own message list
+- id: REQ-1837
+  status: complete
+  since: 2026-09
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Infrastructure
+  priority: MUST
+  type: infrastructure
+  description: >-
+    quay.io/minio/minio and docker.io/minio/minio both now deny anonymous pulls on every tag
+    (verified live 2026-09-24 against quay.io's own anonymous pull-scoped token endpoint —
+    not a rate limit or a :latest-only issue, the whole repo is gated), breaking the release
+    build's obs-image packaging job and the docker-compose.core.yml / helm chart MinIO
+    services used by the test harness and the self-hosted quickstart default. Repointed all
+    three to docker.io/bitnamilegacy/minio (and bitnamilegacy/minio-client for `mc`) —
+    Bitnami's still-anonymous mirror, verified live (both amd64/arm64 manifests, container
+    boots, buckets create successfully) — with the accompanying data-path (/bitnami/minio/data)
+    and non-root uid (1001) conventions that image requires. This is not a licensing change —
+    MinIO's server has been AGPLv3 since 2021 and Provisa never bundles/redistributes it, only
+    references it as an external dependency the operator's own environment pulls — it is a
+    registry-distribution policy change on MinIO's part. Not a production blocker either: a
+    real deployment already points at any S3-compatible bucket via `s3.endpoint`
+    (docs/deployment.md); the bundled MinIO is only the quickstart/test-harness default.
+  use_case: >-
+    CI release builds and a fresh test/quickstart environment must be able to pull a working
+    MinIO image without authentication, independent of MinIO's own registry access changes.
+  code:
+  - .github/workflows/build-dmg.yml
+  - docker-compose.core.yml
+  - helm/provisa/templates/minio.yaml
+  - helm/provisa/templates/trino-exchange-bucket-job.yaml
+  tests:
+  - tests/unit/test_infra_requirements.py
+  e2e: false
+  scenario: |
+    Given a fresh environment with no registry credentials configured
+    When docker-compose.core.yml or the helm chart pulls its MinIO/mc images
+    Then the pull succeeds anonymously and the minio-init/exchange-bucket job completes
+    Given the release workflow's obs-image packaging job runs
+    Then it pulls MinIO anonymously and packages it into the offline tarball successfully

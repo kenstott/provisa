@@ -19555,3 +19555,17 @@ On an admin page (e.g. AI Models) whose form content is taller than the viewport
 **Code:** `provisa-ui/src/App.css`
 
 **Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1837 · Infrastructure {#REQ-1837}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
+
+quay.io/minio/minio and docker.io/minio/minio both now deny anonymous pulls on every tag (verified live 2026-09-24 against quay.io's own anonymous pull-scoped token endpoint — not a rate limit or a :latest-only issue, the whole repo is gated), breaking the release build's obs-image packaging job and the docker-compose.core.yml / helm chart MinIO services used by the test harness and the self-hosted quickstart default. Repointed all three to docker.io/bitnamilegacy/minio (and bitnamilegacy/minio-client for `mc`) — Bitnami's still-anonymous mirror, verified live (both amd64/arm64 manifests, container boots, buckets create successfully) — with the accompanying data-path (/bitnami/minio/data) and non-root uid (1001) conventions that image requires. This is not a licensing change — MinIO's server has been AGPLv3 since 2021 and Provisa never bundles/redistributes it, only references it as an external dependency the operator's own environment pulls — it is a registry-distribution policy change on MinIO's part. Not a production blocker either: a real deployment already points at any S3-compatible bucket via `s3.endpoint` (docs/deployment.md); the bundled MinIO is only the quickstart/test-harness default.
+
+**Use case:** CI release builds and a fresh test/quickstart environment must be able to pull a working MinIO image without authentication, independent of MinIO's own registry access changes.
+
+**Code:** `.github/workflows/build-dmg.yml`, `docker-compose.core.yml`, `helm/provisa/templates/minio.yaml`, `helm/provisa/templates/trino-exchange-bucket-job.yaml`
+
+**Tests:** `tests/unit/test_infra_requirements.py`

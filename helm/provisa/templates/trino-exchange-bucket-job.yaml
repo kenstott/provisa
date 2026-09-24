@@ -27,9 +27,9 @@ spec:
       {{- end }}
       containers:
         - name: mc
-          # Docker Hub's minio/mc repo now denies anonymous pulls — see docker-compose.core.yml's
-          # minio-init service for the same fix and verification.
-          image: quay.io/minio/mc:latest
+          # quay.io/minio/mc and docker.io/minio/mc both now deny anonymous pulls on every tag —
+          # see docker-compose.core.yml's minio-init service for the same fix and verification.
+          image: docker.io/bitnamilegacy/minio-client:latest
           command: ["/bin/sh", "-c"]
           args:
             - >

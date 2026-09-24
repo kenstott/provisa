@@ -252,17 +252,19 @@ services:
   # overlay. Observability's otlp2parquet reaches this same minio by service name.
   minio:
     restart: unless-stopped
-    # Docker Hub's minio/minio repo now denies anonymous pulls ("pull access denied ... may
-    # require 'docker login'") — verified live, and CI's "UI e2e (Trino lane)" has failed on this
-    # exact error since at least 2026-09-12. quay.io/minio/minio is MinIO's own current public
-    # distribution (verified pullable); same for minio/mc below.
-    image: quay.io/minio/minio:latest
+    # MinIO shut off anonymous pulls entirely (quay.io/minio/minio and docker.io/minio/minio both
+    # 401 anonymously on every tag, verified live 2026-09-24 — not just :latest, the whole repo).
+    # bitnamilegacy/minio is Bitnami's still-anonymous mirror; this is only our test-harness/
+    # quickstart default, never a production requirement — s3.endpoint (docs/deployment.md) lets a
+    # real deployment point at any S3-compatible bucket instead. Data dir is /bitnami/minio/data,
+    # not /data (Bitnami's own convention — verified live: the image runs as non-root uid 1001).
+    image: bitnamilegacy/minio:latest
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address ":9001"
+    command: server /bitnami/minio/data --console-address ":9001"
     volumes:
-      - minio_data:/data
+      - minio_data:/bitnami/minio/data
     ports:
       - "${MINIO_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
@@ -274,7 +276,7 @@ services:
       start_period: 60s
 
   minio-init:
-    image: quay.io/minio/mc:latest
+    image: bitnamilegacy/minio-client:latest
     depends_on:
       minio:
         condition: service_healthy
