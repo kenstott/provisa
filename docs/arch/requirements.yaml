@@ -63099,3 +63099,36 @@
     Then every chunk is applied to the visible message, not just the first
     Given the same scenario with the pre-fix code (next[idx] = a new object)
     Then the regression test fails, confirming it actually catches this bug
+- id: REQ-1843
+  status: complete
+  since: 2026-09
+  group: "10. UI & Admin Surfaces"
+  category: UI/UX
+  priority: SHOULD
+  type: ui
+  description: >-
+    The present_choice dialog (REQ-1812) defaulted to dead center in the chat panel, which
+    reliably covered the very message the choice was about — reported live for a glossary-
+    update confirmation, where the dialog sat directly over the term list it was asking about.
+    Re-anchored to the top of the panel by default (the newest content sits at the bottom,
+    since REQ-1841's auto-scroll follows it there, so a top anchor is least likely to cover
+    it), and the backdrop lightened from a near-opaque scrim to a light one so anything it
+    still does cover stays legible underneath. As a final escape hatch for whatever that isn't
+    enough for, the dialog is now draggable anywhere within the panel via a grip handle at its
+    top, reset to the default position for every new question.
+  use_case: >-
+    A user answering a choice prompt should be able to see the message it's asking about, and
+    have a way to move the dialog themselves if the default position still doesn't allow that.
+  code:
+  - provisa-ui/src/components/ChatPanel.tsx
+  tests:
+  - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  e2e: false
+  scenario: |
+    Given a present_choice dialog opens
+    Then it appears anchored near the top of the chat panel, not centered over it
+    And its backdrop is light enough that covered text stays legible
+    Given the user drags the dialog by its grip handle
+    Then the dialog moves by exactly the drag distance
+    Given a new present_choice question opens later
+    Then the dialog starts back at its default position, not the previous drag offset

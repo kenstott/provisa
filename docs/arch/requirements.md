@@ -19631,3 +19631,15 @@ Found the actual root cause of the "frozen after the first word" symptom [REQ-18
 **Code:** `provisa-ui/src/hooks/useMcpChat.ts`
 
 **Tests:** `provisa-ui/src/__tests__/useMcpChat.test.tsx`
+
+### REQ-1843 · UI/UX {#REQ-1843}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
+
+The present_choice dialog ([REQ-1812](#REQ-1812)) defaulted to dead center in the chat panel, which reliably covered the very message the choice was about — reported live for a glossary- update confirmation, where the dialog sat directly over the term list it was asking about. Re-anchored to the top of the panel by default (the newest content sits at the bottom, since [REQ-1841](#REQ-1841)'s auto-scroll follows it there, so a top anchor is least likely to cover it), and the backdrop lightened from a near-opaque scrim to a light one so anything it still does cover stays legible underneath. As a final escape hatch for whatever that isn't enough for, the dialog is now draggable anywhere within the panel via a grip handle at its top, reset to the default position for every new question.
+
+**Use case:** A user answering a choice prompt should be able to see the message it's asking about, and have a way to move the dialog themselves if the default position still doesn't allow that.
+
+**Code:** `provisa-ui/src/components/ChatPanel.tsx`
+
+**Tests:** `provisa-ui/src/__tests__/ChatPanel.test.tsx`

@@ -463,6 +463,42 @@ describe("ChatPanel — present_choice modal positioning (REQ-1812)", () => {
   });
 });
 
+describe("ChatPanel — present_choice dialog is draggable (REQ-1843)", () => {
+  it("moves the dialog by the drag amount when dragged via its handle", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([
+        {
+          type: "awaiting_client_tools",
+          assistant_content: [
+            { type: "tool_use", id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } },
+          ],
+          server_tool_results: [],
+          pending: [{ id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } }],
+        },
+        { type: "done" },
+      ]),
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask the assistant/);
+    fireEvent.change(textarea, { target: { value: "do it" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    const handle = await screen.findByTestId("chat-panel-choice-modal-drag-handle");
+    const dialog = handle.closest(".mantine-Paper-root") as HTMLElement;
+    expect(dialog.style.transform).toBe("");
+
+    fireEvent.pointerDown(handle, { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(handle, { clientX: 130, clientY: 175 });
+    expect(dialog.style.transform).toBe("translate(30px, 75px)");
+
+    fireEvent.pointerUp(handle);
+    fetchMock.mockRestore();
+  });
+});
+
 describe("ChatPanel — present_choice 'Something else' free text (REQ-1816)", () => {
   it("single mode resolves with typed text instead of a listed option", async () => {
     fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });

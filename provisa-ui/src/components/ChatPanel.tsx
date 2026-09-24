@@ -33,7 +33,18 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { useApolloClient, useMutation } from "@apollo/client/react";
-import { Check, Copy, Eraser, MessageCircle, Mic, MicOff, Play, Square, X } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Eraser,
+  GripHorizontal,
+  MessageCircle,
+  Mic,
+  MicOff,
+  Play,
+  Square,
+  X,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "../context/AuthContext";
@@ -161,12 +172,46 @@ export function ChatPanel() {
   const OTHER = "__other__";
   const [otherText, setOtherText] = useState("");
   const [yesNoOther, setYesNoOther] = useState(false);
+  // REQ-1843: the dialog defaulted to dead center, which reliably covered the very message the
+  // choice was ABOUT — reported live for a glossary-update confirmation, where the choice sat
+  // directly over the term list it was asking about. Default position moved to the top of the
+  // panel (the newest content is at the BOTTOM, since REQ-1841's auto-scroll follows it there),
+  // and this offset is the escape hatch for whatever that default still doesn't clear: dragging
+  // by the handle bar repositions it anywhere within the panel. Reset to the default (null) for
+  // every new question — a drag offset from answering one choice has no reason to apply to the
+  // next, unrelated one.
+  const [choiceDragOffset, setChoiceDragOffset] = useState<{ x: number; y: number } | null>(null);
+  const choiceDragStateRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(
+    null,
+  );
+  const onChoiceDragPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // jsdom (unit tests) has no Pointer Capture implementation; a real browser always does.
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    choiceDragStateRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: choiceDragOffset?.x ?? 0,
+      origY: choiceDragOffset?.y ?? 0,
+    };
+  };
+  const onChoiceDragPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = choiceDragStateRef.current;
+    if (!drag) return;
+    setChoiceDragOffset({
+      x: drag.origX + (e.clientX - drag.startX),
+      y: drag.origY + (e.clientY - drag.startY),
+    });
+  };
+  const onChoiceDragPointerUp = () => {
+    choiceDragStateRef.current = null;
+  };
   const presentChoice = (req: PresentChoiceRequest): Promise<ChoiceAnswer> =>
     new Promise((resolve) => {
       pendingChoiceResolveRef.current = resolve;
       setChoiceDraft([]);
       setOtherText("");
       setYesNoOther(false);
+      setChoiceDragOffset(null);
       setChoiceState(req);
       // REQ-1818: the question itself is tool INPUT, never part of the model's own streamed text
       // — without this the transcript shows the answer with no question it was answering. Recorded
@@ -565,12 +610,18 @@ export function ChatPanel() {
           {busy ? "Stop" : "Send"}
         </Button>
 
-      {/* REQ-1812: centered WITHIN the chat panel, not the viewport. Must be a DESCENDANT of this
-          Box (not a sibling rendered after it closes) — position: absolute centers against the
+      {/* REQ-1812: confined WITHIN the chat panel, not the viewport. Must be a DESCENDANT of this
+          Box (not a sibling rendered after it closes) — position: absolute anchors against the
           nearest POSITIONED ancestor, and rendering it outside the panel meant its ancestor was
-          effectively the document, so it centered over the whole app regardless of where the
-          panel was docked. A plain overlay Box here, not Mantine's <Modal> (which portals to
-          document.body and can't be confined to an arbitrary container at all). */}
+          effectively the document, so it covered the whole app regardless of where the panel was
+          docked. A plain overlay Box here, not Mantine's <Modal> (which portals to document.body
+          and can't be confined to an arbitrary container at all).
+          REQ-1843: anchored to the TOP now, not centered — the newest content (the message the
+          choice is usually asking about) sits at the BOTTOM, since REQ-1841's auto-scroll follows
+          it there, so a top anchor is the default position least likely to cover it. The backdrop
+          is a light scrim (just enough to show something is modal and to catch a click-outside),
+          not the near-opaque one before, so anything it does still cover stays legible
+          underneath. The drag handle is the escape hatch for whatever that isn't enough for. */}
       {choiceState && (
         <Box
           data-testid="chat-panel-choice-modal"
@@ -578,17 +629,41 @@ export function ChatPanel() {
             position: "absolute",
             inset: 0,
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-start",
             justifyContent: "center",
             padding: "var(--mantine-spacing-md)",
-            background: "rgba(0, 0, 0, 0.35)",
+            background: "rgba(0, 0, 0, 0.12)",
             zIndex: 20,
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) resolveChoice(choiceState.mode === "multi" ? [] : "");
           }}
         >
-          <Paper shadow="md" radius="md" p="md" withBorder style={{ maxWidth: "90%", width: 340 }}>
+          <Paper
+            shadow="md"
+            radius="md"
+            p="md"
+            withBorder
+            style={{
+              maxWidth: "90%",
+              width: 340,
+              transform: choiceDragOffset
+                ? `translate(${choiceDragOffset.x}px, ${choiceDragOffset.y}px)`
+                : undefined,
+            }}
+          >
+            <Group
+              justify="center"
+              mb="xs"
+              data-testid="chat-panel-choice-modal-drag-handle"
+              onPointerDown={onChoiceDragPointerDown}
+              onPointerMove={onChoiceDragPointerMove}
+              onPointerUp={onChoiceDragPointerUp}
+              onPointerCancel={onChoiceDragPointerUp}
+              style={{ cursor: "grab", touchAction: "none", margin: "-8px -8px 4px" }}
+            >
+              <GripHorizontal size={16} color="var(--mantine-color-dimmed)" />
+            </Group>
             <Text fw={600} size="sm" mb="sm">
               {choiceState.question}
             </Text>
