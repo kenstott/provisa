@@ -19569,3 +19569,29 @@ quay.io/minio/minio and docker.io/minio/minio both now deny anonymous pulls on e
 **Code:** `.github/workflows/build-dmg.yml`, `docker-compose.core.yml`, `helm/provisa/templates/minio.yaml`, `helm/provisa/templates/trino-exchange-bucket-job.yaml`
 
 **Tests:** `tests/unit/test_infra_requirements.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-1838 · MCP & AI Integration {#REQ-1838}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Polly (Anthropic vendor) would say she was about to do something, then silently stop — reproduced live with Opus 4.6, reproducible on retry. Root cause: the Anthropic call set max_tokens=8192 alongside thinking={"type": "adaptive"}, which shares that same budget — a heavily-reasoning turn (many tools + a long system prompt) could exhaust it mid-thought, before the model ever emitted its tool_use block, returning stop_reason "max_tokens". The loop treated that identically to a deliberate "end_turn" (`if resp.stop_reason != "tool_use": break`), silently ending the turn with whatever text had already streamed and no tool call, no error, nothing visible to the user. Raising max_tokens to 32000 fixes the exhaustion, and stop_reason == "max_tokens" is now handled explicitly, appending a visible "ran out of response budget" notice instead of ending silently either way. Raising max_tokens that far also pushed the SDK's own non-streaming generation-time estimate over its 10-minute ceiling ("Streaming is required for operations that may take longer than 10 minutes"), also hit live — forcing the same call onto `client.messages.stream(...)` (see [REQ-1839](#REQ-1839), done in the same change) rather than `.create()`.
+
+**Use case:** Polly must never go silent mid-turn with no explanation, regardless of whether the cause is a truncated tool call, a truncated final answer, or something else recoverable only by retrying or asking a narrower question.
+
+**Code:** `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_chat.py`
+
+### REQ-1839 · MCP & AI Integration {#REQ-1839}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The Anthropic chat path now streams real token-by-token text (and hosted web_search/ web_fetch tool badges) to the browser as they arrive, walking the raw content_block_delta/content_block_stop event stream rather than waiting for get_final_message() and yielding everything at once — required anyway once [REQ-1838](#REQ-1838)'s max_tokens increase pushed non-streaming calls over the SDK's 10-minute ceiling, and matches how the browser already expects to receive an assistant turn: useMcpChat.ts's beginAssistantTurn already appends chunks incrementally (built for [REQ-1795](#REQ-1795)'s tool-loop rounds), so no frontend change was needed. Ordering matters: a response with a web_search before its answer text must surface the search badge BEFORE that text, not after — reading only `.text_stream` and appending hosted-tool badges afterward would collapse everything to "all text first" regardless of the real block order, so this reads `current_message_ snapshot` at each block's stop event instead.
+
+**Use case:** Polly's replies should appear incrementally as the model generates them, in the same order the model actually produced its text and any hosted-tool activity.
+
+**Code:** `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_chat.py`

@@ -886,36 +886,72 @@ async def _run_chat_anthropic(
     system = _system_prompt(current_route)
 
     for _ in range(max_iterations):
-        resp = await client.messages.create(
+        # REQ-1838: adaptive thinking's budget shares the max_tokens cap — 8192 let a heavily-
+        # reasoning turn (many tools + a long system prompt) exhaust the budget mid-thought,
+        # before the model ever emitted its tool_use block. stop_reason came back "max_tokens",
+        # which the check below used to treat exactly like a deliberate "end_turn": the turn
+        # silently ended with whatever text had already streamed ("let me fetch both now") and no
+        # tool call, no error, nothing — verified live with Opus 4.6, reproducible on retry.
+        # Raising max_tokens far enough to fix that pushes the SDK's own estimated generation time
+        # over its 10-minute non-streaming ceiling ("Streaming is required for operations that may
+        # take longer than 10 minutes" — anthropic-sdk-python#long-requests), also verified live —
+        # so this now streams and takes the final assembled Message, identical in shape to what
+        # .create() returned, rather than switching the rest of this loop to consume raw events.
+        async with client.messages.stream(
             model=model,
-            max_tokens=8192,
+            max_tokens=32000,
             system=system,
             tools=_TOOLS + _CLIENT_TOOLS + _WEB_TOOLS,
             thinking={"type": "adaptive"},
             messages=convo,
-        )
-        for block in resp.content:
-            if block.type == "text" and block.text:
-                yield {"type": "text", "text": block.text}
-            # REQ-1796: Anthropic already executed these (see _WEB_TOOLS' note) — no dispatch
-            # needed, just a UI badge so the user can see a search/fetch happened.
-            elif block.type == "server_tool_use" and block.name in _SERVER_HOSTED_TOOL_NAMES:
-                yield {"type": "tool_use", "name": block.name, "input": block.input}
-            elif block.type == "web_search_tool_result":
-                content_type = getattr(getattr(block, "content", None), "type", "")
-                yield {
-                    "type": "tool_result",
-                    "name": "web_search",
-                    "is_error": content_type == "web_search_tool_result_error",
-                }
-            elif block.type == "web_fetch_tool_result":
-                content_type = getattr(getattr(block, "content", None), "type", "")
-                yield {
-                    "type": "tool_result",
-                    "name": "web_fetch",
-                    "is_error": content_type == "web_fetch_tool_result_error",
-                }
+        ) as stream:
+            # REQ-1839: yield text AND hosted-tool badges in true chronological order by walking
+            # the raw event stream, not just `.text_stream` in isolation — a response with a
+            # web_search before its answer text must show the search badge BEFORE the text that
+            # depends on it, not after (get_final_message() alone, or `.text_stream` alone with
+            # badges appended afterward, both collapse to "all text first" regardless of the real
+            # block order). useMcpChat.ts's beginAssistantTurn already appends chunks incrementally
+            # (built for REQ-1795's tool-loop rounds, but a chunk is a chunk), so real token
+            # streaming needed no frontend change.
+            async for event in stream:
+                if event.type == "content_block_delta" and event.delta.type == "text_delta":
+                    yield {"type": "text", "text": event.delta.text}
+                    continue
+                if event.type != "content_block_stop":
+                    continue
+                block = stream.current_message_snapshot.content[event.index]
+                # REQ-1796: Anthropic already executed these (see _WEB_TOOLS' note) — no dispatch
+                # needed, just a UI badge so the user can see a search/fetch happened.
+                if block.type == "server_tool_use" and block.name in _SERVER_HOSTED_TOOL_NAMES:
+                    yield {"type": "tool_use", "name": block.name, "input": block.input}
+                elif block.type == "web_search_tool_result":
+                    content_type = getattr(getattr(block, "content", None), "type", "")
+                    yield {
+                        "type": "tool_result",
+                        "name": "web_search",
+                        "is_error": content_type == "web_search_tool_result_error",
+                    }
+                elif block.type == "web_fetch_tool_result":
+                    content_type = getattr(getattr(block, "content", None), "type", "")
+                    yield {
+                        "type": "tool_result",
+                        "name": "web_fetch",
+                        "is_error": content_type == "web_fetch_tool_result_error",
+                    }
+            resp = await stream.get_final_message()
 
+        if resp.stop_reason == "max_tokens":
+            # REQ-1838: never end the turn silently on this — the user sees exactly the same
+            # "said she'd do it, then nothing" symptom whether the cause is a truncated tool call
+            # or the model genuinely giving up, and only one of those has a fix (raise the cap).
+            yield {
+                "type": "text",
+                "text": (
+                    "\n\n(Ran out of response budget before finishing — please retry, or ask a "
+                    "narrower question.)"
+                ),
+            }
+            break
         if resp.stop_reason != "tool_use":
             break
 

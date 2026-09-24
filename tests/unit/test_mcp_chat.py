@@ -25,6 +25,37 @@ def _block(**kw):
     return SimpleNamespace(model_dump=lambda: dict(kw), **kw)
 
 
+class _FakeStream:
+    """REQ-1839: chat.py now consumes client.messages.stream(...) as an async context manager,
+    async-iterating raw events (content_block_delta/content_block_stop) then calling
+    .get_final_message() — mirror both. One delta + one stop event per content block, in order,
+    is enough to exercise chat.py's real interleaving logic (text streamed as deltas, hosted-tool
+    badges looked up via current_message_snapshot at each block's stop event)."""
+
+    def __init__(self, response):
+        self._response = response
+        self.current_message_snapshot = response
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def __aiter__(self):
+        for i, block in enumerate(self._response.content):
+            if block.type == "text" and block.text:
+                yield SimpleNamespace(
+                    type="content_block_delta",
+                    index=i,
+                    delta=SimpleNamespace(type="text_delta", text=block.text),
+                )
+            yield SimpleNamespace(type="content_block_stop", index=i)
+
+    async def get_final_message(self):
+        return self._response
+
+
 class _FakeMessages:
     def __init__(self, responses):
         self._responses = list(responses)
@@ -33,6 +64,10 @@ class _FakeMessages:
     async def create(self, **kwargs):
         self.calls.append(kwargs)
         return self._responses.pop(0)
+
+    def stream(self, **kwargs):
+        self.calls.append(kwargs)
+        return _FakeStream(self._responses.pop(0))
 
 
 class _FakeClient:
@@ -703,6 +738,45 @@ class TestDirectCreate:  # REQ-1799
         ]
         tr = next(e for e in events if e["type"] == "tool_result")
         assert tr["is_error"] is True
+
+
+class TestMaxTokensTruncation:  # REQ-1838
+    """A response cut off mid-thought (adaptive thinking exhausted the max_tokens budget before
+    the model emitted its tool_use block) must never end the turn silently — see chat.py's
+    _run_chat_anthropic docstring/comment for the live Opus 4.6 repro this guards."""
+
+    async def test_max_tokens_stop_reason_surfaces_a_message_instead_of_silence(self, monkeypatch):
+        resp = SimpleNamespace(
+            content=[_block(type="text", text="Let me fetch both now.")],
+            stop_reason="max_tokens",
+        )
+        _install_fake_anthropic(monkeypatch, [resp])
+
+        events = [
+            ev
+            async for ev in chat_mod.run_chat(
+                _state(), "analyst", [{"role": "user", "content": "define these terms"}]
+            )
+        ]
+
+        text_events = [e for e in events if e["type"] == "text"]
+        assert len(text_events) == 2  # the partial reply, then the truncation notice
+        assert "ran out" in text_events[1]["text"].lower()
+        assert events[-1]["type"] == "done"
+
+    async def test_max_tokens_call_uses_a_generous_cap(self, monkeypatch):
+        resp = SimpleNamespace(
+            content=[_block(type="text", text="hi")],
+            stop_reason="end_turn",
+        )
+        holder = _install_fake_anthropic(monkeypatch, [resp])
+
+        async for _ in chat_mod.run_chat(_state(), "analyst", [{"role": "user", "content": "hi"}]):
+            pass
+
+        # 8192 was the value that let adaptive thinking exhaust the budget before a tool_use
+        # block was emitted — must stay well above it.
+        assert holder["client"].messages.calls[0]["max_tokens"] > 8192
 
 
 class TestCurrentRoute:  # REQ-1800
