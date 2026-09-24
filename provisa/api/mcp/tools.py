@@ -624,6 +624,151 @@ async def remove_glossary_term_edge(
     return {"ok": True}
 
 
+async def list_data_products(state: Any, role: str, request: Any) -> list[dict]:  # REQ-1855
+    """The org's data products (id, domain, name, purpose, owner/team role, status, etc.)."""
+    require_role(role, state)
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.core.repositories import data_product as data_product_repo
+
+    require_capability_request(request, "data_product_read")
+    pool = state.tenant_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        return await data_product_repo.list_all(conn)
+
+
+async def create_data_product(  # REQ-1855
+    state: Any,
+    role: str,
+    request: Any,
+    id: str,
+    domain_id: str,
+    name: str,
+    owner_role: str | None = None,
+    team_role: str | None = None,
+    purpose: str = "",
+    limitations: str = "",
+    usage: str = "",
+    version: str | None = None,
+    status: str | None = None,
+    sla: str | None = None,
+    support: str | None = None,
+) -> dict:
+    """Create or replace a data product by id (an id that already exists is overwritten in
+    full — fetch it first with list_data_products if you mean to change only some fields).
+    `domain_id` must be a real, existing domain."""
+    require_role(role, state)
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.core.models import DataProduct as DataProductModel
+    from provisa.core.repositories import data_product as data_product_repo
+    from provisa.core.repositories import domain as domain_repo
+
+    require_capability_request(request, "data_product_rw")
+    pool = state.tenant_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        if await domain_repo.get(conn, domain_id) is None:
+            raise ValueError(f"Domain not found: {domain_id}")
+        model = DataProductModel(
+            id=id,
+            domain_id=domain_id,
+            name=name,
+            owner_role=owner_role,
+            team_role=team_role,
+            purpose=purpose,
+            limitations=limitations,
+            usage=usage,
+            version=version,
+            status=status,
+            sla=sla,
+            support=support,
+        )
+        await data_product_repo.upsert(conn, model)
+    return {"id": id}
+
+
+async def delete_data_product(state: Any, role: str, request: Any, id: str) -> dict:  # REQ-1855
+    """Delete a data product by id. Irreversible — always confirm with the user first
+    (present_choice, mode='yes_no')."""
+    require_role(role, state)
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.core.repositories import data_product as data_product_repo
+
+    require_capability_request(request, "data_product_rw")
+    pool = state.tenant_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        deleted = await data_product_repo.delete(conn, id)
+    if not deleted:
+        raise ValueError(f"Data product not found: {id}")
+    return {"ok": True}
+
+
+async def upsert_metric(  # REQ-1856
+    state: Any,
+    role: str,
+    request: Any,
+    name: str,
+    expression: str,
+    datatype: str | None = None,
+    description: str | None = None,
+    ai_context: str | None = None,
+    visible_to: list[str] | None = None,
+) -> dict:
+    """Create or replace a governed metric by name (a name that already exists is overwritten
+    in full). `expression` is an aggregate ANSI-SQL expression over semantic table.column
+    references (e.g. "SUM(orders.amount) - SUM(orders.refunds)") — must parse under sqlglot and
+    contain at least one aggregate function, or this raises. `ai_context` is definition text
+    written for AI consumers (yourself and other agents) — fill it in with what the metric means
+    and when to use it, not just a repeat of the expression. `visible_to` defaults to every role
+    (["*"]) if omitted."""
+    require_role(role, state)
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.core.models import Metric as MetricModel
+    from provisa.core.repositories import metric as metric_repo
+
+    require_capability_request(request, "table_registration")
+    model = MetricModel(
+        name=name,
+        expression=expression,
+        datatype=datatype,
+        description=description,
+        ai_context=ai_context,
+        visible_to=list(visible_to) if visible_to else ["*"],
+    )
+    pool = state.tenant_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        await metric_repo.upsert(conn, model)
+        from provisa.api.admin._metric_views import regenerate_metric_views
+
+        regenerated = await regenerate_metric_views(conn, name)
+    from provisa.api.admin.schema_helpers import _rebuild_schemas
+
+    await _rebuild_schemas()
+    return {"name": name, "regenerated_views": regenerated}
+
+
+async def delete_metric(state: Any, role: str, request: Any, name: str) -> dict:  # REQ-1856
+    """Delete a governed metric by name. Irreversible — always confirm with the user first
+    (present_choice, mode='yes_no')."""
+    require_role(role, state)
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.core.repositories import metric as metric_repo
+
+    require_capability_request(request, "table_registration")
+    pool = state.tenant_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        deleted = await metric_repo.delete(conn, name)
+    if not deleted:
+        raise ValueError(f"Metric not found: {name}")
+    from provisa.api.admin.schema_helpers import _rebuild_schemas
+
+    await _rebuild_schemas()
+    return {"ok": True}
+
+
 def list_commands(state: Any, role: str) -> list[dict]:
     """Registered commands the role may invoke (REQ-1156).
 

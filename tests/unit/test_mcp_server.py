@@ -466,7 +466,87 @@ async def test_build_mcp_server_registers_tools():
         "run_sql",
         "explain_sql",
         "search_catalog",
+        # REQ-1857: the naming/generation tools and the capability-gated write tools are all
+        # available on the real MCP server now, not just Polly's in-app chat tool list.
+        "graphql_field_names",
+        "cypher_field_names",
+        "generate_explore_queries",
+        "list_native_tables",
+        "describe_native_table",
+        "list_glossary_terms",
+        "create_glossary_term",
+        "update_glossary_term",
+        "delete_glossary_term",
+        "add_glossary_term_edge",
+        "remove_glossary_term_edge",
+        "list_data_products",
+        "create_data_product",
+        "delete_data_product",
+        "upsert_metric",
+        "delete_metric",
     } <= names
+    # navigate/present_choice/refresh_mv are browser-actuation tools with no meaning for a
+    # headless MCP client — never registered here (Polly-only, via chat.py's _CLIENT_TOOLS).
+    assert not ({"navigate", "present_choice", "refresh_mv"} & names)
+
+
+class _FakeConn:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _FakePool:
+    def acquire(self):
+        return _FakeConn()
+
+
+async def test_stdio_capability_tool_succeeds_when_the_pinned_role_holds_the_capability(
+    monkeypatch,
+):
+    # REQ-1857: stdio has no bearer token/identity at all — _capability_request must build a
+    # synthetic identity naming just the pinned role, and require_capability_request must
+    # resolve capabilities from it correctly, with no real Request object anywhere in the call.
+    from unittest.mock import AsyncMock, patch
+
+    from provisa.api.mcp.server import build_mcp_server
+
+    monkeypatch.setenv("PROVISA_MCP_ROLE", "curator")
+    fake_state = _make_state()
+    fake_state.contexts["curator"] = fake_state.contexts[
+        "analyst"
+    ]  # require_role just needs it known
+    fake_state.roles = {"curator": {"capabilities": ["data_product_read"]}}
+    fake_state.tenant_db = _FakePool()
+    # require_capability_request reads the provisa.api.app module-level `state` singleton, not
+    # whatever object build_mcp_server was given — same as production, where they're one object.
+    monkeypatch.setattr("provisa.api.app.state", fake_state)
+    mcp = build_mcp_server(fake_state)
+
+    with patch("provisa.core.repositories.data_product.list_all", AsyncMock(return_value=[])):
+        result = await mcp.call_tool("list_data_products", {})
+    content, structured = result
+    assert content == []
+    assert structured == {"result": []}
+
+
+async def test_stdio_capability_tool_refuses_when_the_pinned_role_lacks_the_capability(
+    monkeypatch,
+):  # REQ-1857
+    from provisa.api.mcp.server import build_mcp_server
+
+    monkeypatch.setenv("PROVISA_MCP_ROLE", "viewer")
+    fake_state = _make_state()
+    fake_state.contexts["viewer"] = fake_state.contexts["analyst"]
+    fake_state.roles = {"viewer": {"capabilities": []}}
+    fake_state.tenant_db = _FakePool()
+    monkeypatch.setattr("provisa.api.app.state", fake_state)
+    mcp = build_mcp_server(fake_state)
+
+    with pytest.raises(Exception, match="data_product_read"):
+        await mcp.call_tool("list_data_products", {})
 
 
 async def test_jev_tool_absent_without_api_key(monkeypatch):

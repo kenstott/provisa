@@ -19775,3 +19775,39 @@ Reported live via Polly: an OpenAPI deep link for a plain table browse navigated
 **Code:** `provisa/api/mcp/tools.py`
 
 **Tests:** `tests/unit/test_mcp_server.py`
+
+### REQ-1855 · MCP & AI Integration {#REQ-1855}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+User-reported gap: Polly could not create data products. Added list_data_products/ create_data_product/delete_data_product, mirroring the admin GraphQL mutations (create_data_product/delete_data_product, schema_mutation.py) and reusing the same data_product_repo + DataProduct model. create_data_product is an upsert by id, matching the real mutation's own semantics. Gated on data_product_read/data_product_rw via require_capability_request against the real, verified request identity — Polly can never do anything the calling user's own identity couldn't already do through the admin UI.
+
+**Use case:** A user should be able to ask Polly to create, list, or delete a data product instead of doing it by hand on the Data Products admin page.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_server.py`
+
+### REQ-1856 · MCP & AI Integration {#REQ-1856}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+User-reported gap: Polly could not create metrics (list_metrics already existed, read-only, from the compiled state.metrics). Added upsert_metric/delete_metric, mirroring the admin GraphQL mutations (upsert_metric/delete_metric, schema_mutation.py) and reusing the same metric_repo + Metric model + regenerate_metric_views + _rebuild_schemas so a metric edit republishes state.metrics and any dependent view_metrics-spec view exactly as the admin mutation does — no partial/silent divergence from the real write path. Gated on table_registration (the same capability the real mutation checks) via require_capability_request.
+
+**Use case:** A user should be able to ask Polly to define or remove a governed metric instead of doing it by hand on the admin UI.
+
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/chat.py`
+
+**Tests:** `tests/unit/test_mcp_server.py`
+
+### REQ-1857 · MCP & AI Integration {#REQ-1857}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Following a design discussion: every MCP tool call (Polly's or the standalone MCP server's) is scoped to the calling identity's own real capabilities via require_capability_request/ require_capability — an agent can never exceed what the underlying authenticated identity could already do. Given that, there was no security reason to keep this session's new tools (naming lookups, generate_explore_queries, native-schema discovery, glossary/data-product/ metric CRUD) Polly-only — registered them on the real standalone MCP server (provisa/api/mcp/server.py) too, excluded only the browser-actuation client tools (navigate/ present_choice/refresh_mv), which have no meaning for a headless MCP client. The capability-gated tools (glossary/data-product/metric writes) needed new plumbing: require_capability_request/require_active_org_id read request.state.identity/ request.state.active_org_id off a Starlette Request, but the MCP server resolves identity/ role/org through its own bearer-token path (_wrap_role_auth), never the HTTP app's AuthMiddleware/_OrgRoutingMiddleware. Added _request_identity/_request_org_id ContextVars (set alongside the existing _request_role one) and a _capability_request() shim that builds a minimal request-shaped object from them for a remote caller, or — for local stdio, which has no bearer token/identity at all — a synthetic identity naming just the pinned PROVISA_MCP_ROLE (capabilities_for_claims resolves purely by role id, so this is correct, not a bypass).
+
+**Use case:** Any MCP client (not just Polly) should be able to use the same naming, generation, and CRUD tools, scoped to its own real, verified capabilities exactly as Polly is.
+
+**Code:** `provisa/api/mcp/server.py`
+
+**Tests:** `tests/unit/test_mcp_server.py`

@@ -44,6 +44,15 @@ log = logging.getLogger(__name__)
 # the caller passing an explicit ``role`` argument (a remote MCP client sends a token, not a role).
 _request_role: ContextVar[str | None] = ContextVar("provisa_mcp_request_role", default=None)
 
+# REQ-1857: the validated identity + resolved org for a remote HTTP call, set alongside
+# ``_request_role`` — needed only by the handful of tools that carry their own capability check
+# (glossary/data-product/metric writes) via ``require_capability_request``/``require_active_org_id``,
+# which read ``request.state.identity``/``request.state.active_org_id``. MCP resolves identity/org
+# through its own bearer-token path (below), never the HTTP app's AuthMiddleware/_OrgRoutingMiddleware,
+# so those admin-gate functions need a request-shaped shim built from these instead of a real Request.
+_request_identity: ContextVar[Any | None] = ContextVar("provisa_mcp_request_identity", default=None)
+_request_org_id: ContextVar[str | None] = ContextVar("provisa_mcp_request_org_id", default=None)
+
 
 async def _validate_mcp_token(token: str, state: Any):
     """Validate a remote MCP client's credential and return its identity (REQ-1105, REQ-1263).
@@ -194,6 +203,24 @@ def build_mcp_server(state: Any):
         # stdio: fall back to the explicitly-pinned dev role (never admin).
         return _pinned_stdio_role()
 
+    def _capability_request(resolved_role: str) -> Any:  # REQ-1857
+        """A minimal request-shaped shim for the handful of tools that carry their own
+        capability check (glossary/data-product/metric writes) via
+        ``require_capability_request``/``require_active_org_id`` — see the ContextVars' own
+        docstring for why a real Request isn't available here."""
+        from types import SimpleNamespace
+
+        identity = _request_identity.get()
+        org_id = _request_org_id.get()
+        if identity is None:
+            # stdio: no bearer token, so no real identity — capabilities resolve purely from
+            # the pinned role's own capability list (capabilities_for_claims keys on role id,
+            # not on anything else the identity carries), so a synthetic identity naming just
+            # that one role resolves correctly.
+            identity = SimpleNamespace(user_id="mcp-stdio", roles=[resolved_role])
+            org_id = org_id or getattr(state, "org_id", None)
+        return SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=org_id))
+
     @mcp.tool()
     async def list_schemas(role: str | None = None) -> list[dict]:
         """List catalog schemas with description and table count."""
@@ -307,6 +334,201 @@ def build_mcp_server(state: Any):
         """
         return await tools.propose_table(state, _role(role), table, reason)
 
+    @mcp.tool()
+    async def graphql_field_names(schema: str, table: str, role: str | None = None) -> dict:
+        """The REAL GraphQL field names (and gRPC/JSON:API/OpenAPI deep-link identifiers) for a
+        table and its columns — NOT a guessed transform of describe_table's SQL-plane names.
+        ALWAYS call this before writing a GraphQL/gRPC/JSON:API/OpenAPI query for a table."""
+        return await tools.graphql_field_names(state, _role(role), schema, table)
+
+    @mcp.tool()
+    async def cypher_field_names(schema: str, table: str, role: str | None = None) -> dict:
+        """The REAL Cypher node label, id property, and column property names for a table — NOT
+        a guessed transform. ALWAYS call this before writing a Cypher query for a table."""
+        return await tools.cypher_field_names(state, _role(role), schema, table)
+
+    @mcp.tool()
+    async def generate_explore_queries(question: str, role: str | None = None) -> dict:
+        """Generate ready-to-run queries for all six query surfaces (sql, graphql, cypher, grpc,
+        jsonapi, openapi) from one natural-language question — the same pipeline the NL Explore
+        page runs. Use this for anything beyond a flat single-table browse: aggregation, GROUP
+        BY, a business-term filter, or a question spanning more than one table."""
+        return await tools.generate_explore_queries(state, _role(role), question)
+
+    @mcp.tool()
+    async def list_native_tables(
+        source_id: str, schema_name: str = "public", role: str | None = None
+    ) -> list[dict]:
+        """List a source's own native tables directly from the source, bypassing the governed
+        catalog — for a source with nothing registered on it yet, which the governed catalog
+        tools can never see."""
+        return await tools.list_native_tables(state, _role(role), source_id, schema_name)
+
+    @mcp.tool()
+    async def describe_native_table(
+        source_id: str, schema_name: str, table_name: str, role: str | None = None
+    ) -> list[dict]:
+        """Describe one of a source's own native tables (columns, types) directly from the
+        source — use before propose_table/register_table_now on an unregistered source."""
+        return await tools.describe_native_table(
+            state, _role(role), source_id, schema_name, table_name
+        )
+
+    @mcp.tool()
+    async def list_glossary_terms(
+        q: str | None = None, include_deprecated: bool = True, role: str | None = None
+    ) -> list[dict]:
+        """The org's glossary terms, optionally filtered by a search string."""
+        resolved = _role(role)
+        return await tools.list_glossary_terms(
+            state, resolved, _capability_request(resolved), q, include_deprecated
+        )
+
+    @mcp.tool()
+    async def create_glossary_term(
+        name: str,
+        definition: str | None = None,
+        domains: list[str] | None = None,
+        role: str | None = None,
+    ) -> dict:
+        """Create a new abstract glossary term (a definition with no physical column yet)."""
+        resolved = _role(role)
+        return await tools.create_glossary_term(
+            state, resolved, _capability_request(resolved), name, definition, domains
+        )
+
+    @mcp.tool()
+    async def update_glossary_term(
+        term_id: int,
+        name: str | None = None,
+        definition: str | None = None,
+        export_excluded: bool | None = None,
+        retired: bool | None = None,
+        role: str | None = None,
+    ) -> dict:
+        """Update an existing glossary term's fields."""
+        resolved = _role(role)
+        return await tools.update_glossary_term(
+            state,
+            resolved,
+            _capability_request(resolved),
+            term_id,
+            name=name,
+            definition=definition,
+            export_excluded=export_excluded,
+            retired=retired,
+        )
+
+    @mcp.tool()
+    async def delete_glossary_term(term_id: int, role: str | None = None) -> dict:
+        """Delete a glossary term. Irreversible."""
+        resolved = _role(role)
+        return await tools.delete_glossary_term(
+            state, resolved, _capability_request(resolved), term_id
+        )
+
+    @mcp.tool()
+    async def add_glossary_term_edge(
+        term_id: int, to_term_id: int, rel_type: str, role: str | None = None
+    ) -> dict:
+        """Add a relationship edge between two glossary terms."""
+        resolved = _role(role)
+        return await tools.add_glossary_term_edge(
+            state, resolved, _capability_request(resolved), term_id, to_term_id, rel_type
+        )
+
+    @mcp.tool()
+    async def remove_glossary_term_edge(
+        term_id: int, to_term_id: int, rel_type: str, role: str | None = None
+    ) -> dict:
+        """Remove a relationship edge between two glossary terms."""
+        resolved = _role(role)
+        return await tools.remove_glossary_term_edge(
+            state, resolved, _capability_request(resolved), term_id, to_term_id, rel_type
+        )
+
+    @mcp.tool()
+    async def list_data_products(role: str | None = None) -> list[dict]:
+        """The org's data products (id, domain, name, purpose, owner/team role, status, etc.)."""
+        resolved = _role(role)
+        return await tools.list_data_products(state, resolved, _capability_request(resolved))
+
+    @mcp.tool()
+    async def create_data_product(
+        id: str,
+        domain_id: str,
+        name: str,
+        owner_role: str | None = None,
+        team_role: str | None = None,
+        purpose: str = "",
+        limitations: str = "",
+        usage: str = "",
+        version: str | None = None,
+        status: str | None = None,
+        sla: str | None = None,
+        support: str | None = None,
+        role: str | None = None,
+    ) -> dict:
+        """Create or replace a data product by id — an id that already exists is overwritten in
+        full. `domain_id` must be a real, existing domain."""
+        resolved = _role(role)
+        return await tools.create_data_product(
+            state,
+            resolved,
+            _capability_request(resolved),
+            id,
+            domain_id,
+            name,
+            owner_role=owner_role,
+            team_role=team_role,
+            purpose=purpose,
+            limitations=limitations,
+            usage=usage,
+            version=version,
+            status=status,
+            sla=sla,
+            support=support,
+        )
+
+    @mcp.tool()
+    async def delete_data_product(id: str, role: str | None = None) -> dict:
+        """Delete a data product by id. Irreversible."""
+        resolved = _role(role)
+        return await tools.delete_data_product(state, resolved, _capability_request(resolved), id)
+
+    @mcp.tool()
+    async def upsert_metric(
+        name: str,
+        expression: str,
+        datatype: str | None = None,
+        description: str | None = None,
+        ai_context: str | None = None,
+        visible_to: list[str] | None = None,
+        role: str | None = None,
+    ) -> dict:
+        """Create or replace a governed metric by name — a name that already exists is
+        overwritten in full. `expression` is an aggregate ANSI-SQL expression over semantic
+        table.column references; must parse under sqlglot and contain at least one aggregate
+        function."""
+        resolved = _role(role)
+        return await tools.upsert_metric(
+            state,
+            resolved,
+            _capability_request(resolved),
+            name,
+            expression,
+            datatype=datatype,
+            description=description,
+            ai_context=ai_context,
+            visible_to=visible_to,
+        )
+
+    @mcp.tool()
+    async def delete_metric(name: str, role: str | None = None) -> dict:
+        """Delete a governed metric by name. Irreversible."""
+        resolved = _role(role)
+        return await tools.delete_metric(state, resolved, _capability_request(resolved), name)
+
     # Optional: only registered when a Jev credential is configured, so an agent never sees
     # a tool it cannot use — no fallback, the tool simply does not exist without the key.
     if os.environ.get("TYPESAFEAI_API_KEY", "").strip():
@@ -387,6 +609,9 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
             await _send_401(send, str(exc))
             return
         reset = _request_role.set(role)
+        # REQ-1857: see the ContextVar's own docstring — needed by the capability-gated tools.
+        identity_reset = _request_identity.set(identity)
+        org_id_reset = _request_org_id.set(org_id)
         # REQ-1266: bind the org's data-plane runtime for the request so the tools' state.X reads
         # route to it. None (single-org / default) leaves current_org unset → default runtime.
         org_token = None
@@ -405,6 +630,8 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
                 await app(scope, receive, send)
         finally:
             _request_role.reset(reset)
+            _request_identity.reset(identity_reset)
+            _request_org_id.reset(org_id_reset)
             if org_token is not None:
                 reset_current_org(org_token)
 

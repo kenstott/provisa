@@ -448,6 +448,86 @@ _TOOLS: list[Any] = [
             "required": ["term_id", "to_term_id", "rel_type"],
         },
     },
+    {
+        "name": "list_data_products",
+        "description": "REQ-1855: list the org's data products (id, domain, name, purpose, owner/team role, status, etc.).",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "create_data_product",
+        "description": (
+            "REQ-1855: create or replace a data product by id — an id that already exists is "
+            "overwritten in full, so call list_data_products first if you mean to change only "
+            "some fields of an existing one. `domain_id` must be a real, existing domain."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string"},
+                "domain_id": {"type": "string"},
+                "name": {"type": "string"},
+                "owner_role": {"type": "string"},
+                "team_role": {"type": "string"},
+                "purpose": {"type": "string"},
+                "limitations": {"type": "string"},
+                "usage": {"type": "string"},
+                "version": {"type": "string"},
+                "status": {"type": "string"},
+                "sla": {"type": "string"},
+                "support": {"type": "string"},
+            },
+            "required": ["id", "domain_id", "name"],
+        },
+    },
+    {
+        "name": "delete_data_product",
+        "description": (
+            "REQ-1855: delete a data product by id. Irreversible — always confirm with the user "
+            "first (present_choice, mode='yes_no')."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "string"}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "upsert_metric",
+        "description": (
+            "REQ-1856: create or replace a governed metric by name — a name that already exists "
+            "is overwritten in full. `expression` is an aggregate ANSI-SQL expression over "
+            'semantic table.column references (e.g. "SUM(orders.amount) - SUM(orders.refunds)") '
+            "— must parse under sqlglot and contain at least one aggregate function, or this "
+            "fails. Fill in `ai_context` with what the metric MEANS and when to use it, not just "
+            "a repeat of the expression — it's the definition text other agents (and you, later) "
+            "read to select this metric by meaning. `visible_to` defaults to every role if "
+            "omitted."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "expression": {"type": "string"},
+                "datatype": {"type": "string"},
+                "description": {"type": "string"},
+                "ai_context": {"type": "string"},
+                "visible_to": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["name", "expression"],
+        },
+    },
+    {
+        "name": "delete_metric",
+        "description": (
+            "REQ-1856: delete a governed metric by name. Irreversible — always confirm with the "
+            "user first (present_choice, mode='yes_no')."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
 ]
 
 # REQ-1795: executed in the BROWSER, never on the server — see the module docstring. Kept as a
@@ -661,6 +741,18 @@ _SYSTEM = (
     "an already-live term); say this plainly if a user asks you to just 'mark it live'. Per "
     "REQ-1834 above: navigate to /admin/glossary before calling any of these — every time, for "
     "every term you touch in the turn, not only the first.\n\n"
+    "REQ-1855/1856: manage data products with list_data_products/create_data_product/"
+    "delete_data_product, and governed metrics with upsert_metric/delete_metric, directly — no "
+    "propose/confirm_required flow, they carry their own capability check and fail loud if the "
+    "caller lacks it (data_product_rw / table_registration). create_data_product and upsert_metric "
+    "are both upserts by id/name — an existing one is silently overwritten in full, so call "
+    "list_data_products or check the metric first if you mean to change only some fields, not "
+    "replace it. A metric's `expression` must be an aggregate SQL expression over semantic "
+    "table.column references and fails validation with no aggregate function in it — write a real "
+    "`ai_context` (what it means, when to use it), not a restatement of the expression. Always "
+    "confirm with the user (present_choice, mode='yes_no') before delete_data_product/delete_"
+    "metric specifically, since they're irreversible. Per REQ-1834: navigate to /data-products or "
+    "/metrics before calling any of these.\n\n"
     "REQ-1846/1847/1848/1849/1851/1852: Provisa has SEVEN query surfaces under Explore, each its "
     "own route and each with its own exact deep-link format — never assume one surface's names or "
     "state shape transfer to another. Route + navigate `state` key per surface: GraphQL /query "
@@ -930,6 +1022,50 @@ async def _execute_tool(
         return await mcp_tools.remove_glossary_term_edge(
             state, role, request, int(args["term_id"]), int(args["to_term_id"]), args["rel_type"]
         )
+    if name in (
+        "list_data_products",
+        "create_data_product",
+        "delete_data_product",
+        "upsert_metric",
+        "delete_metric",
+    ):
+        if request is None:
+            raise ValueError(f"{name} requires a verified request context")
+        if name == "list_data_products":
+            return await mcp_tools.list_data_products(state, role, request)
+        if name == "create_data_product":
+            return await mcp_tools.create_data_product(
+                state,
+                role,
+                request,
+                args["id"],
+                args["domain_id"],
+                args["name"],
+                owner_role=args.get("owner_role"),
+                team_role=args.get("team_role"),
+                purpose=args.get("purpose", ""),
+                limitations=args.get("limitations", ""),
+                usage=args.get("usage", ""),
+                version=args.get("version"),
+                status=args.get("status"),
+                sla=args.get("sla"),
+                support=args.get("support"),
+            )
+        if name == "delete_data_product":
+            return await mcp_tools.delete_data_product(state, role, request, args["id"])
+        if name == "upsert_metric":
+            return await mcp_tools.upsert_metric(
+                state,
+                role,
+                request,
+                args["name"],
+                args["expression"],
+                datatype=args.get("datatype"),
+                description=args.get("description"),
+                ai_context=args.get("ai_context"),
+                visible_to=args.get("visible_to"),
+            )
+        return await mcp_tools.delete_metric(state, role, request, args["name"])
     raise ValueError(f"unknown tool {name!r}")
 
 
