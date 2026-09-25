@@ -63624,3 +63624,51 @@
     Then the call is refused with the same capability error the admin UI's own mutation gives
     Given any MCP client
     Then navigate/present_choice/refresh_mv are never registered as tools
+
+- id: REQ-1858
+  status: complete
+  since: 2026-09
+  group: "8. Client Access & Protocols"
+  category: pgwire Protocol
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    pgwire's simple-query path recognizes DECLARE ... CURSOR FOR <select>, FETCH, MOVE, and
+    CLOSE as SQL text (dispatched in ProvisaHandler._process_query_stmts alongside the existing
+    COPY/CTAS/DDL keyword regexes), so psql/DBeaver/JDBC clients issuing native cursor SQL work
+    against Provisa without a client-side rewrite. DECLARE's inner SELECT runs through the same
+    governed pipeline as any other SELECT (ctx.execute_sql -> ProvisaSession.execute_sql), so a
+    cursor's row access is authorized and audited exactly like a plain query. The cursor's rows
+    are pulled lazily from that SELECT's ProvisaQueryResult.rows() generator and buffered as
+    they are read (_CursorState/_cursor_move), which is what lets FETCH support PRIOR/BACKWARD/
+    ABSOLUTE/RELATIVE/FIRST/LAST navigation without a rewindable engine cursor underneath.
+
+    pgwire has no BEGIN/COMMIT state machine (ProvisaSession.in_transaction() is hardcoded
+    False), so there is no separate transaction-scoped cursor lifetime to implement: every
+    DECLAREd cursor already behaves as if WITH HOLD — it lives on the connection's
+    ProvisaSession until an explicit CLOSE/CLOSE ALL or the connection disconnects (session.close()
+    releases every still-open cursor's underlying stream via ProvisaQueryResult.close(), which was
+    extended to retain and release the engine ResultStream a cursor's DECLARE opened).
+  use_case: >-
+    A BI tool or psql session opens a named server-side cursor over a large Provisa result set and
+    pages through it with FETCH n, instead of the client having to buffer the whole result or the
+    driver silently falling back to fully materializing every query.
+  code:
+  - provisa/pgwire/server.py
+  tests:
+  - tests/unit/pgwire/test_cursor.py
+  e2e: false
+  scenario: |
+    Given an authenticated pgwire session
+    When it sends DECLARE c1 CURSOR FOR SELECT id, name FROM t
+    Then the command completes with tag "DECLARE CURSOR" and no rows are sent
+    When it sends FETCH 2 FROM c1
+    Then it receives the first 2 rows and command tag "FETCH 2"
+    When it sends FETCH 2 FROM c1 again
+    Then it receives the remaining row and command tag "FETCH 1"
+    When it sends CLOSE c1
+    Then the cursor is forgotten and its underlying stream is released
+    Given a FETCH naming a cursor that was never DECLAREd
+    Then the server returns SQLSTATE 34000 (invalid_cursor_name), not a crash
+    Given a connection disconnects with a cursor still open
+    Then ProvisaSession.close() releases it without requiring an explicit CLOSE

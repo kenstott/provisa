@@ -17,7 +17,7 @@ Builds on buenavista's socketserver-based handler, adding:
 - Full Provisa governance pipeline for user queries
 - Multi-statement simple-query support
 """
-# Requirements: REQ-001, REQ-002, REQ-120, REQ-124, REQ-125, REQ-266, REQ-273
+# Requirements: REQ-001, REQ-002, REQ-120, REQ-124, REQ-125, REQ-266, REQ-273, REQ-1858
 # complexity-gate: allow-ble=5 reason="wire-protocol request-handler boundary: an arbitrary user query / DDL / COPY / CTAS / describe can raise any exception type from the pluggable engine (DuckDB/buenavista/extensions) — each is caught and converted to a PostgreSQL SQLSTATE error response (send_error / _send_pg_error) so one bad statement returns a protocol error instead of crashing the connection handler; catching a narrower set would let an unmapped type kill the session"
 
 from __future__ import annotations
@@ -32,6 +32,8 @@ import socketserver
 import ssl
 import struct
 import threading
+from dataclasses import dataclass
+from dataclasses import field as _dc_field
 from typing import TYPE_CHECKING, Iterator, Optional, Tuple
 
 import jwt
@@ -116,6 +118,19 @@ _DDL_RE = re.compile(
     r"|ALTER\s+(TABLE|INDEX|SEQUENCE|VIEW)"
     r"|DROP\s+(TABLE|VIEW|INDEX|SEQUENCE|SCHEMA))\b",
     re.IGNORECASE,
+)
+# REQ-1858: session-scoped SQL cursors (no BEGIN/COMMIT machinery exists in pgwire today, so
+# every DECLAREd cursor behaves as if WITH HOLD — it lives until CLOSE or disconnect).
+_DECLARE_CURSOR_RE = re.compile(
+    r"^\s*DECLARE\s+(?P<name>\"[^\"]+\"|[A-Za-z_][\w$]*)\s+"
+    r"(?:BINARY\s+|INSENSITIVE\s+|(?:NO\s+)?SCROLL\s+|ASENSITIVE\s+)*"
+    r"CURSOR\s*(?:(?:WITH|WITHOUT)\s+HOLD\s*)?FOR\s+(?P<sql>.+?)\s*;?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+_FETCH_RE = re.compile(r"^\s*FETCH\b", re.IGNORECASE)
+_MOVE_RE = re.compile(r"^\s*MOVE\b", re.IGNORECASE)
+_CLOSE_CURSOR_RE = re.compile(
+    r"^\s*CLOSE\s+(?P<name>ALL|\"[^\"]+\"|[A-Za-z_][\w$]*)\s*;?\s*$", re.IGNORECASE
 )
 
 
@@ -265,6 +280,9 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
 
     def __init__(self, engine_result: ResultStream, original_sql: str = ""):
         super().__init__()
+        # Retained so a DECLARE CURSOR built on this result can release the underlying
+        # server-side cursor / pooled connection on CLOSE, without draining the rows.
+        self._engine_result = engine_result
         self._cols = engine_result.column_names
         self._status = _tag_from_sql(original_sql)
         self._batch_iter: Iterator[list] = engine_result.batches()  # type: ignore[assignment]
@@ -300,6 +318,177 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
     def status(self) -> str:
         return self._status or "OK"
 
+    def close(self) -> None:
+        """Release the underlying stream (cursor CLOSE) without draining remaining rows."""
+        closer = getattr(self._engine_result, "close", None)
+        if closer is not None:
+            closer()
+
+
+class _CursorRowsResult(BVQueryResult):  # REQ-1858
+    """Adapts a batch of already-fetched cursor rows to buenavista's QueryResult ABC, for
+    sending a FETCH response's RowDescription/DataRow pair."""
+
+    def __init__(self, columns: list[Tuple[str, BVType]], fetched: list[list]):
+        super().__init__()
+        self._columns = columns
+        self._fetched = fetched
+
+    def has_results(self) -> bool:
+        return True
+
+    def column_count(self) -> int:
+        return len(self._columns)
+
+    def column(self, index: int) -> Tuple[str, BVType]:
+        return self._columns[index]
+
+    def rows(self) -> Iterator[list]:
+        yield from self._fetched
+
+    def status(self) -> str:
+        return "OK"
+
+
+@dataclass
+class _CursorState:  # REQ-1858
+    """A named SQL cursor's live state, owned by the pgwire session that DECLAREd it.
+
+    ``source`` is the DECLARE SELECT's row generator (``ProvisaQueryResult.rows()``), drained
+    forward-only and on demand. ``buffer`` accumulates every row pulled from it so far — the
+    cheapest way to support PRIOR/BACKWARD/ABSOLUTE without a rewindable engine cursor — and
+    ``pos`` is the 0-indexed boundary: the last row returned to the client is ``buffer[pos - 1]``.
+    """
+
+    name: str
+    query_result: ProvisaQueryResult
+    source: Iterator[list]
+    buffer: list = _dc_field(default_factory=list)
+    pos: int = 0
+    source_exhausted: bool = False
+
+
+def _cursor_fill(cs: _CursorState, upto) -> None:
+    """Pull from ``cs.source`` until ``cs.buffer`` has ``upto`` rows or the source is exhausted.
+
+    ``upto`` may be ``float("inf")`` to fully drain the cursor (FETCH/MOVE ALL, or an ABSOLUTE/
+    LAST position counted from the end)."""
+    _sentinel = object()
+    while not cs.source_exhausted and len(cs.buffer) < upto:
+        row = next(cs.source, _sentinel)
+        if row is _sentinel:
+            cs.source_exhausted = True
+            break
+        cs.buffer.append(row)
+
+
+def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list:
+    """Advance ``cs`` per FETCH/MOVE semantics and return the rows the client should see
+    (already in client-visible order — BACKWARD returns most-recent-first, like real PG)."""
+    if direction == "forward":
+        if count is None:
+            _cursor_fill(cs, float("inf"))
+            end = len(cs.buffer)
+        else:
+            _cursor_fill(cs, cs.pos + count)
+            end = min(cs.pos + count, len(cs.buffer))
+        out = cs.buffer[cs.pos : end]
+        cs.pos = end
+        return out
+    if direction == "backward":
+        start = 0 if count is None else max(0, cs.pos - count)
+        out = list(reversed(cs.buffer[start : cs.pos]))
+        cs.pos = start
+        return out
+    if direction == "absolute":
+        k = count or 0
+        if k >= 1:
+            _cursor_fill(cs, k)
+            if k > len(cs.buffer):
+                cs.pos = len(cs.buffer)
+                return []
+            cs.pos = k
+            return [cs.buffer[k - 1]]
+        if k == 0:
+            cs.pos = 0
+            return []
+        _cursor_fill(cs, float("inf"))  # negative k counts from the end — needs the full extent
+        idx = len(cs.buffer) + k
+        if idx < 0 or idx >= len(cs.buffer):
+            cs.pos = 0 if idx < 0 else len(cs.buffer)
+            return []
+        cs.pos = idx + 1
+        return [cs.buffer[idx]]
+    if direction == "relative":
+        n = count or 0
+        return _cursor_move(cs, "forward", n) if n >= 0 else _cursor_move(cs, "backward", -n)
+    if direction == "first":
+        return _cursor_move(cs, "absolute", 1)
+    if direction == "last":
+        return _cursor_move(cs, "absolute", -1)
+    raise ValueError(f"unknown cursor direction: {direction!r}")
+
+
+_CURSOR_FROM_IN_RE = re.compile(
+    r"(?:\bFROM\b|\bIN\b)\s+(?P<name>\"[^\"]+\"|[A-Za-z_][\w$]*)\s*;?\s*$", re.IGNORECASE
+)
+
+
+def _parse_cursor_nav(stmt: str, keyword: str) -> tuple[str, str, int | None]:
+    """Parse a FETCH/MOVE statement into (direction, raw cursor name, count).
+
+    ``direction`` is one of forward/backward/absolute/relative/first/last. ``count`` is None for
+    an unbounded ALL fetch, else the already sign-normalized row count.
+    """
+    body = re.sub(rf"^\s*{keyword}\b", "", stmt, flags=re.IGNORECASE).strip()
+    if body.endswith(";"):
+        body = body[:-1].strip()
+    m = _CURSOR_FROM_IN_RE.search(body)
+    if m:
+        name = m.group("name")
+        spec = body[: m.start()].strip()
+    else:
+        parts = body.rsplit(None, 1)
+        if len(parts) == 2:
+            spec, name = parts
+        elif len(parts) == 1:
+            spec, name = "", parts[0]
+        else:
+            raise ValueError(f"missing cursor name in {keyword}")
+    su = spec.upper()
+    if su in ("", "NEXT"):
+        return "forward", name, 1
+    if su == "PRIOR":
+        return "backward", name, 1
+    if su == "FIRST":
+        return "first", name, None
+    if su == "LAST":
+        return "last", name, None
+    if su in ("ALL", "FORWARD ALL"):
+        return "forward", name, None
+    if su == "BACKWARD ALL":
+        return "backward", name, None
+    m2 = re.match(r"^(FORWARD|BACKWARD)\s+(\d+)$", su)
+    if m2:
+        direction = "forward" if m2.group(1) == "FORWARD" else "backward"
+        return direction, name, int(m2.group(2))
+    m3 = re.match(r"^(ABSOLUTE|RELATIVE)\s+([-+]?\d+)$", su)
+    if m3:
+        return m3.group(1).lower(), name, int(m3.group(2))
+    m4 = re.match(r"^([-+]?\d+)$", su)
+    if m4:
+        n = int(m4.group(1))
+        return ("backward", name, -n) if n < 0 else ("forward", name, n)
+    raise ValueError(f"unsupported {keyword} specification: {spec!r}")
+
+
+def _normalize_cursor_name(raw: str) -> str:
+    """Fold an unquoted cursor identifier like PostgreSQL does; keep a quoted one verbatim."""
+    raw = raw.strip()
+    if len(raw) >= 2 and raw.startswith('"') and raw.endswith('"'):
+        return raw[1:-1]
+    return raw.lower()
+
 
 class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
     def __init__(self) -> None:
@@ -312,12 +501,21 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-1266: the org this session is bound to (multitenant OIDC sessions only). None → the
         # single-org default runtime (trust/simple modes, or a platform admin with no single org).
         self.org_id: str | None = None
+        # REQ-1858: named SQL cursors DECLAREd on this connection, keyed by normalized name.
+        self.cursors: dict[str, _CursorState] = {}
 
     def cursor(self):
         return None
 
     def close(self):
-        pass
+        # REQ-1858: release every still-open cursor's underlying stream (server-side cursor /
+        # pooled connection) — a client that disconnects mid-cursor must not leak it.
+        for cs in self.cursors.values():
+            try:
+                cs.query_result.close()
+            except Exception:
+                log.debug("[PGWIRE] cursor cleanup failed for %r", cs.name, exc_info=True)
+        self.cursors.clear()
 
     def in_transaction(self) -> bool:
         return False
@@ -1085,6 +1283,83 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
                 reset_current_org(_org_token)
 
+    def _handle_declare_cursor(self, ctx: BVContext, stmt: str) -> None:  # REQ-1858
+        """DECLARE name [...] CURSOR [...] FOR <select> — runs the SELECT through the normal
+        governed pipeline (``ctx.execute_sql``, same as any SELECT), and stores its lazy row
+        generator on the session for FETCH/MOVE/CLOSE to consume."""
+        m = _DECLARE_CURSOR_RE.match(stmt)
+        assert m is not None  # caller only dispatches here on a match
+        name = _normalize_cursor_name(m.group("name"))
+        inner_sql = m.group("sql")
+        try:
+            # ctx.execute_sql is typed to buenavista's base QueryResult, but every path through
+            # ProvisaSession.execute_sql (the sole session implementation reachable here) returns
+            # a ProvisaQueryResult — the only one that implements close().
+            query_result: ProvisaQueryResult = ctx.execute_sql(inner_sql)  # type: ignore[assignment]
+            cursors = ctx.session.cursors  # type: ignore[attr-defined]
+            existing = cursors.pop(name, None)
+            if existing is not None:
+                existing.query_result.close()  # re-DECLARE of an open name replaces it
+            cursors[name] = _CursorState(
+                name=name, query_result=query_result, source=query_result.rows()
+            )
+            self.send_command_complete("DECLARE CURSOR\x00")
+        except PermissionError as exc:
+            self._send_pg_error("ERROR", "42501", str(exc))
+            ctx.mark_error()
+        except Exception as exc:
+            self._send_pg_error("ERROR", "42601", str(exc))
+            ctx.mark_error()
+
+    def _handle_fetch_move(self, ctx: BVContext, stmt: str) -> None:  # REQ-1858
+        """FETCH [...] FROM cursor / MOVE [...] FROM cursor — advances the named cursor and, for
+        FETCH, sends the rows it passed over as a normal RowDescription/DataRow pair."""
+        is_fetch = _FETCH_RE.match(stmt) is not None
+        keyword = "FETCH" if is_fetch else "MOVE"
+        try:
+            direction, raw_name, count = _parse_cursor_nav(stmt, keyword)
+            name = _normalize_cursor_name(raw_name)
+            cs = ctx.session.cursors.get(name)  # type: ignore[attr-defined]
+            if cs is None:
+                raise LookupError(f'cursor "{name}" does not exist')
+            fetched = _cursor_move(cs, direction, count)
+        except LookupError as exc:
+            self._send_pg_error("ERROR", "34000", str(exc))
+            ctx.mark_error()
+            return
+        except Exception as exc:
+            self._send_pg_error("ERROR", "42601", str(exc))
+            ctx.mark_error()
+            return
+        if is_fetch:
+            columns = [cs.query_result.column(i) for i in range(cs.query_result.column_count())]
+            result = _CursorRowsResult(columns, fetched)
+            self.send_row_description(result)
+            self.send_data_rows(result)
+            self.send_command_complete(f"FETCH {len(fetched)}\x00")
+        else:
+            self.send_command_complete(f"MOVE {len(fetched)}\x00")
+
+    def _handle_close_cursor(self, ctx: BVContext, stmt: str) -> None:  # REQ-1858
+        """CLOSE cursor | CLOSE ALL — releases the underlying stream(s) and forgets the name(s)."""
+        m = _CLOSE_CURSOR_RE.match(stmt)
+        assert m is not None  # caller only dispatches here on a match
+        raw_name = m.group("name")
+        cursors = ctx.session.cursors  # type: ignore[attr-defined]
+        try:
+            if raw_name.upper() == "ALL":
+                for cs in cursors.values():
+                    cs.query_result.close()
+                cursors.clear()
+            else:
+                cs = cursors.pop(_normalize_cursor_name(raw_name), None)
+                if cs is not None:
+                    cs.query_result.close()
+            self.send_command_complete("CLOSE CURSOR\x00")
+        except Exception as exc:
+            self._send_pg_error("ERROR", "58000", str(exc))
+            ctx.mark_error()
+
     def _process_query_stmts(self, ctx: BVContext, stmts: list[str]) -> None:
         for stmt in stmts:
             if _COPY_RE.match(stmt):
@@ -1152,6 +1427,15 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 except Exception as exc:
                     self._send_pg_error("ERROR", "0A000", str(exc))
                     ctx.mark_error()
+                break
+            if _DECLARE_CURSOR_RE.match(stmt):
+                self._handle_declare_cursor(ctx, stmt)
+                break
+            if _FETCH_RE.match(stmt) or _MOVE_RE.match(stmt):
+                self._handle_fetch_move(ctx, stmt)
+                break
+            if _CLOSE_CURSOR_RE.match(stmt):
+                self._handle_close_cursor(ctx, stmt)
                 break
             try:
                 from buenavista.core import Extension
