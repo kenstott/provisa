@@ -19811,3 +19811,17 @@ Following a design discussion: every MCP tool call (Polly's or the standalone MC
 **Code:** `provisa/api/mcp/server.py`
 
 **Tests:** `tests/unit/test_mcp_server.py`
+
+## 8. Client Access & Protocols
+
+### REQ-1858 · pgwire Protocol {#REQ-1858}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+pgwire's simple-query path recognizes DECLARE ... CURSOR FOR <select>, FETCH, MOVE, and CLOSE as SQL text (dispatched in ProvisaHandler._process_query_stmts alongside the existing COPY/CTAS/DDL keyword regexes), so psql/DBeaver/JDBC clients issuing native cursor SQL work against Provisa without a client-side rewrite. DECLARE's inner SELECT runs through the same governed pipeline as any other SELECT (ctx.execute_sql -> ProvisaSession.execute_sql), so a cursor's row access is authorized and audited exactly like a plain query. The cursor's rows are pulled lazily from that SELECT's ProvisaQueryResult.rows() generator and buffered as they are read (_CursorState/_cursor_move), which is what lets FETCH support PRIOR/BACKWARD/ ABSOLUTE/RELATIVE/FIRST/LAST navigation without a rewindable engine cursor underneath. pgwire has no BEGIN/COMMIT state machine (ProvisaSession.in_transaction() is hardcoded False), so there is no separate transaction-scoped cursor lifetime to implement: every DECLAREd cursor already behaves as if WITH HOLD — it lives on the connection's ProvisaSession until an explicit CLOSE/CLOSE ALL or the connection disconnects (session.close() releases every still-open cursor's underlying stream via ProvisaQueryResult.close(), which was extended to retain and release the engine ResultStream a cursor's DECLARE opened).
+
+**Use case:** A BI tool or psql session opens a named server-side cursor over a large Provisa result set and pages through it with FETCH n, instead of the client having to buffer the whole result or the driver silently falling back to fully materializing every query.
+
+**Code:** `provisa/pgwire/server.py`
+
+**Tests:** `tests/unit/pgwire/test_cursor.py`
