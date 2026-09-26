@@ -132,7 +132,13 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
         return []
     tables_by_source: dict[str, list[Any]] = {}
     for t in await registered_tables(state):
-        if t.source_id in wanted:
+        # REQ-1865: a row_materialize table's residency is governed EXCLUSIVELY by the row-level
+        # cache (ensure_rows_resident, called alongside this function at every call site) -- it
+        # must never also be swept into a whole-source full-table land here. Confirmed live: this
+        # unconditional full land ran before ensure_rows_resident ever got a chance to help,
+        # negating the entire point of the row cache (a keyed lookup paid the same multi-minute
+        # full-source materialize cost row_materialize exists to avoid).
+        if t.source_id in wanted and not getattr(t, "row_materialize", False):
             tables_by_source.setdefault(t.source_id, []).append(t)
 
     from provisa.events import queue

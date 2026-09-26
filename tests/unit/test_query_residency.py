@@ -37,8 +37,10 @@ def _source(sid, **kw):
     return SimpleNamespace(**base)
 
 
-def _table(sid, name, schema="pet_store"):
-    return SimpleNamespace(source_id=sid, schema_name=schema, table_name=name)
+def _table(sid, name, schema="pet_store", row_materialize=False):
+    return SimpleNamespace(
+        source_id=sid, schema_name=schema, table_name=name, row_materialize=row_materialize
+    )
 
 
 def test_stale_sources_reports_never_landed_and_failed_lands():
@@ -108,7 +110,11 @@ class _Backend:
         landed = []
         for sid in source_ids:
             if is_stale(sid):
-                landed += [(sid, t.table_name) for t in state.config.tables if t.source_id == sid]
+                landed += [
+                    (sid, t.table_name)
+                    for t in state.config.tables
+                    if t.source_id == sid and not getattr(t, "row_materialize", False)
+                ]
         return landed
 
     def landing_target(self, *, store_schema, source_id, source_type, schema_name, table_name):
@@ -171,6 +177,27 @@ async def test_a_never_landed_source_is_landed_and_stamped(wiring):
     assert landed == [("pets-db", "pets")]
     assert backend.calls and backend.calls[0][0] == {"pets-db"}
     assert state.tenant_db.recorded == [("pet_store.pets", True)]
+
+
+@pytest.mark.asyncio
+async def test_row_materialize_table_never_swept_into_the_whole_source_land(wiring):
+    """REQ-1865: a row_materialize=True table's residency is governed exclusively by
+    ensure_rows_resident (called alongside this function at every real call site) -- it must
+    never also be landed here. Confirmed live: this whole-source sweep landing a row_materialize
+    table before ensure_rows_resident got a chance to help negated the entire point of the row
+    cache (a keyed lookup paid the same full-table land cost row_materialize exists to avoid)."""
+    backend = _Backend()
+    state = _state(
+        [_source("bench-neo4j")],
+        [
+            _table("bench-neo4j", "bench_order_node", schema="neo4j", row_materialize=True),
+            _table("bench-neo4j", "bench_placed_edge", schema="neo4j"),
+        ],
+        backend,
+    )
+    landed = await ensure_resident(state, {"bench-neo4j"})
+    assert landed == [("bench-neo4j", "bench_placed_edge")]
+    assert ("bench-neo4j", "bench_order_node") not in landed
 
 
 @pytest.mark.asyncio
