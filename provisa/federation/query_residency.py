@@ -356,7 +356,15 @@ async def ensure_rows_resident(
             continue
 
         async with AsyncExitStack() as held:
-            for key in stale_or_missing:
+            # Deterministic order, not iteration order: two concurrent calls needing an
+            # overlapping multi-key set (e.g. the same IN-list, or two overlapping IN-lists) must
+            # acquire their shared keys in the SAME global order, or they can circular-wait on
+            # each other (A holds key1 waiting on key2; B holds key2 waiting on key1) -- a real
+            # deadlock, not just contention. Sorting by the tuple's own natural order is stable
+            # and cheap; every PK-tuple element here already came from a single column's own
+            # comparable literal type (int/str/etc, per pk_bounds._literal_value), so a stray
+            # cross-type comparison never arises within one column's values.
+            for key in sorted(stale_or_missing):
                 await held.enter_async_context(row_lock(node, key))
 
             # Re-check after acquiring: a concurrent fetch for the same key(s) may have already
