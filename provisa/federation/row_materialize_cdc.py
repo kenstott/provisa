@@ -26,6 +26,30 @@ from __future__ import annotations
 from typing import Any
 
 
+def row_refresh_claim_node(node: str) -> str:
+    """The ``event_status.dependent_table`` claim key a ``row_refresh`` event fans out to --
+    DELIBERATELY NOT the bare physical node string.
+
+    A row_materialize table's own ordinary whole-table federation strategy can independently
+    resolve to MATERIALIZED (design doc section 3a: row_materialize does not suppress the
+    is_stale/materialize_pending fallback), in which case ``provisa.events.boot.
+    build_source_node_spec`` registers a plain ``SourceTableProcessor`` under the EXACT SAME
+    node string this module uses (``f"{schema_name}.{table_name}"``, the same convention
+    ``land_lock``/``ensure_resident`` key on). ``queue.claim`` claims ALL pending unclaimed work
+    for a ``dependent_table`` regardless of ``event_type`` -- it has no event-type filter. If a
+    ``row_refresh`` event were fanned to the bare node, whichever processor's tick fires first
+    (the ordinary source processor or this mechanism's background drain) claims it indiscriminately:
+    the ordinary processor's ``handle()`` has no notion of a ``{"keys": [...]}`` payload and would
+    either drop it or misinterpret it as a plain refresh trigger, silently completing the claim
+    without ever calling ``ensure_rows_resident`` -- and conversely this mechanism's own claim could
+    steal an ordinary ``delta``/``replace`` event meant for the whole-table path, skipping a real
+    refresh cycle. Fanning to a NAMESPACED pseudo-node (this function's output) instead of the bare
+    node gives row_refresh its own claim lane that can never collide with the table's ordinary
+    processor, while ``post_event``'s own ``source_table=node`` (the event's provenance, not its
+    claim key) still names the real table for audit/debugging."""
+    return f"{node}::row_refresh"
+
+
 def _event_keys(events: list, pk_columns: list[str]) -> list[tuple[Any, ...]]:
     return [tuple(getattr(ev, "row", {}).get(pk) for pk in pk_columns) for ev in events]
 
@@ -85,6 +109,8 @@ async def handle_row_materialize_cdc(
             event_type="row_refresh",
             payload={"keys": [list(k) for k in already_cached]},
         )
-        await queue.fan_out(conn, event_id, [node])
+        # Fan to the NAMESPACED pseudo-node (row_refresh_claim_node's own docstring explains why
+        # the bare node would collide with this table's ordinary whole-table processor's claim).
+        await queue.fan_out(conn, event_id, [row_refresh_claim_node(node)])
 
     return {"cached": len(already_cached), "dropped": len(keys) - len(already_cached)}

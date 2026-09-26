@@ -15,18 +15,42 @@ query-driven fetch (or each other) on the same key:
 
 - ``process_row_refresh_events`` claims ``row_refresh`` events posted by
   ``provisa.federation.row_materialize_cdc.handle_row_materialize_cdc`` (the same claim/heartbeat/
-  complete TABLE PROCESSOR shape ``provisa.events.queue``'s own docstring describes — claim
-  granularity is the target table) and is the ONE place that actually calls
-  ``ensure_rows_resident(force=True)`` for a CDC batch's already-cached keys.
+  complete shape ``provisa.events.queue``'s own docstring describes for a TABLE PROCESSOR) and is
+  the ONE place that actually calls ``ensure_rows_resident(force=True)`` for a CDC batch's
+  already-cached keys.
 - ``reap_expired_rows`` is a periodic batched ``DELETE`` of rows expired past an operator-set
   ``reap_grace_period`` — storage hygiene only, never freshness enforcement (that's ``_row_expires_
   at``, checked on every touch by ``ensure_rows_resident``).
 
 ``wire_row_materialize_background`` registers both as APScheduler interval jobs on the SAME
 embedded scheduler the rest of the event loop uses (``provisa.events.boot.register_runtime``), one
-job pair per ``row_materialize`` table found in the registry at wiring time. This is a standalone
-scheduling path rather than a ``TableProcessor`` subclass — row_refresh/reap have none of the
-debounce/freshness-contract/emit-outcome concerns ``TableProcessor``'s own machinery exists for.
+job pair per ``row_materialize`` table found in the registry at wiring time.
+
+Why this is a standalone scheduling path rather than a ``TableProcessor`` subclass (a concrete
+conflict, not a style preference): a ``row_materialize`` table's ORDINARY whole-table federation
+strategy can independently resolve to ``Strategy.MATERIALIZED`` (design doc section 3a explicitly
+requires this -- row_materialize does not suppress the whole-table fallback), in which case
+``provisa.events.boot.build_source_node_spec`` already registers a plain ``SourceTableProcessor``
+under that table's bare physical node string. ``provisa.events.queue.claim`` claims ALL pending
+unclaimed ``event_status`` rows for a ``dependent_table`` with NO ``event_type`` filter -- it has no
+way to hand a ``row_refresh`` event to one processor and a ``delta``/``replace`` event to another
+sharing the same claim key. Registering a second ``TableProcessor`` for row_refresh under that
+SAME node id would race the table's own ordinary processor: whichever's ``tick()`` fires first
+claims indiscriminately, so a ``row_refresh`` event could be silently swallowed by a processor with
+no notion of its ``{"keys": [...]}`` payload (never calling ``ensure_rows_resident``), or this
+mechanism's own claim could steal an ordinary refresh event and skip a real whole-table land cycle.
+Resolved not by hand-waving past it but by giving ``row_refresh`` its OWN claim lane: see
+``provisa.federation.row_materialize_cdc.row_refresh_claim_node`` -- ``event_status.dependent_table``
+for a ``row_refresh`` event is a namespaced pseudo-node (``f"{node}::row_refresh"``), never the bare
+node a table's ordinary processor claims against, while the event's own ``source_table`` (pure
+provenance, not a claim key) still names the real table. A full ``TableProcessor`` subclass would
+ALSO have inherited the base loop's mandatory post-handle ``post_event``+``fan_out`` of a NEW change
+event for the same node (``TableProcessor._process``'s unconditional ripple when ``handle()``
+returns non-``None``) -- for row_refresh there is no further ripple to announce (nothing downstream
+depends on "the row cache got refreshed" the way an MV depends on its source), so every drained
+batch would need to return ``None`` (the framework's explicit no-ripple sentinel) rather than use
+any of the shape/emit-outcome machinery a real subclass exists to use -- one more concrete signal
+that this mechanism doesn't fit the shape the base class is built around.
 """
 
 from __future__ import annotations
@@ -60,22 +84,26 @@ async def process_row_refresh_events(
     table_name: str,
     pk_columns: list[str],
 ) -> int:
-    """Claim and drain every pending ``row_refresh`` event for ``node`` (one table's claim unit),
-    calling ``ensure_rows_resident(force=True)`` once for the union of every claimed event's keys.
-    Returns the number of events completed. Best-effort: an ownership loss (a peer's claim CAS beat
-    this one) just means fewer events complete this pass — the next tick tries again."""
+    """Claim and drain every pending ``row_refresh`` event for ``node`` (one table's claim unit,
+    on its OWN namespaced claim lane -- see ``row_refresh_claim_node``'s docstring for why this
+    must not be the bare node), calling ``ensure_rows_resident(force=True)`` once for the union of
+    every claimed event's keys. Returns the number of events completed. Best-effort: an ownership
+    loss (a peer's claim CAS beat this one) just means fewer events complete this pass — the next
+    tick tries again."""
     from provisa.compiler.pk_bounds import PkBound
     from provisa.events import queue
     from provisa.federation.query_residency import ensure_rows_resident
+    from provisa.federation.row_materialize_cdc import row_refresh_claim_node
 
     db = getattr(state, "tenant_db", None)
     if db is None:
         return 0
 
+    claim_node = row_refresh_claim_node(node)
     now = datetime.now(timezone.utc)
     async with db.acquire() as conn:
         event_ids = await queue.claim(
-            conn, dependent_table=node, processor_name=_PROCESSOR_NAME, now=now
+            conn, dependent_table=claim_node, processor_name=_PROCESSOR_NAME, now=now
         )
         if not event_ids:
             return 0
@@ -102,7 +130,7 @@ async def process_row_refresh_events(
             ok = await queue.complete(
                 conn,
                 event_id=event_id,
-                dependent_table=node,
+                dependent_table=claim_node,
                 processor_name=_PROCESSOR_NAME,
                 now=now,
             )

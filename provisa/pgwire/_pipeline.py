@@ -843,6 +843,11 @@ async def _govern_and_route_planned(
             sources=frozenset(_sources),
             route_reason=decision.reason,
             optimizations=_opts,
+            # REQ-1865: the override above only changes the EXECUTION dialect (SQL -> Cypher for
+            # the source's own HTTP endpoint) — the ORIGINAL governed_semantic SQL text (the same
+            # text handed to best_effort_cypher_for_sql above) still has a normal relational
+            # predicate shape, so pk_bounds resolves against it exactly like the other routes.
+            pk_bounds=await _resolve_pk_bounds(governed_semantic, state),
         )
     if decision.route == Route.ENGINE:
         # REQ-135/REQ-1163: inline-expand any __derived__ view ref BEFORE the unknown-catalog check and
@@ -1642,6 +1647,10 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             sources=frozenset(sources),
             route_reason=decision.reason,
             optimizations=_opts,
+            # REQ-1865: same as _govern_and_route_compiled's cypher branch — the override only
+            # changes the execution dialect; governed_sql's own relational predicate shape is
+            # still what pk_bounds resolves against.
+            pk_bounds=await _resolve_pk_bounds(governed_sql, state),
         )
     else:
         dialect = decision.dialect or "postgres"
