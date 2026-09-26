@@ -31,6 +31,7 @@ from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 
 if TYPE_CHECKING:
+    from provisa.compiler.pk_bounds import PkBound
     from provisa.executor.redirect import Delivery
 
 log = logging.getLogger(__name__)
@@ -123,6 +124,11 @@ class _Plan:
     sources: frozenset[str] = field(default_factory=frozenset)
     route_reason: str | None = field(default=None)
     optimizations: tuple[str, ...] = field(default=())
+    # REQ-1865: row-materialize predicate resolution — the concrete PK bound(s) this statement's
+    # compiled plan resolved against every row_materialize table it references (empty when the
+    # statement touches no such table, or none of its predicates resolve to a bounded PK set).
+    # Populated at the same construction points `sources` itself is populated.
+    pk_bounds: tuple["PkBound", ...] = field(default_factory=tuple)
 
 
 # --------------------------------------------------------------------------- #
@@ -930,6 +936,7 @@ async def _govern_and_route_planned(
             sources=frozenset(_sources),
             route_reason=decision.reason,
             optimizations=_opts,
+            pk_bounds=await _resolve_pk_bounds(governed_semantic, state),  # REQ-1865
         )
     else:
         dialect = decision.dialect or "postgres"
@@ -973,7 +980,27 @@ async def _govern_and_route_planned(
             sources=frozenset(_sources),
             route_reason=decision.reason,
             optimizations=_opts,
+            pk_bounds=await _resolve_pk_bounds(governed_semantic, state),  # REQ-1865
         )
+
+
+async def _resolve_pk_bounds(semantic_sql: str, state: Any) -> tuple[Any, ...]:
+    """REQ-1865: the concrete PK bound(s) this statement resolves against every row_materialize
+    table it references — populated at the same construction point ``sources`` itself is
+    populated (design doc section 3b). Empty (never an error) when the statement touches no
+    row_materialize table, or none of its predicates resolve to a bounded PK set — the compiler's
+    job here is only to recognize the accelerable shape, not to force it."""
+    from provisa.federation.query_residency import row_materialized_tables_by_name
+
+    row_tables = await row_materialized_tables_by_name(state)
+    if not row_tables:
+        return ()
+    import sqlglot
+
+    from provisa.compiler.pk_bounds import extract_pk_bounds
+
+    ast = sqlglot.parse_one(semantic_sql, read="postgres")
+    return tuple(extract_pk_bounds(ast, row_tables))
 
 
 async def finalize_audit(plan: _Plan, status_code: int, state: Any | None = None) -> None:
@@ -1054,9 +1081,14 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
     # REQ-1661: a MATERIALIZED source this plan reads that has never landed, or has gone stale, is
     # landed before the read -- here, the one seam every surface reaches, so no transport can
     # serve an empty replica the event loop has not filled yet.
-    from provisa.federation.query_residency import ensure_resident
+    from provisa.federation.query_residency import ensure_resident, ensure_rows_resident
 
     await ensure_resident(state, plan.sources)
+    # REQ-1865: any row-materialize table this plan's predicate resolved a concrete PK bound
+    # against is served from the row cache, fetching from source only the missing/stale keys —
+    # called alongside ensure_resident, not instead of it (a statement can touch both a
+    # row-materialized table via PK lookup AND a plain MATERIALIZED source in the same join).
+    await ensure_rows_resident(state, plan.pk_bounds)
     _t0 = _time.perf_counter()
     # REQ-074/REQ-1386: one audit row per executed statement, with the terminal's real outcome —
     # written here rather than in each transport, so no surface can omit it.
@@ -1587,6 +1619,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             sources=frozenset(sources),
             route_reason=decision.reason,
             optimizations=_opts,
+            pk_bounds=await _resolve_pk_bounds(governed_sql, state),  # REQ-1865
         )
     elif decision.dialect == "cypher":
         # Issue #119: the override above already produced the Cypher text — not SQL, so none of
@@ -1642,6 +1675,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             sources=frozenset(sources),
             route_reason=decision.reason,
             optimizations=_opts,
+            pk_bounds=await _resolve_pk_bounds(governed_sql, state),  # REQ-1865
         )
 
 

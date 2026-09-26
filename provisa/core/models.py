@@ -917,6 +917,18 @@ class Table(
     # REQ-1320: SCD/history mode of the originating entity spec (scd2 | snapshot | None).
     modeling_history: str | None = None
     materialize: bool = False  # when True, view_sql is materialized as a physical CTAS in mv_cache
+    # REQ-1865: row-level, query-driven materialize. Opt-in per table (never global). A row is
+    # fetched and cached lazily, strictly when a query's resolved plan names its PK value(s) — never
+    # eagerly, never a background prefetch of a key nothing has asked for yet. The cached unit is
+    # always the FULL row (never a column subset). Each cached row carries its OWN freshness clock,
+    # independent of every other row's, driven off the SAME `cache_ttl` duration this table already
+    # has (no separate row-level TTL field — one setting, tracked per row). Mutually exclusive with
+    # `materialize` (view_sql CTAS) and with the existing whole-table MATERIALIZED pull path for the
+    # same table — a table is either whole-table-landed on staleness or row-landed on demand, never
+    # both. COMPATIBLE with a push change_signal (debezium/kafka/native): an incoming CDC event for a
+    # row ALREADY in this table's row cache refreshes it in the background (never inserts a key
+    # nothing has queried yet — see docs/arch/row_level_materializer_design.md).
+    row_materialize: bool = False
     mv_refresh_interval: int = 300  # seconds between MV refreshes (only used when materialize=True)
     # REQ-963: live-MV debounce. deadline = min(last_change+quiet, first_change+max_delay). A burst
     # of upstream changes collapses into one recompute-to-current. quiet=0 disables debounce (pure
@@ -988,6 +1000,30 @@ class Table(
             )
         return self
 
+    @model_validator(mode="after")
+    def _validate_row_materialize(self) -> "Table":
+        # REQ-1865: row_materialize requires a declared, trusted primary key (constraint 5) — a
+        # declared PK is never runtime-verified for uniqueness, same trust level as data_type.
+        if not self.row_materialize:
+            return self
+        if not any(c.is_primary_key for c in self.columns):
+            raise ValueError(
+                f"table {self.table_name!r}: row_materialize requires at least one "
+                "is_primary_key column (REQ-1865)"
+            )
+        if self.materialize:
+            raise ValueError(
+                f"table {self.table_name!r}: row_materialize and materialize (view_sql CTAS) "
+                "are mutually exclusive — a table is either whole-table-materialized or "
+                "row-materialized, never both (REQ-1865)"
+            )
+        # The cache_ttl-resolution check (table's own OR inherited from its source) cannot live
+        # here — Table's own validator does not see Source. That check is enforced where table
+        # registration already combines table.cache_ttl or source.cache_ttl:
+        # provisa/core/config_loader.py's _validate_row_materialize, and
+        # provisa/federation/residency.py's resolve_landing_args callers.
+        return self
+
 
 class HotTablesConfig(BaseModel):  # REQ-544
     auto_threshold: int = 1_000  # max rows for auto-detection
@@ -1004,6 +1040,20 @@ class WarmTablesConfig(BaseModel):  # REQ-544
     fs_cache_enabled: bool = False  # REQ-238: emit fs.cache.* on the Iceberg catalog
     fs_cache_directories: str = "/tmp/engine-cache"  # nosec B108 - engine-node cache dir, configurable
     fs_cache_max_sizes: str = "10GB"
+
+
+class RowMaterializeConfig(BaseModel):  # REQ-1865
+    """Operator-set tuning knobs for the row-level, query-driven materializer (design doc section
+    6c): cold-row reap cadence/grace/batch, and the CDC-triggered background-refresh drain cadence.
+    None of these is auto-derived from any assumption about a deployment's source characteristics
+    (key-space size, churn rate, storage headroom) — sizing them for a specific deployment's real
+    load is the operator's problem, the same posture as ``cache_ttl`` itself. These are ordinary
+    static config defaults (like every other *_interval field in this module), not "smart" values."""
+
+    refresh_tick_seconds: int = 5  # cadence for draining pending row_refresh events
+    reap_interval_seconds: int = 300  # cadence for the cold-row reaper sweep
+    reap_grace_period: float = 3600.0  # seconds past _row_expires_at before a row is reaped
+    reap_batch_size: int = 1000  # rows deleted per reaper batch
 
 
 class MaterializedViewsConfig(BaseModel):  # REQ-543
@@ -1874,6 +1924,7 @@ class ProvisaConfig(BaseModel):
     cdc_consumer_group_id: str = "provisa-debezium"
     warm_tables: WarmTablesConfig = Field(default_factory=WarmTablesConfig)
     materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
+    row_materialize: RowMaterializeConfig = Field(default_factory=RowMaterializeConfig)  # REQ-1865
     observability: OtelConfig = Field(default_factory=OtelConfig)
     mail: MailConfig = Field(default_factory=MailConfig)  # REQ-1310
     metadata_export: MetadataExportConfig = Field(default_factory=MetadataExportConfig)  # REQ-1068

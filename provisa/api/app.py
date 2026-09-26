@@ -1516,6 +1516,24 @@ async def build_org_runtime(
         from provisa.events.push_wiring import wire_push_listeners
 
         await wire_push_listeners(state=state, log=logging.getLogger(__name__))
+
+        # REQ-1865: wire the row-materialize background refresh drain + cold-row reaper for every
+        # row_materialize table, on the same scheduler — best-effort, same posture as the two calls
+        # above (never blocks or fails boot).
+        if scheduler is not None:
+            from provisa.events.row_materialize_lifecycle import wire_row_materialize_background
+
+            _rm_cfg = getattr(getattr(state, "config", None), "row_materialize", None)
+            if _rm_cfg is not None:
+                await wire_row_materialize_background(
+                    scheduler,
+                    state=state,
+                    log=logging.getLogger(__name__),
+                    tick_seconds=_rm_cfg.refresh_tick_seconds,
+                    reap_interval_seconds=_rm_cfg.reap_interval_seconds,
+                    reap_grace_period=_rm_cfg.reap_grace_period,
+                    reap_batch_size=_rm_cfg.reap_batch_size,
+                )
     except Exception:
         # The runtime was registered before this body ran (materialize_store() and the catalog-name
         # map are read off the registry while it builds), so a failure part-way leaves a runtime

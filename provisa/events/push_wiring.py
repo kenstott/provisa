@@ -175,6 +175,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[asyncio.Task]:
         if built is None:
             continue  # _build_provider already logged why
         provider, watch_target = built
+        row_materialize = bool(tbl.get("row_materialize"))  # REQ-1865
 
         land_schema, land_table = engine.landing_target(
             store_schema=store_schema,
@@ -201,6 +202,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[asyncio.Task]:
                 debounce_quiet=debounce_quiet,
                 debounce_max_delay=debounce_max_delay,
                 node=node,
+                row_materialize=row_materialize,
                 log=log,
             ),
             name=f"push-listener:{node}",
@@ -234,12 +236,16 @@ async def _run_listener(
     debounce_max_delay: float,
     node: str,
     log: Any,
+    row_materialize: bool = False,
 ) -> None:
     """One push table's whole lifetime: drain the provider into the landed table through the
     engine's own write face (``EngineRuntime.apply_cdc_events``, REQ-989/REQ-1733 — never a raw
     ``store_connection()`` held here, which would open a SECOND connection onto an embedded
     single-writer DuckDB store the engine already has ATTACHed and deadlock/error against it).
-    Never let an unhandled exception escape (this runs detached — nothing awaits its result)."""
+    Never let an unhandled exception escape (this runs detached — nothing awaits its result).
+
+    ``row_materialize`` (REQ-1865) routes the batch through the row-materialize CDC branch
+    (design doc section 5) instead of the ordinary upsert-every-event land."""
     from provisa.subscriptions.cdc_landing import consume_cdc_into_store
 
     async def _land(events: list) -> dict[str, int]:
@@ -249,6 +255,8 @@ async def _run_listener(
             columns=columns,
             pk_columns=pk_columns,
             events=events,
+            row_materialize=row_materialize,
+            node=node,
         )
 
     try:

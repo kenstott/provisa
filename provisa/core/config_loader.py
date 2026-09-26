@@ -892,6 +892,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_probe_type(config)
     _validate_watermark_columns(config)
     _validate_neo4j_sources(config)
+    _validate_row_materialize(config)
     await _upsert_tables(conn, engine, config, openapi_specs, catalog_names=catalog_names)
 
     # 6. Relationships (tables must exist first)
@@ -1184,6 +1185,42 @@ def _validate_probe_type(config) -> None:  # REQ-982
             )
         except ValueError as exc:
             raise ValueError(f"Table {table.table_name!r}: {exc}") from exc
+
+
+def _validate_row_materialize(config) -> None:  # REQ-1865
+    """row_materialize needs a resolved cache_ttl (table's own OR inherited from its source) to
+    drive each cached row's independent freshness clock (Table's own model_validator cannot see
+    Source, so this half of the check lives here, the same place _upsert_single_table/
+    _handle_neo4j_table already combine ``table.cache_ttl or source.cache_ttl``). Also enforces the
+    query-API keyed-fetch registration requirement (design doc section 3d): a query_template table
+    (neo4j/sparql) opting into row_materialize must author its template with a recognizable
+    key-bound insertion point (``$keys``) — otherwise every row-cache miss would silently degrade
+    to a full scan per lookup, defeating the mechanism. Both are registration-time ValueErrors,
+    never a silent fallback to an undefined TTL or an unbounded per-lookup scan."""
+    sources_by_id = {s.id: s for s in config.sources}
+    for table in config.tables:
+        if not getattr(table, "row_materialize", False):
+            continue
+        source = sources_by_id.get(table.source_id)
+        eff_ttl = (
+            table.cache_ttl
+            if table.cache_ttl is not None
+            else (source.cache_ttl if source is not None else None)
+        )
+        if eff_ttl is None:
+            raise ValueError(
+                f"table {table.table_name!r}: row_materialize=True requires a resolved cache_ttl "
+                f"(own or inherited from source {table.source_id!r}) to drive each cached row's "
+                "freshness clock (REQ-1865)"
+            )
+        if table.query_template is not None and "$keys" not in table.query_template:
+            raise ValueError(
+                f"table {table.table_name!r}: row_materialize=True on a query_template table "
+                "requires the template to contain a recognizable key-bound insertion point "
+                "('$keys', e.g. Cypher 'WHERE o.<pk_property> IN $keys' before RETURN) — a "
+                "template with no such point cannot be fetched by key and this mechanism never "
+                "silently falls back to a full scan per lookup (REQ-1865)"
+            )
 
 
 async def _validate_existing_domains(conn: "Connection", default_domain: str) -> None:

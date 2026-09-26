@@ -63919,3 +63919,69 @@
     And Neo4jDriver.execute() POSTs the Cypher to the source's /db/<database>/tx/commit endpoint
     When the pattern is not Cypher-translatable (spans multiple sources or engines)
     Then the plan falls through to ENGINE materialize-then-join (fallback path unchanged)
+- id: REQ-1865
+  status: in-progress
+  group: "4. Data Caching & Materialization"
+  category: Row-level materialization
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    A registered table may opt in (row_materialize, per-table, never a global engine mode) to a
+    row-level, query-driven cache: an individual row is fetched from the live source and upserted
+    into a landed replica strictly when a query's compiled plan resolves a concrete primary-key
+    equality/IN bound against that table — never eagerly, never a background pre-fetch of a key
+    nothing has queried. The table must declare at least one is_primary_key column and resolve a
+    cache_ttl (own or inherited from its source); each cached row carries its own
+    _row_cached_at/_row_expires_at freshness clock, independent of every other row's, driven by
+    that same cache_ttl duration. A query whose predicate does not resolve to a bounded PK set
+    falls back to the table's ordinary whole-table materialize/live resolution unchanged. For a
+    push change_signal source, an incoming CDC event for a key already present in the row cache
+    triggers an out-of-band background refresh (queued, not inline); a key not already cached is
+    dropped, never triggering an insert. A key the source no longer returns is tombstoned
+    (deleted) from the cache synchronously. A periodic out-of-band reaper deletes rows expired
+    past an operator-configured reap_grace_period. row_materialize is mutually exclusive with the
+    view_sql-CTAS materialize flag. A declared primary key is trusted, never runtime-verified for
+    uniqueness against the live source.
+  use_case: >-
+    A large, expensive-to-fully-land source table (e.g. a multi-million-row Neo4j query_template
+    scan) can serve point-lookup queries in milliseconds via a per-row cache instead of paying a
+    60-120s full re-land for a handful of rows, without ever pre-warming keys nothing has asked
+    for.
+  code:
+    - provisa/core/schema.sql
+    - provisa/core/schema_org.py
+    - provisa/core/models.py
+    - provisa/federation/residency.py
+    - provisa/federation/materialize_exec.py
+    - provisa/federation/query_residency.py
+    - provisa/federation/backend.py
+    - provisa/compiler/pk_bounds.py
+    - provisa/pgwire/_pipeline.py
+    - provisa/events/source_loader.py
+    - provisa/events/row_lock.py
+    - provisa/events/queue.py
+  tests:
+    - tests/unit/test_row_materialize_model.py
+    - tests/unit/compiler/test_pk_bounds.py
+    - tests/unit/federation/test_materialize_exec_land_rows.py
+    - tests/unit/federation/test_row_lock.py
+    - tests/unit/federation/test_ensure_rows_resident.py
+  since: "2026-09"
+  scenario: |
+    Given a registered table with row_materialize=true, a declared primary key column, and a
+    resolved cache_ttl
+    When a query's compiled plan resolves a concrete PK equality or IN bound against that table
+    Then ensure_rows_resident fetches only the missing or expired keys from the live source via
+    SourceRowLoader.load_keys and upserts them (never appends, never truncates) into the row
+    cache, stamping _row_cached_at/_row_expires_at
+    And a key the source returns no row for is deleted from the row cache
+    Given the same table with a query whose predicate does not resolve to a bounded PK set
+    Then the table falls back to its existing whole-table materialize or live resolution
+    Given a CDC event arrives for a key already present in the row cache
+    Then a row_refresh event is posted to the event queue in the same transaction as the CDC
+    apply, and a background processor later calls ensure_rows_resident(force=True) for that key
+    Given a CDC event arrives for a key not already present in the row cache
+    Then no PkBound is built and no fetch or insert occurs
+    Given row_materialize=true is set on a table with no is_primary_key column, or together with
+    materialize=true, or with no resolvable cache_ttl
+    Then registration raises a ValueError, never a silent fallback

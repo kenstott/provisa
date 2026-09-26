@@ -28,6 +28,7 @@ Three landing shapes, selected by the table's change_signal + watermark_column (
 
 from __future__ import annotations
 
+import datetime
 import json
 from typing import Any, Protocol
 
@@ -306,6 +307,74 @@ async def apply_persistence(
         await apply_cdc(conn, table, pk, [_UpsertEvent(r) for r in rows])
         return _qualified(table)
     raise ValueError(f"unhandled persistence outcome {persist!r}")  # pragma: no cover — validated
+
+
+_ROW_CACHED_AT = "_row_cached_at"
+_ROW_EXPIRES_AT = "_row_expires_at"
+
+
+def build_row_cache_table(
+    schema: str,
+    table: str,
+    columns: list[tuple[str, str]],
+    pk_columns: tuple[str, ...] | list[str],
+    *,
+    dialect_name: str | None = None,
+) -> Table:
+    """The row-materialize (REQ-1865) landed-table DDL: ``build_table``'s ordinary shape plus the
+    two per-row bookkeeping columns section 2a of the design doc requires. Both are
+    ``TIMESTAMP WITH TIME ZONE NOT NULL`` — every cached row always carries its own freshness
+    stamps, never nullable placeholders. This is the SAME physical shape ``land_rows`` upserts
+    into; the table's address (``EngineBackend.landing_target``) is unchanged from the whole-table
+    MATERIALIZED path (section 2b) — the two shapes never collide because ``row_materialize`` and
+    ``materialize`` are validated mutually exclusive (``Table._validate_row_materialize``)."""
+    cols = list(columns) + [
+        (_ROW_CACHED_AT, "timestamp"),
+        (_ROW_EXPIRES_AT, "timestamp"),
+    ]
+    result = build_table(schema, table, cols, pk_columns, dialect_name=dialect_name)
+    # Both bookkeeping columns are NOT NULL (section 2a) — every cached row always carries its own
+    # freshness stamps, never a nullable placeholder. build_table itself has no per-column nullable
+    # override, so set it directly on the two columns it just built.
+    result.c[_ROW_CACHED_AT].nullable = False
+    result.c[_ROW_EXPIRES_AT].nullable = False
+    return result
+
+
+async def land_rows(
+    conn: StoreConn,
+    table: Table,
+    pk_columns: list[str],
+    rows: list[dict],
+    *,
+    resolved_cache_ttl: int,
+    now: datetime.datetime | None = None,
+) -> None:
+    """UPSERT exactly these rows by PK (row-level materialize, REQ-1865) — never a blind append,
+    never a bulk insert. Each row may already exist in the cache (a re-fetch of a stale/CDC-
+    touched key) or may be new (a key's first fetch); both cases go through the identical
+    UPDATE-by-PK-else-INSERT call, so there is no separate insert-only branch that could double a
+    row or skip refreshing its stamped columns. Never drops or truncates — this is never a
+    replace, only ever an upsert of the rows the caller explicitly fetched.
+
+    ``resolved_cache_ttl`` is the SAME ``table.cache_ttl or source.cache_ttl`` duration
+    ``resolve_landing_args`` already resolves for the whole-table path — reused, not reinvented,
+    for this per-row clock (design doc constraint 4)."""
+    if not pk_columns:
+        raise ValueError(
+            f"row-materialize land into {_qualified(table)} requires primary key columns for upsert"
+        )
+    await conn.execute_core(CreateTable(table, if_not_exists=True))
+    stamp_now = now if now is not None else datetime.datetime.now(datetime.timezone.utc)
+    expires_at = stamp_now + datetime.timedelta(seconds=resolved_cache_ttl)
+    json_cols = _json_columns(table)
+    for row in rows:
+        stamped = {
+            **_coerce_json_row(dict(row), json_cols),
+            _ROW_CACHED_AT: stamp_now,
+            _ROW_EXPIRES_AT: expires_at,
+        }
+        await conn.upsert(table, stamped, index_elements=list(pk_columns))
 
 
 def _pk_where(table: Table, pk_columns: list[str], row: dict) -> Any:

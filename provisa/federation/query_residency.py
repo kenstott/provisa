@@ -218,3 +218,177 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
     if landed:
         log.info("query residency: landed %s before the read", landed)
     return landed
+
+
+async def row_materialized_tables_by_name(state: Any) -> dict[str, Any]:
+    """table_name -> registered Table, restricted to ``row_materialize=True`` tables (REQ-1865).
+    Used by ``pk_bounds.extract_pk_bounds`` to know which tables in a statement's AST are even
+    eligible for the row cache — the registry, not the config file, same posture as every other
+    residency lookup in this module (REQ-1674)."""
+    from provisa.federation.registry_view import registered_tables
+
+    return {
+        t.table_name: t
+        for t in await registered_tables(state)
+        if getattr(t, "row_materialize", False)
+    }
+
+
+async def _read_cached(
+    conn: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+) -> dict[tuple[Any, ...], datetime]:
+    """key -> ``_row_expires_at`` for every key of ``keys`` currently present in the row cache. A
+    key absent from the result is simply not cached yet (never an error)."""
+    from sqlalchemy import select, tuple_
+
+    if not keys:
+        return {}
+    pk_cols = [table.c[c] for c in pk_columns]
+    cond = pk_cols[0].in_([k[0] for k in keys]) if len(pk_cols) == 1 else tuple_(*pk_cols).in_(keys)
+    stmt = select(*pk_cols, table.c["_row_expires_at"]).where(cond)
+    result = await conn.execute_core(stmt)
+    out: dict[tuple[Any, ...], datetime] = {}
+    for row in result.fetchall():
+        expires_at = row[len(pk_columns)]
+        # SQLite (a supported store dialect) has no true timezone-aware column type -- a
+        # DateTime(timezone=True) round-trips as a naive value there. Every _row_expires_at this
+        # module ever writes is UTC (land_rows stamps datetime.now(UTC)), so a naive value read
+        # back is always UTC too; normalize it before comparing against an aware `now`.
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        out[tuple(row[: len(pk_columns)])] = expires_at
+    return out
+
+
+async def _tombstone_keys(
+    conn: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+) -> None:
+    from sqlalchemy import tuple_
+
+    if not keys:
+        return
+    pk_cols = [table.c[c] for c in pk_columns]
+    cond = pk_cols[0].in_([k[0] for k in keys]) if len(pk_cols) == 1 else tuple_(*pk_cols).in_(keys)
+    await conn.execute_core(table.delete().where(cond))
+
+
+async def ensure_rows_resident(
+    state: Any, pk_bounds: Iterable[Any], *, force: bool = False
+) -> list[tuple[str, str, int]]:
+    """Serve exactly the rows ``pk_bounds`` names from the row cache, fetching from source only the
+    missing/stale ones (REQ-1865). Returns (source_id, table_name, n_rows_fetched) per bound
+    touched. A no-op for a bound with no values (``extract_pk_bounds`` already filters those out) or
+    when the named table is not ``row_materialize`` (defensive: a stale/mismatched bound is just
+    skipped, since the compiler is the sole authority on which tables qualify). ``force=True`` (used
+    only by the CDC background-refresh caller, section 5/6b) treats every ALREADY-CACHED key in the
+    bound as stale regardless of its ``_row_expires_at``, without ever adding a key that isn't
+    already cached -- the one behavioral difference between a query-driven call and a CDC-driven
+    one."""
+    from contextlib import AsyncExitStack
+
+    from provisa.events.app_wiring import build_adapter_loaders
+    from provisa.events.row_lock import row_lock
+    from provisa.events.source_loader import SourceRowLoader
+    from provisa.federation import store_writer
+    from provisa.federation.backend import _env_store_schema
+    from provisa.federation.materialize_exec import build_row_cache_table, land_rows
+    from provisa.federation.registry_view import registered_sources, registered_tables
+    from provisa.federation.residency import resolve_landing_args
+    from sqlalchemy.schema import CreateSchema, CreateTable
+
+    bounds = [b for b in pk_bounds if b.values]
+    if not bounds:
+        return []
+    engine = getattr(state, "federation_engine", None)
+    backend = getattr(getattr(engine, "engine", None), "backend", None)
+    if engine is None or backend is None:
+        return []
+
+    sources_by_id = {s.id: s for s in await registered_sources(state)}
+    tables_by_name = {t.table_name: t for t in await registered_tables(state)}
+    loader = SourceRowLoader(engine, adapter_loaders=build_adapter_loaders(state, engine))
+    store_schema = _env_store_schema(engine.engine.materialize_store())
+    dsn = engine.engine.materialize_store()
+
+    now = datetime.now(UTC)
+    results: list[tuple[str, str, int]] = []
+
+    for bound in bounds:
+        table = tables_by_name.get(bound.table_name)
+        if table is None or not getattr(table, "row_materialize", False):
+            continue
+        source = sources_by_id.get(bound.source_id)
+        if source is None:
+            continue
+
+        args = resolve_landing_args(source, table, platform=backend.dialect)
+        resolved_ttl = table.cache_ttl if table.cache_ttl is not None else source.cache_ttl
+        if resolved_ttl is None:
+            raise ValueError(
+                f"row-materialize table {table.table_name!r}: no resolved cache_ttl at fetch "
+                "time (registration should have rejected this — REQ-1865)"
+            )
+
+        schema, name = backend.landing_target(
+            store_schema=store_schema,
+            source_id=source.id,
+            source_type=source.type,
+            schema_name=table.schema_name,
+            table_name=table.table_name,
+        )
+        node = _node(schema, name)
+        cache_table = build_row_cache_table(
+            schema, name, args.columns, bound.pk_columns, dialect_name=backend.dialect
+        )
+        pk_columns = list(bound.pk_columns)
+
+        async with store_writer.store_connection(dsn) as conn:
+            if schema and conn.capabilities.schemas:
+                await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+            await conn.execute_core(CreateTable(cache_table, if_not_exists=True))
+            cached = await _read_cached(conn, cache_table, pk_columns, list(bound.values))
+
+        stale_or_missing = [
+            key for key in bound.values if key not in cached or force or cached[key] < now
+        ]
+        if not stale_or_missing:
+            results.append((source.id, table.table_name, 0))
+            continue
+
+        async with AsyncExitStack() as held:
+            for key in stale_or_missing:
+                await held.enter_async_context(row_lock(node, key))
+
+            # Re-check after acquiring: a concurrent fetch for the same key(s) may have already
+            # refreshed them while this call waited on the lock (section 4's re-check rule).
+            async with store_writer.store_connection(dsn) as conn:
+                recheck = await _read_cached(conn, cache_table, pk_columns, stale_or_missing)
+            still_needed = [
+                k for k in stale_or_missing if force or k not in recheck or recheck[k] < now
+            ]
+            if not still_needed:
+                results.append((source.id, table.table_name, 0))
+                continue
+
+            fetched = await loader.load_keys(source, table, pk_columns, still_needed)
+            fetched_keys = {tuple(row.get(pk) for pk in pk_columns) for row in fetched}
+            # Tombstone: a requested key the source returned no row for (section 6a) -- deleted
+            # synchronously, inline, here, never deferred.
+            tombstoned = [k for k in still_needed if k not in fetched_keys]
+
+            async with store_writer.store_connection(dsn) as conn:
+                if fetched:
+                    await land_rows(
+                        conn,
+                        cache_table,
+                        pk_columns,
+                        fetched,
+                        resolved_cache_ttl=resolved_ttl,
+                        now=now,
+                    )
+                if tombstoned:
+                    await _tombstone_keys(conn, cache_table, pk_columns, tombstoned)
+
+            results.append((source.id, table.table_name, len(fetched)))
+
+    return results

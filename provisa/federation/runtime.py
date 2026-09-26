@@ -474,11 +474,31 @@ class EngineRuntime:  # REQ-825, REQ-840
         columns: list[tuple[str, str]],
         pk_columns: list[str],
         events: list,
+        row_materialize: bool = False,
+        node: str | None = None,
     ) -> dict[str, int]:
         """Apply CDC change events (insert/update -> upsert by PK, delete -> tombstone) to a landed
         table (REQ-1733) — delegated to the backend so an embedded single-connection store (DuckDB,
         REQ-989) writes through the engine's own connection instead of a second connection onto the
-        same file."""
+        same file.
+
+        REQ-1865: when the target table is ``row_materialize`` (``row_materialize=True``, ``node``
+        its registered ``schema.table``), this does NOT call the ordinary upsert-every-event path —
+        see design doc section 5. Instead it filters ``events`` to PKs already present in the row
+        cache and posts a background ``row_refresh`` work item for exactly those keys; a key not
+        already cached is dropped before any fetch is even considered."""
+        if row_materialize:
+            assert node is not None  # caller-side invariant: row_materialize implies a known node
+            from provisa.federation.row_materialize_cdc import handle_row_materialize_cdc
+
+            return await handle_row_materialize_cdc(
+                self._state,
+                schema=schema,
+                table=table,
+                pk_columns=pk_columns,
+                events=events,
+                node=node,
+            )
         return await self._backend.apply_cdc_events(
             self._state,
             schema=schema,

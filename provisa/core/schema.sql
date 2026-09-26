@@ -216,6 +216,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS dq_contract TEXT;  -- REQ-1443
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;  -- REQ-1634
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS row_materialize BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-1865
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_refresh_interval INTEGER NOT NULL DEFAULT 300;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_quiet DOUBLE PRECISION NOT NULL DEFAULT 0;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5;
@@ -1297,8 +1298,16 @@ CREATE TABLE IF NOT EXISTS events (
     payload      JSONB NOT NULL DEFAULT '{}',  -- cursor / changed rows / warn|error detail
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT events_event_type_check
-        CHECK (event_type IN ('delta','append','replace','warn','error','quarantine'))
+        CHECK (event_type IN ('delta','append','replace','warn','error','quarantine','row_refresh'))
 );
+
+-- REQ-1865: row-materialize CDC-triggered background refresh event, added to a table that predates it.
+DO $$ BEGIN
+    ALTER TABLE events DROP CONSTRAINT IF EXISTS events_event_type_check;
+    ALTER TABLE events ADD CONSTRAINT events_event_type_check
+        CHECK (event_type IN ('delta','append','replace','warn','error','quarantine','row_refresh'));
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- One row per (event x dependent node): the fanout work item, dispatched from the SQLGlot lineage
 -- and claimed exactly once. unclaimed -> claimed (heartbeat-leased) -> completed; a stale heartbeat

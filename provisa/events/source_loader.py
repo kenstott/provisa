@@ -143,6 +143,65 @@ class SourceRowLoader:
         result = await self._engine.execute_engine(f"SELECT * FROM {ref}")
         return [dict(zip(result.column_names, row)) for row in result.rows]
 
+    async def load_keys(
+        self, source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        """Fetch exactly the rows whose ``pk_columns`` match one of ``keys``, full row, from the
+        live source -- never a scan (REQ-1865, design doc section 3d).
+
+        For an engine-scannable relational/warehouse source this is a bounded
+        ``SELECT * FROM <physical> WHERE (pk...) IN (...)`` through the engine terminal, mirroring
+        ``load``'s own catalog/ref resolution. A query-API (``query_template``) source has no such
+        generic translation here; ``row_materialize=True`` on one is already rejected at
+        registration (``config_loader._validate_row_materialize``'s ``$keys`` check) unless its
+        template names a recognizable key-bound insertion point, so reaching this branch for such a
+        source is itself a config-validation gap, not a case to silently degrade for -- it raises
+        rather than falling back to a full ``load()`` per lookup, which would defeat the mechanism.
+        """
+        if not keys:
+            return []
+        stype = _source_type(source)
+        if stype in _ADAPTER_FETCH_ONLY:
+            raise UnsupportedSourceFetch(
+                f"source type {stype!r} (source {source.id!r}) has no keyed-fetch translation "
+                "wired -- row_materialize on a query-API table requires its query_template to "
+                "carry a recognizable key-bound insertion point substituted at fetch time; that "
+                "substitution is not implemented for this source type (REQ-1865)"
+            )
+        from provisa.compiler.naming import source_to_catalog
+
+        catalog = source_to_catalog(source.id)
+        ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
+        where = _pk_in_clause(pk_columns, keys)
+        result = await self._engine.execute_engine(f"SELECT * FROM {ref} WHERE {where}")
+        return [dict(zip(result.column_names, row)) for row in result.rows]
+
+
+def _sql_literal(value: Any) -> str:
+    """Inline-literal rendering for a PK value in a generated ``IN`` predicate — the same posture
+    ``load``'s own ``SELECT * FROM {ref}`` string-building already uses (no bind-param plumbing
+    through the engine terminal call). A declared PK is trusted (design constraint 6): no
+    additional escaping/validation beyond standard SQL-string quoting is performed here."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _pk_in_clause(pk_columns: list[str], keys: list[tuple[Any, ...]]) -> str:
+    """A ``col IN (...)`` (single-column PK) or ``(col1, col2) IN ((...), (...))`` (composite PK)
+    predicate naming exactly ``keys`` -- never a range, never unbounded."""
+    if len(pk_columns) == 1:
+        col = pk_columns[0]
+        values = ", ".join(_sql_literal(k[0]) for k in keys)
+        return f'"{col}" IN ({values})'
+    cols = ", ".join(f'"{c}"' for c in pk_columns)
+    tuples = ", ".join("(" + ", ".join(_sql_literal(v) for v in key) + ")" for key in keys)
+    return f"({cols}) IN ({tuples})"
+
 
 def make_openapi_loader(
     endpoints_by_table: dict[str, Any], sources_by_id: dict[str, Any]
