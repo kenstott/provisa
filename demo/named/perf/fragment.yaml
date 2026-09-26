@@ -87,10 +87,10 @@ tables:
   - {name: ship_date, data_type: date, visible_to: [org_admin, analyst]}
   - {name: delivery_date, data_type: date, visible_to: [org_admin, analyst]}
   - {name: channel, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: amount, data_type: number, visible_to: [org_admin, analyst]}
-  - {name: discount, data_type: number, visible_to: [org_admin, analyst]}
-  - {name: tax, data_type: number, visible_to: [org_admin, analyst]}
-  - {name: shipping_cost, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: amount, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: discount, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: tax, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: shipping_cost, data_type: numeric, visible_to: [org_admin, analyst]}
   - {name: currency, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: payment_method, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: payment_status, data_type: varchar, visible_to: [org_admin, analyst]}
@@ -118,11 +118,11 @@ tables:
   - {name: category, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: subcategory, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: quantity, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: unit_price, data_type: number, visible_to: [org_admin, analyst]}
-  - {name: discount_pct, data_type: number, visible_to: [org_admin, analyst]}
-  - {name: line_total, data_type: number, visible_to: [org_admin, analyst]}
-  - {name: cost_of_goods, data_type: number, visible_to: [org_admin, analyst]}
-  - {name: margin, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: unit_price, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: discount_pct, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: line_total, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: cost_of_goods, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: margin, data_type: numeric, visible_to: [org_admin, analyst]}
   - {name: supplier_id, data_type: integer, visible_to: [org_admin, analyst]}
   - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst]}
   - {name: backorder_flag, data_type: boolean, visible_to: [org_admin, analyst]}
@@ -158,7 +158,7 @@ tables:
   - {name: user_agent, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: response_time_ms, data_type: integer, visible_to: [org_admin, analyst]}
   - {name: status_code, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: revenue_impact, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: revenue_impact, data_type: numeric, visible_to: [org_admin, analyst]}
   - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst]}
   - {name: etl_batch_id, data_type: integer, visible_to: [org_admin, analyst]}
   - {name: ingested_at, data_type: timestamp, visible_to: [org_admin, analyst]}
@@ -178,8 +178,8 @@ tables:
   - {name: created_at, data_type: date, visible_to: [org_admin, analyst]}
   - {name: updated_at, data_type: date, visible_to: [org_admin, analyst]}
   - {name: customer_tier, data_type: varchar, path: customer_profile.tier, visible_to: [org_admin, analyst]}
-  - {name: customer_lifetime_value, data_type: number, path: customer_profile.lifetime_value, visible_to: [org_admin, analyst]}
-  - {name: payment_amount, data_type: number, path: payment.amount, visible_to: [org_admin, analyst]}
+  - {name: customer_lifetime_value, data_type: numeric, path: customer_profile.lifetime_value, visible_to: [org_admin, analyst]}
+  - {name: payment_amount, data_type: numeric, path: payment.amount, visible_to: [org_admin, analyst]}
   - {name: shipping_carrier, data_type: varchar, path: shipping.carrier, visible_to: [org_admin, analyst]}
 - source_id: bench-neo4j
   domain_id: perf-bench
@@ -205,10 +205,10 @@ tables:
   - {name: region, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: channel, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: status, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: amount, data_type: number, visible_to: [org_admin, analyst]}
-  - {name: discount, data_type: number, visible_to: [org_admin, analyst]}
-  - {name: tax, data_type: number, visible_to: [org_admin, analyst]}
-  - {name: shipping_cost, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: amount, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: discount, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: tax, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: shipping_cost, data_type: numeric, visible_to: [org_admin, analyst]}
   - {name: currency, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: payment_method, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: priority, data_type: varchar, visible_to: [org_admin, analyst]}
@@ -236,9 +236,9 @@ tables:
   - {name: region, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: industry, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: employees, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: lifetime_value, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: lifetime_value, data_type: numeric, visible_to: [org_admin, analyst]}
   - {name: signup_year, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: churn_risk, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: churn_risk, data_type: numeric, visible_to: [org_admin, analyst]}
   - {name: primary_contact_email, data_type: varchar, visible_to: [org_admin, analyst]}
 - source_id: bench-neo4j
   domain_id: perf-bench
@@ -257,8 +257,8 @@ tables:
   - {name: sku, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: name, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: category, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: unit_cost, data_type: number, visible_to: [org_admin, analyst]}
-  - {name: list_price, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: unit_cost, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: list_price, data_type: numeric, visible_to: [org_admin, analyst]}
   - {name: supplier_id, data_type: integer, visible_to: [org_admin, analyst]}
   - {name: active, data_type: boolean, visible_to: [org_admin, analyst]}
   - {name: launch_year, data_type: integer, visible_to: [org_admin, analyst]}
@@ -288,9 +288,44 @@ tables:
   - {name: order_id, data_type: integer, visible_to: [org_admin, analyst]}
   - {name: product_id, data_type: integer, visible_to: [org_admin, analyst]}
   - {name: quantity, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: unit_price, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: unit_price, data_type: numeric, visible_to: [org_admin, analyst]}
 
 relationships:
+# federated_join/large_federated_join's SQL variant (queries.py) runs a real
+# orders JOIN order_events JOIN order_docs ON order_id — V002 rejected it with
+# "no approved relationship exists" because these two cross-engine FKs were never registered
+# (the module docstring's "no relationships are registered" note was about why the GraphQL
+# variant uses multiple root fields instead of one nested selection, not a decision to leave the
+# SQL join unauthorized). Registering the real cross-engine relationships is the correct fix, not
+# a --relationship-guard=false bypass (V002 exists to mark approved traversal, not to be routed
+# around by benchmark code).
+- alias: HAS_EVENT
+  cardinality: one-to-many
+  id: bench-orders-events
+  source_table_id: orders
+  source_column: order_id
+  target_table_id: order_events
+  target_column: order_id
+- alias: HAS_DOC
+  # order_docs.order_id is genuinely 1:1 with orders.order_id — both are primary keys.
+  # cardinality now supports "one-to-one" directly (provisa/core/models.py Cardinality enum).
+  cardinality: one-to-one
+  id: bench-orders-docs
+  source_table_id: orders
+  source_column: order_id
+  target_table_id: order_docs
+  target_column: order_id
+- alias: HAS_ITEM
+  # cypher_single_source's MATCH (o:Orders)-[:HAS_ITEM]->(i:OrderItems) — same-source (Postgres)
+  # FK join, but V002 requires an approved relationship for ANY join regardless of whether it's
+  # cross-engine, so this needed registering too (confirmed live: "no approved relationship
+  # exists" for orders/order_items, same class of gap as HAS_EVENT/HAS_DOC above).
+  cardinality: one-to-many
+  id: bench-orders-items
+  source_table_id: orders
+  source_column: order_id
+  target_table_id: order_items
+  target_column: order_id
 # REQ-1586 junction-backed edges — cypher_cross_engine's MATCH (c:Customer)-[:PLACED]->(o:Order)
 # / -[:CONTAINS]->(p:Product) need PLACED/CONTAINS registered as Cypher relationship TYPES, not
 # just a pair of many-to-one FKs from the edge table to each node (confirmed live: the old

@@ -379,7 +379,24 @@ class BoltTransport(Transport):
         try:
             from neo4j import GraphDatabase
 
-            self._driver = GraphDatabase.driver(f"bolt://{host}:{port}", auth=None)
+            # provisa/bolt/session.py's no-auth branch (_resolve_user) offers EVERY compiled
+            # role as selectable and takes role_id = roles[0] — with auth=None (no principal at
+            # all) that's the first key of app_state.contexts in dict insertion order, NOT
+            # necessarily "org_admin". Confirmed live: an anonymous connection resolved to some
+            # other role lacking the perf-bench domain's Cypher label map, so `MATCH (o:Orders)`
+            # (the real, compiler-verified label — confirmed via /admin/graphql compileQuery)
+            # failed "Unknown label(s): ['Orders']" purely because of WHICH role the connection
+            # picked, nothing to do with the label text itself. Presenting "org_admin" as the
+            # basic-auth principal makes `_resolve_user`'s no-auth branch put it first
+            # (`ordered = [principal, ...] if principal in app_state.contexts`), matching every
+            # other transport's own explicit "org_admin" convention (pgwire's user=, gRPC's
+            # x-provisa-role header) — the server's own auth.provider stays "none" either way,
+            # this only selects which of the already-unauthenticated roles is used.
+            from neo4j import basic_auth
+
+            self._driver = GraphDatabase.driver(
+                f"bolt://{host}:{port}", auth=basic_auth("org_admin", "")
+            )
             self._driver.verify_connectivity()
         except Exception as exc:  # noqa: BLE001 - availability probe
             self._error = str(exc)
@@ -551,9 +568,15 @@ class GraphqlTransport(Transport):
 class FlightTransport(Transport):
     """Arrow Flight/gRPC — the columnar path backing the Python ADBC client and JDBC driver.
     Ticket schema verified against provisa/api/flight/server.py:481-530 (_do_get_inner): a JSON
-    ticket with a `query` key (SQL or GraphQL, auto-detected) and an optional `token` key. No
-    token is sent here — see HttpTransport's docstring for why `--demo perf` needs none; the
-    server's own `_authenticate(None)` path handles an absent credential the same way.
+    ticket with a `query` key (SQL or GraphQL, auto-detected), an optional `token` key, and a
+    `role` key. No token is sent here — see HttpTransport's docstring for why `--demo perf` needs
+    none; the server's own `_authenticate(None)` path handles an absent credential the same way.
+    But `role` IS required even so: `_authenticate(None)` returns identity=None for this unsecured
+    deployment, so do_get's `request["role"] = self._authorize_role(identity, request)` (which
+    would derive a role from the identity) never runs — a query ticket with no `role` then hits
+    do_get's own explicit `if not request.get("role"): raise "role is required"` guard. Every
+    other transport supplies "org_admin" the same way (pgwire's `user="org_admin"`, gRPC's
+    `x-provisa-role: org_admin` metadata) — Flight is no different, just via the ticket JSON.
     """
 
     name = "flight"
@@ -581,7 +604,7 @@ class FlightTransport(Transport):
             literal = f"'{v}'" if isinstance(v, str) else str(v)
             pg_sql = pg_sql.replace(f":{k}", literal)
         assert self._client is not None
-        ticket = self._fl.Ticket(json.dumps({"query": pg_sql}).encode())
+        ticket = self._fl.Ticket(json.dumps({"query": pg_sql, "role": "org_admin"}).encode())
         reader = self._client.do_get(ticket)
         estimator = _ByteEstimator()
         for chunk in reader:
