@@ -248,7 +248,7 @@ CREATE TABLE IF NOT EXISTS relationships (
     target_table_id  INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
     source_column    TEXT NOT NULL,
     target_column    TEXT NOT NULL,
-    cardinality      TEXT NOT NULL CHECK (cardinality IN ('many-to-one', 'one-to-many')),
+    cardinality      TEXT NOT NULL CHECK (cardinality IN ('many-to-one', 'one-to-many', 'one-to-one')),
     materialize      BOOLEAN NOT NULL DEFAULT FALSE,
     refresh_interval INTEGER NOT NULL DEFAULT 300,
     -- REQ-1132: opt this edge OUT of discovery — its target table's metadata is not exposed to a role

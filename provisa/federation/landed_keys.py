@@ -166,7 +166,8 @@ def relationship_edges(
             if not rel.get("target_column"):
                 skipped.append((rel_id, "relationship names no target column"))
                 continue
-            if rel.get("cardinality") == "many-to-one":
+            _cardinality = rel.get("cardinality")
+            if _cardinality in ("many-to-one", "one-to-one"):
                 edges.append(
                     ForeignKeyEdge(
                         _fk_name(rel_id),
@@ -176,7 +177,8 @@ def relationship_edges(
                         key_list(rel["target_column"]),
                     )
                 )
-            else:  # one-to-many: the "one" side is the source, the target holds the key
+            elif _cardinality == "one-to-many":
+                # the "one" side is the source, the target holds the key
                 edges.append(
                     ForeignKeyEdge(
                         _fk_name(rel_id),
@@ -186,6 +188,9 @@ def relationship_edges(
                         key_list(rel["source_column"]),
                     )
                 )
+            else:
+                skipped.append((rel_id, f"unhandled cardinality {_cardinality!r}"))
+                continue
         except ValueError as exc:
             skipped.append((rel_id, str(exc)))
     return edges, skipped

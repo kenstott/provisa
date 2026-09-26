@@ -295,7 +295,8 @@ relationships = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("source_table_id", "alias", name="relationships_source_alias_unique"),
     CheckConstraint(
-        "cardinality IN ('many-to-one', 'one-to-many')", name="relationships_cardinality_check"
+        "cardinality IN ('many-to-one', 'one-to-many', 'one-to-one')",
+        name="relationships_cardinality_check",
     ),
 )
 

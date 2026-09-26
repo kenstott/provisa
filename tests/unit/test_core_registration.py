@@ -232,7 +232,8 @@ class TestReq018FKCandidateInference:
 
 # ---------------------------------------------------------------------------
 # REQ-019 — Cross-source relationships defined manually with cardinality
-# Cardinality enum only supports many-to-one and one-to-many (no one-to-one).
+# Cardinality enum supports many-to-one, one-to-many, and one-to-one (restored
+# 2026-09-26 — see docs/arch/requirements.yaml REQ-019 amendment).
 # ---------------------------------------------------------------------------
 
 
@@ -261,11 +262,23 @@ class TestReq019CrossSourceRelationships:
         )
         assert r.cardinality == Cardinality.one_to_many
 
-    def test_cardinality_enum_has_only_two_values(self):
-        # REQ-019 — one-to-one must NOT exist in the cardinality enum
+    def test_cardinality_one_to_one_supported(self):
+        # REQ-019 (Amended 2026-09-26) — one-to-one is a genuine third cardinality value
+        r = Relationship(
+            id="rel-o2o",
+            source_table_id="orders",
+            target_table_id="order_docs",
+            source_column="order_id",
+            target_column="order_id",
+            cardinality=Cardinality.one_to_one,
+        )
+        assert r.cardinality == Cardinality.one_to_one
+
+    def test_cardinality_enum_has_exactly_three_values(self):
+        # REQ-019 (Amended 2026-09-26) — many-to-one, one-to-many, one-to-one; never
+        # many-to-many (that stays represented as two hops through a junction, REQ-1586).
         values = {c.value for c in Cardinality}
-        assert "one-to-one" not in values
-        assert len(values) == 2
+        assert values == {"many-to-one", "one-to-many", "one-to-one"}
 
 
 # ---------------------------------------------------------------------------

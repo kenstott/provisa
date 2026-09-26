@@ -485,7 +485,7 @@ def _add_standard_relationship_field(
         )
     else:
         field_name = rel_field_name(target.field_name, cardinality)
-    if cardinality == "many-to-one":
+    if cardinality in ("many-to-one", "one-to-one"):
         fields[field_name] = GraphQLField(
             target_type,
             deprecation_reason=rel.get("deprecation_reason"),  # REQ-1375
@@ -500,6 +500,8 @@ def _add_standard_relationship_field(
             ),
             deprecation_reason=rel.get("deprecation_reason"),  # REQ-1375
         )
+    else:
+        raise ValueError(f"unhandled relationship cardinality {cardinality!r} for {rel['id']!r}")
 
 
 def _make_object_type_fields(

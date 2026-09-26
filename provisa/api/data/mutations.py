@@ -82,15 +82,16 @@ async def _resolve_action_relationships(  # REQ-361, REQ-362
             for ns in sel.selection_set.selections:
                 if isinstance(ns, _FieldNode):
                     nested_cols.append(ns.name.value)
+        _is_singular = join_meta.cardinality in ("many-to-one", "one-to-one")
         if not nested_cols:
             for r in rows:
-                r[rel_field] = None if join_meta.cardinality == "many-to-one" else []
+                r[rel_field] = None if _is_singular else []
             continue
 
         src_values = list({r[src_col] for r in rows if r.get(src_col) is not None})
         if not src_values or not state.source_pools.has(tgt.source_id):
             for r in rows:
-                r[rel_field] = None if join_meta.cardinality == "many-to-one" else []
+                r[rel_field] = None if _is_singular else []
             continue
 
         select_cols = list({tgt_col} | set(nested_cols))
@@ -108,7 +109,20 @@ async def _resolve_action_relationships(  # REQ-361, REQ-362
             rel_index = {rr[tgt_col]: {k: rr[k] for k in nested_cols if k in rr} for rr in rel_rows}
             for r in rows:
                 r[rel_field] = rel_index.get(r.get(src_col))
-        else:
+        elif join_meta.cardinality == "one-to-one":
+            # Same physical shape as one-to-many (matched by the target's join key, which may
+            # collect several physical rows), but the field is singular: take the head of the
+            # matched rows, per spec, rather than assuming a single physical match.
+            from collections import defaultdict
+
+            rel_index_head: dict = defaultdict(list)
+            for rr in rel_rows:
+                child = {k: rr[k] for k in nested_cols if k in rr}
+                rel_index_head[rr[tgt_col]].append(child)
+            for r in rows:
+                matches = rel_index_head.get(r.get(src_col), [])
+                r[rel_field] = matches[0] if matches else None
+        elif join_meta.cardinality == "one-to-many":
             from collections import defaultdict
 
             rel_index_multi: dict = defaultdict(list)
@@ -117,6 +131,8 @@ async def _resolve_action_relationships(  # REQ-361, REQ-362
                 rel_index_multi[rr[tgt_col]].append(child)
             for r in rows:
                 r[rel_field] = rel_index_multi.get(r.get(src_col), [])
+        else:
+            raise ValueError(f"unhandled relationship cardinality {join_meta.cardinality!r}")
 
     return rows
 

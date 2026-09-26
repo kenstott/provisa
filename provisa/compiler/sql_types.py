@@ -103,7 +103,7 @@ class JoinMeta:
     source_column_type: str  # the engine data type (e.g. "integer", "varchar")
     target_column_type: str  # the engine data type on target side
     target: TableMeta
-    cardinality: str  # "many-to-one" or "one-to-many"
+    cardinality: str  # "many-to-one", "one-to-many", or "one-to-one"
     cypher_alias: str | None = None  # Cypher rel type override (e.g. OPENED_BY)
     disable_cypher: bool = False  # when True, suppress this edge in the Cypher graph
     source_constant: int | str | None = (
@@ -171,7 +171,7 @@ class ColumnRef:
     column: str  # physical column name
     field_name: str  # GraphQL field name
     nested_in: str | None  # relationship field name, or None for root
-    cardinality: str | None = None  # "many-to-one", "one-to-many", or None for root
+    cardinality: str | None = None  # "many-to-one", "one-to-many", "one-to-one", or None for root
     is_agg: bool = False  # True when emitted as ARRAY_AGG correlated subquery
 
 

@@ -405,6 +405,10 @@ def _build_rel_json_expr(
     """Build one correlated JSON subquery for a relationship.
 
     many-to-one  → (SELECT json_object(...) FROM ... WHERE ... LIMIT 1)
+    one-to-one   → same as many-to-one: the physical join is still a lookup against the
+        target's join key (which may itself match many physical rows on the target side
+        of the join, e.g. a reverse-FK lookup), so this takes the head of the matched rows
+        via LIMIT 1 and emits a single json_object, never a list.
     one-to-many  → (SELECT json_agg(json_object(...)) FROM ... WHERE ...)
     one-to-many with agg_limit →
         (SELECT json_agg(_t) FROM (SELECT json_object(...) AS _t FROM ... WHERE ... LIMIT n) _sub)
@@ -424,9 +428,9 @@ def _build_rel_json_expr(
     )
     jbo = f"json_object({', '.join(kv_pairs)})"
 
-    if cardinality == "many-to-one":
+    if cardinality in ("many-to-one", "one-to-one"):
         expr = f"(SELECT {jbo} FROM {from_clause} WHERE {where_expr} LIMIT 1)"
-    elif agg_limit is not None:
+    elif cardinality == "one-to-many" and agg_limit is not None:
         expr = (
             f"(SELECT json_agg(_t)"
             f" FROM (SELECT {jbo} AS _t"
@@ -434,8 +438,10 @@ def _build_rel_json_expr(
             f" WHERE {where_expr}"
             f" LIMIT {agg_limit}) _sub)"
         )
-    else:
+    elif cardinality == "one-to-many":
         expr = f"(SELECT json_agg({jbo}) FROM {from_clause} WHERE {where_expr})"
+    else:
+        raise ValueError(f"unhandled relationship cardinality {cardinality!r}")
 
     return expr, alias_counter
 
