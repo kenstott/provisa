@@ -81,10 +81,21 @@ QUERIES: list[Query] = [
         # WHERE clause, not an inline {order_id: $order_id} property-map filter: confirmed live
         # (pg_stat_activity, GCP perf run) that Provisa's Cypher-to-SQL translator silently drops
         # the inline map filter, executing an unfiltered full table scan instead of a point lookup.
+        # Label re-verified 2026-09-26 by querying the LIVE running server's own naming
+        # authority directly (GET /data/graph-schema on the perf-bench VM), not by reconstructing
+        # CypherLabelMap offline from config_loader.load_config — that offline reconstruction is
+        # what produced the previous (wrong) bare "Orders" guess here; it apparently diverges from
+        # the live registry-backed schema view. curl http://localhost:8001/data/graph-schema |
+        # jq shows node_labels entries with domain_label=PerfBench, table_label=Orders, full
+        # label "PerfBench:Orders" for this table — the value below is that response, verbatim.
+        # property_types for this node are also camelCase ("orderId"/"customerId", per
+        # provisa/compiler/naming.py::apply_cql_property) — the SQL column is snake_case but the
+        # Cypher property name is not; the graph-schema response's own "properties"/"property_types"
+        # keys are the authoritative spelling, used verbatim below (not the SQL column name).
         cypher="""
-            MATCH (o:orders)
-            WHERE o.order_id = $order_id
-            RETURN o.order_id AS order_id, o.customer_id AS customer_id, o.region AS region,
+            MATCH (o:PerfBench:Orders)
+            WHERE o.orderId = $order_id
+            RETURN o.orderId AS order_id, o.customerId AS customer_id, o.region AS region,
                    o.status AS status, o.amount AS amount
         """,
         # camelCase root field/args verified against schema_gen.py/schema_inputs.py — see module
@@ -232,11 +243,16 @@ QUERIES: list[Query] = [
             JOIN perf_bench.order_items i ON i.order_id = o.order_id
             WHERE o.customer_id = :customer_id
         """,
-        # See point_lookup's comment on the inline property-map-filter translator bug.
+        # See point_lookup's comment: re-verified against the LIVE /data/graph-schema endpoint,
+        # not reconstructed offline. Confirmed present: node_labels "PerfBench:Orders" and
+        # "PerfBench:OrderItems", relationship type "HAS_ITEM" (fragment.yaml's registered FK
+        # alias; V002 requires an approved relationship for ANY join, same-source or cross-engine).
+        # camelCase properties per the live /data/graph-schema naming authority (see point_lookup's
+        # comment) — "orderId"/"customerId", not the SQL column spelling.
         cypher="""
-            MATCH (o:orders)<-[:BELONGS_TO]-(i:order_items)
-            WHERE o.customer_id = $customer_id
-            RETURN o.order_id AS order_id, o.customer_id AS customer_id, i.sku AS sku, i.quantity AS quantity
+            MATCH (o:PerfBench:Orders)-[:HAS_ITEM]->(i:PerfBench:OrderItems)
+            WHERE o.customerId = $customer_id
+            RETURN o.orderId AS order_id, o.customerId AS customer_id, i.sku AS sku, i.quantity AS quantity
         """,
         params={"customer_id": 4242},
         iterations=20,
@@ -245,6 +261,12 @@ QUERIES: list[Query] = [
         id="cypher_cross_engine",
         category="cypher_vs_sql_cross_engine",
         description="Same multi-hop shape, but requires the Neo4j-materialized replica alongside Postgres",
+        # This join shape (node -> junction edge table -> node, on the junction's own two FK
+        # columns) is the only way a junction-backed relationship (PLACED/CONTAINS, REQ-1586) can
+        # be expressed in raw SQL at all. V002 previously had no rule recognizing it and rejected
+        # every predicate here with "no approved relationship exists" even though the identical
+        # relationship compiles to an approved Cypher type — a genuine validator gap, fixed in
+        # provisa/compiler/sql_validator.py (this SQL text itself did not need to change).
         sql="""
             SELECT c.customer_id, o.order_id, p.product_id
             FROM perf_bench.bench_placed_edge pl
@@ -254,11 +276,19 @@ QUERIES: list[Query] = [
             JOIN perf_bench.bench_product_node p ON p.product_id = ce.product_id
             WHERE c.customer_id = :customer_id
         """,
-        # See point_lookup's comment on the inline property-map-filter translator bug.
+        # See point_lookup's comment: re-verified against the LIVE /data/graph-schema endpoint.
+        # This query hits the Neo4j-backed graph nodes (bench_customer_node/bench_order_node/
+        # bench_product_node, per the sql= block above), whose registered labels are
+        # "PerfBench:Customer", "PerfBench:Order" (singular — bench_order_node's own alias, a
+        # DISTINCT node label from "PerfBench:Orders" plural, the separate relational
+        # perf_bench.orders table used by point_lookup/cypher_single_source above), and
+        # "PerfBench:Product"; relationship types "PLACED"/"CONTAINS" both confirmed present.
+        # camelCase properties per the live /data/graph-schema naming authority (see point_lookup's
+        # comment) — "customerId"/"orderId"/"productId", not the SQL column spelling.
         cypher="""
-            MATCH (c:Customer)-[:PLACED]->(o:Order)-[:CONTAINS]->(p:Product)
-            WHERE c.customer_id = $customer_id
-            RETURN c.customer_id AS customer_id, o.order_id AS order_id, p.product_id AS product_id
+            MATCH (c:PerfBench:Customer)-[:PLACED]->(o:PerfBench:Order)-[:CONTAINS]->(p:PerfBench:Product)
+            WHERE c.customerId = $customer_id
+            RETURN c.customerId AS customer_id, o.orderId AS order_id, p.productId AS product_id
         """,
         params={"customer_id": 4242},
         iterations=20,

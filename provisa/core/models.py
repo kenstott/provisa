@@ -137,8 +137,18 @@ class SourceType(str, Enum):
 
 
 class Cardinality(str, Enum):
+    # NOTE for future edits: there is no "many-to-many" member and there should never be one.
+    # A GraphQL relationship field here is strictly binary — a single object or a flat list,
+    # never a list of lists (see schema_gen._add_standard_relationship_field) — so an M:N
+    # relationship is represented as two of these binary hops through an associative/junction
+    # table (RelationshipInput.via_table/via_source_column/via_target_column, REQ-1586; see
+    # provisa/cypher/label_map.py's junction handling), not as a third cardinality value. Any
+    # report or introspection surface that wants to describe the pair as "many-to-many" to an
+    # end user should synthesize that label at the reporting layer from the two hops — it is
+    # not a value this enum, or any `cardinality ==` branch in the codebase, ever holds.
     many_to_one = "many-to-one"
     one_to_many = "one-to-many"
+    one_to_one = "one-to-one"
 
 
 _SAFE_ID_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")

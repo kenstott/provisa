@@ -1951,9 +1951,24 @@
   priority: SHOULD
   type: behavioral
   description: 'Cross-source relationships defined manually by steward with cardinality (many-to-one,
-    one-to-many). (Revised 2026-06-18: one-to-one removed — the relationship-field model is a strict binary,
-    single object vs list, so a 1:1 collapses to many-to-one; model a true 1:1 as a many-to-one in each
-    direction.)'
+    one-to-many). [SUPERSEDED by REQ-019, 2026-09-26 -- one-to-one restored as a genuine third
+    cardinality value; kept here for history; do not implement against it.] (Revised 2026-06-18:
+    one-to-one removed — the relationship-field model is a strict binary, single object vs list, so
+    a 1:1 collapses to many-to-one; model a true 1:1 as a many-to-one in each direction.) [END
+    SUPERSEDED BLOCK] (Amended 2026-09-26, ONE-TO-ONE RESTORED:) "one-to-one" is now a first-class
+    Cardinality value (provisa/core/models.py), distinct from many-to-one/one-to-many. The 2026-06-18
+    removal is reversed: forcing a genuine 1:1 (e.g. orders.order_id <-> order_docs.order_id, both
+    primary keys) into a many-to-one/one-to-many workaround was semantically lossy — it could not
+    express "exactly one, not zero-or-one-of-many" and misled schema/catalog/Cypher consumers that
+    infer PK-ness from cardinality. one-to-one produces the same SDL shape as many-to-one (singular
+    object field, not a list) and the same resolver shape (LIMIT 1 / head-of-matched-rows, per
+    provisa/compiler/sql_selection.py._build_rel_json_expr), but is looked up by the target-side join
+    key rather than assumed to already be the FK-pointed-to row. Every `cardinality ==`/`in (...)`
+    switch across the codebase (schema_gen, sql_selection, label_map, mutations, mcp/tools,
+    catalog_constraints, core/repositories/relationship, grpc/query_ir, grpc/proto_gen, cache/hot_tables,
+    federation/landed_keys) must handle it explicitly — an unrecognized cardinality value raises, never
+    silently defaults to many-to-one or one-to-many. Many-to-many is still NOT a Cardinality value: it
+    remains represented as two of these binary hops through a junction table (via_table_id, REQ-1586).'
   use_case: Manual cross-source relationship definitions let stewards federate data across different databases
     with full control.
   code:
@@ -1963,6 +1978,7 @@
   - tests/integration/test_introspect.py
   - tests/unit/test_core_registration.py
   - tests/unit/test_metadata_snapshot_builder.py
+  - tests/unit/test_one_to_one_cardinality.py
   since: 2026-01
   scenario: 'Given two tables in different registered sources
 

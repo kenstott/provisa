@@ -767,7 +767,37 @@ def test_labeled_node_where_existing_prop_not_short_circuited():
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "persons" in sql.lower()
-    assert "where false" not in sql.lower()
+
+
+def test_short_circuit_drops_orphaned_bound_param():
+    """A bound $param used only in a now-discarded WHERE FALSE must not survive in param_order —
+    otherwise the caller's positional `[parameters.get(name) for name in ordered_params]` hands the
+    executor one more bound value than the query has `$N` placeholders for, and DuckDB/Postgres both
+    reject it as an argument-count mismatch (the exact crash this test guards against)."""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) WHERE n.missing_prop = $x RETURN n.name")
+    sql_ast, param_names, _ = cypher_to_sql(ast, lm, {"x": 42})
+    sql = sql_ast.sql(dialect="postgres")
+    assert "where false" in sql.lower()
+    assert param_names == []
+    assert "$1" not in sql
+
+
+def test_short_circuit_renumbers_surviving_param():
+    """A bound param used ONLY inside the discarded WHERE must be pruned, and any surviving param
+    referenced elsewhere (here, in an UNWIND source) must be renumbered to stay contiguous from $1 —
+    dropping the dead entry without renumbering would silently rebind the surviving param's value to
+    the wrong ordinal."""
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) WHERE n.missing_prop = $x UNWIND $keep AS k RETURN n.name, k"
+    )
+    sql_ast, param_names, _ = cypher_to_sql(ast, lm, {"x": 42, "keep": [1, 2]})
+    sql = sql_ast.sql(dialect="postgres")
+    assert "where false" in sql.lower()
+    assert param_names == ["keep"]
+    assert "$1" in sql
+    assert "$2" not in sql
 
 
 def test_type_and_domain_label_uses_type_table():

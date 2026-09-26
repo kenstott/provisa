@@ -408,11 +408,18 @@ def _drop_junction_nodes(  # REQ-1586
 
 
 def _build_target_pk(ctx_typed: "CompilationContext") -> dict[str, str]:
-    """Return type_name → target_column for many-to-one joins only."""
+    """Return type_name → target_column for many-to-one/one-to-one joins only.
+
+    Both cardinalities resolve to a single target row keyed by target_column, which is
+    therefore the target table's actual PK (unlike one-to-many, where target_column is a FK).
+    """
     target_pk: dict[str, str] = {}
     for join_meta in ctx_typed.joins.values():
         tname = join_meta.target.type_name
-        if tname not in target_pk and getattr(join_meta, "cardinality", None) == "many-to-one":
+        if tname not in target_pk and getattr(join_meta, "cardinality", None) in (
+            "many-to-one",
+            "one-to-one",
+        ):
             target_pk[tname] = join_meta.target_column
     return target_pk
 
@@ -781,8 +788,8 @@ def _resolve_id_column(  # REQ-392, REQ-394
 
     Resolution order (first match wins):
     0. User-designated PK columns (first entry if multiple).
-    1. The column named in a JoinMeta.target_column — only set for many-to-one joins
-       where the target column is the actual PK of the target table.
+    1. The column named in a JoinMeta.target_column — only set for many-to-one/one-to-one
+       joins, where the target column is the actual PK of the target table.
     2. Exact match against known id names: id, _id, pk, oid.
     3. Single column ending in _id / _pk / _oid (unambiguous).
     4. Single column starting with id_.
@@ -793,7 +800,7 @@ def _resolve_id_column(  # REQ-392, REQ-394
     if user_pks:
         return user_pks[0]
 
-    # 1. Explicit join target — only populated for many-to-one cardinality, so
+    # 1. Explicit join target — only populated for many-to-one/one-to-one cardinality, so
     # target_column is the actual PK (not a FK from a one-to-many join).
     if type_name in target_pk:
         return target_pk[type_name]

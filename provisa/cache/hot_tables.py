@@ -389,15 +389,16 @@ def detect_hot_tables(  # REQ-236, REQ-237
 ) -> list[str]:
     """Determine which tables should be hot-cached.
 
-    Auto-detection: table is target of a many-to-one relationship.
+    Auto-detection: table is target of a many-to-one or one-to-one relationship (both
+    are looked up by the target's own PK, exactly like the many-to-one case).
     hot_overrides: table_name → True (force), False (opt out), None (auto).
 
     Returns list of table names to cache.
     """
-    # Find tables that are targets of many-to-one relationships
+    # Find tables that are targets of many-to-one/one-to-one relationships
     many_to_one_targets: set[str] = set()
     for rel in relationships:
-        if rel.get("cardinality") == "many-to-one":
+        if rel.get("cardinality") in ("many-to-one", "one-to-one"):
             many_to_one_targets.add(rel["target_table_id"])
 
     result: list[str] = []

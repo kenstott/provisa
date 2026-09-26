@@ -41,6 +41,13 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+def _strip_driver_suffix(url: str) -> str:
+    """A SQLAlchemy-style ``scheme+driver://`` URL, driver-agnostic for asyncpg's ``dsn=`` kwarg
+    — the same stripping ``PgBackend._new_runtime`` already does for its own psycopg2 connection."""
+    scheme, sep, rest = url.partition("://")
+    return f"{scheme.split('+', 1)[0]}://{rest}" if sep else url
+
+
 class EngineCapability(str, Enum):  # REQ-825, REQ-840
     """A transport an engine advertises. Consumer-side features gate on these — they are
     federation-engine-specific, not universally available (e.g. Arrow Flight is the engine feature)."""
@@ -273,18 +280,51 @@ class EngineRuntime:  # REQ-825, REQ-840
         (a complete, wire-framed DataRow message from the source, forwarded unmodified) instead of
         a decoded tuple. Only valid when ``source_pools.dialect_for(source_id)`` is postgres;
         callers catch :class:`PassthroughError` and fall back to :meth:`execute_native_stream`."""
+        from provisa.pgwire.pg_passthrough import open_passthrough
+
+        driver = source_pools.get(source_id)
+        return self._pg_passthrough_stream(
+            open_passthrough(driver._connect_kwargs, sql, list(params or []), result_formats),
+            loop=loop,
+        )
+
+    def execute_pg_engine_passthrough(
+        self,
+        sql: str,
+        params: list | None,
+        result_formats: list[int],
+        *,
+        loop: Any,
+    ) -> ResultStream:
+        """Like :meth:`execute_pg_passthrough`, but for the ENGINE route when the bound federation
+        engine ITSELF is Postgres (REQ-904, ``PROVISA_ENGINE=pg``) — pgwire and the engine both
+        speak real Postgres wire protocol end to end, so the same raw-DataRow-forwarding mechanism
+        applies; only the connect parameters differ (the engine's own DSN, not a SourcePool
+        driver's kwargs). Callers catch :class:`PassthroughError` and fall back to the normal
+        ``execute_engine_sync`` decode/re-encode path."""
+        from provisa.federation.engine import configured_engine_url
+        from provisa.pgwire.pg_passthrough import PassthroughError, open_passthrough
+
+        raw = configured_engine_url() or self.engine.default_materialize_store()
+        if raw is None:
+            raise PassthroughError("pg engine has no configured URL")
+        dsn = _strip_driver_suffix(raw)
+        return self._pg_passthrough_stream(
+            open_passthrough({"dsn": dsn}, sql, list(params or []), result_formats),
+            loop=loop,
+        )
+
+    def _pg_passthrough_stream(self, open_coro: Any, *, loop: Any) -> ResultStream:
+        """Drive an ``open_passthrough(...)`` coroutine's cursor into a lazily-drained
+        :class:`ResultStream` of :class:`RawDataRowBytes` batches — shared by both the DIRECT and
+        ENGINE passthrough entrypoints, which differ only in how they build the coroutine."""
         import asyncio
 
         from provisa.executor.result import StreamingQueryResult
         from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
         from buenavista.core import RawDataRowBytes
 
-        from provisa.pgwire.pg_passthrough import open_passthrough
-
-        driver = source_pools.get(source_id)
-        pr = asyncio.run_coroutine_threadsafe(
-            open_passthrough(driver, sql, list(params or []), result_formats), loop
-        ).result()
+        pr = asyncio.run_coroutine_threadsafe(open_coro, loop).result()
 
         released = [False]
 

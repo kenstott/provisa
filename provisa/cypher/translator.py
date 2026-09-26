@@ -464,7 +464,61 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 self._ast.limit = 1
 
         result = self._apply_order_limit(result, order_exprs)
+        result = self._reconcile_params_with_placeholders(result)
         return result, self._param_order, self._graph_vars
+
+    def _reconcile_params_with_placeholders(
+        self,
+        result: "exp.Select | exp.Union",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> "exp.Select | exp.Union":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Drop/renumber ``$N`` params no longer present in the final query.
+
+        The impossible-WHERE short-circuit (``_where_is_impossible_for_resolved_nodes``) replaces
+        the whole WHERE with a literal FALSE, discarding every ``$N`` placeholder that lived inside
+        it while ``self._param_order`` still lists the params those placeholders bound to. Left
+        alone, the caller's positional ``[parameters.get(name) for name in ordered_params]`` either
+        hands the executor more bound values than the query has placeholders for (crash) or, worse,
+        shifts every surviving param's value onto the wrong ``$N`` (silent corruption) — so both
+        pruning and renumbering must happen together, not just one or the other.
+        """
+
+        # $N surfaces as two distinct AST shapes depending which path built it: the text path
+        # (e.g. UNWIND's bare-$param source, kept off the dialect parser deliberately — see
+        # _build_unwind_expr) parses with no dialect, so `$1` becomes a plain identifier column;
+        # the AST/predicate path parses with dialect="postgres" via sqlglot's own grammar, so `$1`
+        # becomes a native Parameter(this=Literal(1)) node. Both must be found and rewritten.
+        def _ordinal_of(node: "exp.Expression") -> int | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            if isinstance(node, exp.Column):
+                ident = node.this
+                if isinstance(ident, exp.Identifier) and re.fullmatch(r"\$\d+", ident.this or ""):
+                    return int(ident.this[1:])
+            elif isinstance(node, exp.Parameter) and isinstance(node.this, exp.Literal):
+                try:
+                    return int(node.this.this)
+                except (TypeError, ValueError):
+                    return None
+            return None
+
+        placeholders: list[tuple["exp.Expression", int]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        for node in result.find_all(exp.Column, exp.Parameter):
+            ordinal = _ordinal_of(node)
+            if ordinal is not None:
+                placeholders.append((node, ordinal))
+
+        used_ordinals = {ordinal for _, ordinal in placeholders}
+        if not self._param_order or used_ordinals == set(range(1, len(self._param_order) + 1)):
+            return result  # common case: every registered param is still referenced, in order
+        kept_old_ordinals = sorted(used_ordinals)
+        renumber = {old: new for new, old in enumerate(kept_old_ordinals, start=1)}
+        for node, old in placeholders:
+            if old in renumber:
+                new = renumber[old]
+                if isinstance(node, exp.Column):
+                    node.this.set("this", f"${new}")
+                else:
+                    node.set("this", exp.Literal(this=new, is_string=False))
+        self._param_order = [self._param_order[old - 1] for old in kept_old_ordinals]
+        return result
 
     def _group_pipeline(
         self,
@@ -618,7 +672,19 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         return None
 
     def _rewrite_cypher_props(self, text: str) -> str:
-        """Rewrite var.camelProp → var.sql_alias using NodeMapping.properties."""
+        """Rewrite var.camelProp → var.sql_alias using NodeMapping.properties.
+
+        A property name that resolves on NO node type anywhere in the schema is not a legitimate
+        cross-type mismatch (that case is `_where_is_impossible_for_resolved_nodes`'s job, and is
+        left alone here) — it is an invalid name, most commonly a caller writing the raw physical
+        column name instead of the CQL name REQ-194 requires (`customer_id` instead of
+        `customerId`). Silently leaving such a reference unchanged used to let it slip through as
+        literal (coincidentally valid-looking) SQL text on the SELECT/RETURN side while the
+        separate WHERE-impossible check forced a bogus `WHERE FALSE` for the exact same reference on
+        the WHERE side — two silently-different behaviors for one caller bug, never surfaced as an
+        error (confirmed live, perf-bench duckdb rerun 2026-09-26). Raise loud and immediately
+        instead, at the one place this is actually detected.
+        """
 
         def _replace(m: re.Match) -> str:
             var, prop = m.group(1), m.group(2)
@@ -633,6 +699,12 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 sql_alias = info[1].properties.get(prop)
                 if sql_alias:
                     return f"{var}.{sql_alias}"
+                if not any(prop in other_nm.properties for other_nm in self._lm.nodes.values()):
+                    raise CypherTranslateError(
+                        f"Unknown property {prop!r} on {var} (type {info[1].type_name!r}) — "
+                        f"Cypher property names follow the configured GQL naming convention "
+                        f"(REQ-194); physical/raw column names are never valid here."
+                    )
             return m.group(0)
 
         return re.sub(r"\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\b", _replace, text)
@@ -860,6 +932,16 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         This check is skipped for domain-union / passthrough vars because those are already
         pruned per-branch inside _build_domain_union.
+
+        `nm.properties` is keyed by the CQL property name (GQL-convention-derived, e.g. camelCase
+        `customerId` under apollo_graphql — REQ-194: CQL derives from GQL, physical column names are
+        never client-facing in ANY query language, Cypher included). A WHERE reference written in the
+        raw physical casing (`customer_id`) is a caller bug, not a valid alternate spelling — it is
+        correctly treated as nonexistent here. (2026-09-26: do not "fix" this by also accepting
+        `nm.properties.values()` — that was tried and reverted; it would make the compiler silently
+        tolerate a naming-authority violation instead of surfacing it. The actual bug was
+        demo/named/perf/bench/queries.py's Cypher text using physical names; fix the query text via
+        the naming authority, never the compiler's naming enforcement.)
         """
         for var, (_, nm) in self._var_table.items():
             if nm is None:

@@ -132,6 +132,12 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         hot_sql = build_values_cte_sql(_exec_sql, table_name, entry, alias_name=_alias_name)
         physical_sql = state.federation_engine.transpile_physical(hot_sql)
         log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
+        # REQ-1661: the hot table itself is inlined as VALUES (never read from the engine), but
+        # any OTHER real table this query joins against still needs to be landed before the
+        # engine executes — this bypass never reaches _execute_plan's own ensure_resident call.
+        from provisa.federation.query_residency import ensure_resident
+
+        await ensure_resident(state, compiled.sources)
         _loop = asyncio.get_running_loop()
         _t0 = _time.perf_counter()
         engine_result = await _loop.run_in_executor(
@@ -227,6 +233,11 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         rewritten_sql = rewrite_all_from_cache(rewritten_sql, _join_rewrites)
     physical_sql = state.federation_engine.transpile_physical(rewritten_sql)
     log.warning("[API P2] physical_sql=%s", physical_sql[:500])
+    # REQ-1661: same reasoning as the hot-table bypass above — any real (non-inlined) table this
+    # query joins against must be landed before the engine executes.
+    from provisa.federation.query_residency import ensure_resident
+
+    await ensure_resident(state, compiled.sources)
     _t_phase2 = _time.perf_counter()
     engine_result = await _loop.run_in_executor(
         None, lambda: _engine.execute_engine_sync(physical_sql, exec_params)
@@ -389,6 +400,11 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
 
     physical_sql = state.federation_engine.transpile_physical(final_sql)
 
+    # REQ-1661: same reasoning as _execute_api_source's two ensure_resident calls above — any
+    # real (non-inlined) table this query joins against must be landed before the engine executes.
+    from provisa.federation.query_residency import ensure_resident
+
+    await ensure_resident(state, compiled.sources)
     _loop = asyncio.get_running_loop()
     _t2 = _time.perf_counter()
     engine_result = await _loop.run_in_executor(

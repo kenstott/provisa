@@ -184,11 +184,11 @@ def grpc_table_to_aggregate_graphql_text(
 
 
 def grpc_relation_scalars(ctx: Any, type_name: str, rel_field: str) -> list[str]:
-    """Scalar column names of the related table for a many-to-one relationship field on
-    ``type_name`` (REQ-1405), sourced from ``ctx.joins`` rather than GraphQL schema
+    """Scalar column names of the related table for a many-to-one/one-to-one relationship field
+    on ``type_name`` (REQ-1405), sourced from ``ctx.joins`` rather than GraphQL schema
     introspection — query_ir has no schema, only the compiler context every transport shares."""
     join_meta = ctx.joins.get((type_name, rel_field))
-    if join_meta is None or join_meta.cardinality != "many-to-one":
+    if join_meta is None or join_meta.cardinality not in ("many-to-one", "one-to-one"):
         return []
     return [c for c, _t in ctx.aggregate_columns.get(join_meta.target.table_id, [])]
 
@@ -197,14 +197,14 @@ def _insert_include_path(
     ctx: Any, table_id: int, type_name: str, tree: dict[str, Any], segments: list[str]
 ) -> None:
     """Insert one dot-path's segments into a nested selection tree, recursing through
-    many-to-one relations at any depth (REQ-1405/REQ-1408). A leaf ``None`` value marks a
-    selected scalar; a ``dict`` value marks a relation with its own nested selection. A
-    relation segment with no remaining scalar/relation descendants is pruned so an unresolvable
-    tail (unknown column, non-many-to-one hop) drops the whole entry rather than emitting an
-    empty ``{ }`` block."""
+    single-object (many-to-one/one-to-one) relations at any depth (REQ-1405/REQ-1408). A leaf
+    ``None`` value marks a selected scalar; a ``dict`` value marks a relation with its own nested
+    selection. A relation segment with no remaining scalar/relation descendants is pruned so an
+    unresolvable tail (unknown column, one-to-many hop) drops the whole entry rather than emitting
+    an empty ``{ }`` block."""
     head, *rest = segments
     join_meta = ctx.joins.get((type_name, head))
-    if join_meta is not None and join_meta.cardinality == "many-to-one":
+    if join_meta is not None and join_meta.cardinality in ("many-to-one", "one-to-one"):
         child = tree.setdefault(head, {})
         if rest:
             _insert_include_path(

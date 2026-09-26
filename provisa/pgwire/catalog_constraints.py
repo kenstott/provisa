@@ -211,7 +211,7 @@ def _build_fk_constraint_rows(
     for (src_type, join_field), jm in ctx.joins.items():
         if not jm.target_column:
             continue
-        if jm.cardinality != "many-to-one":
+        if jm.cardinality not in ("many-to-one", "one-to-one"):
             continue
         src_tm = next((tm for tm in ctx.tables.values() if tm.type_name == src_type), None)
         if src_tm is None:

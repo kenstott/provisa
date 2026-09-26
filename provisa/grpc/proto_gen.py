@@ -287,14 +287,16 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
                 if target is None or target.field_name in used_fields:
                     continue
                 used_fields.add(target.field_name)
-                if rel["cardinality"] == "many-to-one":
+                if rel["cardinality"] in ("many-to-one", "one-to-one"):
                     lines.append(f"  {target.type_name} {target.field_name} = {field_num};")
                 elif rel["cardinality"] == "one-to-many":
                     lines.append(
                         f"  repeated {target.type_name} {target.field_name} = {field_num};"
                     )
                 else:
-                    continue
+                    raise ValueError(
+                        f"unhandled relationship cardinality {rel['cardinality']!r} for {rel['id']!r}"
+                    )
                 field_num += 1
 
         lines.append("}")

@@ -8,24 +8,27 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Raw-byte DataRow passthrough for a DIRECT route whose source is itself Postgres.
+"""Raw-byte DataRow passthrough for a pgwire route whose physical destination is itself Postgres —
+either a DIRECT-route source (``PostgreSQLDriver``) or the ENGINE route when the bound federation
+engine itself is Postgres (``PgFederationRuntime`` / REQ-904's ``PROVISA_ENGINE=pg``). Same wire
+mechanism either way: only the connect parameters differ (a ``SourcePool`` driver's stashed
+``_connect_kwargs`` vs. the pg engine's own ``engine_dsn``), and the dispatch decision of *when* to
+use it lives entirely in ``provisa/pgwire/server.py`` (and Flight's counterpart) — never here.
 
 Masking/RLS are always baked into ``governed.sql``'s text before this ever runs (see
 ``provisa/compiler/mask_inject.py``/``stage2.py``) — there is no post-execution, per-row Python
-transform anywhere in the pipeline. When the physical source is genuinely Postgres, the DataRow
-bytes it sends back are therefore already the exact final answer: decoding them into
+transform anywhere in the pipeline. When the physical destination is genuinely Postgres, the
+DataRow bytes it sends back are therefore already the exact final answer: decoding them into
 ``asyncpg.Record`` objects and re-encoding them into pgwire's own DataRow format
 (``send_data_rows``) is pure overhead. This module skips that round trip — it relays the source's
 own DataRow message bytes straight to the downstream pgwire client, unmodified.
 
-No new authentication code: ``PostgreSQLDriver.connect()`` already stashes the exact
-``asyncpg.connect()`` kwargs it used to build its pooled connection (``_connect_kwargs``); this
-module reuses them to open ONE dedicated connection via the same call, outside any pool. That
-connection's asyncio transport is paused (stopping asyncpg's own Cython protocol from processing
-further bytes) and its raw socket is used directly — the connection is never returned to
-``PostgreSQLDriver``'s shared pool afterward (bypassing asyncpg's own row-decoding for one query
-and then handing the connection back to normal asyncpg use risks desyncing its cached
-transaction/connection state), so there is no cross-query state risk to reason about."""
+No new authentication code: this module always connects with the SAME parameters (kwargs or a
+DSN) the caller's own existing connection was already built from — never a new credential path.
+Two short-lived dedicated connections are opened per query (one normal, to read real column
+metadata via ``conn.prepare()``; one paused-transport, driven raw for the actual fetch) — neither
+is ever pooled or handed back to shared use, so bypassing asyncpg's own row-decoding for the raw
+one carries no cross-query state risk to reason about."""
 
 from __future__ import annotations
 
@@ -36,8 +39,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import asyncio
     import socket as socket_module
-
-    from provisa.executor.drivers.postgresql import PostgreSQLDriver
 
 _INT16 = struct.Struct("!h")
 _INT32 = struct.Struct("!i")
@@ -66,18 +67,19 @@ class RawPgConnection:
         await self._asyncpg_conn.close()
 
 
-async def open_raw_connection(driver: "PostgreSQLDriver") -> RawPgConnection:
-    """Open a fresh, dedicated connection using the exact kwargs ``driver``'s own pool was built
-    with (real ``asyncpg.connect()`` — the same auth/SCRAM handling, unchanged), then pause its
-    transport so this module can read/write its raw socket directly instead of going through
-    asyncpg's own Cython protocol."""
+async def open_raw_connection(connect_kwargs: dict[str, Any]) -> RawPgConnection:
+    """Open a fresh, dedicated connection using the exact parameters the caller's own existing
+    connection (a ``SourcePool`` driver's pool, or the pg federation engine's ``engine_dsn``) was
+    already built from (real ``asyncpg.connect()`` — the same auth/SCRAM handling, unchanged),
+    then pause its transport so this module can read/write its raw socket directly instead of
+    going through asyncpg's own Cython protocol."""
     import asyncio
 
     import asyncpg
 
-    if not driver._connect_kwargs:
-        raise PassthroughError("driver has no stashed connect kwargs (connect() never called)")
-    conn = await asyncpg.connect(**driver._connect_kwargs)
+    if not connect_kwargs:
+        raise PassthroughError("no connect parameters given (connect() never called)")
+    conn = await asyncpg.connect(**connect_kwargs)
     transport = conn._protocol.transport
     transport.pause_reading()
     sock = transport.get_extra_info("socket")
@@ -115,24 +117,31 @@ def _column_types_are_passthrough_safe(column_types: list[str]) -> bool:
 
 
 async def open_passthrough(
-    driver: "PostgreSQLDriver", sql: str, params: list, result_formats: list[int]
+    connect_kwargs: dict[str, Any], sql: str, params: list, result_formats: list[int]
 ) -> PassthroughResult:
-    """Get real column metadata from the driver's existing pool (the same ``conn.prepare(sql)``
-    call ``_PgDirectStream._open`` already makes — a short-lived pooled acquire, released before
-    this returns), then open a dedicated raw connection for the actual row fetch."""
-    pool = driver._pool
-    if pool is None:
-        raise PassthroughError("driver has no pool (connect() never called)")
-    async with pool.acquire(timeout=driver._ACQUIRE_TIMEOUT) as conn:
+    """Get real column metadata from a short-lived NORMAL connection (the same
+    ``conn.prepare(sql)`` call ``_PgDirectStream._open`` already makes for the DIRECT route —
+    closed right after, never pooled), then open a second, dedicated raw connection for the
+    actual row fetch. ``connect_kwargs`` is whatever the caller's own connection was already
+    built from — a ``SourcePool`` driver's stashed kwargs for DIRECT, or the pg federation
+    engine's own DSN (as ``{"dsn": engine_dsn}``) for the ENGINE route."""
+    import asyncpg
+
+    if not connect_kwargs:
+        raise PassthroughError("no connect parameters given (connect() never called)")
+    conn = await asyncpg.connect(**connect_kwargs)
+    try:
         stmt = await conn.prepare(sql)
         attrs = stmt.get_attributes()
         column_names = [a.name for a in attrs]
         column_types = [a.type.name for a in attrs]
+    finally:
+        await conn.close()
 
     if not _column_types_are_passthrough_safe(column_types):
         raise PassthroughError(f"unrecognized column type(s) in {column_types!r}")
 
-    raw = await open_raw_connection(driver)
+    raw = await open_raw_connection(connect_kwargs)
     cursor = PassthroughCursor(raw, sql, params, result_formats, len(column_names))
     return PassthroughResult(column_names, column_types, cursor)
 
@@ -143,8 +152,8 @@ def _write_cstring(buf: bytearray, s: str) -> None:
 
 
 def _encode_text_param(
-    value: object,
-) -> bytes:  # object-ok: a query param can be any bind value (str/int/float/Decimal/datetime/...); only bool needs special-casing, everything else round-trips through str()
+    value: object,  # object-ok: a query param can be any bind value (str/int/float/Decimal/datetime/...); only bool needs special-casing, everything else round-trips through str()
+) -> bytes:
     """Every parameter is sent as a text-format value (format code 0) — Postgres parses/casts
     text-format parameters against the statement's own inferred types, so this needs no
     per-type/OID-specific binary encoding at all. ``None`` (a SQL NULL) is the wire protocol's own

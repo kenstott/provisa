@@ -789,6 +789,13 @@ class ProvisaFlightServer(
         require_governed_plan(
             plan
         )  # REQ-1176: verify at the last moment, before the engine executes
+        # REQ-1661: this govern-then-execute terminal never reaches _execute_plan, so its own
+        # ensure_resident call is the ONLY place a MATERIALIZED source this plan reads gets landed
+        # before the engine executes — mirrors the identical ENGINE-route bypass fixes in
+        # _do_get_sql_governed (this file) and provisa/pgwire/server.py.
+        from provisa.federation.query_residency import ensure_resident
+
+        self._run_on_loop(ensure_resident(self._state, plan.sources))
 
         def _run() -> list[dict[str, object]]:
             # On a worker thread — go through the sync engine terminal, not a raw cursor.
@@ -922,6 +929,15 @@ class ProvisaFlightServer(
         try:
             if plan.route == Route.ENGINE:
                 assert plan.physical_sql is not None
+                # REQ-1661: this govern-then-stream terminal never reaches _execute_plan (see the
+                # comment above), so its own ensure_resident call is the ONLY place a MATERIALIZED
+                # source this plan reads gets landed before the engine executes — mirrors pgwire's
+                # identical ENGINE-route bypass (provisa/pgwire/server.py). Confirmed live: a
+                # cross-engine federated_join touching a never-yet-landed ClickHouse table failed
+                # "Binder Error: Catalog ... does not exist" on both transports on a fresh boot.
+                from provisa.federation.query_residency import ensure_resident
+
+                self._run_on_loop(ensure_resident(self._state, plan.sources))
                 # Streamed Arrow Flight is an advertised, engine-specific transport (REQ-825, REQ-145,
                 # REQ-1214): drain the engine's LAZY record-batch terminal so a large user result set
                 # never fully materializes on this transport (bounded by one batch, not total size).
@@ -1013,6 +1029,12 @@ class ProvisaFlightServer(
                 return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
             assert plan.physical_sql is not None
+            # REQ-1661: this govern-then-stream terminal never reaches _execute_plan, so its own
+            # ensure_resident call is the ONLY place a MATERIALIZED source this plan reads gets
+            # landed before the engine executes — mirrors _do_get_sql_governed/_do_get_cypher.
+            from provisa.federation.query_residency import ensure_resident
+
+            self._run_on_loop(ensure_resident(self._state, plan.sources))
             # Streamed Arrow Flight is an advertised, engine-specific transport (REQ-825, REQ-145).
             try:
                 arrow_schema, batch_gen = self._state.federation_engine.execute_engine_stream(

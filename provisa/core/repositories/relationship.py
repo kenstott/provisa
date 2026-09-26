@@ -142,11 +142,19 @@ async def upsert(
         )
 
     # Mark target_column as PK (or AK if another PK already exists) on target table.
-    # Only applies for many-to-one: target_column is the PK of the target table.
+    # Applies to many-to-one and one-to-one: target_column is the PK of the target table.
     # For one-to-many, target_column is a FK in the target — do not mark as PK.
     from provisa.core.models import Cardinality
 
-    if target_tbl_id and rel.target_column and rel.cardinality == Cardinality.many_to_one:
+    if (
+        target_tbl_id
+        and rel.target_column
+        and rel.cardinality
+        in (
+            Cardinality.many_to_one,
+            Cardinality.one_to_one,
+        )
+    ):
         result = await conn.execute_core(
             select(func.count())
             .select_from(table_columns)

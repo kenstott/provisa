@@ -86,6 +86,15 @@ def governed_table_scan_stream(
     try:
         if plan.route == Route.ENGINE:
             assert plan.physical_sql is not None
+            # REQ-1661: this streaming terminal never reaches _execute_plan (see module docstring
+            # and _finalize_scan_audit's own comment), so its own ensure_resident call is the ONLY
+            # place a MATERIALIZED source this plan reads gets landed before the engine executes —
+            # mirrors the identical fixes in provisa/pgwire/server.py and provisa/api/flight/server.py.
+            from provisa.federation.query_residency import ensure_resident
+
+            asyncio.run_coroutine_threadsafe(
+                ensure_resident(state, plan.sources), main_loop
+            ).result()
             schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
             _finalize_scan_audit(plan, 200, main_loop, state)
             return schema, batch_gen
@@ -154,6 +163,12 @@ def governed_table_scan_schema(
     plan = _plan_for_scan(state, main_loop, sql, role_id)
     if plan.route == Route.ENGINE:
         assert plan.physical_sql is not None
+        # REQ-1661: a schema-only probe still binds the query against the engine (DuckDB's Binder
+        # Error fires at bind/compile time, before any row is fetched), so a MATERIALIZED source
+        # not yet landed fails here identically to the streaming path above — same fix required.
+        from provisa.federation.query_residency import ensure_resident
+
+        asyncio.run_coroutine_threadsafe(ensure_resident(state, plan.sources), main_loop).result()
         schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
         close = getattr(batch_gen, "close", None)
         if close is not None:

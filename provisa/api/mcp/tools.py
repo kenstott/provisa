@@ -202,7 +202,10 @@ def _foreign_keys(state: Any, role: str, schema: str, table: str) -> list[dict]:
     type_name = getattr(tmeta, "type_name", "")
     fks: list[dict] = []
     for (src_type, _field), jm in getattr(ctx, "joins", {}).items():
-        if src_type != type_name or getattr(jm, "cardinality", "") != "many-to-one":
+        if src_type != type_name or getattr(jm, "cardinality", "") not in (
+            "many-to-one",
+            "one-to-one",
+        ):
             continue
         target = jm.target
         fks.append(

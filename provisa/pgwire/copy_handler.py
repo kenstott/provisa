@@ -341,7 +341,7 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
 
         try:
             if plan.route == Route.ENGINE:
-                data_bytes, nrows = self._exec_engine_flight(plan, fmt)
+                data_bytes, nrows = self._exec_engine_flight(plan, fmt, loop)
             else:
                 data_bytes, nrows = self._exec_direct_plan(plan, loop, fmt)
         except Exception:
@@ -367,8 +367,11 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
             _srv._run_with_org(org_id, finalize_audit(plan, status_code)), loop
         ).result(timeout=30)
 
-    def _exec_engine_flight(self, plan: _Plan, fmt: str) -> tuple[bytes, int]:
+    def _exec_engine_flight(
+        self, plan: _Plan, fmt: str, loop: asyncio.AbstractEventLoop
+    ) -> tuple[bytes, int]:
         from provisa.api.app import state
+        from provisa.federation.query_residency import ensure_resident
         from provisa.pgwire._pipeline import require_governed_plan
 
         if plan.physical_sql is None:
@@ -376,6 +379,14 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         require_governed_plan(
             plan
         )  # REQ-1176: verify at the last moment, before the engine executes
+        # REQ-1661: COPY drains the engine terminal here and never reaches _execute_plan (see
+        # _finalize_audit's own comment above), so its own ensure_resident call is the ONLY place
+        # a MATERIALIZED source this plan reads gets landed before the engine executes — mirrors
+        # the identical ENGINE-route bypass fixes elsewhere (pgwire/server.py, api/flight/server.py,
+        # api/airport/query.py).
+        asyncio.run_coroutine_threadsafe(ensure_resident(state, plan.sources), loop).result(
+            timeout=120
+        )
         # Arrow Flight is an advertised, engine-specific transport (REQ-825): route through the
         # bound engine, which fails closed if the engine lacks ARROW or the proxy is unconfigured.
         table = state.federation_engine.execute_engine_arrow(plan.physical_sql, plan.exec_params)
