@@ -190,6 +190,12 @@ tables:
   # matches a hand-authored Cypher query's literal label text.
   alias: Order
   description: One row per Order node
+  # REQ-1865: query-driven, row-level cache instead of a full-table land for a keyed lookup --
+  # order_id is projected by this template's own RETURN clause (config_loader._validate_row_materialize
+  # checks this at registration), so a point lookup wraps this query with a filter instead of
+  # materializing every Order node.
+  row_materialize: true
+  cache_ttl: 300
   query_template: >-
     MATCH (o:Order)
     RETURN o.order_id AS order_id, o.customer_id AS customer_id, o.region AS region,
@@ -222,6 +228,8 @@ tables:
   table: bench_customer_node
   alias: Customer
   description: One row per Customer node
+  row_materialize: true  # REQ-1865 -- see bench_order_node's comment
+  cache_ttl: 300
   query_template: >-
     MATCH (c:Customer)
     RETURN c.customer_id AS customer_id, c.name AS name, c.tier AS tier, c.region AS region,
@@ -246,6 +254,8 @@ tables:
   table: bench_product_node
   alias: Product
   description: One row per Product node
+  row_materialize: true  # REQ-1865 -- see bench_order_node's comment
+  cache_ttl: 300
   query_template: >-
     MATCH (p:Product)
     RETURN p.product_id AS product_id, p.sku AS sku, p.name AS name, p.category AS category,
