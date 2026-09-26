@@ -164,7 +164,10 @@ tables:
   - {name: ingested_at, data_type: timestamp, visible_to: [org_admin, analyst]}
 - source_id: bench-mongodb
   domain_id: perf-bench
-  schema: public
+  # Matches this source's own `database: provisa_bench` (line ~55) — confirmed live (DuckDB's
+  # attach error suggested "_src_bench-mongodb.provisa_bench.order_docs"), same copy-paste
+  # mistake as bench-clickhouse's schema field (see that entry's comment).
+  schema: provisa_bench
   table: order_docs
   description: Sales dept case-file doc-store orders — top-level + flattened nested fields, see generate_mongo.py
   columns:
@@ -182,6 +185,10 @@ tables:
   domain_id: perf-bench
   schema: neo4j
   table: bench_order_node
+  # Matches Neo4j's own node label (generate_neo4j.py's seed), needed for cypher_cross_engine's
+  # MATCH (o:Order) — the auto-derived label from the table's own name (bench_order_node) never
+  # matches a hand-authored Cypher query's literal label text.
+  alias: Order
   description: One row per Order node
   query_template: >-
     MATCH (o:Order)
@@ -213,6 +220,7 @@ tables:
   domain_id: perf-bench
   schema: neo4j
   table: bench_customer_node
+  alias: Customer
   description: One row per Customer node
   query_template: >-
     MATCH (c:Customer)
@@ -236,6 +244,7 @@ tables:
   domain_id: perf-bench
   schema: neo4j
   table: bench_product_node
+  alias: Product
   description: One row per Product node
   query_template: >-
     MATCH (p:Product)
@@ -282,27 +291,39 @@ tables:
   - {name: unit_price, data_type: number, visible_to: [org_admin, analyst]}
 
 relationships:
-- id: bench-placed-to-customer
-  source_table_id: bench_placed_edge
+# REQ-1586 junction-backed edges — cypher_cross_engine's MATCH (c:Customer)-[:PLACED]->(o:Order)
+# / -[:CONTAINS]->(p:Product) need PLACED/CONTAINS registered as Cypher relationship TYPES, not
+# just a pair of many-to-one FKs from the edge table to each node (confirmed live: the old
+# many-to-one-per-side shape left cypher_router's label_map with no "PLACED"/"CONTAINS" alias at
+# all, so any query naming them 403'd with "Unregistered relationship type(s)"). via_label_source:
+# fixed + alias names the edge type directly, mirroring config/provisa-install.yaml's
+# pets-treated-by-vets (the same two-different-entities junction shape).
+# table_repo.find_by_table_name resolves a "virtual name": alias when the table has one, else
+# table_name (confirmed live) — bench_customer_node/bench_order_node/bench_product_node now have
+# aliases (Customer/Order/Product, above), so source_table_id/target_table_id here must reference
+# THOSE aliases, not the raw table_name — the raw name silently no longer resolves once a table
+# has an alias, and rel_repo.upsert's ValueError on an unresolved reference is swallowed by
+# _upsert_relationships ("retried after source registration" — never happens for static config),
+# so this failed with no visible error at all: label_map simply never got PLACED/CONTAINS.
+- alias: PLACED
+  cardinality: one-to-many
+  id: bench-placed
+  source_table_id: Customer
   source_column: customer_id
-  target_table_id: bench_customer_node
-  target_column: customer_id
-  cardinality: many-to-one
-- id: bench-placed-to-order
-  source_table_id: bench_placed_edge
-  source_column: order_id
-  target_table_id: bench_order_node
+  target_table_id: Order
   target_column: order_id
-  cardinality: many-to-one
-- id: bench-contains-to-order
-  source_table_id: bench_contains_edge
+  via_table: bench_placed_edge
+  via_source_column: customer_id
+  via_target_column: order_id
+  via_label_source: fixed
+- alias: CONTAINS
+  cardinality: one-to-many
+  id: bench-contains
+  source_table_id: Order
   source_column: order_id
-  target_table_id: bench_order_node
-  target_column: order_id
-  cardinality: many-to-one
-- id: bench-contains-to-product
-  source_table_id: bench_contains_edge
-  source_column: product_id
-  target_table_id: bench_product_node
+  target_table_id: Product
   target_column: product_id
-  cardinality: many-to-one
+  via_table: bench_contains_edge
+  via_source_column: order_id
+  via_target_column: product_id
+  via_label_source: fixed

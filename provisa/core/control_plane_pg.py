@@ -95,7 +95,43 @@ def start(datadir: str, init_sql: str | None = None) -> tuple[str, int]:
 
 
 def stop(datadir: str) -> None:
-    _server(datadir).cleanup()
+    """Actually stop the postgres process running against ``datadir``.
+
+    NOT ``_server(datadir).cleanup()`` — this module always constructs with ``cleanup_mode=None``
+    (see ``start``'s own docstring: the instance is deliberately PERSISTENT across process exits),
+    and pgserver's own ``_cleanup()`` returns immediately, before ever touching the process, when
+    ``cleanup_mode is None``. That made this a silent no-op: a caller doing ``stop()`` then
+    ``rm -rf datadir`` (start-ui-install.sh's demo-reset block, which must guarantee a genuinely
+    fresh control plane every boot, never an updated one) got a postgres process that kept running
+    against a now-deleted directory. Confirmed live, repeatedly, in one session: the NEXT boot's
+    fresh ``initdb`` hit pgserver's ``assert not proc.is_running()`` because the orphaned process
+    was still alive, so the boot silently fell back to reusing it — with whatever stale schema/rows
+    it had before the "reset" that was supposed to remove it.
+
+    Runs ``pg_ctl stop`` directly against the data directory (the same call pgserver's own
+    ``cleanup_mode='stop'`` path makes internally, just not gated on ``cleanup_mode``), then
+    SIGKILLs by the PID in ``postmaster.pid`` as a last resort if pg_ctl can't reach it (e.g. a
+    stale pid file pointing at a process pg_ctl itself doesn't trust).
+    """
+    import signal
+    import subprocess
+
+    # pgserver ships no py.typed marker, so pyright can't see this symbol statically even though
+    # it resolves fine at runtime (exercised directly in test_control_plane_pg_staging.py).
+    from pgserver.postgres_server import pg_ctl  # pyright: ignore[reportAttributeAccessIssue]
+
+    pgdata = Path(datadir)
+    pidfile = pgdata / "postmaster.pid"
+    if not pidfile.exists():
+        return  # nothing running against this data dir
+    try:
+        pg_ctl(["-w", "stop", "-m", "immediate"], pgdata=pgdata)
+    except subprocess.CalledProcessError:
+        pid_line = pidfile.read_text().splitlines()[0].strip()
+        try:
+            os.kill(int(pid_line), signal.SIGKILL)
+        except (ValueError, ProcessLookupError):
+            pass  # already gone, or the pid file was never a real pid
 
 
 def reset(datadir: str) -> None:
@@ -114,6 +150,13 @@ def reset(datadir: str) -> None:
 
 
 def _has_table(srv, table: str) -> bool:
+    # Check the "provisa" database exists BEFORE \c-ing into it: a first-ever boot (no prior
+    # start()) or one right after reset() has no "provisa" database yet, and `\c provisa` failing
+    # mid-script makes psql exit non-zero on a piped/non-tty invocation (confirmed live) — turning
+    # dump_table's own documented "a fresh install has nothing to retain, which is a fact about
+    # the plane rather than a failure" into an uncaught CalledProcessError instead.
+    if "1" not in srv.psql("SELECT 1 FROM pg_database WHERE datname='provisa'"):
+        return False
     return "1" in srv.psql(
         f"\\c provisa\nSELECT 1 FROM information_schema.tables WHERE table_name='{table}' LIMIT 1"
     )

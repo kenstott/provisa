@@ -305,26 +305,31 @@ if [ "$DEMO" = true ]; then
   COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.observability.yml"
   echo "Resetting volumes for pristine demo environment..."
   docker compose $COMPOSE_FILES down -v 2>/dev/null || true
-  # The demo control plane is the embedded PostgreSQL (REQ-1535) — DELETE ITS DATA DIRECTORY so
-  # every start is pristine; the next boot runs initdb and rebuilds it at the current schema (V1 has
-  # no migrations). Dropping the `provisa` database was the earlier form of this, and it leaves the
-  # cluster itself — roles, and anything a future version writes outside that one database — behind.
-  # A demo that carries state forward is a demo that fails in ways no fresh install can reproduce.
-  # Data files are regenerated below. Org-level ADMIN SETTINGS (org_settings: metadata-export
-  # target, AI keys, …) are the exception: they are operator configuration, not demo model state, so
-  # they are dumped across the wipe and restored once the backend has recreated the schema.
+  # The demo control plane is the embedded PostgreSQL (REQ-1535) — REQ-1535 itself says a pristine
+  # demo start "drops the database instead of deleting files" (V1 has no migrations, so pristine
+  # means rebuilt at the current schema, not a from-scratch cluster). The directory-deletion form
+  # this block used to use directly contradicted that: it required STOPPING the postmaster first
+  # (pgserver keeps it alive across runs — cleanup_mode=None — precisely so a normal
+  # start/stop/start cycle reuses one running server), and control_plane_pg.py's own `stop()` was
+  # `_server(datadir).cleanup()`, which is a NO-OP under cleanup_mode=None (pgserver's _cleanup()
+  # returns before touching the process when cleanup_mode is None) — so `rm -rf` ran against a data
+  # directory a live postmaster still held open. Confirmed live, repeatedly, in one session: the
+  # NEXT start's fresh initdb hit pgserver's own "assert not proc.is_running()" against that
+  # orphaned process and silently fell back to reusing it, with whatever stale config/rows it had
+  # BEFORE the reset that was supposed to remove them. `reset` (DROP DATABASE over a live
+  # connection, server never stops) is what REQ-1535 actually specifies, and has none of this: no
+  # process to orphan, no directory to race, no dependence on `stop()` working at all. Org-level
+  # ADMIN SETTINGS (org_settings: metadata-export target, AI keys, …) are the exception: they are
+  # operator configuration, not demo model state, so they are dumped across the wipe and restored
+  # once the backend has recreated the schema.
   _DEMO_CP_DIR="${PROVISA_HOME:-$HOME/.provisa}/demo/control-pg"
   _DEMO_SETTINGS_BAK="${PROVISA_HOME:-$HOME/.provisa}/demo/org_settings.restore.sql"
   rm -f "$_DEMO_SETTINGS_BAK"
   if [ -d "$_DEMO_CP_DIR" ]; then
     "$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg dump-table "$_DEMO_CP_DIR" \
       --table org_settings --out "$_DEMO_SETTINGS_BAK" >/dev/null
-    # Stop the server before the directory goes: pgserver keeps the postmaster alive across runs
-    # (cleanup_mode=None), and a live postmaster over a deleted data dir is not a stopped server —
-    # it holds the socket the next start would attach to.
-    "$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg stop "$_DEMO_CP_DIR" || true
-    rm -rf "$_DEMO_CP_DIR"
-    echo "Deleted the demo control-plane data directory — this start reinitializes it."
+    "$SCRIPT_DIR/.venv/bin/python" -m provisa.core.control_plane_pg reset "$_DEMO_CP_DIR"
+    echo "Dropped and will rebuild the demo control-plane database — this start reinitializes it."
   fi
   # Ensure demo files exist (SQLite inquiries DB, etc.)
   if [ -f "$SCRIPT_DIR/demo/files/create_demo_files.py" ]; then

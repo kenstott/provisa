@@ -763,8 +763,16 @@ async def _upsert_relationships(
     for rel in config.relationships:
         try:
             await rel_repo.upsert(conn, rel)
-        except ValueError:
-            pass  # referenced table not yet registered (dynamic source); retried after source registration
+        except ValueError as exc:
+            # Genuinely expected for a dynamic source (createSource mutation flow — the target
+            # table registers moments later and this same upsert is retried then). For static
+            # config it means a relationship row names a table/alias that never resolves at
+            # all — a real authoring error (e.g. a stale table_name reference after that table
+            # gained an alias, changing its "virtual name" — confirmed live: this swallowed a
+            # relationship that should have registered a Cypher edge type, and nothing anywhere
+            # showed the config had a problem). Log rather than stay silent either way; only the
+            # dynamic-source case is expected to self-heal on retry.
+            log.warning("relationship %r not registered: %s", rel.id, exc)
 
 
 async def _upsert_metrics(conn: "Connection", config: ProvisaConfig) -> None:  # REQ-1317, REQ-1320
