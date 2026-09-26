@@ -226,14 +226,26 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
 
 
 async def row_materialized_tables_by_name(state: Any) -> dict[str, Any]:
-    """table_name -> registered Table, restricted to ``row_materialize=True`` tables (REQ-1865).
-    Used by ``pk_bounds.extract_pk_bounds`` to know which tables in a statement's AST are even
-    eligible for the row cache — the registry, not the config file, same posture as every other
-    residency lookup in this module (REQ-1674)."""
+    """semantic table name -> registered Table, restricted to ``row_materialize=True`` tables
+    (REQ-1865). Used by ``pk_bounds.extract_pk_bounds`` to know which tables in a statement's AST
+    are even eligible for the row cache — the registry, not the config file, same posture as every
+    other residency lookup in this module (REQ-1674).
+
+    Keyed by the SEMANTIC name (``apply_sql_name(t.alias or t.table_name)``, the same authority
+    ``compiler.sql_rewrite.semantic_table_name`` uses to build ``display_name``) rather than the
+    bare physical ``table_name`` -- ``extract_pk_bounds`` matches this key against
+    ``_resolve_pk_bounds``'s ALREADY-semantic AST (``governed_semantic``), where a table with a
+    registered alias (every neo4j/query_template table in the perf-bench demo: ``bench_order_node``
+    -> ``order``) appears under that alias, never its physical name. Keying by physical
+    table_name alone silently matched nothing for any such table -- extract_pk_bounds never errors
+    on a miss (by design), so this was never a crash, just a permanently-empty result: every
+    row_materialize-enabled neo4j table fell through to the pre-existing full-source land on every
+    query, exactly the cost row_materialize exists to avoid. Confirmed live on the perf-bench VM."""
+    from provisa.compiler.naming import apply_sql_name
     from provisa.federation.registry_view import registered_tables
 
     return {
-        t.table_name: t
+        apply_sql_name(t.alias or t.table_name): t
         for t in await registered_tables(state)
         if getattr(t, "row_materialize", False)
     }
