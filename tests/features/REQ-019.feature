@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-019 — Registration & Governance
-  # Cross-source relationships defined manually by steward with cardinality (many-to-one, one-to-many). (Revised 2026-06-18:…
+  # Cross-source relationships defined manually by steward with cardinality (many-to-one, one-to-many). [SUPERSEDED by REQ-0…
 
   Scenario: REQ-019 default behaviour
     Given two tables in different registered sources
