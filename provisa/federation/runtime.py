@@ -258,6 +258,61 @@ class EngineRuntime:  # REQ-825, REQ-840
             on_release=_release,
         )
 
+    def execute_pg_passthrough(
+        self,
+        source_pools: Any,
+        source_id: str,
+        sql: str,
+        params: list | None,
+        result_formats: list[int],
+        *,
+        loop: Any,
+    ) -> ResultStream:
+        """REQ-1863: like :meth:`execute_native_stream`, but for a DIRECT-route source that is
+        itself PostgreSQL — each "row" the returned stream yields is a :class:`RawDataRowBytes`
+        (a complete, wire-framed DataRow message from the source, forwarded unmodified) instead of
+        a decoded tuple. Only valid when ``source_pools.dialect_for(source_id)`` is postgres;
+        callers catch :class:`PassthroughError` and fall back to :meth:`execute_native_stream`."""
+        import asyncio
+
+        from provisa.executor.result import StreamingQueryResult
+        from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+        from buenavista.core import RawDataRowBytes
+
+        from provisa.pgwire.pg_passthrough import open_passthrough
+
+        driver = source_pools.get(source_id)
+        pr = asyncio.run_coroutine_threadsafe(
+            open_passthrough(driver, sql, list(params or []), result_formats), loop
+        ).result()
+
+        released = [False]
+
+        def _release() -> None:
+            if released[0]:
+                return
+            released[0] = True
+            asyncio.run_coroutine_threadsafe(pr.cursor.close(), loop).result()
+
+        def _batches() -> Any:
+            try:
+                while True:
+                    chunk = asyncio.run_coroutine_threadsafe(
+                        pr.cursor.fetch(_STREAM_BATCH_ROWS), loop
+                    ).result()
+                    if not chunk:
+                        return
+                    yield [RawDataRowBytes(msg) for msg in chunk]
+            finally:
+                _release()
+
+        return StreamingQueryResult(
+            _batches(),
+            column_names=pr.column_names,
+            column_types=pr.column_types,
+            on_release=_release,
+        )
+
     # -- engine-native metadata (REQ-825/840): introspection through the abstraction ----------
 
     def introspect_by_catalog(self, catalog: str, schema: str, table: str) -> dict[str, str]:

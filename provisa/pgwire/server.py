@@ -584,22 +584,22 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         del table
         return None
 
-    def execute_sql(self, sql: str, params=None) -> ProvisaQueryResult:
+    def execute_sql(self, sql: str, params=None, result_fmt=None) -> ProvisaQueryResult:
         # REQ-1266: bind this session's org on the worker thread so the sync state.X reads below
         # (answer/INTERCEPT, execute_engine_sync, source_pools) route to its runtime. The loop-side
         # governance/execute coroutines are separately bound via _run_with_org (ContextVars do not
         # cross the run_coroutine_threadsafe boundary). None → default runtime (no bind).
         if self.org_id is None:
-            return self._execute_sql_bound(sql, params)
+            return self._execute_sql_bound(sql, params, result_fmt)
         from provisa.core.request_context import reset_current_org, set_current_org
 
         token = set_current_org(self.org_id)
         try:
-            return self._execute_sql_bound(sql, params)
+            return self._execute_sql_bound(sql, params, result_fmt)
         finally:
             reset_current_org(token)
 
-    def _execute_sql_bound(self, sql: str, params=None) -> ProvisaQueryResult:
+    def _execute_sql_bound(self, sql: str, params=None, result_fmt=None) -> ProvisaQueryResult:
         from provisa.pgwire.catalog import answer, classify
 
         stripped = _substitute_params(sql.strip(), params)
@@ -683,6 +683,43 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     governed.exec_params,
                     session_hints=governed.session_hints,
                 )
+            elif (
+                isinstance(governed, _Plan)
+                and governed.route == Route.DIRECT
+                and governed.source_id
+                and state.source_pools.has(governed.source_id)
+                and state.source_pools.supports_stream(governed.source_id)
+                and result_fmt
+                and state.source_pools.dialect_for(governed.source_id) in ("postgres", "postgresql")
+            ):
+                # REQ-1863: the DIRECT source is itself Postgres and the downstream client's own
+                # requested result_format is known (result_fmt is only populated for an
+                # Execute/Bind dispatch, never a bare Describe) — forward its DataRow bytes
+                # unmodified rather than decoding into asyncpg.Record and re-encoding. Masking/RLS
+                # need no separate check here: already baked into governed.sql's text regardless
+                # of route. Falls back to the decode/re-encode path below on ANY PassthroughError
+                # (never a correctness risk, purely a fast path).
+                require_governed_plan(governed)
+                from provisa.pgwire.pg_passthrough import PassthroughError
+
+                try:
+                    result = state.federation_engine.execute_pg_passthrough(
+                        state.source_pools,
+                        governed.source_id,
+                        governed.sql,
+                        governed.exec_params,
+                        result_fmt,
+                        loop=loop,
+                    )
+                except PassthroughError:
+                    log.debug("[PGWIRE] passthrough fallback sql=%r", stripped[:200], exc_info=True)
+                    result = state.federation_engine.execute_native_stream(
+                        state.source_pools,
+                        governed.source_id,
+                        governed.sql,
+                        governed.exec_params,
+                        loop=loop,
+                    )
             elif (
                 isinstance(governed, _Plan)
                 and governed.route == Route.DIRECT

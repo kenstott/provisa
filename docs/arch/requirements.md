@@ -19875,3 +19875,29 @@ pgwire SQL compiler recognizes and handles textual SQL `DECLARE CURSOR ... FOR <
 **Code:** `provisa/pgwire/server.py`
 
 **Tests:** `tests/unit/pgwire/test_cursor.py`
+
+### REQ-1863 · pgwire performance optimization {#REQ-1863}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+When routing a pgwire DIRECT-route query to a PostgreSQL source, avoid decode/re-encode overhead by forwarding raw DataRow wire messages directly to the downstream client, exploiting the fact that masking/RLS is always pre-applied in the compiled SQL.
+
+**Use case:** Decoding source DataRow messages into Python objects and re-encoding them into pgwire format is pure overhead when all per-row access control is already enforced by the governed SQL compiler; raw passthrough delivers the same correctness with zero copy cost and better performance.
+
+**Code:** `provisa/pgwire/pg_passthrough.py`, `provisa/executor/drivers/postgresql.py`, `vendor/buenavista/buenavista/core.py`, `vendor/buenavista/buenavista/postgres.py`
+
+**Tests:** —
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-1864 · Neo4j query optimization {#REQ-1864}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+When routing a single-source Neo4j query whose pattern is translatable to native Cypher, route directly via Neo4jDriver executing Cypher on the source's HTTP endpoint instead of materializing all nodes/edges through the ENGINE materialize-then-join path.
+
+**Use case:** Cypher-native patterns (e.g. Customer-[:PLACED]->Order-[:CONTAINS]->Product) that resolve entirely to one Neo4j source incur significant overhead when materialized fully before a join could start. Native Cypher execution on the source eliminates that materialization cost.
+
+**Code:** `provisa/pgwire/_pipeline.py`, `provisa/executor/drivers/neo4j.py`, `provisa/executor/drivers/registry.py`, `provisa/transpiler/router.py`
+
+**Tests:** `tests/unit/test_neo4j_direct_route.py`

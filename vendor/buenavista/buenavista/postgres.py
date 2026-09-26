@@ -22,7 +22,7 @@ import socketserver
 import struct
 from typing import Dict, List, Optional
 
-from .core import BVType, Connection, Extension, Session, QueryResult
+from .core import BVType, Connection, Extension, Session, QueryResult, RawDataRowBytes
 from .rewrite import Rewriter
 
 logger = logging.getLogger(__name__)
@@ -362,7 +362,7 @@ class BVContext:
         if self.rewriter:
             sql = self.rewriter.rewrite(sql)
             logger.info("Rewritten SQL: " + sql)
-        qr = self.session.execute_sql(sql, params)
+        qr = self.session.execute_sql(sql, params, result_fmt)
         if qr.has_results():
             if result_fmt and len(result_fmt) != qr.column_count():
                 qr.result_format = [result_fmt[0]] * qr.column_count()
@@ -761,6 +761,19 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         chunk = bytearray()
         chunk_n = 0
         for row in query_result.rows():
+            if isinstance(row, RawDataRowBytes):
+                # Already a complete, wire-framed DataRow message (see RawDataRowBytes) — forward
+                # verbatim, skipping the per-column converter loop entirely.
+                chunk += row
+                cnt += 1
+                chunk_n += 1
+                if chunk_n >= self._DATA_ROW_CHUNK_SIZE:
+                    self.wfile.write(bytes(chunk))
+                    chunk.clear()
+                    chunk_n = 0
+                if limit > 0 and cnt >= limit:
+                    break
+                continue
             # Precompiled struct.Struct + one bytearray per row (not a fresh BVBuffer/BytesIO
             # object per row, and not one struct.pack call per int32 field) — profiled to cut
             # server-side row-encoding cost roughly in half on its own.

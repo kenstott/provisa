@@ -781,11 +781,63 @@ async def _govern_and_route_planned(
             reason="buffered-transport auto-delivery",
         )
 
+    # GitHub issue #119 / REQ-1863's counterpart: a single-source neo4j pattern (e.g.
+    # Customer-[:PLACED]->Order-[:CONTAINS]->Product, all-neo4j) otherwise fully materializes
+    # through the ENGINE route's query_template HTTP fetch of every node/edge table before the
+    # join can even start — a structural cost, not a join-logic bug (confirmed live on the perf
+    # benchmark's cypher_cross_engine query). Try the reverse SQL->Cypher compiler on the SAME
+    # governed SQL the ENGINE route would otherwise use; only override when it actually produces
+    # Cypher (never guessed, never forced — mirrors the Phase 1 PG-passthrough fallback
+    # discipline). Read-only: mutations never reach here with route==ENGINE (decide_route always
+    # routes a mutation DIRECT on its first source, inside decide_route itself).
+    _cypher_text: str | None = None
+    _cypher_sid: str | None = None
+    if (
+        decision.route == Route.ENGINE
+        and len(_sources) == 1
+        and deliver is None
+        and auto_deliver is None
+        and explain is None  # EXPLAIN wraps the physical statement in its dialect; Cypher has none
+    ):
+        _cypher_sid = next(iter(_sources))
+        if state.source_types.get(_cypher_sid) == "neo4j":
+            from provisa.nl.runner import best_effort_cypher_for_sql
+
+            _cypher_text = best_effort_cypher_for_sql(governed_semantic, ctx, role_id, state)
+            if _cypher_text is not None:
+                from provisa.transpiler.router import RouteDecision
+
+                decision = RouteDecision(
+                    route=Route.DIRECT,
+                    source_id=_cypher_sid,
+                    dialect="cypher",
+                    reason="single-source neo4j pattern, cypher-translatable (issue #119)",
+                )
+
     # REQ-1159: a localized statement carries an inline local relation as a VALUES list, which rides
     # along on whichever route the router picks — DIRECT inlines the VALUES into the single source's
     # SQL (the source executes it), and a genuinely cross-source statement is detected and routed to
     # the engine by decide_route as usual. So the localizer does NOT force a route; it lets routing
     # decide, which keeps a single-source composed query on the source instead of the org store.
+    if decision.dialect == "cypher":
+        # Issue #119: the override above already produced the Cypher text — not SQL, so none of
+        # the physical-SQL lowering (rewrite_semantic_to_physical/transpile/strip_schema) applies.
+        assert _cypher_text is not None
+        assert decision.source_id is not None  # set by the override above
+        return _Plan(
+            route=decision.route,
+            sql=_cypher_text,
+            source_id=decision.source_id,
+            dialect=decision.dialect,
+            exec_params=exec_params,
+            semantic_sql=_metric_semantic_sql,
+            span_attrs=_plan_span_attrs(governed_semantic, role_id, sql, _audit),
+            audit=_audit,
+            stamp=_mint_stamp(),
+            sources=frozenset(_sources),
+            route_reason=decision.reason,
+            optimizations=_opts,
+        )
     if decision.route == Route.ENGINE:
         # REQ-135/REQ-1163: inline-expand any __derived__ view ref BEFORE the unknown-catalog check and
         # transpile — a request-level as-of overlays each bitemporal view's entry with an as-of
@@ -1445,6 +1497,38 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             reason="buffered-transport auto-delivery",
         )
 
+    # GitHub issue #119 / REQ-1863's counterpart: a single-source neo4j pattern (e.g.
+    # Customer-[:PLACED]->Order-[:CONTAINS]->Product, all-neo4j) otherwise fully materializes
+    # through the ENGINE route's query_template HTTP fetch of every node/edge table before the
+    # join can even start — a structural cost, not a join-logic bug (confirmed live on the perf
+    # benchmark's cypher_cross_engine query). Try the reverse SQL->Cypher compiler on the SAME
+    # governed_sql the ENGINE route would otherwise use; only override when it actually produces
+    # Cypher (never guessed, never forced — mirrors the Phase 1 PG-passthrough fallback
+    # discipline). Read-only: mutations never reach here with route==ENGINE (decide_route always
+    # routes a mutation DIRECT on its first source, earlier in this function's own routing call).
+    _cypher_text: str | None = None
+    _cypher_sid: str | None = None
+    if (
+        decision.route == Route.ENGINE
+        and len(sources) == 1
+        and deliver is None
+        and auto_deliver is None
+    ):
+        _cypher_sid = next(iter(sources))
+        if state.source_types.get(_cypher_sid) == "neo4j":
+            from provisa.nl.runner import best_effort_cypher_for_sql
+
+            _cypher_text = best_effort_cypher_for_sql(governed_sql, ctx, role_id, state)
+            if _cypher_text is not None:
+                from provisa.transpiler.router import RouteDecision
+
+                decision = RouteDecision(
+                    route=Route.DIRECT,
+                    source_id=_cypher_sid,
+                    dialect="cypher",
+                    reason="single-source neo4j pattern, cypher-translatable (issue #119)",
+                )
+
     if decision.route == Route.ENGINE:
         _known_cats = set(getattr(state, "source_catalogs", {}).values()) | {
             "iceberg",
@@ -1500,6 +1584,28 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
             # REQ-1517: the plan reports how it was built (sources, route reason, optimizations).
+            sources=frozenset(sources),
+            route_reason=decision.reason,
+            optimizations=_opts,
+        )
+    elif decision.dialect == "cypher":
+        # Issue #119: the override above already produced the Cypher text — not SQL, so none of
+        # the physical-SQL lowering (rewrite_semantic_to_physical/transpile/strip_schema) applies.
+        assert _cypher_text is not None
+        physical_sql = _cypher_text
+        sql_to_run = _cypher_text
+        assert decision.source_id is not None  # set by the override above
+        _direct_sid = decision.source_id
+        return _Plan(
+            route=decision.route,
+            sql=sql_to_run,
+            exec_sql=physical_sql,
+            source_id=_direct_sid,
+            dialect=decision.dialect,
+            exec_params=exec_params,
+            span_attrs=_plan_span_attrs(governed_sql, role_id, sql, _audit),
+            audit=_audit,
+            stamp=_mint_stamp(),
             sources=frozenset(sources),
             route_reason=decision.reason,
             optimizations=_opts,

@@ -35,6 +35,14 @@ class BVType(enum.Enum):
     STRINGARRAY = 16
 
 
+class RawDataRowBytes(bytes):
+    """A ``rows()``-yielded "row" that is already a complete, wire-framed DataRow message (tag +
+    length + payload), forwarded verbatim from a source that speaks the same pgwire protocol —
+    used by ``provisa.pgwire.pg_passthrough`` for Postgres-to-Postgres queries, where decoding into
+    column values and re-encoding them would be pure overhead. ``send_data_rows`` checks for this
+    type and writes the bytes directly instead of iterating per-column converters."""
+
+
 class QueryResult:
     """The BV representation of a result of a query."""
 
@@ -75,7 +83,12 @@ class Session:
     def close(self):
         raise NotImplementedError
 
-    def execute_sql(self, sql: str, params=None) -> QueryResult:
+    def execute_sql(self, sql: str, params=None, result_fmt=None) -> QueryResult:
+        """``result_fmt`` (the requesting Bind's per-column format codes, when known — a Describe
+        with no prior Bind passes ``None``) is optional context, not required for a normal
+        decode/re-encode session: BVContext.execute_sql still assigns ``qr.result_format`` onto
+        the returned QueryResult after this call either way. A session only needs it up front to
+        pick a wire-compatible fast path (e.g. a raw-byte source passthrough) before executing."""
         raise NotImplementedError
 
     def in_transaction(self) -> bool:

@@ -63861,3 +63861,61 @@
     Then the server returns SQLSTATE 34000 (invalid_cursor_name), not a crash
     Given a connection disconnects with a cursor still open
     Then ProvisaSession.close() releases it without requiring an explicit CLOSE
+- id: REQ-1863
+  status: complete
+  group: "8. Client Access & Protocols"
+  category: pgwire performance optimization
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    When routing a pgwire DIRECT-route query to a PostgreSQL source, avoid decode/re-encode
+    overhead by forwarding raw DataRow wire messages directly to the downstream client,
+    exploiting the fact that masking/RLS is always pre-applied in the compiled SQL.
+  use_case: >-
+    Decoding source DataRow messages into Python objects and re-encoding them into pgwire
+    format is pure overhead when all per-row access control is already enforced by the
+    governed SQL compiler; raw passthrough delivers the same correctness with zero
+    copy cost and better performance.
+  code:
+    - provisa/pgwire/pg_passthrough.py
+    - provisa/executor/drivers/postgresql.py
+    - vendor/buenavista/buenavista/core.py
+    - vendor/buenavista/buenavista/postgres.py
+  since: "2026-09"
+  scenario: |
+    Given a pgwire DIRECT-route query SELECT col1, col2 FROM users WHERE domain='acme'
+    And the physical source is PostgreSQL
+    Then the system opens a dedicated asyncpg connection without pooling
+    And forwards raw Extended Query Protocol (Parse/Bind/Execute/Sync) messages
+    And each DataRow message's raw bytes are re-sent to the pgwire client without decoding
+    And the passthrough falls back to decode/re-encode if any error occurs (never a correctness risk)
+- id: REQ-1864
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Neo4j query optimization
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    When routing a single-source Neo4j query whose pattern is translatable to native Cypher,
+    route directly via Neo4jDriver executing Cypher on the source's HTTP endpoint instead of
+    materializing all nodes/edges through the ENGINE materialize-then-join path.
+  use_case: >-
+    Cypher-native patterns (e.g. Customer-[:PLACED]->Order-[:CONTAINS]->Product) that resolve
+    entirely to one Neo4j source incur significant overhead when materialized fully before a
+    join could start. Native Cypher execution on the source eliminates that materialization cost.
+  code:
+    - provisa/pgwire/_pipeline.py
+    - provisa/executor/drivers/neo4j.py
+    - provisa/executor/drivers/registry.py
+    - provisa/transpiler/router.py
+  tests:
+    - tests/unit/test_neo4j_direct_route.py
+  since: "2026-09"
+  scenario: |
+    Given a single-source Neo4j query with a Cypher-translatable pattern
+    When the planner (in _govern_and_route_planned or _govern_and_route_compiled_planned) decides to route
+    Then best_effort_cypher_for_sql is called on the governed SQL
+    And if it returns valid Cypher text, the plan is overridden to Route.DIRECT with dialect 'cypher'
+    And Neo4jDriver.execute() POSTs the Cypher to the source's /db/<database>/tx/commit endpoint
+    When the pattern is not Cypher-translatable (spans multiple sources or engines)
+    Then the plan falls through to ENGINE materialize-then-join (fallback path unchanged)

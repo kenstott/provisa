@@ -76,6 +76,12 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
     def __init__(self, use_pgbouncer: bool = False) -> None:
         self._pool: asyncpg.Pool | None = None
         self._use_pgbouncer = use_pgbouncer
+        # Stashed for provisa.pgwire.pg_passthrough: a raw-byte passthrough connection reuses
+        # these exact connect() kwargs (asyncpg's own auth/SCRAM handling, unchanged) to open a
+        # dedicated, single-purpose connection — never shared with self._pool, since bypassing
+        # asyncpg's own Protocol for raw I/O and then returning the connection to a shared pool
+        # risks desyncing asyncpg's cached transaction/connection state on the pool's next use.
+        self._connect_kwargs: dict[str, Any] = {}
 
     async def connect(
         self,
@@ -87,6 +93,13 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
         min_pool: int = 1,
         max_pool: int = 5,
     ) -> None:  # REQ-052, REQ-053
+        self._connect_kwargs = {
+            "host": host,
+            "port": port,
+            "database": database,
+            "user": user,
+            "password": password,
+        }
         if self._use_pgbouncer:
             self._pool = await asyncpg.create_pool(
                 host=host,

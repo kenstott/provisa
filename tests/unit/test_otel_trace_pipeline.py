@@ -713,7 +713,8 @@ class TestNonEngineTerminalsAreReported:
         assert captured["span_attrs"] == self._ATTRS
 
     def test_the_direct_plan_carries_the_span_attributes(self):
-        """Both planners' DIRECT branches must set span_attrs; only their ENGINE branches did."""
+        """Every terminal branch each planner can return from must set span_attrs — ENGINE,
+        ordinary DIRECT, and (issue #119) the single-source neo4j Cypher DIRECT fast path."""
         import inspect
 
         from provisa.pgwire import _pipeline
@@ -726,7 +727,7 @@ class TestNonEngineTerminalsAreReported:
             _pipeline._govern_and_route_compiled_planned,
         ):
             src = inspect.getsource(fn)
-            assert src.count("span_attrs=_plan_span_attrs(") == 2, fn.__name__
+            assert src.count("span_attrs=_plan_span_attrs(") == 3, fn.__name__
 
     async def test_admin_terminal_emits_an_attributed_query_span(self, otel_spans):
         from contextlib import asynccontextmanager

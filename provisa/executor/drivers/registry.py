@@ -106,6 +106,12 @@ def _make_exasol() -> DirectDriver:  # via pyexasol (Exasol's own WebSocket clie
     return ExasolDriver()
 
 
+def _make_neo4j() -> DirectDriver:  # GitHub issue #119: single-source Cypher DIRECT route
+    from provisa.executor.drivers.neo4j import Neo4jDriver
+
+    return Neo4jDriver()
+
+
 # source_type → factory function
 _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     "postgresql": _make_pg,
@@ -136,6 +142,12 @@ _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     # warehouse drivers above.
     "hiveserver2": _make_hiveserver2,
     "exasol": _make_exasol,
+    # GitHub issue #119: registered so SourcePool holds a Neo4jDriver instance per neo4j source —
+    # NOT a general routing signal. "neo4j" stays in router.py's VIRTUAL_SOURCES, so decide_route
+    # still always routes it through the ENGINE materialize-then-join path; only the GQL/Cypher
+    # compiled pipeline (_govern_and_route_compiled_planned) explicitly overrides to DIRECT, and
+    # only for a single-source pattern the reverse Cypher compiler actually translates.
+    "neo4j": _make_neo4j,
 }
 
 # FALLBACK: source types with no bespoke async driver, served by the generic SQLAlchemy driver
