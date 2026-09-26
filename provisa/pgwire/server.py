@@ -668,6 +668,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         _t_govern1 = time.perf_counter()
 
         from provisa.api.app import state
+        from provisa.federation.query_residency import ensure_resident
         from provisa.transpiler.router import Route
 
         try:
@@ -678,11 +679,45 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 require_governed_plan(governed)
                 if governed.physical_sql is None:
                     raise RuntimeError("ENGINE plan missing physical_sql")
-                result = state.federation_engine.execute_engine_sync(
-                    governed.physical_sql,
-                    governed.exec_params,
-                    session_hints=governed.session_hints,
-                )
+                # REQ-1661: this streaming sink bypasses _execute_plan_in_org entirely (that's the
+                # whole point — the pgwire worker thread drains the engine terminal itself so a
+                # large result never materializes on the loop), so its own ensure_resident call is
+                # the ONLY place a MATERIALIZED source this plan reads gets landed before the
+                # engine executes. Confirmed live: a cross-engine federated_join touching a never-
+                # yet-landed ClickHouse table failed "Binder Error: Catalog ... does not exist" on
+                # its first run of a fresh boot — _attach_registered's own attach attempt for a LAND
+                # source is caught and logged, never raised, so nothing else would have surfaced it.
+                asyncio.run_coroutine_threadsafe(
+                    ensure_resident(state, governed.sources), loop
+                ).result(timeout=120)
+                # REQ-1863 counterpart: when the bound federation ENGINE is itself Postgres
+                # (PROVISA_ENGINE=pg), pgwire and the engine both speak real Postgres wire
+                # protocol end to end — the same raw-DataRow-forwarding passthrough applies here,
+                # not just to a DIRECT-route source. Same fallback discipline: any PassthroughError
+                # falls through to the normal decode/re-encode execute_engine_sync call below.
+                result = None
+                if result_fmt and state.federation_engine.dialect in ("postgres", "postgresql"):
+                    from provisa.pgwire.pg_passthrough import PassthroughError
+
+                    try:
+                        result = state.federation_engine.execute_pg_engine_passthrough(
+                            governed.physical_sql,
+                            governed.exec_params,
+                            result_fmt,
+                            loop=loop,
+                        )
+                    except PassthroughError:
+                        log.debug(
+                            "[PGWIRE] ENGINE passthrough fallback sql=%r",
+                            stripped[:200],
+                            exc_info=True,
+                        )
+                if result is None:
+                    result = state.federation_engine.execute_engine_sync(
+                        governed.physical_sql,
+                        governed.exec_params,
+                        session_hints=governed.session_hints,
+                    )
             elif (
                 isinstance(governed, _Plan)
                 and governed.route == Route.DIRECT

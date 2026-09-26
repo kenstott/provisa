@@ -451,6 +451,13 @@ class ProvisaServicer:  # REQ-045, REQ-143
         if plan.route == Route.ENGINE:
             require_governed_plan(plan)  # REQ-1176: streaming terminal verifies the stamp too
             assert plan.physical_sql is not None
+            # REQ-1661: this streaming terminal never reaches _execute_plan (see the audit comment
+            # below), so its own ensure_resident call is the ONLY place a MATERIALIZED source this
+            # plan reads gets landed before the engine executes — mirrors the identical ENGINE-
+            # route bypass fixes in pgwire/server.py, api/flight/server.py, api/airport/query.py.
+            from provisa.federation.query_residency import ensure_resident
+
+            await ensure_resident(state, plan.sources)
             loop = asyncio.get_running_loop()
             stream = await loop.run_in_executor(
                 None,

@@ -86,6 +86,7 @@ def _plan(route, **kwargs):
         route=route,
         sql="SELECT id FROM orders",
         source_id="wh",
+        sources=frozenset({"wh"}),
         exec_params=[],
         audit=None,
         audit_written=False,
@@ -140,10 +141,12 @@ def airport(monkeypatch, main_loop):
 # --- schema advertisement (REQ-1218, REQ-1231) ------------------------------------------------
 
 
-def test_advertising_an_engine_scan_closes_the_reader_without_pulling_a_batch(airport):
+def test_advertising_an_engine_scan_closes_the_reader_without_pulling_a_batch(airport, main_loop):
     """flight_info is called per table by a client listing a catalog; leaving a lazy reader open
     per call holds an engine cursor for each one."""
-    schema = governed_table_scan_schema(airport.state, None, "SELECT id FROM orders", "analyst")
+    schema = governed_table_scan_schema(
+        airport.state, main_loop, "SELECT id FROM orders", "analyst"
+    )
 
     assert schema == airport.engine_schema
     assert airport.reader.closed is True
