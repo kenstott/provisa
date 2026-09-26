@@ -344,7 +344,13 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
     elif endpoint.body_encoding == "neo4j_tx":
         # REQ-1668: Neo4j HTTP transaction API (/db/{db}/tx/commit) — the endpoint every 5.x
         # server exposes; the Query API v2 (/query/v2) is absent (404) on the community images.
-        json_body = {"statements": [{"statement": endpoint.query_template}]}
+        # REQ-1865: "parameters" was missing entirely, so no neo4j_tx call ever bound a value into
+        # its query_template — latent until the row-level materializer's keyed fetch needed a real
+        # $keys binding. resolved_params passes straight through: Cypher parameter names match dict
+        # keys directly, no column/param_type indirection needed the way query/path/body params do.
+        json_body = {
+            "statements": [{"statement": endpoint.query_template, "parameters": resolved_params}]
+        }
     elif endpoint.body_encoding == "json":
         # Generic query-API POST with the query as a JSON body
         json_body = {"statement": endpoint.query_template} if endpoint.query_template else body
