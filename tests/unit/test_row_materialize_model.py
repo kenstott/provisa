@@ -59,9 +59,10 @@ def test_row_materialize_with_pk_and_no_materialize_ok():
 
 
 class _FakeSource:
-    def __init__(self, cache_ttl=None):
+    def __init__(self, cache_ttl=None, type="neo4j"):
         self.id = "src1"
         self.cache_ttl = cache_ttl
+        self.type = type
 
 
 class _FakeConfig:
@@ -89,22 +90,37 @@ def test_config_loader_accepts_row_materialize_inheriting_source_cache_ttl():
     _validate_row_materialize(config)  # does not raise
 
 
-def test_config_loader_rejects_query_template_without_keys_placeholder():
+def test_config_loader_rejects_query_template_not_projecting_the_pk():
+    """The PK's own column name ("id") is never returned by this template -- the keyed-fetch
+    filter can only bind to a property the template already projects, never an invented one."""
+    table = _table(
+        row_materialize=True,
+        cache_ttl=60,
+        query_template="MATCH (o:Order) RETURN o.status AS status",
+    )
+    config = _FakeConfig([table], [_FakeSource(cache_ttl=None, type="neo4j")])
+    with pytest.raises(ValueError, match="projected elements"):
+        _validate_row_materialize(config)
+
+
+def test_config_loader_accepts_query_template_projecting_the_pk():
     table = _table(
         row_materialize=True,
         cache_ttl=60,
         query_template="MATCH (o:Order) RETURN o.id AS id, o.status AS status",
     )
-    config = _FakeConfig([table], [_FakeSource(cache_ttl=None)])
-    with pytest.raises(ValueError, match=r"\$keys"):
-        _validate_row_materialize(config)
+    config = _FakeConfig([table], [_FakeSource(cache_ttl=None, type="neo4j")])
+    _validate_row_materialize(config)  # does not raise
 
 
-def test_config_loader_accepts_query_template_with_keys_placeholder():
+def test_config_loader_rejects_query_template_on_non_neo4j_source():
+    """sparql has no parser/AST to safely resolve a projected property or splice a filter against
+    -- row_materialize on a query_template table is only wired for neo4j today."""
     table = _table(
         row_materialize=True,
         cache_ttl=60,
-        query_template="MATCH (o:Order) WHERE o.id IN $keys RETURN o.id AS id, o.status AS status",
+        query_template="SELECT ?id ?status WHERE { ?o :id ?id ; :status ?status }",
     )
-    config = _FakeConfig([table], [_FakeSource(cache_ttl=None)])
-    _validate_row_materialize(config)  # does not raise
+    config = _FakeConfig([table], [_FakeSource(cache_ttl=None, type="sparql")])
+    with pytest.raises(ValueError, match="no keyed-fetch translation"):
+        _validate_row_materialize(config)

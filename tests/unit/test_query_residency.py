@@ -144,8 +144,10 @@ def wiring(monkeypatch):
     monkeypatch.setattr("provisa.events.queue.get_node_state", get_node_state)
     monkeypatch.setattr("provisa.events.queue.record_refresh", record_refresh)
     monkeypatch.setattr("provisa.events.app_wiring.build_adapter_loaders", lambda state, engine: {})
+    monkeypatch.setattr("provisa.events.app_wiring.build_keyed_adapter_loaders", lambda state: {})
     monkeypatch.setattr(
-        "provisa.events.source_loader.SourceRowLoader", lambda engine, adapter_loaders: object()
+        "provisa.events.source_loader.SourceRowLoader",
+        lambda engine, adapter_loaders=None, keyed_adapter_loaders=None: object(),
     )
     monkeypatch.setattr("provisa.events.land_lock._locks", {})
     # REQ-1674: ensure_resident reads the registry view; here the config IS the registry

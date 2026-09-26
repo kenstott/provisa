@@ -97,6 +97,11 @@ def _source_type(source: Any) -> str:
 
 
 AdapterLoader = Any  # Callable[[source, table], Awaitable[list[dict]]] — a per-type row fetcher.
+# Callable[[source, table, pk_columns, keys], Awaitable[list[dict]]] — a per-type KEYED row fetcher
+# (REQ-1865). Distinct from AdapterLoader because a keyed fetch needs the extra pk_columns/keys
+# args and, per design, must resolve its filter against the type's own verified projection
+# (query_template's RETURN clause for neo4j/sparql) rather than any engine-facing naming.
+AdapterKeyedLoader = Any
 
 
 class SourceRowLoader:
@@ -106,14 +111,21 @@ class SourceRowLoader:
     reader for every SQL-federatable source. ``adapter_loaders`` maps a source type in
     ``_ADAPTER_FETCH_ONLY`` (openapi, ingest, …) to an ``async (source, table) -> list[dict]`` fetcher
     that calls the adapter instead of scanning a table; a type without one raises
-    :class:`UnsupportedSourceFetch`. ``load`` ignores the claimed events and returns a full snapshot;
-    an incremental (watermark-filtered) read is a later refinement keyed off the change cursor."""
+    :class:`UnsupportedSourceFetch`. ``keyed_adapter_loaders`` is the ``load_keys`` counterpart —
+    present only for the subset of adapter types that can translate a keyed fetch (REQ-1865); a
+    type with no entry there still raises even if ``adapter_loaders`` has a whole-table one for it.
+    ``load`` ignores the claimed events and returns a full snapshot; an incremental
+    (watermark-filtered) read is a later refinement keyed off the change cursor."""
 
     def __init__(
-        self, engine: Any, adapter_loaders: dict[str, AdapterLoader] | None = None
+        self,
+        engine: Any,
+        adapter_loaders: dict[str, AdapterLoader] | None = None,
+        keyed_adapter_loaders: dict[str, AdapterKeyedLoader] | None = None,
     ) -> None:
         self._engine = engine
         self._adapter_loaders = adapter_loaders or {}
+        self._keyed_adapter_loaders = keyed_adapter_loaders or {}
 
     async def load(self, source: Any, table: Any) -> list[dict]:
         # REQ-861: a file source may carry a producer command that refreshes the file IN PLACE.
@@ -151,22 +163,24 @@ class SourceRowLoader:
 
         For an engine-scannable relational/warehouse source this is a bounded
         ``SELECT * FROM <physical> WHERE (pk...) IN (...)`` through the engine terminal, mirroring
-        ``load``'s own catalog/ref resolution. A query-API (``query_template``) source has no such
-        generic translation here; ``row_materialize=True`` on one is already rejected at
-        registration (``config_loader._validate_row_materialize``'s ``$keys`` check) unless its
-        template names a recognizable key-bound insertion point, so reaching this branch for such a
-        source is itself a config-validation gap, not a case to silently degrade for -- it raises
-        rather than falling back to a full ``load()`` per lookup, which would defeat the mechanism.
+        ``load``'s own catalog/ref resolution. A registered ``keyed_adapter_loaders`` entry always
+        wins over that default, same precedence as ``load``'s ``adapter_loaders`` -- it is the
+        type's own keyed-fetch translation (e.g. neo4j: wrap ``query_template`` with a filter on
+        one of its own projected properties, ``provisa/cypher/query_template_filter.py``). A type
+        in ``_ADAPTER_FETCH_ONLY`` with no keyed entry has no keyed-fetch translation at all and
+        raises rather than falling back to a full ``load()`` per lookup, which would defeat the
+        mechanism.
         """
         if not keys:
             return []
         stype = _source_type(source)
+        keyed_loader = self._keyed_adapter_loaders.get(stype)
+        if keyed_loader is not None:
+            return await keyed_loader(source, table, pk_columns, keys)
         if stype in _ADAPTER_FETCH_ONLY:
             raise UnsupportedSourceFetch(
                 f"source type {stype!r} (source {source.id!r}) has no keyed-fetch translation "
-                "wired -- row_materialize on a query-API table requires its query_template to "
-                "carry a recognizable key-bound insertion point substituted at fetch time; that "
-                "substitution is not implemented for this source type (REQ-1865)"
+                "wired for this table (REQ-1865)"
             )
         from provisa.compiler.naming import source_to_catalog
 
@@ -228,6 +242,55 @@ def make_openapi_loader(
         pages = await call_api(
             endpoint,
             dict(endpoint.default_params),
+            base_url=api_source.base_url,
+            auth=api_source.auth,
+        )
+        rows: list[dict] = []
+        for page in pages:
+            rows.extend(
+                flatten_response(
+                    page, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
+                )
+            )
+        return rows
+
+    return _load
+
+
+def make_neo4j_keyed_loader(
+    endpoints_by_table: dict[str, Any], sources_by_id: dict[str, Any]
+) -> AdapterKeyedLoader:
+    """Build the neo4j keyed row-fetch (REQ-1865): wrap the table's registered ``query_template``
+    with a ``WHERE <projected_pk_property> IN $keys`` filter (single-column PK only --
+    ``provisa/cypher/query_template_filter.py`` raises loud on a composite one) and run it through
+    the same ``call_api``/``neo4j_tx`` path ``make_openapi_loader`` already uses for the whole-table
+    fetch -- the filter binds to a property the template itself already projects, never a name
+    invented by the compiler's own SQL-facing convention (see that module's docstring)."""
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        from provisa.api_source.caller import call_api
+        from provisa.api_source.flattener import flatten_response
+        from provisa.cypher.query_template_filter import inject_keys_filter
+
+        endpoint = endpoints_by_table.get(table.table_name)
+        api_source = sources_by_id.get(source.id)
+        if endpoint is None or api_source is None:
+            raise UnsupportedSourceFetch(
+                f"neo4j source {source.id!r} table {table.table_name!r}: no registered endpoint "
+                f"or api-source config to fetch from"
+            )
+        if len(pk_columns) != 1:
+            raise UnsupportedSourceFetch(
+                f"neo4j source {source.id!r} table {table.table_name!r}: keyed fetch on a "
+                f"composite PK {pk_columns!r} is not implemented (REQ-1865)"
+            )
+        wrapped_template = inject_keys_filter(endpoint.query_template, pk_columns[0])
+        wrapped_endpoint = endpoint.model_copy(update={"query_template": wrapped_template})
+        pages = await call_api(
+            wrapped_endpoint,
+            {**endpoint.default_params, "keys": [k[0] for k in keys]},
             base_url=api_source.base_url,
             auth=api_source.auth,
         )

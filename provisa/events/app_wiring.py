@@ -225,6 +225,27 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
     return loaders
 
 
+def build_keyed_adapter_loaders(state: Any) -> dict[str, Any]:
+    """The per-type KEYED row fetchers for row_materialize (REQ-1865) -- the ``load_keys``
+    counterpart to :func:`build_adapter_loaders`. Deliberately a much smaller set: only a type
+    whose whole-table fetch already runs a registered, human-verified query (neo4j's
+    ``query_template``) can be wrapped with a filter on one of ITS OWN projected properties
+    (``provisa/cypher/query_template_filter.py``) -- there is no generic keyed translation for
+    every adapter-fetched type the way there is a generic ``SELECT * WHERE pk IN (...)`` for an
+    engine-scannable one."""
+    from provisa.events.source_loader import make_neo4j_keyed_loader
+
+    keyed_loaders: dict[str, Any] = {}
+    api_endpoints = getattr(state, "api_endpoints", None)
+    api_sources = getattr(state, "api_sources", None)
+    if api_endpoints and api_sources is not None:
+        keyed_loaders["neo4j"] = make_neo4j_keyed_loader(api_endpoints, api_sources)
+        # sparql has no parser/AST to safely resolve a projected property or splice a filter
+        # against (confirmed absent, no rdflib dependency either) -- stays on the loud
+        # UnsupportedSourceFetch path in SourceRowLoader.load_keys until one exists.
+    return keyed_loaders
+
+
 async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = True) -> int:
     """Build + register the event loop from live state. Returns the node count registered (0 if the
     prerequisites are not ready or the loop is skipped). Best-effort — never raises into boot.
@@ -264,7 +285,10 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         from provisa.events.source_loader import SourceRowLoader, UnsupportedSourceFetch
 
         _adapter_loaders = build_adapter_loaders(state, engine)
-        row_loader = SourceRowLoader(engine, adapter_loaders=_adapter_loaders)
+        _keyed_adapter_loaders = build_keyed_adapter_loaders(state)
+        row_loader = SourceRowLoader(
+            engine, adapter_loaders=_adapter_loaders, keyed_adapter_loaders=_keyed_adapter_loaders
+        )
 
         def source_fetch(src: Any, tbl: Any) -> Any:
             async def _fetch(_pending: list[dict]) -> list[dict]:
@@ -518,7 +542,10 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
 
         store_schema = _store_schema_for(store_dsn, active_env())
         _adapter_loaders = build_adapter_loaders(state, engine)
-        row_loader = SourceRowLoader(engine, adapter_loaders=_adapter_loaders)
+        _keyed_adapter_loaders = build_keyed_adapter_loaders(state)
+        row_loader = SourceRowLoader(
+            engine, adapter_loaders=_adapter_loaders, keyed_adapter_loaders=_keyed_adapter_loaders
+        )
         _warned: set[str] = set()
 
         def source_fetch(src: Any, tbl: Any) -> Any:

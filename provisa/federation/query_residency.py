@@ -135,7 +135,7 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
             tables_by_source.setdefault(t.source_id, []).append(t)
 
     from provisa.events import queue
-    from provisa.events.app_wiring import build_adapter_loaders
+    from provisa.events.app_wiring import build_adapter_loaders, build_keyed_adapter_loaders
     from provisa.events.source_loader import SourceRowLoader
     from provisa.freshness.source_gate import source_subject
 
@@ -150,7 +150,11 @@ async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[s
     now = time.time()
     stamps, oks = stale_sources(sources, tables_by_source, states)
     by_id = {s.id: s for s in sources}
-    loader = SourceRowLoader(engine, adapter_loaders=build_adapter_loaders(state, engine))
+    loader = SourceRowLoader(
+        engine,
+        adapter_loaders=build_adapter_loaders(state, engine),
+        keyed_adapter_loaders=build_keyed_adapter_loaders(state),
+    )
 
     landed: list[tuple[str, str]] = []
     from contextlib import AsyncExitStack
@@ -286,7 +290,7 @@ async def ensure_rows_resident(
     one."""
     from contextlib import AsyncExitStack
 
-    from provisa.events.app_wiring import build_adapter_loaders
+    from provisa.events.app_wiring import build_adapter_loaders, build_keyed_adapter_loaders
     from provisa.events.row_lock import row_lock
     from provisa.events.source_loader import SourceRowLoader
     from provisa.federation import store_writer
@@ -306,7 +310,11 @@ async def ensure_rows_resident(
 
     sources_by_id = {s.id: s for s in await registered_sources(state)}
     tables_by_name = {t.table_name: t for t in await registered_tables(state)}
-    loader = SourceRowLoader(engine, adapter_loaders=build_adapter_loaders(state, engine))
+    loader = SourceRowLoader(
+        engine,
+        adapter_loaders=build_adapter_loaders(state, engine),
+        keyed_adapter_loaders=build_keyed_adapter_loaders(state),
+    )
     store_schema = _env_store_schema(engine.engine.materialize_store())
     dsn = engine.engine.materialize_store()
 
