@@ -292,17 +292,23 @@ tables:
   domain_id: perf-bench
   schema: neo4j
   table: bench_contains_edge
-  description: One row per CONTAINS edge (which order contains which product, at what quantity/price)
+  description: >-
+    One row per Order's full set of CONTAINS edges -- order_id is genuinely unique per row here
+    (REQ-1865: unlike the prior flat one-row-per-(order,product) shape, which had no natural
+    single-column key -- order_id repeats per item, product_id repeats per order, and the seed
+    data assigns CONTAINS relationships no per-edge id either). Reshaped to aggregate every
+    product this order contains into one nested `items` list per order, giving the cache table a
+    real unique column to store rows by without needing composite-PK keyed-fetch support.
+  row_materialize: true
+  cache_ttl: 300
   query_template: >-
     MATCH (o:Order)-[e:CONTAINS]->(p:Product)
-    RETURN o.order_id AS order_id, p.product_id AS product_id, e.quantity AS quantity,
-           e.unit_price AS unit_price
+    RETURN o.order_id AS order_id,
+           collect({product_id: p.product_id, quantity: e.quantity, unit_price: e.unit_price}) AS items
     ORDER BY o.order_id
   columns:
-  - {name: order_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: product_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: quantity, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: unit_price, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
+  - {name: items, data_type: json, visible_to: [org_admin, analyst]}
 
 relationships:
 # federated_join/large_federated_join's SQL variant (queries.py) runs a real
