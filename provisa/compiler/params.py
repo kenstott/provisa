@@ -13,6 +13,33 @@
 # Requirements: REQ-301, REQ-211
 
 import re as _re
+from collections.abc import Callable, Sequence
+
+
+def substitute_positional_placeholders(
+    sql: str, params: Sequence[object] | None, placeholder_for: Callable[[int], str]
+) -> str:
+    """Replace the governed pipeline's canonical 1-indexed ``@N``/``$N`` positional placeholders
+    (SQLGlot's generic bind-parameter rendering — neither Trino's nor ClickHouse's SQLGlot dialect
+    defines its own native placeholder syntax, so both fall back to the same spelling) with
+    ``placeholder_for(i)``'s target-specific text.
+
+    Every DIRECT-route driver needs a *different* final form here — Trino's DBAPI wants bare
+    ``?``, ClickHouse's client wants a named ``%(pN)s`` dict slot, trino_flight inlines escaped
+    literals — so the driver-specific rendering can't be centralized. What CAN be, and is: the
+    reverse-index-order replacement itself, so ``@10`` is never corrupted by an ``@1``
+    replacement running first. That exact logic was independently reimplemented per driver
+    (trino.py, trino_flight.py) before this helper existed, and a since-fixed ClickHouse bug
+    (confirmed live: `@N` reaching ClickHouse unsubstituted, rejected as a syntax error) was
+    exactly a driver that never got its own copy written. Centralizing it here means the next new
+    driver calls one shared, tested helper instead of writing a fourth copy from scratch."""
+    if not params:
+        return sql
+    for i in range(len(params), 0, -1):
+        text = placeholder_for(i)
+        sql = sql.replace(f"@{i}", text)
+        sql = sql.replace(f"${i}", text)
+    return sql
 
 
 def _sql_literal(

@@ -56,6 +56,14 @@ class QueryResult:
     def status(self) -> str:
         raise NotImplementedError
 
+    def close(self) -> None:
+        """Release any resources held by this result without draining it.
+
+        Called when a portal holding an already-executed, uniterated result (Describe with no
+        Execute, e.g. a client that aborts after fetching metadata) is closed — the default no-op
+        suits a fully in-memory result; a backend holding a live cursor/connection overrides this.
+        """
+
 
 class Session:
     def __init__(self):

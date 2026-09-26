@@ -1,0 +1,16 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Runs seed.py once, as the `seeder` service in docker-compose.yml, so `docker compose up`
+# alone fully seeds the perf demo — no manual generate_*.py invocation from the host required.
+FROM python:3.12-slim
+RUN pip install --no-cache-dir psycopg2-binary pymongo clickhouse-connect httpx
+WORKDIR /app
+COPY generate_postgres.py generate_clickhouse.py generate_mongo.py generate_neo4j.py seed.py ./
+ENTRYPOINT ["python", "seed.py"]

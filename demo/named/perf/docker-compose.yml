@@ -1,0 +1,181 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The named demo "perf" (start-ui-install.sh --demo perf). demo/named/<name>/ is the fixed layout
+# every named demo lives in, and THIS FILE is its one standard start point: whatever the demo
+# needs — one container or several, all local or partly external managed resources (e.g. a
+# Databricks source reached by connection string/secret, no local container at all) — is an
+# implementation detail behind the single `docker compose up -d`. A solutions engineer never
+# orchestrates services by hand; they invoke this one file and read fragment.yaml to see what got
+# registered. This demo's implementation: own compose project (provisa-demo-perf), own ports
+# (25632 rdb, 28623 dw, 27317 doc store, 27974/27987 graph). Four separate engine types so joins
+# exercise real cross-source federation, not just cross-database: postgresql (RDB), clickhouse
+# (DW), mongodb (doc store), neo4j (graph), sharing an order_id/customer_id join-key domain.
+#
+# Self-contained: `docker compose up -d` alone brings the whole thing up AND seeds it — the
+# `seeder` service (seed.py, see Dockerfile.seeder) waits for the other 4 to report healthy, then
+# runs generate_*.py against them and exits. It is idempotent (a marker file on the bind-mounted
+# ./data volume), so a restart never re-runs the multi-GB generation. Then
+# `start-ui-install.sh --demo perf` registers all four sources. Tear down with `docker compose down`.
+#
+# Data volumes are BIND MOUNTS to ./data/ (this dir, under /Volumes/main) for postgresql/
+# clickhouse/neo4j — Docker Desktop stores named volumes inside its own VM disk image on the
+# macOS boot volume regardless of what they contain, and that disk can run nearly full;
+# bind-mounting keeps every byte this stack writes on /Volumes/main instead. Requires
+# /Volumes/main to be added under Docker Desktop > Settings > Resources > File Sharing.
+#
+# mongodb is the ONE exception — a named volume, not a bind mount. Confirmed live: WiredTiger
+# (Mongo's storage engine) needs real POSIX advisory file locking on its data files, which
+# VirtioFS/FUSE-style bind mounts on Docker Desktop for Mac don't fully support — mongod fails
+# with "Operation not permitted" opening WiredTiger.wt even though plain read/write to the same
+# mount works fine (a generic busybox container could read/write it), and neither chmod nor a
+# Docker Desktop restart fixed it. This is safe from the disk-space angle specifically because
+# Docker Desktop's own VM disk (Docker.raw) is itself already relocated to /Volumes/main (see
+# demo/named/perf/generate_mongo.py's directConnection=True note for the other mongo-specific
+# gotcha this same replica-set setup requires).
+# com.provisa.demo groups every container this demo starts, across all its services, so
+# `docker ps --filter label=com.provisa.demo=perf` (or the equivalent for any other
+# demo/named/<name>/) lists exactly this demo's containers without needing its compose file open.
+# com.provisa.demo.role names each container's part in the demo (rdb/dw/doc-store/graph/seeder).
+x-demo-labels: &demo-labels
+  com.provisa.demo: perf
+services:
+  postgresql:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+    environment:
+      POSTGRES_USER: provisa
+      POSTGRES_PASSWORD: provisa
+      POSTGRES_DB: provisa_bench
+    ports:
+      - "${PROVISA_BENCH_POSTGRESQL_PORT:-25632}:5432"
+    volumes:
+      - ./data/postgresql:/var/lib/postgresql/data
+    command: ["postgres", "-c", "max_wal_size=4GB", "-c", "shared_buffers=1GB"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U provisa -d provisa_bench"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: doc-store
+    ports:
+      - "${PROVISA_BENCH_MONGO_PORT:-27317}:27017"
+    volumes:
+      - mongo_bench_data:/data/db
+    # Single-node replica set — our standard approach for every Mongo service in a named demo,
+    # not just this one. Community-edition Mongo still needs replication for change streams
+    # (Community has no CDC equivalent to Neo4j Enterprise's; change streams are the freshness
+    # mechanism available at this edition — REQ-1861/1862). No extra containers: one member,
+    # self-initiated by the healthcheck's first successful run (rs.status() fails until
+    # initiated, so the `try/catch` below both checks and bootstraps). The member is registered
+    # under its Compose service name (mongodb:27017), the only hostname valid for every consumer
+    # on this network — see generate_mongo.py's directConnection=True for why other consumers
+    # (e.g. Provisa itself, reading over the published host port where "mongodb" doesn't
+    # resolve) should set the same flag rather than rely on replica-set topology discovery.
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test: >-
+        mongosh --quiet --eval
+        "try { rs.status().ok } catch (err) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]}).ok }"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: dw
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: provisa
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "${PROVISA_BENCH_CLICKHOUSE_PORT:-28623}:8123"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - ./data/clickhouse:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+  neo4j:
+    image: neo4j:5.19-community
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: graph
+    ports:
+      - "${PROVISA_BENCH_NEO4J_HTTP_PORT:-27974}:7474"
+      - "${PROVISA_BENCH_NEO4J_BOLT_PORT:-27987}:7687"
+    environment:
+      NEO4J_AUTH: none
+      NEO4J_server_memory_heap_max__size: 2g
+      NEO4J_server_memory_pagecache_size: 1g
+    volumes:
+      - ./data/neo4j:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:7474 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  seeder:
+    build:
+      context: .
+      dockerfile: Dockerfile.seeder
+    restart: "no"
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: seeder
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    environment:
+      PROVISA_BENCH_POSTGRESQL_HOST: postgresql
+      PROVISA_BENCH_POSTGRESQL_PORT: "5432"
+      PROVISA_BENCH_MONGO_HOST: mongodb
+      PROVISA_BENCH_MONGO_PORT: "27017"
+      PROVISA_BENCH_CLICKHOUSE_HOST: clickhouse
+      PROVISA_BENCH_CLICKHOUSE_PORT: "8123"
+      PROVISA_BENCH_NEO4J_HOST: neo4j
+      PROVISA_BENCH_NEO4J_HTTP_PORT: "7474"
+      PROVISA_BENCH_ORDERS: "${PROVISA_BENCH_ORDERS:-20000000}"
+      # Deliberately decoupled from PROVISA_BENCH_ORDERS — see seed.py's docstring. Neo4j is a
+      # replica-only source (materialize/cache pattern, REQ-1858/1861); the materialize-cost
+      # benchmark needs realistic table size, not full order_id-domain coverage, and Neo4j's
+      # HTTP-transaction-batch loading is by far the slowest of the 4 seed steps.
+      PROVISA_BENCH_NEO4J_ORDERS: "${PROVISA_BENCH_NEO4J_ORDERS:-2000000}"
+      PROVISA_BENCH_ITEMS_PER_ORDER: "${PROVISA_BENCH_ITEMS_PER_ORDER:-4}"
+    volumes:
+      - ./data:/data-marker
+
+volumes:
+  mongo_bench_data:

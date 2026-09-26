@@ -61,10 +61,30 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
         self._client = await asyncio.to_thread(_open)
 
     async def execute(self, sql: str, params: list | None = None) -> QueryResult:
-        del params  # ClickHouse read SQL arrives fully formed from the governed pipeline
+        # Confirmed live (federated_join via GraphQL against a real ClickHouse server): the
+        # governed pipeline's `@N` positional placeholders reach here UNSUBSTITUTED for a
+        # cross-engine push-down, the same shape trino.py/trino_flight.py already handle for
+        # Trino — "arrives fully formed" only held for the single-source path this driver was
+        # first written against. `@N` -> ClickHouse's own `%(pN)s` dict-substitution placeholder
+        # (clickhouse_connect.driver.binding.finalize_query does real value escaping, not raw
+        # string interpolation); see substitute_positional_placeholders for why the reverse-order
+        # replacement is centralized but the placeholder spelling isn't.
+        from provisa.compiler.params import (
+            extract_params_comment,
+            substitute_positional_placeholders,
+        )
+
+        exec_sql, embedded = extract_params_comment(sql)
+        effective_params = params if params is not None else embedded
+        ch_params: dict[str, Any] | None = None
+        if effective_params:
+            exec_sql = substitute_positional_placeholders(
+                exec_sql, effective_params, lambda i: f"%(p{i})s"
+            )
+            ch_params = {f"p{i}": v for i, v in enumerate(effective_params, start=1)}
 
         def _run() -> QueryResult:
-            res = self._client.query(sql)
+            res = self._client.query(exec_sql, parameters=ch_params)
             return QueryResult(
                 rows=[tuple(r) for r in res.result_rows], column_names=list(res.column_names)
             )

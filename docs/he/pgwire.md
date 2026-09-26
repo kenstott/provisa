@@ -37,7 +37,7 @@ Port: $PROVISA_PGWIRE_PORT
 
 **SCRAM-SHA-256.** תחת `provider: basic` עם `auth.scram: true` השרת מכריז על SASL (קוד אימות 10) עם `SCRAM-SHA-256`, והסיסמה מוכחת במקום להישלח. (REQ-1394) `SCRAM-SHA-256-PLUS` אינו מוצע. משתמש שה-verifier שלו טרם נכתב — לא ניתן לגזור verifier מגיבובי bcrypt — מקבל חילופי דברים מדומים, כך שהתקשורת אינה חושפת מי כבר עבר; משתמש כזה מתאמת בסיסמת cleartext מעל TLS עד שהזנת הסיסמה הבאה שלו תכתוב verifier. כאשר `auth.scram` כבוי, השרת משתמש בסוג אימות PG 3 (סיסמת cleartext). MD5 אינו נתמך בשני המקרים.
 
-**תעודות לקוח.** הגדירו `PROVISA_MTLS_CLIENT_CA` והשרת יאמת תעודת לקוח במהלך ה-handshake, לפני בחינת כל אישור. (REQ-1228) עם `PROVISA_MTLS_BIND_PRINCIPAL` ה-common name של התעודה חייב להיות זהה ל-`user` שהחיבור מתאמת בשמו לאחר מכן. ראו [תצורה](configuration.md#tls).
+**תעודות לקוח.** הגדירו `PROVISA_MTLS_CLIENT_CA` והשרת יאמת תעודת לקוח במהלך ה-handshake, לפני בחינת כל אישור. (REQ-1228) עם `PROVISA_MTLS_BIND_PRINCIPAL` ה-common name של התעודה חייב להיות זהה ל-`user` שהחיבור מתאמת בשמו לאחר מכן. ראו [תצורה](configuration.md#mutual-tls).
 
 **ניסיונות כושלים נספרים.** חמישה כשלונות בחמש דקות נועלים את החשבון לחמש-עשרה דקות, והמונה משותף עם HTTP ועם Bolt — נעילה שהושגה בכל אחת מהממשקים חלה על כולם. (REQ-1393)
 
@@ -61,6 +61,65 @@ Port: $PROVISA_PGWIRE_PORT
 שאילתות פרמטריות (`$1`, `$2`, ...) נתמכות הן במצב שאילתה-פשוטה והן במצב שאילתה-מורחבת (Bind/Execute). פרמטרים מוחלפים כליטרלים לפני הביצוע. (REQ-581) [tool-verified: `server.py:78-85`]
 
 `SELECT * FROM fn(args)` ו-`SELECT fn(args)` — כאשר `fn` נותן שם לפונקציה עוקבת (tracked) רשומה — מיורטים לפני צינור הממשל ומנותבים דרך ה-executor המנוהל היחיד (`invoke_tracked_function`). התוצאה היא סט שורות מוקלד זהה למה שכל surface אחר מחזיר עבור אותו command. `writable_by` וכללי ממשל נאכפים בתוך ה-executor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
+
+### סמנים (DECLARE / FETCH / MOVE / CLOSE)
+
+Provisa מטפלת בתחביר SQL טקסטואלי של סמנים מעל פרוטוקול השאילתה-הפשוטה. (REQ-1862) לקוחות השולחים `DECLARE`/`FETCH`/`MOVE`/`CLOSE` כמשפטי SQL רגילים מקבלים streaming אמיתי בצד השרת, ולא שגיאת פרוטוקול ולא טעינת התוצאה כולה לזיכרון הלקוח.
+
+**מנגנון זה נפרד מ-streaming מבוסס-portal.** פרוטוקול השאילתה-המורחבת — Bind/Execute עם שדה row-limit — הוא מנגנון תקשורת שונה. asyncpg ורוב דרייברי PostgreSQL המודרניים משתמשים בו אוטומטית, ללא כל תחביר SQL של סמנים. אם הדרייבר שלכם כבר משתמש ב-portals, אין צורך בתחביר זה. `DECLARE CURSOR` מיועד ללקוחות השולחים SQL של סמנים ממש: תכונת ה-named/server-side cursor של psycopg2 (`conn.cursor(name="...")`), כלי BI מסוימים, ו-JDBC drivers לגסי מסוימים.
+
+**DECLARE**
+
+```sql
+DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
+DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
+DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
+```
+
+ה-SELECT הפנימי עובר דרך צינור הממשל הרגיל של Provisa — אותה אכיפת RLS, מיסוך, ובדיקות גישת-דומיין החלות על כל SELECT עצמאי. [tool-verified: `server.py:1367` — `ctx.execute_sql(inner_sql)`, אותו נתיב קריאה כמו SELECT רגיל] הצהרת סמן אינה עוקפת ממשל.
+
+מילת המפתח `SCROLL` שולטת הן בניווט המותר והן בצריכת הזיכרון של הסמן:
+
+| הצהרה | ניווט לאחור | עלות זיכרון |
+|---|---|---|
+| `DECLARE c CURSOR FOR ...` (ברירת מחדל) | אינו מותר | מוגבל לאצווה אחת של FETCH |
+| `DECLARE c NO SCROLL CURSOR FOR ...` | אינו מותר | מוגבל לאצווה אחת של FETCH |
+| `DECLARE c SCROLL CURSOR FOR ...` | מותר | התוצאה המלאה מאוחסנת בזיכרון Python |
+
+כאשר לא כתובה לא `SCROLL` ולא `NO SCROLL`, ברירת המחדל היא `NO SCROLL` — תואמת לברירת המחדל של PostgreSQL עצמה. [tool-verified: `server.py:1361-1362`] סמן `NO SCROLL` מסלק שורות שנצרכו מהמאגר הפנימי שלו לאחר כל צעד קדימה, כך שסריקת `FETCH FORWARD` דרך תוצאה גדולה לעולם אינה מחזיקה יותר מאצווה אחת בזיכרון Python בו-זמנית. [tool-verified: `server.py:443-447`] סמן `SCROLL` שומר כל שורה שמשך אי-פעם — זוהי העלות של תמיכה ב-`FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, ו-`LAST`. לפני הצהרת סמן `SCROLL` מול תוצאה גדולה, תקצבו את גודל התוצאה המלאה כ-heap של Python. [tool-verified: `server.py:383-389`]
+
+הצהרה מחודשת על שם סמן שכבר פתוח סוגרת תחילה את הסמן הקודם. [tool-verified: `server.py:1369-1371`] `WITH HOLD` ו-`WITHOUT HOLD` מתקבלים בתחביר; ראו "אורך חיי הסמן" להלן.
+
+**FETCH ו-MOVE**
+
+```sql
+FETCH 100 FROM c1            -- 100 השורות הבאות
+FETCH FORWARD 100 FROM c1    -- זהה לפקודה הקודמת
+FETCH ALL FROM c1            -- כל השורות הנותרות
+FETCH BACKWARD 10 FROM c1    -- 10 השורות הקודמות (סמני SCROLL בלבד)
+FETCH ABSOLUTE 50 FROM c1    -- השורה במיקום מוחלט 50 (סמני SCROLL בלבד)
+FETCH RELATIVE -5 FROM c1    -- 5 מיקומים אחורה (סמני SCROLL בלבד)
+FETCH FIRST FROM c1          -- שורה 1 (סמני SCROLL בלבד)
+FETCH LAST FROM c1           -- השורה האחרונה (סמני SCROLL בלבד)
+MOVE 100 FROM c1             -- הקדמת מיקום ללא החזרת שורות
+```
+
+`FETCH` מחזיר שורות ושולח תגית פקודה `FETCH <n>`, כאשר `n` הוא המספר בפועל שהוחזר — שעשוי להיות פחות מהמבוקש כשהסמן מגיע לסוף. `MOVE` מקדים את המיקום ללא החזרת שורות ושולח `MOVE <n>`. [tool-verified: `server.py:1417`, `server.py:1419`]
+
+`FROM` ו-`IN` חילופיים כמציגי שם הסמן. שמות סמן ללא מירכאות מוסבים לאותיות קטנות; שמות עם מירכאות (`"CaseSensitive"`) שומרים על רישיות. [tool-verified: `test_cursor.py:74-79`]
+
+ניווט לאחור (`BACKWARD`, `ABSOLUTE`, `FIRST`, `LAST`, `RELATIVE` שלילי) מול סמן `NO SCROLL` מחזיר SQLSTATE 55000 (`object_not_in_prerequisite_state`), בהתאמה לדחיית PostgreSQL האמיתית. [tool-verified: `server.py:1402-1406`] FETCH או MOVE המציין שם סמן שלא הוצהר מעולם מחזיר SQLSTATE 34000 (`invalid_cursor_name`). [tool-verified: `server.py:1398-1400`]
+
+**CLOSE**
+
+```sql
+CLOSE c1;    -- שחרר סמן אחד ופנה את stream התוצאות שלו
+CLOSE ALL;   -- שחרר כל הסמנים הפתוחים בחיבור זה
+```
+
+`CLOSE` משחרר את stream התוצאות הבסיסי ומסיר את הסמן מה-session. [tool-verified: `server.py:1421-1436`] ניתוק ללא הוצאת `CLOSE` הוא בטוח: `ProvisaSession.close()` משחרר את כל הסמנים שעדיין פתוחים אוטומטית בעת ניתוק. [tool-verified: `test_cursor.py:335-346`]
+
+**אורך חיי הסמן.** לשרת ה-pgwire של Provisa אין מכונת מצב עסקאות (`ProvisaSession.in_transaction()` מקודד-קשיח ל-`False`). כל סמן לכן מתנהג כאילו הוצהר `WITH HOLD`: הוא חי למשך תקופת החיבור, לא עד `COMMIT`. [tool-verified: `server.py:200` — `in_transaction()` מחזיר תמיד `False`] מילות המפתח `WITH HOLD` ו-`WITHOUT HOLD` מתקבלות ומתעלמות בשקט — אין מחזור חיים של סמן לעסקה לאכוף.
 
 ### DDL
 
@@ -208,5 +267,7 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 **DDL בנתיב Trino הוא CREATE בלבד.** ALTER, DROP, ו-CREATE INDEX מול קטלוגי Iceberg או Hive אינם נתמכים. השתמשו במקור SQL רשום כ-`ddl_catalog` אם אתם זקוקים ל-DDL מלא. (REQ-582) [tool-verified: `ddl_handler.py:92-100`]
 
 **החלפת פרמטרים היא ליטרלית.** פרמטרים `$1`, `$2`, ... מוחלפים כליטרלי SQL לפני הביצוע, לא נשלחים כפרמטרי bind למנוע ה-upstream. משמעות הדבר שמנוע ה-upstream לעולם לא רואה משפט מוכן (prepared statement). עבור Trino אין לכך השפעה מעשית; עבור מקורות pool-ישיר זה עוקף מטמון prepared-statement. (REQ-581) [tool-verified: `server.py:78-85`]
+
+**`DECLARE SCROLL` מאחסן את התוצאה המלאה בזיכרון.** סמן `SCROLL` צובר כל שורה שמשך מהמנוע ב-heap של Python, כדי ש-`FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, ו-`LAST` יוכלו להגישה לפי דרישה. מול תוצאה גדולה, פירוש הדבר שהתוצאה כולה חיה בזיכרון כל עוד הסמן פתוח. השתמשו ב-`NO SCROLL` (ברירת המחדל) לסריקות forward-only. (REQ-1862) [tool-verified: `server.py:383-389`]
 
 **`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** טבלאות אלה קיימות בשכבת הקטלוג אך הן stubs ריקים. כלי ניטור השואלים אותן יקבלו אפס שורות במקום שגיאות. (REQ-532) [tool-verified: `catalog.py:519-535`, `catalog.py:639-934`] (`pg_index` מאוכלס — ראו יירוט קטלוג.)

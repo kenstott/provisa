@@ -8,25 +8,45 @@ set -euo pipefail
 KEEP_DOCKER=false
 FAST=false
 DEMO=false
+DEMO_NAME=""  # "" = standard demo; a name (e.g. "perf") selects a named demo variant
 NATIVE=false
 IDP=""
 SOURCES=()  # optional demo sources (demo/sources/<name>): --source=neo4j --source=mongodb ...
-for arg in "$@"; do
+_ARGV=("$@")
+_i=0
+while [ "$_i" -lt "${#_ARGV[@]}" ]; do
+  arg="${_ARGV[$_i]}"
   case "$arg" in
     --keep-docker) KEEP_DOCKER=true ;;
     --fast) FAST=true; KEEP_DOCKER=true ;;
-    --demo) DEMO=true; NATIVE=true ;;  # demo is always native: no Docker, in-process engine + SQLite control plane
+    # --demo is always native: no Docker, in-process engine + SQLite control plane. An optional
+    # following bare word (not itself a flag) names a demo variant, e.g. `--demo perf` — the same
+    # standard demo machinery, but with a named variant's own data/source setup spliced in below.
+    --demo)
+      DEMO=true; NATIVE=true
+      _next=$((_i + 1))
+      if [ "$_next" -lt "${#_ARGV[@]}" ]; then
+        case "${_ARGV[$_next]}" in
+          --*) ;;
+          *) DEMO_NAME="${_ARGV[$_next]}"; _i=$_next ;;
+        esac
+      fi
+      ;;
     --native) NATIVE=true ;;
     --idp=*) IDP="${arg#--idp=}" ;;
     --source=*) SOURCES+=("${arg#--source=}") ;;
-    *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--demo] [--native] [--idp=basic|firebase] [--source=<name>]..."; echo "  --source=<name>: provision demo/sources/<name> (a Docker container, primed with data) and include its config fragment"; exit 1 ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--demo [name]] [--native] [--idp=basic|firebase] [--source=<name>]..."; echo "  --demo [name]: standard demo, or a named demo variant (e.g. 'perf' — see demo/named/<name>/)"; echo "  --source=<name>: provision demo/sources/<name> (a Docker container, primed with data) and include its config fragment"; exit 1 ;;
   esac
+  _i=$((_i + 1))
 done
 if [ -n "$IDP" ] && [ "$IDP" != "basic" ] && [ "$IDP" != "firebase" ]; then
   echo "Unknown IDP: $IDP. Must be 'basic' or 'firebase'"; exit 1
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -n "$DEMO_NAME" ] && [ ! -d "$SCRIPT_DIR/demo/named/$DEMO_NAME" ]; then
+  echo "Unknown demo name: $DEMO_NAME. No demo/named/$DEMO_NAME/ directory."; exit 1
+fi
 LOG_DIR="$SCRIPT_DIR/.logs"
 mkdir -p "$LOG_DIR"
 
@@ -239,6 +259,42 @@ if [ "${#SOURCES[@]}" -gt 0 ]; then
   done
   export PROVISA_CONFIG="$_SRC_WRAPPER"
   echo "Config with sources: $PROVISA_CONFIG"
+fi
+
+# Named demo (demo/named/<name>/, e.g. "perf"): every named demo is a self-contained Docker stack
+# in this fixed layout — docker-compose.yml (+ Dockerfile.seeder, seed.py) + fragment.yaml. Its
+# fragment is spliced in the same way --source=<name> splices demo/sources/*/fragment.yaml above,
+# generically regardless of name. `--demo <name>` brings the stack up itself (below) — this is
+# safe to do on every start: `docker compose up -d` is idempotent (already-running containers are
+# a no-op) and the `seeder` service is idempotent too (a marker file on the bind-mounted data
+# volume — see seed.py), so re-running this never re-seeds or disturbs data that's meant to
+# survive every start-ui-install.sh restart. Only the FIRST start for a given named demo's data
+# volume actually waits a while (real seeding); every start after that is fast. This start only
+# fails fast if the fragment doesn't exist.
+if [ -n "$DEMO_NAME" ]; then
+  _NAMED_DIR="$SCRIPT_DIR/demo/named/$DEMO_NAME"
+  _NAMED_FRAGMENT="$_NAMED_DIR/fragment.yaml"
+  if [ ! -f "$_NAMED_FRAGMENT" ]; then
+    echo "--demo $DEMO_NAME has no $_NAMED_FRAGMENT to register it with"; exit 1
+  fi
+  if [ -f "$_NAMED_DIR/docker-compose.yml" ]; then
+    echo "Named demo '$DEMO_NAME': bringing up its data stack (docker compose -f $_NAMED_DIR/docker-compose.yml up -d)..."
+    docker compose -f "$_NAMED_DIR/docker-compose.yml" up -d --build
+    if docker compose -f "$_NAMED_DIR/docker-compose.yml" config --services | grep -qx seeder; then
+      echo "Named demo '$DEMO_NAME': waiting for its seeder (no-op if already seeded; can take a while on first run)..."
+      docker compose -f "$_NAMED_DIR/docker-compose.yml" up seeder
+    fi
+  fi
+  _NAMED_WRAPPER="${PROVISA_HOME:-$HOME/.provisa}/demo/provisa-with-$DEMO_NAME.yaml"
+  mkdir -p "$(dirname "$_NAMED_WRAPPER")"
+  {
+    echo "# Written by start-ui-install.sh --demo $DEMO_NAME: the base/sourced config plus its fragment."
+    echo "includes:"
+    echo "  - $SCRIPT_DIR/$PROVISA_CONFIG"
+    echo "  - $_NAMED_FRAGMENT"
+  } > "$_NAMED_WRAPPER"
+  export PROVISA_CONFIG="$_NAMED_WRAPPER"
+  echo "Config with named demo '$DEMO_NAME' sources: $PROVISA_CONFIG"
 fi
 
 # Core + install overlay (port bindings only — no kafka/mongo/elasticsearch/observability)
@@ -803,8 +859,16 @@ _key_reader() {
     esac
   done
 }
-_key_reader &
-KEY_READER_PID=$!
+# Only when there's a real controlling terminal: with no TTY (backgrounded/non-interactive —
+# nohup, CI, or a driver script like demo/named/perf/bench/orchestrate.sh), `read ... </dev/tty`
+# fails INSTANTLY instead of waiting out its 1s timeout, turning `|| continue` into an
+# unthrottled busy-loop that pegs a CPU core indefinitely for no purpose (no one is there to
+# press a hotkey). Confirmed live: 96%+ CPU sustained for 25+ minutes, starving the actual
+# backend of scheduling time.
+if [ -t 0 ]; then
+  _key_reader &
+  KEY_READER_PID=$!
+fi
 
 # Watch ~/.provisa-server-version for mtime changes and send USR1 to restart backend.
 # Developer workflow: `touch ~/.provisa-server-version` after editing Python files on T9.

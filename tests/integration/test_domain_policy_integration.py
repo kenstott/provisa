@@ -15,6 +15,12 @@ Validates the three modes against a real PG metadata DB:
   * single-domain (use_domains=false) — everything stored under default_domain.
   * namespaced (use_domains=true) — domain_id stored as declared.
 Plus the reload validation sweep that rejects pre-existing foreign domains.
+
+Every test also depends on ``graphql_client`` (unused directly, session-scoped): load_config's
+_upsert_sources -> bound_to_request_org() asserts state.admin_db is set even for a plain-password
+source with no ${secret:...} reference, and tenant_db alone never populates it — confirmed live,
+every test in this file failed standalone with `AssertionError` at app.py's `_request_org_for_secrets`
+until this was added.
 """
 
 import os
@@ -112,14 +118,14 @@ async def _stored_domain(conn, table_name: str = "orders") -> str:
 
 class TestSingleDomainMode:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_empty_table_domain_coerced_to_default(self, tenant_db):
+    async def test_empty_table_domain_coerced_to_default(self, tenant_db, graphql_client):
         cfg = parse_config_dict(_config({"use_domains": False, "default_domain": "global"}, [], ""))
         async with tenant_db.acquire() as conn:
             await load_config(cfg, conn)
             assert await _stored_domain(conn) == "global"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_default_domain_seeded(self, tenant_db):
+    async def test_default_domain_seeded(self, tenant_db, graphql_client):
         cfg = parse_config_dict(
             _config({"use_domains": False, "default_domain": "global"}, [], "global")
         )
@@ -129,7 +135,7 @@ class TestSingleDomainMode:
         assert "global" in domains
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_repo_upsert_rejects_foreign_domain(self, tenant_db):
+    async def test_repo_upsert_rejects_foreign_domain(self, tenant_db, graphql_client):
         cfg = parse_config_dict(
             _config({"use_domains": False, "default_domain": "global"}, [], "global")
         )
@@ -149,7 +155,7 @@ class TestSingleDomainMode:
 
 class TestLegacyMode:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_no_impact_on_stored_domain(self, tenant_db):
+    async def test_no_impact_on_stored_domain(self, tenant_db, graphql_client):
         # use_domains absent: declared domain_id stored verbatim, domains list allowed.
         cfg = parse_config_dict(_config({}, [{"id": "sales"}], "sales"))
         async with tenant_db.acquire() as conn:
@@ -160,7 +166,7 @@ class TestLegacyMode:
 
 class TestNamespacedMode:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_declared_domain_stored(self, tenant_db):
+    async def test_declared_domain_stored(self, tenant_db, graphql_client):
         cfg = parse_config_dict(_config({"use_domains": True}, [{"id": "sales"}], "sales"))
         async with tenant_db.acquire() as conn:
             await load_config(cfg, conn)
@@ -169,7 +175,7 @@ class TestNamespacedMode:
 
 class TestReloadValidationSweep:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_sweep_rejects_preexisting_foreign_domain(self, tenant_db):
+    async def test_sweep_rejects_preexisting_foreign_domain(self, tenant_db, graphql_client):
         # Simulate a dynamically-registered table left behind with a foreign domain,
         # then switch to single-domain mode and run the sweep.
         async with tenant_db.acquire() as conn:
@@ -188,7 +194,7 @@ class TestReloadValidationSweep:
                 await _validate_existing_domains(conn, "global")
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_sweep_passes_when_all_default(self, tenant_db):
+    async def test_sweep_passes_when_all_default(self, tenant_db, graphql_client):
         async with tenant_db.acquire() as conn:
             await conn.execute(
                 "INSERT INTO sources (id, type, dialect) VALUES ('pg1', 'postgresql', 'postgres') "

@@ -185,6 +185,27 @@ class TestProvisaQueryResultStreaming:
         assert bvtype == BVType.BIGINT
         assert list(qr.rows()) == [(1,), (2,)]
 
+    def test_rows_head_peek_not_resent_on_second_call(self):
+        # vendor/buenavista's send_data_rows calls .rows() fresh on EVERY Execute message of a
+        # paginated (portal-suspend) fetch, not once for the whole result. A real multi-Execute
+        # client (e.g. asyncpg's cursor.fetch(n) against an 80M-row scan) calls .rows() many
+        # times against the same ProvisaQueryResult. The peeked head batch must be consumed
+        # exactly once across all of those calls, or every call after the first re-yields it
+        # before reaching new rows — confirmed live on perf-bench: large_scan never advanced past
+        # its first batch.
+        # send_data_rows takes only `limit` rows per Execute (itertools.islice mirrors its
+        # `cnt >= limit: break`), abandoning the .rows() generator mid-stream — exactly how a
+        # portal-suspend fetch leaves it between Execute messages.
+        import itertools
+
+        stream = self._stream([[(1,), (2,)], [(3,), (4,)]], ["id"])
+        qr = ProvisaQueryResult(stream, "SELECT 1")
+        first_execute = list(itertools.islice(qr.rows(), 2))
+        second_execute = list(itertools.islice(qr.rows(), 2))
+        assert first_execute == [(1,), (2,)]
+        assert second_execute == [(3,), (4,)]  # not [(1,), (2,)] again, and not empty
+        assert first_execute + second_execute == [(1,), (2,), (3,), (4,)]
+
 
 class TestProvisaSessionCatalog:
     """Test that ProvisaSession routes catalog queries to catalog.answer."""

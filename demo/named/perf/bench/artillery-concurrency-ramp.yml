@@ -1,0 +1,74 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Saturation test: how many queries of varying size can Provisa handle before it falls over —
+# not a fixed-ceiling latency check. Two scenario weights mix a cheap point lookup with a
+# heavier aggregation so "varying size" load hits at once, and the ramp climbs well past any
+# expected safe rate (1 -> 2000 arrivals/sec) instead of stopping at an arbitrary ceiling; the
+# breaking point (where error rate/latency actually falls over) shows up in the report rather
+# than being pre-guessed away.
+#
+# Uses Artillery's `arrivalRate` phases: an OPEN model (new virtual users arrive at a fixed rate
+# regardless of how long earlier ones take) — unlike run_benchmark.py's sequential closed-model
+# runs, this doesn't let a slow response delay the next request, so tail latency/error rate stay
+# honest as load approaches and passes the breaking point (avoids "coordinated omission").
+# HTTP-only (targets /data/cypher) since Artillery's engine is HTTP/WebSocket native — it does
+# not drive pgwire/Bolt/Flight, so this does not replace run_benchmark.py for the rest of the
+# matrix, only this saturation test.
+#
+# No auth: --demo perf runs with auth.provider: none — every request is auto-identified with no
+# token at all (provisa/auth/middleware.py:417-441). See orchestrate.sh's header for why this
+# tool doesn't add a login step that doesn't exist for this demo.
+#
+# Usage: PROVISA_HTTP_BASE_URL=http://localhost:8001 \
+#   npx artillery run --output results/<engine>/artillery-saturation.json \
+#   artillery-concurrency-ramp.yml
+# Then: npx artillery report results/<engine>/artillery-saturation.json  (HTML summary)
+config:
+  target: "{{ $processEnvironment.PROVISA_HTTP_BASE_URL }}"
+  phases:
+    - { name: "warmup",       duration: 10,  arrivalRate: 1 }
+    - { name: "ramp-to-2000", duration: 300, arrivalRate: 1, rampTo: 2000 }
+    - { name: "sustain-2000", duration: 60,  arrivalRate: 2000 }
+  defaults:
+    headers:
+      Content-Type: "application/json"
+scenarios:
+  - name: point lookup (small)
+    weight: 7
+    flow:
+      - post:
+          url: "/data/cypher"
+          json:
+            # WHERE clause, not an inline {order_id: $order_id} property-map filter: Provisa's
+            # Cypher-to-SQL translator silently drops the inline map filter (confirmed live on
+            # the GCP perf run — pg_stat_activity showed an unfiltered full table scan), which
+            # turned this phase into thousands/sec of full 20M-row scans instead of point lookups.
+            query: >-
+              MATCH (o:orders)
+              WHERE o.order_id = $order_id
+              RETURN o.order_id AS order_id, o.customer_id AS customer_id, o.status AS status
+            params:
+              order_id: 99999
+          expect:
+            - statusCode: 200
+  - name: revenue rollup by region (heavy)
+    weight: 3
+    flow:
+      - post:
+          url: "/data/cypher"
+          json:
+            query: >-
+              MATCH (o:orders)
+              WHERE o.region = $region
+              RETURN o.region AS region, sum(o.amount) AS revenue, count(o) AS n
+            params:
+              region: "NA"
+          expect:
+            - statusCode: 200

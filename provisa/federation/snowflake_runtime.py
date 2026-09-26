@@ -78,6 +78,15 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
             warehouse=q.get("warehouse", [None])[0],
             role=q.get("role", [None])[0],
         )
+        # land_table's dedicated single-worker executor — NOT the loop's default pool. self._conn
+        # is ONE shared connection, not a pool; concurrent lands for different tables dispatched
+        # via the default multi-worker executor would pile onto it at once instead of queuing —
+        # confirmed live as a real regression on the DuckDB engine (13 threads simultaneously
+        # blocked in one executemany call). Same reasoning as DuckDBFederationRuntime/
+        # PgFederationRuntime/ClickHouseFederationRuntime's own ``_land_executor``.
+        from concurrent.futures import ThreadPoolExecutor
+
+        self._land_executor = ThreadPoolExecutor(max_workers=1)
 
     def _engine_for(self) -> Any:
         if self._engine is None:
@@ -202,7 +211,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
             finally:
                 cur.close()
 
-        return await asyncio.to_thread(_run)
+        return await asyncio.get_event_loop().run_in_executor(self._land_executor, _run)
 
     async def land_table(
         self,
@@ -242,7 +251,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
             finally:
                 cur.close()
 
-        return await asyncio.to_thread(_run)
+        return await asyncio.get_event_loop().run_in_executor(self._land_executor, _run)
 
     async def materialize_source(
         self,
@@ -309,7 +318,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
             finally:
                 cur.close()
 
-        return await asyncio.to_thread(_run)
+        return await asyncio.get_event_loop().run_in_executor(self._land_executor, _run)
 
     # -- MV store (REQ-970, REQ-965) -------------------------------------------
 
@@ -337,7 +346,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
             finally:
                 cur.close()
 
-        return await asyncio.to_thread(_run)
+        return await asyncio.get_event_loop().run_in_executor(self._land_executor, _run)
 
     async def persist_mv_table(
         self,
@@ -387,7 +396,7 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
             finally:
                 cur.close()
 
-        return await asyncio.to_thread(_run)
+        return await asyncio.get_event_loop().run_in_executor(self._land_executor, _run)
 
     @property
     def connection(self):

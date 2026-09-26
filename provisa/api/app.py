@@ -26,7 +26,6 @@ from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import yaml
 from fastapi import FastAPI, Request, Response
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -81,7 +80,12 @@ from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext
 from sqlalchemy import select
-from provisa.core.config_loader import config_replace_mode, load_config, parse_config_dict
+from provisa.core.config_loader import (
+    config_replace_mode,
+    load_config,
+    parse_config_dict,
+    read_config_with_includes,
+)
 from provisa.core.database import Database
 from provisa.core import domain_policy, secrets_store
 from provisa.executor import redirect as _redirect
@@ -808,8 +812,14 @@ async def _load_and_build(
     if not path.exists():
         return
 
-    with open(path) as f:
-        raw_config = yaml.safe_load(f)
+    # read_config_with_includes (not a bare yaml.safe_load) — config_path may be a wrapper file
+    # that only carries `includes:` (start-ui-install.sh writes one for --source=<name> and
+    # --demo <name>), and a bare load of that produces just {"includes": [...]} with none of the
+    # real sources/domains/tables/roles, failing ProvisaConfig validation with "Field required"
+    # for all of them. Confirmed live (REQ-1858 named-demo work): --demo perf's wrapper crashed
+    # startup this way every time, silently past several log lines with no error until the
+    # backend log was checked directly.
+    raw_config = read_config_with_includes(path)
 
     # The shard was woken above, before the seed that first asked for its address;
     # _apply_server_and_engine_config CONNECTS the terminal (trino_lifecycle.provision opens a

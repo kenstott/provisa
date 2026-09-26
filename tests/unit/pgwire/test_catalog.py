@@ -87,6 +87,16 @@ class TestClassify:
     def test_current_setting_intercepted(self):
         assert classify("SELECT current_setting('server_version')") == "INTERCEPT"
 
+    def test_pg_advisory_unlock_all_intercepted(self):
+        # asyncpg's pool connection-release reset query always includes this call; DuckDB's
+        # pgwire catalog doesn't implement it natively, so it must be intercepted rather than
+        # PASS_THROUGH to the engine, or a real client's pool release raises a Catalog Error
+        # right after a perfectly successful query (confirmed live on perf-bench).
+        assert classify("SELECT pg_advisory_unlock_all()") == "INTERCEPT"
+
+    def test_pg_advisory_unlock_all_case_insensitive(self):
+        assert classify("SELECT PG_ADVISORY_UNLOCK_ALL()") == "INTERCEPT"
+
 
 class TestAnswerSetTxn:
     def _empty_state(self):
@@ -109,6 +119,11 @@ class TestAnswerSetTxn:
     def test_rollback_returns_empty_result(self):
         result = answer("ROLLBACK", "testrole", self._empty_state())
         assert result.rows == []
+
+    def test_pg_advisory_unlock_all_returns_void_row(self):
+        result = answer("SELECT pg_advisory_unlock_all()", "testrole", self._empty_state())
+        assert result.rows == [(None,)]
+        assert result.column_names == ["pg_advisory_unlock_all"]
 
 
 class TestAnswerShow:

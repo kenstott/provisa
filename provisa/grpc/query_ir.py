@@ -36,14 +36,42 @@ def _find_table_meta(ctx: Any, type_name: str) -> Any | None:
     return next((m for m in ctx.tables.values() if _n(m.type_name) == _n(type_name)), None)
 
 
-def grpc_table_to_semantic_sql(ctx: Any, type_name: str, limit: int) -> str | None:
+def _filter_set_fields(filter_msg: Any | None) -> list[tuple[str, Any]]:
+    """``(column, value)`` pairs for a ``{Type}Filter`` message's explicitly-set fields.
+
+    Every ``{Type}Filter`` field is declared ``optional`` (proto_gen.py), so ``HasField`` reliably
+    distinguishes "client filtered this column to its zero value" from "client didn't set this
+    column at all" — a plain (non-``optional``) proto3 scalar field can't make that distinction
+    (REQ-1860)."""
+    if filter_msg is None:
+        return []
+    return [
+        (f.name, getattr(filter_msg, f.name))
+        for f in filter_msg.DESCRIPTOR.fields
+        if filter_msg.HasField(f.name)
+    ]
+
+
+def grpc_table_to_semantic_sql(
+    ctx: Any, type_name: str, limit: int, filter_msg: Any | None = None
+) -> str | None:
     """Semantic SELECT over the table matching ``type_name``, or None if none matches. proto collapses
-    the domain separator (``PS__Inquiries`` → ``PsInquiries``), so match case/separator-insensitively."""
+    the domain separator (``PS__Inquiries`` → ``PsInquiries``), so match case/separator-insensitively.
+
+    ``filter_msg`` (REQ-1860) is the request's ``{Type}Filter`` sub-message; its explicitly-set
+    fields (see ``_filter_set_fields``) become an AND-joined equality WHERE clause."""
+    from provisa.compiler.params import _sql_literal
+
     meta = _find_table_meta(ctx, type_name)
     if meta is None:
         return None
     cols = ", ".join(_q(c) for c, _t in ctx.aggregate_columns.get(meta.table_id, [])) or "*"
     sql = f"SELECT {cols} FROM {_semantic_table_ref(meta)}"
+    where_parts = [
+        f"{_q(col)} = {_sql_literal(val)}" for col, val in _filter_set_fields(filter_msg)
+    ]
+    if where_parts:
+        sql = f"{sql} WHERE {' AND '.join(where_parts)}"
     return f"{sql} LIMIT {int(limit)}" if limit and limit > 0 else sql
 
 
@@ -235,6 +263,29 @@ def _include_node_fields(ctx: Any, meta: Any, include: list[str]) -> list[str]:
     return fields
 
 
+def _graphql_literal(val: Any) -> str:
+    """A GraphQL-syntax literal for a filter value (REQ-1860): bare ``true``/``false``/numbers,
+    double-quoted strings with GraphQL string-escaping (backslash and double-quote only)."""
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    if isinstance(val, (int, float)):
+        return str(val)
+    escaped = str(val).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _filter_graphql_where(filter_msg: Any | None) -> str:
+    """``where: { col: { eq: v } ... }`` argument text for a ``{Type}Filter`` message's
+    explicitly-set fields (REQ-1860), or "" if none are set."""
+    fields = _filter_set_fields(filter_msg)
+    if not fields:
+        return ""
+    parts = " ".join(
+        f"{apply_gql_name(col)}: {{ eq: {_graphql_literal(val)} }}" for col, val in fields
+    )
+    return f"where: {{ {parts} }}"
+
+
 def grpc_table_to_group_by_graphql_text(
     ctx: Any,
     type_name: str,
@@ -242,6 +293,7 @@ def grpc_table_to_group_by_graphql_text(
     funcs: list[str] | None = None,
     include_nodes: bool = False,
     include: list[str] | None = None,
+    filter_msg: Any | None = None,
 ) -> str | None:
     """GraphQL query text for ``Query{Type}GroupBy`` (REQ-1359): targets the same
     ``{field}_group_by(by: [...])`` root field JSON:API/REST synthesize.
@@ -252,7 +304,9 @@ def grpc_table_to_group_by_graphql_text(
     generator.py::_build_group_by_graphql_query). ``include`` (REQ-1405/REQ-1408) selects what
     ``nodes`` projects — many-to-one relationship fields, ``rel.col`` dot-paths, and base-table
     scalars — mirroring JSON:API's ``?include=`` sideloading and REST's ``?includeNodes=``
-    dot-path list; see ``_include_node_fields``."""
+    dot-path list; see ``_include_node_fields``. ``filter_msg`` (REQ-1860) is the request's
+    ``{Type}Filter`` sub-message; its explicitly-set fields become a ``where: { col: { eq: v } }``
+    argument, mirroring JSON:API/REST's own equality filters."""
     meta = _find_table_meta(ctx, type_name)
     if meta is None:
         return None
@@ -265,4 +319,6 @@ def grpc_table_to_group_by_graphql_text(
     if include_nodes:
         node_fields = _include_node_fields(ctx, meta, include or [])
         nodes_part = f" nodes {{ {' '.join(node_fields)} }}"
-    return f"{{ {gb_field}(by: {by_arg}) {{ groupKey aggregate {agg_selection}{nodes_part} }} }}"
+    where_part = _filter_graphql_where(filter_msg)
+    gb_args = ", ".join(a for a in (f"by: {by_arg}", where_part) if a)
+    return f"{{ {gb_field}({gb_args}) {{ groupKey aggregate {agg_selection}{nodes_part} }} }}"

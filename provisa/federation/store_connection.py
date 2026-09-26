@@ -232,17 +232,28 @@ def land_duckdb_native(
 
     The shape is chosen from ``change_signal`` (REQ-932): a poll signal with a watermark AMENDS
     (append the delta); every other batch is a full REPLACE (DELETE + bulk insert). Rows land through
-    DuckDB's native ``executemany`` — the columnar bulk path (REQ-990). Returns the qualified name."""
+    DuckDB's native ``executemany`` — the columnar bulk path (REQ-990). Returns the qualified name.
+
+    Runs on a PRIVATE cursor (``con.cursor()``), never ``con`` directly: the caller dispatches this
+    to a background thread (``land_table``) so a large land doesn't block the event loop, and this
+    must not be the SAME pending result other threads' cursors on ``con`` are using concurrently —
+    same reasoning as ``DuckDBFederationRuntime.run()``'s private-cursor comment. The file handle is
+    still shared (this module's own docstring: DuckDB allows only one writer connection per file), a
+    cursor does not open a second connection, so this does not violate that constraint."""
     dialect = _duckdb_dialect()
-    _ensure_schema(con, catalog, schema, dialect)
-    con.execute(_create_ddl(catalog, schema, table, columns))  # create-if-absent (first land)
-    qualified = _qualified(catalog, schema, table)
-    if select_landing_shape(change_signal, watermark_column) != APPEND:
-        con.execute(f"DELETE FROM {qualified}")
-    if rows:
-        colnames = [name for name, _ in columns]
-        collist = ", ".join(f'"{cn}"' for cn in colnames)
-        placeholders = ", ".join("?" * len(colnames))
-        data = [tuple(r.get(cn) for cn in colnames) for r in rows]
-        con.executemany(f"INSERT INTO {qualified} ({collist}) VALUES ({placeholders})", data)
-    return qualified
+    cur = con.cursor()
+    try:
+        _ensure_schema(cur, catalog, schema, dialect)
+        cur.execute(_create_ddl(catalog, schema, table, columns))  # create-if-absent (first land)
+        qualified = _qualified(catalog, schema, table)
+        if select_landing_shape(change_signal, watermark_column) != APPEND:
+            cur.execute(f"DELETE FROM {qualified}")
+        if rows:
+            colnames = [name for name, _ in columns]
+            collist = ", ".join(f'"{cn}"' for cn in colnames)
+            placeholders = ", ".join("?" * len(colnames))
+            data = [tuple(r.get(cn) for cn in colnames) for r in rows]
+            cur.executemany(f"INSERT INTO {qualified} ({collist}) VALUES ({placeholders})", data)
+        return qualified
+    finally:
+        cur.close()

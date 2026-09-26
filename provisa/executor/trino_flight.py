@@ -62,10 +62,9 @@ def _substitute_params(sql: str, params: list | None) -> str:
     if not params:
         return sql
 
-    exec_sql = sql
-    for i in range(len(params), 0, -1):
-        exec_sql = exec_sql.replace(f"@{i}", "?")
-        exec_sql = exec_sql.replace(f"${i}", "?")
+    from provisa.compiler.params import substitute_positional_placeholders
+
+    exec_sql = substitute_positional_placeholders(sql, params, lambda i: "?")
 
     for param in params:
         if isinstance(param, str):

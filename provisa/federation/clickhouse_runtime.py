@@ -237,6 +237,16 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         self._engine = build_clickhouse_engine()
         self._staging = "_provisa_attach"  # database holding engine-backed tables before the view
         self._backend.command(f'CREATE DATABASE IF NOT EXISTS "{self._staging}"')
+        # land_table's dedicated single-worker executor — NOT the loop's default pool. Same
+        # reasoning as DuckDBFederationRuntime._land_executor/PgFederationRuntime._land_executor:
+        # every backend here (_CHHttpBackend/_CHNativeBackend/_CHEmbeddedBackend) holds ONE client
+        # instance (self._client), not a connection pool, so concurrent lands for different tables
+        # dispatched via the default multi-worker executor would pile onto that one client at once
+        # instead of queuing — confirmed live as a real regression on the DuckDB engine (13 threads
+        # simultaneously blocked in one executemany call).
+        from concurrent.futures import ThreadPoolExecutor
+
+        self._land_executor = ThreadPoolExecutor(max_workers=1)
 
     # -- backend selection (REQ-912) -------------------------------------------
 
@@ -377,12 +387,12 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
 
         database = f"{source_to_catalog(source.id)}_{source.schema_name}"
         parts = (database, source.table_name)
-        return await asyncio.to_thread(
-            reconcile_clickhouse_native,
-            self._backend,
-            parts=parts,
-            columns=columns,
-            pk_columns=pk_columns,
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self._land_executor,
+            lambda: reconcile_clickhouse_native(
+                self._backend, parts=parts, columns=columns, pk_columns=pk_columns
+            ),
         )
 
     async def land_table(
@@ -422,13 +432,12 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
                 "ClickHouse native landing has no CDC shape; use replace or append"
             )
         parts = (schema, table)
-        return await asyncio.to_thread(
-            land_clickhouse_native,
-            self._backend,
-            parts=parts,
-            columns=columns,
-            rows=rows,
-            shape=landing_shape,
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self._land_executor,
+            lambda: land_clickhouse_native(
+                self._backend, parts=parts, columns=columns, rows=rows, shape=landing_shape
+            ),
         )
 
     # -- metadata --------------------------------------------------------------

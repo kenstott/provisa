@@ -17,7 +17,7 @@ Builds on buenavista's socketserver-based handler, adding:
 - Full Provisa governance pipeline for user queries
 - Multi-statement simple-query support
 """
-# Requirements: REQ-001, REQ-002, REQ-120, REQ-124, REQ-125, REQ-266, REQ-273, REQ-1858
+# Requirements: REQ-001, REQ-002, REQ-120, REQ-124, REQ-125, REQ-266, REQ-273, REQ-1862
 # complexity-gate: allow-ble=5 reason="wire-protocol request-handler boundary: an arbitrary user query / DDL / COPY / CTAS / describe can raise any exception type from the pluggable engine (DuckDB/buenavista/extensions) — each is caught and converted to a PostgreSQL SQLSTATE error response (send_error / _send_pg_error) so one bad statement returns a protocol error instead of crashing the connection handler; catching a narrower set would let an unmapped type kill the session"
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ import socketserver
 import ssl
 import struct
 import threading
+import time
 from dataclasses import dataclass
 from dataclasses import field as _dc_field
 from typing import TYPE_CHECKING, Iterator, Optional, Tuple
@@ -119,11 +120,11 @@ _DDL_RE = re.compile(
     r"|DROP\s+(TABLE|VIEW|INDEX|SEQUENCE|SCHEMA))\b",
     re.IGNORECASE,
 )
-# REQ-1858: session-scoped SQL cursors (no BEGIN/COMMIT machinery exists in pgwire today, so
+# REQ-1862: session-scoped SQL cursors (no BEGIN/COMMIT machinery exists in pgwire today, so
 # every DECLAREd cursor behaves as if WITH HOLD — it lives until CLOSE or disconnect).
 _DECLARE_CURSOR_RE = re.compile(
     r"^\s*DECLARE\s+(?P<name>\"[^\"]+\"|[A-Za-z_][\w$]*)\s+"
-    r"(?:BINARY\s+|INSENSITIVE\s+|(?:NO\s+)?SCROLL\s+|ASENSITIVE\s+)*"
+    r"(?:BINARY\s+|INSENSITIVE\s+|ASENSITIVE\s+|(?P<scroll>NO\s+SCROLL|SCROLL)\s+)*"
     r"CURSOR\s*(?:(?:WITH|WITHOUT)\s+HOLD\s*)?FOR\s+(?P<sql>.+?)\s*;?\s*$",
     re.IGNORECASE | re.DOTALL,
 )
@@ -230,6 +231,14 @@ _INT_TYPES = {
 
 
 def _sql_type_to_bvtype(type_str: str) -> BVType:
+    # Case-normalize before lookup: _TYPE_TO_BVTYPE/_INT_TYPES are keyed uppercase (REQ-883), but
+    # not every DIRECT-route driver reports type names that way — asyncpg's Type.name is lowercase
+    # ("int4", not "INT4"). Confirmed live: an unrecognized-case int4 column fell through to
+    # BVType.TEXT, whose BINARY-format converter (`lambda r: r.encode("utf-8")`) then crashed with
+    # AttributeError on the raw int value. psycopg2 masked this — it requests TEXT wire format by
+    # default, and TEXT's own converter is just `str`, tolerant of any Python type — so this was
+    # never visible until a binary-preferring client (asyncpg) exercised the DIRECT route.
+    type_str = type_str.upper()
     if type_str in _TYPE_TO_BVTYPE:
         return _TYPE_TO_BVTYPE[type_str]
     if type_str in _INT_TYPES:
@@ -280,8 +289,9 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
 
     def __init__(self, engine_result: ResultStream, original_sql: str = ""):
         super().__init__()
-        # Retained so a DECLARE CURSOR built on this result can release the underlying
-        # server-side cursor / pooled connection on CLOSE, without draining the rows.
+        # Held so close() can release it (server-side cursor / pooled source connection): when a
+        # portal is dropped without ever being executed (Describe with no Execute), or when a
+        # DECLARE CURSOR built on this result is closed, without draining the remaining rows.
         self._engine_result = engine_result
         self._cols = engine_result.column_names
         self._status = _tag_from_sql(original_sql)
@@ -310,8 +320,16 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         return (self._cols[index], self._types[index])
 
     def rows(self) -> Iterator[list]:
+        # send_data_rows (vendor/buenavista) calls .rows() fresh on EVERY Execute message of a
+        # paginated (portal-suspend) fetch, not once for the whole result — self._head must be
+        # consumed exactly once across all of those calls, or every Execute after the first
+        # re-yields the same peeked head batch before reaching new rows, so a multi-batch fetch
+        # (any client with a row limit under the total result size — e.g. asyncpg's
+        # cursor.fetch(n)) never advances past that first batch. Clearing it here, before the
+        # first row is yielded, makes the peek genuinely one-time.
         if self._head is not None:
-            yield from self._head
+            head, self._head = self._head, None
+            yield from head
         for batch in self._batch_iter:
             yield from batch
 
@@ -319,13 +337,20 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         return self._status or "OK"
 
     def close(self) -> None:
-        """Release the underlying stream (cursor CLOSE) without draining remaining rows."""
+        """Release the underlying stream without draining remaining rows: used both for a
+        cursor CLOSE and when a portal is dropped without ever being executed (Describe with
+        no Execute).
+        """
+        # Materialized results (executor.result.QueryResult) have nothing to release; streaming
+        # results (executor.result.StreamingQueryResult) do — duck-typed the same way
+        # StreamingQueryResult.close() itself checks its source, rather than importing both
+        # concrete result types here just to isinstance-check them.
         closer = getattr(self._engine_result, "close", None)
         if closer is not None:
             closer()
 
 
-class _CursorRowsResult(BVQueryResult):  # REQ-1858
+class _CursorRowsResult(BVQueryResult):  # REQ-1862
     """Adapts a batch of already-fetched cursor rows to buenavista's QueryResult ABC, for
     sending a FETCH response's RowDescription/DataRow pair."""
 
@@ -350,19 +375,38 @@ class _CursorRowsResult(BVQueryResult):  # REQ-1858
         return "OK"
 
 
+class _CursorNotScrollableError(Exception):
+    """Raised for PRIOR/BACKWARD/ABSOLUTE/LAST/negative-RELATIVE against a cursor that was not
+    DECLAREd SCROLL — matches real PostgreSQL, which rejects backward navigation on a NO SCROLL
+    cursor rather than silently returning wrong (or no) rows."""
+
+
 @dataclass
-class _CursorState:  # REQ-1858
+class _CursorState:  # REQ-1862
     """A named SQL cursor's live state, owned by the pgwire session that DECLAREd it.
 
     ``source`` is the DECLARE SELECT's row generator (``ProvisaQueryResult.rows()``), drained
-    forward-only and on demand. ``buffer`` accumulates every row pulled from it so far — the
-    cheapest way to support PRIOR/BACKWARD/ABSOLUTE without a rewindable engine cursor — and
-    ``pos`` is the 0-indexed boundary: the last row returned to the client is ``buffer[pos - 1]``.
+    forward-only and on demand.
+
+    ``scrollable`` reflects whether the cursor was DECLAREd ``SCROLL`` (PostgreSQL's default is
+    ``NO SCROLL`` when neither keyword is given — REQ-1862 amendment). A ``SCROLL`` cursor
+    accumulates every row pulled from ``source`` into ``buffer`` forever, so PRIOR/BACKWARD/
+    ABSOLUTE/LAST can be served without a rewindable engine cursor; that unbounded memory is the
+    accepted, correct cost of an explicitly-scrollable cursor. A ``NO SCROLL`` cursor only ever
+    moves forward, so rows behind ``pos`` can never be needed again: ``_cursor_move`` trims them
+    out of ``buffer`` as it advances, keeping memory bounded to the current FETCH batch instead of
+    the full result (e.g. an 80M-row FETCH FORWARD scan) — see REQ-1862 amendment 2026-09-25.
+
+    ``pos`` is the 0-indexed boundary *within the current buffer*: the last row returned to the
+    client is ``buffer[pos - 1]``. For a NO SCROLL cursor, ``pos`` is reset to 0 whenever consumed
+    rows are trimmed from the front of ``buffer``, so it never grows with the amount already
+    fetched.
     """
 
     name: str
     query_result: ProvisaQueryResult
     source: Iterator[list]
+    scrollable: bool = False
     buffer: list = _dc_field(default_factory=list)
     pos: int = 0
     source_exhausted: bool = False
@@ -384,7 +428,18 @@ def _cursor_fill(cs: _CursorState, upto) -> None:
 
 def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list:
     """Advance ``cs`` per FETCH/MOVE semantics and return the rows the client should see
-    (already in client-visible order — BACKWARD returns most-recent-first, like real PG)."""
+    (already in client-visible order — BACKWARD returns most-recent-first, like real PG).
+
+    A NO SCROLL cursor (``cs.scrollable`` False) only permits forward movement — PRIOR, BACKWARD,
+    ABSOLUTE, LAST, and RELATIVE with a negative count raise ``_CursorNotScrollableError``, same as
+    real PostgreSQL rejecting those against a NO SCROLL cursor."""
+    if not cs.scrollable and not (
+        direction == "forward" or (direction == "relative" and (count or 0) >= 0)
+    ):
+        raise _CursorNotScrollableError(
+            f'cursor "{cs.name}" can only scan forward — DECLARE it with SCROLL to fetch '
+            f"{direction.upper()}"
+        )
     if direction == "forward":
         if count is None:
             _cursor_fill(cs, float("inf"))
@@ -394,6 +449,11 @@ def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list:
             end = min(cs.pos + count, len(cs.buffer))
         out = cs.buffer[cs.pos : end]
         cs.pos = end
+        if not cs.scrollable:
+            # Forward-only cursor: rows behind pos can never be needed again (BACKWARD/ABSOLUTE
+            # are rejected above), so drop them instead of retaining the entire result in memory.
+            del cs.buffer[: cs.pos]
+            cs.pos = 0
         return out
     if direction == "backward":
         start = 0 if count is None else max(0, cs.pos - count)
@@ -501,14 +561,14 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-1266: the org this session is bound to (multitenant OIDC sessions only). None → the
         # single-org default runtime (trust/simple modes, or a platform admin with no single org).
         self.org_id: str | None = None
-        # REQ-1858: named SQL cursors DECLAREd on this connection, keyed by normalized name.
+        # REQ-1862: named SQL cursors DECLAREd on this connection, keyed by normalized name.
         self.cursors: dict[str, _CursorState] = {}
 
     def cursor(self):
         return None
 
     def close(self):
-        # REQ-1858: release every still-open cursor's underlying stream (server-side cursor /
+        # REQ-1862: release every still-open cursor's underlying stream (server-side cursor /
         # pooled connection) — a client that disconnects mid-cursor must not leak it.
         for cs in self.cursors.values():
             try:
@@ -580,6 +640,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # SQL's govern-then-stream split: the private engine cursor is created and drained on
         # this one thread, and rows flow lazily as buenavista emits DataRow (never buffered on
         # the loop). DIRECT/admin/govdata routes are async-native and materialize via the loop.
+        _t_govern0 = time.perf_counter()
         try:
             # REQ-074/REQ-1386: the acting principal is bound INSIDE the loop coroutine (ContextVars
             # do not cross run_coroutine_threadsafe), so the governor's audit/denial write records
@@ -600,6 +661,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         except Exception as exc:
             log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
             raise RuntimeError(str(exc)) from exc
+        # Parse/govern/route timing, isolated from physical execution below, so the pure-Python
+        # compile-path cost (parse → govern_pgwire_plan → routing decision) can be measured
+        # separately from engine/source execution time — logged at DEBUG so it's zero-cost in
+        # normal operation.
+        _t_govern1 = time.perf_counter()
 
         from provisa.api.app import state
         from provisa.transpiler.router import Route
@@ -648,6 +714,13 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             self._finalize_audit(governed, 500, loop)
             log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
             raise RuntimeError(str(exc)) from exc
+        _t_execute1 = time.perf_counter()
+        log.debug(
+            "[PGWIRE TIMING] govern=%.1fms execute=%.1fms sql=%r",
+            (_t_govern1 - _t_govern0) * 1000,
+            (_t_execute1 - _t_govern1) * 1000,
+            stripped[:80],
+        )
 
         # REQ-074/REQ-1386: the ENGINE/DIRECT streaming terminals above never reach _execute_plan,
         # so the audit row is written here. Idempotent — the _execute_plan branch already wrote it.
@@ -1197,7 +1270,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             stmt = ba[1 : len(ba) - 1].decode("utf-8")
             sql = ctx.stmts[stmt][0]
             if not sql.strip():
-                self.send_paramter_description([])
+                self.send_parameter_description([])
                 self.send_no_data()
                 return
             indices = {int(m) for m in re.findall(r"\$(\d+)", sql)}
@@ -1235,11 +1308,24 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             except Exception as e:
                 self.send_error(e, ctx)
                 return
-            self.send_paramter_description(param_oids)
-            if query_result.has_results():
-                self.send_row_description(query_result)
-            else:
-                self.send_no_data()
+            try:
+                self.send_parameter_description(param_oids)
+                if query_result.has_results():
+                    self.send_row_description(query_result)
+                else:
+                    self.send_no_data()
+            finally:
+                # Unlike describe_portal, describe_statement's eagerly-executed result is never
+                # cached (buenavista/postgres.py's own describe_statement) — the later Execute
+                # re-runs the query fresh via execute_portal's uncached fallback branch, so this
+                # result is never needed again. Confirmed live: asyncpg's prepare flow issues a
+                # Describe(Statement) (unlike psycopg2, which doesn't exercise this path the same
+                # way), and with nothing ever closing it, this leaked one live cursor/source
+                # connection PER QUERY — same leak class as the portal-describe one already fixed
+                # in close_portal, just on the statement side instead of the portal side.
+                closer = getattr(query_result, "close", None)
+                if closer is not None:
+                    closer()
             return
         super().handle_describe(ctx, payload)
 
@@ -1283,7 +1369,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
                 reset_current_org(_org_token)
 
-    def _handle_declare_cursor(self, ctx: BVContext, stmt: str) -> None:  # REQ-1858
+    def _handle_declare_cursor(self, ctx: BVContext, stmt: str) -> None:  # REQ-1862
         """DECLARE name [...] CURSOR [...] FOR <select> — runs the SELECT through the normal
         governed pipeline (``ctx.execute_sql``, same as any SELECT), and stores its lazy row
         generator on the session for FETCH/MOVE/CLOSE to consume."""
@@ -1291,6 +1377,13 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         assert m is not None  # caller only dispatches here on a match
         name = _normalize_cursor_name(m.group("name"))
         inner_sql = m.group("sql")
+        # PostgreSQL cursors are NO SCROLL (forward-only) unless SCROLL is given explicitly —
+        # thread that through so _cursor_move can bound memory for the (overwhelmingly common)
+        # forward-only case instead of buffering every row forever (REQ-1862 amendment 2026-09-25).
+        scroll_kw = m.group("scroll")
+        scrollable = scroll_kw is not None and not re.match(
+            r"NO\s+SCROLL", scroll_kw, re.IGNORECASE
+        )
         try:
             # ctx.execute_sql is typed to buenavista's base QueryResult, but every path through
             # ProvisaSession.execute_sql (the sole session implementation reachable here) returns
@@ -1301,7 +1394,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             if existing is not None:
                 existing.query_result.close()  # re-DECLARE of an open name replaces it
             cursors[name] = _CursorState(
-                name=name, query_result=query_result, source=query_result.rows()
+                name=name,
+                query_result=query_result,
+                source=query_result.rows(),
+                scrollable=scrollable,
             )
             self.send_command_complete("DECLARE CURSOR\x00")
         except PermissionError as exc:
@@ -1311,7 +1407,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             self._send_pg_error("ERROR", "42601", str(exc))
             ctx.mark_error()
 
-    def _handle_fetch_move(self, ctx: BVContext, stmt: str) -> None:  # REQ-1858
+    def _handle_fetch_move(self, ctx: BVContext, stmt: str) -> None:  # REQ-1862
         """FETCH [...] FROM cursor / MOVE [...] FROM cursor — advances the named cursor and, for
         FETCH, sends the rows it passed over as a normal RowDescription/DataRow pair."""
         is_fetch = _FETCH_RE.match(stmt) is not None
@@ -1327,6 +1423,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             self._send_pg_error("ERROR", "34000", str(exc))
             ctx.mark_error()
             return
+        except _CursorNotScrollableError as exc:
+            # 55000 = object_not_in_prerequisite_state, PostgreSQL's SQLSTATE for exactly this
+            # (backward/absolute FETCH against a NO SCROLL cursor).
+            self._send_pg_error("ERROR", "55000", str(exc))
+            ctx.mark_error()
+            return
         except Exception as exc:
             self._send_pg_error("ERROR", "42601", str(exc))
             ctx.mark_error()
@@ -1340,7 +1442,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         else:
             self.send_command_complete(f"MOVE {len(fetched)}\x00")
 
-    def _handle_close_cursor(self, ctx: BVContext, stmt: str) -> None:  # REQ-1858
+    def _handle_close_cursor(self, ctx: BVContext, stmt: str) -> None:  # REQ-1862
         """CLOSE cursor | CLOSE ALL — releases the underlying stream(s) and forgets the name(s)."""
         m = _CLOSE_CURSOR_RE.match(stmt)
         assert m is not None  # caller only dispatches here on a match

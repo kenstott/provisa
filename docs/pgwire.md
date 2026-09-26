@@ -62,6 +62,65 @@ Parameterized queries (`$1`, `$2`, ...) are supported in both simple-query and e
 
 `SELECT * FROM fn(args)` and `SELECT fn(args)` — where `fn` names a registered tracked function — are intercepted before the governance pipeline and routed through the single governed executor (`invoke_tracked_function`). The result is a typed row set identical to what every other surface returns for that command. `writable_by` and governance rules are enforced inside the executor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
 
+### Cursors (DECLARE / FETCH / MOVE / CLOSE)
+
+Provisa handles textual SQL cursor syntax over the simple-query protocol. (REQ-1862) Clients that send `DECLARE`/`FETCH`/`MOVE`/`CLOSE` as plain SQL statements get real server-side streaming rather than a protocol error or a full-result buffer loaded into client memory.
+
+**This is separate from portal-based streaming.** The extended-query protocol — Bind/Execute with a row-limit field — is a different wire mechanism. asyncpg and most modern PostgreSQL drivers use it automatically without any cursor SQL. If your driver already uses portals, you don't need this syntax. `DECLARE CURSOR` is for clients that send cursor SQL literally: psycopg2's named/server-side cursor feature (`conn.cursor(name="...")`), certain BI tools, and some legacy JDBC drivers.
+
+**DECLARE**
+
+```sql
+DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
+DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
+DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
+```
+
+The inner SELECT runs through Provisa's normal governed pipeline — the same RLS enforcement, masking, and domain-access checks that apply to any standalone SELECT. [tool-verified: `server.py:1367` — `ctx.execute_sql(inner_sql)`, the same call path as a plain SELECT] Declaring a cursor is not a governance bypass.
+
+The `SCROLL` keyword controls both what navigation is allowed and how much memory the cursor uses:
+
+| Declaration | Backward navigation | Memory cost |
+|---|---|---|
+| `DECLARE c CURSOR FOR ...` (default) | Not allowed | Bounded to one FETCH batch |
+| `DECLARE c NO SCROLL CURSOR FOR ...` | Not allowed | Bounded to one FETCH batch |
+| `DECLARE c SCROLL CURSOR FOR ...` | Allowed | Full result buffered in Python memory |
+
+When neither `SCROLL` nor `NO SCROLL` is written, the default is `NO SCROLL` — matching PostgreSQL's own default. [tool-verified: `server.py:1361-1362`] A `NO SCROLL` cursor trims consumed rows from its internal buffer after each forward step, so a `FETCH FORWARD` scan through a large result never holds more than roughly one batch in Python memory at a time. [tool-verified: `server.py:443-447`] A `SCROLL` cursor retains every row it has ever pulled — that's the cost of supporting `FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, and `LAST`. Before declaring a `SCROLL` cursor against a large result, budget the full result size as Python heap. [tool-verified: `server.py:383-389`]
+
+Re-declaring a cursor name that is already open closes the previous cursor first. [tool-verified: `server.py:1369-1371`] `WITH HOLD` and `WITHOUT HOLD` are accepted in the syntax; see Cursor Lifetime below.
+
+**FETCH and MOVE**
+
+```sql
+FETCH 100 FROM c1            -- next 100 rows
+FETCH FORWARD 100 FROM c1    -- same
+FETCH ALL FROM c1            -- all remaining rows
+FETCH BACKWARD 10 FROM c1    -- previous 10 rows (SCROLL cursors only)
+FETCH ABSOLUTE 50 FROM c1    -- the row at absolute position 50 (SCROLL cursors only)
+FETCH RELATIVE -5 FROM c1    -- 5 positions back (SCROLL cursors only)
+FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
+FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
+MOVE 100 FROM c1             -- advance position without returning rows
+```
+
+`FETCH` returns rows and sends command tag `FETCH <n>`, where `n` is the actual count returned — which may be less than requested when the cursor reaches the end. `MOVE` advances the position without returning rows and sends `MOVE <n>`. [tool-verified: `server.py:1417`, `server.py:1419`]
+
+`FROM` and `IN` are interchangeable as the cursor name introducer. Unquoted cursor names are case-folded to lowercase; quoted names (`"CaseSensitive"`) preserve case. [tool-verified: `test_cursor.py:74-79`]
+
+Backward navigation (`BACKWARD`, `ABSOLUTE`, `FIRST`, `LAST`, negative `RELATIVE`) against a `NO SCROLL` cursor returns SQLSTATE 55000 (`object_not_in_prerequisite_state`), matching real PostgreSQL's own rejection. [tool-verified: `server.py:1402-1406`] A FETCH or MOVE naming a cursor that was never declared returns SQLSTATE 34000 (`invalid_cursor_name`). [tool-verified: `server.py:1398-1400`]
+
+**CLOSE**
+
+```sql
+CLOSE c1;    -- release one cursor and free its result stream
+CLOSE ALL;   -- release every open cursor on this connection
+```
+
+`CLOSE` releases the underlying result stream and removes the cursor from the session. [tool-verified: `server.py:1421-1436`] Disconnecting without issuing `CLOSE` is safe: `ProvisaSession.close()` releases all still-open cursors automatically on disconnect. [tool-verified: `test_cursor.py:335-346`]
+
+**Cursor lifetime.** Provisa's pgwire server has no transaction state machine (`ProvisaSession.in_transaction()` is hardcoded `False`). Every cursor therefore behaves as if declared `WITH HOLD`: it lives for the duration of the connection, not until `COMMIT`. [tool-verified: `server.py:200` — `in_transaction()` always returns `False`] The `WITH HOLD` and `WITHOUT HOLD` keywords are accepted and silently ignored — there is no per-transaction cursor lifecycle to enforce.
+
 ### DDL
 
 DDL statements are detected by the regex in `server.py` and dispatched to `DdlHandler`. The role must have the `"ddl"` capability. (REQ-042) Without it, the statement is rejected with SQLSTATE 42501. [tool-verified: `ddl_handler.py:82-83`]
@@ -208,5 +267,7 @@ Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` q
 **DDL on Trino path is CREATE only.** ALTER, DROP, and CREATE INDEX against Iceberg or Hive catalogs are not supported. Use a registered SQL source as `ddl_catalog` if you need full DDL. (REQ-582) [tool-verified: `ddl_handler.py:92-100`]
 
 **Parameter substitution is literal.** `$1`, `$2`, ... parameters are substituted as SQL literals before execution, not sent as bind parameters to the upstream engine. This means the upstream engine never sees a prepared statement. For Trino this has no practical impact; for direct-pool sources it bypasses prepared-statement caching. (REQ-581) [tool-verified: `server.py:78-85`]
+
+**DECLARE SCROLL buffers the full result.** A `SCROLL` cursor accumulates every row it pulls from the engine into Python heap so `FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, and `LAST` can be served on demand. Against a large result this means the whole result lives in memory for as long as the cursor is open. Use the default `NO SCROLL` for forward-only streaming. (REQ-1862) [tool-verified: `server.py:383-389`]
 
 **`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** These tables exist in the catalog layer but are empty stubs. Monitoring tools that query them will receive zero rows rather than errors. (REQ-532) [tool-verified: `catalog.py:519-535`, `catalog.py:639-934`] (`pg_index` is populated — see Catalog Intercept.)

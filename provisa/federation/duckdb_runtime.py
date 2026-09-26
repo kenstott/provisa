@@ -32,6 +32,7 @@ import shutil
 import sqlite3
 import tempfile
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import Any
 
@@ -193,6 +194,18 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # ...and the rebuild is invisible to concurrent queries only if they are excluded from it —
         # see _CatalogGate. Held for read by every execution path, for write by the rebuild.
         self._catalog_gate = _CatalogGate()
+        # land_table's dedicated single-worker executor — NOT the loop's default pool. Confirmed
+        # live: dispatching land_table via loop.run_in_executor(None, ...) (the default pool, many
+        # workers) let concurrent lands for DIFFERENT tables (e.g. cypher_cross_engine's 5 Neo4j-
+        # materialized tables all going stale together, each independently read-triggered via
+        # query_residency.py's ensure_resident) pile onto self._con's cursors at once. DuckDB does
+        # not give concurrent writers from multiple cursors real parallelism on one connection —
+        # they serialize internally — so N concurrent lands is strictly worse than N queued ones:
+        # py-spy showed 13 threads all blocked inside the same executemany call simultaneously,
+        # accumulating 20+ minutes of CPU time for what should be a handful of small lands. A
+        # single-worker executor keeps the ORIGINAL fix's goal (land never blocks the event loop)
+        # while restoring the serialization DuckDB's connection actually needs.
+        self._land_executor = ThreadPoolExecutor(max_workers=1)
 
     # -- source exposure -------------------------------------------------------
 
@@ -695,15 +708,27 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if self._store_is_duckdb():
             from provisa.federation.store_connection import land_duckdb_native
 
-            return land_duckdb_native(
-                self._con,
-                catalog=store,
-                schema=schema,
-                table=table,
-                columns=columns,
-                rows=rows,
-                change_signal=change_signal,
-                watermark_column=watermark_column,
+            # Dispatched to the executor, not called inline: this is a synchronous, potentially
+            # multi-second bulk insert (REQ-990's whole-batch executemany). Called inline on this
+            # coroutine, it blocks the event loop for its whole duration — and every OTHER query,
+            # on any table, that needs this loop to service its own run_coroutine_threadsafe(...)
+            # call stalls right along with it, not just callers of this table. Confirmed live: an
+            # unrelated point-lookup on a completely different table hung behind a Neo4j-source TTL
+            # land of bench_placed_edge. land_duckdb_native takes its own private cursor, so this
+            # thread doesn't race a query thread's cursor on the same shared connection.
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(
+                self._land_executor,
+                lambda: land_duckdb_native(
+                    self._con,
+                    catalog=store,
+                    schema=schema,
+                    table=table,
+                    columns=columns,
+                    rows=rows,
+                    change_signal=change_signal,
+                    watermark_column=watermark_column,
+                ),
             )
         return await store_writer.land(
             self._store_dsn(),

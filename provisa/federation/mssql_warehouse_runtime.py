@@ -102,6 +102,16 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         self._engine_name = engine_name  # 'fabric' | 'synapse' — selects the connector set
         self._engine: Any = None
         self._conn = self._connect()
+        # land_table's dedicated single-worker executor — NOT the loop's default pool. self._conn
+        # is ONE shared connection, not a pool; concurrent lands for different tables dispatched
+        # via the default multi-worker executor would pile onto it at once instead of queuing —
+        # confirmed live as a real regression on the DuckDB engine (13 threads simultaneously
+        # blocked in one executemany call). Same reasoning as DuckDBFederationRuntime/
+        # PgFederationRuntime/ClickHouseFederationRuntime/SnowflakeFederationRuntime/
+        # DatabricksFederationRuntime's own ``_land_executor``.
+        from concurrent.futures import ThreadPoolExecutor
+
+        self._land_executor = ThreadPoolExecutor(max_workers=1)
 
     def _connect(self) -> Any:
         import pyodbc
@@ -249,7 +259,9 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         from provisa.core.change_signal import APPEND, select_landing_shape
 
         append = select_landing_shape(change_signal, watermark_column) == APPEND
-        await asyncio.to_thread(self._land, source, columns, rows, append)
+        await asyncio.get_event_loop().run_in_executor(
+            self._land_executor, self._land, source, columns, rows, append
+        )
 
     async def attach_landed_source(
         self, source: Any, columns: list[tuple[str, str]], *, pk_columns: list[str] | None = None
@@ -262,7 +274,9 @@ class MssqlWarehouseRuntime:  # Fabric / Synapse
         import asyncio
 
         del pk_columns  # T-SQL PRIMARY KEY is not a landing concern here — REQ-1651 tracks it
-        return await asyncio.to_thread(self._reconcile, source, columns)
+        return await asyncio.get_event_loop().run_in_executor(
+            self._land_executor, self._reconcile, source, columns
+        )
 
     def _reconcile(self, source: Any, columns: list[tuple[str, str]]) -> str:
         _database, schema, table = self._phys_parts(source)

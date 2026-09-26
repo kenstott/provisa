@@ -308,7 +308,9 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
                 continue
             proto_type = _physical_to_proto(meta.data_type)
             filter_proto = "string" if proto_type == "google.protobuf.Timestamp" else proto_type
-            lines.append(f"  {filter_proto} {col['column_name']} = {filter_num};")
+            # `optional` gives HasField() real presence detection on these scalar fields, so
+            # query_ir can distinguish "filter col = 0/false/\"\"" from "col not filtered" (REQ-1860).
+            lines.append(f"  optional {filter_proto} {col['column_name']} = {filter_num};")
             filter_num += 1
         lines.append("}")
         lines.append("")

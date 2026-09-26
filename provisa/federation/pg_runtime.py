@@ -22,6 +22,7 @@ attach_source, ensure_materialize_attached.
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import psycopg2
@@ -41,6 +42,14 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         # store is configured. Landed/cached rows live in a schema this same connection reads.
         self._materialize_dsn = materialize_dsn
         self._raw_attached: set[str] = set()
+        # land_table/apply_cdc_events's dedicated single-worker executor — NOT the loop's default
+        # pool. Same reasoning as DuckDBFederationRuntime._land_executor: self._con is ONE shared
+        # connection, and dispatching writes against it via the default (multi-worker) executor
+        # lets concurrent lands for different tables pile onto the same connection's cursors at
+        # once instead of queuing — confirmed live as a real regression on the DuckDB engine (13
+        # threads simultaneously blocked in one executemany call, 20+ min of accumulated CPU for
+        # what should have been a handful of small serialized lands).
+        self._land_executor = ThreadPoolExecutor(max_workers=1)
 
     # -- source exposure -------------------------------------------------------
 
@@ -163,7 +172,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         if row[0] is None:
             cur.execute(self._create_table_ddl(schema, table, columns, pk_columns))
 
-    def land_table(
+    async def land_table(
         self,
         *,
         schema: str,
@@ -179,30 +188,49 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         """Land ``rows`` into ``schema.table`` of THIS engine's own store (REQ-1730) — create-if-
         absent only (drift is ``attach_landed_source``'s job), then REPLACE (delete+insert) or
         APPEND (insert, or upsert-by-key via Postgres's native ``ON CONFLICT`` when ``pk_columns``
-        is given)."""
+        is given).
+
+        Was a plain (non-``async``) ``def`` awaited unconditionally by
+        ``NativeEngineBackend.land_source_table`` (``await runtime.land_table(...)``) — every call
+        crashed with ``TypeError: object str can't be used in 'await' expression`` the moment a
+        Postgres-store land fired (TTL background refresh or a query's own read-triggered stale
+        materialize, REQ-1661). Now ``async``, dispatched to the executor on a PRIVATE cursor —
+        same reasoning as ``DuckDBFederationRuntime.land_table``/``StreamingQueryResult``'s own
+        private-cursor comments: run inline, a large land blocks the event loop for every other
+        query on this connection's engine, not just callers of this table."""
         from provisa.core.change_signal import APPEND, CDC, REPLACE, select_landing_shape
 
         del match_floor
         pk = list(pk_columns or ())
         landing_shape = shape or select_landing_shape(change_signal, watermark_column)
         names = [name for name, _ in columns]
-        cur = self._con.cursor()
-        self._ensure_table(cur, schema, table, columns, pk)
-        if landing_shape == REPLACE:
-            cur.execute(f'DELETE FROM "{schema}"."{table}"')
-            self._insert_rows(cur, schema, table, names, rows)
-        elif landing_shape == APPEND:
-            if pk:
-                self._upsert_rows(cur, schema, table, names, pk, rows)
-            else:
-                self._insert_rows(cur, schema, table, names, rows)
-        elif landing_shape == CDC:
-            if not pk:
-                raise ValueError(f"CDC land into {schema}.{table} requires primary key columns")
-            self._upsert_rows(cur, schema, table, names, pk, rows)
-        else:
-            raise ValueError(f"unhandled landing shape {landing_shape!r}")
-        return f"{schema}.{table}"
+
+        def _run() -> str:
+            cur = self._con.cursor()
+            try:
+                self._ensure_table(cur, schema, table, columns, pk)
+                if landing_shape == REPLACE:
+                    cur.execute(f'DELETE FROM "{schema}"."{table}"')
+                    self._insert_rows(cur, schema, table, names, rows)
+                elif landing_shape == APPEND:
+                    if pk:
+                        self._upsert_rows(cur, schema, table, names, pk, rows)
+                    else:
+                        self._insert_rows(cur, schema, table, names, rows)
+                elif landing_shape == CDC:
+                    if not pk:
+                        raise ValueError(
+                            f"CDC land into {schema}.{table} requires primary key columns"
+                        )
+                    self._upsert_rows(cur, schema, table, names, pk, rows)
+                else:
+                    raise ValueError(f"unhandled landing shape {landing_shape!r}")
+                return f"{schema}.{table}"
+            finally:
+                cur.close()
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self._land_executor, _run)
 
     def _insert_rows(
         self, cur: Any, schema: str, table: str, names: list[str], rows: list[dict]
@@ -251,25 +279,37 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
     ) -> dict[str, int]:
         """Apply CDC change events (insert/update -> upsert by PK, delete -> tombstone) to a table
         already landed in this engine's own store (REQ-1733) — the raw-psycopg2 mirror of
-        ``SqlAlchemyFederationRuntime.apply_cdc_events``."""
+        ``SqlAlchemyFederationRuntime.apply_cdc_events``.
+
+        Dispatched to the executor, same reasoning as ``land_table`` above: this was ``async def``
+        but ran its psycopg2 work inline, so a large event batch still blocked the event loop for
+        every other query on this engine for its whole duration."""
         if not pk_columns:
             raise ValueError(f"CDC land into {schema}.{table} requires primary key columns")
         names = [name for name, _ in columns]
-        cur = self._con.cursor()
-        self._ensure_table(cur, schema, table, columns, pk_columns)
-        counts = {"upsert": 0, "delete": 0}
-        for ev in events:
-            if ev.operation.lower() == "delete":
-                where = " AND ".join(f'"{c}" = %s' for c in pk_columns)
-                cur.execute(
-                    f'DELETE FROM "{schema}"."{table}" WHERE {where}',
-                    tuple(ev.row.get(c) for c in pk_columns),
-                )
-                counts["delete"] += 1
-            else:
-                self._upsert_rows(cur, schema, table, names, pk_columns, [ev.row])
-                counts["upsert"] += 1
-        return counts
+
+        def _run() -> dict[str, int]:
+            cur = self._con.cursor()
+            try:
+                self._ensure_table(cur, schema, table, columns, pk_columns)
+                counts = {"upsert": 0, "delete": 0}
+                for ev in events:
+                    if ev.operation.lower() == "delete":
+                        where = " AND ".join(f'"{c}" = %s' for c in pk_columns)
+                        cur.execute(
+                            f'DELETE FROM "{schema}"."{table}" WHERE {where}',
+                            tuple(ev.row.get(c) for c in pk_columns),
+                        )
+                        counts["delete"] += 1
+                    else:
+                        self._upsert_rows(cur, schema, table, names, pk_columns, [ev.row])
+                        counts["upsert"] += 1
+                return counts
+            finally:
+                cur.close()
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self._land_executor, _run)
 
     # -- materialization store -------------------------------------------------
 

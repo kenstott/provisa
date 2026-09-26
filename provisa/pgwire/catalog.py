@@ -51,7 +51,7 @@ _SHOW_MIN_PARTS = 2
 _SCALAR_FN_RE = re.compile(
     r"^\s*SELECT\s+(?:pg_catalog\.)?"
     r"(current_user|session_user|current_database\(\)|current_schema\(\)|version\(\)"
-    r"|pg_backend_pid\(\)|pg_is_in_recovery\(\)|txid_current\(\))\s*$",
+    r"|pg_backend_pid\(\)|pg_is_in_recovery\(\)|txid_current\(\)|pg_advisory_unlock_all\(\))\s*$",
     re.IGNORECASE,
 )
 
@@ -203,6 +203,12 @@ def _handle_scalar(sql: str, role_id: str):
         return QueryResult(rows=[(False,)], column_names=["pg_is_in_recovery"])
     if "txid_current()" in s:
         return QueryResult(rows=[(next_txid(),)], column_names=["txid_current"])
+    if "pg_advisory_unlock_all()" in s:
+        # asyncpg's pool connection-release reset query (Connection.get_reset_query()) always
+        # includes this — Provisa never grants real advisory locks, so releasing "all of them" is
+        # trivially satisfied. A void-returning function answers with one row, one NULL column,
+        # same as _handle_scalar's other functions.
+        return QueryResult(rows=[(None,)], column_names=["pg_advisory_unlock_all"])
     return None
 
 

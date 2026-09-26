@@ -1,0 +1,308 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Config fragment for the named "perf" demo (start-ui-install.sh --demo perf), one of
+# demo/named/<name>/ — every named demo is a self-contained Docker stack in this fixed layout
+# (docker-compose.yml + fragment.yaml [+ generate_*.py / prime.py]), spliced in generically by
+# start-ui-install.sh regardless of name. One engine type per store so joins exercise real
+# cross-source federation: postgresql (RDB), clickhouse (DW), mongodb (doc store), neo4j (graph).
+# order_id/customer_id are the shared join keys across all four. Ports match this directory's
+# docker-compose.yml, whose stack this start does NOT provision — bring it up separately
+# (`docker compose -f demo/named/perf/docker-compose.yml up -d`).
+#
+# EVERY source below needs explicit `tables:` entries — there is no auto-discovery for any
+# source type. Verified (an earlier version of this comment claimed postgresql/clickhouse/mongodb
+# didn't need them; that was wrong, based on an unverified docstring, and cost a live debugging
+# session to find): pgwire's catalog is built by walking registered TableMeta rows, keyed by each
+# table's domain_id/schema (provisa/pgwire/catalog_populate.py:166,182) — a bare `sources:` entry
+# with no `tables:` never produces a TableMeta, so nothing about that source ever reaches the SQL
+# catalog, regardless of engine or connector type. provisa/federation/engine.py's build_duckdb_engine
+# registers connector CLASSES at boot, not per-source ATTACHes — the ATTACH happens per-query,
+# driven by an already-known TableMeta. Every working example in this repo (config/provisa.yaml's
+# pet-store-pg, petstore-api, inquiries-sqlite, graphql-demo, r2-orders) has explicit `tables:` for
+# every table, with no exceptions. provisa/mongodb/source.py:13's "auto-discovers collections"
+# refers to schema INFERENCE from sample documents (a discovery/UI helper), not automatic
+# exposure of a queryable schema from a bare source declaration.
+domains:
+- id: perf-bench
+  description: "Cross-engine performance benchmark — orders/customers/products spread across an RDB, DW, doc store, and graph store sharing an order_id/customer_id join-key domain"
+sources:
+- id: bench-postgresql
+  type: postgresql
+  host: ${env:PROVISA_BENCH_POSTGRESQL_HOST:-localhost}
+  port: ${env:PROVISA_BENCH_POSTGRESQL_PORT:-25632}
+  database: provisa_bench
+  username: provisa
+  password: provisa
+  description: "Perf bench RDB — orders + order_items, wide OLTP shape (PostgreSQL)"
+- id: bench-clickhouse
+  type: clickhouse
+  host: ${env:PROVISA_BENCH_CLICKHOUSE_HOST:-localhost}
+  port: ${env:PROVISA_BENCH_CLICKHOUSE_PORT:-28623}
+  username: default
+  password: provisa
+  description: "Perf bench DW — order_events fact table, wide analytics shape (ClickHouse)"
+- id: bench-mongodb
+  type: mongodb
+  host: ${env:PROVISA_BENCH_MONGO_HOST:-localhost}
+  port: ${env:PROVISA_BENCH_MONGO_PORT:-27317}
+  database: provisa_bench
+  description: "Perf bench doc store — order_docs, wide nested per-order documents (MongoDB)"
+  # This Mongo runs as a single-node replica set (docker-compose.yml), registered under its
+  # Compose service name (mongodb:27017) — not resolvable from outside the compose network, e.g.
+  # a native (--native) Provisa reading this over the published host port above. If Provisa's own
+  # mongodb connector does normal replica-set topology discovery rather than a direct connection,
+  # it may need the same fix generate_mongo.py uses (directConnection=true in the connection URI)
+  # to avoid trying to reconnect to a hostname it can't resolve. Unverified whether Provisa's
+  # connector needs this — flag if sources register but queries against them fail to connect.
+- id: bench-neo4j
+  type: neo4j
+  host: ${env:PROVISA_BENCH_NEO4J_HOST:-localhost}
+  port: ${env:PROVISA_BENCH_NEO4J_HTTP_PORT:-27974}
+  database: neo4j
+  description: "Perf bench graph store — Customer/Order/Product with PLACED/CONTAINS edges (Neo4j)"
+
+tables:
+- source_id: bench-postgresql
+  domain_id: perf-bench
+  schema: public
+  table: orders
+  description: Sales dept OLTP orders (26 cols) — see generate_postgres.py
+  enable_aggregates: true
+  enable_group_by: true
+  columns:
+  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
+  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: sales_rep_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: region, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: country, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: order_date, data_type: date, visible_to: [org_admin, analyst]}
+  - {name: ship_date, data_type: date, visible_to: [org_admin, analyst]}
+  - {name: delivery_date, data_type: date, visible_to: [org_admin, analyst]}
+  - {name: channel, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: amount, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: discount, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: tax, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: shipping_cost, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: currency, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: payment_method, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: payment_status, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: status, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: priority, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: customer_segment, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: device_type, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: promo_code, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: created_at, data_type: date, visible_to: [org_admin, analyst]}
+  - {name: updated_at, data_type: date, visible_to: [org_admin, analyst]}
+  - {name: fulfillment_days, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: notes, data_type: varchar, visible_to: [org_admin, analyst]}
+- source_id: bench-postgresql
+  domain_id: perf-bench
+  schema: public
+  table: order_items
+  description: Sales dept OLTP order line items (16 cols) — see generate_postgres.py
+  enable_aggregates: true
+  enable_group_by: true
+  columns:
+  - {name: item_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
+  - {name: order_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: sku, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: product_name, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: category, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: subcategory, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: quantity, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: unit_price, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: discount_pct, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: line_total, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: cost_of_goods, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: margin, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: supplier_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: backorder_flag, data_type: boolean, visible_to: [org_admin, analyst]}
+  - {name: lead_time_days, data_type: integer, visible_to: [org_admin, analyst]}
+- source_id: bench-clickhouse
+  domain_id: perf-bench
+  # ClickHouse's own default database, confirmed live (system.tables) — order_events was never
+  # created under a "public" database (that's the Postgres source's convention, wrongly
+  # copy-pasted here); this caused "Database public does not exist" the moment a federated query
+  # actually reached ClickHouse (only surfaced once the compiler's @N param-substitution bug,
+  # fixed separately, stopped masking it with an earlier syntax error).
+  schema: default
+  table: order_events
+  description: Sales dept analytics event fact table (22 cols) — see generate_clickhouse.py
+  enable_aggregates: true
+  enable_group_by: true
+  columns:
+  - {name: event_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
+  - {name: order_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: event_type, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: event_ts, data_type: timestamp, visible_to: [org_admin, analyst]}
+  - {name: channel, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: campaign_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: device, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: browser, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: os, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: session_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: page_url, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: referrer, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: geo_country, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: geo_region, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: user_agent, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: response_time_ms, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: status_code, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: revenue_impact, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: etl_batch_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: ingested_at, data_type: timestamp, visible_to: [org_admin, analyst]}
+- source_id: bench-mongodb
+  domain_id: perf-bench
+  schema: public
+  table: order_docs
+  description: Sales dept case-file doc-store orders — top-level + flattened nested fields, see generate_mongo.py
+  columns:
+  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
+  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: status, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: order_date, data_type: date, visible_to: [org_admin, analyst]}
+  - {name: created_at, data_type: date, visible_to: [org_admin, analyst]}
+  - {name: updated_at, data_type: date, visible_to: [org_admin, analyst]}
+  - {name: customer_tier, data_type: varchar, path: customer_profile.tier, visible_to: [org_admin, analyst]}
+  - {name: customer_lifetime_value, data_type: number, path: customer_profile.lifetime_value, visible_to: [org_admin, analyst]}
+  - {name: payment_amount, data_type: number, path: payment.amount, visible_to: [org_admin, analyst]}
+  - {name: shipping_carrier, data_type: varchar, path: shipping.carrier, visible_to: [org_admin, analyst]}
+- source_id: bench-neo4j
+  domain_id: perf-bench
+  schema: neo4j
+  table: bench_order_node
+  description: One row per Order node
+  query_template: >-
+    MATCH (o:Order)
+    RETURN o.order_id AS order_id, o.customer_id AS customer_id, o.region AS region,
+           o.channel AS channel, o.status AS status, o.amount AS amount, o.discount AS discount,
+           o.tax AS tax, o.shipping_cost AS shipping_cost, o.currency AS currency,
+           o.payment_method AS payment_method, o.priority AS priority,
+           o.warehouse_id AS warehouse_id, o.order_date AS order_date,
+           o.created_at AS created_at, o.fulfillment_days AS fulfillment_days
+    ORDER BY o.order_id
+  columns:
+  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
+  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: region, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: channel, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: status, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: amount, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: discount, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: tax, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: shipping_cost, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: currency, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: payment_method, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: priority, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: order_date, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: created_at, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: fulfillment_days, data_type: integer, visible_to: [org_admin, analyst]}
+- source_id: bench-neo4j
+  domain_id: perf-bench
+  schema: neo4j
+  table: bench_customer_node
+  description: One row per Customer node
+  query_template: >-
+    MATCH (c:Customer)
+    RETURN c.customer_id AS customer_id, c.name AS name, c.tier AS tier, c.region AS region,
+           c.industry AS industry, c.employees AS employees, c.lifetime_value AS lifetime_value,
+           c.signup_year AS signup_year, c.churn_risk AS churn_risk,
+           c.primary_contact_email AS primary_contact_email
+    ORDER BY c.customer_id
+  columns:
+  - {name: customer_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
+  - {name: name, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: tier, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: region, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: industry, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: employees, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: lifetime_value, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: signup_year, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: churn_risk, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: primary_contact_email, data_type: varchar, visible_to: [org_admin, analyst]}
+- source_id: bench-neo4j
+  domain_id: perf-bench
+  schema: neo4j
+  table: bench_product_node
+  description: One row per Product node
+  query_template: >-
+    MATCH (p:Product)
+    RETURN p.product_id AS product_id, p.sku AS sku, p.name AS name, p.category AS category,
+           p.unit_cost AS unit_cost, p.list_price AS list_price, p.supplier_id AS supplier_id,
+           p.active AS active, p.launch_year AS launch_year
+    ORDER BY p.product_id
+  columns:
+  - {name: product_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
+  - {name: sku, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: name, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: category, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: unit_cost, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: list_price, data_type: number, visible_to: [org_admin, analyst]}
+  - {name: supplier_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: active, data_type: boolean, visible_to: [org_admin, analyst]}
+  - {name: launch_year, data_type: integer, visible_to: [org_admin, analyst]}
+- source_id: bench-neo4j
+  domain_id: perf-bench
+  schema: neo4j
+  table: bench_placed_edge
+  description: One row per PLACED edge (which customer placed which order)
+  query_template: >-
+    MATCH (c:Customer)-[:PLACED]->(o:Order)
+    RETURN c.customer_id AS customer_id, o.order_id AS order_id
+    ORDER BY o.order_id
+  columns:
+  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: order_id, data_type: integer, visible_to: [org_admin, analyst]}
+- source_id: bench-neo4j
+  domain_id: perf-bench
+  schema: neo4j
+  table: bench_contains_edge
+  description: One row per CONTAINS edge (which order contains which product, at what quantity/price)
+  query_template: >-
+    MATCH (o:Order)-[e:CONTAINS]->(p:Product)
+    RETURN o.order_id AS order_id, p.product_id AS product_id, e.quantity AS quantity,
+           e.unit_price AS unit_price
+    ORDER BY o.order_id
+  columns:
+  - {name: order_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: product_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: quantity, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: unit_price, data_type: number, visible_to: [org_admin, analyst]}
+
+relationships:
+- id: bench-placed-to-customer
+  source_table_id: bench_placed_edge
+  source_column: customer_id
+  target_table_id: bench_customer_node
+  target_column: customer_id
+  cardinality: many-to-one
+- id: bench-placed-to-order
+  source_table_id: bench_placed_edge
+  source_column: order_id
+  target_table_id: bench_order_node
+  target_column: order_id
+  cardinality: many-to-one
+- id: bench-contains-to-order
+  source_table_id: bench_contains_edge
+  source_column: order_id
+  target_table_id: bench_order_node
+  target_column: order_id
+  cardinality: many-to-one
+- id: bench-contains-to-product
+  source_table_id: bench_contains_edge
+  source_column: product_id
+  target_table_id: bench_product_node
+  target_column: product_id
+  cardinality: many-to-one

@@ -419,7 +419,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
         # IR: lower the request straight to a semantic SELECT (shared with the HTTP gRPC proxy), then
         # govern → route → physical exactly as the SQL/Cypher transports do.
-        semantic_sql = grpc_table_to_semantic_sql(ctx, type_name, request.limit)
+        filter_msg = request.filter if request.HasField("filter") else None
+        semantic_sql = grpc_table_to_semantic_sql(ctx, type_name, request.limit, filter_msg)
         if semantic_sql is None:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
             return
@@ -642,8 +643,15 @@ class ProvisaServicer:  # REQ-045, REQ-143
         include_nodes = bool(getattr(request, "include_nodes", False))
         include = list(getattr(request, "include", []))
         funcs = list(getattr(request, "funcs", [])) or None
+        filter_msg = request.filter if request.HasField("filter") else None
         gql_text = grpc_table_to_group_by_graphql_text(
-            ctx, type_name, by_columns, funcs=funcs, include_nodes=include_nodes, include=include
+            ctx,
+            type_name,
+            by_columns,
+            funcs=funcs,
+            include_nodes=include_nodes,
+            include=include,
+            filter_msg=filter_msg,
         )
         if gql_text is None:
             await context.abort(

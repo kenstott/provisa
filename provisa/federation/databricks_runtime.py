@@ -59,6 +59,16 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
             access_token=self._token,
             **databricks_tls_kwargs(),
         )
+        # land_table's dedicated single-worker executor — NOT the loop's default pool. self._conn
+        # is ONE shared connection, not a pool; concurrent lands for different tables dispatched
+        # via the default multi-worker executor would pile onto it at once instead of queuing —
+        # confirmed live as a real regression on the DuckDB engine (13 threads simultaneously
+        # blocked in one executemany call). Same reasoning as DuckDBFederationRuntime/
+        # PgFederationRuntime/ClickHouseFederationRuntime/SnowflakeFederationRuntime's own
+        # ``_land_executor``.
+        from concurrent.futures import ThreadPoolExecutor
+
+        self._land_executor = ThreadPoolExecutor(max_workers=1)
 
     @property
     def dialect(self) -> str:
@@ -193,18 +203,20 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         stage = self._stage_from_env()
         cur = self._conn.cursor()
         try:
-            await asyncio.to_thread(
-                land_databricks_native,
-                cur,
-                catalog=catalog,
-                schema=schema,
-                table=table,
-                columns=columns,
-                rows=rows,
-                change_signal=change_signal,
-                watermark_column=watermark_column,
-                stage=stage,
-                pk_columns=pk_columns,
+            await asyncio.get_event_loop().run_in_executor(
+                self._land_executor,
+                lambda: land_databricks_native(
+                    cur,
+                    catalog=catalog,
+                    schema=schema,
+                    table=table,
+                    columns=columns,
+                    rows=rows,
+                    change_signal=change_signal,
+                    watermark_column=watermark_column,
+                    stage=stage,
+                    pk_columns=pk_columns,
+                ),
             )
         finally:
             cur.close()
@@ -258,18 +270,20 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         stage = self._stage_from_env()
         cur = self._conn.cursor()
         try:
-            await asyncio.to_thread(
-                land_databricks_native,
-                cur,
-                catalog=catalog,
-                schema=real_schema,
-                table=table,
-                columns=columns,
-                rows=rows,
-                change_signal=change_signal,
-                watermark_column=watermark_column,
-                stage=stage,
-                pk_columns=pk_columns,
+            await asyncio.get_event_loop().run_in_executor(
+                self._land_executor,
+                lambda: land_databricks_native(
+                    cur,
+                    catalog=catalog,
+                    schema=real_schema,
+                    table=table,
+                    columns=columns,
+                    rows=rows,
+                    change_signal=change_signal,
+                    watermark_column=watermark_column,
+                    stage=stage,
+                    pk_columns=pk_columns,
+                ),
             )
         finally:
             cur.close()
@@ -287,14 +301,16 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
         catalog, schema, table = self._phys_parts(source)
         cur = self._conn.cursor()
         try:
-            await asyncio.to_thread(
-                reconcile_databricks_native,
-                cur,
-                catalog=catalog,
-                schema=schema,
-                table=table,
-                columns=columns,
-                pk_columns=pk_columns,
+            await asyncio.get_event_loop().run_in_executor(
+                self._land_executor,
+                lambda: reconcile_databricks_native(
+                    cur,
+                    catalog=catalog,
+                    schema=schema,
+                    table=table,
+                    columns=columns,
+                    pk_columns=pk_columns,
+                ),
             )
         finally:
             cur.close()
@@ -327,7 +343,7 @@ class DatabricksFederationRuntime:  # REQ-825, REQ-840, REQ-987
             finally:
                 cur.close()
 
-        return await asyncio.to_thread(_run)
+        return await asyncio.get_event_loop().run_in_executor(self._land_executor, _run)
 
     @property
     def connection(self):

@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, Mapping
 
 import yaml
 from sqlalchemy import delete as _delete
-from sqlalchemy import insert, or_, select, update
+from sqlalchemy import insert, or_, select, tuple_, update
 
 from provisa.core.models import (
     DERIVED_SOURCE_ID,
@@ -623,15 +623,29 @@ async def _upsert_single_table(
 
 
 async def _purge_removed_tables(conn: "Connection", config: ProvisaConfig) -> None:
-    """Delete registered_tables rows whose table_name is no longer in config (handles renames)."""
-    tables_by_source: dict[str, list[str]] = {}
+    """Delete registered_tables rows whose (schema_name, table_name) is no longer in config for
+    that source — matches table.py's upsert conflict key (source_id, schema_name, table_name)
+    exactly, not just table_name. A table_name-only check leaves a row whose `schema` field
+    CHANGED in config permanently orphaned: the upsert's conflict key includes schema_name, so a
+    changed schema inserts a NEW row under the new identity rather than updating the old one, and
+    the old (source_id, old_schema, table_name) row survives forever (table_name is still
+    "in config", just under a different schema) — the compiler then has two registered rows for
+    the same logical table and silently resolves to whichever one it finds, which is not
+    guaranteed to be the current one. Confirmed live: a ClickHouse source's schema corrected from
+    "public" to "default" left the stale "public" row registered and query compilation kept
+    resolving to it, well after every other part of the reload path (fresh config parse, fresh
+    control-plane init) was already correct.
+    """
+    tables_by_source: dict[str, list[tuple[str, str]]] = {}
     for tbl in config.tables:
-        tables_by_source.setdefault(tbl.source_id, []).append(tbl.table_name)
-    for src_id, current_names in tables_by_source.items():
+        tables_by_source.setdefault(tbl.source_id, []).append((tbl.schema_name, tbl.table_name))
+    for src_id, current_pairs in tables_by_source.items():
         await conn.execute_core(
             _delete(registered_tables).where(
                 registered_tables.c.source_id == src_id,
-                registered_tables.c.table_name.not_in(current_names),
+                tuple_(registered_tables.c.schema_name, registered_tables.c.table_name).not_in(
+                    current_pairs
+                ),
             )
         )
 
