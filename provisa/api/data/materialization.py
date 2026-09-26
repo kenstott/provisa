@@ -929,8 +929,24 @@ async def _materialize_api_to_engine_cache(
     _has_pg_pool = getattr(state, "tenant_db", None) is not None
     _META_COLS = {"_params_hash", "_cached_at"}
     _hot_threshold = hot_mgr.auto_threshold if hot_mgr is not None else 500
+    # REQ-1865: a row_materialize=True table's residency is governed EXCLUSIVELY by the
+    # row-level cache (ensure_rows_resident, invoked later once routing/pk_bounds resolve) --
+    # never by this whole-table API-cache materialize, which has no keyed/filtered fetch concept
+    # at all and would otherwise fetch every row via REST on every cache miss regardless of how
+    # narrow the query's own predicate is. Confirmed live: a single-key point lookup against a
+    # row_materialize-enabled neo4j table (itself registered as an ApiEndpoint, REQ-1668) paid the
+    # full-table REST fetch cost here, entirely bypassing the row cache -- this runs earlier in the
+    # pipeline (_optimize_and_route, before routing) than ensure_resident/ensure_rows_resident ever
+    # get a chance to engage.
+    _row_materialize_table_names = {
+        t.get("table_name")
+        for t in (getattr(state, "tables", None) or [])
+        if t.get("row_materialize")
+    }
 
     for tn in table_names:
+        if tn in _row_materialize_table_names:
+            continue
         # Hot cache: inline rows as VALUES CTE — avoids cross-catalog JOIN entirely
         if hot_mgr is not None and hot_mgr.is_hot(tn):
             entry = hot_mgr.get_entry(tn)
