@@ -131,8 +131,12 @@ services:
       - "${PROVISA_BENCH_NEO4J_BOLT_PORT:-27987}:7687"
     environment:
       NEO4J_AUTH: none
-      NEO4J_server_memory_heap_max__size: 2g
-      NEO4J_server_memory_pagecache_size: 1g
+      # 2g/1g repeatedly OOM-killed this container under normal query load against the
+      # PROVISA_BENCH_NEO4J_ORDERS-sized (2M order) dataset -- confirmed live, 3 separate
+      # OutOfMemoryError crashes in one session. VM has 62GB total/34GB available; raised well
+      # clear of the observed failure point rather than nudging incrementally.
+      NEO4J_server_memory_heap_max__size: 8g
+      NEO4J_server_memory_pagecache_size: 4g
     volumes:
       - ./data/neo4j:/data
     healthcheck:
