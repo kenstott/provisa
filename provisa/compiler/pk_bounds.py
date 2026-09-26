@@ -182,15 +182,39 @@ def extract_pk_bounds(ast: exp.Expr, row_materialized_tables: dict[str, "Table"]
                             resolved_any = True
                     continue
                 if isinstance(cond, exp.Or):
-                    # An OR-chain sqlglot normalizes to equalities on the SAME pk column
-                    # (e.g. `pk = 1 OR pk = 2`) is the same bounded shape as an IN-list.
+                    # An OR-chain of PK equalities (`pk = 1 OR pk = 2`) is the same bounded shape
+                    # as an IN-list -- BUT ONLY when every disjunct is itself a PK-equality. A
+                    # mixed OR (`pk = 1 OR status = 'x'`) is NOT bounded to pk=1: rows matching
+                    # `status = 'x'` regardless of pk also satisfy the real predicate, and the row
+                    # cache cannot represent that at all. Treating this as bounded would silently
+                    # under-populate the cache and the physical query would then silently return
+                    # too few rows -- a correctness bug, not a missed optimization. So: collect
+                    # candidate values into a LOCAL set first, and only merge them into
+                    # col_values (and set resolved_any) if EVERY disjunct resolved as a PK
+                    # equality on the SAME pk column; a single non-PK disjunct, OR a disjunct
+                    # naming a DIFFERENT pk column (e.g. `pk1 = 1 OR pk2 = 2` -- a disjunction,
+                    # not a composite point lookup), discards the whole OR for this table.
+                    or_col: str | None = None
+                    or_values: set[Any] = set()
+                    or_fully_resolved = True
                     for sub in _flatten_or(cond):
                         col, val_expr = _match_pk_eq(sub, aliases, pk_columns)
-                        if col is not None and val_expr is not None:
-                            value, ok = _literal_value(val_expr)
-                            if ok:
-                                col_values[col].add(value)
-                                resolved_any = True
+                        if (
+                            col is None
+                            or val_expr is None
+                            or (or_col is not None and col != or_col)
+                        ):
+                            or_fully_resolved = False
+                            break
+                        value, ok = _literal_value(val_expr)
+                        if not ok:
+                            or_fully_resolved = False
+                            break
+                        or_col = col
+                        or_values.add(value)
+                    if or_fully_resolved and or_col is not None:
+                        col_values[or_col] |= or_values
+                        resolved_any = True
 
         if not resolved_any:
             continue

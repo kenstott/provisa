@@ -65,6 +65,24 @@ def test_or_chain_of_equalities_resolves_bound():
     assert set(bounds[0].values) == {(1,), (2,)}
 
 
+def test_or_with_non_pk_disjunct_is_unbounded_absent_from_result():
+    # `id = 1 OR status = 'x'` is NOT a bounded set -- rows matching status='x' regardless of id
+    # also satisfy the real predicate, which the row cache cannot represent. Must fall back
+    # (absent), never silently narrow to just id=1 (that would under-populate the cache and the
+    # physical query would then silently return too few rows).
+    ast = _ast("SELECT * FROM orders WHERE id = 1 OR status = 'shipped'")
+    bounds = extract_pk_bounds(ast, _orders_table())
+    assert bounds == []
+
+
+def test_or_across_different_pk_columns_is_unbounded_absent_from_result():
+    # `id = 1 OR sku = 2` (two DIFFERENT pk columns) is a disjunction, not a composite point
+    # lookup -- must not be treated as bounded to the tuple (1, 2).
+    ast = _ast("SELECT * FROM orders WHERE id = 1 OR sku = 2")
+    bounds = extract_pk_bounds(ast, _orders_table(extra_pk="sku"))
+    assert bounds == []
+
+
 def test_range_predicate_is_unbounded_absent_from_result():
     ast = _ast("SELECT * FROM orders WHERE id > 100")
     bounds = extract_pk_bounds(ast, _orders_table())
