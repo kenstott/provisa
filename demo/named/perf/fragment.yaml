@@ -277,13 +277,17 @@ tables:
   schema: neo4j
   table: bench_placed_edge
   description: One row per PLACED edge (which customer placed which order)
+  # REQ-1865: order_id is unique per row here (one customer places any given order exactly once)
+  # -- a genuine single-column key, unlike bench_contains_edge's composite (order_id, product_id).
+  row_materialize: true
+  cache_ttl: 300
   query_template: >-
     MATCH (c:Customer)-[:PLACED]->(o:Order)
     RETURN c.customer_id AS customer_id, o.order_id AS order_id
     ORDER BY o.order_id
   columns:
   - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: order_id, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
 - source_id: bench-neo4j
   domain_id: perf-bench
   schema: neo4j

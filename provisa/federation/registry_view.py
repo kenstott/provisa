@@ -88,6 +88,7 @@ async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  
         cfg = cfg_by.get((rt["source_id"], rt["table_name"]))
         out.append(
             SimpleNamespace(
+                id=rt["id"],
                 source_id=rt["source_id"],
                 schema_name=rt["schema_name"],
                 table_name=rt["table_name"],
@@ -124,6 +125,19 @@ async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  
                 # REQ-1443: a checker table's rows are the results of running its contract, so
                 # the registered contract rides with the table into make_dq_loader.
                 dq_contract=rt["dq_contract"],
+                # REQ-1865: fetch_tables already SELECTs this column; it was simply never carried
+                # onto the returned object here, so every getattr(t, "row_materialize", False)
+                # check downstream (ensure_resident, materialize_pending,
+                # row_materialized_tables_by_name) silently saw False for every table regardless of
+                # its real registration -- the row-level cache could never actually engage through
+                # the registry view. Confirmed live: a row_materialize=True neo4j table's residency
+                # was still being decided entirely by the whole-source path.
+                row_materialize=bool(rt.get("row_materialize", False)),
+                # REQ-1865: row_materialized_tables_by_name keys on this (apply_sql_name(t.alias or
+                # t.table_name)) to match the SEMANTIC AST a query compiles to -- also never
+                # surfaced here before. Dead code until row_materialize (above) actually started
+                # returning True; would have raised AttributeError the moment it did.
+                alias=rt.get("alias"),
             )
         )
     return out

@@ -101,6 +101,7 @@ async def test_registered_tables_carry_config_settings_only_where_declared(monke
     )
     registered = [
         {
+            "id": 1,
             "source_id": "cfg_pg",
             "schema_name": "public",
             "table_name": "orders",
@@ -115,6 +116,7 @@ async def test_registered_tables_carry_config_settings_only_where_declared(monke
             ],
         },
         {
+            "id": 2,
             "source_id": "ui_mongo",
             "schema_name": "pet_store",
             "table_name": "product_reviews",

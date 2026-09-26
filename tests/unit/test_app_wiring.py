@@ -96,6 +96,7 @@ def _state(*, ready=True):
     )
     registered = [
         {
+            "id": 1,
             "source_id": "api",
             "schema_name": "default",
             "table_name": "events",
@@ -194,6 +195,7 @@ async def test_registered_checker_table_carries_its_contract_to_the_loop(monkeyp
     st.tenant_db = _fake_db(
         [
             {
+                "id": 1,
                 "source_id": "dq",
                 "schema_name": "quality",
                 "table_name": "pets_scan",
