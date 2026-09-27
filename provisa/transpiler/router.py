@@ -50,13 +50,14 @@ VIRTUAL_SOURCES: set[str] = {
     "mongodb",
     "cassandra",
     "redis",
-    # Query-API graph sources: a native Neo4jDriver IS registered (has_driver("neo4j") is True,
-    # see executor/drivers/registry.py) so a single-source Cypher-translatable pattern can DIRECT
-    # route — but that decision requires reverse-compiling the governed SQL back to Cypher first
-    # (provisa.nl.runner.best_effort_cypher_for_sql), which only the GQL/Cypher compiled pipeline
-    # (_pipeline.py's _govern_and_route_compiled_planned) attempts, as an explicit override. Kept
-    # here so the generic decide_route (every OTHER surface, including raw SQL) never treats a
-    # neo4j source as an ordinary RDBMS and hands it un-translated SQL text (GitHub issue #119).
+    # Query-API graph sources: a Neo4jDriver factory is registered (has_driver("neo4j") is True,
+    # see executor/drivers/registry.py) but is not routed to -- direct Cypher execution would need
+    # a general method to resolve arbitrary SQL join patterns back into correct Cypher, which the
+    # reverse compiler (provisa.nl.runner.best_effort_cypher_for_sql) does not have (REQ-1864,
+    # reverted 2026-09-26: it mis-translated a reshaped junction table). Kept in VIRTUAL_SOURCES so
+    # decide_route never treats a neo4j source as an ordinary RDBMS and hands it un-translated SQL
+    # text (GitHub issue #119); row-level materialization (REQ-1865) is the sanctioned mechanism
+    # for neo4j read performance instead.
     "neo4j",
     # Data Lake
     "delta_lake",

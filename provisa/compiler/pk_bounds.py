@@ -30,6 +30,20 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
+class JoinEdge:
+    """A ``JOIN ... ON left.col = right.col`` equality (REQ-1865 key pushdown). Column-to-column
+    only -- an edge with a literal on either side is a bound, not an edge (``extract_pk_bounds``
+    already resolves those); this is for a row-materialize table reached ONLY through a chain of
+    FK joins, with no literal predicate naming it directly at all (e.g. bench_contains_edge joined
+    on order_id, with the literal bound sitting on customer_id three hops upstream)."""
+
+    left_table: str
+    left_column: str
+    right_table: str
+    right_column: str
+
+
+@dataclass(frozen=True)
 class PkBound:
     """A row-materialized table this statement can serve from the row cache, and the concrete PK
     value(s) its predicate resolves to."""
@@ -58,10 +72,25 @@ def _flatten_or(
     return [expr]
 
 
-def _literal_value(e: exp.Expr) -> tuple[Any, bool]:
-    """(value, resolved) -- resolved=False for anything not a concrete literal (a param
-    placeholder, a subquery, a column reference, a function call): the caller must treat that
-    predicate as unbounded, never guess a value."""
+def _literal_value(e: exp.Expr, params: list[Any] | None = None) -> tuple[Any, bool]:
+    """(value, resolved) -- resolved=False for anything not a concrete value (a subquery, a column
+    reference, a function call): the caller must treat that predicate as unbounded, never guess a
+    value.
+
+    A bound PARAMETER (``$1``/``?``) resolves too, from ``params`` (1-indexed, matching the bind
+    order SQLGlot's postgres dialect renders a placeholder in) -- e.g. a Bolt/Cypher-transport
+    query never inlines its predicate as a literal (``customer_id = $1``, the actual value bound
+    separately), unlike the SQL-transport benchmark's own literal-inlined text. Without this, EVERY
+    Bolt-transport query against a row_materialize table resolved zero bounds and silently fell
+    back to a full-table land on every call -- confirmed live: a trivial single-table `LIMIT 1`
+    query with no WHERE at all was the ONLY case that ever should fall back; a bound `WHERE pk =
+    $1` should not have, and previously always did. ``params=None`` (the default, when the caller
+    has none to offer) preserves the exact old behavior: a parameter placeholder stays unresolved.
+    Two placeholder shapes exist depending on how sqlglot parsed the surrounding query (see
+    provisa.cypher.translator._reconcile_params_with_placeholders's own docstring for why): a bare
+    ``exp.Column`` whose identifier IS the literal text ``"$1"`` (the text/UNWIND parse path), or
+    ``exp.Parameter(this=exp.Literal(this=1))`` (the AST/predicate parse path this module's own
+    ``sqlglot.parse_one(..., read="postgres")`` call uses) -- both handled."""
     if isinstance(e, exp.Literal):
         if e.is_string:
             return e.this, True
@@ -74,6 +103,19 @@ def _literal_value(e: exp.Expr) -> tuple[Any, bool]:
         return bool(e.this), True
     if isinstance(e, exp.Null):
         return None, True
+    if params:
+        idx: int | None = None
+        if isinstance(e, exp.Parameter) and isinstance(e.this, exp.Literal):
+            try:
+                idx = int(e.this.this)
+            except (TypeError, ValueError):
+                idx = None
+        elif isinstance(e, exp.Column) and not e.table:
+            name = e.this.this if isinstance(e.this, exp.Identifier) else e.this
+            if isinstance(name, str) and name.startswith("$") and name[1:].isdigit():
+                idx = int(name[1:])
+        if idx is not None and 1 <= idx <= len(params):
+            return params[idx - 1], True
     return None, False
 
 
@@ -139,14 +181,53 @@ def _collect_predicates(ast: exp.Expr) -> list[exp.Expr]:
     return predicates
 
 
-def extract_pk_bounds(ast: exp.Expr, row_materialized_tables: dict[str, "Table"]) -> list[PkBound]:
+def extract_join_edges(ast: exp.Expr) -> list[JoinEdge]:
+    """Every ``JOIN ... ON left.col = right.col`` column-to-column equality in the statement
+    (REQ-1865 key pushdown). Symmetric candidates aren't de-duplicated or oriented -- the caller
+    walks edges in both directions during its fixpoint anyway."""
+    alias_map = _alias_map(ast)
+    edges: list[JoinEdge] = []
+    for join in ast.find_all(exp.Join):
+        on = join.args.get("on")
+        if on is None:
+            continue
+        for cond in _flatten_and(on):
+            if not isinstance(cond, exp.EQ):
+                continue
+            left, right = cond.left, cond.right
+            if not (isinstance(left, exp.Column) and isinstance(right, exp.Column)):
+                continue
+            left_table = alias_map.get(left.table) if left.table else None
+            right_table = alias_map.get(right.table) if right.table else None
+            if left_table is None or right_table is None:
+                continue
+            edges.append(
+                JoinEdge(
+                    left_table=left_table.name,
+                    left_column=left.name,
+                    right_table=right_table.name,
+                    right_column=right.name,
+                )
+            )
+    return edges
+
+
+def extract_pk_bounds(
+    ast: exp.Expr, row_materialized_tables: dict[str, "Table"], params: list[Any] | None = None
+) -> list[PkBound]:
     """Walk WHERE/JOIN-ON equality and IN predicates; for every row-materialized table referenced,
-    resolve its PK columns' literal values. A table with no resolvable bound is simply absent from
-    the result -- never an error (most statements don't touch a row-materialized table at all).
+    resolve its PK columns' literal (or bound-PARAMETER, see ``params``) values. A table with no
+    resolvable bound is simply absent from the result -- never an error (most statements don't
+    touch a row-materialized table at all).
 
     ``row_materialized_tables`` maps bare table_name -> the registered ``Table`` (row_materialize
     already validated True with >=1 is_primary_key column, per ``Table._validate_row_materialize``).
-    """
+
+    ``params`` (REQ-1865 amendment) is the statement's own bind-parameter values, in bind order --
+    a Bolt/Cypher-transport statement's predicate is NEVER inlined as a literal (``customer_id =
+    $1``, the value bound out-of-band), unlike the SQL-transport's own literal-inlined text.
+    Without it, ``_literal_value`` cannot resolve a ``$N`` placeholder and every such statement
+    silently fell back to a full-table land, defeating row_materialize for that whole transport."""
     if not row_materialized_tables:
         return []
 
@@ -168,7 +249,7 @@ def extract_pk_bounds(ast: exp.Expr, row_materialized_tables: dict[str, "Table"]
             for cond in _flatten_and(pred):
                 col, val_expr = _match_pk_eq(cond, aliases, pk_columns)
                 if col is not None and val_expr is not None:
-                    value, ok = _literal_value(val_expr)
+                    value, ok = _literal_value(val_expr, params)
                     if ok:
                         col_values[col].add(value)
                         resolved_any = True
@@ -176,7 +257,7 @@ def extract_pk_bounds(ast: exp.Expr, row_materialized_tables: dict[str, "Table"]
                 col, val_exprs = _match_pk_in(cond, aliases, pk_columns)
                 if col is not None:
                     for val_expr in val_exprs:
-                        value, ok = _literal_value(val_expr)
+                        value, ok = _literal_value(val_expr, params)
                         if ok:
                             col_values[col].add(value)
                             resolved_any = True
@@ -206,7 +287,7 @@ def extract_pk_bounds(ast: exp.Expr, row_materialized_tables: dict[str, "Table"]
                         ):
                             or_fully_resolved = False
                             break
-                        value, ok = _literal_value(val_expr)
+                        value, ok = _literal_value(val_expr, params)
                         if not ok:
                             or_fully_resolved = False
                             break

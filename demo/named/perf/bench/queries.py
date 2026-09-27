@@ -268,19 +268,16 @@ QUERIES: list[Query] = [
         # relationship compiles to an approved Cypher type — a genuine validator gap, fixed in
         # provisa/compiler/sql_validator.py (this SQL text itself did not need to change).
         #
-        # REQ-1865: bench_contains_edge is now one row per order_id with a nested `items` JSON
-        # array (reshaped to give the row cache a genuine single-column key — order_id repeats
-        # per item and product_id repeats per order in the old flat shape, so neither alone was
-        # ever unique, and the seed data assigns CONTAINS relationships no per-edge id either).
-        # UNNEST it back to one row per (order, product) to keep this query's own shape unchanged.
+        # REQ-1865: bench_contains_edge is one row per CONTAINS edge, keyed by the edge's own
+        # elementId()-derived contains_id (single-column PK for row-materialize) — order_id and
+        # product_id stay plain scalar FK columns, so this join is unchanged from before REQ-1865.
         sql="""
             SELECT c.customer_id, o.order_id, p.product_id
             FROM perf_bench.bench_placed_edge pl
             JOIN perf_bench.bench_customer_node c ON c.customer_id = pl.customer_id
             JOIN perf_bench.bench_order_node o ON o.order_id = pl.order_id
             JOIN perf_bench.bench_contains_edge ce ON ce.order_id = o.order_id
-            CROSS JOIN UNNEST(ce.items::JSON[]) AS u(item)
-            JOIN perf_bench.bench_product_node p ON p.product_id = (item->>'product_id')::INTEGER
+            JOIN perf_bench.bench_product_node p ON p.product_id = ce.product_id
             WHERE c.customer_id = :customer_id
         """,
         # See point_lookup's comment: re-verified against the LIVE /data/graph-schema endpoint.

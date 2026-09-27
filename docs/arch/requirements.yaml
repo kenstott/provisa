@@ -63906,7 +63906,7 @@
     And each DataRow message's raw bytes are re-sent to the pgwire client without decoding
     And the passthrough falls back to decode/re-encode if any error occurs (never a correctness risk)
 - id: REQ-1864
-  status: complete
+  status: reverted
   group: "6. Execution, Routing, Caching & Performance"
   category: Neo4j query optimization
   priority: SHOULD
@@ -63920,14 +63920,14 @@
     entirely to one Neo4j source incur significant overhead when materialized fully before a
     join could start. Native Cypher execution on the source eliminates that materialization cost.
   code:
-    - provisa/pgwire/_pipeline.py
     - provisa/executor/drivers/neo4j.py
     - provisa/executor/drivers/registry.py
     - provisa/transpiler/router.py
-  tests:
-    - tests/unit/test_neo4j_direct_route.py
+  tests: []
   since: "2026-09"
   scenario: |
+    [SUPERSEDED by REQ-1864, 2026-09-26 -- direct Cypher execution reverted, see amendment below.
+    Kept here for history; do not implement against it.]
     Given a single-source Neo4j query with a Cypher-translatable pattern
     When the planner (in _govern_and_route_planned or _govern_and_route_compiled_planned) decides to route
     Then best_effort_cypher_for_sql is called on the governed SQL
@@ -63935,6 +63935,33 @@
     And Neo4jDriver.execute() POSTs the Cypher to the source's /db/<database>/tx/commit endpoint
     When the pattern is not Cypher-translatable (spans multiple sources or engines)
     Then the plan falls through to ENGINE materialize-then-join (fallback path unchanged)
+    (Amended 2026-09-26, direct-terminal dispatch gap: neo4j is a VIRTUAL_SOURCES entry with no
+    pooled driver in source_pools, so a plan the override above hands to a DIRECT terminal must not
+    reach the generic pooled-driver dispatch. EngineRuntime.execute_native (provisa/federation/
+    runtime.py) — the ONE terminal both pgwire's _run_plan_terminal and Flight SQL's own DIRECT
+    branch call — now special-cases source_types[source_id] == "neo4j" and dispatches through a
+    one-off Neo4jDriver built from state.api_sources/api_endpoints instead of execute_direct.
+    Confirmed live: before this amendment, both the SQL and Flight transports for a plain-SQL
+    Cypher-translatable query crashed (asyncpg syntax error / KeyError('bench-neo4j')) because
+    execute_native unconditionally assumed a pooled driver existed for source_id.)
+    [END SUPERSEDED BLOCK]
+    (Amended 2026-09-26, reverted: direct Cypher execution requires a general method to resolve
+    arbitrary SQL join patterns -- cardinality, relationship direction, multi-hop shape -- back
+    into a correct Cypher MATCH. The reverse compiler (best_effort_cypher_for_sql /
+    semantic_sql_to_cypher) has no such method; it mis-translated bench_contains_edge after its
+    reshape to a nested items array, producing Cypher referencing a non-existent property
+    ("p__via"/"product_id" binder errors downstream when the materialize-then-join path also hit
+    the same stale junction metadata). The _govern_and_route_planned/_govern_and_route_compiled_
+    planned override in provisa/pgwire/_pipeline.py is removed; a single-source neo4j query now
+    always falls through to Route.ENGINE. Neo4jDriver and its registry factory
+    (provisa/executor/drivers/neo4j.py, registry.py) are kept as dormant, reusable primitives --
+    "neo4j" stays registered with has_driver() and in router.py's VIRTUAL_SOURCES comment notes it
+    is not currently routed to -- direct Cypher may be reintroduced later as a separate effort once
+    a real join-pattern-resolution method exists, but that is out of scope here. Row-level
+    materialization (REQ-1865) is the sanctioned mechanism for neo4j read performance: it is a
+    per-table/per-source attribute (row_materialize, cache_ttl on registered_tables) with no
+    coupling to Route.DIRECT or to this override -- a simpler pattern that caches individual rows
+    by a trusted, declared PK and never reconstructs a join.)
 - id: REQ-1865
   status: in-progress
   group: "4. Data Caching & Materialization"
@@ -63971,11 +63998,15 @@
     - provisa/federation/materialize_exec.py
     - provisa/federation/query_residency.py
     - provisa/federation/backend.py
+    - provisa/federation/store_connection.py
     - provisa/compiler/pk_bounds.py
     - provisa/pgwire/_pipeline.py
+    - provisa/pgwire/server.py
+    - provisa/api/flight/server.py
     - provisa/events/source_loader.py
     - provisa/events/row_lock.py
     - provisa/events/queue.py
+    - provisa/events/boot.py
   tests:
     - tests/unit/test_row_materialize_model.py
     - tests/unit/compiler/test_pk_bounds.py
@@ -64001,3 +64032,35 @@
     Given row_materialize=true is set on a table with no is_primary_key column, or together with
     materialize=true, or with no resolvable cache_ttl
     Then registration raises a ValueError, never a silent fallback
+    (Amended 2026-09-27, key pushdown + gaps closed for the perf-bench duckdb engine:)
+    Given a row_materialize table reached only through a JOIN (no literal predicate naming it
+    directly, e.g. a junction table joined on a plain FK column)
+    Then pushdown_row_materialize (provisa/federation/query_residency.py) flips that table's JOIN
+    to LEFT OUTER and runs the query, AS WRITTEN, through the engine once -- every already-
+    resident table's real rows come back unchanged, and the target's own join column, read off
+    the OTHER (real) side of the row, IS the actual key set (no rebuilt/reduced probe query, no
+    symbolic join-graph walking); it keyed-fetches/lands those rows, iterating for a multi-hop
+    chain, and skips the probe for a table whose cache already has any unexpired row
+    Given the statement's predicate value arrives as a bound PARAMETER (Bolt/Cypher-transport:
+    `customer_id = $1`, never inlined as a literal, unlike the SQL-transport's own literal text)
+    Then extract_pk_bounds (provisa/compiler/pk_bounds.py) resolves it from the statement's own
+    params array (1-indexed, bind order) exactly as it would a literal -- without this every
+    Bolt-transport statement against a row_materialize table resolved zero bounds and always fell
+    back to a full-table land
+    Given row_materialized_tables_by_name (provisa/federation/query_residency.py) needs to match a
+    table referenced by either its bare physical name (a raw-SQL statement, never rewritten) or
+    its semantic alias (a GraphQL-compiled statement, rewritten to the alias)
+    Then it is keyed by BOTH forms, not the alias alone
+    Given the bound federation engine is DuckDB (single-writer, no async SQLAlchemy driver at all)
+    Then every row cache read/write (table create, freshness check, upsert, tombstone) dispatches
+    through a DuckDB-native path (provisa/federation/store_connection.py) instead of
+    store_writer.store_connection, which cannot connect to it at all; a table already landed at
+    the row cache's own physical address by the ordinary whole-table path, with none of the
+    cache's own freshness columns, is detected and DROP+RECREATED once, self-healing
+    Given a row_materialize table's queue-driven background refresh scheduler (REQ-941, unrelated
+    to any specific query) would otherwise register an ordinary periodic land for it
+    Then build_source_node_spec (provisa/events/boot.py) returns None instead -- constraint 2
+    ("never eagerly, never a background pre-fetch") rules out a scheduler-triggered whole-table
+    land the same way ensure_resident/materialize_pending already rule out a per-query one;
+    confirmed live, a large table's own queue-driven land held DuckDB's one connection for its
+    whole multi-minute duration, hanging every other concurrent query system-wide (REQ-989)
