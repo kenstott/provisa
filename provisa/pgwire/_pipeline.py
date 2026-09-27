@@ -1005,7 +1005,8 @@ async def _resolve_pk_bounds(semantic_sql: str, state: Any) -> tuple[Any, ...]:
     from provisa.compiler.pk_bounds import extract_pk_bounds
 
     ast = sqlglot.parse_one(semantic_sql, read="postgres")
-    return tuple(extract_pk_bounds(ast, row_tables))
+    result = tuple(extract_pk_bounds(ast, row_tables))
+    return result
 
 
 async def finalize_audit(plan: _Plan, status_code: int, state: Any | None = None) -> None:

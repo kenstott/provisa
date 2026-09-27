@@ -161,6 +161,15 @@ async def upsert(
         "load_protected": getattr(table, "load_protected", None),  # REQ-1141
         "off_peak_window": getattr(table, "off_peak_window", None),  # REQ-1141
         "off_peak_tz": getattr(table, "off_peak_tz", None),  # REQ-1141
+        # REQ-1865: never written here despite fetch_tables() SELECTing both columns and
+        # _validate_row_materialize gating registration on them -- every config-declared
+        # row_materialize=True table silently persisted as False, so the row-level cache could
+        # never engage no matter what the read side (registry_view.py, ensure_resident,
+        # ensure_rows_resident) correctly did with it. Confirmed live: querying the control-plane
+        # DB directly showed row_materialize='f'/cache_ttl=NULL for 5 tables fragment.yaml
+        # declared row_materialize: true, cache_ttl: 300 on.
+        "row_materialize": getattr(table, "row_materialize", False),
+        "cache_ttl": getattr(table, "cache_ttl", None),
     }
     _update_columns = [
         "domain_id",
@@ -202,6 +211,8 @@ async def upsert(
         "load_protected",  # REQ-1141
         "off_peak_window",  # REQ-1141
         "off_peak_tz",  # REQ-1141
+        "row_materialize",  # REQ-1865
+        "cache_ttl",  # REQ-1865
     ]
     table_id = await conn.upsert_returning(
         registered_tables,
