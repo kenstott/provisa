@@ -342,56 +342,6 @@ def _join_key_column(join: Any, target_alias: str) -> tuple[str, Any] | None:
     return None
 
 
-async def _has_fresh_cached_rows(state: Any, source: Any, table: Any) -> bool:
-    """Cheap existence check: does this row_materialize table's cache already hold ANY unexpired
-    row at all? Used only to decide whether the outer-join probe pass below is needed this call --
-    a coarse, table-level heuristic (not a per-key verification, which ``ensure_rows_resident``'s
-    own stale_or_missing check already does once real keys are known), so a repeated query within
-    one cache_ttl window (this session's own benchmark's own 10-20x reruns) pays for the probe
-    exactly once per TTL window rather than on every call."""
-    if source is None:
-        return False
-    from sqlalchemy import select
-
-    engine = getattr(state, "federation_engine", None)
-    backend = getattr(getattr(engine, "engine", None), "backend", None)
-    if engine is None or backend is None:
-        return False
-    from provisa.federation import store_writer
-    from provisa.federation.backend import _env_store_schema
-    from provisa.federation.materialize_exec import _ROW_EXPIRES_AT, build_row_cache_table
-
-    store_schema = _env_store_schema(engine.engine.materialize_store())
-    dsn = engine.engine.materialize_store()
-    schema, name = backend.landing_target(
-        store_schema=store_schema,
-        source_id=source.id,
-        source_type=source.type,
-        schema_name=table.schema_name,
-        table_name=table.table_name,
-    )
-    pk_columns = [c.name for c in table.columns if c.is_primary_key]
-    if len(pk_columns) != 1:
-        return False
-    try:
-        args = resolve_landing_args_for(source, table, backend.dialect)
-        cache_table = build_row_cache_table(
-            schema, name, args.columns, tuple(pk_columns), dialect_name=backend.dialect
-        )
-        async with store_writer.store_connection(dsn) as conn:
-            stmt = (
-                select(cache_table.c[pk_columns[0]])
-                .where(cache_table.c[_ROW_EXPIRES_AT] > datetime.now(UTC))
-                .limit(1)
-            )
-            result = await conn.execute_core(stmt)
-            return result.fetchone() is not None
-    except Exception:
-        # No cache table yet, or any other lookup failure -- treat as "not warm", the safe default
-        # (the probe pass below still runs, never worse than before pushdown existed).
-        return False
-
-
 def resolve_landing_args_for(source: Any, table: Any, dialect: str | None) -> Any:
     from provisa.federation.residency import resolve_landing_args
 
@@ -418,7 +368,14 @@ async def pushdown_row_materialize(
     first pass) -- each pass reverts any table landed in a prior pass back to its original join
     kind, so a real (not NULL) value flows through for the next pass's still-pending tables.
 
-    Skips a table already warm (``_has_fresh_cached_rows``) -- see that function's docstring.
+    A candidate key already fresh in the row cache (filtered by target_col, not necessarily the
+    table's real PK -- the cache carries every landed column) is dropped before the fetch, mirroring
+    ``ensure_rows_resident``'s own stale_or_missing check: a repeat query with the same key set does
+    zero live-source work, and a query mixing fresh and new/stale keys fetches+lands only the
+    reduced subset -- never the coarse "is ANY row in this table fresh" table-level skip an earlier
+    version of this mechanism used, which could miss a genuinely new key while an unrelated row was
+    still warm.
+
     Never guesses: a table whose join key can't be read from a single column-to-column ON
     equality (``_join_key_column`` returns None) is simply left off this pass and falls back to
     ``ensure_resident``'s whole-table land instead, same as before this mechanism existed.
@@ -473,16 +430,7 @@ async def pushdown_row_materialize(
     )
 
     for _pass in range(len(all_joins)):
-        pending = {name for name in remaining if name not in landed_this_call}
-        # Drop a table already warm from cache -- the conditional rerun (skip the probe for it).
-        still_pending: set[str] = set()
-        for name in pending:
-            table = tables_by_name[name]
-            source = sources_by_id.get(table.source_id)
-            if await _has_fresh_cached_rows(state, source, table):
-                landed_this_call.add(name)  # treat "already warm" the same as "landed"
-            else:
-                still_pending.add(name)
+        still_pending = {name for name in remaining if name not in landed_this_call}
         if not still_pending:
             break
 
@@ -534,20 +482,6 @@ async def pushdown_row_materialize(
             if len(pk_columns) != 1:
                 continue
             real_pk = pk_columns[0]
-            try:
-                rows = await loader.load_keys(source, table, [target_col], [(v,) for v in values])
-            except Exception:
-                log.warning(
-                    "row-materialize key-pushdown fetch failed for %s.%s",
-                    name,
-                    target_col,
-                    exc_info=True,
-                )
-                continue
-            if not rows:
-                landed_this_call.add(name)
-                made_progress = True
-                continue
             args = resolve_landing_args_for(source, table, backend.dialect)
             resolved_ttl = table.cache_ttl if table.cache_ttl is not None else source.cache_ttl
             if resolved_ttl is None:
@@ -566,6 +500,48 @@ async def pushdown_row_materialize(
             cache_table = await _ensure_row_cache_table(
                 engine, backend, state, schema, cache_name, args.columns
             )
+            # REQ-1865 (amended): a coarse "does this table hold ANY fresh row" gate used to
+            # decide whether to probe/fetch AT ALL -- correct only for a repeat query using the
+            # exact same key set, and wrong for a query needing keys the cache doesn't have yet
+            # while some UNRELATED row is still fresh (that other-key case never even ran the
+            # probe to discover them). Replaced with the same per-key stale_or_missing check
+            # ensure_rows_resident already does for a literal PK bound -- filter target_col's
+            # own candidate values against the row cache (it carries every landed column,
+            # target_col included, not just real_pk) BEFORE fetching, so a query whose keys are
+            # already fresh does zero live-source work, and a query with a MIX of fresh and new/
+            # stale keys fetches+lands only the reduced subset, never the full candidate set.
+            cached = await _read_row_cache(
+                engine,
+                backend,
+                state,
+                schema,
+                cache_name,
+                cache_table,
+                [target_col],
+                [(v,) for v in values],
+            )
+            now = datetime.now(UTC)
+            stale_or_missing = [v for v in values if (v,) not in cached or cached[(v,)] < now]
+            if not stale_or_missing:
+                landed_this_call.add(name)
+                made_progress = True
+                continue
+            try:
+                rows = await loader.load_keys(
+                    source, table, [target_col], [(v,) for v in stale_or_missing]
+                )
+            except Exception:
+                log.warning(
+                    "row-materialize key-pushdown fetch failed for %s.%s",
+                    name,
+                    target_col,
+                    exc_info=True,
+                )
+                continue
+            if not rows:
+                landed_this_call.add(name)
+                made_progress = True
+                continue
             await _land_row_cache(
                 engine,
                 backend,
