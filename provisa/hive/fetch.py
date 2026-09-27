@@ -33,6 +33,8 @@ storage has no host-reachable path at all today, a strictly larger gap) would le
 
 from __future__ import annotations
 
+from typing import Any
+
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -203,6 +205,44 @@ def fetch_rows(conn: HiveS3Connection, schema: str, table: str, columns: list[st
     try:
         select = ", ".join(f'"{col}"' for col in columns) if columns else "*"
         cur = c.execute(f"SELECT {select} FROM read_parquet({_file_list_literal(files)})")
+        names = [d[0] for d in cur.description]
+        return [dict(zip(names, row, strict=False)) for row in cur.fetchall()]
+    finally:
+        c.close()
+
+
+def fetch_rows_by_keys(
+    conn: HiveS3Connection,
+    schema: str,
+    table: str,
+    columns: list[str],
+    pk_columns: list[str],
+    keys: list[tuple[Any, ...]],
+) -> list[dict]:  # REQ-1865
+    """Exactly the rows whose ``pk_columns`` match one of ``keys`` (REQ-1865 keyed fetch) — a
+    bound ``IN (?, ?, ...)`` predicate over the same ``read_parquet`` files ``fetch_rows`` scans in
+    full, never a full table read. Single-column only, mirroring the other keyed loaders' own
+    single-column contract."""
+    if len(pk_columns) != 1:
+        raise ValueError(
+            f"hive_s3 keyed fetch on a composite PK {pk_columns!r} is not implemented (REQ-1865)"
+        )
+    if not keys:
+        return []
+    files = conn.table_files(schema, table)
+    if not files:
+        return []
+    c = _duckdb_s3_conn(conn)
+    try:
+        select = ", ".join(f'"{col}"' for col in columns) if columns else "*"
+        col = pk_columns[0]
+        placeholders = ", ".join(["?"] * len(keys))
+        values = [k[0] for k in keys]
+        cur = c.execute(
+            f"SELECT {select} FROM read_parquet({_file_list_literal(files)}) "
+            f'WHERE "{col}" IN ({placeholders})',
+            values,
+        )
         names = [d[0] for d in cur.description]
         return [dict(zip(names, row, strict=False)) for row in cur.fetchall()]
     finally:

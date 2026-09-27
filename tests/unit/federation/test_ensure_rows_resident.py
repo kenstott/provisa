@@ -99,7 +99,9 @@ def patched_registry(monkeypatch):
     monkeypatch.setattr("provisa.federation.registry_view.registered_tables", _fake_tables)
     monkeypatch.setattr("provisa.events.source_loader.SourceRowLoader", _fake_loader_cls)
     monkeypatch.setattr("provisa.events.app_wiring.build_adapter_loaders", lambda state, engine: {})
-    monkeypatch.setattr("provisa.events.app_wiring.build_keyed_adapter_loaders", lambda state: {})
+    monkeypatch.setattr(
+        "provisa.events.app_wiring.build_keyed_adapter_loaders", lambda state, engine=None: {}
+    )
     return ns
 
 

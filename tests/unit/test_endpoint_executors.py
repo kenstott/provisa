@@ -38,6 +38,33 @@ from provisa.executor.result import QueryResult
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _noop_row_materialize_residency():
+    """REQ-1865: every ENGINE-route function under test now also calls
+    ensure_rows_resident/pushdown_row_materialize (in addition to the pre-existing
+    ensure_resident) before executing — this file's tests exercise executor logic, not the
+    residency machinery itself (covered by tests/unit/test_query_residency.py and
+    tests/unit/federation/test_ensure_rows_resident.py), and their fake ``state.federation_engine``
+    is a bare SimpleNamespace with no ``.dialect``, which pushdown_row_materialize's caller reads
+    eagerly. No-op both for every test in this module rather than adding a ``.dialect`` (and a real
+    resolvable pk-bounds/registry) to every fake engine fixture here."""
+    with (
+        patch(
+            "provisa.federation.query_residency.ensure_rows_resident",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "provisa.federation.query_residency.pushdown_row_materialize",
+            new=AsyncMock(return_value=set()),
+        ),
+        patch(
+            "provisa.pgwire._pipeline._resolve_pk_bounds",
+            new=AsyncMock(return_value=()),
+        ),
+    ):
+        yield
+
+
 def _col(
     name: str, param_type: ParamType | None = None, param_name: str | None = None
 ) -> ApiColumn:
@@ -135,6 +162,7 @@ class TestExecuteApiSource:
         )
         engine = SimpleNamespace(
             transpile_physical=lambda s: s,
+            dialect="postgres",
             execute_engine_sync=lambda sql, params: _query_result(),
         )
         state = SimpleNamespace(
@@ -168,6 +196,7 @@ class TestExecuteApiSource:
         ep = SimpleNamespace(columns=[_col("id")], source_id="api1", table_name="pets")
         engine = SimpleNamespace(
             transpile_physical=lambda s: s,
+            dialect="postgres",
             execute_engine_sync=lambda sql, params: _query_result(),
             isolated_sync=_fake_isolated_sync,
         )
@@ -216,6 +245,7 @@ class TestExecuteApiSource:
         ep = SimpleNamespace(columns=[_col("id")], source_id="api1", table_name="pets")
         engine = SimpleNamespace(
             transpile_physical=lambda s: s,
+            dialect="postgres",
             execute_engine_sync=lambda sql, params: _query_result(),
             isolated_sync=_fake_isolated_sync,
         )
@@ -305,6 +335,7 @@ class TestExecuteGrpcRemoteSource:
         engine = SimpleNamespace(
             isolated_sync=_fake_isolated_sync,
             transpile_physical=lambda s: s,
+            dialect="postgres",
             execute_engine_sync=lambda sql, params: _query_result(),
         )
         state = SimpleNamespace(
@@ -363,6 +394,7 @@ class TestExecuteGrpcRemoteSource:
         engine = SimpleNamespace(
             isolated_sync=_fake_isolated_sync,
             transpile_physical=lambda s: s,
+            dialect="postgres",
             execute_engine_sync=lambda sql, params: _query_result(),
         )
         state = SimpleNamespace(
@@ -423,6 +455,7 @@ class TestExecuteGrpcRemoteSource:
         engine = SimpleNamespace(
             isolated_sync=_fake_isolated_sync,
             transpile_physical=lambda s: s,
+            dialect="postgres",
             execute_engine_sync=lambda sql, params: _query_result(),
         )
         state = SimpleNamespace(
@@ -485,6 +518,7 @@ class TestExecuteEngineStandard:
         engine = SimpleNamespace(
             is_connected=lambda: False,
             transpile_physical=lambda s: s,
+            dialect="postgres",
             execute_engine=AsyncMock(return_value=engine_result),
         )
         state = SimpleNamespace(
@@ -519,6 +553,7 @@ class TestExecuteEngineStandard:
         engine = SimpleNamespace(
             is_connected=lambda: True,
             transpile_physical=lambda s: s,
+            dialect="postgres",
             execute_engine=AsyncMock(return_value=engine_result),
         )
         state = SimpleNamespace(
@@ -553,6 +588,7 @@ class TestExecuteEngineStandard:
         engine = SimpleNamespace(
             is_connected=lambda: True,
             transpile_physical=lambda s: s,
+            dialect="postgres",
             execute_engine=AsyncMock(return_value=engine_result),
         )
         hot_mgr = SimpleNamespace(maybe_promote=AsyncMock())
@@ -610,6 +646,7 @@ class TestExecNodesQuery:
         nodes_result = _query_result()
         engine = SimpleNamespace(
             transpile_physical=lambda s: s,
+            dialect="postgres",
             execute_engine=AsyncMock(return_value=nodes_result),
         )
         decision = SimpleNamespace(route=Route.ENGINE, source_id=None, dialect="postgres")
@@ -876,6 +913,7 @@ class TestExecCtasRoute:
         compiled = _compiled()
         engine = SimpleNamespace(
             transpile_physical=lambda s: s,
+            dialect="postgres",
             ctas_redirect=lambda sql, fmt: {"s3_prefix": "s3://bucket/x", "row_count": 5},
         )
         state = SimpleNamespace(federation_engine=engine, engine_conn=object())
@@ -910,6 +948,7 @@ class TestExecCtasRoute:
         compiled = _compiled()
         engine = SimpleNamespace(
             transpile_physical=lambda s: s,
+            dialect="postgres",
             ctas_redirect=lambda sql, fmt: {"s3_prefix": "s3://bucket/x", "row_count": 0},
         )
         state = SimpleNamespace(federation_engine=engine, engine_conn=object())
@@ -976,6 +1015,7 @@ class TestExecProbeRedirect:
         full_result = _query_result()
         engine = SimpleNamespace(
             transpile_physical=lambda s: s,
+            dialect="postgres",
             execute_engine=AsyncMock(return_value=full_result),
         )
         decision = SimpleNamespace(route=Route.ENGINE, source_id=None, dialect="postgres")
@@ -1069,6 +1109,7 @@ class TestExecInlineResult:
             response_cache_store=MagicMock(),
             federation_engine=SimpleNamespace(
                 transpile_physical=lambda s: s,
+                dialect="postgres",
                 execute_engine=AsyncMock(return_value=nodes_result),
             ),
             engine_conn_kwargs=None,
@@ -1121,6 +1162,7 @@ class TestExecInlineResult:
         state = SimpleNamespace(
             federation_engine=SimpleNamespace(
                 transpile_physical=lambda s: s,
+                dialect="postgres",
                 execute_engine=AsyncMock(side_effect=ConnectionError("down")),
             ),
             engine_conn_kwargs=None,

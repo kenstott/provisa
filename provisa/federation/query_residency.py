@@ -175,7 +175,7 @@ async def ensure_resident(
     loader = SourceRowLoader(
         engine,
         adapter_loaders=build_adapter_loaders(state, engine),
-        keyed_adapter_loaders=build_keyed_adapter_loaders(state),
+        keyed_adapter_loaders=build_keyed_adapter_loaders(state, engine),
     )
 
     landed: list[tuple[str, str]] = []
@@ -469,7 +469,7 @@ async def pushdown_row_materialize(
     loader = SourceRowLoader(
         engine,
         adapter_loaders=build_adapter_loaders(state, engine),
-        keyed_adapter_loaders=build_keyed_adapter_loaders(state),
+        keyed_adapter_loaders=build_keyed_adapter_loaders(state, engine),
     )
 
     for _pass in range(len(all_joins)):
@@ -785,7 +785,7 @@ async def ensure_rows_resident(
     loader = SourceRowLoader(
         engine,
         adapter_loaders=build_adapter_loaders(state, engine),
-        keyed_adapter_loaders=build_keyed_adapter_loaders(state),
+        keyed_adapter_loaders=build_keyed_adapter_loaders(state, engine),
     )
     store_schema = _env_store_schema(engine.engine.materialize_store())
 

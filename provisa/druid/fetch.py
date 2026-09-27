@@ -20,6 +20,7 @@ separate controller/broker address split is needed here: one host:port answers e
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -73,3 +74,32 @@ def fetch_rows(conn: DruidConnection, table: str, columns: list[str]) -> list[di
     safe_table = table.replace('"', '""')
     select = ", ".join(f'"{c}"' for c in columns) if columns else "*"
     return _sql(conn, f'SELECT {select} FROM "druid"."{safe_table}"')
+
+
+def _sql_literal(value: Any) -> str:
+    if isinstance(value, (int, float)):
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def fetch_rows_by_keys(
+    conn: DruidConnection,
+    table: str,
+    columns: list[str],
+    pk_columns: list[str],
+    keys: list[tuple[Any, ...]],
+) -> list[dict]:  # REQ-1865
+    """Exactly the rows whose ``pk_columns`` match one of ``keys`` (REQ-1865 keyed fetch) — a
+    bound ``IN (...)`` predicate, never the full-datasource scan ``fetch_rows`` runs. Single-column
+    only, mirroring the other keyed loaders' own single-column contract."""
+    if len(pk_columns) != 1:
+        raise ValueError(
+            f"Druid keyed fetch on a composite PK {pk_columns!r} is not implemented (REQ-1865)"
+        )
+    if not keys:
+        return []
+    safe_table = table.replace('"', '""')
+    select = ", ".join(f'"{c}"' for c in columns) if columns else "*"
+    col = pk_columns[0]
+    values = ", ".join(_sql_literal(k[0]) for k in keys)
+    return _sql(conn, f'SELECT {select} FROM "druid"."{safe_table}" WHERE "{col}" IN ({values})')

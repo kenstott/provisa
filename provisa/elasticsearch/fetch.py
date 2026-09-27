@@ -125,6 +125,65 @@ def fetch_rows(
     return rows
 
 
+def fetch_rows_by_keys(
+    conn: ESConnection,
+    index: str,
+    columns: list[tuple[str, str]],
+    pk_columns: list[str],
+    keys: list[tuple[Any, ...]],
+) -> list[dict]:  # REQ-1865
+    """Exactly the documents whose ``pk_columns`` match one of ``keys`` (REQ-1865 keyed fetch) — a
+    bound ``terms``/``bool`` query, never the full-index scroll ``fetch_rows`` runs. ``pk_columns``
+    are the table's column NAMES; resolved to their mapping source path the same way ``columns``
+    already pairs them, so a keyed lookup on a nested/renamed field works identically to the
+    whole-index fetch."""
+    if not keys:
+        return []
+    path_of = dict(columns)
+    paths = [path_of.get(c, c) for c in pk_columns]
+    if len(pk_columns) == 1:
+        query = {"terms": {paths[0]: [k[0] for k in keys]}}
+    else:
+        query = {
+            "bool": {
+                "should": [
+                    {"bool": {"must": [{"term": {p: v}} for p, v in zip(paths, key)]}}
+                    for key in keys
+                ]
+            }
+        }
+    rows: list[dict] = []
+    with conn._client() as c:
+        resp = c.post(
+            f"/{index}/_search",
+            params={"scroll": _SCROLL_KEEPALIVE},
+            json={"size": _PAGE_SIZE, "sort": ["_doc"], "query": query},
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        scroll_id = body.get("_scroll_id")
+        try:
+            while True:
+                hits = body.get("hits", {}).get("hits", [])
+                if not hits:
+                    break
+                for hit in hits:
+                    src = hit.get("_source") or {}
+                    rows.append({name: _pluck(src, path) for name, path in columns})
+                if scroll_id is None:
+                    break
+                resp = c.post(
+                    "/_search/scroll", json={"scroll": _SCROLL_KEEPALIVE, "scroll_id": scroll_id}
+                )
+                resp.raise_for_status()
+                body = resp.json()
+                scroll_id = body.get("_scroll_id", scroll_id)
+        finally:
+            if scroll_id is not None:
+                c.request("DELETE", "/_search/scroll", json={"scroll_id": scroll_id})
+    return rows
+
+
 def table_index_and_columns(
     conn: ESConnection, mapping: dict, table_name: str, column_names: list[str]
 ) -> tuple[str, list[tuple[str, str]]]:  # REQ-1672

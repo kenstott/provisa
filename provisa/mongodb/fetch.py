@@ -85,3 +85,30 @@ def fetch_rows(
         for doc in client[database][collection].find({}, projection):
             rows.append({c: _coerce(doc.get(c)) for c in columns})
     return rows
+
+
+def fetch_rows_by_keys(
+    conn: MongoConnection,
+    database: str,
+    collection: str,
+    columns: list[str],
+    pk_columns: list[str],
+    keys: list[tuple[Any, ...]],
+) -> list[dict]:  # REQ-1865
+    """Exactly the documents whose ``pk_columns`` match one of ``keys`` (REQ-1865 keyed fetch) —
+    a bound ``$in``/``$or`` filter, never a full-collection scan. Single-column key: ``$in``;
+    composite key: ``$or`` of per-key ``$and`` equality filters (Mongo has no native tuple-IN)."""
+    if not keys:
+        return []
+    projection = {c: 1 for c in columns}
+    if "_id" not in columns:
+        projection["_id"] = 0
+    if len(pk_columns) == 1:
+        query = {pk_columns[0]: {"$in": [k[0] for k in keys]}}
+    else:
+        query = {"$or": [{c: v for c, v in zip(pk_columns, key)} for key in keys]}
+    rows: list[dict] = []
+    with conn.client() as client:
+        for doc in client[database][collection].find(query, projection):
+            rows.append({c: _coerce(doc.get(c)) for c in columns})
+    return rows

@@ -55497,7 +55497,17 @@
     match the pattern REQ-1865 established in pgwire/server.py, api/flight/server.py and
     api/rest/cypher_router.py. Without this, a row_materialize table reached only via JOIN through
     the gRPC ProvisaService or the Airport/ADBC surface silently read its own still-empty replica --
-    same failure class cypher_cross_engine hit over the HTTP-cypher transport before that fix.)'
+    same failure class cypher_cross_engine hit over the HTTP-cypher transport before that fix.
+
+
+    Also found in the SAME audit, worse than the two above: provisa/api/data/endpoint_executors.py
+    -- the PRIMARY GraphQL ENGINE-route terminal, _execute_engine_standard -- called EXECUTE_ENGINE
+    directly with ZERO residency calls at all, not even ensure_resident; its two siblings,
+    _execute_api_source (two call sites: the hot-table bypass and its own Phase 2) and
+    _execute_grpc_remote_source, called ensure_resident only, the same partial gap. Since GraphQL is
+    the primary UI query surface, an ordinary GraphQL query joining a MATERIALIZED table that had
+    never landed read an empty replica outright (not just a row_materialize/key-pushdown gap). All
+    four call sites fixed to the full three-call pattern.)'
   use_case: 'API-backed and other unreachable sources materialize lazily: a query that arrives before
     the event loop has landed a table, or after it went stale, is served fresh rows rather than an empty
     or stale replica. materialize_pending existed on the native backends with no caller since 2026-07.'
@@ -55509,6 +55519,7 @@
   - provisa/federation/snowflake_store.py
   - provisa/grpc/server.py
   - provisa/api/airport/query.py
+  - provisa/api/data/endpoint_executors.py
   tests:
   - tests/unit/test_query_residency.py
   - tests/unit/test_residency.py
@@ -57559,7 +57570,26 @@
     \ divergence that surfaced the gap. Fixed: make_clickhouse_loader (provisa/events/source_loader.py),\
     \ reusing the existing DIRECT-route ClickHouseDriver (HTTP via clickhouse-connect) instead of a new\
     \ connection primitive, wired in build_adapter_loaders behind the same engine_attaches gate every\
-    \ other type here uses."
+    \ other type here uses.\n(Amended 2026-09-27, KEYED LOADER GAP CLOSED FOR EVERY REMAINING ADAPTER-FETCHED\
+    \ TYPE: opting order_events into row_materialize still landed zero rows after the whole-table\
+    \ make_clickhouse_loader fix above -- pushdown_row_materialize calls load_keys, not load, and\
+    \ load_keys had the IDENTICAL unfixed gap (build_keyed_adapter_loaders had no clickhouse entry\
+    \ either, so it fell through to the same self-referential-empty-replica fallback). Fixed\
+    \ make_clickhouse_keyed_loader, then audited every OTHER adapter-fetched type for the same\
+    \ exposure (a whole-table loader, no keyed loader, not in _ADAPTER_FETCH_ONLY) and closed all of\
+    \ them: cassandra, mongodb, pinot, druid, elasticsearch and hive_s3 get a genuine bound WHERE/\
+    \ terms/IN pushdown query (provisa/cassandra/fetch.py, provisa/mongodb/fetch.py, provisa/pinot/\
+    \ fetch.py, provisa/druid/fetch.py, provisa/elasticsearch/fetch.py, provisa/hive/fetch.py, each\
+    \ a new fetch_rows_by_keys alongside the existing fetch_rows); redis and kafka have no server-side\
+    \ predicate over their own access pattern (a key-value scan, an unbounded log respectively), so\
+    \ their keyed loaders filter client-side after the same whole-table read the unkeyed loader\
+    \ already runs -- correct, not a true pushdown, documented as such; files/sharepoint/splunk (the\
+    \ pgwire-replica bridge, provisa/federation/pgwire_replica.py) get a bound = ANY($1) query over\
+    \ the same bundled Calcite connection, sharing one ConnectorReplica/server per source id with the\
+    \ whole-table loader via an optional replicas dict now threaded through both factories. All nine\
+    \ wired in build_keyed_adapter_loaders behind the same per-type engine_attaches gate\
+    \ build_adapter_loaders already uses, which now also takes the engine parameter it needs to\
+    \ evaluate that gate."
   code:
   - provisa/api/app_loaders.py
   - provisa/federation/sqlalchemy_backend.py

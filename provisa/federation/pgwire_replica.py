@@ -557,6 +557,39 @@ async def land_via_select(
 # -- orchestration + engine integration ----------------------------------------
 
 
+async def land_via_select_keys(
+    ports: PortPair,
+    schema: str,
+    table: str,
+    pk_columns: list[str],
+    keys: list[tuple[Any, ...]],
+    *,
+    connect: Callable[[str, int], Any] | None = None,
+) -> list[dict]:
+    """Connect to the pgwire endpoint as generic PostgreSQL and SELECT exactly the rows whose
+    ``pk_columns`` match one of ``keys`` (REQ-1865 keyed fetch) — the same connection
+    ``land_via_select`` uses, a bound ``= ANY($1)`` predicate instead of a full-table scan.
+    Single-column only, mirroring the other keyed loaders' own single-column contract."""
+    if len(pk_columns) != 1:
+        raise ValueError(
+            f"pgwire-replica keyed fetch on a composite PK {pk_columns!r} is not implemented "
+            "(REQ-1865)"
+        )
+    if not keys:
+        return []
+    do_connect = connect if connect is not None else _pg_connect
+    conn = await do_connect(ports.calcite_child_host, ports.pgwire_port)
+    try:
+        col = pk_columns[0]
+        values = [k[0] for k in keys]
+        rows = await conn.fetch(
+            f'SELECT * FROM "{schema}"."{table}" WHERE "{col}" = ANY($1)', values
+        )
+        return [dict(row) for row in rows]
+    finally:
+        await conn.close()
+
+
 def needs_pgwire_replica(source: Any, engine: Any) -> bool:
     """Whether ``source`` must be landed through the pgwire replica on ``engine`` (REQ-954): a
     pgwire-replica type the engine does not read LIVE through a connector of its own. Trino's
@@ -655,6 +688,17 @@ class ConnectorReplica:  # REQ-954/955/956
         table_name = getattr(table, "table_name", table)
         return await land_via_select(
             ports, schema_name(self._source), table_name, connect=self._connect
+        )
+
+    async def load_keys(
+        self, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        """Exactly the rows whose ``pk_columns`` match one of ``keys`` (REQ-1865 keyed fetch) —
+        the ``load_keys`` counterpart to :meth:`load`, same server-start-if-needed shape."""
+        ports = self.endpoint()
+        table_name = getattr(table, "table_name", table)
+        return await land_via_select_keys(
+            ports, schema_name(self._source), table_name, pk_columns, keys, connect=self._connect
         )
 
     def close(self) -> None:
@@ -765,16 +809,21 @@ def make_pgwire_loader(
     health_check: Callable[[str, int], bool] | None = None,
     connect: Callable[[str, int], Any] | None = None,
     port_is_free: Callable[[int], bool] | None = None,
+    replicas: dict[str, "ConnectorReplica"] | None = None,
 ) -> Callable[[Any, Any], Any]:
     """Build a TYPE-level ``adapter_loaders`` row-fetch for pgwire-replica sources (REQ-954), fitting
     the ``SourceRowLoader`` adapter seam ``async (source, table) -> list[dict]``. One
     ``ConnectorReplica`` (one server) is created + reused per source id, so several sources of the same
-    type each get their own server on its own allocated port (the shared allocator keeps them unique)."""
+    type each get their own server on its own allocated port (the shared allocator keeps them unique).
+
+    ``replicas`` (REQ-1865): pass the SAME dict given to :func:`make_pgwire_keyed_loader` for this
+    type so the whole-table and keyed loaders share one server per source id instead of each
+    starting its own -- defaults to a private dict when this loader is built alone."""
     alloc = allocator if allocator is not None else PortAllocator()
-    replicas: dict[str, ConnectorReplica] = {}
+    _replicas: dict[str, ConnectorReplica] = replicas if replicas is not None else {}
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        replica = replicas.get(source.id)
+        replica = _replicas.get(source.id)
         if replica is None:
             replica = ConnectorReplica(
                 source,
@@ -785,7 +834,44 @@ def make_pgwire_loader(
                 connect=connect,
                 port_is_free=port_is_free,
             )
-            replicas[source.id] = replica
+            _replicas[source.id] = replica
         return await replica.load(table)
+
+    return _load
+
+
+def make_pgwire_keyed_loader(
+    *,
+    resolver: BundleResolver | None = None,
+    allocator: PortAllocator | None = None,
+    spawn: Callable[[list[str], Path], Any] | None = None,
+    health_check: Callable[[str, int], bool] | None = None,
+    connect: Callable[[str, int], Any] | None = None,
+    port_is_free: Callable[[int], bool] | None = None,
+    replicas: dict[str, "ConnectorReplica"] | None = None,
+) -> Callable[[Any, Any, list[str], list[tuple[Any, ...]]], Any]:
+    """Build a TYPE-level ``keyed_adapter_loaders`` row-fetch for pgwire-replica sources (REQ-1865)
+    -- the ``load_keys`` counterpart to :func:`make_pgwire_loader`. Pass the SAME ``replicas`` dict
+    (and allocator/resolver/etc.) given to this source's :func:`make_pgwire_loader` call, or a
+    second server starts for the same source id."""
+    alloc = allocator if allocator is not None else PortAllocator()
+    _replicas: dict[str, ConnectorReplica] = replicas if replicas is not None else {}
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        replica = _replicas.get(source.id)
+        if replica is None:
+            replica = ConnectorReplica(
+                source,
+                resolver=resolver,
+                allocator=alloc,
+                spawn=spawn,
+                health_check=health_check,
+                connect=connect,
+                port_is_free=port_is_free,
+            )
+            _replicas[source.id] = replica
+        return await replica.load_keys(table, pk_columns, keys)
 
     return _load

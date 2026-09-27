@@ -132,12 +132,28 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         hot_sql = build_values_cte_sql(_exec_sql, table_name, entry, alias_name=_alias_name)
         physical_sql = state.federation_engine.transpile_physical(hot_sql)
         log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
-        # REQ-1661: the hot table itself is inlined as VALUES (never read from the engine), but
-        # any OTHER real table this query joins against still needs to be landed before the
-        # engine executes — this bypass never reaches _execute_plan's own ensure_resident call.
-        from provisa.federation.query_residency import ensure_resident
+        # REQ-1661/REQ-1865: the hot table itself is inlined as VALUES (never read from the
+        # engine), but any OTHER real table this query joins against still needs to be landed
+        # before the engine executes — this bypass never reaches _execute_plan's own residency
+        # calls. Confirmed live 2026-09-27: this whole file only called ensure_resident, missing
+        # ensure_rows_resident/pushdown_row_materialize — a row_materialize table reached only via
+        # JOIN through the GraphQL surface read its own never-landed cache, same bug class fixed
+        # in cypher_router.py/grpc/server.py/api/airport/query.py this session.
+        from provisa.federation.query_residency import (
+            ensure_resident,
+            ensure_rows_resident,
+            pushdown_row_materialize,
+        )
+        from provisa.pgwire._pipeline import _resolve_pk_bounds
 
-        await ensure_resident(state, compiled.sources)
+        _pk_bounds = await _resolve_pk_bounds(compiled.sql, state, compiled.params)
+        await ensure_rows_resident(state, _pk_bounds)
+        _pushed_down = await pushdown_row_materialize(
+            state, physical_sql, state.federation_engine.dialect, _exec_params
+        )
+        await ensure_resident(
+            state, compiled.sources, pk_bounds=_pk_bounds, pushed_down=_pushed_down
+        )
         _loop = asyncio.get_running_loop()
         _t0 = _time.perf_counter()
         engine_result = await _loop.run_in_executor(
@@ -233,11 +249,22 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
         rewritten_sql = rewrite_all_from_cache(rewritten_sql, _join_rewrites)
     physical_sql = state.federation_engine.transpile_physical(rewritten_sql)
     log.warning("[API P2] physical_sql=%s", physical_sql[:500])
-    # REQ-1661: same reasoning as the hot-table bypass above — any real (non-inlined) table this
-    # query joins against must be landed before the engine executes.
-    from provisa.federation.query_residency import ensure_resident
+    # REQ-1661/REQ-1865: same reasoning as the hot-table bypass above — any real (non-inlined)
+    # table this query joins against must be landed before the engine executes, including a
+    # row_materialize table reached only via JOIN (key-pushdown).
+    from provisa.federation.query_residency import (
+        ensure_resident,
+        ensure_rows_resident,
+        pushdown_row_materialize,
+    )
+    from provisa.pgwire._pipeline import _resolve_pk_bounds
 
-    await ensure_resident(state, compiled.sources)
+    _pk_bounds = await _resolve_pk_bounds(compiled.sql, state, compiled.params)
+    await ensure_rows_resident(state, _pk_bounds)
+    _pushed_down = await pushdown_row_materialize(
+        state, physical_sql, state.federation_engine.dialect, exec_params
+    )
+    await ensure_resident(state, compiled.sources, pk_bounds=_pk_bounds, pushed_down=_pushed_down)
     _t_phase2 = _time.perf_counter()
     engine_result = await _loop.run_in_executor(
         None, lambda: _engine.execute_engine_sync(physical_sql, exec_params)
@@ -400,11 +427,22 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
 
     physical_sql = state.federation_engine.transpile_physical(final_sql)
 
-    # REQ-1661: same reasoning as _execute_api_source's two ensure_resident calls above — any
-    # real (non-inlined) table this query joins against must be landed before the engine executes.
-    from provisa.federation.query_residency import ensure_resident
+    # REQ-1661/REQ-1865: same reasoning as _execute_api_source's residency calls above — any
+    # real (non-inlined) table this query joins against must be landed before the engine executes,
+    # including a row_materialize table reached only via JOIN (key-pushdown).
+    from provisa.federation.query_residency import (
+        ensure_resident,
+        ensure_rows_resident,
+        pushdown_row_materialize,
+    )
+    from provisa.pgwire._pipeline import _resolve_pk_bounds
 
-    await ensure_resident(state, compiled.sources)
+    _pk_bounds = await _resolve_pk_bounds(compiled.sql, state, compiled.params)
+    await ensure_rows_resident(state, _pk_bounds)
+    _pushed_down = await pushdown_row_materialize(
+        state, physical_sql, state.federation_engine.dialect, exec_params
+    )
+    await ensure_resident(state, compiled.sources, pk_bounds=_pk_bounds, pushed_down=_pushed_down)
     _loop = asyncio.get_running_loop()
     _t2 = _time.perf_counter()
     engine_result = await _loop.run_in_executor(
@@ -502,6 +540,28 @@ async def _execute_engine_standard(
     }
     if query_text is not None:
         _span_attrs["provisa.query_text"] = query_text
+
+    # REQ-1661/REQ-1865: this is the primary GraphQL ENGINE-route terminal and never reaches
+    # _execute_plan/_execute_plan_in_org, so its own residency calls are the ONLY place a
+    # MATERIALIZED/row_materialize source this query reads gets landed before the engine executes
+    # — mirrors the identical fixes in pgwire/server.py, api/flight/server.py,
+    # api/rest/cypher_router.py, provisa/grpc/server.py, api/airport/query.py. Confirmed live
+    # 2026-09-27: this function had ZERO residency calls (not even ensure_resident) — any ordinary
+    # GraphQL query joining a MATERIALIZED source that had never landed, or a row_materialize
+    # source reached only via JOIN, read an empty replica silently.
+    from provisa.federation.query_residency import (
+        ensure_resident,
+        ensure_rows_resident,
+        pushdown_row_materialize,
+    )
+    from provisa.pgwire._pipeline import _resolve_pk_bounds
+
+    _pk_bounds = await _resolve_pk_bounds(compiled.sql, state, compiled.params)
+    await ensure_rows_resident(state, _pk_bounds)
+    _pushed_down = await pushdown_row_materialize(
+        state, physical_sql, state.federation_engine.dialect, exec_params
+    )
+    await ensure_resident(state, compiled.sources, pk_bounds=_pk_bounds, pushed_down=_pushed_down)
 
     result = await state.federation_engine.execute_engine(
         physical_sql,

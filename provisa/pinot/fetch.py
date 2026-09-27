@@ -142,3 +142,36 @@ def fetch_rows(conn: PinotConnection, table: str, columns: list[str]) -> list[di
     result = body.get("resultTable", {})
     names = result.get("dataSchema", {}).get("columnNames", [])
     return [dict(zip(names, row, strict=False)) for row in result.get("rows", [])]
+
+
+def _sql_literal(value: Any) -> str:
+    if isinstance(value, (int, float)):
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def fetch_rows_by_keys(
+    conn: PinotConnection,
+    table: str,
+    columns: list[str],
+    pk_columns: list[str],
+    keys: list[tuple[Any, ...]],
+) -> list[dict]:  # REQ-1865
+    """Exactly the rows whose ``pk_columns`` match one of ``keys`` (REQ-1865 keyed fetch) — a
+    bound ``IN (...)`` predicate, never the full-table scan ``fetch_rows`` runs. Single-column
+    only, mirroring the other keyed loaders' own single-column contract."""
+    if len(pk_columns) != 1:
+        raise ValueError(
+            f"Pinot keyed fetch on a composite PK {pk_columns!r} is not implemented (REQ-1865)"
+        )
+    if not keys:
+        return []
+    select = ", ".join(f'"{c}"' for c in columns) if columns else "*"
+    col = pk_columns[0]
+    values = ", ".join(_sql_literal(k[0]) for k in keys)
+    body = _query(
+        conn, f'SELECT {select} FROM "{table}" WHERE "{col}" IN ({values}) LIMIT {_MAX_ROWS}'
+    )
+    result = body.get("resultTable", {})
+    names = result.get("dataSchema", {}).get("columnNames", [])
+    return [dict(zip(names, row, strict=False)) for row in result.get("rows", [])]

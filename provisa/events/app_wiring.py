@@ -228,18 +228,39 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
     return loaders
 
 
-def build_keyed_adapter_loaders(state: Any) -> dict[str, Any]:
+def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any]:
     """The per-type KEYED row fetchers for row_materialize (REQ-1865) -- the ``load_keys``
-    counterpart to :func:`build_adapter_loaders`. Deliberately a much smaller set: only a type
-    whose whole-table fetch already runs a registered, human-verified query (neo4j's
-    ``query_template``) can be wrapped with a filter on one of ITS OWN projected properties
-    (``provisa/cypher/query_template_filter.py``) -- there is no generic keyed translation for
-    every adapter-fetched type the way there is a generic ``SELECT * WHERE pk IN (...)`` for an
-    engine-scannable one."""
-    from provisa.events.source_loader import make_clickhouse_keyed_loader, make_neo4j_keyed_loader
+    counterpart to :func:`build_adapter_loaders`. Originally a much smaller set (only neo4j, whose
+    whole-table fetch already runs a registered, human-verified query that can be wrapped with a
+    filter on ITS OWN projected property) -- widened after an audit found every OTHER adapter-
+    fetched type sharing the identical bug: a whole-table loader with no keyed counterpart makes
+    ``SourceRowLoader.load_keys`` fall through to its generic ``SELECT * FROM {per_source_catalog}
+    ... WHERE pk IN (...)`` fallback, which for a type with no native engine connector reads the
+    SAME self-referential (empty) landed-replica address the whole-table fix already exists to
+    avoid for ``load`` -- confirmed live for ClickHouse (REQ-1865/REQ-1730 amendment): opting a
+    table into row_materialize with only the whole-table loader fixed still landed zero rows.
+    ``engine`` (optional, matches :func:`build_adapter_loaders`'s own parameter) gates the
+    engine-scannable types the same way -- a type an engine DOES attach live needs no keyed
+    adapter loader at all, since ``load_keys``'s own engine-terminal fallback is correct for it."""
+    from provisa.events.source_loader import (
+        make_cassandra_keyed_loader,
+        make_clickhouse_keyed_loader,
+        make_druid_keyed_loader,
+        make_elasticsearch_keyed_loader,
+        make_hive_s3_keyed_loader,
+        make_kafka_keyed_loader,
+        make_mongodb_keyed_loader,
+        make_neo4j_keyed_loader,
+        make_pinot_keyed_loader,
+        make_redis_keyed_loader,
+    )
+    from provisa.federation.pgwire_replica import (
+        PortAllocator,
+        make_pgwire_keyed_loader,
+        needs_pgwire_replica,
+    )
 
     keyed_loaders: dict[str, Any] = {}
-    keyed_loaders["clickhouse"] = make_clickhouse_keyed_loader()
     api_endpoints = getattr(state, "api_endpoints", None)
     api_sources = getattr(state, "api_sources", None)
     if api_endpoints and api_sources is not None:
@@ -247,6 +268,35 @@ def build_keyed_adapter_loaders(state: Any) -> dict[str, Any]:
         # sparql has no parser/AST to safely resolve a projected property or splice a filter
         # against (confirmed absent, no rdflib dependency either) -- stays on the loud
         # UnsupportedSourceFetch path in SourceRowLoader.load_keys until one exists.
+    bare_engine = getattr(engine, "engine", engine)
+    from provisa.federation.strategy import engine_attaches
+
+    if not engine_attaches(bare_engine, "elasticsearch"):
+        keyed_loaders["elasticsearch"] = make_elasticsearch_keyed_loader()
+    if not engine_attaches(bare_engine, "redis"):
+        keyed_loaders["redis"] = make_redis_keyed_loader()
+    if not engine_attaches(bare_engine, "cassandra"):
+        keyed_loaders["cassandra"] = make_cassandra_keyed_loader()
+    if not engine_attaches(bare_engine, "mongodb"):
+        keyed_loaders["mongodb"] = make_mongodb_keyed_loader()
+    if not engine_attaches(bare_engine, "clickhouse"):
+        keyed_loaders["clickhouse"] = make_clickhouse_keyed_loader()
+    if not engine_attaches(bare_engine, "kafka"):
+        keyed_loaders["kafka"] = make_kafka_keyed_loader()
+    if not engine_attaches(bare_engine, "pinot"):
+        keyed_loaders["pinot"] = make_pinot_keyed_loader()
+    if not engine_attaches(bare_engine, "druid"):
+        keyed_loaders["druid"] = make_druid_keyed_loader()
+    if not engine_attaches(bare_engine, "hive_s3"):
+        keyed_loaders["hive_s3"] = make_hive_s3_keyed_loader()
+    allocator = PortAllocator()
+    config = getattr(state, "config", None)
+    for src in getattr(config, "sources", None) or []:
+        stype = src.type.value if hasattr(src.type, "value") else str(src.type)
+        if stype in keyed_loaders:
+            continue
+        if needs_pgwire_replica(src, bare_engine):
+            keyed_loaders[stype] = make_pgwire_keyed_loader(allocator=allocator)
     return keyed_loaders
 
 
@@ -289,7 +339,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         from provisa.events.source_loader import SourceRowLoader, UnsupportedSourceFetch
 
         _adapter_loaders = build_adapter_loaders(state, engine)
-        _keyed_adapter_loaders = build_keyed_adapter_loaders(state)
+        _keyed_adapter_loaders = build_keyed_adapter_loaders(state, engine)
         row_loader = SourceRowLoader(
             engine, adapter_loaders=_adapter_loaders, keyed_adapter_loaders=_keyed_adapter_loaders
         )
@@ -546,7 +596,7 @@ async def wire_new_poll_jobs(*, state: Any, log: Any) -> int:
 
         store_schema = _store_schema_for(store_dsn, active_env())
         _adapter_loaders = build_adapter_loaders(state, engine)
-        _keyed_adapter_loaders = build_keyed_adapter_loaders(state)
+        _keyed_adapter_loaders = build_keyed_adapter_loaders(state, engine)
         row_loader = SourceRowLoader(
             engine, adapter_loaders=_adapter_loaders, keyed_adapter_loaders=_keyed_adapter_loaders
         )

@@ -131,3 +131,34 @@ def fetch_rows(
         for row in session.execute(stmt):
             rows.append({c: getattr(row, c) for c in columns})
     return rows
+
+
+def fetch_rows_by_keys(
+    conn: CassandraConnection,
+    keyspace: str,
+    table: str,
+    columns: list[str],
+    pk_columns: list[str],
+    keys: list[tuple[Any, ...]],
+) -> list[dict]:  # REQ-1865
+    """Exactly the rows whose ``pk_columns`` match one of ``keys`` (REQ-1865 keyed fetch) — a bound
+    ``IN %s`` predicate, never a full-table scan. Single-column only: CQL's ``IN`` needs one column
+    per predicate, and a composite-key ``IN`` would need per-tuple ``AND``-of-``OR`` construction
+    this table shape has never required (mirrors the neo4j keyed loader's own single-column-only
+    contract)."""
+    if len(pk_columns) != 1:
+        raise ValueError(
+            f"Cassandra keyed fetch on a composite PK {pk_columns!r} is not implemented (REQ-1865)"
+        )
+    if not keys:
+        return []
+    cols = ", ".join(f'"{c}"' for c in columns)
+    col = pk_columns[0]
+    values = tuple(k[0] for k in keys)
+    stmt = f'SELECT {cols} FROM "{keyspace}"."{table}" WHERE "{col}" IN %s'
+    rows: list[dict] = []
+    with conn.cluster() as cluster:
+        session = cluster.connect()
+        for row in session.execute(stmt, (values,)):
+            rows.append({c: getattr(row, c) for c in columns})
+    return rows

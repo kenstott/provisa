@@ -436,6 +436,26 @@ def make_pinot_loader() -> AdapterLoader:
     return _load
 
 
+def make_pinot_keyed_loader() -> AdapterKeyedLoader:
+    """The ``load_keys`` counterpart to :func:`make_pinot_loader` (REQ-1865): a bound
+    ``WHERE pk IN (...)`` broker query instead of the whole-table scan."""
+    from provisa.pinot.fetch import PinotConnection, fetch_rows_by_keys
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        if not keys:
+            return []
+        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        hints = getattr(source, "federation_hints", None) or {}
+        conn = PinotConnection.build(source.host, source.port, hints.get("pinot_broker_url"))
+        return await asyncio.to_thread(
+            fetch_rows_by_keys, conn, table.table_name, columns, pk_columns, keys
+        )
+
+    return _load
+
+
 def make_druid_loader() -> AdapterLoader:
     """Build the Druid row-fetch (REQ-1730): a live SQL query over the broker's own /druid/v2/sql
     endpoint, the same reader `native_tables`/discover-schema use for the picker. Wired only on an
@@ -446,6 +466,25 @@ def make_druid_loader() -> AdapterLoader:
         columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
         conn = DruidConnection.build(source.host, source.port)
         return await asyncio.to_thread(fetch_rows, conn, table.table_name, columns)
+
+    return _load
+
+
+def make_druid_keyed_loader() -> AdapterKeyedLoader:
+    """The ``load_keys`` counterpart to :func:`make_druid_loader` (REQ-1865): a bound
+    ``WHERE pk IN (...)`` broker query instead of the whole-datasource scan."""
+    from provisa.druid.fetch import DruidConnection, fetch_rows_by_keys
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        if not keys:
+            return []
+        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        conn = DruidConnection.build(source.host, source.port)
+        return await asyncio.to_thread(
+            fetch_rows_by_keys, conn, table.table_name, columns, pk_columns, keys
+        )
 
     return _load
 
@@ -462,6 +501,25 @@ def make_hive_s3_loader() -> AdapterLoader:
         conn = HiveS3Connection.build(getattr(source, "database", None), source.mapping or {})
         return await asyncio.to_thread(
             fetch_rows, conn, table.schema_name, table.table_name, columns
+        )
+
+    return _load
+
+
+def make_hive_s3_keyed_loader() -> AdapterKeyedLoader:
+    """The ``load_keys`` counterpart to :func:`make_hive_s3_loader` (REQ-1865): a bound
+    ``WHERE pk IN (...)`` predicate over the same ``read_parquet`` files, instead of the full scan."""
+    from provisa.hive.fetch import HiveS3Connection, fetch_rows_by_keys
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        if not keys:
+            return []
+        columns = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        conn = HiveS3Connection.build(getattr(source, "database", None), source.mapping or {})
+        return await asyncio.to_thread(
+            fetch_rows_by_keys, conn, table.schema_name, table.table_name, columns, pk_columns, keys
         )
 
     return _load
@@ -496,6 +554,42 @@ def make_elasticsearch_loader() -> AdapterLoader:
     return _load
 
 
+def make_elasticsearch_keyed_loader() -> AdapterKeyedLoader:
+    """The ``load_keys`` counterpart to :func:`make_elasticsearch_loader` (REQ-1865): a bound
+    ``terms``/``bool`` query instead of the whole-index scroll."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.elasticsearch.fetch import (
+        ESConnection,
+        fetch_rows_by_keys,
+        table_index_and_columns,
+    )
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        if not keys:
+            return []
+        mapping = getattr(source, "mapping", None) or {}
+        conn = ESConnection.build(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            int(getattr(source, "port", 0) or 9200),
+            tls=bool(mapping.get("tls", False)),
+            username=getattr(source, "username", None) or None,
+            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+
+        def _read() -> list[dict]:
+            index, columns = table_index_and_columns(conn, mapping, table.table_name, names)
+            return fetch_rows_by_keys(conn, index, columns, pk_columns, keys)
+
+        return await asyncio.to_thread(_read)
+
+    return _load
+
+
 def make_redis_loader() -> AdapterLoader:
     """Build the Redis row-fetch (REQ-1675): the table's keys (its prefix, or the mapping DSL's
     pattern) read as rows over redis-py and landed like any other fetched source. Wired only on an
@@ -514,6 +608,39 @@ def make_redis_loader() -> AdapterLoader:
         if not names:
             return []
         return await asyncio.to_thread(fetch_rows, conn, mapping, table.table_name, names)
+
+    return _load
+
+
+def make_redis_keyed_loader() -> AdapterKeyedLoader:
+    """The ``load_keys`` counterpart to :func:`make_redis_loader` (REQ-1865). Redis has no server-
+    side ``WHERE``-style predicate over a key-value table's rows, so this filters client-side after
+    the same whole-table scan ``fetch_rows`` already runs — correct (never reads the self-
+    referential landed replica :func:`make_redis_loader`'s absence used to force), but not a true
+    pushdown: still one full key-scan per call, just not a full LAND. Redis tables are small demo/
+    ops-key-space scale in every registered use so far; a true single-key ``GET``/``HGETALL`` per
+    requested key would need the pattern's own placeholder position (not just its prefix) to
+    reconstruct a real key from a bare column value, which the mapping DSL does not expose today."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.redis.fetch import RedisConnection, fetch_rows
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        if not keys:
+            return []
+        mapping = getattr(source, "mapping", None) or {}
+        conn = RedisConnection(
+            host=resolve_secrets(getattr(source, "host", "") or "localhost"),
+            port=int(getattr(source, "port", 0) or 6379),
+            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+        rows = await asyncio.to_thread(fetch_rows, conn, mapping, table.table_name, names)
+        wanted = {key for key in keys}
+        return [row for row in rows if tuple(row.get(c) for c in pk_columns) in wanted]
 
     return _load
 
@@ -628,6 +755,34 @@ def make_mongodb_loader() -> AdapterLoader:
     return _load
 
 
+def make_mongodb_keyed_loader() -> AdapterKeyedLoader:
+    """The ``load_keys`` counterpart to :func:`make_mongodb_loader` (REQ-1865): a bound
+    ``$in``/``$or`` filter instead of the whole-collection scan."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.mongodb.fetch import MongoConnection, fetch_rows_by_keys
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        if not keys:
+            return []
+        conn = MongoConnection.build(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            int(getattr(source, "port", 0) or 27017),
+            username=getattr(source, "username", None) or None,
+            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        database = getattr(source, "database", None) or table.schema_name
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+        return await asyncio.to_thread(
+            fetch_rows_by_keys, conn, database, table.table_name, names, pk_columns, keys
+        )
+
+    return _load
+
+
 def make_kafka_loader() -> AdapterLoader:
     """Build the Kafka row-fetch (REQ-1730): every message currently on the topic, drained via
     aiokafka and landed like any other fetched source. Wired only on an engine with no live Kafka
@@ -653,6 +808,35 @@ def make_kafka_loader() -> AdapterLoader:
     return _load
 
 
+def make_kafka_keyed_loader() -> AdapterKeyedLoader:
+    """The ``load_keys`` counterpart to :func:`make_kafka_loader` (REQ-1865). A topic has no
+    server-side ``WHERE``, and there is no cheaper access pattern than draining it — Kafka's own
+    `fetch_rows` docstring calls this "current rows of an unbounded log" for the same reason
+    :func:`make_kafka_loader` already has to drain the whole topic every whole-table call. Filters
+    client-side after that same drain: correct (never reads the self-referential landed replica the
+    absence of a keyed loader used to force), no worse than the whole-table load it replaces."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.kafka.fetch import KafkaConnection, fetch_rows
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        if not keys:
+            return []
+        conn = KafkaConnection.build(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            getattr(source, "port", None),
+        )
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+        rows = await fetch_rows(conn, table.table_name, names)
+        wanted = {key for key in keys}
+        return [row for row in rows if tuple(row.get(c) for c in pk_columns) in wanted]
+
+    return _load
+
+
 def make_cassandra_loader() -> AdapterLoader:
     """Build the Cassandra row-fetch (REQ-1676): the table's registered data columns, SELECTed from
     ``<keyspace>.<table>`` over CQL and landed like any other fetched source. Wired only on an engine
@@ -671,6 +855,33 @@ def make_cassandra_loader() -> AdapterLoader:
         if not names:
             return []
         return await asyncio.to_thread(fetch_rows, conn, table.schema_name, table.table_name, names)
+
+    return _load
+
+
+def make_cassandra_keyed_loader() -> AdapterKeyedLoader:
+    """The ``load_keys`` counterpart to :func:`make_cassandra_loader` (REQ-1865): a bound
+    ``WHERE pk IN %s`` predicate instead of the whole-table page scan."""
+    from provisa.cassandra.fetch import CassandraConnection, fetch_rows_by_keys
+    from provisa.core.secrets import resolve_secrets
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        if not keys:
+            return []
+        conn = CassandraConnection.build(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            int(getattr(source, "port", 0) or 9042),
+            username=getattr(source, "username", None) or None,
+            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+        )
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+        return await asyncio.to_thread(
+            fetch_rows_by_keys, conn, table.schema_name, table.table_name, names, pk_columns, keys
+        )
 
     return _load
 

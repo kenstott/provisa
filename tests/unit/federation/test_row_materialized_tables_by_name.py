@@ -52,7 +52,11 @@ def _table(**kw):
 
 
 @pytest.mark.asyncio
-async def test_keyed_by_alias_when_alias_differs_from_physical_table_name(monkeypatch):
+async def test_keyed_by_both_alias_and_bare_table_name_when_alias_differs(monkeypatch):
+    """Dual-keyed by design (REQ-1865 amendment, see the function's own docstring): a raw-SQL
+    statement (pgwire/Flight) references the table by its bare physical name, never rewritten,
+    while a GraphQL-compiled statement rewrites it to the alias -- keying by only one form silently
+    matched nothing for a statement using the other."""
     table = _table()
 
     async def _fake_registered(state):
@@ -60,8 +64,7 @@ async def test_keyed_by_alias_when_alias_differs_from_physical_table_name(monkey
 
     monkeypatch.setattr("provisa.federation.registry_view.registered_tables", _fake_registered)
     row_tables = await row_materialized_tables_by_name(state=None)
-    assert set(row_tables) == {apply_sql_name("Order")}
-    assert "bench_order_node" not in row_tables
+    assert set(row_tables) == {apply_sql_name("Order"), "bench_order_node"}
 
 
 @pytest.mark.asyncio
