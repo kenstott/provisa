@@ -277,10 +277,21 @@ QUERIES: list[Query] = [
         # REQ-1865: bench_contains_edge is one row per CONTAINS edge, keyed by the edge's own
         # elementId()-derived contains_id (single-column PK for row-materialize) — order_id and
         # product_id stay plain scalar FK columns, so this join is unchanged from before REQ-1865.
+        # FROM bench_customer_node, not bench_placed_edge: pushdown_row_materialize's sqlglot scan
+        # (provisa/federation/query_residency.py) only walks exp.Join nodes, never the FROM-clause
+        # root -- a row_materialize table used as FROM-root is invisible to it and falls back to
+        # ensure_resident's whole-table land instead of key-pushdown (confirmed live, perf-bench
+        # VM, 2026-09-27: bench_placed_edge as FROM-root produced 0 rows via sql/flight on a cold
+        # cache while cypher/http, whose compiler-generated SQL orders the FROM/JOIN differently,
+        # incidentally warmed it first). bench_customer_node is both the row_materialize table
+        # this query's own WHERE binds directly (ensure_rows_resident's literal-PK path lands it
+        # regardless of FROM position) and a valid FROM-root, so putting it there and reaching
+        # bench_placed_edge via JOIN keeps every row_materialize table in this query inside the
+        # key-pushdown mechanism the benchmark exists to exercise, per REQ-1865.
         sql="""
             SELECT c.customer_id, o.order_id, p.product_id
-            FROM perf_bench.bench_placed_edge pl
-            JOIN perf_bench.bench_customer_node c ON c.customer_id = pl.customer_id
+            FROM perf_bench.bench_customer_node c
+            JOIN perf_bench.bench_placed_edge pl ON pl.customer_id = c.customer_id
             JOIN perf_bench.bench_order_node o ON o.order_id = pl.order_id
             JOIN perf_bench.bench_contains_edge ce ON ce.order_id = o.order_id
             JOIN perf_bench.bench_product_node p ON p.product_id = ce.product_id
