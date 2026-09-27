@@ -28,12 +28,33 @@ from provisa.compiler.sql_rewrite import _semantic_table_ref
 def _find_table_meta(ctx: Any, type_name: str) -> Any | None:
     """Match ``type_name`` to a ``TableMeta`` case/separator-insensitively (proto collapses the
     domain separator: ``PS__Inquiries`` → ``PsInquiries``). Shared by every grpc_table_to_* lowering
-    so gRPC's request-type lookup has exactly one matching rule."""
+    so gRPC's request-type lookup has exactly one matching rule.
+
+    Falls back to a suffix match when no exact match exists (REQ-1730 gap, confirmed live via
+    gRPC server reflection against a running server): ``state.wire_proto`` (app_loaders.py) is
+    compiled for a synthetic ``__wire__`` role with EVERY domain visible at once
+    (``domain_access: ["*"]``), so a table name that collides across two domains only there gets
+    domain-prefixed at the wire/proto level (``PbOrders``) — but ``ctx`` here is the ACTUAL serving
+    role's own context (e.g. ``org_admin``), built from that role's narrower, collision-free domain
+    visibility, where the same table's ``type_name`` never needed a prefix (``Orders``). A client
+    has no way to know this in advance — server reflection is the only place ``PbOrders`` is
+    discoverable at all, and reflection necessarily describes the wire-level (union) schema, not
+    any one role's. Restricted to a UNIQUE suffix match (never picks between two candidates) so a
+    genuinely unrelated table whose bare name happens to be a suffix of another is never guessed."""
 
     def _n(s: str) -> str:
         return s.replace("_", "").lower()
 
-    return next((m for m in ctx.tables.values() if _n(m.type_name) == _n(type_name)), None)
+    target = _n(type_name)
+    exact = next((m for m in ctx.tables.values() if _n(m.type_name) == target), None)
+    if exact is not None:
+        return exact
+    suffix_matches = {
+        _n(m.type_name): m
+        for m in ctx.tables.values()
+        if target != _n(m.type_name) and target.endswith(_n(m.type_name))
+    }
+    return next(iter(suffix_matches.values())) if len(suffix_matches) == 1 else None
 
 
 def _filter_set_fields(filter_msg: Any | None) -> list[tuple[str, Any]]:

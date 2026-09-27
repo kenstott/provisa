@@ -64,9 +64,15 @@ class Query:
     # verification.
     graphql: str | None = None
     # Native gRPC spec (provisa.v1.ProvisaService), or None if not expressible — see module
-    # docstring's CONFIRMED GAP note. {"mode": "scan", "type_name": "OrderItems"} for a plain
-    # Query{Type} streaming scan; {"mode": "group_by", "type_name": "Orders", "by": ["region"]}
-    # for a Query{Type}GroupBy streaming call.
+    # docstring's CONFIRMED GAP note. {"mode": "scan", "type_name": "PbOrderItems"} for a plain
+    # Query{Type} streaming scan; {"mode": "group_by", "type_name": "PbOrders", "by": ["region"]}
+    # for a Query{Type}GroupBy streaming call. Re-verified 2026-09-27 by querying the LIVE running
+    # server's own naming authority directly (gRPC server reflection, ServerReflectionInfo, against
+    # a running perf-bench VM) rather than reasoning about it from source — the bare "OrderItems"/
+    # "Orders" this spec previously used do not exist as registered message types at all; every
+    # message this table's type actually produced came back prefixed. The value below is that
+    # response, verbatim (same discipline point_lookup's own cypher label comment above already
+    # documents for this file).
     grpc: dict | None = None
     iterations: int = 20  # repeat this many times sequentially, for latency percentiles
     params: dict = field(default_factory=dict)
@@ -135,7 +141,7 @@ QUERIES: list[Query] = [
         # thing. See run_benchmark.py's GraphqlTransport docstring.
         grpc={
             "mode": "scan",
-            "type_name": "OrderItems",
+            "type_name": "PbOrderItems",
         },  # unfiltered scan — matches this SQL exactly
         iterations=3,
     ),
@@ -161,7 +167,7 @@ QUERIES: list[Query] = [
         """,
         # Same shape server-side: Query{Type}GroupBy's `by` also un-filtered — this SQL has no
         # WHERE either, so the gap doesn't affect this query.
-        grpc={"mode": "group_by", "type_name": "Orders", "by": ["region"]},
+        grpc={"mode": "group_by", "type_name": "PbOrders", "by": ["region"]},
         iterations=10,
     ),
     Query(
