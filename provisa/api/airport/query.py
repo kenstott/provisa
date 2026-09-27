@@ -86,14 +86,29 @@ def governed_table_scan_stream(
     try:
         if plan.route == Route.ENGINE:
             assert plan.physical_sql is not None
-            # REQ-1661: this streaming terminal never reaches _execute_plan (see module docstring
-            # and _finalize_scan_audit's own comment), so its own ensure_resident call is the ONLY
-            # place a MATERIALIZED source this plan reads gets landed before the engine executes —
-            # mirrors the identical fixes in provisa/pgwire/server.py and provisa/api/flight/server.py.
-            from provisa.federation.query_residency import ensure_resident
+            # REQ-1661/REQ-1865: this streaming terminal never reaches _execute_plan (see module
+            # docstring and _finalize_scan_audit's own comment), so its own residency calls are the
+            # ONLY place a MATERIALIZED / row_materialize source this plan reads gets landed before
+            # the engine executes — mirrors the identical fixes in provisa/pgwire/server.py,
+            # provisa/api/flight/server.py, provisa/api/rest/cypher_router.py, provisa/grpc/server.py.
+            from provisa.federation.query_residency import (
+                ensure_resident,
+                ensure_rows_resident,
+                pushdown_row_materialize,
+            )
 
+            async def _prep_residency() -> set[str]:
+                await ensure_rows_resident(state, plan.pk_bounds)
+                return await pushdown_row_materialize(
+                    state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
+                )
+
+            _pushed_down = asyncio.run_coroutine_threadsafe(_prep_residency(), main_loop).result()
             asyncio.run_coroutine_threadsafe(
-                ensure_resident(state, plan.sources), main_loop
+                ensure_resident(
+                    state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
+                ),
+                main_loop,
             ).result()
             schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
             _finalize_scan_audit(plan, 200, main_loop, state)
@@ -163,12 +178,29 @@ def governed_table_scan_schema(
     plan = _plan_for_scan(state, main_loop, sql, role_id)
     if plan.route == Route.ENGINE:
         assert plan.physical_sql is not None
-        # REQ-1661: a schema-only probe still binds the query against the engine (DuckDB's Binder
-        # Error fires at bind/compile time, before any row is fetched), so a MATERIALIZED source
-        # not yet landed fails here identically to the streaming path above — same fix required.
-        from provisa.federation.query_residency import ensure_resident
+        # REQ-1661/REQ-1865: a schema-only probe still binds the query against the engine (DuckDB's
+        # Binder Error fires at bind/compile time, before any row is fetched), so a MATERIALIZED /
+        # row_materialize source not yet landed fails here identically to the streaming path above
+        # — same fix required.
+        from provisa.federation.query_residency import (
+            ensure_resident,
+            ensure_rows_resident,
+            pushdown_row_materialize,
+        )
 
-        asyncio.run_coroutine_threadsafe(ensure_resident(state, plan.sources), main_loop).result()
+        async def _prep_residency() -> set[str]:
+            await ensure_rows_resident(state, plan.pk_bounds)
+            return await pushdown_row_materialize(
+                state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
+            )
+
+        _pushed_down = asyncio.run_coroutine_threadsafe(_prep_residency(), main_loop).result()
+        asyncio.run_coroutine_threadsafe(
+            ensure_resident(
+                state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
+            ),
+            main_loop,
+        ).result()
         schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
         close = getattr(batch_gen, "close", None)
         if close is not None:

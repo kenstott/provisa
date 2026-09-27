@@ -518,6 +518,87 @@ def make_redis_loader() -> AdapterLoader:
     return _load
 
 
+def make_clickhouse_loader() -> AdapterLoader:
+    """Build the ClickHouse row-fetch (REQ-1730 gap): the table's registered data columns,
+    SELECTed from ``<database>.<table>`` over the same ``ClickHouseDriver`` (HTTP via
+    clickhouse-connect) the DIRECT route already uses, and landed like any other fetched source.
+    Wired only on an engine with no live ClickHouse connector of its own (DuckDB has none — only
+    the ClickHouse federation ENGINE itself reads it live).
+
+    Before this loader existed, ClickHouse fell through to ``SourceRowLoader``'s generic
+    ``SELECT * FROM {per_source_catalog}...`` engine-scan fallback, the same assumption
+    make_mongodb_loader's docstring describes failing for Mongo on every self-only engine. For
+    ClickHouse that fallback's catalog reference resolves to the LANDED REPLICA'S OWN address
+    (there is no live attach for the fallback to read instead), so a land read back its own
+    still-empty replica, inserted zero rows, and reported success — confirmed live (perf-bench
+    federated_join: order_events landed with last_refresh_ok=True but the physical replica held
+    0 rows against a real 60M-row ClickHouse source)."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.executor.drivers.clickhouse import ClickHouseDriver
+
+    async def _load(source: Any, table: Any) -> list[dict]:
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+        driver = ClickHouseDriver()
+        driver.configure(getattr(source, "federation_hints", None) or {})
+        await driver.connect(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            int(getattr(source, "port", 0) or 8123),
+            getattr(source, "database", None) or table.schema_name,
+            getattr(source, "username", None) or "default",
+            resolve_secrets(getattr(source, "password", "") or ""),
+        )
+        try:
+            cols = ", ".join(f'"{n}"' for n in names)
+            result = await driver.execute(f'SELECT {cols} FROM "{table.table_name}"')
+            return [dict(zip(result.column_names, row)) for row in result.rows]
+        finally:
+            await driver.close()
+
+    return _load
+
+
+def make_clickhouse_keyed_loader() -> AdapterKeyedLoader:
+    """Build the ClickHouse keyed row-fetch (REQ-1865): the ``load_keys`` counterpart to
+    :func:`make_clickhouse_loader`, needed for a ``row_materialize`` ClickHouse table reached via
+    key-pushdown. Without this, ``SourceRowLoader.load_keys``'s generic ``_ADAPTER_FETCH_ONLY``-else
+    fallback (below) reads the SAME self-referential landed-replica address ``make_clickhouse_loader``
+    was written to stop ``load`` from reading -- confirmed live: with only the whole-table loader
+    fixed, opting ``order_events`` into ``row_materialize`` still landed zero rows, because
+    ``pushdown_row_materialize`` calls ``load_keys``, not ``load``, and ``load_keys`` had the
+    identical unfixed gap."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.executor.drivers.clickhouse import ClickHouseDriver
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        if not keys:
+            return []
+        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
+        if not names:
+            return []
+        driver = ClickHouseDriver()
+        driver.configure(getattr(source, "federation_hints", None) or {})
+        await driver.connect(
+            resolve_secrets(getattr(source, "host", "") or "localhost"),
+            int(getattr(source, "port", 0) or 8123),
+            getattr(source, "database", None) or table.schema_name,
+            getattr(source, "username", None) or "default",
+            resolve_secrets(getattr(source, "password", "") or ""),
+        )
+        try:
+            cols = ", ".join(f'"{n}"' for n in names)
+            where = _pk_in_clause(pk_columns, keys)
+            result = await driver.execute(f'SELECT {cols} FROM "{table.table_name}" WHERE {where}')
+            return [dict(zip(result.column_names, row)) for row in result.rows]
+        finally:
+            await driver.close()
+
+    return _load
+
+
 def make_mongodb_loader() -> AdapterLoader:
     """Build the MongoDB row-fetch (REQ-1730): the table's registered data columns, projected from
     ``<database>.<collection>`` over pymongo and landed like any other fetched source. Wired only on

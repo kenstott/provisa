@@ -139,6 +139,12 @@ tables:
   description: Sales dept analytics event fact table (22 cols) — see generate_clickhouse.py
   enable_aggregates: true
   enable_group_by: true
+  # REQ-1865: reached only via JOIN in federated_join/large_federated_join (on order_id, not its
+  # own PK event_id) — key-pushdown handles a non-PK join column fine (query_residency.py), so
+  # this needs no reshape, just the opt-in. Without it, this 60M-row ClickHouse table pays a full
+  # SELECT * land on every cold start via the generic MATERIALIZED path (make_clickhouse_loader).
+  row_materialize: true
+  cache_ttl: 300
   columns:
   - {name: event_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
   - {name: order_id, data_type: integer, visible_to: [org_admin, analyst]}

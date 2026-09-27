@@ -55483,7 +55483,21 @@
     freshness state the event loop reads. Both paths take one per-node land lock in the process, and a
     Snowflake REPLACE is one atomic INSERT OVERWRITE, so a boot land and a first query never interleave
     on one replica. A land that fails is logged, stamped not ok, and the read proceeds on the replica
-    as it is.'
+    as it is.
+
+
+    (Amended 2026-09-27, ROW-MATERIALIZE BYPASS-SITE AUDIT: every ENGINE-route terminal that bypasses
+    _execute_plan/_execute_plan_in_org and calls the engine directly (a streaming surface with no
+    materializing terminal) must call ALL THREE row-materialize residency functions in order --
+    ensure_rows_resident, then pushdown_row_materialize, then ensure_resident with pk_bounds and
+    pushed_down threaded through -- not ensure_resident alone. An audit across every such bypass site
+    found two still calling only ensure_resident, carrying a stale comment claiming to already mirror
+    the pgwire/flight fix: provisa/grpc/server.py (the ENGINE-route streaming terminal) and
+    provisa/api/airport/query.py (both its row-streaming scan and its schema-only probe). Fixed to
+    match the pattern REQ-1865 established in pgwire/server.py, api/flight/server.py and
+    api/rest/cypher_router.py. Without this, a row_materialize table reached only via JOIN through
+    the gRPC ProvisaService or the Airport/ADBC surface silently read its own still-empty replica --
+    same failure class cypher_cross_engine hit over the HTTP-cypher transport before that fix.)'
   use_case: 'API-backed and other unreachable sources materialize lazily: a query that arrives before
     the event loop has landed a table, or after it went stale, is served fresh rows rather than an empty
     or stale replica. materialize_pending existed on the native backends with no caller since 2026-07.'
@@ -55493,6 +55507,8 @@
   - provisa/pgwire/_pipeline.py
   - provisa/events/land_lock.py
   - provisa/federation/snowflake_store.py
+  - provisa/grpc/server.py
+  - provisa/api/airport/query.py
   tests:
   - tests/unit/test_query_residency.py
   - tests/unit/test_residency.py
@@ -57529,7 +57545,21 @@
     \ and together via a live Playwright e2e run (engine-swap.spec.ts, the \"elasticsearch -> mssql\"\
     \ case) against a real dockerized SQL Server 2022 instance: register elasticsearch under DuckDB, genuinely\
     \ kill and respawn the process with PROVISA_ENGINE=mssql, requery with no mutation replay, get the\
-    \ correct 6 rows back.)"
+    \ correct 6 rows back.)\nAmended 2026-09-27, CLICKHOUSE ADAPTER-LOADER GAP: ClickHouse was the\
+    \ one source type this REQ's own gap-closing pattern (mongodb/redis/cassandra/kafka/prometheus/pinot/druid/hive_s3\
+    \ -- each wired an adapter_loaders entry once its own defect was found) never covered. DuckDB has\
+    \ no ClickHouse connector, so engine_attaches correctly reports False, but build_adapter_loaders\
+    \ had no clickhouse entry either -- SourceRowLoader.load's generic engine-scan fallback then read\
+    \ a SELECT * FROM the per-source catalog name, which resolves to\
+    \ the LANDED REPLICA's own physical address (there is no live attach for the fallback to read instead),\
+    \ so every land read back its own still-empty replica, inserted zero rows, and reported success (last_refresh_ok=True).\
+    \ Confirmed live on the perf-bench duckdb-engine benchmark: order_events (60M rows in real ClickHouse)\
+    \ landed empty, so federated_join/large_federated_join silently returned 0 rows via sql/flight while\
+    \ graphql (independent per-source root fields, no JOIN) still returned real per-source data -- the\
+    \ divergence that surfaced the gap. Fixed: make_clickhouse_loader (provisa/events/source_loader.py),\
+    \ reusing the existing DIRECT-route ClickHouseDriver (HTTP via clickhouse-connect) instead of a new\
+    \ connection primitive, wired in build_adapter_loaders behind the same engine_attaches gate every\
+    \ other type here uses."
   code:
   - provisa/api/app_loaders.py
   - provisa/federation/sqlalchemy_backend.py
@@ -57581,6 +57611,7 @@
   - provisa/events/app_wiring.py
   - provisa/mongodb/fetch.py
   - provisa/kafka/fetch.py
+  - provisa/executor/drivers/clickhouse.py
   - provisa/federation/snowflake_backend.py
   - provisa/federation/snowflake_runtime.py
   - provisa/federation/databricks_backend.py
@@ -63906,7 +63937,11 @@
     And each DataRow message's raw bytes are re-sent to the pgwire client without decoding
     And the passthrough falls back to decode/re-encode if any error occurs (never a correctness risk)
 - id: REQ-1864
-  status: reverted
+  status: rejected
+  rejection_reason: 'Reverted 2026-09-26: direct single-source Cypher execution requires a general
+    method to resolve arbitrary SQL join patterns back into correct Cypher, which the reverse
+    compiler does not have (it mis-translated a reshaped junction table). Row-level materialization
+    (REQ-1865) is the sanctioned mechanism for Neo4j read performance instead.'
   group: "6. Execution, Routing, Caching & Performance"
   category: Neo4j query optimization
   priority: SHOULD
@@ -63964,7 +63999,7 @@
     by a trusted, declared PK and never reconstructs a join.)
 - id: REQ-1865
   status: in-progress
-  group: "4. Data Caching & Materialization"
+  group: "6. Execution, Routing, Caching & Performance"
   category: Row-level materialization
   priority: SHOULD
   type: behavioral

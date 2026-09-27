@@ -703,6 +703,26 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
                 exec_sql, plan.source_id, resolved_params, state
             )
         else:
+            # REQ-1661/REQ-1865: this govern-then-execute terminal never reaches
+            # _execute_plan_in_org, so its own residency calls are the ONLY place a
+            # MATERIALIZED / row_materialize source this plan reads gets landed before the
+            # engine executes — mirrors the identical ENGINE-route bypass fixes in
+            # provisa/pgwire/server.py and provisa/api/flight/server.py. Without this, the
+            # POST /data/cypher REST surface queries a row_materialize table's never-landed
+            # (or stale) cache directly and the query hangs/times out.
+            from provisa.federation.query_residency import (
+                ensure_resident,
+                ensure_rows_resident,
+                pushdown_row_materialize,
+            )
+
+            await ensure_rows_resident(state, plan.pk_bounds)
+            _pushed_down = await pushdown_row_materialize(
+                state, physical_sql, state.federation_engine.dialect, resolved_params
+            )
+            await ensure_resident(
+                state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
+            )
             _exec_result = await _dispatch_execution(
                 exec_sql, physical_sql, resolved_params, state, span_attrs
             )

@@ -145,6 +145,7 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
     from provisa.events.source_loader import (
         make_airport_loader,
         make_cassandra_loader,
+        make_clickhouse_loader,
         make_dq_loader,
         make_druid_loader,
         make_elasticsearch_loader,
@@ -204,6 +205,8 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
         loaders["cassandra"] = make_cassandra_loader()
     if not engine_attaches(bare_engine, "mongodb"):  # REQ-1730
         loaders["mongodb"] = make_mongodb_loader()
+    if not engine_attaches(bare_engine, "clickhouse"):  # REQ-1730
+        loaders["clickhouse"] = make_clickhouse_loader()
     if not engine_attaches(bare_engine, "kafka"):  # REQ-1730
         loaders["kafka"] = make_kafka_loader()
     if not engine_attaches(bare_engine, "prometheus"):  # REQ-1689
@@ -233,9 +236,10 @@ def build_keyed_adapter_loaders(state: Any) -> dict[str, Any]:
     (``provisa/cypher/query_template_filter.py``) -- there is no generic keyed translation for
     every adapter-fetched type the way there is a generic ``SELECT * WHERE pk IN (...)`` for an
     engine-scannable one."""
-    from provisa.events.source_loader import make_neo4j_keyed_loader
+    from provisa.events.source_loader import make_clickhouse_keyed_loader, make_neo4j_keyed_loader
 
     keyed_loaders: dict[str, Any] = {}
+    keyed_loaders["clickhouse"] = make_clickhouse_keyed_loader()
     api_endpoints = getattr(state, "api_endpoints", None)
     api_sources = getattr(state, "api_sources", None)
     if api_endpoints and api_sources is not None:

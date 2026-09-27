@@ -451,13 +451,27 @@ class ProvisaServicer:  # REQ-045, REQ-143
         if plan.route == Route.ENGINE:
             require_governed_plan(plan)  # REQ-1176: streaming terminal verifies the stamp too
             assert plan.physical_sql is not None
-            # REQ-1661: this streaming terminal never reaches _execute_plan (see the audit comment
-            # below), so its own ensure_resident call is the ONLY place a MATERIALIZED source this
-            # plan reads gets landed before the engine executes — mirrors the identical ENGINE-
-            # route bypass fixes in pgwire/server.py, api/flight/server.py, api/airport/query.py.
-            from provisa.federation.query_residency import ensure_resident
+            # REQ-1661/REQ-1865: this streaming terminal never reaches _execute_plan (see the audit
+            # comment below), so its own residency calls are the ONLY place a MATERIALIZED /
+            # row_materialize source this plan reads gets landed before the engine executes —
+            # mirrors the identical ENGINE-route bypass fixes in pgwire/server.py,
+            # api/flight/server.py, api/rest/cypher_router.py. (Confirmed live 2026-09-27: without
+            # ensure_rows_resident/pushdown_row_materialize, a row_materialize table reached only
+            # via JOIN — no literal predicate — read its own still-empty replica through here too,
+            # same class of bug cypher_cross_engine hit over the HTTP-cypher transport.)
+            from provisa.federation.query_residency import (
+                ensure_resident,
+                ensure_rows_resident,
+                pushdown_row_materialize,
+            )
 
-            await ensure_resident(state, plan.sources)
+            await ensure_rows_resident(state, plan.pk_bounds)
+            _pushed_down = await pushdown_row_materialize(
+                state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
+            )
+            await ensure_resident(
+                state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
+            )
             loop = asyncio.get_running_loop()
             stream = await loop.run_in_executor(
                 None,
