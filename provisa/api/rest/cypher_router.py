@@ -272,6 +272,20 @@ async def _dispatch_execution(
 
     clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
     _api_table_names = find_api_table_names(clean_exec_sql)
+    # REQ-1865: a row_materialize table (e.g. a neo4j table opted in for row-level caching) must
+    # never be routed through the whole-table API-fetch path below, even though it also has an
+    # "openapi" endpoint registration (REQ-1668: a neo4j table is a persisted query-API endpoint) --
+    # confirmed live: cypher_cross_engine's literal customer_id-bound query against
+    # bench_customer_node (row_materialize, resolvable via a single-row keyed fetch through the
+    # ENGINE route in milliseconds) was instead whole-table-fetching all FIVE neo4j tables the
+    # query joins, one of them (bench_order_node) ~2,000,000 rows, sequentially, every single call
+    # -- exceeding the 60s request timeout every time regardless of the residency/pushdown fix
+    # already in place for the ENGINE route (this branch bypasses it entirely). Bolt (bolt/session.py)
+    # never hits this API-table branch at all, which is why it already succeeded for this exact query.
+    from provisa.federation.query_residency import row_materialized_tables_by_name
+
+    _row_materialize_names = await row_materialized_tables_by_name(state)
+    _api_table_names = [tn for tn in _api_table_names if tn not in _row_materialize_names]
     _has_api_tables = any(_lookup_api_endpoint(state, tn) is not None for tn in _api_table_names)
     _has_gql_remote = any(
         _lookup_gql_remote_table(state, tn) is not None for tn in _api_table_names
