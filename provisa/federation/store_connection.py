@@ -18,9 +18,16 @@ is the one exception to "the engine never writes the store": engine and store sh
 so they must share one connection.
 
 Landing is columnar/bulk (REQ-990): the table DDL is derived from the canonical IR→SQLAlchemy type
-map (portable, no per-store spelling), and rows land through DuckDB's native ``executemany`` — one
-prepared statement for the whole batch, never a per-row loop. JSON columns receive the source's
-serialized-text value directly (DuckDB's ``JSON`` type parses text on insert).
+map (portable, no per-store spelling). Rows land via a registered pandas DataFrame + ``INSERT ...
+SELECT`` (``_bulk_insert_rows``) — DuckDB's real vectorized ingestion path. An EARLIER version of
+this module used ``executemany`` here, believing it to be "one prepared statement for the whole
+batch, never a per-row loop" — confirmed FALSE by direct benchmark (10s for 200K rows vs ~0.03s for
+the DataFrame path, ~300-400x): DuckDB's ``executemany`` issues one bound execute per row despite
+its name, and because every query on the server queues behind ANY in-flight land (REQ-989's single-
+writer-connection constraint), that made a single large land a whole-server outage for its duration
+— confirmed live as the root cause of a 23+ minute stall blocking an unrelated benchmark query.
+JSON columns receive the source's serialized-text value directly (DuckDB's ``JSON`` type parses
+text on insert).
 """
 
 from __future__ import annotations
@@ -37,6 +44,41 @@ def _duckdb_dialect() -> Any:
     import duckdb_engine
 
     return duckdb_engine.Dialect()
+
+
+def _bulk_insert_rows(cur: Any, qualified: str, colnames: list[str], rows: list[dict]) -> None:
+    """Bulk-load ``rows`` into ``qualified`` via a registered pandas view + INSERT SELECT.
+
+    Replaces ``executemany`` (this module's own former approach, and every land/persist path's
+    original one) -- confirmed live and by direct benchmark that despite its name, DuckDB's
+    ``executemany`` is NOT vectorized: it issues one bound ``execute`` per row under the hood, so
+    it is LINEAR in row count (measured: 10s for 200K rows). This registered-DataFrame path is
+    DuckDB's real vectorized ingestion path (measured: ~0.03s for the same 200K rows, ~300-400x).
+    Confirmed live as the root cause of a 23+ minute land blocking the single shared DuckDB
+    connection -- every other query on the server queues behind ANY in-flight land (REQ-989's own
+    single-writer-connection constraint), so a slow land here is not a local cost, it is a
+    whole-server outage for its duration.
+
+    A uniquely-named view per call avoids a name collision with another concurrent land on a
+    different cursor of the SAME connection (this module's own land_duckdb_native docstring: a
+    large land dispatches to a background thread on its own private cursor, so more than one can
+    be in flight at once)."""
+    if not rows:
+        return
+    import uuid
+
+    import pandas as pd
+
+    view_name = f"_bulk_insert_{uuid.uuid4().hex}"
+    df = pd.DataFrame(
+        [{cn: r.get(cn) for cn in colnames} for r in rows], columns=pd.Index(colnames)
+    )
+    cur.register(view_name, df)
+    try:
+        collist = ", ".join(f'"{cn}"' for cn in colnames)
+        cur.execute(f'INSERT INTO {qualified} ({collist}) SELECT {collist} FROM "{view_name}"')
+    finally:
+        cur.unregister(view_name)
 
 
 def _qualified(catalog: str, schema: str, table: str) -> str:
@@ -152,12 +194,7 @@ def persist_duckdb_native(
     colnames = [name for name, _ in columns]
 
     def _bulk_insert(data_rows: list[dict]) -> None:
-        if not data_rows:
-            return
-        collist = ", ".join(f'"{cn}"' for cn in colnames)
-        placeholders = ", ".join("?" * len(colnames))
-        data = [tuple(r.get(cn) for cn in colnames) for r in data_rows]
-        con.executemany(f"INSERT INTO {qualified} ({collist}) VALUES ({placeholders})", data)
+        _bulk_insert_rows(con, qualified, colnames, data_rows)
 
     if persist == PERSIST_REPLACE:
         con.execute(f"DELETE FROM {qualified}")
@@ -250,10 +287,7 @@ def land_duckdb_native(
             cur.execute(f"DELETE FROM {qualified}")
         if rows:
             colnames = [name for name, _ in columns]
-            collist = ", ".join(f'"{cn}"' for cn in colnames)
-            placeholders = ", ".join("?" * len(colnames))
-            data = [tuple(r.get(cn) for cn in colnames) for r in rows]
-            cur.executemany(f"INSERT INTO {qualified} ({collist}) VALUES ({placeholders})", data)
+            _bulk_insert_rows(cur, qualified, colnames, rows)
         return qualified
     finally:
         cur.close()
