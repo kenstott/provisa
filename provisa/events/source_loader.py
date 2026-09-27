@@ -97,6 +97,11 @@ def _source_type(source: Any) -> str:
 
 
 AdapterLoader = Any  # Callable[[source, table], Awaitable[list[dict]]] — a per-type row fetcher.
+# Callable[[source, table, pk_columns, keys], Awaitable[list[dict]]] — a per-type KEYED row fetcher
+# (REQ-1865). Distinct from AdapterLoader because a keyed fetch needs the extra pk_columns/keys
+# args and, per design, must resolve its filter against the type's own verified projection
+# (query_template's RETURN clause for neo4j/sparql) rather than any engine-facing naming.
+AdapterKeyedLoader = Any
 
 
 class SourceRowLoader:
@@ -106,14 +111,21 @@ class SourceRowLoader:
     reader for every SQL-federatable source. ``adapter_loaders`` maps a source type in
     ``_ADAPTER_FETCH_ONLY`` (openapi, ingest, …) to an ``async (source, table) -> list[dict]`` fetcher
     that calls the adapter instead of scanning a table; a type without one raises
-    :class:`UnsupportedSourceFetch`. ``load`` ignores the claimed events and returns a full snapshot;
-    an incremental (watermark-filtered) read is a later refinement keyed off the change cursor."""
+    :class:`UnsupportedSourceFetch`. ``keyed_adapter_loaders`` is the ``load_keys`` counterpart —
+    present only for the subset of adapter types that can translate a keyed fetch (REQ-1865); a
+    type with no entry there still raises even if ``adapter_loaders`` has a whole-table one for it.
+    ``load`` ignores the claimed events and returns a full snapshot; an incremental
+    (watermark-filtered) read is a later refinement keyed off the change cursor."""
 
     def __init__(
-        self, engine: Any, adapter_loaders: dict[str, AdapterLoader] | None = None
+        self,
+        engine: Any,
+        adapter_loaders: dict[str, AdapterLoader] | None = None,
+        keyed_adapter_loaders: dict[str, AdapterKeyedLoader] | None = None,
     ) -> None:
         self._engine = engine
         self._adapter_loaders = adapter_loaders or {}
+        self._keyed_adapter_loaders = keyed_adapter_loaders or {}
 
     async def load(self, source: Any, table: Any) -> list[dict]:
         # REQ-861: a file source may carry a producer command that refreshes the file IN PLACE.
@@ -143,6 +155,67 @@ class SourceRowLoader:
         result = await self._engine.execute_engine(f"SELECT * FROM {ref}")
         return [dict(zip(result.column_names, row)) for row in result.rows]
 
+    async def load_keys(
+        self, source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        """Fetch exactly the rows whose ``pk_columns`` match one of ``keys``, full row, from the
+        live source -- never a scan (REQ-1865, design doc section 3d).
+
+        For an engine-scannable relational/warehouse source this is a bounded
+        ``SELECT * FROM <physical> WHERE (pk...) IN (...)`` through the engine terminal, mirroring
+        ``load``'s own catalog/ref resolution. A registered ``keyed_adapter_loaders`` entry always
+        wins over that default, same precedence as ``load``'s ``adapter_loaders`` -- it is the
+        type's own keyed-fetch translation (e.g. neo4j: wrap ``query_template`` with a filter on
+        one of its own projected properties, ``provisa/cypher/query_template_filter.py``). A type
+        in ``_ADAPTER_FETCH_ONLY`` with no keyed entry has no keyed-fetch translation at all and
+        raises rather than falling back to a full ``load()`` per lookup, which would defeat the
+        mechanism.
+        """
+        if not keys:
+            return []
+        stype = _source_type(source)
+        keyed_loader = self._keyed_adapter_loaders.get(stype)
+        if keyed_loader is not None:
+            return await keyed_loader(source, table, pk_columns, keys)
+        if stype in _ADAPTER_FETCH_ONLY:
+            raise UnsupportedSourceFetch(
+                f"source type {stype!r} (source {source.id!r}) has no keyed-fetch translation "
+                "wired for this table (REQ-1865)"
+            )
+        from provisa.compiler.naming import source_to_catalog
+
+        catalog = source_to_catalog(source.id)
+        ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
+        where = _pk_in_clause(pk_columns, keys)
+        result = await self._engine.execute_engine(f"SELECT * FROM {ref} WHERE {where}")
+        return [dict(zip(result.column_names, row)) for row in result.rows]
+
+
+def _sql_literal(value: Any) -> str:
+    """Inline-literal rendering for a PK value in a generated ``IN`` predicate — the same posture
+    ``load``'s own ``SELECT * FROM {ref}`` string-building already uses (no bind-param plumbing
+    through the engine terminal call). A declared PK is trusted (design constraint 6): no
+    additional escaping/validation beyond standard SQL-string quoting is performed here."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _pk_in_clause(pk_columns: list[str], keys: list[tuple[Any, ...]]) -> str:
+    """A ``col IN (...)`` (single-column PK) or ``(col1, col2) IN ((...), (...))`` (composite PK)
+    predicate naming exactly ``keys`` -- never a range, never unbounded."""
+    if len(pk_columns) == 1:
+        col = pk_columns[0]
+        values = ", ".join(_sql_literal(k[0]) for k in keys)
+        return f'"{col}" IN ({values})'
+    cols = ", ".join(f'"{c}"' for c in pk_columns)
+    tuples = ", ".join("(" + ", ".join(_sql_literal(v) for v in key) + ")" for key in keys)
+    return f"({cols}) IN ({tuples})"
+
 
 def make_openapi_loader(
     endpoints_by_table: dict[str, Any], sources_by_id: dict[str, Any]
@@ -169,6 +242,55 @@ def make_openapi_loader(
         pages = await call_api(
             endpoint,
             dict(endpoint.default_params),
+            base_url=api_source.base_url,
+            auth=api_source.auth,
+        )
+        rows: list[dict] = []
+        for page in pages:
+            rows.extend(
+                flatten_response(
+                    page, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
+                )
+            )
+        return rows
+
+    return _load
+
+
+def make_neo4j_keyed_loader(
+    endpoints_by_table: dict[str, Any], sources_by_id: dict[str, Any]
+) -> AdapterKeyedLoader:
+    """Build the neo4j keyed row-fetch (REQ-1865): wrap the table's registered ``query_template``
+    with a ``WHERE <projected_pk_property> IN $keys`` filter (single-column PK only --
+    ``provisa/cypher/query_template_filter.py`` raises loud on a composite one) and run it through
+    the same ``call_api``/``neo4j_tx`` path ``make_openapi_loader`` already uses for the whole-table
+    fetch -- the filter binds to a property the template itself already projects, never a name
+    invented by the compiler's own SQL-facing convention (see that module's docstring)."""
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        from provisa.api_source.caller import call_api
+        from provisa.api_source.flattener import flatten_response
+        from provisa.cypher.query_template_filter import inject_keys_filter
+
+        endpoint = endpoints_by_table.get(table.table_name)
+        api_source = sources_by_id.get(source.id)
+        if endpoint is None or api_source is None:
+            raise UnsupportedSourceFetch(
+                f"neo4j source {source.id!r} table {table.table_name!r}: no registered endpoint "
+                f"or api-source config to fetch from"
+            )
+        if len(pk_columns) != 1:
+            raise UnsupportedSourceFetch(
+                f"neo4j source {source.id!r} table {table.table_name!r}: keyed fetch on a "
+                f"composite PK {pk_columns!r} is not implemented (REQ-1865)"
+            )
+        wrapped_template = inject_keys_filter(endpoint.query_template, pk_columns[0])
+        wrapped_endpoint = endpoint.model_copy(update={"query_template": wrapped_template})
+        pages = await call_api(
+            wrapped_endpoint,
+            {**endpoint.default_params, "keys": [k[0] for k in keys]},
             base_url=api_source.base_url,
             auth=api_source.auth,
         )

@@ -1516,6 +1516,24 @@ async def build_org_runtime(
         from provisa.events.push_wiring import wire_push_listeners
 
         await wire_push_listeners(state=state, log=logging.getLogger(__name__))
+
+        # REQ-1865: wire the row-materialize background refresh drain + cold-row reaper for every
+        # row_materialize table, on the same scheduler — best-effort, same posture as the two calls
+        # above (never blocks or fails boot).
+        if scheduler is not None:
+            from provisa.events.row_materialize_lifecycle import wire_row_materialize_background
+
+            _rm_cfg = getattr(getattr(state, "config", None), "row_materialize", None)
+            if _rm_cfg is not None:
+                await wire_row_materialize_background(
+                    scheduler,
+                    state=state,
+                    log=logging.getLogger(__name__),
+                    tick_seconds=_rm_cfg.refresh_tick_seconds,
+                    reap_interval_seconds=_rm_cfg.reap_interval_seconds,
+                    reap_grace_period=_rm_cfg.reap_grace_period,
+                    reap_batch_size=_rm_cfg.reap_batch_size,
+                )
     except Exception:
         # The runtime was registered before this body ran (materialize_store() and the catalog-name
         # map are read off the registry while it builds), so a failure part-way leaves a runtime
@@ -1981,6 +1999,33 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
         await wire_new_poll_jobs(state=state, log=logging.getLogger(__name__))
     except Exception:
         logging.getLogger(__name__).exception("wire_new_poll_jobs failed during schema rebuild")
+
+    # REQ-1865: re-wire the row-materialize background refresh drain + reaper on EVERY rebuild,
+    # same posture as wire_push_listeners above (registered jobs are idempotent via
+    # replace_existing=True, and the row_materialize table set is derived fresh each call, not
+    # incrementally like wire_new_poll_jobs) — so a row_materialize flag flipped on live via the
+    # admin UI (schema_mutation.py's registerTable/updateTable) gets its background jobs without
+    # requiring a restart.
+    _scheduler = getattr(state, "_scheduler", None)
+    if _scheduler is not None:
+        from provisa.events.row_materialize_lifecycle import wire_row_materialize_background
+
+        _rm_cfg = getattr(getattr(state, "config", None), "row_materialize", None)
+        if _rm_cfg is not None:
+            try:
+                await wire_row_materialize_background(
+                    _scheduler,
+                    state=state,
+                    log=logging.getLogger(__name__),
+                    tick_seconds=_rm_cfg.refresh_tick_seconds,
+                    reap_interval_seconds=_rm_cfg.reap_interval_seconds,
+                    reap_grace_period=_rm_cfg.reap_grace_period,
+                    reap_batch_size=_rm_cfg.reap_batch_size,
+                )
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "wire_row_materialize_background failed during schema rebuild"
+                )
 
 
 class _DebugLogBufferHandler(logging.Handler):

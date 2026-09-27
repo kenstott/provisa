@@ -892,6 +892,7 @@ async def _load_config_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, R
     _validate_probe_type(config)
     _validate_watermark_columns(config)
     _validate_neo4j_sources(config)
+    _validate_row_materialize(config)
     await _upsert_tables(conn, engine, config, openapi_specs, catalog_names=catalog_names)
 
     # 6. Relationships (tables must exist first)
@@ -1184,6 +1185,70 @@ def _validate_probe_type(config) -> None:  # REQ-982
             )
         except ValueError as exc:
             raise ValueError(f"Table {table.table_name!r}: {exc}") from exc
+
+
+def _validate_row_materialize(config) -> None:  # REQ-1865
+    """row_materialize needs a resolved cache_ttl (table's own OR inherited from its source) to
+    drive each cached row's independent freshness clock (Table's own model_validator cannot see
+    Source, so this half of the check lives here, the same place _upsert_single_table/
+    _handle_neo4j_table already combine ``table.cache_ttl or source.cache_ttl``). Also enforces the
+    query-API keyed-fetch registration requirement (design doc section 3d, revised): a
+    query_template table's keyed fetch wraps the template itself with a filter on one of its OWN
+    projected properties (``provisa/cypher/query_template_filter.py``) rather than requiring the
+    author to hand-splice a ``$keys`` placeholder — so the check here is that the table's own
+    declared PK column is actually among what the template projects, and that this source type has
+    a keyed-fetch translation wired at all (today: neo4j only — sparql has no parser/AST to safely
+    resolve a projected property against, confirmed absent). Both are registration-time
+    ValueErrors, never a silent fallback to an undefined TTL or an unbounded per-lookup scan."""
+    from provisa.cypher.query_template_filter import (
+        ProjectionFilterError,
+        resolve_projected_property,
+    )
+
+    sources_by_id = {s.id: s for s in config.sources}
+    for table in config.tables:
+        if not getattr(table, "row_materialize", False):
+            continue
+        source = sources_by_id.get(table.source_id)
+        eff_ttl = (
+            table.cache_ttl
+            if table.cache_ttl is not None
+            else (source.cache_ttl if source is not None else None)
+        )
+        if eff_ttl is None:
+            raise ValueError(
+                f"table {table.table_name!r}: row_materialize=True requires a resolved cache_ttl "
+                f"(own or inherited from source {table.source_id!r}) to drive each cached row's "
+                "freshness clock (REQ-1865)"
+            )
+        if table.query_template is not None:
+            _raw_type = getattr(source, "type", None) if source is not None else None
+            src_type = (
+                _raw_type.value
+                if _raw_type is not None and hasattr(_raw_type, "value")
+                else _raw_type
+            )
+            if src_type != "neo4j":
+                raise ValueError(
+                    f"table {table.table_name!r}: row_materialize=True on a query_template table "
+                    f"has no keyed-fetch translation for source type {src_type!r} (today: neo4j "
+                    "only — sparql has no parser/AST to safely resolve a projected property or "
+                    "splice a filter against, REQ-1865)"
+                )
+            pk_columns = [c.name for c in table.columns if c.is_primary_key]
+            if len(pk_columns) != 1:
+                raise ValueError(
+                    f"table {table.table_name!r}: row_materialize=True on a query_template table "
+                    f"requires exactly one PK column for keyed fetch, got {pk_columns!r} "
+                    "(composite-PK keyed fetch is not implemented, REQ-1865)"
+                )
+            try:
+                resolve_projected_property(table.query_template, pk_columns[0])
+            except ProjectionFilterError as exc:
+                raise ValueError(
+                    f"table {table.table_name!r}: row_materialize=True requires its PK column "
+                    f"{pk_columns[0]!r} to be among query_template's own projected elements: {exc}"
+                ) from exc
 
 
 async def _validate_existing_domains(conn: "Connection", default_domain: str) -> None:

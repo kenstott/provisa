@@ -687,8 +687,38 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 # yet-landed ClickHouse table failed "Binder Error: Catalog ... does not exist" on
                 # its first run of a fresh boot — _attach_registered's own attach attempt for a LAND
                 # source is caught and logged, never raised, so nothing else would have surfaced it.
+                #
+                # REQ-1865: this streaming sink also never called ensure_rows_resident (it bypasses
+                # _execute_plan_in_org entirely, same reason ensure_resident is duplicated above) --
+                # a row_materialize table this plan's predicate DIRECTLY binds (e.g.
+                # bench_customer_node's own customer_id) was never keyed-fetched for this transport
+                # at all. Must run BEFORE the key-pushdown probe below: a join where every table is
+                # row_materialize needs the directly-bound ones populated first, or the probe's
+                # LEFT-preserved "known" side is itself still empty and resolves zero keys.
+                from provisa.federation.query_residency import (
+                    ensure_rows_resident,
+                    pushdown_row_materialize,
+                )
+
                 asyncio.run_coroutine_threadsafe(
-                    ensure_resident(state, governed.sources), loop
+                    ensure_rows_resident(state, governed.pk_bounds), loop
+                ).result(timeout=120)
+                # REQ-1865 key pushdown: same reason this streaming sink needs its own
+                # ensure_resident call applies to pushdown_row_materialize -- it must run here too,
+                # not just in _execute_plan_in_org, or a JOIN-reached row_materialize table (e.g.
+                # cypher_cross_engine's bench_contains_edge) never gets landed for this transport at
+                # all (confirmed live: 0 rows, no [DIAG] trace, for every SQL-transport query here).
+                _pushed_down = asyncio.run_coroutine_threadsafe(
+                    pushdown_row_materialize(
+                        state,
+                        governed.physical_sql,
+                        state.federation_engine.dialect,
+                        governed.exec_params,
+                    ),
+                    loop,
+                ).result(timeout=120)
+                asyncio.run_coroutine_threadsafe(
+                    ensure_resident(state, governed.sources, pushed_down=_pushed_down), loop
                 ).result(timeout=120)
                 # REQ-1863 counterpart: when the bound federation ENGINE is itself Postgres
                 # (PROVISA_ENGINE=pg), pgwire and the engine both speak real Postgres wire

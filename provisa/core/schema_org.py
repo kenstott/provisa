@@ -173,6 +173,7 @@ registered_tables = Table(
     Column("view_metrics", JSON),
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="SET NULL")),  # REQ-1634
     Column("materialize", Boolean, nullable=False, server_default=false()),
+    Column("row_materialize", Boolean, nullable=False, server_default=false()),  # REQ-1865
     Column("mv_refresh_interval", Integer, nullable=False, server_default="300"),
     # REQ-963 live-MV debounce (event-loop path). quiet=0 → real-time recompute.
     Column("mv_debounce_quiet", Float, nullable=False, server_default="0"),
@@ -1067,7 +1068,7 @@ events = Table(
     Column("payload", JSON, default=dict, server_default="{}"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(
-        "event_type IN ('delta','append','replace','warn','error','quarantine')",
+        "event_type IN ('delta','append','replace','warn','error','quarantine','row_refresh')",  # REQ-1865
         name="events_event_type_check",
     ),
 )

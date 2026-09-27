@@ -257,3 +257,115 @@ def land_duckdb_native(
         return qualified
     finally:
         cur.close()
+
+
+def ensure_row_cache_table_duckdb_native(
+    con: Any, *, catalog: str, schema: str, table: str, columns: list[tuple[str, str]]
+) -> None:
+    """CREATE SCHEMA/TABLE for a row-materialize cache table, through the engine's own DuckDB
+    connection (REQ-989/REQ-1865) -- the duckdb-native mirror of ``materialize_exec.
+    build_row_cache_table`` + ``CreateTable`` for a store the engine itself holds the file handle
+    for. Same drift check as ``reconcile_duckdb_native``: a table already landed at this SAME
+    mangled address by the ORDINARY whole-table materialize path (before row_materialize was
+    enabled for it, or from an older run) has none of the cache's own ``_row_cached_at``/
+    ``_row_expires_at`` bookkeeping columns -- confirmed live: DROP+RECREATE on a column mismatch,
+    same as reconcile_duckdb_native, self-healing after the one-time schema change (any rows the
+    stale table held were never trustworthy as row-cache entries anyway -- they were never stamped
+    with a freshness clock, so treating them as "already cached" would be silently wrong)."""
+    dialect = _duckdb_dialect()
+    cur = con.cursor()
+    try:
+        _ensure_schema(cur, catalog, schema, dialect)
+        have = _existing_columns(cur, catalog, schema, table)
+        want = [name for name, _ in columns]
+        if have == want:
+            return
+        if have:
+            cur.execute(f"DROP TABLE IF EXISTS {_qualified(catalog, schema, table)}")
+        cur.execute(_create_ddl(catalog, schema, table, columns))
+    finally:
+        cur.close()
+
+
+def read_row_cache_duckdb_native(
+    con: Any,
+    *,
+    catalog: str,
+    schema: str,
+    table: str,
+    pk_columns: list[str],
+    keys: list[tuple[Any, ...]],
+    expires_column: str = "_row_expires_at",
+) -> dict[tuple[Any, ...], Any]:
+    """key -> ``_row_expires_at`` for every key of ``keys`` currently present in the row-materialize
+    cache, through the engine's own DuckDB connection (REQ-989/REQ-1865) -- the duckdb-native mirror
+    of ``query_residency._read_cached`` for a store the engine itself holds the file handle for.
+    Returns ``{}`` (never raises) when the table does not exist yet (first-ever fetch for this
+    table) -- the same "absent means simply not cached" posture ``_read_cached`` has for a missing
+    key, extended to a missing table."""
+    if not keys:
+        return {}
+    cur = con.cursor()
+    try:
+        if not _existing_columns(cur, catalog, schema, table):
+            return {}
+        qualified = _qualified(catalog, schema, table)
+        pk_list = ", ".join(f'"{c}"' for c in pk_columns)
+        if len(pk_columns) == 1:
+            placeholders = ", ".join("?" * len(keys))
+            params: list[Any] = [k[0] for k in keys]
+            where = f'"{pk_columns[0]}" IN ({placeholders})'
+        else:
+            placeholders = ", ".join("(" + ", ".join("?" * len(pk_columns)) + ")" for _ in keys)
+            params = [v for k in keys for v in k]
+            where = f"({pk_list}) IN ({placeholders})"
+        rows = cur.execute(
+            f'SELECT {pk_list}, "{expires_column}" FROM {qualified} WHERE {where}', params
+        ).fetchall()
+        # DuckDB's TIMESTAMP has no timezone of its own -- every _row_expires_at this module ever
+        # writes is UTC (query_residency._land_row_cache stamps datetime.now(UTC)), so a naive
+        # value read back is always UTC too; normalize it before the caller compares it against an
+        # aware `now` (same posture query_residency._read_cached already has for SQLite/Postgres).
+        out: dict[tuple[Any, ...], Any] = {}
+        for r in rows:
+            expires_at = r[len(pk_columns)]
+            if expires_at.tzinfo is None:
+                from datetime import UTC
+
+                expires_at = expires_at.replace(tzinfo=UTC)
+            out[tuple(r[: len(pk_columns)])] = expires_at
+        return out
+    finally:
+        cur.close()
+
+
+def tombstone_row_cache_duckdb_native(
+    con: Any,
+    *,
+    catalog: str,
+    schema: str,
+    table: str,
+    pk_columns: list[str],
+    keys: list[tuple[Any, ...]],
+) -> None:
+    """DELETE the cache rows named by ``keys``, through the engine's own DuckDB connection
+    (REQ-989/REQ-1865) -- the duckdb-native mirror of ``query_residency._tombstone_keys`` for a
+    store the engine itself holds the file handle for. A key the table has no row for is simply a
+    no-op DELETE, never an error."""
+    if not keys:
+        return
+    cur = con.cursor()
+    try:
+        qualified = _qualified(catalog, schema, table)
+        pk_list = ", ".join(f'"{c}"' for c in pk_columns)
+        if len(pk_columns) == 1:
+            placeholders = ", ".join("?" * len(keys))
+            params: list[Any] = [k[0] for k in keys]
+            where = f'"{pk_columns[0]}" IN ({placeholders})'
+        else:
+            placeholders = ", ".join("(" + ", ".join("?" * len(pk_columns)) + ")" for _ in keys)
+            params = [v for k in keys for v in k]
+            where = f"({pk_list}) IN ({placeholders})"
+        cur.execute(f"DELETE FROM {qualified} WHERE {where}", params)
+    finally:
+        cur.close()

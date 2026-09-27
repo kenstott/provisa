@@ -31,6 +31,7 @@ from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 
 if TYPE_CHECKING:
+    from provisa.compiler.pk_bounds import PkBound
     from provisa.executor.redirect import Delivery
 
 log = logging.getLogger(__name__)
@@ -123,6 +124,11 @@ class _Plan:
     sources: frozenset[str] = field(default_factory=frozenset)
     route_reason: str | None = field(default=None)
     optimizations: tuple[str, ...] = field(default=())
+    # REQ-1865: row-materialize predicate resolution — the concrete PK bound(s) this statement's
+    # compiled plan resolved against every row_materialize table it references (empty when the
+    # statement touches no such table, or none of its predicates resolve to a bounded PK set).
+    # Populated at the same construction points `sources` itself is populated.
+    pk_bounds: tuple["PkBound", ...] = field(default_factory=tuple)
 
 
 # --------------------------------------------------------------------------- #
@@ -781,63 +787,23 @@ async def _govern_and_route_planned(
             reason="buffered-transport auto-delivery",
         )
 
-    # GitHub issue #119 / REQ-1863's counterpart: a single-source neo4j pattern (e.g.
-    # Customer-[:PLACED]->Order-[:CONTAINS]->Product, all-neo4j) otherwise fully materializes
-    # through the ENGINE route's query_template HTTP fetch of every node/edge table before the
-    # join can even start — a structural cost, not a join-logic bug (confirmed live on the perf
-    # benchmark's cypher_cross_engine query). Try the reverse SQL->Cypher compiler on the SAME
-    # governed SQL the ENGINE route would otherwise use; only override when it actually produces
-    # Cypher (never guessed, never forced — mirrors the Phase 1 PG-passthrough fallback
-    # discipline). Read-only: mutations never reach here with route==ENGINE (decide_route always
-    # routes a mutation DIRECT on its first source, inside decide_route itself).
-    _cypher_text: str | None = None
-    _cypher_sid: str | None = None
-    if (
-        decision.route == Route.ENGINE
-        and len(_sources) == 1
-        and deliver is None
-        and auto_deliver is None
-        and explain is None  # EXPLAIN wraps the physical statement in its dialect; Cypher has none
-    ):
-        _cypher_sid = next(iter(_sources))
-        if state.source_types.get(_cypher_sid) == "neo4j":
-            from provisa.nl.runner import best_effort_cypher_for_sql
-
-            _cypher_text = best_effort_cypher_for_sql(governed_semantic, ctx, role_id, state)
-            if _cypher_text is not None:
-                from provisa.transpiler.router import RouteDecision
-
-                decision = RouteDecision(
-                    route=Route.DIRECT,
-                    source_id=_cypher_sid,
-                    dialect="cypher",
-                    reason="single-source neo4j pattern, cypher-translatable (issue #119)",
-                )
-
     # REQ-1159: a localized statement carries an inline local relation as a VALUES list, which rides
     # along on whichever route the router picks — DIRECT inlines the VALUES into the single source's
     # SQL (the source executes it), and a genuinely cross-source statement is detected and routed to
     # the engine by decide_route as usual. So the localizer does NOT force a route; it lets routing
     # decide, which keeps a single-source composed query on the source instead of the org store.
-    if decision.dialect == "cypher":
-        # Issue #119: the override above already produced the Cypher text — not SQL, so none of
-        # the physical-SQL lowering (rewrite_semantic_to_physical/transpile/strip_schema) applies.
-        assert _cypher_text is not None
-        assert decision.source_id is not None  # set by the override above
-        return _Plan(
-            route=decision.route,
-            sql=_cypher_text,
-            source_id=decision.source_id,
-            dialect=decision.dialect,
-            exec_params=exec_params,
-            semantic_sql=_metric_semantic_sql,
-            span_attrs=_plan_span_attrs(governed_semantic, role_id, sql, _audit),
-            audit=_audit,
-            stamp=_mint_stamp(),
-            sources=frozenset(_sources),
-            route_reason=decision.reason,
-            optimizations=_opts,
-        )
+    #
+    # (Removed 2026-09-26, REQ-1864 reversal:) a single-source neo4j pattern (e.g.
+    # Customer-[:PLACED]->Order-[:CONTAINS]->Product, all-neo4j) previously reverse-compiled the
+    # governed SQL back to Cypher (best_effort_cypher_for_sql) and forced Route.DIRECT so Neo4j
+    # itself could resolve the join. Reverted: direct Cypher execution requires a general method to
+    # resolve arbitrary SQL join patterns (cardinality, relationship direction, multi-hop shape)
+    # back into a correct Cypher MATCH — the reverse compiler got this wrong for a reshaped junction
+    # table (bench_contains_edge's nested items array), producing a Cypher query with a
+    # non-existent property reference. Row-level materialization (REQ-1865) is the sanctioned,
+    # narrower mechanism for neo4j read performance: it caches individual rows by a trusted,
+    # declared PK, never reconstructs a join. A single-source neo4j query now always falls through
+    # to Route.ENGINE (materialize-then-join), unconditionally.
     if decision.route == Route.ENGINE:
         # REQ-135/REQ-1163: inline-expand any __derived__ view ref BEFORE the unknown-catalog check and
         # transpile — a request-level as-of overlays each bitemporal view's entry with an as-of
@@ -930,6 +896,7 @@ async def _govern_and_route_planned(
             sources=frozenset(_sources),
             route_reason=decision.reason,
             optimizations=_opts,
+            pk_bounds=await _resolve_pk_bounds(governed_semantic, state, exec_params),  # REQ-1865
         )
     else:
         dialect = decision.dialect or "postgres"
@@ -973,7 +940,38 @@ async def _govern_and_route_planned(
             sources=frozenset(_sources),
             route_reason=decision.reason,
             optimizations=_opts,
+            pk_bounds=await _resolve_pk_bounds(governed_semantic, state, exec_params),  # REQ-1865
         )
+
+
+async def _resolve_pk_bounds(
+    semantic_sql: str, state: Any, params: list[Any] | None = None
+) -> tuple[Any, ...]:
+    """REQ-1865: the concrete PK bound(s) this statement resolves against every row_materialize
+    table it references — populated at the same construction point ``sources`` itself is
+    populated (design doc section 3b). Empty (never an error) when the statement touches no
+    row_materialize table, or none of its predicates resolve to a bounded PK set — the compiler's
+    job here is only to recognize the accelerable shape, not to force it.
+
+    ``params`` (REQ-1865 amendment) is the statement's own bind-parameter values, in bind order --
+    without it, a Bolt/Cypher-transport statement (predicate values NEVER inlined as literals,
+    always bound separately, unlike the SQL-transport's own literal-inlined text) resolves zero
+    bounds for every row_materialize table it touches and silently falls back to a full-table
+    land on every single call. Confirmed live: a bolt query for a trivial, unbound `LIMIT 1` (which
+    SHOULD fall back) and a bolt query with a real `WHERE pk = $1` (which should NOT have)
+    were indistinguishable before this — both always fell back."""
+    from provisa.federation.query_residency import row_materialized_tables_by_name
+
+    row_tables = await row_materialized_tables_by_name(state)
+    if not row_tables:
+        return ()
+    import sqlglot
+
+    from provisa.compiler.pk_bounds import extract_pk_bounds
+
+    ast = sqlglot.parse_one(semantic_sql, read="postgres")
+    result = tuple(extract_pk_bounds(ast, row_tables, params))
+    return result
 
 
 async def finalize_audit(plan: _Plan, status_code: int, state: Any | None = None) -> None:
@@ -1054,9 +1052,33 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
     # REQ-1661: a MATERIALIZED source this plan reads that has never landed, or has gone stale, is
     # landed before the read -- here, the one seam every surface reaches, so no transport can
     # serve an empty replica the event loop has not filled yet.
-    from provisa.federation.query_residency import ensure_resident
+    from provisa.federation.query_residency import (
+        ensure_resident,
+        ensure_rows_resident,
+        pushdown_row_materialize,
+    )
+    from provisa.transpiler.router import Route
 
-    await ensure_resident(state, plan.sources)
+    # REQ-1865: any row-materialize table this plan's predicate resolved a concrete PK bound
+    # against is served from the row cache, fetching from source only the missing/stale keys.
+    # Runs BEFORE the key-pushdown probe below: a query can have MULTIPLE row_materialize tables
+    # in one join, some directly bound (e.g. bench_customer_node's own customer_id predicate) and
+    # some reached only via FK (bench_contains_edge) -- the pushdown probe's LEFT-preserved
+    # "known" side must already be real data, or a query where EVERY table in the chain is
+    # row_materialize would probe an empty replica end to end and always resolve zero keys.
+    await ensure_rows_resident(state, plan.pk_bounds)
+    # REQ-1865 key pushdown: a row-materialize table reached only through a JOIN (no literal
+    # predicate naming it directly, e.g. cypher_cross_engine's bench_contains_edge) has no PK bound
+    # for ensure_rows_resident to key off -- narrow its fetch to the keys this query's OTHER,
+    # already-resolvable tables actually need instead of falling all the way back to a full land.
+    # ENGINE-route only: this is a multi-table join concern, and only the ENGINE route has a
+    # physical_sql to probe.
+    _pushed_down: set[str] = set()
+    if plan.route == Route.ENGINE and plan.physical_sql is not None:
+        _pushed_down = await pushdown_row_materialize(
+            state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
+        )
+    await ensure_resident(state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down)
     _t0 = _time.perf_counter()
     # REQ-074/REQ-1386: one audit row per executed statement, with the terminal's real outcome —
     # written here rather than in each transport, so no surface can omit it.
@@ -1497,38 +1519,13 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             reason="buffered-transport auto-delivery",
         )
 
-    # GitHub issue #119 / REQ-1863's counterpart: a single-source neo4j pattern (e.g.
-    # Customer-[:PLACED]->Order-[:CONTAINS]->Product, all-neo4j) otherwise fully materializes
-    # through the ENGINE route's query_template HTTP fetch of every node/edge table before the
-    # join can even start — a structural cost, not a join-logic bug (confirmed live on the perf
-    # benchmark's cypher_cross_engine query). Try the reverse SQL->Cypher compiler on the SAME
-    # governed_sql the ENGINE route would otherwise use; only override when it actually produces
-    # Cypher (never guessed, never forced — mirrors the Phase 1 PG-passthrough fallback
-    # discipline). Read-only: mutations never reach here with route==ENGINE (decide_route always
-    # routes a mutation DIRECT on its first source, earlier in this function's own routing call).
-    _cypher_text: str | None = None
-    _cypher_sid: str | None = None
-    if (
-        decision.route == Route.ENGINE
-        and len(sources) == 1
-        and deliver is None
-        and auto_deliver is None
-    ):
-        _cypher_sid = next(iter(sources))
-        if state.source_types.get(_cypher_sid) == "neo4j":
-            from provisa.nl.runner import best_effort_cypher_for_sql
-
-            _cypher_text = best_effort_cypher_for_sql(governed_sql, ctx, role_id, state)
-            if _cypher_text is not None:
-                from provisa.transpiler.router import RouteDecision
-
-                decision = RouteDecision(
-                    route=Route.DIRECT,
-                    source_id=_cypher_sid,
-                    dialect="cypher",
-                    reason="single-source neo4j pattern, cypher-translatable (issue #119)",
-                )
-
+    # (Removed 2026-09-26, REQ-1864 reversal:) a single-source neo4j pattern previously
+    # reverse-compiled governed_sql back to Cypher (best_effort_cypher_for_sql) and forced
+    # Route.DIRECT so Neo4j itself could resolve the join. Reverted: direct Cypher execution
+    # requires a general method to resolve arbitrary SQL join patterns back into correct Cypher,
+    # which the reverse compiler does not have (it mis-translated a reshaped junction table).
+    # Row-level materialization (REQ-1865) is the sanctioned mechanism for neo4j read performance
+    # instead. A single-source neo4j query now always falls through to Route.ENGINE.
     if decision.route == Route.ENGINE:
         _known_cats = set(getattr(state, "source_catalogs", {}).values()) | {
             "iceberg",
@@ -1587,28 +1584,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             sources=frozenset(sources),
             route_reason=decision.reason,
             optimizations=_opts,
-        )
-    elif decision.dialect == "cypher":
-        # Issue #119: the override above already produced the Cypher text — not SQL, so none of
-        # the physical-SQL lowering (rewrite_semantic_to_physical/transpile/strip_schema) applies.
-        assert _cypher_text is not None
-        physical_sql = _cypher_text
-        sql_to_run = _cypher_text
-        assert decision.source_id is not None  # set by the override above
-        _direct_sid = decision.source_id
-        return _Plan(
-            route=decision.route,
-            sql=sql_to_run,
-            exec_sql=physical_sql,
-            source_id=_direct_sid,
-            dialect=decision.dialect,
-            exec_params=exec_params,
-            span_attrs=_plan_span_attrs(governed_sql, role_id, sql, _audit),
-            audit=_audit,
-            stamp=_mint_stamp(),
-            sources=frozenset(sources),
-            route_reason=decision.reason,
-            optimizations=_opts,
+            pk_bounds=await _resolve_pk_bounds(governed_sql, state, exec_params),  # REQ-1865
         )
     else:
         dialect = decision.dialect or "postgres"
@@ -1642,6 +1618,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             sources=frozenset(sources),
             route_reason=decision.reason,
             optimizations=_opts,
+            pk_bounds=await _resolve_pk_bounds(governed_sql, state, exec_params),  # REQ-1865
         )
 
 

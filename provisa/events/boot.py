@@ -153,6 +153,18 @@ def build_source_node_spec(
             return None  # live/scan federates in place — not landed, not a source processor
     except UnreachableSource:
         return None
+    # REQ-1865 constraint 2 ("never eagerly, never a background pre-fetch of a key nothing has
+    # queried") rules out an ordinary PERIODIC/TTL-triggered whole-table land for a row_materialize
+    # table specifically -- the queue-driven scheduler this NodeSpec feeds runs on ITS OWN clock,
+    # independent of any query, which is exactly the "eager, unprompted" activity that constraint
+    # forbids (the per-query fallback path -- ensure_resident/materialize_pending, when NO bound
+    # resolves for a given statement -- is a DIFFERENT, query-triggered mechanism and is unaffected
+    # by this; both already exclude a row_materialize table from THEIR sweep for the same reason).
+    # Confirmed live: bench_placed_edge's queue-driven land held the engine's one DuckDB connection
+    # for its whole multi-minute duration, hanging every OTHER concurrent query on any table
+    # (single-writer constraint, REQ-989) -- a real violation, not just a missed optimization.
+    if getattr(tbl, "row_materialize", False):
+        return None
     # A parameterized source (native-filter query/path-param columns) is a function f(args) ->
     # rows with no snapshot — fetched real-time at query time, never landed. Not a source node.
     if any(getattr(c, "native_filter_type", None) is not None for c in tbl.columns):

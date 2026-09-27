@@ -267,6 +267,10 @@ QUERIES: list[Query] = [
         # every predicate here with "no approved relationship exists" even though the identical
         # relationship compiles to an approved Cypher type — a genuine validator gap, fixed in
         # provisa/compiler/sql_validator.py (this SQL text itself did not need to change).
+        #
+        # REQ-1865: bench_contains_edge is one row per CONTAINS edge, keyed by the edge's own
+        # elementId()-derived contains_id (single-column PK for row-materialize) — order_id and
+        # product_id stay plain scalar FK columns, so this join is unchanged from before REQ-1865.
         sql="""
             SELECT c.customer_id, o.order_id, p.product_id
             FROM perf_bench.bench_placed_edge pl

@@ -331,7 +331,16 @@ class EngineBackend:
             return []
         tables_by_source: dict[str, list] = {}
         for t in await registered_tables(state):
-            tables_by_source.setdefault(t.source_id, []).append(t)
+            # REQ-1865: a row_materialize table's residency is governed EXCLUSIVELY by the
+            # row-level cache (ensure_rows_resident) -- it must never also be swept into this
+            # whole-source full-table land. ensure_resident's own tables_by_source already excludes
+            # these (so its staleness/locking never counts them), but that filtering is local to
+            # that function; this is an INDEPENDENT registered_tables() lookup and must exclude
+            # them here too, or a row_materialize table gets landed anyway the moment its source is
+            # otherwise stale -- confirmed live (a keyed lookup paid the same multi-minute
+            # full-source materialize cost row_materialize exists to avoid).
+            if not getattr(t, "row_materialize", False):
+                tables_by_source.setdefault(t.source_id, []).append(t)
         plan = build_execution_plan(
             sources,
             self.engine,

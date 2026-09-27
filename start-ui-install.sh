@@ -300,6 +300,24 @@ fi
 # Core + install overlay (port bindings only — no kafka/mongo/elasticsearch/observability)
 COMPOSE_FILES="-f docker-compose.core.yml -f docker-compose.dev-install.yml"
 
+# Kill any previously running backend BEFORE resetting the control-plane database.  The singleton
+# killer above (`kill -9 "-$_other"`) targets the old script's process GROUP, which only covers
+# it when the script IS the group leader (PGID == PID).  When launched from a non-interactive
+# shell (`nohup … & disown`), PGID belongs to the parent, so the group kill fails silently and
+# the old uvicorn survives into the demo-reset block below.  If reset then runs while that old
+# uvicorn is alive, `control_plane_pg reset` terminates its backend connections, the SQLAlchemy
+# pool reconnects to the freshly-created but uninitialised database, and the very next query
+# (`sources` table lookup during "reconcile landed tables") fails with
+#   asyncpg.exceptions.UndefinedTableError: relation "sources" does not exist
+# followed by `Application startup failed. Exiting.`
+# Unconditional (no port_in_use guard): pkill is a no-op when nothing matches, and the guard
+# `nc -z -G 1` is macOS-only — on Linux it errors out and always returns "not in use".
+pkill -CONT -f "uvicorn main:app" 2>/dev/null || true
+for _pre_uvicorn in $(pgrep -f "uvicorn main:app" 2>/dev/null); do
+  pkill -9 -P "$_pre_uvicorn" 2>/dev/null || true
+  kill -9 "$_pre_uvicorn" 2>/dev/null || true
+done
+
 if [ "$DEMO" = true ]; then
   # Demo servers (petstore-mock, graphql-demo) run as host processes, not Docker.
   COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.observability.yml"
