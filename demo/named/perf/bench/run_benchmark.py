@@ -135,6 +135,13 @@ class _ByteEstimator:
 # instead of materializing the whole thing — see _payload_bytes's docstring for why this matters.
 _FETCH_BATCH_SIZE = 10_000
 
+# Query.category values whose result is big enough to need PgwireTransport's streaming
+# transaction+cursor path (see its docstring's OOM history). Every other category's result is
+# small enough that a single conn.fetch() round trip is both correct and far cheaper — matching
+# queries.py's own category naming (large_scan="large_result", large_federated_join=
+# "large_federated").
+_LARGE_RESULT_CATEGORIES = {"large_result", "large_federated"}
+
 
 @dataclass
 class Sample:
@@ -311,7 +318,9 @@ class PgwireTransport(Transport):
     def available(self) -> bool:
         return self._pool is not None
 
-    async def _async_run_sql(self, sql: str, params: dict) -> tuple[int, int, float]:
+    async def _async_run_sql(
+        self, sql: str, params: dict, category: str = ""
+    ) -> tuple[int, int, float]:
         # Literal substitution, not $1/$2 placeholders + args: confirmed live (isolated repro
         # against Provisa's pgwire) that conn.cursor(query, *args, ...) sends a real PREPARE, and
         # Provisa's pgwire describe_statement (vendor/buenavista/buenavista/postgres.py) raises an
@@ -336,28 +345,43 @@ class PgwireTransport(Transport):
         # a batch exists only to feed _payload_bytes's json.dumps (the harness's own bytes/sec
         # measurement); _ByteEstimator only pays that cost for sampled batches, never all of them.
         estimator = _ByteEstimator()
-        async with self._pool.acquire() as conn, conn.transaction():
-            # A server-side cursor requires an open transaction (the read is read-only, so this
-            # never needs a real commit decision — the `async with` context closes it either way).
-            #
-            # cursor.fetch(n), NOT `async for record in conn.cursor(...)`: the async-for form
-            # yields one Record per __anext__ call, so an 80M-row scan pays 80M coroutine
-            # dispatches — confirmed live on perf-bench (large_scan via sql ran 50+ minutes,
-            # client CPU pegged at ~39% the whole time with the server otherwise idle).
-            # cursor.fetch(n) pulls a whole batch per call, cutting that to row_count/batch_size
-            # dispatches.
-            cur = await conn.cursor(pg_sql)
-            while True:
-                batch = await cur.fetch(_FETCH_BATCH_SIZE)
-                if not batch:
-                    break
-                estimator.add(len(batch), batch, lambda b: [dict(r) for r in b])
+        if category in _LARGE_RESULT_CATEGORIES:
+            async with self._pool.acquire() as conn, conn.transaction():
+                # A server-side cursor requires an open transaction (the read is read-only, so
+                # this never needs a real commit decision — the `async with` context closes it
+                # either way). Only worth paying the transaction+cursor/PortalSuspend round trips
+                # for a result actually large enough to need streaming (see the class docstring's
+                # OOM history) — a small result pays this for nothing (confirmed live: this
+                # BEGIN+cursor(Bind/Execute/PortalSuspend)+COMMIT sequence, not any Provisa
+                # server-side requirement — Provisa's own pgwire session is always
+                # in_transaction() == False, per provisa/pgwire/server.py — was inflating
+                # point_lookup's measured sql-transport latency well past its actual per-query
+                # cost; conn.fetch() below is a single Parse+Bind+Execute+Sync, same as a real
+                # lightweight client would use).
+                #
+                # cursor.fetch(n), NOT `async for record in conn.cursor(...)`: the async-for form
+                # yields one Record per __anext__ call, so an 80M-row scan pays 80M coroutine
+                # dispatches — confirmed live on perf-bench (large_scan via sql ran 50+ minutes,
+                # client CPU pegged at ~39% the whole time with the server otherwise idle).
+                # cursor.fetch(n) pulls a whole batch per call, cutting that to row_count/batch_size
+                # dispatches.
+                cur = await conn.cursor(pg_sql)
+                while True:
+                    batch = await cur.fetch(_FETCH_BATCH_SIZE)
+                    if not batch:
+                        break
+                    estimator.add(len(batch), batch, lambda b: [dict(r) for r in b])
+        else:
+            async with self._pool.acquire() as conn:
+                rows = await conn.fetch(pg_sql)
+                if rows:
+                    estimator.add(len(rows), rows, lambda b: [dict(r) for r in b])
         return estimator.row_count, estimator.byte_count, estimator.overhead_s
 
-    def run_sql(self, sql: str, params: dict) -> tuple[int, int, float]:
+    def run_sql(self, sql: str, params: dict, category: str = "") -> tuple[int, int, float]:
         assert self._loop is not None
         return asyncio.run_coroutine_threadsafe(
-            self._async_run_sql(sql, params), self._loop
+            self._async_run_sql(sql, params, category), self._loop
         ).result()
 
     def close(self) -> None:
@@ -376,6 +400,7 @@ class BoltTransport(Transport):
 
     def __init__(self, host: str, port: int):
         self._driver = None
+        self._session = None
         try:
             from neo4j import GraphDatabase
 
@@ -398,6 +423,16 @@ class BoltTransport(Transport):
                 f"bolt://{host}:{port}", auth=basic_auth("org_admin", "")
             )
             self._driver.verify_connectivity()
+            # One session for the transport's whole lifetime, matching FlightTransport's single
+            # persistent FlightClient (and every other transport's own connection reuse): a
+            # session opened/closed per call pays a real network RESET round trip on close
+            # (confirmed live: neo4j's driver, _sync/io/_pool.py's release(), calls
+            # connection.reset() -- an actual RESET-message send+consume over the wire -- for
+            # any connection not already in the reset state, which a just-run auto-commit query
+            # never is). That per-call RESET is real Bolt-wire-protocol traffic a steady-state
+            # client never pays (it keeps its session open across queries), so measuring it on
+            # every iteration overstated Bolt's true per-query overhead.
+            self._session = self._driver.session()
         except Exception as exc:  # noqa: BLE001 - availability probe
             self._error = str(exc)
 
@@ -406,22 +441,24 @@ class BoltTransport(Transport):
 
     def run_cypher(self, cypher: str, params: dict) -> tuple[int, int, float]:
         assert self._driver is not None
+        assert self._session is not None
         # Raw neo4j Records, not dicts — same reasoning as PgwireTransport: dict() conversion
         # exists only to feed _payload_bytes; _ByteEstimator only pays it for sampled batches.
         batch: list = []
         estimator = _ByteEstimator()
-        with self._driver.session() as session:
-            result = session.run(cypher, params)  # type: ignore[arg-type]
-            for r in result:
-                batch.append(r)
-                if len(batch) >= _FETCH_BATCH_SIZE:
-                    estimator.add(len(batch), batch, lambda b: [dict(r) for r in b])
-                    batch = []
+        result = self._session.run(cypher, params)  # type: ignore[arg-type]
+        for r in result:
+            batch.append(r)
+            if len(batch) >= _FETCH_BATCH_SIZE:
+                estimator.add(len(batch), batch, lambda b: [dict(r) for r in b])
+                batch = []
         if batch:
             estimator.add(len(batch), batch, lambda b: [dict(r) for r in b])
         return estimator.row_count, estimator.byte_count, estimator.overhead_s
 
     def close(self) -> None:
+        if self._session:
+            self._session.close()
         if self._driver:
             self._driver.close()
 
@@ -594,7 +631,8 @@ class FlightTransport(Transport):
     def available(self) -> bool:
         return self._client is not None
 
-    def run_sql(self, sql: str, params: dict) -> tuple[int, int, float]:
+    def run_sql(self, sql: str, params: dict, category: str = "") -> tuple[int, int, float]:
+        del category  # unused: Flight already streams record batches regardless of result size
         # reader.read_all() materializes the whole result as one Arrow Table, then .to_pylist()
         # doubles that into a Python list — the exact pattern that OOM-killed this harness on
         # large_scan's 80M-row order_items (31GB RSS, confirmed via dmesg on the GCP perf-bench
@@ -640,18 +678,16 @@ class GrpcTransport(Transport):
     DescriptorPool, then builds message classes with google.protobuf.message_factory, instead
     of shipping a static _pb2.py.
 
-    CONFIRMED GAP (read, not guessed — grep for "request.filter" or ".filter" under
-    provisa/grpc/*.py returns zero hits): `{Type}Request.filter` and `{Type}GroupByRequest.filter`
-    are defined in the generated .proto but NEVER read server-side.
-    query_ir.grpc_table_to_semantic_sql only ever forwards `limit`; query_ir.
-    grpc_table_to_group_by_graphql_text only ever forwards `by`/`funcs`/`include`/`include_nodes`.
-    So Query{Type}/Query{Type}GroupBy always return an UNFILTERED table/group-by no matter what
-    the client sets. This transport therefore only ever gets called for the matrix's two
-    filter-free queries (large_scan's own SQL has no WHERE either; single_source_aggregation's
-    own SQL has no WHERE, only GROUP BY) — every query needing a WHERE (point_lookup,
-    federated_join, large_federated_join, the cypher_* queries) has `grpc=None` in queries.py
-    and is never dispatched here, rather than silently returning the wrong rows under the same
-    query_id.
+    CORRECTED 2026-09-27 (re-verified live against provisa/grpc/server.py:422-423,667-675 and
+    provisa/grpc/query_ir.py, not grepped from memory): `{Type}Request.filter`/
+    `{Type}GroupByRequest.filter` ARE read server-side and DO apply as an AND-joined equality
+    WHERE clause (REQ-1860) — the prior version of this docstring's "CONFIRMED GAP" claim was
+    accurate when written but predates REQ-1860 landing filter support. A spec carrying a
+    "filter" dict (see `run_grpc` below) is honored. This RPC surface is still single-table only
+    (no join capability), so `grpc=None` remains correct for federated_join/large_federated_join/
+    the cypher_* queries regardless of filter support — those need a join, not a filter. But
+    point_lookup (a plain equality filter on one table) now has a real grpc spec below instead
+    of being silently skipped.
     """
 
     name = "grpc"
@@ -726,6 +762,14 @@ class GrpcTransport(Transport):
         batch: list = []
         estimator = _ByteEstimator()
 
+        # REQ-1860: {Type}Request.filter/{Type}GroupByRequest.filter ARE read server-side
+        # (provisa/grpc/server.py:422-423,667-675 -> query_ir.grpc_table_to_semantic_sql /
+        # grpc_table_to_group_by_graphql_text) -- re-verified live 2026-09-27, correcting this
+        # class's own earlier "CONFIRMED GAP" docstring above, which was accurate when written
+        # but predates REQ-1860 wiring filter support in. A spec's optional "filter" dict (column
+        # name -> equality value, matching {Type}Filter's own field names in
+        # provisa/grpc/proto_gen.py) becomes that sub-message.
+        filter_dict = spec.get("filter")
         if spec["mode"] == "scan":
             request_cls = self._resolve_message_class(f"provisa.v1.{type_name}Request")
             response_cls = self._resolve_message_class(f"provisa.v1.{type_name}")
@@ -733,11 +777,24 @@ class GrpcTransport(Transport):
             # TEMPORARY (2026-09-26): matches queries.py's large_scan LIMIT 2000000 shrink — see
             # that comment. Restore limit=0 (unbounded) together with large_scan's own SQL text.
             request = request_cls(limit=2_000_000)
+            if filter_dict:
+                filter_cls = self._resolve_message_class(f"provisa.v1.{type_name}Filter")
+                request.filter.CopyFrom(filter_cls(**filter_dict))
         elif spec["mode"] == "group_by":
             request_cls = self._resolve_message_class(f"provisa.v1.{type_name}GroupByRequest")
             response_cls = self._resolve_message_class(f"provisa.v1.{type_name}GroupByRow")
             rpc_name = f"Query{type_name}GroupBy"
-            request = request_cls(by=spec["by"])
+            # REQ-1361: an empty/unset funcs means "every function the schema exposes for this
+            # table" (provisa/grpc/query_ir.py::_agg_fields_selection) -- confirmed live 2026-09-27
+            # this was silently dropped here (a spec's own "funcs" key was never read), so every
+            # group_by benchmark call computed count/sum/avg/stddev/variance/min/max across every
+            # numeric AND comparable column regardless of what the spec asked for, not just the
+            # single sum(amount) the sql/graphql/flight variants of the same query compute --
+            # inflating this transport's measured cost with work no other transport was asked to do.
+            request = request_cls(by=spec["by"], funcs=spec.get("funcs") or [])
+            if filter_dict:
+                filter_cls = self._resolve_message_class(f"provisa.v1.{type_name}Filter")
+                request.filter.CopyFrom(filter_cls(**filter_dict))
         else:
             raise ValueError(f"unknown grpc query mode {spec['mode']!r}")
 
@@ -775,13 +832,15 @@ _CALL_METHOD: dict[str, str] = {
 }
 
 
-def _run_sequential(transport: Transport, q: Query, method: str, text: str) -> QueryResult:
+def _run_sequential(transport: Transport, q: Query, method: str, text: str | dict) -> QueryResult:
     result = QueryResult(query_id=q.id, category=q.category, transport=transport.name)
     call = getattr(transport, _CALL_METHOD[method])
     for i in range(q.iterations):
         t0 = time.perf_counter()
         try:
-            n, byte_count, overhead_s = call(text, q.params)
+            n, byte_count, overhead_s = (
+                call(text, q.params, q.category) if method == "sql" else call(text, q.params)
+            )
             # overhead_s (time spent computing _payload_bytes, and for Flight, Arrow->Python
             # conversion) is the benchmark harness's own client-side bookkeeping cost, not
             # Provisa's/the network's — excluded so reported latency reflects query cost, not
@@ -828,9 +887,12 @@ SATURATION_PHASES: list[tuple[float, float]] = [
 ]
 
 
-def _saturation_mix(method: str) -> list[tuple[float, str, dict]]:
+def _saturation_mix(method: str) -> list[tuple[float, str, dict, str]]:
     """70% point_lookup (small) / 30% single_source_aggregation (heavy) — 'varying size' load,
-    matching artillery-concurrency-ramp.yml's two weighted scenarios."""
+    matching artillery-concurrency-ramp.yml's two weighted scenarios. Neither is in
+    _LARGE_RESULT_CATEGORIES today (large_scan/large_federated_join are never mixed in here), but
+    the category rides along so PgwireTransport.run_sql still makes the right fetch()-vs-cursor
+    call if that ever changes, instead of silently defaulting to the fast/unsafe path."""
     by_id = {q.id: q for q in QUERIES}
     small, heavy = by_id["point_lookup"], by_id["single_source_aggregation"]
     # method names line up 1:1 with Query's own field names (sql/cypher/graphql/grpc).
@@ -838,7 +900,10 @@ def _saturation_mix(method: str) -> list[tuple[float, str, dict]]:
     heavy_text = getattr(heavy, method)
     if not small_text or not heavy_text:
         return []
-    return [(0.7, small_text, small.params), (0.3, heavy_text, heavy.params)]
+    return [
+        (0.7, small_text, small.params, small.category),
+        (0.3, heavy_text, heavy.params, heavy.category),
+    ]
 
 
 def run_saturation(transport: Transport, method: str) -> list[SaturationPoint]:
@@ -864,8 +929,8 @@ def run_saturation(transport: Transport, method: str) -> list[SaturationPoint]:
     if not mix:
         return []
     call = getattr(transport, _CALL_METHOD[method])
-    weights = [w for w, _, _ in mix]
-    choices = [(t, p) for _, t, p in mix]
+    weights = [w for w, _, _, _ in mix]
+    choices = [(t, p, c) for _, t, p, c in mix]
     points: list[SaturationPoint] = []
     pool = ThreadPoolExecutor(max_workers=4000)
     try:
@@ -873,10 +938,12 @@ def run_saturation(transport: Transport, method: str) -> list[SaturationPoint]:
             phase_samples: list[Sample] = []
             lock = threading.Lock()
 
-            def _one(text: str, params: dict) -> None:
+            def _one(text: str, params: dict, category: str) -> None:
                 t0 = time.perf_counter()
                 try:
-                    n, byte_count, overhead_s = call(text, params)
+                    n, byte_count, overhead_s = (
+                        call(text, params, category) if method == "sql" else call(text, params)
+                    )
                     s = Sample((time.perf_counter() - t0) - overhead_s, n, byte_count)
                 except Exception as exc:  # noqa: BLE001 - recorded as a failed sample, not fatal
                     s = Sample(time.perf_counter() - t0, 0, 0, error=str(exc))
@@ -888,8 +955,8 @@ def run_saturation(transport: Transport, method: str) -> list[SaturationPoint]:
             submitted = 0
             next_fire = time.monotonic()
             while time.monotonic() < end:
-                text, params = random.choices(choices, weights=weights, k=1)[0]
-                pool.submit(_one, text, params)
+                text, params, category = random.choices(choices, weights=weights, k=1)[0]
+                pool.submit(_one, text, params, category)
                 submitted += 1
                 next_fire += interval
                 sleep_for = next_fire - time.monotonic()

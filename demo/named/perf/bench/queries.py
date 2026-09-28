@@ -107,9 +107,14 @@ QUERIES: list[Query] = [
         # camelCase root field/args verified against schema_gen.py/schema_inputs.py — see module
         # docstring. Variable name matches the SQL/Cypher params dict key (order_id) so the same
         # `q.params` dict feeds all three transports' request bodies unchanged.
+        # pb__orders, not bare "orders" — re-verified live 2026-09-27 via __schema introspection
+        # against org_admin's role schema on the perf-bench VM: fragment.yaml's domain naming puts
+        # this table's root field under a "pb__" prefix (a naming collision elsewhere in this
+        # demo's schema forces disambiguation, same mechanism as the gRPC "Pb" prefix already
+        # documented in this file's own docstring/point_lookup comment above).
         graphql="""
             query($order_id: Int!) {
-              orders(where: {orderId: {eq: $order_id}}) {
+              pb__orders(where: {orderId: {eq: $order_id}}) {
                 orderId
                 customerId
                 region
@@ -119,6 +124,11 @@ QUERIES: list[Query] = [
             }
         """,
         params={"order_id": 12345},
+        # REQ-1860: {Type}Request.filter IS read server-side (provisa/grpc/server.py:422-423) --
+        # re-verified live 2026-09-27, correcting GrpcTransport's own prior "CONFIRMED GAP"
+        # docstring in run_benchmark.py, which predates REQ-1860. "filter" keys match
+        # PbOrdersFilter's own field names (proto_gen.py: physical column names, not camelCase).
+        grpc={"mode": "scan", "type_name": "PbOrders", "filter": {"order_id": 12345}},
         iterations=200,
     ),
     Query(
@@ -148,15 +158,25 @@ QUERIES: list[Query] = [
     Query(
         id="single_source_aggregation",
         category="aggregation",
-        description="Revenue rollup by region over orders — pushdown vs pull-then-aggregate",
+        description="Revenue rollup by region over orders (~20M rows)",
+        # "pushdown vs pull-then-aggregate" (this description's prior text) was factually wrong —
+        # re-verified live 2026-09-27 via X-Provisa-Stats: true against both /data/sql and
+        # /data/graphql: provisa_stats.sources[0].physical_sql is byte-identical for both
+        # (SELECT region, SUM(amount), COUNT(*) FROM orders GROUP BY region), and isolated timing
+        # was ~2.3s for both, not the 6052ms-vs-55.9ms split an earlier benchmark run recorded.
+        # Both transports genuinely push the GROUP BY to the engine; the real cost is scanning
+        # ~20M rows (count sums to ~20,000,000 across the 4 regions), not a missing pushdown. The
+        # earlier asymmetry did not reproduce and looks like a run-condition artifact (process/
+        # connection state at the time), not an architectural defect — flag if it recurs.
         sql="SELECT region, sum(amount) AS revenue, count(*) AS n FROM perf_bench.orders GROUP BY region",
         # ordersGroupBy: schema_gen.py's _build_group_by_query_field (gated by fragment.yaml's
         # orders.enable_group_by: true). aggregate.sum.amount == revenue, aggregate.count == n —
         # sum's sub-field is the raw column name "amount" (aggregate_gen.py keys AggregateFields
         # sub-messages by physical col_name, not camelCase).
+        # pb__ordersGroupBy — see point_lookup's comment above (same live-verified prefix).
         graphql="""
             query {
-              ordersGroupBy(by: [region]) {
+              pb__ordersGroupBy(by: [region]) {
                 groupKey
                 aggregate {
                   count
@@ -166,8 +186,20 @@ QUERIES: list[Query] = [
             }
         """,
         # Same shape server-side: Query{Type}GroupBy's `by` also un-filtered — this SQL has no
-        # WHERE either, so the gap doesn't affect this query.
-        grpc={"mode": "group_by", "type_name": "PbOrders", "by": ["region"]},
+        # WHERE either, so the gap doesn't affect this query. funcs=["count","sum"] matches what
+        # sql/graphql actually compute (count + sum(amount)) as closely as the RPC allows --
+        # confirmed live 2026-09-27 that _agg_fields_selection (provisa/grpc/query_ir.py) has no
+        # per-column restriction, only per-function-type across every eligible column of that
+        # type, so this still computes sum() over all 9 numeric columns (not just amount), never
+        # every function (count/sum/avg/stddev/variance/min/max) over all ~30 columns the way an
+        # unset funcs did before this benchmark started actually forwarding the spec's own funcs
+        # key (run_benchmark.py's GrpcTransport.run_grpc silently dropped it until fixed here).
+        grpc={
+            "mode": "group_by",
+            "type_name": "PbOrders",
+            "by": ["region"],
+            "funcs": ["count", "sum"],
+        },
         iterations=10,
     ),
     Query(
@@ -185,17 +217,19 @@ QUERIES: list[Query] = [
         # (only the Neo4j bench_* edge tables have any), so this can't be one nested GraphQL
         # selection — three aliased root fields in ONE request instead (still one HTTP round
         # trip per iteration, like the SQL join). See module docstring.
+        # pb__orders/pb__orderEvents/pb__orderDocs — see point_lookup's comment above (same
+        # live-verified prefix, confirmed present for all three via the same introspection query).
         graphql="""
             query($lo: Int!, $hi: Int!) {
-              orders(where: {orderId: {gte: $lo, lte: $hi}}) {
+              pb__orders(where: {orderId: {gte: $lo, lte: $hi}}) {
                 orderId
                 amount
               }
-              orderEvents(where: {orderId: {gte: $lo, lte: $hi}}) {
+              pb__orderEvents(where: {orderId: {gte: $lo, lte: $hi}}) {
                 orderId
                 eventType
               }
-              orderDocs(where: {orderId: {gte: $lo, lte: $hi}}) {
+              pb__orderDocs(where: {orderId: {gte: $lo, lte: $hi}}) {
                 orderId
                 status
               }
