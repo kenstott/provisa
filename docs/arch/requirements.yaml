@@ -64511,3 +64511,40 @@
     - provisa/federation/pgwire_replica.py
     - provisa/federation/connector_duckdb.py
   target: "2027-Q3"
+- id: REQ-1875
+  status: complete
+  group: "3. Source Registration & Data Modeling"
+  category: GraphQL Remote Registration
+  priority: SHOULD
+  type: behavioral
+  since: 2026-09
+  description: >-
+    The GraphQL remote source registration endpoint supports a "known schema" fast path
+    for a small allowlist of well-known public GraphQL APIs (e.g., GitHub) by loading
+    pre-baked introspection artifacts instead of expensive live schema walking, while
+    still performing lightweight live auth verification to ensure the caller's token is valid.
+    Refresh operations deliberately bypass the fast path and always perform full live introspection.
+  use_case: >-
+    Registration of large public GraphQL APIs (e.g., GitHub with 1835 types) takes ~9 minutes
+    via live introspection. Pre-baked schemas reduce this to seconds. The fast path is restricted
+    to known public, versioned schemas identical for all consumers; private or customer-specific
+    endpoints are never eligible and always use live introspection.
+  code:
+    - provisa/graphql_remote/known_schemas.py
+    - provisa/api/admin/graphql_remote_router.py
+    - scripts/bake_github_graphql_schema.py
+  scenario: |
+    Given a registration request for GitHub's GraphQL API at a known URL
+    When the URL matches a KNOWN_SCHEMAS entry
+    Then the endpoint loads the pre-baked schema artifact
+    And issues a lightweight live auth query (e.g., { viewer { login } })
+    And if auth succeeds, registration completes using the baked schema
+    And if auth fails, an error is raised (never silently falls back)
+
+    Given a registration request for a private or unknown GraphQL endpoint
+    When the URL does not match any KNOWN_SCHEMAS entry
+    Then full live introspection and schema mapping is performed
+
+    Given an explicit refresh request for a previously registered GraphQL remote source
+    When the refresh endpoint is called
+    Then full live introspection is performed, bypassing any fast path

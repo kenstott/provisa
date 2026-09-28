@@ -558,10 +558,19 @@ class PostgresFdwConnector(Connector):  # REQ-893
         )
 
     def details(self, source: Source) -> dict:
-        # local_schema is stored BARE (unquoted) — pg_runtime.py:66 and other consumers quote it
-        # themselves at the point of use. Only the DDL strings built here need explicit quoting.
-        # source.id may contain a hyphen (e.g. "bench-postgresql"), which an unquoted identifier
-        # here parses as subtraction — reproduced live (REQ-1730 investigation, 2026-09-27/28):
+        # local_schema/server are this connector's OWN internal staging names, private to this
+        # attach step -- they do NOT need to match fold_catalog_into_schema's convention. That
+        # reconciliation already happens one layer up, in PgFederationRuntime.attach_source
+        # (provisa/federation/pg_runtime.py), which wraps whatever `remote =
+        # "{local_schema}"."{table_name}"` this returns in a canonical
+        # "{source_to_catalog(id)}_{source.schema_name}"."{table_name}" VIEW. Making local_schema
+        # HERE also match that convention was tried and reverted (REQ-1730/1871, 2026-09-28): it
+        # made the wrapping view self-referential (CREATE OR REPLACE VIEW x AS SELECT * FROM x)
+        # whenever this connector's own remote_schema guess happened to coincide with the TABLE's
+        # separately-registered schema_name -- confirmed live as a real collision for the
+        # mongodb-wrapper connector, whose FEDERATION_HINTS-derived guess coincided exactly.
+        # Quoted: source.id may contain a hyphen (e.g. "bench-postgresql"), which an unquoted
+        # identifier here parses as subtraction — reproduced live (REQ-1730, 2026-09-27/28):
         # "CREATE SERVER IF NOT EXISTS fdw_bench-postgresql ..." raised "syntax error at or near
         # '-'" against a real Postgres server.
         server = f"fdw_{source.id}"
@@ -666,23 +675,67 @@ class PgWrappersMongoDbConnector(Connector):  # REQ-1871
         )
 
     def capability(self) -> Capability:
-        # wrappers' MongoDB FDW: read-only in Provisa's usage (no rowid_column write path wired).
-        return Capability(predicate_pushdown=False, join_pushdown=False, aggregate_pushdown=False)
+        # Live-verified via EXPLAIN (2026-09-28), not a guess: a literal/constant predicate on
+        # this table alone DOES push down ("Wrappers: quals = [Qual { field: order_id, operator:
+        # =, ... }]" for `WHERE order_id = 1`). A join-derived predicate does NOT -- confirmed
+        # twice, including with this table on the parameterized side of a Nested Loop against the
+        # join key, "Wrappers: quals = []" both times. No GetForeignPaths parameterized-path
+        # support, a real, narrower capability tier than postgres_fdw's. Read-only in Provisa's
+        # usage (no rowid_column write path wired).
+        return Capability(predicate_pushdown=True, join_pushdown=False, aggregate_pushdown=False)
 
     def details(self, source: Source) -> dict:
         database = source.database or "admin"
-        collection = source.federation_hints.get("collection")
+        collection = source.federation_hints.get("collection") or getattr(
+            source, "table_name", None
+        )
         if not collection:
             raise ValueError(
                 f"Source {source.id!r}: mongodb wrapper requires federation_hints['collection'] "
                 "(no per-table collection mapping exists on this attach path yet)"
             )
         server = f"mongo_{source.id}"
-        local_table = f"mongo_{source.id}_{collection}"
+        # local_schema is this connector's OWN internal staging name, private to this attach step
+        # -- it does NOT need to (and must NOT) match fold_catalog_into_schema's convention; that
+        # reconciliation already happens one layer up in PgFederationRuntime.attach_source
+        # (pg_runtime.py), which wraps "{local_schema}"."{source.table_name}" in a separate
+        # canonical view. Making local_schema match the folded convention here was tried and
+        # reverted (REQ-1730/1871, 2026-09-28): it collided with that wrapping view whenever this
+        # connector's own naming coincided with the table's separately-registered schema_name --
+        # confirmed live as a real self-referential "X is not a view" failure. The table itself
+        # MUST be named source.table_name (not `collection`, though they will usually match) --
+        # attach_source reads `source.table_name` directly, never this connector's own `collection`.
+        local_schema = f"mongo_{source.id}"
+        local_table = getattr(source, "table_name", None) or collection
         auth = f"{source.username}:{source.password}@" if source.username else ""
         conn_string = f"mongodb://{auth}{source.host}:{source.port or 27017}/{database}"
-        if source.federation_hints.get("replica_set"):
+        # A replica-set member reached via its PUBLISHED host port (not its internal Docker/
+        # Compose network address) advertises that internal address during topology discovery,
+        # which is unreachable from outside the network — confirmed live (2026-09-28): the query
+        # hangs indefinitely with `replicaSet=`, and succeeds immediately with
+        # `directConnection=true`, which skips topology discovery entirely. These are mutually
+        # exclusive options in the MongoDB connection string; direct_connection wins if both are
+        # set on the same source, since it is the one confirmed to work for this exact topology.
+        if source.federation_hints.get("direct_connection"):
+            conn_string += "?directConnection=true"
+        elif source.federation_hints.get("replica_set"):
             conn_string += f"?replicaSet={source.federation_hints['replica_set']}"
+        # wrappers' mongodb_wrapper does not support IMPORT FOREIGN SCHEMA (unlike postgres_fdw/
+        # clickhouse_fdw above) — every column must be declared upfront, and Connector.details()
+        # is never given the registered Table's column list (only `source`, confirmed against
+        # native_backend.py's _attach_tbl merge). federation_hints['columns'] is the escape hatch:
+        # "name:type,name:type" pairs; falls back to the raw-document shape (_id + __doc jsonb)
+        # when not given, so an unconfigured mongodb source is still attachable, just not
+        # column-queryable beyond the raw document.
+        columns_hint = source.federation_hints.get("columns")
+        if columns_hint:
+            cols = ", ".join(
+                f'"{name.strip()}" {typ.strip()}'
+                for name, typ in (pair.split(":", 1) for pair in columns_hint.split(","))
+            )
+            column_defs = f"_id text, {cols}"
+        else:
+            column_defs = "_id text, __doc jsonb"
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS wrappers",
@@ -692,11 +745,13 @@ class PgWrappersMongoDbConnector(Connector):  # REQ-1871
                 "EXCEPTION WHEN duplicate_object THEN NULL; END $$",
                 f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER mongodb_wrapper '
                 f"OPTIONS (conn_string '{conn_string}')",
-                f'CREATE FOREIGN TABLE IF NOT EXISTS "{local_table}" ( '
-                f"_id text, __doc jsonb "
+                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
+                f'CREATE FOREIGN TABLE IF NOT EXISTS "{local_schema}"."{local_table}" ( '
+                f"{column_defs} "
                 f') SERVER "{server}" OPTIONS '
                 f"(database '{database}', collection '{collection}', rowid_column '_id')",
             ],
+            "local_schema": local_schema,
             "local_table": local_table,
         }
 

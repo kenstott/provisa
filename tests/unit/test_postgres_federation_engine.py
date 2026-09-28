@@ -108,6 +108,12 @@ def test_attach_ddl_provisions_extension_then_server_mapping_and_import():
         for s in ddl
     )
     assert any("CREATE USER MAPPING" in s and "user 'u'" in s and "password 'p'" in s for s in ddl)
+    # local_schema is this connector's OWN internal staging name (never the folded
+    # source_to_catalog(id)_schema convention) -- PgFederationRuntime.attach_source reconciles
+    # that separately via its own wrapping view (pg_runtime.py). Matching the folded convention
+    # here was tried and reverted (REQ-1730/1871, 2026-09-28): it made that wrapping view
+    # self-referential whenever this connector's own naming coincided with the table's
+    # separately-registered schema_name.
     assert any(
         'IMPORT FOREIGN SCHEMA "sales" FROM SERVER "fdw_orders" INTO "fdw_orders"' in s for s in ddl
     )
@@ -120,6 +126,15 @@ def test_attach_ddl_defaults_remote_schema_to_public_when_unset():
     imports = [s for s in details["attach_ddl"] if s.startswith("IMPORT FOREIGN SCHEMA")]
     assert imports == ['IMPORT FOREIGN SCHEMA "public" FROM SERVER "fdw_plain" INTO "fdw_plain"']
     assert "bound method" not in imports[0]  # regression guard for the schema-vs-.schema() bug
+
+
+def test_local_schema_quotes_a_hyphenated_source_id():
+    # source.id may contain a hyphen -- an unquoted identifier here parses as subtraction,
+    # reproduced live (REQ-1730, 2026-09-27/28). local_schema itself is a private staging name
+    # (see comment above), so it stays "fdw_<id>" literally, just correctly quoted at use sites.
+    details = PostgresFdwConnector().details(_src("bench-postgresql"))
+    assert details["local_schema"] == "fdw_bench-postgresql"
+    assert any('"fdw_bench-postgresql"' in s for s in details["attach_ddl"])
 
 
 # ---- install-time provisioning probe (REQ-904) ------------------------------

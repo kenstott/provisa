@@ -55,6 +55,15 @@ def test_connector_identity_and_reach_modes():
     assert c.reads_in_place is True
 
 
+def test_capability_pushes_down_literal_predicates_not_join_predicates():
+    # Live-verified via EXPLAIN (2026-09-28): a literal/constant WHERE on this table alone
+    # pushes down; a join-derived predicate does not (no parameterized-path support).
+    cap = PgWrappersMongoDbConnector().capability()
+    assert cap.predicate_pushdown is True
+    assert cap.join_pushdown is False
+    assert cap.aggregate_pushdown is False
+
+
 def test_details_emit_extension_wrapper_server_and_foreign_table():
     details = PgWrappersMongoDbConnector().details(
         _src(
@@ -73,14 +82,79 @@ def test_details_emit_extension_wrapper_server_and_foreign_table():
         and "mongodb://mongodb:27017/app" in s
         for s in ddl
     )
+    assert any('CREATE SCHEMA IF NOT EXISTS "mongo_orders_docs"' in s for s in ddl)
     assert any(
-        'CREATE FOREIGN TABLE IF NOT EXISTS "mongo_orders_docs_order_docs"' in s
+        'CREATE FOREIGN TABLE IF NOT EXISTS "mongo_orders_docs"."order_docs"' in s
         and "database 'app'" in s
         and "collection 'order_docs'" in s
         and "rowid_column '_id'" in s
         for s in ddl
     )
-    assert details["local_table"] == "mongo_orders_docs_order_docs"
+    assert details["local_schema"] == "mongo_orders_docs"
+    assert details["local_table"] == "order_docs"
+
+
+def test_details_declares_typed_columns_from_columns_hint():
+    # wrappers' mongodb_wrapper has no IMPORT FOREIGN SCHEMA -- every column is declared upfront,
+    # and Connector.details() is never given the registered Table's column list, so
+    # federation_hints['columns'] is the escape hatch.
+    details = PgWrappersMongoDbConnector().details(
+        _src(
+            "typed",
+            host="mongodb",
+            database="app",
+            federation_hints={
+                "collection": "order_docs",
+                "columns": "order_id:integer,status:text",
+            },
+        )
+    )
+    create = next(s for s in details["attach_ddl"] if "CREATE FOREIGN TABLE" in s)
+    assert '_id text, "order_id" integer, "status" text' in create
+    assert "__doc" not in create
+
+
+def test_details_falls_back_to_raw_document_shape_without_columns_hint():
+    details = PgWrappersMongoDbConnector().details(
+        _src("raw", host="mongodb", database="app", federation_hints={"collection": "order_docs"})
+    )
+    create = next(s for s in details["attach_ddl"] if "CREATE FOREIGN TABLE" in s)
+    assert "_id text, __doc jsonb" in create
+
+
+def test_details_includes_direct_connection_when_configured():
+    # A replica set reached via its published host port (not its internal Docker/Compose
+    # address) needs directConnection=true, not replicaSet= -- confirmed live 2026-09-28.
+    details = PgWrappersMongoDbConnector().details(
+        _src(
+            "direct",
+            host="localhost",
+            port=27317,
+            database="app",
+            federation_hints={"collection": "order_docs", "direct_connection": "true"},
+        )
+    )
+    conn_str = next(s for s in details["attach_ddl"] if "conn_string" in s)
+    assert "directConnection=true" in conn_str
+    assert "replicaSet" not in conn_str
+
+
+def test_direct_connection_wins_over_replica_set_when_both_set():
+    details = PgWrappersMongoDbConnector().details(
+        _src(
+            "both",
+            host="mongodb",
+            database="app",
+            federation_hints={
+                "collection": "order_docs",
+                "direct_connection": "true",
+                "replica_set": "rs0",
+            },
+        )
+    )
+    conn_str = next(s for s in details["attach_ddl"] if "conn_string" in s)
+    assert "directConnection=true" in conn_str
+    assert "replicaSet" not in conn_str
 
 
 def test_details_includes_replica_set_when_configured():
