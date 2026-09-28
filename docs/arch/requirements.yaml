@@ -65982,3 +65982,61 @@
     When each computes its cache key
     Then the keys differ, so one role's cached result is never served to another
   target: "2026-Q3"
+
+- id: REQ-1898
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: DIRECT Route Streaming
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    `provisa/grpc/server.py`'s DIRECT-route fast path (REQ-1891, `execute_native`) fully
+    materializes every row of the DIRECT read into one Python `QueryResult` before a single
+    response message is sent — correct and fast for the point lookup REQ-1891 targeted, but a real
+    scaling defect for a large DIRECT scan. Live-caught on the perf-bench VM (2026-09-28):
+    `large_scan` (2,000,000 rows, `perf_bench.order_items` via `bench-postgresql`) via grpc took
+    190,697ms for a single iteration — ~9.4x Flight SQL's ~20,200ms for the byte-identical query
+    against the same source, because Flight's DIRECT path already streams
+    (`execute_native_stream`) while gRPC's did not.
+
+    gRPC's DIRECT branch could not simply reuse `execute_native_stream`: that terminal is
+    documented SYNCHRONOUS-for-a-worker-thread (drives itself via
+    `asyncio.run_coroutine_threadsafe(...).result()`), and `_handle_query_bound` already runs
+    natively on the event loop — calling it there would deadlock (the same reasoning REQ-1891's own
+    comment already recorded for why `execute_native`, not `execute_native_stream`, was chosen).
+
+    Fixed by using `SourcePool.open_stream`/`DirectResultStream.fetch` (REQ-1190) instead — a
+    genuinely ASYNC-NATIVE primitive (plain `await`s, no executor or `run_coroutine_threadsafe`
+    hop), safe to drive directly from this event-loop-resident async generator. When
+    `state.source_pools.supports_stream(plan.source_id)` is true (postgresql today), the DIRECT
+    branch now pulls bounded batches via `fetch(_STREAM_BATCH_ROWS)` and yields rows as each batch
+    arrives, exactly matching the ENGINE route's own streaming shape just above it in the same
+    file. A source whose driver has no streaming support (`supports_stream` false) is unchanged —
+    still served via the buffered `execute_native` path, so no existing DIRECT-route behavior
+    regresses for those.
+  use_case: >-
+    Found running this session's live duckdb-engine benchmark on the perf-bench VM immediately
+    after landing REQ-1896/1897 (shared response cache) — the maintainer flagged the 190s
+    `large_scan via grpc` result as "not an acceptable result" and asked for it to be investigated
+    rather than reported as-is.
+  code:
+    - provisa/grpc/server.py
+  tests:
+    - tests/unit/test_grpc_server.py
+    - tests/unit/test_grpc_requirements.py
+  scenario: |
+    Given a DIRECT-route plan whose source's driver supports streaming (supports_stream=True)
+    When gRPC serves the query
+    Then rows are pulled via open_stream/fetch in bounded batches and yielded as each batch
+    arrives, never fully materializing the result before the first response message
+
+    Given a DIRECT-route plan whose source's driver does NOT support streaming
+    When gRPC serves the query
+    Then it still falls through to the buffered execute_native terminal, unchanged from REQ-1891
+
+    Given a streaming DIRECT read that raises partway through
+    When the exception propagates
+    Then finalize_audit(plan, 500, state) is called and the stream's cursor/connection is closed
+    exactly once via ds.close()
+  target: "2026-Q3"

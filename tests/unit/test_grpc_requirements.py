@@ -342,6 +342,9 @@ class TestREQ617RoleSelectionViaMetadata:
         # New pipeline seam: govern/route/execute via provisa.pgwire._pipeline. Three rows in.
         # REQ-1891: DIRECT route now fast-paths through execute_native, not _execute_plan.
         state.source_pools.has.return_value = True
+        # REQ-1898: this source has no streaming driver, so execute_native (buffered) stays the
+        # correct terminal under test here.
+        state.source_pools.supports_stream.return_value = False
         fake_plan = SimpleNamespace(
             route=Route.DIRECT,
             source_id="test-pg",

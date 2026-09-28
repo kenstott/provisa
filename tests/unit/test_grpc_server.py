@@ -180,6 +180,10 @@ class TestHandleQuery:
         state = _make_state()
         state.source_pools = MagicMock()
         state.source_pools.has.return_value = True
+        # REQ-1898: this source's driver has no streaming DIRECT read, so the fast path must fall
+        # through to the buffered execute_native terminal under test here — the streaming variant
+        # (open_stream/fetch) is covered separately by test_direct_route_streams_when_source_supports_it.
+        state.source_pools.supports_stream.return_value = False
 
         servicer = ProvisaServicer(state, pb2, MagicMock())
         context = AsyncMock(spec=grpc.aio.ServicerContext)
@@ -246,6 +250,82 @@ class TestHandleQuery:
             mock_execute_native.assert_awaited_once_with(
                 state.source_pools, "pg1", "SELECT id, amount FROM orders", []
             )
+            mock_finalize_audit.assert_awaited_once_with(fake_plan, 200, state)
+
+    @pytest.mark.asyncio
+    async def test_direct_route_streams_when_source_supports_it(self):
+        """REQ-1898: a DIRECT-route source whose driver supports streaming (supports_stream=True)
+        must be read via open_stream/fetch in bounded batches, not fully buffered via
+        execute_native — live-measured regression: large_scan (2M rows) via grpc took 190.7s vs
+        flight's ~20.2s for the identical query, because execute_native materialized every row
+        before sending the first message."""
+        pb2, msg_cls = _make_pb2_module("Orders", ["id", "amount"])
+        state = _make_state()
+        state.source_pools = MagicMock()
+        state.source_pools.has.return_value = True
+        state.source_pools.supports_stream.return_value = True
+
+        fake_stream = AsyncMock()
+        fake_stream.column_names = ["id", "amount"]
+        fake_stream.fetch = AsyncMock(side_effect=[[[1, 100.0], [2, 200.0]], []])
+        state.source_pools.open_stream = AsyncMock(return_value=fake_stream)
+
+        servicer = ProvisaServicer(state, pb2, MagicMock())
+        context = AsyncMock(spec=grpc.aio.ServicerContext)
+        context.invocation_metadata.return_value = [("x-provisa-role", "admin")]
+        request = MagicMock()
+        request.limit = 0
+
+        from provisa.transpiler.router import Route
+
+        fake_plan = SimpleNamespace(
+            route=Route.DIRECT,
+            source_id="pg1",
+            sql="SELECT id, amount FROM orders",
+            exec_params=None,
+            audit_written=False,
+            audit=MagicMock(),
+        )
+
+        with (
+            patch(
+                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
+                return_value="SELECT id, amount FROM orders",
+            ),
+            patch(
+                "provisa.pgwire._pipeline._govern_and_route_compiled",
+                new_callable=AsyncMock,
+                return_value=fake_plan,
+            ),
+            patch(
+                "provisa.pgwire._pipeline._execute_plan",
+                new_callable=AsyncMock,
+            ) as mock_execute_plan,
+            patch(
+                "provisa.pgwire._pipeline.finalize_audit",
+                new_callable=AsyncMock,
+            ) as mock_finalize_audit,
+            patch.object(
+                state.federation_engine,
+                "execute_native",
+                new_callable=AsyncMock,
+            ) as mock_execute_native,
+        ):
+            rows_yielded = []
+            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
+                rows_yielded.append(msg)
+
+            assert len(rows_yielded) == 2
+            msg_cls.assert_any_call(id=1, amount=100.0)
+            msg_cls.assert_any_call(id=2, amount=200.0)
+
+            # The streaming terminal was used, not the fully-buffering one.
+            state.source_pools.open_stream.assert_awaited_once_with(
+                "pg1", "SELECT id, amount FROM orders", []
+            )
+            mock_execute_native.assert_not_awaited()
+            mock_execute_plan.assert_not_awaited()
+            fake_stream.close.assert_awaited_once()
             mock_finalize_audit.assert_awaited_once_with(fake_plan, 200, state)
 
     @pytest.mark.asyncio

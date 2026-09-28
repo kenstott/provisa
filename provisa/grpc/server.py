@@ -529,6 +529,46 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # for-a-worker-thread and drives itself via run_coroutine_threadsafe(..., loop).result();
         # calling that from the loop's own thread would deadlock.
         if plan.route == Route.DIRECT and state.source_pools.has(plan.source_id):
+            from provisa.pgwire._pipeline import finalize_audit
+
+            # REQ-1898: execute_native (below) fully materializes every row of the DIRECT read
+            # into one Python QueryResult before a single message is sent — fine for a point
+            # lookup (REQ-1891's original target), catastrophic for a large scan. Live-measured on
+            # the perf-bench VM: large_scan (2,000,000 rows) via grpc took 190.7s for iteration 1
+            # alone, ~9.4x flight's ~20.2s for the identical query — a real scaling defect, not the
+            # intended behavior. state.source_pools.open_stream/fetch (REQ-1190) is a genuinely
+            # ASYNC-NATIVE primitive (plain awaits, no run_coroutine_threadsafe/executor hop needed
+            # — safe to drive directly from this event-loop-resident generator, unlike
+            # execute_native_stream, which is documented synchronous-for-a-worker-thread and would
+            # deadlock here), so a source whose driver supports streaming (postgresql today) gets
+            # the same bounded-batch treatment as the ENGINE route above instead of buffering the
+            # whole result. A source without a streaming driver still falls through to
+            # execute_native unchanged — no regression for those.
+            if state.source_pools.supports_stream(plan.source_id):
+                from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+
+                ds = await state.source_pools.open_stream(
+                    plan.source_id, plan.sql, plan.exec_params or []
+                )
+                self._emit_license_nag(context)
+                _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
+                out_cols = [_proto_by_norm.get(_norm(c), c) for c in ds.column_names]
+                col_fields = _col_fields_for(out_cols)
+                try:
+                    while True:
+                        batch = await ds.fetch(_STREAM_BATCH_ROWS)
+                        if not batch:
+                            break
+                        for row in batch:
+                            yield msg_cls(**_kwargs_for(col_fields, row))
+                except Exception:
+                    await finalize_audit(plan, 500, state)
+                    raise
+                finally:
+                    await ds.close()
+                await finalize_audit(plan, 200, state)
+                return
+
             result = await state.federation_engine.execute_native(
                 state.source_pools, plan.source_id, plan.sql, plan.exec_params or []
             )
@@ -536,7 +576,6 @@ class ProvisaServicer:  # REQ-045, REQ-143
             _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
             out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
             col_fields = _col_fields_for(out_cols)
-            from provisa.pgwire._pipeline import finalize_audit
 
             try:
                 for row in result.rows:
