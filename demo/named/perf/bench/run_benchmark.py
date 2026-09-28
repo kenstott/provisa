@@ -69,6 +69,25 @@ from pathlib import Path
 
 from queries import QUERIES, Query
 
+# demo/named/perf/fragment.yaml, one level up from this script's own directory
+# (demo/named/perf/bench/) — the source registrations federated into whichever engine
+# (--engine duckdb/pg/trino) this run targets.
+_FRAGMENT_PATH = Path(__file__).resolve().parent.parent / "fragment.yaml"
+
+
+def _describe_sources() -> list[dict]:
+    """The backend sources (postgresql/clickhouse/mongodb/neo4j) this benchmark federates,
+    read directly from fragment.yaml's own `sources:` list rather than hardcoded here — so this
+    report can never drift out of sync with what the demo actually registers."""
+    import yaml
+
+    doc = yaml.safe_load(_FRAGMENT_PATH.read_text())
+    return [
+        {"id": s["id"], "type": s["type"], "description": s.get("description")}
+        for s in doc.get("sources", [])
+    ]
+
+
 TRANSPORTS = ("sql", "cypher", "http", "flight", "graphql", "grpc")
 
 
@@ -1253,11 +1272,15 @@ def main() -> int:
     # behavior worth measuring on its own, not just a contaminant to avoid; QueryResult.summary()
     # drops that pass's iteration 1 (not guaranteed cache-cold) before computing its percentiles.
     _prior_pass_results: list[QueryResult] = []
+    sources = _describe_sources()
+    transports_tested = sorted(name for name, t in transports.items() if t.available())
 
     def _checkpoint(results_so_far: list[QueryResult]) -> list[dict]:
         summaries = [r.summary() for r in _prior_pass_results + results_so_far]
         report = {
             "engine": args.engine,
+            "sources": sources,
+            "transports_tested": transports_tested,
             "generated_at": datetime.now(timezone.utc).isoformat(),
             # REQ-1890: true only when every transport ran as org_admin_unguarded (V002's
             # join-relationship guard bypassed on the raw-SQL path — sql/pgwire, flight). RLS,

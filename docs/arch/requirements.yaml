@@ -65200,6 +65200,16 @@
     `fix-shared-pipeline-response-cache` investigation's open design questions on byte-for-byte
     cache-value typing and the three direct-`execute_engine_sync` streaming call sites that bypass
     the shared `_execute_plan_in_org` chokepoint).
+
+    (Amended 2026-09-28, sources/transports in report:) The results JSON now also carries a
+    top-level `sources` list — id/type/description for every backend source federated into the
+    engine under test (postgresql/clickhouse/mongodb/neo4j, read directly from
+    `demo/named/perf/fragment.yaml`'s own `sources:` block via a new `_describe_sources()` helper,
+    never hardcoded, so it can't drift from what the demo actually registers) — and a
+    `transports_tested` list (the wire transports that were reachable/`available()` for this run:
+    sql/cypher/http/flight/graphql/grpc). Requested by the maintainer so a results file is
+    self-describing about what was actually exercised (which backend engines/sources, which
+    transports) without cross-referencing fragment.yaml or the run's own stderr log separately.
   use_case: >-
     Live benchmark methodology bug caught by the maintainer while reviewing REQ-1889's reported
     "-99.6%" GraphQL federated_join win: asked directly whether repeated-identical-query iterations
