@@ -129,6 +129,7 @@ from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, NamedTuple, cast  # noqa: F401
 
 if TYPE_CHECKING:
+    from provisa.compiler.compiled_query_cache import CompiledQueryCache
     from provisa.cache.hot_tables import HotTableManager
     from provisa.core.tenant_context import TenantContextCache
     from provisa.kafka.window import KafkaTableConfig
@@ -591,6 +592,11 @@ class AppState:
     @role_chains.setter
     def role_chains(self, value: dict[str, list[str]]) -> None:
         self._active_runtime().role_chains = value
+
+    @property
+    def compiled_query_cache(self) -> "CompiledQueryCache":
+        # REQ-1877: per-org compiled-query-outcome cache — see provisa/compiler/compiled_query_cache.py.
+        return self._active_runtime().compiled_query_cache
 
     @property
     def masking_rules(self) -> MaskingRules:

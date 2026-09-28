@@ -36,6 +36,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
+from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.core.environments import PROD
 from provisa.executor.pool import SourcePool
 
@@ -154,6 +155,13 @@ class OrgRuntime:
     rls_contexts: dict[str, "RLSContext"] = field(default_factory=dict)
     # REQ-1677: role id → [role, parent, grandparent, …], the chain folded into the build.
     role_chains: dict[str, list[str]] = field(default_factory=dict)
+
+    # REQ-1877: in-memory, TTL-evicted cache of compiled query outcomes (physical SQL + routing
+    # decision) for the raw-SQL pipeline — see provisa/compiler/compiled_query_cache.py. Scoped
+    # per org, same as `contexts`/`rls_contexts`, so one org's cached plans never leak into
+    # another's. Not reset by a schema rebuild: its key already carries schema_boot_id/
+    # schema_version, so a stale generation's entries simply stop matching (see that module).
+    compiled_query_cache: CompiledQueryCache = field(default_factory=CompiledQueryCache)
 
     # Governance / masking. (table_id, role_id) → {col: (rule, dtype)}.
     masking_rules: dict[Any, Any] = field(default_factory=dict)

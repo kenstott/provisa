@@ -20056,6 +20056,18 @@ A compiler-level SQL rewrite that propagates a literal/constant WHERE predicate 
 
 **Tests:** —
 
+### REQ-1877 · Compilation Caching {#REQ-1877}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Per-organization, in-memory, TTL-evicted cache of governance-pipeline outcomes (SQL shape-based key, not raw text) for compiled queries. Caches only the `validate_sql` outcome (relationship-guard + row-level violations check) and domain-access-check result — does NOT cache routing decisions or physical SQL, which depend on live hot-table/tier-cap state (provisa/api/data/materialization.py's `state.hot_manager`) that is not schema-version-bound. Cache key includes: SQL shape digest (sqlglot literal-blanked via provisa.observability.stage_trace.redact_sql), role_id, person_id, schema_boot_id, schema_version, and relationship-guard bypass flag. TTL default 60 seconds, configurable via PROVISA_COMPILED_QUERY_CACHE_TTL_SECONDS environment variable. Per-process dict storage, not Redis-backed or protocol-level (pgwire PREPARE/EXECUTE out of scope). Cache is per-org field on OrgRuntime (provisa/api/org_runtime.py) with AppState property shim (provisa/api/app.py), following the existing contexts/rls_contexts pattern. Prerequisite fix (commit 6a416c52): RLS-rule and role create/delete/mutation call sites (provisa/api/admin/schema_mutation.py) now bump state.schema_version via _rebuild_schemas() so that schema_version serves as a sound invalidation signal.
+
+**Use case:** Compiled query outcomes for governance validation are deterministic per (SQL shape, role, person, schema version) and expensive (relationship-guard and row-level constraint evaluation over complex JOINs). Many governance-checked queries repeat within a brief window (e.g., same form submitted multiple times, dashboard refresh cycles, application connection pools). Caching avoids re-evaluation, reducing CPU on the control plane and latency for repeated governance checks.
+
+**Code:** `provisa/compiler/compiled_query_cache.py`, `provisa/api/org_runtime.py`, `provisa/api/app.py`, `provisa/pgwire/_pipeline.py`, `provisa/api/admin/schema_mutation.py`
+
+**Tests:** —
+
 ## 4. Source Connectors
 
 ### REQ-1880 · Federation {#REQ-1880}

@@ -73,6 +73,12 @@ class PreparedFrontEnd:
     # REQ-1322: None unless a metrics.<name> reference was expanded this call — carried through
     # a cache hit too, so the explain surface reports the same form it would have uncached.
     metric_semantic_sql: str | None = None
+    # REQ-1877: True iff this call localized an inline tracked-function command
+    # (`_localize_inline_commands` returned True) — the statement invoked a live command with
+    # THIS call's arguments and baked its (possibly side-effecting, possibly non-deterministic)
+    # result into the tree. A downstream cache (the compiled-query-outcome cache) MUST treat such
+    # a call as uncacheable even when the raw SQL shape is byte-identical to a previous call.
+    localized: bool = False
 
 
 def _cache_key(raw_sql: str, role_id: str, generation: tuple[str, int]) -> str:
@@ -137,7 +143,9 @@ async def prepare_front_end(
         # Per-call by construction (baked-in literal command-invocation result) — never cache
         # this statement, this call or any future one. Behave exactly as the uncached path would.
         normalized_sql = parsed_input.sql(dialect="postgres")
-        return PreparedFrontEnd(normalized_sql=normalized_sql, parsed=parsed_input, cache_hit=False)
+        return PreparedFrontEnd(
+            normalized_sql=normalized_sql, parsed=parsed_input, cache_hit=False, localized=True
+        )
 
     from provisa.compiler.metric_expand import expand_metric_query
 

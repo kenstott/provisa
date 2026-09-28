@@ -24,6 +24,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 
@@ -98,6 +99,9 @@ def _state(*, role: dict, security_high: bool) -> SimpleNamespace:
         metrics={},
         federation_engine=None,
         security_high=security_high,
+        schema_boot_id="test-boot",
+        schema_version=1,
+        compiled_query_cache=CompiledQueryCache(),
     )
 
 
