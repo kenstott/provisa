@@ -66268,3 +66268,100 @@
     When _handle_query_batch streams the response
     Then batches fall back to the server's own conservative _GRPC_BATCH_ROWS default
   target: "2026-Q3"
+
+- id: REQ-1900
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Multi-Worker Port Sharing
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    Live saturation testing on the perf-bench VM found the app collapses under load already
+    between 6-25 req/s of a mixed workload (38-92% error rates, p50 latency 9-17s) — traced to
+    `uvicorn main:app` running as a single bare process with no `--workers` flag, so every
+    transport (HTTP, GraphQL, gRPC, Flight, Bolt, pgwire) shares one event loop / one GIL with no
+    multi-core parallelism at all. Before recommending `--workers N`, checked whether the app's
+    own auxiliary protocol servers (gRPC, Flight, Bolt, pgwire — all started once per worker
+    process inside `_start_servers`, since each uvicorn worker is a full separate process running
+    the whole app from scratch) could even coexist across multiple worker processes without every
+    worker but one crashing on a port conflict at startup.
+
+    Verified empirically (two/three independent local processes, not just read from docs) rather
+    than assumed:
+    - **gRPC** (`grpc.aio.server().add_insecure_port(...)`): already multi-process safe out of the
+      box — confirmed two independent processes both bind `[::]:PORT` successfully with zero code
+      change; this is standard gRPC C-core `SO_REUSEPORT` behavior for insecure ports on Linux.
+    - **Bolt** (`asyncio.start_server`): NOT safe by default (no `reuse_port` was passed), but
+      confirmed `reuse_port=True` fixes it — two independent processes then both bind
+      successfully, kernel load-balances new connections between them. Added `reuse_port=True` to
+      `provisa/bolt/server.py`'s `_serve`.
+    - **pgwire** (`vendor/buenavista`'s `socketserver.ThreadingTCPServer`, wrapped by
+      `provisa/pgwire/server.py`'s `ProvisaServer`): `allow_reuse_address = True` (already set)
+      only sets `SO_REUSEADDR` — confirmed live this does NOT let two processes listen
+      concurrently (`Address already in use` on the second). Confirmed overriding
+      `server_bind()` to additionally `setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)` before the
+      superclass bind fixes it the same way as Bolt. Added that override to `ProvisaServer`.
+    - **Flight** (`pyarrow.flight.FlightServerBase`): confirmed NO equivalent exists — a second
+      process binding the identical port fails with `Address already in use`, and pyarrow's public
+      constructor exposes no socket-level option to change that (checked its docstring/signature
+      directly). Genuinely cannot share one port across processes.
+
+    Fixed Flight with a real per-worker PORT POOL instead: each worker independently scans
+    consecutive ports starting at the configured `flight_port`/`FLIGHT_PORT` (bounded by a new
+    `FLIGHT_POOL_MAX` env var, default 16) and claims the first free one — forming N genuinely
+    independent Flight server instances (one real instance per worker), not one shared listener.
+    A caller reaching this pool needs to either round-robin across the known port range itself or
+    sit behind a TCP-level load balancer that does; this process only logs which port IT bound, no
+    shared discovery mechanism (kept intentionally simple).
+
+    Port availability is checked with a plain socket bind/release probe BEFORE constructing the
+    Flight server, rather than retrying on whatever exception construction itself raises — found
+    live that a real bind conflict there surfaces as `pyarrow.lib.ArrowException("Unknown error:
+    Server did not start properly")`, with the actual "Address already in use" detail written
+    directly to stderr by gRPC's C-core logger and NEVER attached to the Python exception object's
+    own string form. There is no way to reliably distinguish a port conflict from a genuine Flight
+    startup bug (bad TLS config, etc.) from that exception's text alone, so retrying blindly on
+    ANY exception would silently misreport a real bug as pool exhaustion. The probe has a small
+    time-of-check/time-of-use race (another process could grab the port between the probe and
+    pyarrow's own bind), which is why the actual `_build_flight_server()` construction call still
+    runs inside the pre-existing outer try/except unchanged — a genuine race there fails loudly
+    exactly once with the real (if generic) pyarrow error, never masked by a retry loop.
+  use_case: >-
+    Direct follow-up to live saturation findings on the perf-bench VM: the maintainer asked to
+    tune the number of uvicorn workers to raise the saturation ceiling, which first required
+    checking whether the app's own auxiliary protocol servers could survive running as multiple
+    processes at all — verified empirically per-protocol rather than assumed, since getting this
+    wrong would silently serve gRPC/Flight/Bolt/pgwire from only one out of N workers (or crash
+    the others at startup) the moment `--workers N` was actually used.
+  code:
+    - provisa/bolt/server.py
+    - provisa/pgwire/server.py
+    - provisa/api/app_startup.py
+  tests: []
+  scenario: |
+    Given two independent processes each calling grpc.aio.server().add_insecure_port on the same
+    port
+    When both attempt to bind
+    Then both succeed (confirmed live) — no code change needed for gRPC
+
+    Given two independent processes each calling provisa/bolt/server.py's _serve on the same port
+    When both attempt to bind
+    Then both succeed (confirmed live, reuse_port=True) — previously only the first would
+
+    Given two independent processes each constructing a pgwire ProvisaServer on the same port
+    When both attempt to bind
+    Then both succeed (confirmed live, SO_REUSEPORT override) — previously only the first would
+
+    Given N worker processes each reaching Flight server startup with the same configured
+    flight_port
+    When each probes consecutive ports starting at flight_port
+    Then each claims a distinct free port and all N Flight instances start successfully,
+    forming a real per-worker pool rather than N-1 startup failures
+
+    Given a genuine Flight startup failure (e.g. malformed TLS certificate) on a port the probe
+    correctly found free
+    When _build_flight_server is called
+    Then the real exception propagates to the outer handler unmasked — it is never reinterpreted
+    as pool exhaustion
+  target: "2026-Q3"

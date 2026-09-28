@@ -196,11 +196,18 @@ async def _dispatch(session: BoltSession, message: BoltMessage) -> None:
 
 
 async def _serve(host: str, port: int, ssl_ctx: ssl.SSLContext | None) -> None:
+    # reuse_port=True (REQ-1900): confirmed live that asyncio honors SO_REUSEPORT for genuine
+    # multi-process port sharing (two independent processes both bind successfully, kernel load-
+    # balances new connections between them) -- unlike allow_reuse_address-style options, which
+    # only permit quick rebind after close, not concurrent listeners. Lets multiple uvicorn
+    # `--workers N` processes each run their own Bolt listener on the same port instead of all but
+    # one crashing on startup with "Address already in use".
     server = await asyncio.start_server(
         _handle_client,
         host,
         port,
         ssl=ssl_ctx,
+        reuse_port=True,
     )
     log.info("[BOLT] listening on %s:%d (TLS=%s)", host, port, ssl_ctx is not None)
     async with server:

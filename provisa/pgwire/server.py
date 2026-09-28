@@ -1679,6 +1679,20 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 class ProvisaServer(BuenaVistaServer):  # REQ-001, REQ-266
     allow_reuse_address = True
 
+    def server_bind(self) -> None:
+        # REQ-1900: allow_reuse_address (SO_REUSEADDR) only permits a quick rebind after this
+        # socket closes -- it does NOT let two processes listen on the same port at once
+        # (confirmed live: a second socketserver process still fails with "Address already in
+        # use" with only allow_reuse_address set). SO_REUSEPORT is the option that actually
+        # allows concurrent listeners, with the kernel load-balancing new connections between
+        # them -- confirmed live the same way. Needed so multiple uvicorn `--workers N` processes
+        # can each run their own pgwire listener on the same port instead of all but one crashing
+        # on startup.
+        import socket as _socket
+
+        self.socket.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEPORT, 1)
+        super().server_bind()
+
     def __init__(
         self,
         server_address: tuple[str, int],

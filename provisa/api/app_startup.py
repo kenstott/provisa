@@ -331,7 +331,7 @@ async def _start_servers(_log: logging.Logger) -> None:
     try:
         from provisa.api.flight.server import ProvisaFlightServer
 
-        flight_port = int(
+        flight_port_base = int(
             os.environ.get("FLIGHT_PORT", str(state.server_cfg.get("flight_port", 8815)))
         )
         _flight_tls = _resolve_tls("PROVISA_FLIGHT_CERT", "PROVISA_FLIGHT_KEY")
@@ -341,30 +341,86 @@ async def _start_servers(_log: logging.Logger) -> None:
                 _flight_cert_bytes = _f.read()
             with open(_fk, "rb") as _f:
                 _flight_key_bytes = _f.read()
-            # grpc+tls scheme + tls_certificates make FlightServerBase bind a TLS listener (REQ-1226).
-            # REQ-1228 adds verify_client + root_certificates when a client CA is configured.
             from provisa.security.mtls import flight_tls_kwargs
             from provisa.security.mtls import resolve_client_auth as _resolve_client_auth
 
-            flight_server = ProvisaFlightServer(
-                state,
-                location=f"grpc+tls://0.0.0.0:{flight_port}",
-                main_loop=asyncio.get_running_loop(),
-                tls_certificates=[(_flight_cert_bytes, _flight_key_bytes)],
-                **flight_tls_kwargs(
-                    _resolve_client_auth(
-                        "PROVISA_FLIGHT_CLIENT_CA",
-                        "PROVISA_FLIGHT_MTLS_MODE",
-                        "PROVISA_FLIGHT_MTLS_BIND_PRINCIPAL",
-                    )
-                ),
-            )
+            def _build_flight_server(port: int) -> "ProvisaFlightServer":
+                # grpc+tls scheme + tls_certificates make FlightServerBase bind a TLS listener
+                # (REQ-1226). REQ-1228 adds verify_client + root_certificates when a client CA is
+                # configured.
+                return ProvisaFlightServer(
+                    state,
+                    location=f"grpc+tls://0.0.0.0:{port}",
+                    main_loop=asyncio.get_running_loop(),
+                    tls_certificates=[(_flight_cert_bytes, _flight_key_bytes)],
+                    **flight_tls_kwargs(
+                        _resolve_client_auth(
+                            "PROVISA_FLIGHT_CLIENT_CA",
+                            "PROVISA_FLIGHT_MTLS_MODE",
+                            "PROVISA_FLIGHT_MTLS_BIND_PRINCIPAL",
+                        )
+                    ),
+                )
         else:
-            flight_server = ProvisaFlightServer(
-                state,
-                location=f"grpc://0.0.0.0:{flight_port}",
-                main_loop=asyncio.get_running_loop(),
+
+            def _build_flight_server(port: int) -> "ProvisaFlightServer":
+                return ProvisaFlightServer(
+                    state,
+                    location=f"grpc://0.0.0.0:{port}",
+                    main_loop=asyncio.get_running_loop(),
+                )
+
+        # REQ-1900: pyarrow's FlightServerBase has no SO_REUSEPORT equivalent — confirmed live
+        # that a second process binding the identical port fails with "Address already in use",
+        # unlike gRPC/Bolt/pgwire, which all support genuine multi-process port sharing. Under
+        # uvicorn `--workers N` there's no shared state between worker processes to hand out a
+        # worker index, so each worker independently scans consecutive ports starting at
+        # flight_port_base and claims the first one nobody else already has — forming a real POOL
+        # of N independent Flight servers (one genuine instance per worker) instead of only the
+        # first worker to reach this code ever serving Flight at all. A caller connecting to this
+        # pool needs to either round-robin across the known port range itself, or sit behind a
+        # TCP-level load balancer that does; this process only publishes which port IT bound, in
+        # its own log line below — no shared discovery mechanism, kept intentionally simple.
+        #
+        # Ports are probed with a plain socket bind/release BEFORE constructing the Flight server,
+        # rather than retrying on whatever exception construction raises — confirmed live that a
+        # bind conflict there surfaces as `pyarrow.lib.ArrowException("Unknown error: Server did
+        # not start properly")`, with the actual "Address already in use" detail written directly
+        # to stderr by gRPC's C-core logger and NEVER attached to the Python exception object.
+        # There is no reliable way to distinguish a port conflict from a genuine Flight startup
+        # bug (bad TLS config, etc.) from that exception's text alone — retrying blindly on ANY
+        # exception would silently misreport a real bug as "no free port in pool range". The
+        # socket probe has a small time-of-check/time-of-use race (another process could grab the
+        # port between our probe and pyarrow's own bind), which is why construction still runs
+        # inside the ordinary outer try/except below — a genuine race there fails loudly with the
+        # real (if generic) pyarrow error, exactly once, rather than being masked by a retry loop.
+        def _port_probably_free(port: int) -> bool:
+            import socket
+
+            probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                probe.bind(("0.0.0.0", port))  # nosec B104 - transient probe on the same wildcard host the real Flight listener binds; closed immediately, never accepts a connection
+                return True
+            except OSError:
+                return False
+            finally:
+                probe.close()
+
+        _FLIGHT_POOL_MAX = int(os.environ.get("FLIGHT_POOL_MAX", "16"))
+        flight_port = None
+        for _offset in range(_FLIGHT_POOL_MAX):
+            _candidate = flight_port_base + _offset
+            if _port_probably_free(_candidate):
+                flight_port = _candidate
+                break
+        if flight_port is None:
+            raise RuntimeError(
+                f"no free Flight port in pool range [{flight_port_base}, "
+                f"{flight_port_base + _FLIGHT_POOL_MAX})"
             )
+        flight_server = _build_flight_server(flight_port)
+
         import threading
 
         flight_thread = threading.Thread(
