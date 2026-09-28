@@ -394,7 +394,7 @@ relationships:
   via_target_column: product_id
   via_label_source: fixed
 
-# REQ-1887: org_admin_unguarded — org_admin's exact capability/domain_access clone (literal copy
+# REQ-1890: org_admin_unguarded — org_admin's exact capability/domain_access clone (literal copy
 # of provisa/core/db.py's _ORG_ADMIN_CAPABILITIES / provisa/core/schema.sql:1094-1104's seed, not
 # a parent_role_id inheritance: provisa/core/config_loader.py's role-loading step (`for role in
 # config.roles: await role_repo.upsert(conn, role)`) upserts each config role's capabilities

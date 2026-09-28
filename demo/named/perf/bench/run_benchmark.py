@@ -289,7 +289,7 @@ class PgwireTransport(Transport):
                 return await asyncpg.create_pool(
                     # pgwire username IS the role (verified live: "admin" is not a real role and
                     # fails "No schema for role 'admin'" — org_admin matches fragment.yaml's
-                    # visible_to lists and config's default_assignments). REQ-1887: role is
+                    # visible_to lists and config's default_assignments). REQ-1890: role is
                     # overridable to org_admin_unguarded (--bypass-relationship-guard) — same
                     # domain_access/visible_to grants, plus V002-only Capability.IGNORE_RELATIONSHIPS.
                     host=host,
@@ -420,7 +420,7 @@ class BoltTransport(Transport):
             # x-provisa-role header) — the server's own auth.provider stays "none" either way,
             # this only selects which of the already-unauthenticated roles is used.
             #
-            # REQ-1887: role is overridable via --bypass-relationship-guard, BUT Bolt's Cypher
+            # REQ-1890: role is overridable via --bypass-relationship-guard, BUT Bolt's Cypher
             # queries run through provisa.pgwire._pipeline._govern_and_route_compiled
             # (provisa/bolt/session.py:1105,1233,1255,1298), whose own docstring says "No SQL
             # validation: the compiler produced this SQL from a governed AST" — V002's
@@ -490,7 +490,7 @@ class HttpTransport(Transport):
     a bearer token added here; this demo's whole point is a clean, predictable reset each time,
     including that posture, so no login step belongs in this tool.
 
-    REQ-1887: role is overridable via --bypass-relationship-guard (X-Provisa-Role header, set
+    REQ-1890: role is overridable via --bypass-relationship-guard (X-Provisa-Role header, set
     explicitly below rather than relying on the org_admin default). BUT this endpoint
     (cypher_router.py) always executes through _govern_and_route_compiled (provisa/pgwire/
     _pipeline.py), whose docstring states "No SQL validation" — V002's _check_join_relationships
@@ -583,7 +583,7 @@ class GraphqlTransport(Transport):
     No auth, same reasoning as HttpTransport (`--demo perf` runs with auth.provider: none), same
     X-Provisa-Role header mechanism.
 
-    REQ-1887: role is overridable via --bypass-relationship-guard. BUT provisa/api/data/
+    REQ-1890: role is overridable via --bypass-relationship-guard. BUT provisa/api/data/
     endpoint.py's graphql_endpoint hardcodes `bypass_relationship_guard=True` unconditionally,
     with the comment "V002 (join relationship check) is always skipped for GraphQL because the
     SDL defines valid relationships by design" — independent of role/capability. So
@@ -648,7 +648,7 @@ class FlightTransport(Transport):
     other transport supplies "org_admin" the same way (pgwire's `user="org_admin"`, gRPC's
     `x-provisa-role: org_admin` metadata) — Flight is no different, just via the ticket JSON.
 
-    REQ-1887: role is overridable via --bypass-relationship-guard. This transport's SQL ticket
+    REQ-1890: role is overridable via --bypass-relationship-guard. This transport's SQL ticket
     path (`run_sql` below) is one of the two transports V002's relationship guard genuinely
     applies to: _do_get_sql_governed (provisa/api/flight/server.py) calls
     govern_batch_final_plan -> _govern_and_route (provisa/pgwire/_pipeline.py), the raw-SQL path
@@ -730,7 +730,7 @@ class GrpcTransport(Transport):
     point_lookup (a plain equality filter on one table) now has a real grpc spec below instead
     of being silently skipped.
 
-    REQ-1887: role is overridable via --bypass-relationship-guard (`x-provisa-role` metadata,
+    REQ-1890: role is overridable via --bypass-relationship-guard (`x-provisa-role` metadata,
     `run_grpc` below). BUT this surface is single-table only (no join capability — see above), so
     V002's join-relationship guard is structurally moot here regardless of role/capability, and
     server.py's typed RPC handlers route through _govern_and_route_compiled anyway (same "No SQL
@@ -1134,7 +1134,7 @@ def main() -> int:
     parser.add_argument(
         "--bypass-relationship-guard",
         action="store_true",
-        help="REQ-1887: authenticate every transport as org_admin_unguarded instead of "
+        help="REQ-1890: authenticate every transport as org_admin_unguarded instead of "
         "org_admin — identical capabilities/domain_access/visible_to, plus "
         "Capability.IGNORE_RELATIONSHIPS, which bypasses ONLY V002's join-relationship guard "
         "(_check_join_relationships, sql_validator.py) on the raw-SQL path (sql/pgwire, "
@@ -1174,7 +1174,7 @@ def main() -> int:
             parser.error(f"--start-at {args.start_at!r} is not a known query id: {all_ids}")
         query_ids = set(all_ids[all_ids.index(args.start_at) :])
 
-    # REQ-1887: org_admin_unguarded is org_admin's clone (demo/named/perf/fragment.yaml) plus
+    # REQ-1890: org_admin_unguarded is org_admin's clone (demo/named/perf/fragment.yaml) plus
     # Capability.IGNORE_RELATIONSHIPS — bypasses V002's relationship guard only, nothing else.
     role = "org_admin_unguarded" if args.bypass_relationship_guard else "org_admin"
     transports: dict[str, Transport] = {
@@ -1207,7 +1207,7 @@ def main() -> int:
         report = {
             "engine": args.engine,
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            # REQ-1887: true only when every transport ran as org_admin_unguarded (V002's
+            # REQ-1890: true only when every transport ran as org_admin_unguarded (V002's
             # join-relationship guard bypassed on the raw-SQL path — sql/pgwire, flight). RLS,
             # masking, domain-access, and column visibility are identical to org_admin either
             # way — this field never means "governance disabled".
