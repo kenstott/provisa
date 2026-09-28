@@ -65141,6 +65141,79 @@
     the 400 MiB headroom / 500 MiB ceiling
   target: "2026-Q3"
 
+- id: REQ-1894
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Benchmark Methodology
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    `demo/named/perf/bench/run_benchmark.py` sends the SAME `q.params` on every iteration of a
+    query (`_run_sequential`). Any transport whose governed pipeline has a response/result cache
+    (today only GraphQL's `Route.CACHE`, `provisa/api/data/endpoint.py`) shows iteration 1 (real,
+    uncached) wildly slower than iterations 2+ (cache hits), which blended into one `latency_ms_p50`
+    silently launders a real per-call cost into an apparent architectural win — live-caught this
+    session: `federated_join via graphql` measured iter 1 = 31,676ms, iters 2-10 = ~33ms each; the
+    blended p50 (33.1ms) reported a 99.6% "improvement" that was almost entirely a cache-hit
+    artifact.
+
+    Fixed by running the full matrix as two SEPARATE, COMPLETE passes rather than splitting one
+    run's samples after the fact: a "nocache" pass (every call carries GraphQL's real, already-
+    shipped `@noCache` operation directive — `provisa/compiler/directives.py` — so the cache is
+    genuinely disabled, not just cold; every iteration is an independent real execution, so the
+    full percentile set over N iterations is statistically valid, not a single first-sample number)
+    and a "cache" pass (cache allowed to engage normally). The cache pass is still run in full, not
+    skipped or treated as pure contamination to avoid — a warm response cache is real product
+    behavior worth its own measurement (cache-key computation, lookup, and, once landed, audit/
+    egress accounting for a hit), and a short TTL (on the order of 1-5 minutes) is a reasonable
+    production setting for this kind of cache, so its hit-path cost belongs in the report on its
+    own terms. Only iteration 1 of the cache pass is dropped before computing its percentiles (not
+    guaranteed cache-cold — a prior pass, or another query sharing the same governed shape/role,
+    may have already warmed that exact cache key), since a single sample is never statistically
+    reliable regardless of which pass it came from.
+
+    `QueryResult` gained a `cache_pass: Literal["nocache", "cache"]` field; `summary()` branches on
+    it (full sample set vs. `ok_samples[1:]`) instead of computing one blended percentile set.
+    `run_all`/`main()` run the whole matrix twice (`no_cache=True` then `no_cache=False`),
+    concatenating both passes' `QueryResult`s into one report — every query/transport pair appears
+    twice, tagged by `cache_pass`, not as a single ambiguous row. `summary()` also now reports
+    `ops_per_hour` (`qps * 3600`) alongside `qps`, a more directly comparable throughput unit for a
+    results table.
+
+    Other transports (sql/cypher/http/flight/grpc) have no response cache yet, so their two passes
+    are currently identical by construction — this is expected, not a bug, and will start to differ
+    once/if response caching is extended to them (tracked separately, currently blocked — see the
+    `fix-shared-pipeline-response-cache` investigation's open design questions on byte-for-byte
+    cache-value typing and the three direct-`execute_engine_sync` streaming call sites that bypass
+    the shared `_execute_plan_in_org` chokepoint).
+  use_case: >-
+    Live benchmark methodology bug caught by the maintainer while reviewing REQ-1889's reported
+    "-99.6%" GraphQL federated_join win: asked directly whether repeated-identical-query iterations
+    would hit the response cache every time, which they do. Required "the full test with no cache,
+    then the full test with cache (dropping iteration 1)" as the fix, explicitly keeping the cache
+    pass rather than discarding it, since it still exercises real cache code paths and a short TTL
+    is a realistic production setting.
+  code:
+    - demo/named/perf/bench/run_benchmark.py
+  tests: []
+  scenario: |
+    Given a query with a response cache on at least one transport (GraphQL today)
+    When the nocache pass runs
+    Then every request carries `@noCache`, no iteration can be a cache hit, and summary() computes
+    percentiles over every iteration (not just the first)
+
+    Given the same query
+    When the cache pass runs
+    Then the cache is allowed to engage normally, and summary() drops iteration 1 before computing
+    percentiles, since it is not guaranteed to be cache-cold
+
+    Given a completed two-pass run
+    When the results JSON is written
+    Then each query/transport pair appears as two QueryResult summaries, one per cache_pass value,
+    never blended into one ambiguous row
+  target: "2026-Q3"
+
 - id: REQ-1885
   status: complete
   group: "6. Execution, Routing, Caching & Performance"
@@ -65682,4 +65755,71 @@
 
     Then only the first performs a `db.acquire()` + `source_repo.list_all` round trip; the rest
     are served from the per-state cache until the schema generation changes or the TTL expires
+  target: "2026-Q3"
+
+- id: REQ-1895
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Federation Engine Connection Lifecycle
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    `PgFederationRuntime.run_sync` (`provisa/federation/pg_runtime.py`) opened a brand-new
+    `psycopg2.connect(self._engine_dsn)` on every single call — confirmed by reading the method
+    before this change — and `run_arrow`/`run_arrow_stream` did the same via
+    `adbc_driver_postgresql.dbapi.connect`. Bind params were already correct end-to-end
+    (`$N` placeholders preserved through `provisa/compiler/pk_bounds.py` and
+    `provisa/pgwire/_pipeline.py`, `cur.execute(sql, params)` throughout) — the defect was purely
+    connection lifecycle. A fresh connection per call means a fresh backend Postgres session per
+    call, which pays a full TCP+auth handshake every time and never lets Postgres's own
+    server-side generic-plan-after-5-executions optimization engage for a repeated-shape query
+    (that optimization is scoped to one session). Specific to the pg engine
+    (`PROVISA_ENGINE=pg`) — the duckdb engine already reuses one persistent connection
+    (`provisa/federation/duckdb_runtime.py`), no equivalent gap there; clickhouse/sqlalchemy
+    runtimes were not investigated and are out of scope.
+
+    Fixed by adding a per-instance connection pool: `self._read_pool`, a
+    `psycopg2.pool.ThreadedConnectionPool(minconn=1, maxconn=10)`, created in `__init__` and
+    scoped to the owning `PgFederationRuntime` instance (never a process-global singleton — same
+    per-instance reasoning `registered_tables_cache.py` documents: two unrelated runtime instances
+    must never share pooled connections). `run_sync` borrows a connection with `getconn()` and
+    returns it with `putconn()` in the stream's `on_close`, or `putconn(..., close=True)` to
+    discard it if the borrow's own setup (`cursor()`/`execute()`) raises before `on_close` exists
+    to release it normally. `psycopg2.pool`'s own `putconn` already checks
+    `transaction_status` and discards a connection whose backend session is gone
+    (`TRANSACTION_STATUS_UNKNOWN`) rather than returning it for reuse — a dead pooled connection
+    surfaces as a real error on its next borrow, never silently retried.
+
+    `run_arrow`/`run_arrow_stream` get the equivalent fix via a new hand-rolled
+    `_AdbcConnectionPool` (same file): `psycopg2.pool` only pools psycopg2 DBAPI connections, and
+    `adbc_driver_postgresql` has no pool of its own, so a new pooling *dependency* was avoided by
+    writing a minimal bounded pool (list + `threading.Condition`, same min=1/max=10 bounds) instead
+    — matches the "prefer what's already a dependency" constraint. Lazily created on first
+    `run_arrow`/`run_arrow_stream` call, since `adbc_driver_postgresql` is already an optional,
+    lazily-imported dependency in this file. `close()` drains and closes both pools alongside the
+    existing `self._con.close()`.
+  use_case: >-
+    perf-bench (`demo/named/perf/bench/run_benchmark.py --engine pg`) measurement work surfaced the
+    pg engine's per-query cost as dominated by connection setup rather than query execution itself
+    — traced to `run_sync`/`run_arrow` opening a fresh connection on every call instead of reusing
+    one across a session, unlike the duckdb engine.
+  code:
+    - provisa/federation/pg_runtime.py
+  tests:
+    - tests/unit/federation/test_pg_runtime_pool.py
+  scenario: |
+    Given a PgFederationRuntime instance
+    When run_sync is called twice in a row for the same or different SQL
+    Then no new psycopg2 connection is opened for either call — both borrow from and return to
+    self._read_pool, reusing the same underlying connection
+
+    Given a connection borrowed from self._read_pool whose cursor.execute raises
+    When run_sync's setup fails
+    Then the broken connection is discarded (closed), not returned to the pool for reuse, and the
+    exception propagates uncaught
+
+    Given a PgFederationRuntime instance
+    When close() is called
+    Then every connection in self._read_pool is closed
   target: "2026-Q3"

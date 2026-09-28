@@ -22,14 +22,78 @@ attach_source, ensure_materialize_attached.
 from __future__ import annotations
 
 import asyncio
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import psycopg2
+import psycopg2.pool
 
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.engine import build_pg_engine
 from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+
+# REQ-1895: run_sync/run_arrow/run_arrow_stream read-connection pool bounds — a fresh connection
+# per call (TCP + auth handshake, no server-side generic-plan reuse across calls) was measured as
+# the dominant per-query cost on the pg engine (perf-bench --engine pg). min=1 keeps one warm
+# connection idle-ready; max=10 is a sane fixed ceiling — no existing per-runtime tunable for this
+# in the module to inherit from (store_writer.py's create_engine_from_url(pool_size=1) is the
+# closest existing convention: a small fixed pool per store connection, not a config knob).
+_POOL_MINCONN = 1
+_POOL_MAXCONN = 10
+
+
+class _AdbcConnectionPool:
+    """Minimal thread-safe bounded pool for ADBC connections (``run_arrow``/``run_arrow_stream``).
+
+    Scoped per ``PgFederationRuntime`` instance — same reasoning as
+    ``registered_tables_cache.py``'s per-instance cache: two unrelated runtime instances must never
+    share pooled connections. ``psycopg2.pool`` only pools psycopg2 DBAPI connections; there is no
+    equivalent built into ``adbc_driver_postgresql``, so this hand-rolled pool is used instead of
+    adding a new pooling dependency (matches the "prefer what's already a dependency" constraint).
+
+    No liveness probe on borrow: psycopg2's pool can cheaply read a connection's
+    ``transaction_status`` before reuse (see ``run_sync``'s pool below); ADBC exposes no equivalent
+    state check. A dead pooled connection therefore surfaces as a real ``execute()`` failure to the
+    caller, who must call ``discard()`` (closes it, lets the pool create a fresh one on the next
+    ``getconn()``) rather than this pool silently retrying or swallowing the error."""
+
+    def __init__(self, dsn: str, *, minconn: int, maxconn: int) -> None:
+        from adbc_driver_postgresql import dbapi as adbc_pg
+
+        self._connect = lambda: adbc_pg.connect(dsn)
+        self._maxconn = maxconn
+        self._pool: list[Any] = [self._connect() for _ in range(minconn)]
+        self._created = minconn
+        self._lock = threading.Lock()
+        self._not_empty = threading.Condition(self._lock)
+
+    def getconn(self) -> Any:
+        with self._lock:
+            while True:
+                if self._pool:
+                    return self._pool.pop()
+                if self._created < self._maxconn:
+                    self._created += 1
+                    return self._connect()
+                self._not_empty.wait()
+
+    def putconn(self, con: Any) -> None:
+        with self._lock:
+            self._pool.append(con)
+            self._not_empty.notify()
+
+    def discard(self, con: Any) -> None:
+        con.close()
+        with self._lock:
+            self._created -= 1
+            self._not_empty.notify()
+
+    def closeall(self) -> None:
+        with self._lock:
+            for con in self._pool:
+                con.close()
+            self._pool.clear()
 
 
 class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
@@ -42,6 +106,16 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         # store is configured. Landed/cached rows live in a schema this same connection reads.
         self._materialize_dsn = materialize_dsn
         self._raw_attached: set[str] = set()
+        # REQ-1895: run_sync's read path borrows from this pool instead of opening a fresh
+        # psycopg2 connection per call — scoped to THIS runtime instance (never a process-global
+        # pool; see _AdbcConnectionPool's docstring for why).
+        self._read_pool = psycopg2.pool.ThreadedConnectionPool(
+            _POOL_MINCONN, _POOL_MAXCONN, engine_dsn
+        )
+        # run_arrow/run_arrow_stream's ADBC pool — created lazily on first use since
+        # adbc_driver_postgresql is an optional dependency, matching the existing lazy import in
+        # run_arrow/run_arrow_stream below.
+        self._adbc_pool: _AdbcConnectionPool | None = None
         # land_table/apply_cdc_events's dedicated single-worker executor — NOT the loop's default
         # pool. Same reasoning as DuckDBFederationRuntime._land_executor: self._con is ONE shared
         # connection, and dispatching writes against it via the default (multi-worker) executor
@@ -350,24 +424,34 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         A psycopg2 default cursor buffers the entire result client-side on ``execute``, so ``fetchmany``
         alone would not bound memory. Genuine streaming needs a SERVER-SIDE (named) cursor, which holds
         an open portal and thus requires a transaction — incompatible with the engine connection's
-        ``autocommit``. So the read runs on a DEDICATED short-lived connection (autocommit off): the
-        named cursor pulls ``itersize`` rows per round-trip from Postgres, peak memory bounded by one
-        batch. The cursor/transaction/connection all close when the stream drains (``on_close``). A
-        private connection also isolates the open portal from the autocommit write/cache connection and
-        from other concurrent streams. Consumers that call ``.rows`` still get the full list — the
-        buffering is then explicit at their call site (REQ-1217)."""
-        read_con = psycopg2.connect(self._engine_dsn)
-        cur = read_con.cursor(name="provisa_stream")  # named ⇒ server-side portal
-        cur.itersize = _STREAM_BATCH_ROWS
-        cur.execute(sql, params or None)
-        # psycopg2 populates a NAMED cursor's ``.description`` only after the first FETCH, so peek one
-        # batch to force the portal and expose the columns before building the stream.
-        first = cur.fetchmany(_STREAM_BATCH_ROWS)
+        ``autocommit``. So the read runs on a connection BORROWED FROM ``self._read_pool`` (autocommit
+        off): the named cursor pulls ``itersize`` rows per round-trip from Postgres, peak memory bounded
+        by one batch. The cursor closes and the connection returns to the pool when the stream drains
+        (``on_close``) — REQ-1895: reusing pooled backend sessions (instead of a brand-new connection,
+        and thus a brand-new Postgres backend, per call) lets Postgres's own server-side generic-plan-
+        after-5-executions optimization actually engage for a repeated-shape query, and avoids paying a
+        fresh TCP+auth handshake on every single query. A pooled connection also isolates the open
+        portal from the autocommit write/cache connection and from other concurrent streams, same as
+        the prior dedicated-connection isolation. Consumers that call ``.rows`` still get the full list
+        — the buffering is then explicit at their call site (REQ-1217)."""
+        read_con = self._read_pool.getconn()
+        try:
+            cur = read_con.cursor(name="provisa_stream")  # named ⇒ server-side portal
+            cur.itersize = _STREAM_BATCH_ROWS
+            cur.execute(sql, params or None)
+            # psycopg2 populates a NAMED cursor's ``.description`` only after the first FETCH, so peek
+            # one batch to force the portal and expose the columns before building the stream.
+            first = cur.fetchmany(_STREAM_BATCH_ROWS)
+        except Exception:
+            # Setup failed before the stream/on_close path exists to return this connection —
+            # discard it (don't return a possibly-mid-transaction connection to the pool for reuse).
+            self._read_pool.putconn(read_con, close=True)
+            raise
 
         def _close(*_: Any) -> None:
             cur.close()
             read_con.commit()
-            read_con.close()
+            self._read_pool.putconn(read_con)
 
         if not cur.description:  # non-row-returning statement — drain now
             _close()
@@ -387,36 +471,50 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
 
     # -- Arrow transport (ADBC zero-copy) (REQ-1220) ---------------------------
 
+    def _get_adbc_pool(self) -> _AdbcConnectionPool:
+        if self._adbc_pool is None:
+            self._adbc_pool = _AdbcConnectionPool(
+                self._engine_dsn, minconn=_POOL_MINCONN, maxconn=_POOL_MAXCONN
+            )
+        return self._adbc_pool
+
     def run_arrow(self, sql: str, params: list | None = None) -> Any:
         """Execute governed physical SQL and return a ``pyarrow.Table`` via the ADBC PostgreSQL
         driver's native Arrow reader — Postgres rows are decoded straight into Arrow, so NO Python
         rows are materialized for the Flight/airport transport (zero-copy relative to the row path).
 
-        A dedicated short-lived ADBC connection isolates the read from the engine's psycopg2
-        write/cache connection; it closes when the table is built (REQ-1220)."""
-        from adbc_driver_postgresql import dbapi as adbc_pg
-
-        con = adbc_pg.connect(self._engine_dsn)
+        The connection is BORROWED from ``self._adbc_pool`` (REQ-1895 — same fresh-connection-per-
+        call cost as ``run_sync`` before pooling, isolated here from the engine's psycopg2
+        write/cache connection) and returned when the table is built, or discarded on failure."""
+        pool = self._get_adbc_pool()
+        con = pool.getconn()
         try:
             cur = con.cursor()
             cur.execute(sql, params or None)
-            return cur.fetch_arrow_table()
-        finally:
-            con.close()
+            table = cur.fetch_arrow_table()
+        except Exception:
+            pool.discard(con)
+            raise
+        pool.putconn(con)
+        return table
 
     def run_arrow_stream(self, sql: str, params: list | None = None) -> tuple[Any, Any]:
         """Execute governed physical SQL and return ``(schema, batch_generator)`` for lazy
         record-batch streaming. ADBC's ``fetch_record_batch`` yields an Arrow ``RecordBatchReader``
         that pulls batches from the Postgres server on demand, so the full result never materializes
-        — peak memory is bounded by one batch. The dedicated ADBC connection closes when the
-        generator drains or the consumer stops early (REQ-1220)."""
-        from adbc_driver_postgresql import dbapi as adbc_pg
-
-        con = adbc_pg.connect(self._engine_dsn)
-        cur = con.cursor()
-        cur.execute(sql, params or None)
-        reader = cur.fetch_record_batch()
-        schema = reader.schema
+        — peak memory is bounded by one batch. The ADBC connection (from ``self._adbc_pool``,
+        REQ-1895) returns to the pool when the generator drains or the consumer stops early, or is
+        discarded on setup failure."""
+        pool = self._get_adbc_pool()
+        con = pool.getconn()
+        try:
+            cur = con.cursor()
+            cur.execute(sql, params or None)
+            reader = cur.fetch_record_batch()
+            schema = reader.schema
+        except Exception:
+            pool.discard(con)
+            raise
 
         def _batches() -> Any:
             try:
@@ -424,7 +522,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                     yield batch
             finally:
                 cur.close()
-                con.close()
+                pool.putconn(con)
 
         return schema, _batches()
 
@@ -446,3 +544,6 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
 
     def close(self) -> None:
         self._con.close()
+        self._read_pool.closeall()
+        if self._adbc_pool is not None:
+            self._adbc_pool.closeall()
