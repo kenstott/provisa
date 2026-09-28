@@ -545,54 +545,21 @@ async def _govern_and_route_planned(
     raw_sql, embedded_params = extract_params_comment(sql)
     raw_sql, sql_opts_out = extract_relationship_guard_comment(raw_sql)
 
-    normalized_sql = raw_sql
+    # REQ-1866: parse + REQ-1159's inline-command-localization check + REQ-1317's metric
+    # expansion — the pure pre-governance stage, cached by (role, exact SQL text, schema
+    # generation) when the earlier call found no inline command to localize (a hit that DID
+    # localize a command is never cached — see prepare_front_end's own docstring for why).
+    # Governance/routing below this point are untouched and always run per call, on every hit
+    # or miss alike.
+    from provisa.compiler.prepared import prepare_front_end
+
     try:
-        _parsed_input = sqlglot.parse_one(normalized_sql, read="postgres")
+        _front = await prepare_front_end(raw_sql, role_id, state, _localize_inline_commands)
     except Exception as exc:
         raise ValueError(f"SQL parse error: {exc}") from exc
-
-    # REQ-1159: localize any INLINE command call (a registered command composed within this statement
-    # — joined/sub-queried) BEFORE governance/validation/routing. Each command runs via the shared
-    # governed executor (its own input governance + I/O contract enforced there) and its call site is
-    # replaced by a typed local relation, so the rest of the pipeline sees ordinary relations. A hit
-    # forces local (engine) execution — an inline local relation cannot be pushed to a remote source.
-    _localized = await _localize_inline_commands(_parsed_input, role_id, state)
-    if _localized:
-        normalized_sql = _parsed_input.sql(dialect="postgres")
-
-    # REQ-1317: expand queries against the reserved `metrics` schema (metrics.<name>) into the
-    # real grouped aggregate over the underlying semantic tables BEFORE governance, so RLS and
-    # masking apply to the real columns the metric reads. Mirrors the inline-command localization
-    # stage above: rewrite the tree, then re-serialize normalized_sql from it.
-    from provisa.compiler.metric_expand import expand_metric_query
-
-    _metric_registry = getattr(state, "metrics", {})
-    # REQ-1322: the expansion in semantic terms, carried on the plan so the explain surface can
-    # report the form a user may paste back into an editor (see _Plan.semantic_sql).
-    _metric_semantic_sql: str | None = None
-    if _metric_registry:
-        _metric_tables = {
-            t["table_name"]: {
-                "id": t["id"],
-                "columns": [c["column_name"] for c in t.get("columns", [])],
-            }
-            for t in getattr(state, "tables", [])
-        }
-        _expanded = expand_metric_query(
-            _parsed_input,
-            _metric_registry,
-            _metric_tables,
-            getattr(state, "relationships", []),
-        )
-        if _expanded is not None:
-            _parsed_input = _expanded
-            normalized_sql = _parsed_input.sql(dialect="postgres")
-            _metric_semantic_sql = normalized_sql
-            # REQ-1319: metric evaluations are traced — the expanded SQL is recorded as a
-            # pipeline stage event, same idiom as govern.in/govern.out.
-            from provisa.observability.stage_trace import trace_stage
-
-            trace_stage("metric.expand", normalized_sql)
+    normalized_sql = _front.normalized_sql
+    _parsed_input = _front.parsed
+    _metric_semantic_sql = _front.metric_semantic_sql
 
     _reject_physical_source_refs(_parsed_input, state)
     _reject_view_writes(_parsed_input, state)  # REQ-1157: view/MV-backed relations are query-only

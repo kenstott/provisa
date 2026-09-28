@@ -1714,6 +1714,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
         async with pool.acquire() as conn:
             await role_repo.upsert(cast("Connection", conn), model)
+        # A new role has no state.schemas[role_id]/state.contexts[role_id] until some rebuild
+        # runs; without this, the role is unusable until an unrelated mutation happens to trigger
+        # one, and any prepared-plan cache keyed on schema_version would never see this role exist.
+        await _rebuild_schemas()
         return MutationResult(
             success=True,
             message=f"Role {input.id!r} created",
@@ -2059,6 +2063,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 )
             deleted = await role_repo.delete(cast("Connection", conn), id)
         if deleted:
+            # state.contexts/schemas[role_id] must not survive a deleted role — see create_role's
+            # matching rebuild for why this can't wait for an unrelated mutation.
+            await _rebuild_schemas()
             return MutationResult(
                 success=True,
                 message=f"Role {id!r} deleted",
@@ -2131,6 +2138,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 await rls_repo.upsert(cast("Connection", conn), model)
         except ValueError as e:
             return MutationResult(success=False, message=str(e))
+        # state.rls_contexts[role_id] is only ever populated by _rebuild_schemas's own
+        # build_rls_context call — without this, a saved rule has no effect until an unrelated
+        # mutation happens to trigger a rebuild first.
+        await _rebuild_schemas()
         target = f"domain {input.domain_id!r}" if input.domain_id else f"table {input.table_id!r}"
         return MutationResult(
             success=True,
@@ -2180,6 +2191,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 action_name=action_name,
             )
         if deleted:
+            # See upsert_rls_rule's matching rebuild — a deleted rule must stop being enforced
+            # immediately, not wait for an unrelated mutation to refresh state.rls_contexts.
+            await _rebuild_schemas()
             return MutationResult(
                 success=True, message="RLS rule deleted", code="schema.rls_rule_deleted"
             )
@@ -3126,6 +3140,9 @@ async def _upsert_action_rls_rule(
             cast("Connection", conn),
             RLSRuleModel(action_name=name, role_id=input.role_id, filter=input.filter_expr),
         )
+    # See upsert_rls_rule's own matching rebuild — this action-RLS path bypasses that function
+    # entirely (early-returns before it), so it needs the identical rebuild call itself.
+    await _rebuild_schemas()
     return MutationResult(
         success=True,
         message=f"RLS rule for action {name!r} / role {input.role_id!r} saved",
