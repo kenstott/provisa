@@ -189,6 +189,10 @@ jobs:
         run: |
           set -o pipefail
           python -m venv /tmp/toolchain-venv
+          # Upgrade the venv's own bootstrapped pip BEFORE installing anything else, or pip-audit
+          # (below) audits and fails on CVEs in that stale bootstrapped pip itself — not on
+          # anything this job actually builds or ships.
+          /tmp/toolchain-venv/bin/pip install --upgrade pip -q
           /tmp/toolchain-venv/bin/pip install --upgrade build cyclonedx-bom pip-audit -q
           mkdir -p sbom
           /tmp/toolchain-venv/bin/cyclonedx-py environment --of JSON \
