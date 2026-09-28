@@ -64251,7 +64251,10 @@
     a simple lookup — this remains true; mongo_fdw does not currently offer a working alternative.
     provisa/federation/query_residency.py's row_materialize mechanism (REQ-1865,
     make_mongodb_keyed_loader) already gives MongoDB per-key freshness without a full replica scan,
-    which stays the recommended path for MongoDB sources until/unless mongo_fdw is fixed upstream.
+    which stays the recommended path for MongoDB sources until/unless mongo_fdw is fixed upstream —
+    OR see REQ-1871: Supabase `wrappers`' independent MongoDB implementation was live-tested
+    against the same instance and works correctly, so that is the more promising live-attach path
+    for MongoDB specifically, not further mongo_fdw investigation.
   code: []
   rejection_reason: >-
     Live-tested 2026-09-28 against MongoDB 7.0.43 + mongo_fdw 5.5.3 (PGDG Debian trixie build):
@@ -64294,23 +64297,34 @@
   status: proposed
   group: "4. Source Connectors"
   category: Federation
-  priority: MAY
+  priority: SHOULD
   type: structural
   description: >-
-    Evaluate replacing/supplementing REQ-1869/REQ-1870's hand-rolled per-source C FDWs with
-    Supabase's `wrappers` framework (github.com/supabase/wrappers, Apache-2.0, pgrx/Rust) as
-    provisa_pg_ext's general mechanism for adding new live-attach source types. One native binary
-    per platform (same packaging shape as today) plus a WASM guest-module mode — a
-    platform-independent package per additional source, sidestepping the per-source native-compile
-    step build_pg_extensions.sh otherwise needs for each new FDW. Already covers bigquery,
-    clickhouse, iceberg, duckdb, and several source types Provisa has NO live reach for today at
-    all (Airtable, Stripe, HubSpot, Notion, Auth0, AWS Cognito, Cloudflare D1, S3, Logflare,
-    Calendly) — a candidate path to close those gaps without a bespoke connector per type.
+    (Amended 2026-09-28, LIVE-TESTED — mixed, per-source verdict:) Evaluate Supabase's `wrappers`
+    framework (github.com/supabase/wrappers, Apache-2.0, pgrx/Rust) as a SUPPLEMENT to, not a
+    wholesale replacement of, REQ-1869/REQ-1870's dedicated per-source FDWs. Installs as a single
+    prebuilt .deb per PG major version (github.com/supabase/wrappers/releases,
+    wrappers-v0.6.3-pg16-amd64-linux-gnu.deb — no build step, confirmed live) covering many source
+    types at once. LIVE RESULTS: (1) its MongoDB wrapper (`mongodb_wrapper`/
+    `mongodb_fdw_handler`) WORKS CORRECTLY against the exact MongoDB 7.0.43 instance mongo_fdw
+    (REQ-1869) failed against — real data, correct values, exact filtered count — a genuinely
+    superior, working alternative for MongoDB specifically, since it's a distinct Rust
+    implementation not sharing mongo_fdw's upstream bug. (2) its ClickHouse wrapper
+    (`clickhouse_wrapper`/`click_house_fdw_handler`) is LESS mature than REQ-1870's pg_clickhouse:
+    `count(*)` works, but selecting an actual `LowCardinality(String)` column fails
+    ("column data type 'LowCardinality(String)' is not supported") — a real type-mapping gap
+    pg_clickhouse doesn't have; also no IMPORT FOREIGN SCHEMA and only native TCP ports (9000/9440,
+    not HTTP 8123/8443). Verdict: use `wrappers` per-source where it's the best/only working
+    option (MongoDB is the clear case now), not as a blanket replacement — REQ-1870's pg_clickhouse
+    stays the better ClickHouse choice. Also covers source types Provisa has NO live reach for at
+    all today (Airtable, Stripe, HubSpot, Notion, Auth0, AWS Cognito, Cloudflare D1, S3, Logflare,
+    Calendly) — untested this session, worth a follow-up pass.
   use_case: >-
-    A single actively-maintained framework, rather than N separately-sourced/maintained C FDWs of
-    varying license/maintenance quality (REQ-1869/1870 already flag mongo_fdw's LGPLv3 status and
-    clickhouse_fdw's fork history as things to track per-FDW) — reduces the ongoing maintenance
-    surface of provisa_pg_ext and could open several currently-unreached source types at once.
+    Confirmed this session: mongo_fdw (REQ-1869) is genuinely broken upstream, and `wrappers`'
+    independent Rust implementation is a working replacement for MongoDB specifically, found
+    without needing to patch or wait on EnterpriseDB. A single .deb also opens several
+    currently-unreached source types (Airtable/Stripe/HubSpot/etc.) cheaply, worth prioritizing
+    once REQ-1873's install-script work exists to package it consistently with the other FDWs.
   code:
     - scripts/ci/build_pg_extensions.sh
     - provisa/federation/connector_duckdb.py
