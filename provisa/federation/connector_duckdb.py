@@ -1091,6 +1091,116 @@ class PgDuckdbDatabricksIcebergConnector(_PgDuckdbScanConnector):  # REQ-1867
         }
 
 
+def _resolve_biglake_metadata_location(source: Source) -> str:
+    """Resolve a BigLake Iceberg table's CURRENT ``metadata-location`` from BigLake Metastore's
+    Iceberg REST Catalog (REQ-1867).
+
+    Config follows the existing BigQuery driver's per-source convention (``executor/drivers/
+    bigquery.py``): ``database`` is the project, ``federation_hints`` carries ``credentials_path``/
+    ``credentials_json`` (falls back to Application Default Credentials when absent) plus the
+    BigLake-specific ``biglake_catalog``/``biglake_namespace``/``biglake_table`` identifying the table.
+    No fallback for the identifying fields — a source missing any of them cannot be resolved.
+    """
+    project = source.database or source.host
+    if not project:
+        raise ValueError("bigquery iceberg source requires a project (source database)")
+    catalog = source.federation_hints.get("biglake_catalog")
+    if not catalog:
+        raise ValueError("bigquery iceberg source requires federation_hints['biglake_catalog']")
+    namespace = source.federation_hints.get("biglake_namespace")
+    if not namespace:
+        raise ValueError("bigquery iceberg source requires federation_hints['biglake_namespace']")
+    table = source.federation_hints.get("biglake_table")
+    if not table:
+        raise ValueError("bigquery iceberg source requires federation_hints['biglake_table']")
+
+    import google.auth
+    import google.auth.transport.requests
+    import httpx
+
+    scopes = ["https://www.googleapis.com/auth/bigquery"]
+    if source.federation_hints.get("credentials_path"):
+        from google.oauth2 import service_account
+
+        credentials = service_account.Credentials.from_service_account_file(
+            source.federation_hints["credentials_path"], scopes=scopes
+        )
+    elif source.federation_hints.get("credentials_json"):
+        import json
+
+        from google.oauth2 import service_account
+
+        credentials = service_account.Credentials.from_service_account_info(
+            json.loads(source.federation_hints["credentials_json"]), scopes=scopes
+        )
+    else:
+        credentials, _ = google.auth.default(scopes=scopes)
+    credentials.refresh(google.auth.transport.requests.Request())
+
+    # BigLake Metastore's Iceberg REST Catalog implements the Apache Iceberg REST spec's
+    # LoadTable endpoint; the response's "metadata-location" is the table's current metadata pointer.
+    url = (
+        "https://biglake.googleapis.com/iceberg/v1/restcatalog/v1/"
+        f"projects/{project}/catalogs/{catalog}/namespaces/{namespace}/tables/{table}"
+    )
+    response = httpx.get(url, headers={"Authorization": f"Bearer {credentials.token}"})
+    response.raise_for_status()
+    return response.json()["metadata-location"]
+
+
+class PgDuckdbBigQueryIcebergConnector(_PgDuckdbScanConnector):  # REQ-1867
+    """Attach a BigQuery BigLake Iceberg table IN PLACE via pg_duckdb's iceberg_scan, pointed at the
+    LIVE ``metadata_location`` resolved from BigLake Metastore's Iceberg REST Catalog.
+
+    Unlike ``PgDuckdbIcebergConnector`` (a bare storage path, no catalog awareness), ``details()``
+    resolves the table's current metadata pointer on every call, so the scan always reads the latest
+    committed snapshot. This is an ADDITIONAL reach mode for ``bigquery`` sources — alongside the
+    existing DIRECT (materialize-required) reach (``executor/drivers/bigquery.py``), not a replacement:
+    a source's ``mechanisms`` advertises both, and the planner/source UI pick between them (REQ-947).
+    """
+
+    source_type = "bigquery"
+    _reader = "iceberg_scan"
+    _scan_args = ", allow_moved_paths := true"
+    key = "pg_duckdb_bigquery_iceberg"
+    mechanism = Mechanism.ATTACH_R  # live BigLake-catalog-resolved scan, read-only (REQ-1867)
+    mechanisms = frozenset({Mechanism.ATTACH_R, Mechanism.DIRECT})
+    runtime_deps = (
+        RuntimeDep("libduckdb", DriverProvider.BUNDLED),  # the embedded DuckDB engine
+        # aws-sdk-cpp / avro-c / roaring — static-linked into libduckdb via vcpkg
+        RuntimeDep("aws-sdk-cpp / avro-c / roaring", DriverProvider.BUNDLED),
+        RuntimeDep("google-auth", DriverProvider.BUNDLED),  # BigLake REST catalog auth
+    )
+
+    async def probe(self, fetch) -> ProbeResult:  # REQ-904/1867
+        base = await super().probe(fetch)
+        if not base.available:
+            return base
+        if not await fetch("SELECT 1 FROM pg_proc WHERE proname = 'iceberg_scan'"):
+            return ProbeResult(
+                False,
+                "pg_duckdb is loaded but was built without the iceberg extension",
+                "rebuild pg_duckdb with the iceberg DuckDB extension (vcpkg)",
+            )
+        try:
+            import google.auth  # noqa: F401
+        except ImportError:
+            return ProbeResult(
+                False,
+                "google-auth not installed",
+                "install google-cloud-bigquery (pulls in google-auth)",
+            )
+        return ProbeResult(True, "pg_duckdb with iceberg extension and google-auth available")
+
+    def details(self, source: Source) -> dict:
+        metadata_location = _resolve_biglake_metadata_location(source)
+        return {
+            "requires_preload": "pg_duckdb",
+            "reader": self._reader,
+            "scan": f"{self._reader}('{metadata_location}'{self._scan_args})",
+        }
+
+
 class PgDuckdbDeltaConnector(_PgDuckdbScanConnector):  # REQ-900
     """Attach a Delta Lake table IN PLACE via pg_duckdb's delta_scan (DuckDB delta extension).
 

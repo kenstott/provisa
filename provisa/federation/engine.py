@@ -638,6 +638,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         FileFdwConnector,
         MysqlFdwConnector,
         OracleFdwConnector,
+        PgDuckdbBigQueryIcebergConnector,
         PgDuckdbCsvConnector,
         PgDuckdbDatabricksIcebergConnector,
         PgDuckdbDeltaConnector,
@@ -672,6 +673,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             # resolving Unity Catalog's live Iceberg metadata pointer per source (REQ-1867).
             PgDuckdbDatabricksIcebergConnector(),
             PgDuckdbDeltaConnector(),  # delta_lake (DuckDB delta ext; probe verifies it's compiled in)
+            PgDuckdbBigQueryIcebergConnector(),  # bigquery live BigLake Iceberg reach (REQ-1867)
             SqliteFdwConnector(),  # sqlite (system libsqlite3)
             MysqlFdwConnector(),  # mysql (needs a bundled client lib; probe-gated)
             TdsFdwConnector(),  # sqlserver via tds_fdw (bundled freetds; probe-gated)
