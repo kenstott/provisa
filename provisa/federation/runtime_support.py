@@ -29,9 +29,19 @@ from provisa.executor.result import (
     StreamStats,
 )
 
-# Rows pulled per fetchmany when streaming a DBAPI cursor. Bounds the in-memory
-# working set to one batch instead of the whole result (REQ-028).
-_STREAM_BATCH_ROWS = 1000
+# Rows pulled per fetchmany when streaming a DBAPI cursor. Bounds the in-memory working set to one
+# batch instead of the whole result (REQ-028). Shared by every row-cursor streaming consumer: gRPC's
+# ENGINE-route row stream, pgwire/Flight SQL's DIRECT-route stream (execute_native_stream,
+# _pg_passthrough_stream), pg_runtime's named-cursor stream, and sqlalchemy_runtime's yield_per stream
+# — each batch crosses a thread-pool or run_coroutine_threadsafe hop, so a small batch means many hops
+# for a large scan. Matches _ARROW_STREAM_BATCH_ROWS (REQ-1893): the memory-bounded integration suite
+# (tests/integration/test_streaming_memory_bounded_e2e.py) measures a comparable 3-column row's total
+# materialized footprint at ~215 bytes/row (~1 GiB / 5,000,000 rows), so a 65,536-row batch of plain
+# Python tuples costs on the order of 10-20 MiB — trivial against that suite's 400 MiB RLIMIT_AS
+# headroom and 500 MiB peak-RSS ceiling. A row-cursor batch (Python objects/protobuf messages) is not
+# as cheap per row as Arrow's columnar buffers, but nothing here depends on it staying near 1000; the
+# REQ-028 guarantee is "one batch, not the whole result", not a specific batch size.
+_STREAM_BATCH_ROWS = 65_536
 
 # Rows folded into one Arrow RecordBatch by the generic row→Arrow adapter (REQ-1219). Larger than
 # the DBAPI fetch batch: an Arrow batch is columnar and cheap to hold, and fewer/larger batches cut
