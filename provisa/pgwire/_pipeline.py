@@ -1432,6 +1432,31 @@ async def govern_batch_final_plan(
     return await _govern_and_route(statements[-1], role_id, session_vars=session_vars)
 
 
+async def govern_batch_final_plan_with_fn(
+    sql: str,
+    role_id: str,
+    state: Any | None = None,
+    *,
+    session_vars: dict[str, str] | None = None,
+) -> _Plan | QueryResult:
+    """``govern_batch_final_plan`` with the registered-function check folded into the SAME
+    coroutine (REQ-1887).
+
+    Matches pgwire's ``govern_pgwire_plan`` pattern (function-invocation check, then
+    governance, in one dispatch) for the Flight SQL DIRECT route: a `SELECT fn(...)` ticket
+    still short-circuits on the full ticket SQL before any statement splitting/governance,
+    exactly as the two separate cross-thread calls this replaces did — only the hop count
+    changes, not the check order or its inputs."""
+    from provisa.pgwire.function_call import maybe_invoke_registered_function
+
+    if state is None:
+        from provisa.api.app import state  # type: ignore[assignment]
+    fn_result = await maybe_invoke_registered_function(sql, role_id, state)
+    if fn_result is not None:
+        return fn_result
+    return await govern_batch_final_plan(sql, role_id, state, session_vars=session_vars)
+
+
 async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ-1044
     sql: str,
     role_id: str,

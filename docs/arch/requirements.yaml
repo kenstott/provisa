@@ -65174,7 +65174,7 @@
   target: "2026-Q3"
 
 - id: REQ-1887
-  status: proposed
+  status: complete
   group: "6. Execution, Routing, Caching & Performance"
   category: Flight/pgwire Dispatch
   priority: SHOULD
@@ -65194,6 +65194,13 @@
     dependency into fewer, batched coroutines that internally await multiple steps before
     returning across the bridge once, cutting hop count without touching who owns the event loop
     or the connection pools.
+
+    (Amended 2026-09-28, implemented: scope narrowed to `provisa/api/flight/server.py` only —
+    `provisa/pgwire/server.py`'s own ENGINE-route residency calls (`ensure_rows_resident` +
+    `pushdown_row_materialize` + `ensure_resident`, `provisa/pgwire/server.py:698-722`) were left
+    unfolded; pgwire already folded the function-invocation hop into `govern_pgwire_plan` before
+    this REQ existed, and folding its remaining 3 residency hops was out of scope for this pass —
+    a candidate follow-up, not done here.)
   use_case: >-
     Live-traced this session (`provisa/api/flight/server.py:220-234`'s `_run_on_loop`): Flight SQL
     pays 3 hops on every DIRECT-route request (`maybe_invoke_registered_function`,
@@ -65212,10 +65219,45 @@
     (matching pgwire's existing pattern) on the DIRECT route. A real before/after measurement
     needs live profiling (py-spy or `time.perf_counter()` bracketing under representative
     concurrent load) to confirm the estimate and quantify the actual win — not done here.
+
+    Implemented 2026-09-28: added `_prepare_engine_residency` (`provisa/api/flight/server.py`,
+    module-level, above `ProvisaFlightServer`) folding `ensure_rows_resident` +
+    `pushdown_row_materialize` + `ensure_resident` into ONE coroutine, called via a single
+    `_run_on_loop` dispatch from all three ENGINE-route call sites (`_do_get_cypher`,
+    `_do_get_sql_governed`, `_do_get_graphql`) — 3 hops each, down from 3. Added
+    `govern_batch_final_plan_with_fn` (`provisa/pgwire/_pipeline.py`, next to
+    `govern_batch_final_plan`) folding `maybe_invoke_registered_function` + governance into ONE
+    coroutine, matching `govern_pgwire_plan`'s existing pattern, and switched
+    `_do_get_sql_governed`'s DIRECT route to it. Hop counts (measured by call site, not
+    profiled): Flight DIRECT-route function-invocation short-circuit 2->1; Flight DIRECT-route
+    native execute 4->3 (govern+fn fold, then execute_native, then finalize_audit — the
+    non-streaming DIRECT branch was never explicitly counted in the original use_case, which
+    described only the streaming DIRECT branch's 3); Flight ENGINE route 6->3 (govern+fn fold +
+    residency fold + finalize_audit). No ordering/error-handling change: `ensure_rows_resident`
+    still runs before `pushdown_row_materialize` (REQ-1865's own ordering requirement, preserved
+    inside the folded coroutine) and its result still feeds `ensure_resident`; the
+    function-invocation check still runs on the full ticket SQL before any statement
+    splitting/governance, exactly as the two separate calls it replaces did.
   code:
     - provisa/api/flight/server.py
-    - provisa/pgwire/server.py
-  tests: []
+    - provisa/pgwire/_pipeline.py
+  tests:
+    - tests/unit/test_flight_server_helpers.py
+  scenario: |
+    Given a Flight SQL DIRECT-route ticket naming a registered function
+    When _do_get_sql_governed dispatches govern_batch_final_plan_with_fn
+    Then the function-invocation check and governance run in ONE _run_on_loop call, not two
+
+    Given a Flight SQL DIRECT-route ticket that is not a registered-function call
+    When _do_get_sql_governed governs it and executes it natively
+    Then govern+fn-check, execute_native, and finalize_audit are 3 _run_on_loop calls, not 4
+
+    Given a Flight SQL/GraphQL/Cypher ticket that routes to ENGINE
+    When _do_get_sql_governed/_do_get_graphql/_do_get_cypher prepare residency via
+    _prepare_engine_residency
+    Then ensure_rows_resident, pushdown_row_materialize, and ensure_resident run inside ONE
+    _run_on_loop call (still in that order, pushdown fed by the resident-rows step, ensure_resident
+    fed by pushdown's result), not three separate dispatches
   target: "2027-Q1"
 
 - id: REQ-1888

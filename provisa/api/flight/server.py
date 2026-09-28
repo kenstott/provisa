@@ -64,6 +64,27 @@ _CYPHER_PREFIX = re.compile(
 )
 
 
+async def _prepare_engine_residency(state, plan) -> None:
+    """Land ENGINE-route residency in ONE coroutine (REQ-1887).
+
+    ``ensure_rows_resident`` must run before ``pushdown_row_materialize`` (REQ-1865: the
+    key-pushdown probe needs directly-bound row_materialize tables populated first), and
+    ``pushdown_row_materialize``'s result feeds ``ensure_resident`` — a real data dependency
+    chain, but not a cross-thread one: all three already run on the main loop, so folding them
+    here cuts three ``_run_on_loop`` dispatches to one without changing order or arguments."""
+    from provisa.federation.query_residency import (
+        ensure_resident,
+        ensure_rows_resident,
+        pushdown_row_materialize,
+    )
+
+    await ensure_rows_resident(state, plan.pk_bounds)
+    pushed_down = await pushdown_row_materialize(
+        state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
+    )
+    await ensure_resident(state, plan.sources, pushed_down=pushed_down)
+
+
 async def _run_with_org(org_id: str | None, coro):
     """Bind ``current_org`` inside a loop coroutine (REQ-1266).
 
@@ -793,22 +814,11 @@ class ProvisaFlightServer(
         # ensure_resident call is the ONLY place a MATERIALIZED source this plan reads gets landed
         # before the engine executes — mirrors the identical ENGINE-route bypass fixes in
         # _do_get_sql_governed (this file) and provisa/pgwire/server.py.
-        from provisa.federation.query_residency import (
-            ensure_resident,
-            ensure_rows_resident,
-            pushdown_row_materialize,
-        )
-
         # REQ-1865: a directly-bound row_materialize table must be keyed-fetched before the
         # pushdown probe below runs, or a join where every table is row_materialize probes an
         # empty replica end to end (see provisa/pgwire/server.py's identical fix for why).
-        self._run_on_loop(ensure_rows_resident(self._state, plan.pk_bounds))
-        _pushed_down = self._run_on_loop(
-            pushdown_row_materialize(
-                self._state, physical_sql, self._state.federation_engine.dialect, plan.exec_params
-            )
-        )
-        self._run_on_loop(ensure_resident(self._state, plan.sources, pushed_down=_pushed_down))
+        # REQ-1887: folded into one _run_on_loop dispatch — see _prepare_engine_residency.
+        self._run_on_loop(_prepare_engine_residency(self._state, plan))
 
         def _run() -> list[dict[str, object]]:
             # On a worker thread — go through the sync engine terminal, not a raw cursor.
@@ -910,30 +920,33 @@ class ProvisaFlightServer(
     ):  # REQ-267, REQ-266  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute SQL through the shared governance pipeline and return Arrow record batches."""
         from provisa.compiler.sql_gen import ColumnRef
-        from provisa.pgwire._pipeline import govern_batch_final_plan, require_governed_plan
-        from provisa.pgwire.function_call import maybe_invoke_registered_function
+        from provisa.executor.result import QueryResult
+        from provisa.pgwire._pipeline import govern_batch_final_plan_with_fn, require_governed_plan
 
         sql = str(request.get("query", ""))
         role_id = str(request.get("role", "org_admin"))
 
         # REQ-1156: a `SELECT fn(...)` naming a registered command invokes it through the single
         # governed executor, matching pgwire/MCP — otherwise commands are dark over Flight SQL.
-        fn_result = self._run_on_loop(maybe_invoke_registered_function(sql, role_id, self._state))
-        if fn_result is not None:
-            columns = [
-                ColumnRef(field_name=c, column=c, alias=None, nested_in=None)
-                for c in fn_result.column_names
-            ]
-            table = rows_to_arrow_table(fn_result.rows, columns)
-            return self._license_stream(table, role_id)  # REQ-1137
-
+        # REQ-1887: the function-invocation check and governance now run in ONE coroutine
+        # (govern_batch_final_plan_with_fn, matching pgwire's govern_pgwire_plan pattern), cutting
+        # this from two _run_on_loop dispatches to one.
         try:
-            plan = self._run_on_loop(govern_batch_final_plan(sql, role_id, self._state))
+            result = self._run_on_loop(govern_batch_final_plan_with_fn(sql, role_id, self._state))
         except PermissionError as exc:
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         except ValueError as exc:
             raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
+        if isinstance(result, QueryResult):
+            columns = [
+                ColumnRef(field_name=c, column=c, alias=None, nested_in=None)
+                for c in result.column_names
+            ]
+            table = rows_to_arrow_table(result.rows, columns)
+            return self._license_stream(table, role_id)  # REQ-1137
+
+        plan = result
         require_governed_plan(
             plan
         )  # REQ-1176: verify at the last moment, before the engine executes
@@ -948,24 +961,8 @@ class ProvisaFlightServer(
                 # identical ENGINE-route bypass (provisa/pgwire/server.py). Confirmed live: a
                 # cross-engine federated_join touching a never-yet-landed ClickHouse table failed
                 # "Binder Error: Catalog ... does not exist" on both transports on a fresh boot.
-                from provisa.federation.query_residency import (
-                    ensure_resident,
-                    ensure_rows_resident,
-                    pushdown_row_materialize,
-                )
-
-                self._run_on_loop(ensure_rows_resident(self._state, plan.pk_bounds))
-                _pushed_down = self._run_on_loop(
-                    pushdown_row_materialize(
-                        self._state,
-                        plan.physical_sql,
-                        self._state.federation_engine.dialect,
-                        plan.exec_params,
-                    )
-                )
-                self._run_on_loop(
-                    ensure_resident(self._state, plan.sources, pushed_down=_pushed_down)
-                )
+                # REQ-1887: folded into one _run_on_loop dispatch — see _prepare_engine_residency.
+                self._run_on_loop(_prepare_engine_residency(self._state, plan))
                 # Streamed Arrow Flight is an advertised, engine-specific transport (REQ-825, REQ-145,
                 # REQ-1214): drain the engine's LAZY record-batch terminal so a large user result set
                 # never fully materializes on this transport (bounded by one batch, not total size).
@@ -1060,22 +1057,8 @@ class ProvisaFlightServer(
             # REQ-1661: this govern-then-stream terminal never reaches _execute_plan, so its own
             # ensure_resident call is the ONLY place a MATERIALIZED source this plan reads gets
             # landed before the engine executes — mirrors _do_get_sql_governed/_do_get_cypher.
-            from provisa.federation.query_residency import (
-                ensure_resident,
-                ensure_rows_resident,
-                pushdown_row_materialize,
-            )
-
-            self._run_on_loop(ensure_rows_resident(self._state, plan.pk_bounds))
-            _pushed_down = self._run_on_loop(
-                pushdown_row_materialize(
-                    self._state,
-                    plan.physical_sql,
-                    self._state.federation_engine.dialect,
-                    plan.exec_params,
-                )
-            )
-            self._run_on_loop(ensure_resident(self._state, plan.sources, pushed_down=_pushed_down))
+            # REQ-1887: folded into one _run_on_loop dispatch — see _prepare_engine_residency.
+            self._run_on_loop(_prepare_engine_residency(self._state, plan))
             # Streamed Arrow Flight is an advertised, engine-specific transport (REQ-825, REQ-145).
             try:
                 arrow_schema, batch_gen = self._state.federation_engine.execute_engine_stream(
