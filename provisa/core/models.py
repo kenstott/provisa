@@ -138,6 +138,35 @@ class SourceType(str, Enum):
     # great_expectations is Apache 2.0 and cloud-eligible).
     soda = "soda"
     great_expectations = "great_expectations"
+    # SaaS-API sources reached via Supabase `wrappers` (REQ-1871/1874) — each a STUB: the type is
+    # registrable, but no connector/dialect/driver reaches it yet. Per REQ-1874's isolation policy,
+    # each will attach through its own dedicated captive Postgres+wrappers instance (the
+    # pgwire-replica pattern, REQ-954/955/956), never bundled into the pg engine's own serving
+    # Postgres and never sharing a captive instance across two of these types. Full catalog per
+    # fdw.dev/catalog (2026-09-28): native wrappers already covered by an existing SourceType
+    # (bigquery, clickhouse, duckdb, iceberg, mongodb, mysql, redis, sqlserver — snowflake is a
+    # Wasm wrapper in their catalog, also already covered) are NOT duplicated here.
+    airtable = "airtable"
+    auth0 = "auth0"
+    aws_cognito = "aws_cognito"
+    dynamodb = "dynamodb"
+    firebase = "firebase"
+    logflare = "logflare"
+    s3 = "s3"  # generic S3 object access via wrappers — distinct from csv/parquet's own S3 paths
+    s3_vectors = "s3_vectors"
+    stripe = "stripe"
+    calcom = "calcom"
+    calendly = "calendly"
+    clerk = "clerk"
+    cloudflare_d1 = "cloudflare_d1"
+    gravatar = "gravatar"
+    hubspot = "hubspot"
+    infura = "infura"
+    notion = "notion"
+    orb = "orb"
+    paddle = "paddle"
+    shopify = "shopify"
+    slack = "slack"
 
 
 class Cardinality(str, Enum):
