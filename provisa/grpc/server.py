@@ -29,6 +29,14 @@ from google.protobuf.descriptor import FieldDescriptor
 
 log = logging.getLogger(__name__)
 
+# REQ-1899: rows per {Type}Batch message for the Query{Type}Batch RPC. Sized to stay comfortably
+# under gRPC's default 4MB max message size across arbitrary table widths without needing a
+# matching client/server max-message-length bump: live-measured payload for a 17-column table
+# averaged ~353 bytes/row (_payload_bytes' json.dumps estimate, run_benchmark.py) — protobuf is
+# typically denser than JSON (varint encoding, no repeated field names), so this is a conservative
+# upper bound. 5,000 rows/batch is ~1.8MB at that estimate, well under 4MB even for a wider table.
+_GRPC_BATCH_ROWS = 5_000
+
 
 def _proto_value(field, value):
     """Adapt a driver row value to the proto field's wire type.
@@ -187,6 +195,16 @@ class ProvisaServicer:  # REQ-045, REQ-143
                     yield msg
 
             return query_group_by_handler
+        # REQ-1899: Query{Type}Batch must resolve before the generic Query{Type} branch below —
+        # both prefixes also start with "Query" (same ordering concern as Aggregate/GroupBy above).
+        if name.startswith("Query") and name.endswith("Batch"):
+            type_name = name[len("Query") : -len("Batch")]
+
+            async def query_batch_handler(request, context):
+                async for msg in self._handle_query_batch(request, context, type_name):
+                    yield msg
+
+            return query_batch_handler
         if name.startswith("Query"):
             type_name = name[len("Query") :]
             # Convert PascalCase type name to snake_case field name
@@ -389,6 +407,51 @@ class ProvisaServicer:  # REQ-045, REQ-143
         try:
             async for _m in self._handle_query_bound(request, context, type_name, role_id):
                 yield self._meter_msg(_m)
+        finally:
+            if _org_token is not None:
+                from provisa.core.request_context import reset_current_org
+
+                reset_current_org(_org_token)
+
+    async def _handle_query_batch(self, request, context, type_name: str):
+        """REQ-1899: batched-rows counterpart to _handle_query — streams {Type}Batch messages
+        (repeated {Type} rows, up to _GRPC_BATCH_ROWS per message) instead of one {Type} message
+        per row. Reuses _handle_query_bound unchanged (same governance/routing/execution, same
+        per-row messages) and only changes how those messages reach the wire. Additive: the
+        existing per-row Query{Type} RPC and its handler are untouched, so no existing client
+        (internal or external) is affected by this at all.
+
+        Live-measured root cause this fixes (REQ-1898's amendment): a 2,000,000-row DIRECT scan
+        via the per-row RPC took ~190s — statistically unchanged whether the row fetch itself was
+        buffered or streamed — because each of 2,000,000 individual gRPC stream messages pays full
+        per-message framing/serialization/flow-control cost. Batching rows into fewer, larger
+        messages (mirroring Flight SQL's ~31 Arrow RecordBatches for the same data) amortizes that
+        cost across _GRPC_BATCH_ROWS rows instead of paying it per row."""
+        metadata = dict(context.invocation_metadata())
+        role_id = _rpc_role(metadata)
+        if not role_id:
+            await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
+            return
+        try:
+            _org_token = await self._bind_org(metadata)
+        except ValueError as exc:
+            await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
+            return
+        try:
+            batch_cls = getattr(self._pb2, f"{type_name}Batch", None)
+            if batch_cls is None:
+                await context.abort(
+                    grpc.StatusCode.INTERNAL, f"Unknown message type {type_name}Batch"
+                )
+                return
+            rows_buf: list = []
+            async for _m in self._handle_query_bound(request, context, type_name, role_id):
+                rows_buf.append(_m)
+                if len(rows_buf) >= _GRPC_BATCH_ROWS:
+                    yield self._meter_msg(batch_cls(rows=rows_buf))
+                    rows_buf = []
+            if rows_buf:
+                yield self._meter_msg(batch_cls(rows=rows_buf))
         finally:
             if _org_token is not None:
                 from provisa.core.request_context import reset_current_org

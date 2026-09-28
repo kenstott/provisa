@@ -122,6 +122,17 @@ class TestGenerateProto:
         assert "google.protobuf.Timestamp created_at = 2;" in proto
         assert "int32 id = 3;" in proto
 
+    def test_batch_message_and_rpc_generated(self):
+        # REQ-1899: additive batched-rows counterpart to the per-row Query{Type} RPC.
+        si = _make_si()
+        proto = generate_proto(si)
+
+        assert "message OrdersBatch {" in proto
+        assert "repeated Orders rows = 1;" in proto
+        assert "rpc QueryOrdersBatch(OrdersRequest) returns (stream OrdersBatch);" in proto
+        # The existing per-row RPC/message must be completely unchanged (additive, not replaced).
+        assert "rpc QueryOrders(OrdersRequest) returns (stream Orders);" in proto
+
     def test_call_command_rpc_generated(self):
         # REQ-1156: a single generic CallCommand RPC exposes every registered command over gRPC.
         si = _make_si()

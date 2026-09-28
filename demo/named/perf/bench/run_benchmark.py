@@ -853,12 +853,19 @@ class GrpcTransport(Transport):
         self._message_class_cache[full_name] = cls
         return cls
 
-    def run_grpc(self, spec: dict, params: dict) -> tuple[int, int, float]:
+    def run_grpc(self, spec: dict, params: dict, category: str = "") -> tuple[int, int, float]:
         assert self._channel is not None
         type_name = spec["type_name"]
         metadata = [("x-provisa-role", self._role)]  # matches every other transport's role
         batch: list = []
         estimator = _ByteEstimator()
+        # REQ-1899: a large scan-mode query uses the batched-rows RPC (Query{Type}Batch,
+        # {Type}Batch messages) instead of the per-row Query{Type} RPC — live-measured root cause
+        # of REQ-1898's amendment: one gRPC stream message per row pays per-message framing cost
+        # ~2,000,000 times for a 2M-row scan (~190s), vs Flight SQL's ~31 Arrow batches (~20s).
+        # Only scan-mode large-result queries opt in; group_by and small scans are unaffected and
+        # keep using the original per-row RPC unchanged.
+        use_batch = spec["mode"] == "scan" and category in _LARGE_RESULT_CATEGORIES
 
         # REQ-1860: {Type}Request.filter/{Type}GroupByRequest.filter ARE read server-side
         # (provisa/grpc/server.py:422-423,667-675 -> query_ir.grpc_table_to_semantic_sql /
@@ -870,8 +877,12 @@ class GrpcTransport(Transport):
         filter_dict = spec.get("filter")
         if spec["mode"] == "scan":
             request_cls = self._resolve_message_class(f"provisa.v1.{type_name}Request")
-            response_cls = self._resolve_message_class(f"provisa.v1.{type_name}")
-            rpc_name = f"Query{type_name}"
+            if use_batch:
+                response_cls = self._resolve_message_class(f"provisa.v1.{type_name}Batch")
+                rpc_name = f"Query{type_name}Batch"
+            else:
+                response_cls = self._resolve_message_class(f"provisa.v1.{type_name}")
+                rpc_name = f"Query{type_name}"
             # TEMPORARY (2026-09-26): matches queries.py's large_scan LIMIT 2000000 shrink — see
             # that comment. Restore limit=0 (unbounded) together with large_scan's own SQL text.
             request = request_cls(limit=2_000_000)
@@ -915,7 +926,13 @@ class GrpcTransport(Transport):
         from google.protobuf.json_format import MessageToDict
 
         for msg in stream(request, metadata=metadata):
-            batch.append(msg)
+            # REQ-1899: a batch-RPC response carries many rows in one message (msg.rows) — flatten
+            # into the same row-accumulator the per-row RPC fills one row at a time, so the rest of
+            # this method (sampling/estimation) is identical either way.
+            if use_batch:
+                batch.extend(msg.rows)
+            else:
+                batch.append(msg)
             if len(batch) >= _FETCH_BATCH_SIZE:
                 # Proto message -> dict conversion (MessageToDict) exists only so _payload_bytes
                 # can json.dumps a uniform row shape — a real client stays in typed proto
@@ -959,6 +976,8 @@ def _run_sequential(
                 n, byte_count, overhead_s = call(text, q.params, q.category)
             elif method == "graphql":
                 n, byte_count, overhead_s = call(text, q.params, no_cache=no_cache)
+            elif method == "grpc":
+                n, byte_count, overhead_s = call(text, q.params, q.category)
             else:
                 n, byte_count, overhead_s = call(text, q.params)
             # overhead_s (time spent computing _payload_bytes, and for Flight, Arrow->Python

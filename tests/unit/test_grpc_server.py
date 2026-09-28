@@ -173,6 +173,58 @@ class TestHandleQuery:
             mock_execute_plan.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_query_batch_groups_rows_into_batch_messages(self):
+        """REQ-1899: Query{Type}Batch streams {Type}Batch messages (repeated rows), grouping up
+        to _GRPC_BATCH_ROWS rows per message, instead of one message per row."""
+        from provisa.grpc.server import _GRPC_BATCH_ROWS
+
+        pb2, _ = _make_pb2_module("Orders", ["id", "amount"])
+        batch_cls = MagicMock()
+        pb2.OrdersBatch = batch_cls
+        state = _make_state()
+
+        servicer = ProvisaServicer(state, pb2, MagicMock())
+        context = AsyncMock(spec=grpc.aio.ServicerContext)
+        context.invocation_metadata.return_value = [("x-provisa-role", "admin")]
+        request = MagicMock()
+        request.limit = 0
+
+        from provisa.transpiler.router import Route
+
+        fake_plan = SimpleNamespace(route=Route.CACHE, source_id=None)
+        # One more row than _GRPC_BATCH_ROWS so two batch messages are emitted: a full one, then
+        # a one-row remainder — proves both the full-batch flush and the trailing partial flush.
+        n_rows = _GRPC_BATCH_ROWS + 1
+        fake_rows = [[i, float(i)] for i in range(n_rows)]
+        fake_result = SimpleNamespace(column_names=["id", "amount"], rows=fake_rows)
+
+        with (
+            patch(
+                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
+                return_value="SELECT id, amount FROM orders",
+            ),
+            patch(
+                "provisa.pgwire._pipeline._govern_and_route_compiled",
+                new_callable=AsyncMock,
+                return_value=fake_plan,
+            ),
+            patch(
+                "provisa.pgwire._pipeline._execute_plan",
+                new_callable=AsyncMock,
+                return_value=fake_result,
+            ),
+        ):
+            batches_yielded = []
+            async for msg in servicer._handle_query_batch(request, context, "Orders"):
+                batches_yielded.append(msg)
+
+            assert len(batches_yielded) == 2
+            first_call_kwargs = batch_cls.call_args_list[0].kwargs
+            second_call_kwargs = batch_cls.call_args_list[1].kwargs
+            assert len(first_call_kwargs["rows"]) == _GRPC_BATCH_ROWS
+            assert len(second_call_kwargs["rows"]) == 1
+
+    @pytest.mark.asyncio
     async def test_direct_route_takes_fast_path(self):
         """REQ-1891: DIRECT route bypasses _execute_plan (and its residency/freshness machinery)
         entirely and calls execute_native directly, mirroring Flight SQL's DIRECT fast path."""

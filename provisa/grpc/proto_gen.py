@@ -310,6 +310,18 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
         lines.append("}")
         lines.append("")
 
+        # REQ-1899: a batched-rows counterpart to the per-row Query{Type} RPC below — one
+        # {Type}Batch message carries up to _GRPC_BATCH_ROWS rows instead of one message per row,
+        # so a large scan pays gRPC/HTTP2 per-message framing/serialization overhead far less
+        # often (live-measured: 2,000,000 individual QueryOrderItems messages took ~190s vs.
+        # Flight SQL's ~20s for the same data — the per-row streaming contract, not fetch
+        # strategy, was the bottleneck; see REQ-1898's amendment). Additive: Query{Type} and
+        # {Type} are UNCHANGED, so every existing gRPC client keeps working exactly as before.
+        lines.append(f"message {t.type_name}Batch {{")
+        lines.append(f"  repeated {t.type_name} rows = 1;")
+        lines.append("}")
+        lines.append("")
+
         lines.append(f"message {t.type_name}Filter {{")
         filter_num = 1
         for col in sorted_cols:
@@ -401,6 +413,11 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
     for t in sorted(tables, key=lambda t: t.type_name):
         lines.append(
             f"  rpc Query{t.type_name}({t.type_name}Request) returns (stream {t.type_name});"
+        )
+        # REQ-1899: additive batched-rows RPC, same request shape, {Type}Batch response stream.
+        lines.append(
+            f"  rpc Query{t.type_name}Batch({t.type_name}Request) "
+            f"returns (stream {t.type_name}Batch);"
         )
         # REQ-1359: aggregate/group-by RPCs, gated the same way as GraphQL's
         # enable_aggregates/enable_group_by root fields.

@@ -66058,3 +66058,90 @@
     Then finalize_audit(plan, 500, state) is called and the stream's cursor/connection is closed
     exactly once via ds.close()
   target: "2026-Q3"
+
+- id: REQ-1899
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Batched gRPC Streaming
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    REQ-1898's amendment root-caused `large_scan via grpc`'s ~9.4x latency gap vs. Flight SQL
+    (~190s vs. ~20s for the identical 2,000,000-row scan) to `provisa/grpc/proto_gen.py:403`
+    generating `rpc Query{Type}({Type}Request) returns (stream {Type})` — ONE PROTOBUF MESSAGE PER
+    ROW. A 2,000,000-row scan pays gRPC/HTTP2 per-message framing/serialization/flow-control cost
+    2,000,000 times, vs. Flight's ~31 large columnar Arrow RecordBatches for the same data. Neither
+    the DB fetch strategy (REQ-1898) nor Python-side row/message construction (locally
+    micro-benchmarked at 2.65s for 2,000,000 rows) was the bottleneck — the wire contract itself
+    was.
+
+    Rejected: changing `Query{Type}`'s existing response shape from `stream {Type}` to
+    `stream {Type}Batch}` in place. Grepping the repo surfaced ~10 internal consumers of the
+    current per-row contract (`provisa/api/data/endpoint_grpc_proxy.py`,
+    `provisa/api/jsonapi/generator.py`, `provisa/api/rest/generator.py`,
+    `provisa/grpc_remote/executor.py`, `provisa/nl/executor.py`, plus several
+    integration/e2e tests) that would all need updating for a shape none of them asked for or
+    benefit from, on top of breaking any external gRPC client depending on the documented `stream
+    {Type}` contract. Not attempted unilaterally.
+
+    Fixed additively instead: a NEW `{Type}Batch` message (`repeated {Type} rows = 1;`) and a NEW
+    `rpc Query{Type}Batch({Type}Request) returns (stream {Type}Batch);` RPC generated alongside the
+    existing, completely UNCHANGED `Query{Type}`/`{Type}` — every existing gRPC client (internal or
+    external) keeps working exactly as before, with zero behavior change, since nothing about the
+    original RPC's generation or handling was touched.
+
+    Server-side: `provisa/grpc/server.py`'s dynamic `__getattr__` dispatch gained a
+    `Query{Type}Batch` branch (resolved before the generic `Query{Type}` branch, mirroring the
+    existing Aggregate/GroupBy suffix-ordering concern) routing to a new `_handle_query_batch`
+    method. It reuses `_handle_query_bound` completely unchanged (identical governance/routing/
+    execution/per-row messages) and only changes how those messages reach the wire: rows are
+    buffered into groups of `_GRPC_BATCH_ROWS` (5,000) and flushed as one `{Type}Batch(rows=[...])`
+    message, with a final partial flush for any remainder. `_GRPC_BATCH_ROWS` is sized to stay
+    comfortably under gRPC's default 4MB max message size across arbitrary table widths without
+    needing a matching client/server max-message-length bump — live-measured payload for a
+    17-column table averaged ~353 bytes/row (`_payload_bytes`' `json.dumps` estimate;
+    protobuf is typically denser), so 5,000 rows/batch (~1.8MB at that estimate) leaves comfortable
+    headroom even for a wider table. Egress metering is unaffected: `_meter_msg` reports
+    `msg.ByteSize()`, which for a batch message recursively includes every contained row's
+    serialized size, so a batched response is metered identically to the sum of its rows' individual
+    metered costs — no undercounting.
+
+    Client-side: `demo/named/perf/bench/run_benchmark.py`'s `GrpcTransport.run_grpc` gained a
+    `category` parameter (threaded through `_run_sequential`, matching how `run_sql` already
+    receives it) and opts into `Query{Type}Batch`/`{Type}Batch` only when
+    `spec["mode"] == "scan" and category in _LARGE_RESULT_CATEGORIES` — i.e. only `large_scan`/
+    `large_federated_join`-shaped queries. Every other query (point lookups, small scans,
+    group_by) is completely unaffected and keeps calling the original per-row RPC. The stream-
+    consumption loop flattens `msg.rows` into the same row accumulator the per-row RPC already
+    fills one row at a time, so the rest of the method (sampling/byte estimation) needed no other
+    change.
+  use_case: >-
+    Direct follow-up to the maintainer's "find a fix" after REQ-1898's amendment reported the real
+    root cause (one-message-per-row wire contract, not a fetch-strategy bug) rather than a working
+    fix for the 190s `large_scan via grpc` result flagged as "not an acceptable result".
+  code:
+    - provisa/grpc/proto_gen.py
+    - provisa/grpc/server.py
+    - demo/named/perf/bench/run_benchmark.py
+  tests:
+    - tests/unit/test_proto_gen.py
+    - tests/unit/test_grpc_server.py
+  scenario: |
+    Given a role's visible schema with table Orders
+    When generate_proto runs
+    Then it emits `message OrdersBatch { repeated Orders rows = 1; }` and
+    `rpc QueryOrdersBatch(OrdersRequest) returns (stream OrdersBatch);`, with
+    `rpc QueryOrders(OrdersRequest) returns (stream Orders);` completely unchanged
+
+    Given a Query{Type}Batch RPC call whose governed result has _GRPC_BATCH_ROWS + 1 rows
+    When _handle_query_batch streams the response
+    Then it yields exactly two {Type}Batch messages: one with _GRPC_BATCH_ROWS rows, one with the
+    single remaining row (proves both the full-batch flush and the trailing partial flush)
+
+    Given the benchmark harness's GrpcTransport running a scan-mode query
+    When the query's category is in _LARGE_RESULT_CATEGORIES (e.g. large_scan)
+    Then it calls Query{Type}Batch and flattens each {Type}Batch.rows into its row accumulator;
+    every other query (point lookups, group_by, non-large scans) still calls the original
+    per-row Query{Type} RPC unchanged
+  target: "2026-Q3"
