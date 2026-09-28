@@ -20147,3 +20147,15 @@ The Bolt protocol's row-streaming path does two unconditional WARNING-level log 
 **Code:** `provisa/bolt/session.py`
 
 **Tests:** —
+
+### REQ-1886 · Compilation Caching {#REQ-1886}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+provisa/compiler/prepared.py's [REQ-1866](#REQ-1866) pre-governance cache is keyed on SQL SHAPE (a literal-blanked digest computed directly from the tree the mandatory per-call parse already produces, algorithm-equivalent to compiled_query_cache.sql_shape_digest but never a second parse of the same text) instead of raw text, role_id, and schema generation, so a repeated query differing only in a literal value (e.g. a point lookup with a different id each call) now actually hits. `raw_sql` is still parsed exactly once per call, hit or miss — this is a hard ceiling, not an oversight: Provisa's pgwire bind path inlines $1/$2 into literal SQL text (_substitute_params/_execute_sql_bound, provisa/pgwire/server.py) before this stage ever sees it, so there is no bind-parameter list to read a shape from without parsing; genuinely avoiding that parse needs a real Parse/Bind/Execute wire protocol, separate larger work, not done here. What a hit skips is the structural work after the parse: the [REQ-1159](#REQ-1159) localize-check re-walk (skipped entirely on a hit, since a cache entry only exists for shapes that never localize a command, and command detection is literal-independent by callee name), and for a [REQ-1317](#REQ-1317) metric-expanded shape, the dimension-resolution/join-plan rebuild — cached as a template tree and spliced with the CURRENT call's own WHERE/LIMIT/ORDER literal nodes (the only literal-bearing parts expand_metric_query passes through from the caller) rather than ever replaying a prior call's literal values, which would be a silent wrong-answer bug. A literal-count mismatch between template and current call raises loudly rather than substituting a partial/best-guess splice. The UI-sampling wrapper shape (`SELECT * FROM (<inner>) _sample LIMIT n`) is excluded from templating (its literal positions span two recursive expansion levels) and reruns expand_metric_query fresh on every hit instead. A statement that localizes an inline command is still never cached, for either raw_sql or its normalized/metric-expanded form (unchanged from [REQ-1866](#REQ-1866)).
+
+**Use case:** [REQ-1866](#REQ-1866)'s raw-text cache key meant the dominant OLTP-style pgwire traffic shape — the same query re-issued with a different literal each call (a point lookup by a changing id) — never hit the cache at all, since every call's raw SQL text differs. Confirmed live this session: even a hit under the old key still re-parsed the cached SQL from scratch, so the cache saved nothing for that traffic shape and very little for any other. Shape-keying closes that gap while preserving the no-stale-literal correctness guarantee the maintainer required before accepting a shape-based key.
+
+**Code:** `provisa/compiler/prepared.py`
+
+**Tests:** `tests/unit/test_prepared_front_end_cache.py`, `tests/unit/test_prepared_front_end_offload.py`
