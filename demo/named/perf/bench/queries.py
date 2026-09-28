@@ -157,13 +157,18 @@ QUERIES: list[Query] = [
             "mode": "scan",
             "type_name": "PbOrderItems",
             # REQ-1899 (amended): opts into the batched-rows RPC (Query{Type}Batch) at a bigger
-            # batch than the server's conservative 5,000-row default. Safe specifically for
-            # order_items (16 columns, ~353 bytes/row measured via _payload_bytes' json.dumps
-            # estimate): 10,000 rows/batch is ~3.5MB, comfortably under gRPC's 4MB default max
-            # message size. NOT a safe default for every table — e.g. orders (26 columns) is
-            # meaningfully wider — which is exactly why this is a per-query client opt-in, not a
-            # bumped server-wide constant.
-            "batch_rows": 10_000,
+            # batch than the server's conservative 5,000-row default. 65,536 matches
+            # _STREAM_BATCH_ROWS/_ARROW_STREAM_BATCH_ROWS' own granularity (runtime_support.py) —
+            # the same batch size Flight SQL's DIRECT stream and the ENGINE route already use —
+            # for a principled, apples-to-apples comparison rather than an arbitrary round number.
+            # Safe specifically for order_items (16 columns, ~353 bytes/row measured via
+            # _payload_bytes' json.dumps estimate): ~23.1MB/batch, under the server's raised 32MB
+            # max message size (GRPC_MAX_MESSAGE_BYTES / server_cfg["grpc_max_message_bytes"],
+            # provisa/grpc/server.py) but NOT under the OLD 4MB default — this table/batch_rows
+            # combination requires that raised ceiling to work at all. NOT a safe choice for every
+            # table — e.g. orders (26 columns) is meaningfully wider — which is exactly why this is
+            # a per-query client opt-in, not a bumped server-wide constant.
+            "batch_rows": 65_536,
         },  # unfiltered scan — matches this SQL exactly
         iterations=3,
     ),

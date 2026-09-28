@@ -37,6 +37,14 @@ log = logging.getLogger(__name__)
 # upper bound. 5,000 rows/batch is ~1.8MB at that estimate, well under 4MB even for a wider table.
 _GRPC_BATCH_ROWS = 5_000
 
+# REQ-1899: server-wide default for grpc.max_{send,receive}_message_length — configurable via
+# GRPC_MAX_MESSAGE_BYTES env var / server_cfg["grpc_max_message_bytes"] (start_grpc_server), NOT
+# hardcoded, since this is a channel-wide setting (gRPC has no per-RPC-call equivalent) and
+# different deployments may want a tighter or looser ceiling without a code change. 32MB comfortably
+# covers a batch_rows=65,536 caller (matching _STREAM_BATCH_ROWS' granularity) even for a wider
+# table than order_items' measured ~353 bytes/row.
+_GRPC_MAX_MESSAGE_BYTES_DEFAULT = 32 * 1024 * 1024
+
 
 def _proto_value(field, value):
     """Adapt a driver row value to the proto field's wire type.
@@ -984,7 +992,31 @@ async def start_grpc_server(
     # reflection — so no RPC reaches a handler without a validated credential.
     from provisa.grpc.auth import AuthInterceptor
 
-    server = grpc.aio.server(interceptors=[AuthInterceptor(state)])
+    # REQ-1899: default 4MB max message size caps how large a client-chosen batch_rows can safely
+    # go (see _handle_query_batch/_GRPC_BATCH_ROWS docstrings) — raised here so a caller that knows
+    # its table is narrow enough can opt into a genuinely large batch (e.g. matching
+    # _STREAM_BATCH_ROWS' 65,536-row granularity) without the server itself capping the response.
+    # This does not change safety for callers who DON'T opt into a larger batch_rows: the
+    # per-message cost of the plain per-row Query{Type} RPC and the server's own conservative
+    # _GRPC_BATCH_ROWS default are both far under either limit.
+    #
+    # This is a channel/server-wide setting — gRPC has no per-RPC-call message-size knob, unlike
+    # batch_rows which genuinely is per-query. Configurable rather than hardcoded, matching the
+    # grpc_port pattern above (env var overrides server_cfg, which has the default) — a deployment
+    # that wants a tighter or looser ceiling doesn't need a code change to set one.
+    _default_max_message_bytes = state.server_cfg.get(
+        "grpc_max_message_bytes", _GRPC_MAX_MESSAGE_BYTES_DEFAULT
+    )
+    max_message_bytes = int(
+        os.environ.get("GRPC_MAX_MESSAGE_BYTES", str(_default_max_message_bytes))
+    )
+    server = grpc.aio.server(
+        interceptors=[AuthInterceptor(state)],
+        options=[
+            ("grpc.max_send_message_length", max_message_bytes),
+            ("grpc.max_receive_message_length", max_message_bytes),
+        ],
+    )
 
     # Find the add_*Servicer_to_server function
     add_fn_name = None

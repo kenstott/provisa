@@ -801,7 +801,17 @@ class GrpcTransport(Transport):
 
             self._grpc = _grpc
             self._pool = _descriptor_pool.Default()
-            self._channel = _grpc.insecure_channel(f"{host}:{port}")
+            # REQ-1899: matches the server's own raised max message size (provisa/grpc/server.py's
+            # start_grpc_server) — a client-chosen batch_rows large enough to exceed the previous
+            # 4MB default (e.g. large_scan's 65,536-row batches) needs the client side raised too,
+            # or the response would be rejected on receipt even though the server sent it fine.
+            self._channel = _grpc.insecure_channel(
+                f"{host}:{port}",
+                options=[
+                    ("grpc.max_send_message_length", 32 * 1024 * 1024),
+                    ("grpc.max_receive_message_length", 32 * 1024 * 1024),
+                ],
+            )
             _grpc.channel_ready_future(self._channel).result(timeout=10)
         except Exception as exc:  # noqa: BLE001 - availability probe
             self._error = str(exc)

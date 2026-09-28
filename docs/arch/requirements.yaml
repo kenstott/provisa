@@ -66140,9 +66140,32 @@
     for any table whose per-row width the caller hasn't reasoned about; a caller that DOES know
     (like a benchmark or an internal service targeting one specific, known-narrow table) can opt
     into a bigger batch for that query only. `demo/named/perf/bench/queries.py`'s `large_scan` grpc
-    spec sets `batch_rows: 10_000` (still ~3.5MB at the ~353 bytes/row estimate, comfortable margin
-    under 4MB) — this is a client-side, per-query choice reasoned about for THIS table, not a
-    change to the server's own default.
+    spec initially set `batch_rows: 10_000` (still ~3.5MB at the ~353 bytes/row estimate,
+    comfortable margin under 4MB) — this is a client-side, per-query choice reasoned about for THIS
+    table, not a change to the server's own default. Live-verified this alone was NOT worth the
+    trouble: 3 iterations at 10,000 rows/batch measured 38,870ms / 38,657ms / 38,468ms — no better
+    than (marginally worse than, within noise of) the 5,000-row default's 36,547-36,697ms.
+    Confirms per-message overhead was already amortized enough by 5,000; row-count alone has
+    diminishing returns past that point.
+
+    (Amended 2026-09-28, configurable max message size, not a hardcoded server-wide bump:) Getting
+    genuinely fewer messages (matching Flight's ~31-batch granularity) needs a MUCH bigger
+    batch_rows than 10,000 can safely reach under gRPC's default 4MB max message size. Raising that
+    ceiling is unavoidably a channel/server-wide setting — gRPC has no per-RPC-call message-size
+    knob, unlike `batch_rows`, which genuinely is per-query — so it cannot itself be made an
+    "opt-in" the way `batch_rows` is; it's necessary plumbing so a caller that DOES opt into a large
+    `batch_rows` isn't rejected on delivery. To avoid hardcoding a magic number, `start_grpc_server`
+    now reads it the same way `grpc_port` already is read a few lines above it: `GRPC_MAX_MESSAGE_BYTES`
+    env var overrides `state.server_cfg["grpc_max_message_bytes"]`, which defaults to
+    `_GRPC_MAX_MESSAGE_BYTES_DEFAULT` (32MB) — a deployment that wants a tighter or looser ceiling
+    doesn't need a code change. The benchmark's own gRPC channel is raised to match (32MB,
+    hardcoded client-side — the benchmark is a fixed internal caller, not a general client needing
+    the same env-var override). `large_scan`'s `batch_rows` raised to 65,536, matching
+    `_STREAM_BATCH_ROWS`/`_ARROW_STREAM_BATCH_ROWS`' own granularity (the same batch size Flight
+    SQL's DIRECT stream and the ENGINE route already use) instead of an arbitrary round number —
+    ~23.1MB/batch for order_items, safe under the raised 32MB ceiling but NOT under the old 4MB
+    default, so this specific table/batch_rows combination genuinely needs the raised ceiling to
+    work at all.
   use_case: >-
     Direct follow-up to the maintainer's "find a fix" after REQ-1898's amendment reported the real
     root cause (one-message-per-row wire contract, not a fetch-strategy bug) rather than a working
