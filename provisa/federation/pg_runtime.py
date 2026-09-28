@@ -97,6 +97,13 @@ class _AdbcConnectionPool:
 
 
 class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
+    # Class-level default so _get_adbc_pool's `self._adbc_pool is None` check is well-defined even
+    # for an instance built via __new__ without __init__ running (the Arrow-transport unit tests
+    # build one this way, on purpose, to avoid opening a real psycopg2 connection for a read path
+    # that must never touch it — see tests/unit/test_pg_arrow_transport.py's _runtime() docstring).
+    # __init__ still sets its own instance attribute below; this is only the pre-__init__ default.
+    _adbc_pool: "_AdbcConnectionPool | None" = None
+
     def __init__(self, *, engine_dsn: str, materialize_dsn: str | None = None) -> None:
         self._engine = build_pg_engine()
         self._con = psycopg2.connect(engine_dsn)

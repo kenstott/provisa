@@ -108,6 +108,9 @@ def _runtime(dsn="postgresql://provisa@localhost:5432/warehouse"):
 
     runtime = PgFederationRuntime.__new__(PgFederationRuntime)
     runtime._engine_dsn = dsn  # pyright: ignore[reportAttributeAccessIssue]
+    # REQ-1895: __init__ now also sets _adbc_pool (lazily-created ADBC connection pool) —
+    # replicate that subset of __init__'s state since this fixture bypasses __init__ entirely.
+    runtime._adbc_pool = None  # pyright: ignore[reportAttributeAccessIssue]
     return runtime
 
 
@@ -121,16 +124,22 @@ def test_run_arrow_returns_the_drivers_table_without_building_python_rows(adbc):
     assert con.cursor_obj.executed == [("SELECT id FROM orders", ["p"])]
 
 
-def test_run_arrow_opens_its_own_connection_and_closes_it(adbc):
+def test_run_arrow_opens_its_own_connection_and_returns_it_to_the_pool(adbc):
     """The engine's psycopg2 connection is the cache/write terminal; a read that borrowed it
-    would serialize behind writes and outlive the query."""
+    would serialize behind writes and outlive the query.
+
+    REQ-1895 (commit dd142132) changed run_arrow's success path from open-a-connection-and-
+    close-it to borrow-from-``self._adbc_pool``-and-``putconn`` -- a successful read's connection
+    is reused by the next call, not closed; only ``discard()`` on a failed read closes one (see
+    test_run_arrow_closes_its_connection_even_when_the_read_raises below)."""
     runtime = _runtime()
 
     runtime.run_arrow("SELECT 1")
 
     assert len(adbc.opened) == 1
     assert adbc.opened[0].dsn == "postgresql://provisa@localhost:5432/warehouse"
-    assert adbc.opened[0].closed == 1
+    assert adbc.opened[0].closed == 0
+    assert adbc.opened[0] in runtime._get_adbc_pool()._pool  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def test_run_arrow_closes_its_connection_even_when_the_read_raises(adbc):
@@ -165,20 +174,24 @@ def test_run_arrow_stream_hands_back_the_schema_before_any_batch_is_pulled(adbc)
     assert adbc.reader.pulled == 1
 
 
-def test_run_arrow_stream_closes_the_connection_when_the_stream_drains(adbc):
+def test_run_arrow_stream_returns_the_connection_to_the_pool_when_the_stream_drains(adbc):
+    """REQ-1895 (commit dd142132): the connection is returned to ``self._adbc_pool`` when the
+    generator drains, not closed — only the cursor is closed (the ADBC connection itself is
+    reused by the next ``run_arrow``/``run_arrow_stream`` call)."""
     runtime = _runtime()
 
     _, batches = runtime.run_arrow_stream("SELECT id FROM orders")
     assert list(batches) == ["b1", "b2", "b3"]
 
     assert adbc.opened[0].cursor_obj.closed is True
-    assert adbc.opened[0].closed == 1
+    assert adbc.opened[0].closed == 0
+    assert adbc.opened[0] in runtime._get_adbc_pool()._pool  # pyright: ignore[reportAttributeAccessIssue]
 
 
-def test_run_arrow_stream_closes_the_connection_when_the_consumer_stops_early(adbc):
+def test_run_arrow_stream_returns_the_connection_to_the_pool_when_the_consumer_stops_early(adbc):
     """A client that reads one batch and disconnects is the ordinary case for a paged Flight
     reader. Leaking the connection there exhausts the pool under exactly the load the streaming
-    path was built for."""
+    path was built for -- REQ-1895 returns it to ``self._adbc_pool`` instead of closing it."""
     runtime = _runtime()
 
     _, batches = runtime.run_arrow_stream("SELECT id FROM orders")
@@ -186,5 +199,6 @@ def test_run_arrow_stream_closes_the_connection_when_the_consumer_stops_early(ad
     batches.close()
 
     assert adbc.opened[0].cursor_obj.closed is True
-    assert adbc.opened[0].closed == 1
+    assert adbc.opened[0].closed == 0
+    assert adbc.opened[0] in runtime._get_adbc_pool()._pool  # pyright: ignore[reportAttributeAccessIssue]
     assert adbc.reader.pulled == 1

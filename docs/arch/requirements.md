@@ -12224,7 +12224,7 @@ The generic row→Arrow-batch adapter (arrow_batches_from_rows in provisa/federa
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-PgFederationRuntime gains run_arrow(sql, params) and run_arrow_stream(sql, params) methods for zero-copy Arrow transport via adbc_driver_postgresql. run_arrow returns a materialized pyarrow.Table; run_arrow_stream returns (schema, batch_generator) with record batches fetched on-demand from a dedicated short-lived ADBC connection. Postgres rows decode directly into Arrow RecordBatches without Python row materialization; streaming variant is memory-bounded by one batch size. Dependency on adbc-driver-postgresql added to pyproject.toml.
+PgFederationRuntime gains run_arrow(sql, params) and run_arrow_stream(sql, params) methods for zero-copy Arrow transport via adbc_driver_postgresql. run_arrow returns a materialized pyarrow.Table; run_arrow_stream returns (schema, batch_generator) with record batches fetched on-demand from a dedicated [SUPERSEDED by [REQ-1895](#REQ-1895), 2026-09-28 -- "short-lived ADBC connection" and "closes when the generator drains or the consumer stops early" below no longer hold; a successful read returns its connection to self._adbc_pool for reuse instead of closing it. Kept here for history; do not implement against it.] short-lived ADBC connection. [END SUPERSEDED BLOCK] Postgres rows decode directly into Arrow RecordBatches without Python row materialization; streaming variant is memory-bounded by one batch size. Dependency on adbc-driver-postgresql added to pyproject.toml. (Amended 2026-09-28, [REQ-1895](#REQ-1895) pooling: run_arrow/run_arrow_stream no longer open-and-close a fresh ADBC connection per call. Both borrow from a per-instance self._adbc_pool ([REQ-1895](#REQ-1895)) and return the connection via putconn() on success -- reused by the next call, not closed -- or discard() (closes it) on failure. tests/unit/test_pg_arrow_transport.py asserts pool-return, not close, on the success paths; the failure-path close assertion is unchanged.)
 
 **Use case:** PostgreSQL federation engine can expose Arrow streaming to Flight SQL and airport transports, enabling large result sets without buffering rows in Python memory or materializing the full result set client-side.
 
@@ -20270,7 +20270,7 @@ gRPC's `point_lookup`-shaped DIRECT-route queries (`provisa/grpc/server.py:397-5
 
 **Code:** `provisa/federation/pg_runtime.py`
 
-**Tests:** `tests/unit/federation/test_pg_runtime_pool.py`, `tests/integration/test_pg_runtime_e2e.py`
+**Tests:** `tests/unit/federation/test_pg_runtime_pool.py`, `tests/integration/test_pg_runtime_e2e.py`, `tests/unit/test_pg_arrow_transport.py`
 
 ### REQ-1896 · Response Cache {#REQ-1896}
 
