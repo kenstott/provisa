@@ -66015,6 +66015,24 @@
     file. A source whose driver has no streaming support (`supports_stream` false) is unchanged —
     still served via the buffered `execute_native` path, so no existing DIRECT-route behavior
     regresses for those.
+
+    (Amended 2026-09-28, verified NOT the root cause of the latency gap:) Live-reverified after
+    deploying this fix: `large_scan` via grpc still measured 188,804ms/189,077ms — statistically
+    unchanged from the pre-fix 190,697ms, with the new streaming branch CONFIRMED taken (a
+    temporary debug marker proved `open_stream`/`fetch` executed, not `execute_native`). A local
+    micro-benchmark of the row->kwargs->message-construction loop alone (2,000,000 iterations, 17
+    columns) completed in 2.65s — ruling out per-row Python/message-construction cost too. Root
+    cause is architectural, not a fetch-strategy bug: `provisa/grpc/proto_gen.py:403` generates
+    `rpc Query{Type}({Type}Request) returns (stream {Type})` — ONE PROTOBUF MESSAGE PER ROW. A
+    2,000,000-row scan is 2,000,000 individual gRPC stream sends, each paying full per-message
+    framing/serialization/flow-control cost, vs. Flight SQL's ~31 large columnar Arrow
+    RecordBatches for the identical data. This streaming-fetch fix stands on its own merits
+    (bounded memory, matches the ENGINE-route/Flight pattern, avoids buffering the whole result
+    before the first byte) but does NOT close the `large_scan`-scale latency gap — that would
+    require batching multiple rows into one streamed message (e.g. a `{Type}Batch` message with a
+    `repeated {Type} rows` field), a wire-contract/proto-schema change affecting every existing
+    gRPC client, not something to do unilaterally without the maintainer's decision. Tracked as an
+    open follow-up, not implemented here.
   use_case: >-
     Found running this session's live duckdb-engine benchmark on the perf-bench VM immediately
     after landing REQ-1896/1897 (shared response cache) — the maintainer flagged the 190s
