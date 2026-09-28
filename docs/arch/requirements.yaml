@@ -64319,12 +64319,32 @@
     stays the better ClickHouse choice. Also covers source types Provisa has NO live reach for at
     all today (Airtable, Stripe, HubSpot, Notion, Auth0, AWS Cognito, Cloudflare D1, S3, Logflare,
     Calendly) — untested this session, worth a follow-up pass.
+
+    POLICY DECISION (amended 2026-09-28, supersedes bundling `wrappers` into the pg engine
+    directly): `wrappers` should NOT be bundled into the engine's own serving Postgres the way
+    pg_clickhouse (REQ-1870) is. The split — official, single-purpose, vendor-maintained C
+    extensions bundle directly in the engine; generalized multi-source third-party frameworks run
+    in a captive sidecar Postgres reached as an ordinary `postgresql` source (REQ-1874's pattern).
+    Reasoning: pg_clickhouse is maintained by ClickHouse itself, single-purpose, C, and
+    live-verified with real pushdown and no crash. `wrappers` is a generalized Rust/pgrx framework
+    bundling many unrelated source handlers in ONE `.so`, has no macOS build, and — the concrete
+    trigger for this policy — REQ-1869's live investigation found a THIRD-PARTY FDW crash bug
+    (EnterpriseDB/mongo_fdw#194: an internal assertion failure kills the Postgres BACKEND PROCESS,
+    not just the query) confirming that a bug in one bundled extension can take down every other
+    query the engine's own serving Postgres is running. A captive sidecar contains that blast
+    radius to one container. `PgWrappersMongoDbConnector` (provisa/federation/connector_duckdb.py,
+    implemented this session, live-verified working) should be superseded by a captive-Postgres+
+    wrappers deployment for mongodb specifically — same mechanism as REQ-1874's SaaS-API sources,
+    not a separate design. Do not remove the already-working connector code without first setting
+    up the captive path; this is a migration target, not an immediate rip-out.
   use_case: >-
     Confirmed this session: mongo_fdw (REQ-1869) is genuinely broken upstream, and `wrappers`'
     independent Rust implementation is a working replacement for MongoDB specifically, found
-    without needing to patch or wait on EnterpriseDB. A single .deb also opens several
-    currently-unreached source types (Airtable/Stripe/HubSpot/etc.) cheaply, worth prioritizing
-    once REQ-1873's install-script work exists to package it consistently with the other FDWs.
+    without needing to patch or wait on EnterpriseDB. Isolating it in a captive sidecar (rather
+    than bundling into the engine directly) avoids the exact class of crash bug that motivated
+    looking for an alternative to mongo_fdw in the first place. A single .deb also opens several
+    currently-unreached source types (Airtable/Stripe/HubSpot/etc.) cheaply via the same captive
+    pattern REQ-1874 already covers.
   code:
     - scripts/ci/build_pg_extensions.sh
     - provisa/federation/connector_duckdb.py
@@ -64418,23 +64438,40 @@
   priority: MAY
   type: structural
   description: >-
-    A captive-Postgres pattern for SaaS-API source types (Stripe, HubSpot, Airtable, Notion,
-    Auth0, etc. — Supabase `wrappers`' non-database FDWs, deliberately set aside from REQ-1871's
-    mongodb/clickhouse scope): run a small dedicated Postgres+wrappers container per such source,
-    with `wrappers`' relevant FDW attaching the SaaS API live inside it, then register that
-    captive instance with Provisa as an ordinary `postgresql` source type — reached through the
-    EXISTING PostgresFdwConnector/native postgres driver, no new pg-engine connector code needed.
-    This is the SAME shape Provisa already uses for files/sharepoint/splunk (REQ-954/955/956,
+    (Amended 2026-09-28, scope widened to include mongodb — see REQ-1871's policy decision) A
+    captive-Postgres pattern for source types reached via Supabase `wrappers`: SaaS-API types
+    (Stripe, HubSpot, Airtable, Notion, Auth0, etc.) AND mongodb specifically — run a small
+    dedicated Postgres+wrappers container per such source, with `wrappers`' relevant FDW attaching
+    the remote system live inside it, then register that captive instance with Provisa as an
+    ordinary `postgresql` source type — reached through the EXISTING PostgresFdwConnector/native
+    postgres driver, no new pg-engine connector code needed. Policy: this pattern is specifically
+    for `wrappers` (a generalized multi-source Rust framework, no macOS build, one confirmed
+    upstream-adjacent crash-bug class found this session via mongo_fdw) — pg_clickhouse
+    (REQ-1870), an official single-purpose vendor-maintained C extension, correctly stays bundled
+    directly in the engine and is NOT part of this pattern's scope. This is the SAME shape Provisa
+    already uses for files/sharepoint/splunk (REQ-954/955/956,
     provisa/federation/pgwire_replica.py) — a bundled server speaking the Postgres wire protocol
     that the engine reaches as a generic PostgreSQL endpoint — just substituting a real
-    Postgres+wrappers container for the existing Calcite-JVM-bundle mechanism.
+    Postgres+wrappers container for the existing Calcite-JVM-bundle mechanism. ISOLATION IS
+    REQUIRED, NOT OPTIONAL: one captive Postgres+wrappers instance PER WRAPPED SOURCE — never
+    shared across two sources (e.g. Stripe and HubSpot each get their own container, not one
+    container running both foreign servers). `wrappers` is a single shared `.so` per Postgres
+    backend process; sharing one captive instance across sources would mean a crash or resource
+    issue tied to ONE source's connection can take down every OTHER source sharing that same
+    process too — defeating the entire point of isolating `wrappers` out of the engine in the
+    first place. Migration note:
+    `PgWrappersMongoDbConnector` (implemented this session, live-verified working, bundled
+    directly in the engine) should be superseded by this pattern for mongodb once it exists — not
+    removed until the captive path is available.
   use_case: >-
-    Gives access to wrappers' whole SaaS-API catalog (Stripe, HubSpot, Airtable, Notion, Auth0,
+    Gives access to wrappers' whole catalog (mongodb, Stripe, HubSpot, Airtable, Notion, Auth0,
     AWS Cognito, Cloudflare D1, Logflare, Calendly) without hand-rolling a bespoke Calcite adapter
-    per source, and without needing the pg ENGINE itself to carry SaaS-specific connector code —
-    the captive instance does the translation, Provisa just sees "a postgresql source." Costs more
-    at rest than the lighter JVM bridge (a real running Postgres per source) but reuses proven,
-    already-shipped machinery end to end.
+    per source, and without needing the pg ENGINE itself to carry `wrappers`-specific connector
+    code or link its Rust/pgrx binary into the engine's own serving process — the captive instance
+    does the translation and absorbs any crash risk, Provisa just sees "a postgresql source."
+    Costs more at rest than the lighter JVM bridge (a real running Postgres per source) but reuses
+    proven, already-shipped machinery end to end and isolates a third-party extension's stability
+    risk away from every other query the engine is serving.
   code:
     - provisa/federation/pgwire_replica.py
     - provisa/federation/connector_duckdb.py
