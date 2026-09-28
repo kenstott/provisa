@@ -222,6 +222,7 @@
 ## 2027-Q1
 
 - **REQ-1859** [MAY] [proposed] Performance Benchmarking — The perf benchmark tooling (demo/named/perf/) should be run against (1) a max-size VM configuration to establish the most optimistic achi…
+- **REQ-1866** [SHOULD] [proposed] Compilation Caching — Raw-SQL-text surfaces (pgwire, Flight SQL, HTTP Cypher-to-SQL, Bolt) should cache the compiled physical-to-semantic table-ref rewrite, ke…
 
 ## 2027-Q2
 

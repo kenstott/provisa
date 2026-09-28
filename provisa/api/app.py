@@ -2229,18 +2229,26 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 def create_app() -> FastAPI:
     """Create the FastAPI application."""
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import ORJSONResponse
     from strawberry.fastapi import GraphQLRouter
 
     from provisa.api.admin.schema import admin_schema
 
     # Swagger/OpenAPI live under /data/openapi/ (not the default /docs) so the UI can
     # own /docs for its in-app documentation reader.
+    # REQ-1867: ORJSONResponse (orjson-backed) instead of FastAPI's stdlib-json default for every
+    # route that doesn't explicitly return its own Response — orjson was already resolving
+    # transitively (langsmith/trino pull it in) but nothing in this app actually used it; every
+    # JSON response paid stdlib json's slower encode. A route building its own JSONResponse/
+    # Response explicitly (there are several, e.g. endpoint_dev.py's stats-enabled branches)
+    # keeps doing so unaffected — this only changes the class FastAPI reaches for on its own.
     app = FastAPI(
         title="Provisa",
         lifespan=lifespan,
         docs_url="/data/openapi/docs",
         redoc_url="/data/openapi/redoc",
         openapi_url="/data/openapi/openapi.json",
+        default_response_class=ORJSONResponse,
     )
     state.federation_engine.write_config(config_path_str())
     _setup_otel(app)

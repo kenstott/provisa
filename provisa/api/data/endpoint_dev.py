@@ -25,7 +25,7 @@ import re
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
@@ -261,8 +261,12 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 qs.wall_ms = (_time.perf_counter() - _t0) * 1000
             if qs is not None and output_format == "json":
                 from fastapi.encoders import jsonable_encoder
+                from fastapi.responses import ORJSONResponse
 
-                return JSONResponse(
+                # REQ-1867: jsonable_encoder still runs first (normalizes datetimes/Decimals/
+                # Pydantic models to plain JSON-safe types orjson doesn't natively accept the
+                # same way stdlib json does) — only the final encode step moves to orjson.
+                return ORJSONResponse(
                     jsonable_encoder(
                         {
                             "data": {"sql": rows_as_dicts},

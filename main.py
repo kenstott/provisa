@@ -11,7 +11,19 @@
 import faulthandler
 import os
 import signal
+import sys
 from pathlib import Path
+
+# REQ-1867: swap asyncio's default event loop for uvloop (libuv via Cython) before anything else
+# creates a loop — must run before create_app()/uvicorn start the app's own loop, and works
+# regardless of how the ASGI server was launched (uvicorn's own --loop flag would require every
+# launch command/deployment manifest to opt in; installing the policy here doesn't). No Windows
+# wheels, so this is a no-op there rather than an ImportError (matches this project's existing
+# "chdb; sys_platform != 'win32'" platform gate in pyproject.toml).
+if sys.platform != "win32":
+    import uvloop
+
+    uvloop.install()
 
 _env_file = Path(__file__).parent / ".env"
 if _env_file.exists():

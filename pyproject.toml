@@ -7,6 +7,14 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi",
     "uvicorn",
+    # REQ-1867: uvloop replaces asyncio's default event loop (libuv via Cython) for faster loop
+    # scheduling across the whole app, not just one endpoint. No Windows wheels, same platform
+    # gate this file already uses for chdb below.
+    "uvloop; sys_platform != 'win32'",
+    # REQ-1867: was already resolving transitively (langsmith/trino pull it in) but never
+    # declared or actually used anywhere in the app — FastAPI's default response class still used
+    # stdlib json. Declared explicitly now that provisa.api.app wires it in as the default.
+    "orjson",
     "asyncpg",
     "pydantic>=2",
     "strawberry-graphql[fastapi]",

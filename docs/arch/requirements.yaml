@@ -63816,13 +63816,25 @@
     schema_gen.py's auto-generated per-role schema) as two encodings on the same channel; gRPC
     carries both Arrow (Flight, already covered) and Protobuf (provisa/grpc/server.py's
     generated ProvisaService, new `grpc` transport) as two encodings on that channel.
-    CONFIRMED GAP found while wiring the `grpc` transport (grep of provisa/grpc/*.py: zero
-    references to `request.filter`): Query{Type}/Query{Type}GroupBy RPCs generate a `filter`
-    field in their request message but never read it server-side, so every RPC call is an
-    unfiltered full scan/group-by regardless of what the client sets. Only the benchmark's
-    filter-free queries (large_scan, single_source_aggregation) can run over `grpc` until that
-    gap is fixed; a point_lookup-style call over this transport would silently return the wrong
-    rows, not the requested one.
+    [SUPERSEDED by REQ-1860, 2026-09-27 -- filter support was added server-side; see the
+    amendment below. Kept here for history; do not implement against it.] CONFIRMED GAP found
+    while wiring the `grpc` transport (grep of provisa/grpc/*.py: zero references to
+    `request.filter`): Query{Type}/Query{Type}GroupBy RPCs generate a `filter` field in their
+    request message but never read it server-side, so every RPC call is an unfiltered full
+    scan/group-by regardless of what the client sets. Only the benchmark's filter-free queries
+    (large_scan, single_source_aggregation) can run over `grpc` until that gap is fixed; a
+    point_lookup-style call over this transport would silently return the wrong rows, not the
+    requested one. [END SUPERSEDED BLOCK]
+
+    (Amended 2026-09-27, filter support confirmed live:) `{Type}Request.filter`/
+    `{Type}GroupByRequest.filter` ARE read server-side (provisa/grpc/server.py:422-423,667-675 ->
+    query_ir.grpc_table_to_semantic_sql / grpc_table_to_group_by_graphql_text, both take a
+    filter_msg param and apply it) — the CONFIRMED GAP above was accurate when written but is
+    stale. The benchmark tooling (demo/named/perf/bench/run_benchmark.py's GrpcTransport,
+    queries.py's point_lookup) now builds and attaches a `{Type}Filter` sub-message from a
+    spec's `filter` dict. This RPC surface remains single-table only (no join capability), so
+    federated_join/large_federated_join/the cypher_* queries correctly keep `grpc=None`
+    regardless of filter support.
   use_case: >-
     Marketing needs credible, transparent performance data to communicate Provisa's
     achievable throughput and latency to prospects; transparent methodology and
@@ -64129,3 +64141,22 @@
     land the same way ensure_resident/materialize_pending already rule out a per-query one;
     confirmed live, a large table's own queue-driven land held DuckDB's one connection for its
     whole multi-minute duration, hanging every other concurrent query system-wide (REQ-989)
+- id: REQ-1866
+  status: proposed
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Compilation Caching
+  priority: SHOULD
+  type: behavioral
+  description: >-
+    Raw-SQL-text surfaces (pgwire, Flight SQL, HTTP Cypher-to-SQL, Bolt) should cache the compiled
+    physical-to-semantic table-ref rewrite, keyed on SQL/Cypher text or parsed shape, to avoid
+    re-executing make_semantic_sql on every call.
+  use_case: >-
+    Closing this gap would reduce per-call latency for pgwire/Flight SQL/HTTP-cypher/Bolt from ~200ms
+    to ~10-20ms for equivalent point-lookup queries, matching GraphQL's already-optimized schema-compile-once
+    approach, improving both benchmark credibility and customer workload performance.
+  code:
+    - provisa/compiler/sql_rewrite.py
+    - provisa/pgwire/_pipeline.py
+    - provisa/api/rest/generator.py
+  target: "2027-Q1"
