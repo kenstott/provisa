@@ -633,4 +633,87 @@ def propagate_literal_join_predicates(  # REQ-1880
     return tree.sql(dialect=dialect) if changed else sql
 
 
+# --- ClickHouse LowCardinality(String) decode wrapping (REQ-1881) ---
+
+
+def is_clickhouse_lowcardinality_string(data_type: str | None) -> bool:
+    """True for ClickHouse's ``LowCardinality(String)`` or ``LowCardinality(Nullable(String))``
+    (REQ-1881) -- Trino's ClickHouse JDBC connector/driver reports these columns as raw
+    dictionary-encoded VARBINARY bytes with zero type-mapping for the LowCardinality wrapper
+    (verified live by inspecting the connector's own bytecode: zero "LowCardinality" references);
+    ``CAST(col AS varchar)`` does not work either (Trino: "Cannot cast varbinary to varchar" --
+    the two types aren't cast-compatible). The only verified decode is ``from_utf8(col)``.
+
+    Whitespace/case-insensitive (ClickHouse's ``system.columns.type`` renders the wrapper text
+    verbatim, but exact casing/spacing isn't a documented contract). Anything else --
+    ``LowCardinality(UInt64)``, plain ``String``, a bare ``LowCardinality`` with no inner type,
+    ``None``/empty -- is not this bug and returns False. Never guessed True: a missed wrap
+    surfaces as visible, debuggable garbage bytes; a wrong wrap on an unaffected column risks an
+    error or silently corrupting correct data, the worse failure mode.
+    """
+    if not data_type:
+        return False
+    normalized = _re.sub(r"\s+", "", data_type.lower())
+    return normalized in ("lowcardinality(string)", "lowcardinality(nullable(string))")
+
+
+def wrap_lowcardinality_columns(  # REQ-1881
+    sql: str,
+    dialect: str,
+    affected_columns: dict[tuple[str, str], set[str]],
+) -> str:
+    """Wrap every read-context reference to a ClickHouse ``LowCardinality(String)``-family column
+    in ``from_utf8(...)`` (REQ-1881), so a query reading such a column through Trino's ClickHouse
+    catalog gets decoded text back instead of raw dictionary-encoded bytes -- see
+    ``is_clickhouse_lowcardinality_string`` for why. ``affected_columns`` is lowercased
+    ``(schema, table) -> {column_name, ...}``; the caller computes this from each referenced
+    table's OWN registered source (Trino target + clickhouse-type source, REQ-1881 gating) and
+    each column's ``data_type`` before calling in -- this function never touches
+    FederationEngine/Connector/Column (leaf module rule, see module docstring).
+
+    Every ``exp.Column`` reference is resolved to its nearest enclosing ``SELECT`` (so a nested
+    subquery's own table aliases are never confused with an outer query's), covering the SELECT
+    list, WHERE/HAVING comparisons, ORDER BY, GROUP BY, and function arguments alike -- anywhere a
+    column appears as a VALUE expression. A column reference with no table qualifier (e.g. an
+    output-alias reference in ORDER BY) is left alone: it cannot be resolved to a physical table,
+    so wrapping it would be a guess, not a decision this function is allowed to make.
+
+    Idempotent: a reference already wrapped in ``from_utf8(...)`` -- by this pass on a prior run,
+    or already written that way in the caller's own SQL -- is left alone, never double-wrapped.
+    """
+    if not affected_columns:
+        return sql
+    tree = sqlglot.parse_one(sql, read=dialect)
+    changed = False
+    alias_cache: dict[int, dict[str, tuple[str, str]]] = {}
+    for col in list(tree.find_all(exp.Column)):
+        if not col.table:
+            continue
+        select = col.find_ancestor(exp.Select)
+        if select is None:
+            continue
+        cache_key = id(select)
+        alias_to_phys = alias_cache.get(cache_key)
+        if alias_to_phys is None:
+            alias_to_phys = _collect_table_aliases(select)
+            alias_cache[cache_key] = alias_to_phys
+        phys = alias_to_phys.get(col.table.lower())
+        if phys is None:
+            continue
+        cols_for_table = affected_columns.get(phys)
+        if not cols_for_table or col.name.lower() not in cols_for_table:
+            continue
+        parent = col.parent
+        if (
+            isinstance(parent, exp.Anonymous)
+            and isinstance(parent.this, str)
+            and parent.this.lower() == "from_utf8"
+            and len(parent.expressions) == 1
+        ):
+            continue  # already wrapped -- idempotency
+        col.replace(exp.Anonymous(this="from_utf8", expressions=[col.copy()]))
+        changed = True
+    return tree.sql(dialect=dialect) if changed else sql
+
+
 # --- Main compilation ---
