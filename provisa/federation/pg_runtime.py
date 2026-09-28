@@ -80,9 +80,22 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             remote = ft
         else:
             raise KeyError(f"pg connector for {source.type.value!r} has no attach/server DDL")
-        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{source.schema_name}"')
+        # REQ-1730: the ENGINE route's own physical SQL, on this catalog-incapable engine, folds
+        # catalog.schema into one schema segment (fold_catalog_into_schema, provisa/compiler/
+        # sql_rewrite.py) — "{source_to_catalog(source_id)}_{schema_name}" — because two sources
+        # whose registered tables share a bare schema_name (e.g. two elasticsearch-type sources
+        # both reporting "default") would otherwise collide once the catalog segment vanished.
+        # This view must live under that SAME folded name, not the source's bare native
+        # schema_name, or the query asks for a schema this attach never created. Confirmed live:
+        # federated_join under PROVISA_ENGINE=pg failed 100% of calls with `relation
+        # "bench_postgresql_public.orders" does not exist` — the two sides had never been
+        # reconciled to the same convention.
+        from provisa.compiler.naming import source_to_catalog
+
+        folded_schema = f"{source_to_catalog(source.id)}_{source.schema_name}"
+        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{folded_schema}"')
         cur.execute(
-            f'CREATE OR REPLACE VIEW "{source.schema_name}"."{source.table_name}" '
+            f'CREATE OR REPLACE VIEW "{folded_schema}"."{source.table_name}" '
             f"AS SELECT * FROM {remote}"
         )
 
