@@ -65172,3 +65172,43 @@
     When it is prepared, cached-shape or not
     Then it is never entered into or served from the cache, on any call
   target: "2026-Q3"
+
+- id: REQ-1887
+  status: complete
+  group: "11. Platform, Infrastructure & Delivery"
+  category: Performance Benchmarking
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    demo/named/perf/bench/queries.py's federated_join GraphQL query text is a single nested
+    selection under the orders root field (`orderEvents`/`orderDoc`) instead of three separate
+    aliased root fields, now that fragment.yaml registers the HAS_EVENT/HAS_DOC relationships
+    (bench-orders-events, bench-orders-docs) between orders and order_events/order_docs. The
+    nested field names are NOT the Cypher `alias` (HAS_EVENT/HAS_DOC) — neither relationship sets
+    `graphql_alias`, so provisa/compiler/schema_gen.py's _add_standard_relationship_field and
+    provisa/compiler/context.py's _join_field_name both fall through to
+    naming.rel_field_name(target.field_name, cardinality): `orderEvents` (one-to-many, list field)
+    and `orderDoc` (one-to-one, singularized). Verified by calling naming.rel_field_name directly
+    against this fragment's actual field names
+    (rel_field_name("pb__orderEvents", "one-to-many") == "orderEvents",
+    rel_field_name("pb__orderDocs", "one-to-one") == "orderDoc") and by validating the new query
+    text (with local stand-in root/field names, not the live "pb__" prefix) against a
+    generate_schema()-built GraphQLSchema using graphql.validate — zero errors.
+    large_federated_join keeps no graphql spec: unrelated to relationship registration, its
+    1M-order range crosses the same inline-JSON-vs-S3-manifest redirect threshold large_scan's
+    own comment documents.
+  use_case: >-
+    federated_join/large_federated_join's raw-SQL join needed HAS_EVENT/HAS_DOC registered in
+    fragment.yaml to pass V002 relationship-guard validation (fixed earlier this session, not
+    this REQ). Once registered, the GraphQL variant's three-root-field workaround (adopted only
+    because no relationship existed to generate a nested field) was stale and measured a
+    different, cheaper shape (client-side merge of 3 independent fetches, no server-side JOIN)
+    than the sql/cypher variants of the same benchmark query — misleading cross-transport
+    comparison. A nested selection restores an apples-to-apples comparison: one request, one
+    server-side JOIN, matching what sql/cypher already do.
+  code:
+    - demo/named/perf/bench/queries.py
+    - demo/named/perf/bench/run_benchmark.py
+  tests: []
+  target: "2026-Q3"

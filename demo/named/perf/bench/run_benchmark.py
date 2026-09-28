@@ -545,12 +545,12 @@ class GraphqlTransport(Transport):
         stddev/variance/min/max shape — sum/avg/etc. sub-fields are the RAW column name, e.g.
         `sum { amount }`, not camelCased, since aggregate_gen.py keys them by physical
         col_name directly).
-      - No relationship is registered between orders/order_events/order_docs in fragment.yaml
-        (only the Neo4j bench_* edge tables have any), so federated_join/large_federated_join
-        cannot be one nested GraphQL selection. They run as multiple ALIASED root fields in one
-        request instead — endpoint.py's `_handle_query` docstring: "Multiple root fields are
-        executed independently and merged" — still one HTTP round trip per iteration, matching
-        the SQL join's one round trip, just without a server-side JOIN.
+      - HAS_EVENT/HAS_DOC relationships are now registered between orders/order_events/order_docs
+        in fragment.yaml, so federated_join's GraphQL text is one nested selection under
+        `pb__orders` (`orderEvents`/`orderDoc` — see queries.py's federated_join comment for the
+        field-naming derivation) instead of multiple aliased root fields. Still one HTTP round
+        trip per iteration, matching the SQL join's one round trip, now with a server-side JOIN
+        too.
       - large_scan/large_federated_join have no GraphQL query text: a GraphQL response over
         threshold gets redirected to an S3 file manifest instead of inline JSON
         (X-Provisa-Redirect-Threshold, endpoint.py:223-231) — a fundamentally different

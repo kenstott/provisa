@@ -29,12 +29,16 @@ schema_gen.py, schema_inputs.py, aggregate_gen.py) — root field names camelCas
 filters are ``{field: {eq: value}}``/``{gte:}``/``{lte:}`` (provisa/compiler/type_map.py's
 FILTER_TYPE_MAP), and group-by aggregation is ``{field}GroupBy(by: [...]) { groupKey aggregate
 { count sum { col } } }`` (schema_gen.py's _build_group_by_query_field + aggregate_gen.py's
-build_agg_fields_type). No relationships are registered between orders/order_events/order_docs in
-fragment.yaml (only the Neo4j bench_* edge tables have any), so federated_join/large_federated_join
-cannot be a single nested GraphQL selection — they run as multiple aliased root fields in ONE
-request instead (endpoint.py's _handle_query: "Multiple root fields are executed independently and
-merged"), which still issues one round trip per iteration like the SQL join does, just without a
-server-side JOIN.
+build_agg_fields_type). HAS_EVENT/HAS_DOC relationships are now registered between orders and
+order_events/order_docs in fragment.yaml (bench-orders-events, bench-orders-docs), so
+federated_join's GraphQL text is a single nested selection under ``pb__orders`` — ``orderEvents``
+(one-to-many list field) and ``orderDoc`` (one-to-one singular field, singularized from HAS_DOC's
+target). Neither relationship sets ``graphql_alias``, so these field names come from
+naming.rel_field_name(target.field_name, cardinality), NOT from the Cypher alias
+(HAS_EVENT/HAS_DOC) — verified by calling that function directly, not guessed (see federated_join's
+own comment). large_federated_join still has no graphql spec: unrelated to relationships, its
+1M-row range crosses the same inline-JSON-vs-S3-manifest redirect threshold large_scan's comment
+documents.
 
 ``grpc`` query text targets provisa/grpc/server.py's generated ``ProvisaService`` (package
 provisa.v1, RPCs ``Query{Type}``/``Query{Type}GroupBy``, verified against provisa/grpc/proto_gen.py
@@ -221,25 +225,30 @@ QUERIES: list[Query] = [
             JOIN perf_bench.order_docs d ON d.order_id = o.order_id
             WHERE o.order_id BETWEEN :lo AND :hi
         """,
-        # No relationship is registered between orders/order_events/order_docs in fragment.yaml
-        # (only the Neo4j bench_* edge tables have any), so this can't be one nested GraphQL
-        # selection — three aliased root fields in ONE request instead (still one HTTP round
-        # trip per iteration, like the SQL join). See module docstring.
-        # pb__orders/pb__orderEvents/pb__orderDocs — see point_lookup's comment above (same
-        # live-verified prefix, confirmed present for all three via the same introspection query).
+        # HAS_EVENT/HAS_DOC are now registered (fragment.yaml relationships: bench-orders-events,
+        # bench-orders-docs), so this is one nested GraphQL selection under pb__orders, matching
+        # the sql/cypher variants' real join. Field names are NOT the Cypher `alias`
+        # (HAS_EVENT/HAS_DOC) -- neither relationship sets `graphql_alias`, so
+        # schema_gen.py's _add_standard_relationship_field/context.py's _join_field_name fall
+        # through to naming.rel_field_name(target.field_name, cardinality). Verified directly
+        # (not guessed) by calling that function against this fragment's live values:
+        #   rel_field_name("pb__orderEvents", "one-to-many") -> "orderEvents"
+        #   rel_field_name("pb__orderDocs", "one-to-one")    -> "orderDoc"
+        # (target.field_name strips the "pb__" prefix before pluralizing/singularizing; HAS_DOC's
+        # one-to-one cardinality singularizes "orderDocs" -> "orderDoc"). one-to-one fields take
+        # no where/order_by args (schema_gen.py: only the one-to-many branch calls
+        # _build_db_field_args), so orderDoc is a plain nested selection.
         graphql="""
             query($lo: Int!, $hi: Int!) {
               pb__orders(where: {orderId: {gte: $lo, lte: $hi}}) {
                 orderId
                 amount
-              }
-              pb__orderEvents(where: {orderId: {gte: $lo, lte: $hi}}) {
-                orderId
-                eventType
-              }
-              pb__orderDocs(where: {orderId: {gte: $lo, lte: $hi}}) {
-                orderId
-                status
+                orderEvents {
+                  eventType
+                }
+                orderDoc {
+                  status
+                }
               }
             }
         """,
