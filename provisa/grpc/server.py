@@ -415,18 +415,24 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
     async def _handle_query_batch(self, request, context, type_name: str):
         """REQ-1899: batched-rows counterpart to _handle_query — streams {Type}Batch messages
-        (repeated {Type} rows, up to _GRPC_BATCH_ROWS per message) instead of one {Type} message
-        per row. Reuses _handle_query_bound unchanged (same governance/routing/execution, same
-        per-row messages) and only changes how those messages reach the wire. Additive: the
-        existing per-row Query{Type} RPC and its handler are untouched, so no existing client
-        (internal or external) is affected by this at all.
+        (repeated {Type} rows) instead of one {Type} message per row. Reuses _handle_query_bound
+        unchanged (same governance/routing/execution, same per-row messages) and only changes how
+        those messages reach the wire. Additive: the existing per-row Query{Type} RPC and its
+        handler are untouched, so no existing client (internal or external) is affected at all.
 
         Live-measured root cause this fixes (REQ-1898's amendment): a 2,000,000-row DIRECT scan
         via the per-row RPC took ~190s — statistically unchanged whether the row fetch itself was
         buffered or streamed — because each of 2,000,000 individual gRPC stream messages pays full
         per-message framing/serialization/flow-control cost. Batching rows into fewer, larger
         messages (mirroring Flight SQL's ~31 Arrow RecordBatches for the same data) amortizes that
-        cost across _GRPC_BATCH_ROWS rows instead of paying it per row."""
+        cost across many rows instead of paying it per row.
+
+        request.batch_rows (client opt-in, REQ-1899 amendment) picks the row count per batch
+        message; 0/unset falls back to _GRPC_BATCH_ROWS. The server can't safely pick one large
+        default that's safe for every table's width (gRPC's default 4MB max message size; `orders`
+        at 26 columns is meaningfully wider than order_items' 16), but a CLIENT querying one
+        specific, known table can safely choose a bigger batch when it knows that table is narrow
+        — e.g. the perf benchmark opts into a larger batch_rows for order_items specifically."""
         metadata = dict(context.invocation_metadata())
         role_id = _rpc_role(metadata)
         if not role_id:
@@ -444,10 +450,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
                     grpc.StatusCode.INTERNAL, f"Unknown message type {type_name}Batch"
                 )
                 return
+            batch_rows = getattr(request, "batch_rows", 0) or _GRPC_BATCH_ROWS
             rows_buf: list = []
             async for _m in self._handle_query_bound(request, context, type_name, role_id):
                 rows_buf.append(_m)
-                if len(rows_buf) >= _GRPC_BATCH_ROWS:
+                if len(rows_buf) >= batch_rows:
                     yield self._meter_msg(batch_cls(rows=rows_buf))
                     rows_buf = []
             if rows_buf:

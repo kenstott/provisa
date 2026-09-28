@@ -132,6 +132,9 @@ class TestGenerateProto:
         assert "rpc QueryOrdersBatch(OrdersRequest) returns (stream OrdersBatch);" in proto
         # The existing per-row RPC/message must be completely unchanged (additive, not replaced).
         assert "rpc QueryOrders(OrdersRequest) returns (stream Orders);" in proto
+        # REQ-1899 (amended): client-chosen batch size, opt-in per query via OrdersRequest —
+        # shared by both RPCs' request message, ignored by the plain per-row RPC.
+        assert "int32 batch_rows = 5;" in proto
 
     def test_call_command_rpc_generated(self):
         # REQ-1156: a single generic CallCommand RPC exposes every registered command over gRPC.

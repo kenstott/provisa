@@ -66124,6 +66124,25 @@
     (still one Python object built per row, only the WIRE SEND is batched) vs. Arrow's columnar
     buffers having no per-row Python object at all — not investigated further; this amendment
     records the measurement, not a claim that the gap is fully closed to Flight's level.
+
+    (Amended 2026-09-28, batch_rows as a per-query client opt-in, not a bumped server constant:)
+    The maintainer asked "why not just double the batch size" — doubling the fixed server default
+    (`_GRPC_BATCH_ROWS`, then 5,000) blindly is unsafe: it was sized off `order_items`' measured
+    ~353 bytes/row (16 columns), but this RPC is generic across every table, and `orders` (26
+    columns) is meaningfully wider — a 10,000-row batch at `orders`' likely row width could exceed
+    gRPC's default 4MB max message size and fail with `RESOURCE_EXHAUSTED` for ANY large batched
+    scan over a wider table, not just `large_scan`. The maintainer's own follow-up ("you could just
+    make it a user opt in, per query") is the fix actually implemented: `{Type}Request` (shared by
+    both `Query{Type}` and `Query{Type}Batch`) gained a `batch_rows` field (proto3 int32, field 5).
+    `_handle_query_batch` reads `request.batch_rows` and falls back to `_GRPC_BATCH_ROWS` (kept at
+    the original conservative 5,000) only when unset/0 — a plain `Query{Type}` caller is
+    unaffected, since that RPC never reads this field. `_GRPC_BATCH_ROWS` stays the safe default
+    for any table whose per-row width the caller hasn't reasoned about; a caller that DOES know
+    (like a benchmark or an internal service targeting one specific, known-narrow table) can opt
+    into a bigger batch for that query only. `demo/named/perf/bench/queries.py`'s `large_scan` grpc
+    spec sets `batch_rows: 10_000` (still ~3.5MB at the ~353 bytes/row estimate, comfortable margin
+    under 4MB) — this is a client-side, per-query choice reasoned about for THIS table, not a
+    change to the server's own default.
   use_case: >-
     Direct follow-up to the maintainer's "find a fix" after REQ-1898's amendment reported the real
     root cause (one-message-per-row wire contract, not a fetch-strategy bug) rather than a working
@@ -66132,6 +66151,7 @@
     - provisa/grpc/proto_gen.py
     - provisa/grpc/server.py
     - demo/named/perf/bench/run_benchmark.py
+    - demo/named/perf/bench/queries.py
   tests:
     - tests/unit/test_proto_gen.py
     - tests/unit/test_grpc_server.py
@@ -66152,4 +66172,12 @@
     Then it calls Query{Type}Batch and flattens each {Type}Batch.rows into its row accumulator;
     every other query (point lookups, group_by, non-large scans) still calls the original
     per-row Query{Type} RPC unchanged
+
+    Given a Query{Type}Batch call whose request sets a non-zero batch_rows
+    When _handle_query_batch streams the response
+    Then batches are grouped at the CLIENT's requested size, not _GRPC_BATCH_ROWS
+
+    Given a Query{Type}Batch call whose request leaves batch_rows unset (0, the proto3 default)
+    When _handle_query_batch streams the response
+    Then batches fall back to the server's own conservative _GRPC_BATCH_ROWS default
   target: "2026-Q3"

@@ -886,6 +886,13 @@ class GrpcTransport(Transport):
             # TEMPORARY (2026-09-26): matches queries.py's large_scan LIMIT 2000000 shrink — see
             # that comment. Restore limit=0 (unbounded) together with large_scan's own SQL text.
             request = request_cls(limit=2_000_000)
+            # REQ-1899 (amended): batch_rows is a per-query CLIENT opt-in, not a server-wide
+            # default — this benchmark knows which table it's asking about and how wide its rows
+            # are, so it can safely request a bigger batch than the server's own conservative
+            # default when it knows that's safe for THIS table. Ignored by the server unless
+            # use_batch's RPC is actually being called.
+            if use_batch and spec.get("batch_rows"):
+                request.batch_rows = spec["batch_rows"]
             if filter_dict:
                 filter_cls = self._resolve_message_class(f"provisa.v1.{type_name}Filter")
                 request.filter.CopyFrom(filter_cls(**filter_dict))

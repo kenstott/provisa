@@ -342,6 +342,14 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
         lines.append("  int32 limit = 2;")
         lines.append("  int32 offset = 3;")
         lines.append("  google.protobuf.FieldMask read_mask = 4;")
+        # REQ-1899: client-chosen row count per {Type}Batch message for the Query{Type}Batch RPC
+        # only — ignored by the plain per-row Query{Type} RPC. 0/unset falls back to the server's
+        # own conservative default (_GRPC_BATCH_ROWS, provisa/grpc/server.py). The server is the
+        # one place that knows every column's proto type, so it can't safely pick a big default
+        # that's still safe for every table's width — the CLIENT knows which table it's asking
+        # about and how wide its rows are, so it opts into a larger batch only when it knows
+        # that's safe (e.g. a narrow table it already knows the row size for).
+        lines.append("  int32 batch_rows = 5;")
         lines.append("}")
         lines.append("")
 

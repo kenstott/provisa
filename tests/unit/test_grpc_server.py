@@ -188,6 +188,10 @@ class TestHandleQuery:
         context.invocation_metadata.return_value = [("x-provisa-role", "admin")]
         request = MagicMock()
         request.limit = 0
+        # REQ-1899 (amended): unset (proto3 default 0) — falls back to the server's own
+        # _GRPC_BATCH_ROWS default, which is what this test exercises. The client-opt-in path
+        # (a non-zero batch_rows) is covered by test_query_batch_honors_client_batch_rows below.
+        request.batch_rows = 0
 
         from provisa.transpiler.router import Route
 
@@ -223,6 +227,55 @@ class TestHandleQuery:
             second_call_kwargs = batch_cls.call_args_list[1].kwargs
             assert len(first_call_kwargs["rows"]) == _GRPC_BATCH_ROWS
             assert len(second_call_kwargs["rows"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_query_batch_honors_client_batch_rows(self):
+        """REQ-1899 (amended): a client-set request.batch_rows overrides the server's own
+        _GRPC_BATCH_ROWS default — the batch size is a per-query client opt-in, not a fixed
+        server-wide constant, since only the client knows which table it's asking about and
+        whether a bigger batch is safe for that table's row width."""
+        pb2, _ = _make_pb2_module("Orders", ["id", "amount"])
+        batch_cls = MagicMock()
+        pb2.OrdersBatch = batch_cls
+        state = _make_state()
+
+        servicer = ProvisaServicer(state, pb2, MagicMock())
+        context = AsyncMock(spec=grpc.aio.ServicerContext)
+        context.invocation_metadata.return_value = [("x-provisa-role", "admin")]
+        request = MagicMock()
+        request.limit = 0
+        request.batch_rows = 3  # smaller than the server default, proves it's actually honored
+
+        from provisa.transpiler.router import Route
+
+        fake_plan = SimpleNamespace(route=Route.CACHE, source_id=None)
+        fake_rows = [[i, float(i)] for i in range(7)]
+        fake_result = SimpleNamespace(column_names=["id", "amount"], rows=fake_rows)
+
+        with (
+            patch(
+                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
+                return_value="SELECT id, amount FROM orders",
+            ),
+            patch(
+                "provisa.pgwire._pipeline._govern_and_route_compiled",
+                new_callable=AsyncMock,
+                return_value=fake_plan,
+            ),
+            patch(
+                "provisa.pgwire._pipeline._execute_plan",
+                new_callable=AsyncMock,
+                return_value=fake_result,
+            ),
+        ):
+            batches_yielded = []
+            async for msg in servicer._handle_query_batch(request, context, "Orders"):
+                batches_yielded.append(msg)
+
+            # 7 rows at batch_rows=3 -> batches of 3, 3, 1
+            assert len(batches_yielded) == 3
+            sizes = [len(c.kwargs["rows"]) for c in batch_cls.call_args_list]
+            assert sizes == [3, 3, 1]
 
     @pytest.mark.asyncio
     async def test_direct_route_takes_fast_path(self):

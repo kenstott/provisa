@@ -156,6 +156,14 @@ QUERIES: list[Query] = [
         grpc={
             "mode": "scan",
             "type_name": "PbOrderItems",
+            # REQ-1899 (amended): opts into the batched-rows RPC (Query{Type}Batch) at a bigger
+            # batch than the server's conservative 5,000-row default. Safe specifically for
+            # order_items (16 columns, ~353 bytes/row measured via _payload_bytes' json.dumps
+            # estimate): 10,000 rows/batch is ~3.5MB, comfortably under gRPC's 4MB default max
+            # message size. NOT a safe default for every table — e.g. orders (26 columns) is
+            # meaningfully wider — which is exactly why this is a per-query client opt-in, not a
+            # bumped server-wide constant.
+            "batch_rows": 10_000,
         },  # unfiltered scan — matches this SQL exactly
         iterations=3,
     ),
