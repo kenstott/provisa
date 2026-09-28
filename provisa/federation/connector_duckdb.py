@@ -558,6 +558,12 @@ class PostgresFdwConnector(Connector):  # REQ-893
         )
 
     def details(self, source: Source) -> dict:
+        # local_schema is stored BARE (unquoted) — pg_runtime.py:66 and other consumers quote it
+        # themselves at the point of use. Only the DDL strings built here need explicit quoting.
+        # source.id may contain a hyphen (e.g. "bench-postgresql"), which an unquoted identifier
+        # here parses as subtraction — reproduced live (REQ-1730 investigation, 2026-09-27/28):
+        # "CREATE SERVER IF NOT EXISTS fdw_bench-postgresql ..." raised "syntax error at or near
+        # '-'" against a real Postgres server.
         server = f"fdw_{source.id}"
         local_schema = f"fdw_{source.id}"
         # Remote schema override rides on federation_hints (Source has no `schema` field — and
@@ -566,14 +572,132 @@ class PostgresFdwConnector(Connector):  # REQ-893
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
-                f"CREATE SERVER IF NOT EXISTS {server} FOREIGN DATA WRAPPER postgres_fdw "
+                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
                 f"OPTIONS (host '{source.host}', port '{source.port}', dbname '{source.database}')",
-                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server} "
+                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
                 f"OPTIONS (user '{source.username}', password '{source.password}')",
-                f"CREATE SCHEMA IF NOT EXISTS {local_schema}",
-                f"IMPORT FOREIGN SCHEMA {remote_schema} FROM SERVER {server} INTO {local_schema}",
+                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
+                f'IMPORT FOREIGN SCHEMA "{remote_schema}" FROM SERVER "{server}" '
+                f'INTO "{local_schema}"',
             ],
             "local_schema": local_schema,
+        }
+
+
+class PgClickHouseFdwConnector(Connector):  # REQ-1870
+    """Attach a live ClickHouse source into a Postgres engine via ClickHouse's own official
+    pg_clickhouse extension (FDW name ``clickhouse_fdw``, github.com/ClickHouse/pg_clickhouse) —
+    live-verified this session against a real ~60M-row table: IMPORT FOREIGN SCHEMA auto-typed the
+    full 22-column schema correctly, and EXPLAIN VERBOSE confirmed full predicate/aggregate
+    pushdown executes as remote SQL run by ClickHouse itself, not locally. ADDITIONAL reach
+    alongside the existing Mechanism.DIRECT (native driver, materialize-required) — not a
+    replacement (REQ-947/951). No apt/PGDG package exists for pg_clickhouse (confirmed), so it is
+    bundled+built into provisa_pg_ext (scripts/ci/build_pg_extensions.sh), unlike the
+    operator-installed FDWs (oracle_fdw, mongo_fdw candidate).
+    """
+
+    engine = "postgres"
+    source_type = "clickhouse"
+    mechanisms = frozenset({Mechanism.ATTACH_RW, Mechanism.DIRECT})
+    mechanism = Mechanism.ATTACH_RW
+    key = "pg_clickhouse"
+    runtime_deps = (
+        RuntimeDep("libssl/libcrypto", DriverProvider.BUNDLED),
+        RuntimeDep("liblz4/libzstd", DriverProvider.BUNDLED),
+        RuntimeDep("libcurl/libuuid", DriverProvider.BUNDLED),
+    )
+
+    async def probe(self, fetch) -> ProbeResult:  # REQ-904/1870
+        return await _probe_pg_extension(fetch, "pg_clickhouse", auto_create=True)
+
+    def capability(self) -> Capability:
+        # Live-verified: predicate AND aggregate pushdown both confirmed via EXPLAIN VERBOSE.
+        return Capability(predicate_pushdown=True, join_pushdown=False, aggregate_pushdown=True)
+
+    def details(self, source: Source) -> dict:
+        server = f"ch_{source.id}"
+        local_schema = f"ch_{source.id}"
+        remote_database = source.database or source.federation_hints.get("database") or "default"
+        return {
+            "attach_ddl": [
+                "CREATE EXTENSION IF NOT EXISTS pg_clickhouse",
+                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER clickhouse_fdw '
+                f"OPTIONS (driver 'binary', host '{source.host}', dbname '{remote_database}')",
+                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
+                f"OPTIONS (user '{source.username or 'default'}', password '{source.password}')",
+                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
+                f'IMPORT FOREIGN SCHEMA "{remote_database}" FROM SERVER "{server}" '
+                f'INTO "{local_schema}"',
+            ],
+            "local_schema": local_schema,
+        }
+
+
+class PgWrappersMongoDbConnector(Connector):  # REQ-1871
+    """Attach a live MongoDB source into a Postgres engine via Supabase's `wrappers` framework's
+    MongoDB FDW (``mongodb_wrapper``/``mongodb_fdw_handler``) — live-verified this session against
+    the exact MongoDB instance the alternative candidate (mongo_fdw, REQ-1869) failed against:
+    real data, correct values, exact filtered counts. A distinct Rust implementation from
+    mongo_fdw, not sharing its confirmed upstream bug (EnterpriseDB/mongo_fdw#194). ADDITIONAL
+    reach alongside the existing Mechanism.FETCH (adapter read, materialize-required) — not a
+    replacement (REQ-947/951; row_materialize via make_mongodb_keyed_loader, REQ-1865, remains a
+    valid alternative). `wrappers` has no apt/PGDG package but DOES ship a prebuilt LINUX-ONLY
+    .deb per PG major version — staged (not compiled) into provisa_pg_ext
+    (scripts/ci/build_pg_extensions.sh); no macOS release exists upstream, a real platform gap.
+    """
+
+    engine = "postgres"
+    source_type = "mongodb"
+    mechanisms = frozenset({Mechanism.ATTACH_R, Mechanism.FETCH})
+    mechanism = Mechanism.ATTACH_R
+    key = "wrappers_mongodb"
+    runtime_deps = (RuntimeDep("wrappers (Rust/pgrx, linux-only)", DriverProvider.BUNDLED),)
+
+    async def probe(self, fetch) -> ProbeResult:  # REQ-904/1871
+        base = await _probe_pg_extension(fetch, "wrappers", auto_create=True)
+        if not base.available:
+            return base
+        if await fetch("SELECT 1 FROM pg_proc WHERE proname = 'mongodb_fdw_handler'"):
+            return ProbeResult(True, "wrappers with mongodb_fdw_handler")
+        return ProbeResult(
+            False,
+            "wrappers is installed but was built without the mongodb wrapper",
+            "install a wrappers build with the mongodb feature enabled",
+        )
+
+    def capability(self) -> Capability:
+        # wrappers' MongoDB FDW: read-only in Provisa's usage (no rowid_column write path wired).
+        return Capability(predicate_pushdown=False, join_pushdown=False, aggregate_pushdown=False)
+
+    def details(self, source: Source) -> dict:
+        database = source.database or "admin"
+        collection = source.federation_hints.get("collection")
+        if not collection:
+            raise ValueError(
+                f"Source {source.id!r}: mongodb wrapper requires federation_hints['collection'] "
+                "(no per-table collection mapping exists on this attach path yet)"
+            )
+        server = f"mongo_{source.id}"
+        local_table = f"mongo_{source.id}_{collection}"
+        auth = f"{source.username}:{source.password}@" if source.username else ""
+        conn_string = f"mongodb://{auth}{source.host}:{source.port or 27017}/{database}"
+        if source.federation_hints.get("replica_set"):
+            conn_string += f"?replicaSet={source.federation_hints['replica_set']}"
+        return {
+            "attach_ddl": [
+                "CREATE EXTENSION IF NOT EXISTS wrappers",
+                "DO $$ BEGIN "
+                "CREATE FOREIGN DATA WRAPPER mongodb_wrapper "
+                "handler mongodb_fdw_handler validator mongodb_fdw_validator; "
+                "EXCEPTION WHEN duplicate_object THEN NULL; END $$",
+                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER mongodb_wrapper '
+                f"OPTIONS (conn_string '{conn_string}')",
+                f'CREATE FOREIGN TABLE IF NOT EXISTS "{local_table}" ( '
+                f"_id text, __doc jsonb "
+                f') SERVER "{server}" OPTIONS '
+                f"(database '{database}', collection '{collection}', rowid_column '_id')",
+            ],
+            "local_table": local_table,
         }
 
 

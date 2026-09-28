@@ -644,12 +644,14 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         PgDuckdbDeltaConnector,
         PgDuckdbIcebergConnector,
         PgDuckdbJsonConnector,
+        PgClickHouseFdwConnector,
         PgDuckdbMotherDuckConnector,
         PgDuckdbParquetConnector,
         PgDuckdbSnowflakeIcebergConnector,
         PgFilesConnector,
         PgSharepointConnector,
         PgSplunkConnector,
+        PgWrappersMongoDbConnector,
         PostgresFdwConnector,
         SqliteFdwConnector,
         TdsFdwConnector,
@@ -676,6 +678,12 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             PgDuckdbDeltaConnector(),  # delta_lake (DuckDB delta ext; probe verifies it's compiled in)
             PgDuckdbBigQueryIcebergConnector(),  # bigquery live BigLake Iceberg reach (REQ-1867)
             PgDuckdbMotherDuckConnector(),  # motherduck (pg_duckdb duckdb FDW; live ATTACH_RW)
+            # clickhouse: live-verified predicate+aggregate pushdown ADDED alongside the existing
+            # DIRECT reach — not a replacement (REQ-1870).
+            PgClickHouseFdwConnector(),
+            # mongodb: live-verified working ADDITIONAL reach (REQ-1871) — a distinct
+            # implementation from the rejected mongo_fdw candidate (REQ-1869).
+            PgWrappersMongoDbConnector(),
             SqliteFdwConnector(),  # sqlite (system libsqlite3)
             MysqlFdwConnector(),  # mysql (needs a bundled client lib; probe-gated)
             TdsFdwConnector(),  # sqlserver via tds_fdw (bundled freetds; probe-gated)

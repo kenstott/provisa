@@ -64351,6 +64351,29 @@
     with a fetch(sql) adapter over that live connection, so an external/BYO Postgres the operator
     points PROVISA_ENGINE_URL at gets its ACTUAL installed FDW set probed and reflected, instead
     of every source type being assumed reachable until a query hard-fails.
+
+    BLOCKING CORRECTNESS FIX REQUIRED before this can be wired in safely, found while
+    implementing REQ-1870/1871: FederationEngine.complete_reach() only adds its own
+    dependency-free DIRECT/FETCH fallback connector (WarehouseNativeConnector) for a source_type
+    with NO connector already occupying that slot (`if source_type in self.connectors: continue`).
+    Every dual-reach connector this session added (PgClickHouseFdwConnector,
+    PgWrappersMongoDbConnector, and the three earlier Iceberg connectors —
+    PgDuckdbSnowflakeIcebergConnector/DatabricksIcebergConnector/BigQueryIcebergConnector) is ONE
+    connector OBJECT declaring `mechanisms={ATTACH_*, DIRECT/FETCH}`, occupying that slot at
+    __init__ time — so complete_reach() never generates the fallback for clickhouse/mongodb/
+    snowflake/databricks/bigquery at all. discover()'s own probe() is all-or-nothing PER
+    CONNECTOR OBJECT: if the extension-dependent mechanism's dependency (pg_clickhouse/wrappers/
+    etc.) is missing, probe() returns unavailable and discover() drops the WHOLE connector from
+    engine.connectors — including the dependency-free DIRECT/FETCH mechanism that should always
+    survive. Today this is silent because discover() is never called, so nothing gets pruned; the
+    moment it IS wired in (this REQ), those 5 source types regress from "gracefully materializes"
+    to "genuinely unreachable" whenever their extension isn't installed — the opposite of this
+    REQ's own goal. Fix options to evaluate: (a) make probe()/discover() mechanism-aware instead
+    of connector-object-aware, so a failed ATTACH probe narrows a connector's active mechanisms
+    rather than removing it outright, or (b) have complete_reach() re-run (or run its
+    per-mechanism check) AFTER discover(), keyed on which mechanisms survived rather than slot
+    occupancy. Must land together with the startup wiring, not as a follow-up — wiring discover()
+    in without this fix is a regression, not an improvement.
   use_case: >-
     Confirmed live this session: pointing PROVISA_ENGINE_URL at a real external Postgres with no
     FDWs installed produced no startup warning at all — the pg engine reported every candidate
@@ -64388,3 +64411,31 @@
     - scripts/ci/build_pg_extensions.sh
     - provisa/core/control_plane_pg.py
   target: "2027-Q1"
+- id: REQ-1874
+  status: proposed
+  group: "4. Source Connectors"
+  category: Federation
+  priority: MAY
+  type: structural
+  description: >-
+    A captive-Postgres pattern for SaaS-API source types (Stripe, HubSpot, Airtable, Notion,
+    Auth0, etc. — Supabase `wrappers`' non-database FDWs, deliberately set aside from REQ-1871's
+    mongodb/clickhouse scope): run a small dedicated Postgres+wrappers container per such source,
+    with `wrappers`' relevant FDW attaching the SaaS API live inside it, then register that
+    captive instance with Provisa as an ordinary `postgresql` source type — reached through the
+    EXISTING PostgresFdwConnector/native postgres driver, no new pg-engine connector code needed.
+    This is the SAME shape Provisa already uses for files/sharepoint/splunk (REQ-954/955/956,
+    provisa/federation/pgwire_replica.py) — a bundled server speaking the Postgres wire protocol
+    that the engine reaches as a generic PostgreSQL endpoint — just substituting a real
+    Postgres+wrappers container for the existing Calcite-JVM-bundle mechanism.
+  use_case: >-
+    Gives access to wrappers' whole SaaS-API catalog (Stripe, HubSpot, Airtable, Notion, Auth0,
+    AWS Cognito, Cloudflare D1, Logflare, Calendly) without hand-rolling a bespoke Calcite adapter
+    per source, and without needing the pg ENGINE itself to carry SaaS-specific connector code —
+    the captive instance does the translation, Provisa just sees "a postgresql source." Costs more
+    at rest than the lighter JVM bridge (a real running Postgres per source) but reuses proven,
+    already-shipped machinery end to end.
+  code:
+    - provisa/federation/pgwire_replica.py
+    - provisa/federation/connector_duckdb.py
+  target: "2027-Q3"

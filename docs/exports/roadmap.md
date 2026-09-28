@@ -236,6 +236,7 @@
 ## 2027-Q3
 
 - **REQ-1871** [SHOULD] [proposed] Federation — (Amended 2026-09-28, LIVE-TESTED — mixed, per-source verdict:) Evaluate Supabase's `wrappers` framework (github.com/supabase/wrappers, Ap…
+- **REQ-1874** [MAY] [proposed] Federation — A captive-Postgres pattern for SaaS-API source types (Stripe, HubSpot, Airtable, Notion, Auth0, etc. — Supabase `wrappers`' non-database …
 
 ## Unscheduled
 

@@ -101,7 +101,7 @@ def test_attach_ddl_provisions_extension_then_server_mapping_and_import():
     ddl = details["attach_ddl"]
     assert ddl[0] == "CREATE EXTENSION IF NOT EXISTS postgres_fdw"
     assert any(
-        "CREATE SERVER IF NOT EXISTS fdw_orders" in s
+        'CREATE SERVER IF NOT EXISTS "fdw_orders"' in s
         and "host 'remote'" in s
         and "port '5433'" in s
         and "dbname 'orders_db'" in s
@@ -109,7 +109,7 @@ def test_attach_ddl_provisions_extension_then_server_mapping_and_import():
     )
     assert any("CREATE USER MAPPING" in s and "user 'u'" in s and "password 'p'" in s for s in ddl)
     assert any(
-        "IMPORT FOREIGN SCHEMA sales FROM SERVER fdw_orders INTO fdw_orders" in s for s in ddl
+        'IMPORT FOREIGN SCHEMA "sales" FROM SERVER "fdw_orders" INTO "fdw_orders"' in s for s in ddl
     )
     assert details["local_schema"] == "fdw_orders"
 
@@ -118,7 +118,7 @@ def test_attach_ddl_defaults_remote_schema_to_public_when_unset():
     # No federation_hints schema override -> the documented default, NOT a leaked method repr.
     details = PostgresFdwConnector().details(_src("plain"))
     imports = [s for s in details["attach_ddl"] if s.startswith("IMPORT FOREIGN SCHEMA")]
-    assert imports == ["IMPORT FOREIGN SCHEMA public FROM SERVER fdw_plain INTO fdw_plain"]
+    assert imports == ['IMPORT FOREIGN SCHEMA "public" FROM SERVER "fdw_plain" INTO "fdw_plain"']
     assert "bound method" not in imports[0]  # regression guard for the schema-vs-.schema() bug
 
 

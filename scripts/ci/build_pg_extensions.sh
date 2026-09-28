@@ -11,6 +11,12 @@
 #   core contrib : file_fdw, postgres_fdw            (no external runtime dep)
 #   external fdw : sqlite_fdw (system libsqlite3), mysql_fdw (libmysqlclient/mariadb-connector-c)
 #   pg_duckdb    : csv/parquet/json + httpfs + iceberg, via scripts/build_pg_duckdb.sh (vcpkg)
+#   pg_clickhouse: built from source (github.com/ClickHouse/pg_clickhouse release zip — no apt/
+#                  PGDG package exists, confirmed; live-verified working, REQ-1870)
+#   wrappers     : Supabase's multi-source FDW framework, STAGED not built — LINUX ONLY, from
+#                  its own prebuilt .deb release (github.com/supabase/wrappers/releases — Rust/
+#                  pgrx, no macOS binary published and no cargo/pgrx toolchain in this build
+#                  environment); live-verified working for mongodb specifically, REQ-1871
 #
 # macOS path is proven on this repo's dev machine; the Linux path is CI-targeted (patchelf/$ORIGIN,
 # apt-provided client libs) — build it in an OLD-glibc container so the .so loads broadly.
@@ -63,6 +69,31 @@ MYCFG="$( (command -v mariadb_config || command -v mysql_config) 2>/dev/null || 
 echo "== build pg_duckdb (vcpkg: csv/parquet/json + httpfs + iceberg) =="
 PG_DUCKDB_TAG="$PGDUCKDB_TAG" PROVISA_FDW_CACHE="$CACHE" bash "$ROOT/scripts/build_pg_duckdb.sh"
 
+PGCH_TAG="${PGCH_TAG:-v0.10.0}"
+echo "== build pg_clickhouse (clickhouse-c client, live-verified REQ-1870) =="
+PGCH_SRC="$CACHE/pg_clickhouse-${PGCH_TAG#v}"
+if [ ! -d "$PGCH_SRC" ]; then
+  curl -fsSL -o "$CACHE/pg_clickhouse.zip" \
+    "https://github.com/ClickHouse/pg_clickhouse/releases/download/$PGCH_TAG/pg_clickhouse-${PGCH_TAG#v}.zip"
+  unzip -q -d "$CACHE" "$CACHE/pg_clickhouse.zip"
+fi
+( cd "$PGCH_SRC" && make PG_CONFIG="$PGC" >/dev/null && make PG_CONFIG="$PGC" install >/dev/null )
+
+echo "== stage wrappers (Supabase, prebuilt .deb, LINUX ONLY — no macOS release, REQ-1871) =="
+WRAPPERS_TAG="${WRAPPERS_TAG:-v0.6.3}"
+WRAPPERS_SO=""
+if [ "$OS" = linux ] && [ "$ARCH" = x64 ]; then
+  WRAPPERS_DEB="$CACHE/wrappers-$WRAPPERS_TAG-pg${PG_VERSION%%.*}-amd64-linux-gnu.deb"
+  [ -e "$WRAPPERS_DEB" ] || curl -fsSL -o "$WRAPPERS_DEB" \
+    "https://github.com/supabase/wrappers/releases/download/$WRAPPERS_TAG/wrappers-$WRAPPERS_TAG-pg${PG_VERSION%%.*}-amd64-linux-gnu.deb"
+  WRAPPERS_EXTRACT="$CACHE/wrappers-extract"
+  rm -rf "$WRAPPERS_EXTRACT"; mkdir -p "$WRAPPERS_EXTRACT"
+  dpkg-deb -x "$WRAPPERS_DEB" "$WRAPPERS_EXTRACT"
+  WRAPPERS_SO="$(find "$WRAPPERS_EXTRACT" -name 'wrappers-*.so' -path '*/16/*' | head -1)"
+else
+  echo "  (skip: wrappers has no macOS release — no source build path either, real gap not a fallback)"
+fi
+
 echo "== collect + relocate into $OUT =="
 rm -rf "$OUT"; mkdir -p "$OUT/lib" "$OUT/share/extension"
 relocate() {  # make a lib self-contained: @loader_path (macOS) / $ORIGIN (linux) for sibling deps
@@ -82,6 +113,7 @@ declare -a MEMBERS=(
   "mysql_fdw|mysql_fdw|bundled|libmysqlclient/mariadb-connector-c"
   "pg_duckdb|pg_duckdb|bundled|libduckdb; aws-sdk-cpp/avro-c/roaring (static)"
   "libduckdb|libduckdb|bundled|"
+  "pg_clickhouse|pg_clickhouse|bundled|libssl/libcrypto; liblz4; libzstd; libcurl; libuuid"
 )
 manifest="$OUT/manifest.json"; echo '{"os":"'$OS'","arch":"'$ARCH'","pg_major":"'${PG_VERSION%%.*}'","artifacts":[' > "$manifest"
 first=1
@@ -96,6 +128,21 @@ for row in "${MEMBERS[@]}"; do
   printf '  {"name":"%s","key":"%s","file":"lib/%s.%s","sha256":"%s","redistribution":"%s","runtime_deps":"%s"}' \
     "$name" "$key" "$name" "$SUF" "$sha" "$redis" "$deps" >> "$manifest"
 done
+if [ -n "$WRAPPERS_SO" ]; then
+  # wrappers ships "versioned shared-object mode" (its own .control comments out module_pathname —
+  # the .sql scripts reference the exact versioned filename), so it cannot be renamed to
+  # wrappers.$SUF the way every other MEMBERS row is — stage it under its real name instead.
+  wso="$(basename "$WRAPPERS_SO")"
+  cp "$WRAPPERS_SO" "$OUT/lib/"; relocate "$OUT/lib/$wso"
+  wcontrol="$(find "$WRAPPERS_EXTRACT" -name wrappers.control -path '*/'"${PG_VERSION%%.*}"'/*' | head -1)"
+  wextdir="$(dirname "$wcontrol")"
+  cp "$wcontrol" "$OUT/share/extension/"
+  for s in "$wextdir"/wrappers--*.sql; do [ -e "$s" ] && cp "$s" "$OUT/share/extension/"; done
+  sha="$( (command -v sha256sum >/dev/null && sha256sum "$OUT/lib/$wso" || shasum -a256 "$OUT/lib/$wso") | awk '{print $1}')"
+  echo ',' >> "$manifest"
+  printf '  {"name":"%s","key":"wrappers","file":"lib/%s","sha256":"%s","redistribution":"bundled","runtime_deps":"linux-only (Rust/pgrx, no macOS release)"}' \
+    "$wso" "$wso" "$sha" >> "$manifest"
+fi
 echo '' >> "$manifest"; echo ']}' >> "$manifest"
 
 echo "== package =="
