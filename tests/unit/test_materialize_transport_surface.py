@@ -104,7 +104,9 @@ class TestBoltPullSurfacesRedirect:
 
         sent: list[dict] = []
         session.send_success = lambda meta=None: sent.append(meta or {})  # type: ignore[method-assign]
-        session.send_record = lambda values: pytest.fail("no records should stream on a redirect")  # type: ignore[method-assign]
+        session.send_record = lambda values, meter=True: pytest.fail(
+            "no records should stream on a redirect"
+        )  # type: ignore[method-assign]
 
         session.handle_pull([{"n": -1}])
 
@@ -122,7 +124,7 @@ class TestBoltPullSurfacesRedirect:
 
         sent: list[dict] = []
         session.send_success = lambda meta=None: sent.append(meta or {})  # type: ignore[method-assign]
-        session.send_record = lambda values: None  # type: ignore[method-assign]
+        session.send_record = lambda values, meter=True: 0  # type: ignore[method-assign]
 
         session.handle_pull([{"n": -1}])
 
