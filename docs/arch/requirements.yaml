@@ -64566,6 +64566,12 @@
     volatile functions) and only for INNER JOIN — LEFT/RIGHT/FULL OUTER JOIN must NOT propagate,
     since it would incorrectly filter out preserved-side NULL-extended rows. Gated on the target
     connector's declared Capability, not on source type.
+
+    (Amended 2026-09-28, IMPLEMENTED AS REQ-1880:) This backlog entry was implemented the same
+    day as REQ-1880, which carries the final shape (predicate forms covered: =, IN (...),
+    BETWEEN, top-level-AND combinations; wiring at provisa/pgwire/_pipeline.py's ENGINE route)
+    and the test suite. See REQ-1880 for the authoritative description; this entry is kept for
+    the connector-landscape survey in its use_case, not duplicated there.
   use_case: >-
     Live-verified via EXPLAIN this session (REQ-1871's mongodb wrapper investigation): a literal
     WHERE on a table alone pushes down to MongoDB via wrappers, but a join-derived predicate does
@@ -64584,3 +64590,53 @@
     - provisa/pgwire/_pipeline.py
     - provisa/federation/connector_base.py
   target: "2027-Q1"
+- id: REQ-1880
+  status: complete
+  group: "4. Source Connectors"
+  category: Federation
+  priority: SHOULD
+  type: behavioral
+  since: 2026-09
+  description: >-
+    On the ENGINE route, after governance/routing/view-expansion have fully run and before
+    catalog-fold/transpile hand off to the physical engine, a literal/constant WHERE predicate
+    (=, IN (...), BETWEEN, or a top-level-AND combination of these) on a driving table's join
+    column is propagated as an additional, equivalent literal predicate onto the SAME column of
+    any INNER-equi-joined table whose connector has predicate_pushdown=True and
+    join_pushdown=False. Never applied across LEFT/RIGHT/FULL OUTER joins (would incorrectly
+    filter out preserved-side NULL-extended rows), never for a predicate reached only via an OR,
+    a correlated/non-literal comparison (another column, a function call, a subquery), or a
+    driving/target column pair whose engine types are unknown or incompatible -- a missed
+    propagation is always safe, an incorrect one is not, so any ambiguous shape is left alone by
+    design, never guessed.
+  use_case: >-
+    Originating context REQ-1871: live-verified via EXPLAIN that PgWrappersMongoDbConnector (the
+    live-ATTACHed MongoDB FDW) pushes a literal predicate stated directly on its own table down to
+    MongoDB, but never sees a join-derived one (no GetForeignPaths parameterized-path support) --
+    confirmed on both join orders. Without this rewrite, a query joining a small, cheaply-filtered
+    table against a large MongoDB-backed table (demo/named/perf/bench/queries.py's
+    federated_join/large_federated_join: orders JOIN order_events JOIN order_docs WHERE
+    o.order_id BETWEEN :lo AND :hi) forces a full scan of the entire MongoDB collection locally --
+    live-observed effectively never completing (killed by Postgres's own idle-in-transaction
+    timeout) against a 20M-document collection. Propagating the literal predicate onto
+    order_docs.order_id too gives the FDW's own literal-predicate pushdown a real qual to push.
+  code:
+    - provisa/compiler/sql_rewrite.py
+    - provisa/pgwire/_pipeline.py
+  tests:
+    - tests/unit/test_sql_rewrite_propagate.py
+  scenario: |
+    Given an INNER JOIN on an equi-join column with a literal/constant WHERE predicate
+    (=, IN (...), BETWEEN, or a top-level AND of these) stated on the driving table's join column
+    When the joined table's connector declares predicate_pushdown=True and join_pushdown=False
+    Then the same literal predicate is propagated onto the joined table's own join column
+
+    Given a LEFT, RIGHT, or FULL OUTER JOIN
+    When the driving table has a literal predicate on its join column
+    Then no predicate is propagated onto the joined table
+
+    Given a predicate reached only via an OR, a correlated/non-literal comparison, or a
+    driving/target column pair with unknown or incompatible engine types
+    When propagation is considered
+    Then no predicate is propagated (ambiguous shapes are always left alone)
+  target: "2026-Q3"

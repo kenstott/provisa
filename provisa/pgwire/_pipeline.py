@@ -823,6 +823,46 @@ async def _govern_and_route_planned(
                     )
         except ValueError:
             raise
+        # REQ-1880: propagate a literal WHERE predicate across an INNER equi-join onto the joined
+        # table's OWN join column too -- a connector that can only push a literal predicate directly
+        # on its own table (predicate_pushdown=True) but has no parameterized-path support
+        # (join_pushdown=False, e.g. PgWrappersMongoDbConnector, REQ-1871's live-verified finding)
+        # otherwise never sees a join-derived filter at all. Runs AFTER governance/routing/view-
+        # expansion have fully executed (this is the already-governed physical-ish SQL text on its
+        # way to the engine, never touching or reordering anything upstream), and BEFORE the
+        # catalog-fold/transpile below -- the propagated predicate is just another literal in the
+        # WHERE clause by the time those run, nothing about them needs to know it was added here.
+        if _tree.find(_exp.Join) is not None:
+            _referenced_phys = {
+                (_tbl.db.lower(), _tbl.name.lower())
+                for _tbl in _tree.find_all(_exp.Table)
+                if _tbl.db
+            }
+            if _referenced_phys:
+                from provisa.federation.registry_view import registered_sources, registered_tables
+
+                _sources_by_id = {s.id: s for s in await registered_sources(state)}
+                _eligible_targets: set[tuple[str, str]] = set()
+                _column_types: dict[tuple[str, str, str], str] = {}
+                for _t in await registered_tables(state):
+                    _phys = (_t.schema_name.lower(), _t.table_name.lower())
+                    if _phys not in _referenced_phys:
+                        continue
+                    for _col in _t.columns:
+                        if _col.data_type:
+                            _column_types[(*_phys, _col.name.lower())] = _col.data_type
+                    _src = _sources_by_id.get(_t.source_id)
+                    if _src is None:
+                        continue
+                    _cap = state.federation_engine.connector_pushdown(_src.type.value)
+                    if _cap.predicate_pushdown and not _cap.join_pushdown:
+                        _eligible_targets.add(_phys)
+                if _eligible_targets:
+                    from provisa.compiler.sql_rewrite import propagate_literal_join_predicates
+
+                    _qualified = propagate_literal_join_predicates(
+                        _qualified, "postgres", _eligible_targets, _column_types
+                    )
         # REQ-1730: this ENGINE route's own catalog-qualification (unlike Route.DIRECT's own
         # `strip_catalog`, applied unconditionally a few lines below in the other branch) was never
         # engine-aware — every engine got a catalog.schema.table physical reference regardless of

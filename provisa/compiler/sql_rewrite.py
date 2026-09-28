@@ -444,4 +444,193 @@ def strip_schema(sql: str) -> str:  # REQ-1361
     return tree.sql(dialect="postgres")
 
 
+# --- Literal predicate propagation across equi-joins (REQ-1880) ---
+
+
+def _is_literal(node: exp.Expr | None) -> bool:
+    """A true constant: a literal, or a negated literal (``-1``) -- never a function/subquery/column."""
+    return isinstance(node, exp.Literal) or (
+        isinstance(node, exp.Neg) and isinstance(node.this, exp.Literal)
+    )
+
+
+def _split_and(node: exp.Expr) -> list[exp.Expr]:
+    """Top-level AND conjuncts only -- a predicate reached only via an OR is never returned, since
+    an OR does not guarantee the predicate holds for every row a propagated copy would rely on."""
+    if isinstance(node, exp.Paren):
+        return _split_and(node.this)
+    if isinstance(node, exp.And):
+        return _split_and(node.left) + _split_and(node.right)
+    return [node]
+
+
+def _literal_predicate_target(node: exp.Expr) -> tuple[str, str] | None:
+    """(alias, column) for a WHERE conjunct of the form ``alias.col <op> <literal(s)>`` for
+    ``=``/``IN``/``BETWEEN`` -- ``None`` for anything else (a function call, a subquery, a second
+    column, an unqualified column). Never guessed: a shape this doesn't recognize is simply not
+    propagated, same posture as ``query_residency._join_key_column``."""
+    if isinstance(node, exp.EQ):
+        left, right = node.left, node.right
+        if isinstance(left, exp.Column) and left.table and _is_literal(right):
+            return left.table, left.name
+        if isinstance(right, exp.Column) and right.table and _is_literal(left):
+            return right.table, right.name
+        return None
+    if isinstance(node, exp.In):
+        col = node.this
+        if not (isinstance(col, exp.Column) and col.table):
+            return None
+        if node.args.get("query") is not None:  # IN (SELECT ...) is not a literal set
+            return None
+        exprs = node.args.get("expressions") or []
+        if not exprs or not all(_is_literal(e) for e in exprs):
+            return None
+        return col.table, col.name
+    if isinstance(node, exp.Between):
+        col = node.this
+        if not (isinstance(col, exp.Column) and col.table):
+            return None
+        if _is_literal(node.args.get("low")) and _is_literal(node.args.get("high")):
+            return col.table, col.name
+        return None
+    return None
+
+
+def _equi_join_columns(join: exp.Join) -> tuple[tuple[str, str], tuple[str, str]] | None:
+    """The two ``alias.column`` sides of a genuine INNER equi-join's ON clause, or ``None`` for
+    anything else -- a LEFT/RIGHT/FULL OUTER join (``join.side`` set) is excluded categorically:
+    that join kind preserves a row from the non-matching side with the far column NULL-extended, so
+    pinning the same literal onto the far column would filter those preserved rows out and change
+    the result set. An INNER join already drops any row where the two join columns don't match
+    (including NULL-vs-NULL, standard SQL join semantics), so propagating changes zero result rows.
+    A CROSS/USING/composite-ON/non-equality join is also excluded -- not guessed."""
+    if join.side:
+        return None
+    kind = (join.kind or "").upper()
+    if kind not in ("", "INNER"):
+        return None
+    on = join.args.get("on")
+    if not isinstance(on, exp.EQ):
+        return None
+    left, right = on.left, on.right
+    if not (
+        isinstance(left, exp.Column)
+        and isinstance(right, exp.Column)
+        and left.table
+        and right.table
+    ):
+        return None
+    return (left.table, left.name), (right.table, right.name)
+
+
+def _collect_table_aliases(select: exp.Select) -> dict[str, tuple[str, str]]:
+    """alias (lowercased) -> (schema, table) lowercased, for this SELECT's own FROM + JOIN tables
+    only -- never descends into a nested subquery's own FROM/JOIN (each is its own scope, visited
+    separately by the caller's own ``find_all(exp.Select)``)."""
+    aliases: dict[str, tuple[str, str]] = {}
+    from_ = select.args.get("from_") or select.args.get("from")
+    tables: list[exp.Table] = []
+    if from_ is not None and isinstance(from_.this, exp.Table):
+        tables.append(from_.this)
+    for j in select.args.get("joins") or []:
+        if isinstance(j.this, exp.Table):
+            tables.append(j.this)
+    for tbl in tables:
+        if tbl.db:
+            aliases[tbl.alias_or_name.lower()] = (tbl.db.lower(), tbl.name.lower())
+    return aliases
+
+
+def propagate_literal_join_predicates(  # REQ-1880
+    sql: str,
+    dialect: str,
+    eligible_targets: set[tuple[str, str]],
+    column_types: dict[tuple[str, str, str], str] | None = None,
+) -> str:
+    """Propagate a literal WHERE predicate across an INNER equi-join onto the far table's own join
+    column, so a connector whose pushdown is limited to literal predicates (no join-pushdown --
+    e.g. ``PgWrappersMongoDbConnector``, ``predicate_pushdown=True, join_pushdown=False``,
+    connector_duckdb.py) gets a chance to push the copy down too (REQ-1880, originating context
+    REQ-1871: live-verified, a join-derived predicate never reaches that connector's FDW quals,
+    while a literal one directly on its own table does).
+
+    ``eligible_targets`` is the set of lowercased ``(schema, table)`` pairs allowed to receive a
+    propagated predicate -- the caller computes this from each join target's OWN connector
+    capability before calling in; this function never touches FederationEngine/Connector (leaf
+    module rule, see module docstring). ``column_types`` is ``(schema, table, column) -> engine
+    type`` for the driving and target sides of a candidate join column; a pair missing from it, or
+    incompatible per ``_types_compatible``, is skipped -- conservative by design (a missed
+    propagation is always safe; an incorrect one is not), not a swallowed error.
+
+    Only ``=``/``IN (...)``/``BETWEEN`` conjuncts reached by splitting the WHERE clause on
+    top-level AND are propagated (never one embedded in an OR, which doesn't hold for every row);
+    only when the non-column side(s) are literal constants (a function call, a subquery, or another
+    column is left alone). Only a genuine INNER (or unqualified, same thing) equi-join on exactly
+    two plain columns is propagated across -- see ``_equi_join_columns`` for why LEFT/RIGHT/FULL
+    OUTER must not be.
+    """
+    if not eligible_targets:
+        return sql
+    column_types = column_types or {}
+    tree = sqlglot.parse_one(sql, read=dialect)
+    changed = False
+    for select in tree.find_all(exp.Select):
+        where = select.args.get("where")
+        joins = select.args.get("joins") or []
+        if where is None or not joins:
+            continue
+        alias_to_phys = _collect_table_aliases(select)
+        if not alias_to_phys:
+            continue
+        literal_preds: dict[tuple[str, str], list[exp.Expr]] = {}
+        for conjunct in _split_and(where.this):
+            target = _literal_predicate_target(conjunct)
+            if target is not None:
+                key = (target[0].lower(), target[1].lower())
+                literal_preds.setdefault(key, []).append(conjunct)
+        if not literal_preds:
+            continue
+        new_preds: list[exp.Expr] = []
+        for join in joins:
+            kc = _equi_join_columns(join)
+            if kc is None:
+                continue
+            (a_alias, a_col), (b_alias, b_col) = kc
+            for (drv_alias, drv_col), (tgt_alias, tgt_col) in (
+                ((a_alias, a_col), (b_alias, b_col)),
+                ((b_alias, b_col), (a_alias, a_col)),
+            ):
+                preds = literal_preds.get((drv_alias.lower(), drv_col.lower()))
+                if not preds:
+                    continue
+                tgt_phys = alias_to_phys.get(tgt_alias.lower())
+                drv_phys = alias_to_phys.get(drv_alias.lower())
+                if tgt_phys is None or drv_phys is None or tgt_phys not in eligible_targets:
+                    continue
+                drv_type = column_types.get((*drv_phys, drv_col.lower()))
+                tgt_type = column_types.get((*tgt_phys, tgt_col.lower()))
+                if (
+                    drv_type is None
+                    or tgt_type is None
+                    or not _types_compatible(drv_type, tgt_type)
+                ):
+                    continue
+                for pred in preds:
+                    propagated = pred.copy()
+                    for col in propagated.find_all(exp.Column):
+                        if (
+                            col.table.lower() == drv_alias.lower()
+                            and col.name.lower() == drv_col.lower()
+                        ):
+                            col.set("table", exp.to_identifier(tgt_alias))
+                    new_preds.append(propagated)
+        if new_preds:
+            combined = where.this
+            for pred in new_preds:
+                combined = exp.and_(combined, pred, copy=False)
+            where.set("this", combined)
+            changed = True
+    return tree.sql(dialect=dialect) if changed else sql
+
+
 # --- Main compilation ---
