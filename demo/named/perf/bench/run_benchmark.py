@@ -272,7 +272,7 @@ class PgwireTransport(Transport):
 
     name = "sql"
 
-    def __init__(self, host: str, port: int):
+    def __init__(self, host: str, port: int, role: str = "org_admin"):
         self.host, self.port = host, port
         self._pool = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -289,10 +289,12 @@ class PgwireTransport(Transport):
                 return await asyncpg.create_pool(
                     # pgwire username IS the role (verified live: "admin" is not a real role and
                     # fails "No schema for role 'admin'" — org_admin matches fragment.yaml's
-                    # visible_to lists and config's default_assignments).
+                    # visible_to lists and config's default_assignments). REQ-1887: role is
+                    # overridable to org_admin_unguarded (--bypass-relationship-guard) — same
+                    # domain_access/visible_to grants, plus V002-only Capability.IGNORE_RELATIONSHIPS.
                     host=host,
                     port=port,
-                    user="org_admin",
+                    user=role,
                     password="ignored",
                     database="provisa",
                     min_size=1,
@@ -398,7 +400,7 @@ class BoltTransport(Transport):
 
     name = "cypher"
 
-    def __init__(self, host: str, port: int):
+    def __init__(self, host: str, port: int, role: str = "org_admin"):
         self._driver = None
         self._session = None
         try:
@@ -417,11 +419,20 @@ class BoltTransport(Transport):
             # other transport's own explicit "org_admin" convention (pgwire's user=, gRPC's
             # x-provisa-role header) — the server's own auth.provider stays "none" either way,
             # this only selects which of the already-unauthenticated roles is used.
+            #
+            # REQ-1887: role is overridable via --bypass-relationship-guard, BUT Bolt's Cypher
+            # queries run through provisa.pgwire._pipeline._govern_and_route_compiled
+            # (provisa/bolt/session.py:1105,1233,1255,1298), whose own docstring says "No SQL
+            # validation: the compiler produced this SQL from a governed AST" — V002's
+            # _check_join_relationships (sql_validator.py) is a raw-SQL-path check and never
+            # runs on this compiled path regardless of role/capability. Cypher's own
+            # unregistered-relationship-type check (cypher_router.py's label_map.aliases lookup,
+            # mirrored server-side for Bolt) is unconditional and unrelated to
+            # IGNORE_RELATIONSHIPS. So org_admin_unguarded changes nothing measurable for this
+            # transport — role is still threaded through for consistency/RLS/visibility parity.
             from neo4j import basic_auth
 
-            self._driver = GraphDatabase.driver(
-                f"bolt://{host}:{port}", auth=basic_auth("org_admin", "")
-            )
+            self._driver = GraphDatabase.driver(f"bolt://{host}:{port}", auth=basic_auth(role, ""))
             self._driver.verify_connectivity()
             # One session for the transport's whole lifetime, matching FlightTransport's single
             # persistent FlightClient (and every other transport's own connection reuse): a
@@ -473,20 +484,32 @@ class HttpTransport(Transport):
 
     No auth: `--demo perf` runs with auth.provider: none (config/provisa-install*.yaml, checked
     in), under which every request is auto-identified anonymous/org_admin with no token at all —
-    verified in provisa/auth/middleware.py:417-441 ("there is no auth to validate against"). A
-    benchmark against a SECURED Provisa instance would need a bearer token added here; this
-    demo's whole point is a clean, predictable reset each time, including that posture, so no
-    login step belongs in this tool.
+    verified in provisa/auth/middleware.py:417-441 ("there is no auth to validate against"), which
+    reads the caller's role from the `X-Provisa-Role` header (default org_admin when absent) at
+    provisa/auth/middleware.py:417-424. A benchmark against a SECURED Provisa instance would need
+    a bearer token added here; this demo's whole point is a clean, predictable reset each time,
+    including that posture, so no login step belongs in this tool.
+
+    REQ-1887: role is overridable via --bypass-relationship-guard (X-Provisa-Role header, set
+    explicitly below rather than relying on the org_admin default). BUT this endpoint
+    (cypher_router.py) always executes through _govern_and_route_compiled (provisa/pgwire/
+    _pipeline.py), whose docstring states "No SQL validation" — V002's _check_join_relationships
+    never runs on this compiled path, for any role. The endpoint's own pre-check even hardcodes
+    `bypass_relationship_guard=True` (cypher_router.py) as a no-op early gate, independent of
+    role/capability. So org_admin_unguarded changes nothing measurable here; the header is set
+    for RLS/visibility parity, not V002 bypass.
     """
 
     name = "http"
 
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, role: str = "org_admin"):
         self._client = None
         try:
             import httpx
 
-            self._client = httpx.Client(base_url=base_url, timeout=120)
+            self._client = httpx.Client(
+                base_url=base_url, timeout=120, headers={"X-Provisa-Role": role}
+            )
         except Exception as exc:  # noqa: BLE001 - availability probe
             self._error = str(exc)
 
@@ -557,17 +580,27 @@ class GraphqlTransport(Transport):
         response shape from every other transport's inline-JSON large_scan run, so it would not
         be measuring the same thing. Skipped rather than silently comparing apples to oranges.
 
-    No auth, same reasoning as HttpTransport (`--demo perf` runs with auth.provider: none).
+    No auth, same reasoning as HttpTransport (`--demo perf` runs with auth.provider: none), same
+    X-Provisa-Role header mechanism.
+
+    REQ-1887: role is overridable via --bypass-relationship-guard. BUT provisa/api/data/
+    endpoint.py's graphql_endpoint hardcodes `bypass_relationship_guard=True` unconditionally,
+    with the comment "V002 (join relationship check) is always skipped for GraphQL because the
+    SDL defines valid relationships by design" — independent of role/capability. So
+    org_admin_unguarded changes nothing measurable here either; the header is set for
+    RLS/visibility parity, not V002 bypass.
     """
 
     name = "graphql"
 
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, role: str = "org_admin"):
         self._client = None
         try:
             import httpx
 
-            self._client = httpx.Client(base_url=base_url, timeout=120)
+            self._client = httpx.Client(
+                base_url=base_url, timeout=120, headers={"X-Provisa-Role": role}
+            )
         except Exception as exc:  # noqa: BLE001 - availability probe
             self._error = str(exc)
 
@@ -614,11 +647,19 @@ class FlightTransport(Transport):
     do_get's own explicit `if not request.get("role"): raise "role is required"` guard. Every
     other transport supplies "org_admin" the same way (pgwire's `user="org_admin"`, gRPC's
     `x-provisa-role: org_admin` metadata) — Flight is no different, just via the ticket JSON.
+
+    REQ-1887: role is overridable via --bypass-relationship-guard. This transport's SQL ticket
+    path (`run_sql` below) is one of the two transports V002's relationship guard genuinely
+    applies to: _do_get_sql_governed (provisa/api/flight/server.py) calls
+    govern_batch_final_plan -> _govern_and_route (provisa/pgwire/_pipeline.py), the raw-SQL path
+    that runs validate_sql/_check_join_relationships for real, gated by
+    Capability.IGNORE_RELATIONSHIPS. org_admin_unguarded's grant measurably bypasses it here.
     """
 
     name = "flight"
 
-    def __init__(self, host: str, port: int):
+    def __init__(self, host: str, port: int, role: str = "org_admin"):
+        self._role = role
         self._client = None
         try:
             import pyarrow.flight as fl
@@ -642,7 +683,7 @@ class FlightTransport(Transport):
             literal = f"'{v}'" if isinstance(v, str) else str(v)
             pg_sql = pg_sql.replace(f":{k}", literal)
         assert self._client is not None
-        ticket = self._fl.Ticket(json.dumps({"query": pg_sql, "role": "org_admin"}).encode())
+        ticket = self._fl.Ticket(json.dumps({"query": pg_sql, "role": self._role}).encode())
         reader = self._client.do_get(ticket)
         estimator = _ByteEstimator()
         for chunk in reader:
@@ -688,11 +729,19 @@ class GrpcTransport(Transport):
     the cypher_* queries regardless of filter support — those need a join, not a filter. But
     point_lookup (a plain equality filter on one table) now has a real grpc spec below instead
     of being silently skipped.
+
+    REQ-1887: role is overridable via --bypass-relationship-guard (`x-provisa-role` metadata,
+    `run_grpc` below). BUT this surface is single-table only (no join capability — see above), so
+    V002's join-relationship guard is structurally moot here regardless of role/capability, and
+    server.py's typed RPC handlers route through _govern_and_route_compiled anyway (same "No SQL
+    validation" compiled path as Bolt/HTTP-cypher/GraphQL). org_admin_unguarded changes nothing
+    measurable here; the header is set for RLS/visibility parity, not V002 bypass.
     """
 
     name = "grpc"
 
-    def __init__(self, host: str, port: int):
+    def __init__(self, host: str, port: int, role: str = "org_admin"):
+        self._role = role
         self._channel = None
         self._pool = None
         self._loaded_files: set[str] = set()
@@ -758,7 +807,7 @@ class GrpcTransport(Transport):
     def run_grpc(self, spec: dict, params: dict) -> tuple[int, int, float]:
         assert self._channel is not None
         type_name = spec["type_name"]
-        metadata = [("x-provisa-role", "org_admin")]  # matches every other transport's role
+        metadata = [("x-provisa-role", self._role)]  # matches every other transport's role
         batch: list = []
         estimator = _ByteEstimator()
 
@@ -1083,6 +1132,22 @@ def main() -> int:
         help="Skip the per-transport saturation ramp (~8 min per engine run otherwise)",
     )
     parser.add_argument(
+        "--bypass-relationship-guard",
+        action="store_true",
+        help="REQ-1887: authenticate every transport as org_admin_unguarded instead of "
+        "org_admin — identical capabilities/domain_access/visible_to, plus "
+        "Capability.IGNORE_RELATIONSHIPS, which bypasses ONLY V002's join-relationship guard "
+        "(_check_join_relationships, sql_validator.py) on the raw-SQL path (sql/pgwire, "
+        "flight). RLS, masking, domain-access, and column visibility stay fully active and "
+        "identical to org_admin — this is not a general governance-bypass flag. Has no "
+        "measurable effect on cypher (Bolt), http (Cypher-over-HTTP), graphql, or grpc: those "
+        "surfaces route through _govern_and_route_compiled, which never runs V002's raw-SQL "
+        "validation regardless of role (see each transport class's own docstring). Use this to "
+        "measure engine-choice latency (pg/duckdb/trino) without V002's real governance cost as "
+        "a confound, when comparing against database products with no equivalent feature. "
+        "Default (flag absent) measures real governed-platform latency under org_admin.",
+    )
+    parser.add_argument(
         "--query-id",
         action="append",
         dest="query_ids",
@@ -1109,13 +1174,16 @@ def main() -> int:
             parser.error(f"--start-at {args.start_at!r} is not a known query id: {all_ids}")
         query_ids = set(all_ids[all_ids.index(args.start_at) :])
 
+    # REQ-1887: org_admin_unguarded is org_admin's clone (demo/named/perf/fragment.yaml) plus
+    # Capability.IGNORE_RELATIONSHIPS — bypasses V002's relationship guard only, nothing else.
+    role = "org_admin_unguarded" if args.bypass_relationship_guard else "org_admin"
     transports: dict[str, Transport] = {
-        "sql": PgwireTransport(args.pgwire_host, args.pgwire_port),
-        "cypher": BoltTransport(args.bolt_host, args.bolt_port),
-        "http": HttpTransport(args.http_base_url),
-        "flight": FlightTransport(args.flight_host, args.flight_port),
-        "graphql": GraphqlTransport(args.http_base_url),
-        "grpc": GrpcTransport(args.grpc_host, args.grpc_port),
+        "sql": PgwireTransport(args.pgwire_host, args.pgwire_port, role),
+        "cypher": BoltTransport(args.bolt_host, args.bolt_port, role),
+        "http": HttpTransport(args.http_base_url, role),
+        "flight": FlightTransport(args.flight_host, args.flight_port, role),
+        "graphql": GraphqlTransport(args.http_base_url, role),
+        "grpc": GrpcTransport(args.grpc_host, args.grpc_port, role),
     }
     for name, t in transports.items():
         status = (
@@ -1139,6 +1207,11 @@ def main() -> int:
         report = {
             "engine": args.engine,
             "generated_at": datetime.now(timezone.utc).isoformat(),
+            # REQ-1887: true only when every transport ran as org_admin_unguarded (V002's
+            # join-relationship guard bypassed on the raw-SQL path — sql/pgwire, flight). RLS,
+            # masking, domain-access, and column visibility are identical to org_admin either
+            # way — this field never means "governance disabled".
+            "relationship_guard_bypassed": args.bypass_relationship_guard,
             "results": summaries,
             "saturation": saturation,
         }

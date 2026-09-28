@@ -77,32 +77,32 @@ tables:
   enable_aggregates: true
   enable_group_by: true
   columns:
-  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
-  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: sales_rep_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: region, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: country, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: order_date, data_type: date, visible_to: [org_admin, analyst]}
-  - {name: ship_date, data_type: date, visible_to: [org_admin, analyst]}
-  - {name: delivery_date, data_type: date, visible_to: [org_admin, analyst]}
-  - {name: channel, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: amount, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: discount, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: tax, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: shipping_cost, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: currency, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: payment_method, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: payment_status, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: status, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: priority, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: customer_segment, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: device_type, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: promo_code, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: created_at, data_type: date, visible_to: [org_admin, analyst]}
-  - {name: updated_at, data_type: date, visible_to: [org_admin, analyst]}
-  - {name: fulfillment_days, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: notes, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: sales_rep_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: region, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: country, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: order_date, data_type: date, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: ship_date, data_type: date, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: delivery_date, data_type: date, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: channel, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: amount, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: discount, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: tax, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: shipping_cost, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: currency, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: payment_method, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: payment_status, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: status, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: priority, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: customer_segment, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: device_type, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: promo_code, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: created_at, data_type: date, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: updated_at, data_type: date, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: fulfillment_days, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: notes, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
 - source_id: bench-postgresql
   domain_id: perf-bench
   schema: public
@@ -111,22 +111,22 @@ tables:
   enable_aggregates: true
   enable_group_by: true
   columns:
-  - {name: item_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
-  - {name: order_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: sku, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: product_name, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: category, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: subcategory, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: quantity, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: unit_price, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: discount_pct, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: line_total, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: cost_of_goods, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: margin, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: supplier_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: backorder_flag, data_type: boolean, visible_to: [org_admin, analyst]}
-  - {name: lead_time_days, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: item_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: order_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: sku, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: product_name, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: category, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: subcategory, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: quantity, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: unit_price, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: discount_pct, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: line_total, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: cost_of_goods, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: margin, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: supplier_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: backorder_flag, data_type: boolean, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: lead_time_days, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
 - source_id: bench-clickhouse
   domain_id: perf-bench
   # ClickHouse's own default database, confirmed live (system.tables) — order_events was never
@@ -146,28 +146,28 @@ tables:
   row_materialize: true
   cache_ttl: 300
   columns:
-  - {name: event_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
-  - {name: order_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: event_type, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: event_ts, data_type: timestamp, visible_to: [org_admin, analyst]}
-  - {name: channel, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: campaign_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: device, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: browser, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: os, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: session_id, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: page_url, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: referrer, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: geo_country, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: geo_region, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: user_agent, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: response_time_ms, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: status_code, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: revenue_impact, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: etl_batch_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: ingested_at, data_type: timestamp, visible_to: [org_admin, analyst]}
+  - {name: event_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: order_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: event_type, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: event_ts, data_type: timestamp, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: channel, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: campaign_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: device, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: browser, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: os, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: session_id, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: page_url, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: referrer, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: geo_country, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: geo_region, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: user_agent, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: response_time_ms, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: status_code, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: revenue_impact, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: etl_batch_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: ingested_at, data_type: timestamp, visible_to: [org_admin, analyst, org_admin_unguarded]}
 - source_id: bench-mongodb
   domain_id: perf-bench
   # Matches this source's own `database: provisa_bench` (line ~55) — confirmed live (DuckDB's
@@ -177,16 +177,16 @@ tables:
   table: order_docs
   description: Sales dept case-file doc-store orders — top-level + flattened nested fields, see generate_mongo.py
   columns:
-  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
-  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: status, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: order_date, data_type: date, visible_to: [org_admin, analyst]}
-  - {name: created_at, data_type: date, visible_to: [org_admin, analyst]}
-  - {name: updated_at, data_type: date, visible_to: [org_admin, analyst]}
-  - {name: customer_tier, data_type: varchar, path: customer_profile.tier, visible_to: [org_admin, analyst]}
-  - {name: customer_lifetime_value, data_type: numeric, path: customer_profile.lifetime_value, visible_to: [org_admin, analyst]}
-  - {name: payment_amount, data_type: numeric, path: payment.amount, visible_to: [org_admin, analyst]}
-  - {name: shipping_carrier, data_type: varchar, path: shipping.carrier, visible_to: [org_admin, analyst]}
+  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: status, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: order_date, data_type: date, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: created_at, data_type: date, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: updated_at, data_type: date, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: customer_tier, data_type: varchar, path: customer_profile.tier, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: customer_lifetime_value, data_type: numeric, path: customer_profile.lifetime_value, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: payment_amount, data_type: numeric, path: payment.amount, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: shipping_carrier, data_type: varchar, path: shipping.carrier, visible_to: [org_admin, analyst, org_admin_unguarded]}
 - source_id: bench-neo4j
   domain_id: perf-bench
   schema: neo4j
@@ -212,22 +212,22 @@ tables:
            o.created_at AS created_at, o.fulfillment_days AS fulfillment_days
     ORDER BY o.order_id
   columns:
-  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
-  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: region, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: channel, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: status, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: amount, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: discount, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: tax, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: shipping_cost, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: currency, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: payment_method, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: priority, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: order_date, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: created_at, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: fulfillment_days, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: region, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: channel, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: status, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: amount, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: discount, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: tax, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: shipping_cost, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: currency, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: payment_method, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: priority, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: warehouse_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: order_date, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: created_at, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: fulfillment_days, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
 - source_id: bench-neo4j
   domain_id: perf-bench
   schema: neo4j
@@ -244,16 +244,16 @@ tables:
            c.primary_contact_email AS primary_contact_email
     ORDER BY c.customer_id
   columns:
-  - {name: customer_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: tier, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: region, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: industry, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: employees, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: lifetime_value, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: signup_year, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: churn_risk, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: primary_contact_email, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: customer_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: name, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: tier, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: region, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: industry, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: employees, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: lifetime_value, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: signup_year, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: churn_risk, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: primary_contact_email, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
 - source_id: bench-neo4j
   domain_id: perf-bench
   schema: neo4j
@@ -269,15 +269,15 @@ tables:
            p.active AS active, p.launch_year AS launch_year
     ORDER BY p.product_id
   columns:
-  - {name: product_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
-  - {name: sku, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: category, data_type: varchar, visible_to: [org_admin, analyst]}
-  - {name: unit_cost, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: list_price, data_type: numeric, visible_to: [org_admin, analyst]}
-  - {name: supplier_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: active, data_type: boolean, visible_to: [org_admin, analyst]}
-  - {name: launch_year, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: product_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: sku, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: name, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: category, data_type: varchar, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: unit_cost, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: list_price, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: supplier_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: active, data_type: boolean, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: launch_year, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
 - source_id: bench-neo4j
   domain_id: perf-bench
   schema: neo4j
@@ -292,8 +292,8 @@ tables:
     RETURN c.customer_id AS customer_id, o.order_id AS order_id
     ORDER BY o.order_id
   columns:
-  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst]}
+  - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst, org_admin_unguarded]}
 - source_id: bench-neo4j
   domain_id: perf-bench
   schema: neo4j
@@ -315,11 +315,11 @@ tables:
            e.quantity AS quantity, e.unit_price AS unit_price
     ORDER BY contains_id
   columns:
-  - {name: contains_id, data_type: text, is_primary_key: true, visible_to: [org_admin, analyst]}
-  - {name: order_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: product_id, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: quantity, data_type: integer, visible_to: [org_admin, analyst]}
-  - {name: unit_price, data_type: numeric, visible_to: [org_admin, analyst]}
+  - {name: contains_id, data_type: text, is_primary_key: true, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: order_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: product_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: quantity, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
+  - {name: unit_price, data_type: numeric, visible_to: [org_admin, analyst, org_admin_unguarded]}
 
 relationships:
 # federated_join/large_federated_join's SQL variant (queries.py) runs a real
@@ -393,3 +393,44 @@ relationships:
   via_source_column: order_id
   via_target_column: product_id
   via_label_source: fixed
+
+# REQ-1887: org_admin_unguarded — org_admin's exact capability/domain_access clone (literal copy
+# of provisa/core/db.py's _ORG_ADMIN_CAPABILITIES / provisa/core/schema.sql:1094-1104's seed, not
+# a parent_role_id inheritance: provisa/core/config_loader.py's role-loading step (`for role in
+# config.roles: await role_repo.upsert(conn, role)`) upserts each config role's capabilities
+# literally, with no flatten_roles() merge at load or read time — provisa/core/models.py's
+# flatten_roles is called nowhere in the runtime path (only provisa/api/admin/roles_router.py
+# resolves parent_role_id, and only at an admin-mutation write, which this config load never goes
+# through) — so a parent_role_id-only role here would carry ignore_relationships alone with no
+# other capability and domain_access: [] instead of ["*"]. role_repo.upsert (REQ-1349) refuses to
+# write id in ("platform_admin", "org_admin") only, so this new id upserts normally.
+roles:
+- id: org_admin_unguarded
+  capabilities:
+  - source_registration
+  - table_registration
+  - create_relationship
+  - create_view
+  - approve_view
+  - approve_relationship
+  - access_config
+  - user_management
+  - masking_config
+  - column_grant
+  - view_governance
+  - query_development
+  - full_results
+  - write
+  - usage
+  - org_settings
+  - observability
+  - environment_management
+  - environment_switch
+  - glossary_read
+  - glossary_rw
+  - org_glossary_rw
+  - data_product_read
+  - data_product_rw
+  - ignore_relationships
+  domain_access:
+  - "*"
