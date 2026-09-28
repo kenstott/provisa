@@ -64584,3 +64584,54 @@
     - provisa/pgwire/_pipeline.py
     - provisa/federation/connector_base.py
   target: "2027-Q1"
+- id: REQ-1877
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Compilation Caching
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    Per-organization, in-memory, TTL-evicted cache of governance-pipeline outcomes (SQL shape-based
+    key, not raw text) for compiled queries. Caches only the `validate_sql` outcome
+    (relationship-guard + row-level violations check) and domain-access-check result — does NOT cache
+    routing decisions or physical SQL, which depend on live hot-table/tier-cap state
+    (provisa/api/data/materialization.py's `state.hot_manager`) that is not schema-version-bound.
+    Cache key includes: SQL shape digest (sqlglot literal-blanked via
+    provisa.observability.stage_trace.redact_sql), role_id, person_id, schema_boot_id, schema_version,
+    and relationship-guard bypass flag. TTL default 60 seconds, configurable via
+    PROVISA_COMPILED_QUERY_CACHE_TTL_SECONDS environment variable. Per-process dict storage, not
+    Redis-backed or protocol-level (pgwire PREPARE/EXECUTE out of scope). Cache is per-org field on
+    OrgRuntime (provisa/api/org_runtime.py) with AppState property shim (provisa/api/app.py),
+    following the existing contexts/rls_contexts pattern. Prerequisite fix (commit 6a416c52):
+    RLS-rule and role create/delete/mutation call sites (provisa/api/admin/schema_mutation.py)
+    now bump state.schema_version via _rebuild_schemas() so that schema_version serves as a sound
+    invalidation signal.
+  use_case: >-
+    Compiled query outcomes for governance validation are deterministic per (SQL shape, role, person,
+    schema version) and expensive (relationship-guard and row-level constraint evaluation over complex
+    JOINs). Many governance-checked queries repeat within a brief window (e.g., same form submitted
+    multiple times, dashboard refresh cycles, application connection pools). Caching avoids
+    re-evaluation, reducing CPU on the control plane and latency for repeated governance checks.
+  code:
+    - provisa/compiler/compiled_query_cache.py
+    - provisa/api/org_runtime.py
+    - provisa/api/app.py
+    - provisa/pgwire/_pipeline.py
+    - provisa/api/admin/schema_mutation.py
+  scenario: |
+    Given an org with a compiled query that passes governance validation
+    When the same query (same SQL shape, same user role/person) is submitted again within the TTL window
+    Then the cached governance outcome is returned without re-evaluating the relationship guard or row-level constraints
+
+    Given a cached outcome with a TTL-expired entry
+    When the query is submitted again
+    Then the cache entry is evicted and validation is re-run
+
+    Given a role or RLS rule is created, deleted, or modified
+    When schema_version is bumped via _rebuild_schemas()
+    Then any cached outcomes tied to the previous schema_version are invalidated
+
+    Given a routing decision or physical SQL generation is needed
+    When the query plan stage requires live hot-table/tier-cap state
+    Then the cache is bypassed (caching limited to governance validation outcomes only)

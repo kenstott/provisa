@@ -590,43 +590,67 @@ async def _govern_and_route_planned(
     # ignored and every join must exist in the approved relationship catalog.
     if getattr(state, "security_high", False):
         _bypass_guard = False
-    violations = validate_sql(
+
+    # REQ-1877: in-memory, TTL-evicted cache of the validate_sql + domain-access outcome — see
+    # provisa/compiler/compiled_query_cache.py for the read-verified scope decision (routing/
+    # physical-SQL caching is NOT done here: it is entangled with live hot-table state that must
+    # be rechecked every call, per this task's own constraints). Both checks are pure functions
+    # of (SQL shape, role, schema generation, relationship-guard bypass) — no query-literal or
+    # live-state dependency — so a HIT means only "an identical shape already validated clean for
+    # this role under this schema generation," never a stale allow.
+    from provisa.audit.context import current_audit_identity
+    from provisa.compiler.compiled_query_cache import CompiledOutcome, compiled_query_cache_key
+
+    _cq_identity = current_audit_identity()
+    _cq_person_id = _cq_identity.user_id if _cq_identity is not None else None
+    _cq_key = compiled_query_cache_key(
         normalized_sql,
-        ctx,
-        gov_ctx,
-        role or {},
-        getattr(state, "tables", []),
-        bypass_relationship_guard=_bypass_guard,
-        bypass_uncovered_relationships=True,
+        role_id,
+        _cq_person_id,
+        state.schema_boot_id,
+        state.schema_version,
+        _bypass_guard,
     )
+    if state.compiled_query_cache.get(_cq_key) is None:
+        violations = validate_sql(
+            normalized_sql,
+            ctx,
+            gov_ctx,
+            role or {},
+            getattr(state, "tables", []),
+            bypass_relationship_guard=_bypass_guard,
+            bypass_uncovered_relationships=True,
+        )
 
-    _role_domain_access = (role or {}).get("domain_access") or []
-    if "*" not in _role_domain_access:
-        try:
-            parsed_tree = sqlglot.parse_one(normalized_sql, read="postgres")
-            for tbl in parsed_tree.find_all(exp.Table):
-                tbl_name = tbl.name
-                tbl_db = tbl.db
-                full_key = f"{tbl_db}.{tbl_name}" if tbl_db else tbl_name
-                if full_key not in gov_ctx.table_map and tbl_name not in gov_ctx.table_map:
-                    from provisa.compiler.sql_validator import ValidationViolation
+        _role_domain_access = (role or {}).get("domain_access") or []
+        if "*" not in _role_domain_access:
+            try:
+                parsed_tree = sqlglot.parse_one(normalized_sql, read="postgres")
+                for tbl in parsed_tree.find_all(exp.Table):
+                    tbl_name = tbl.name
+                    tbl_db = tbl.db
+                    full_key = f"{tbl_db}.{tbl_name}" if tbl_db else tbl_name
+                    if full_key not in gov_ctx.table_map and tbl_name not in gov_ctx.table_map:
+                        from provisa.compiler.sql_validator import ValidationViolation
 
-                    violations.append(
-                        ValidationViolation(
-                            "V000", f"Table {full_key!r} not accessible for role {role_id!r}"
+                        violations.append(
+                            ValidationViolation(
+                                "V000", f"Table {full_key!r} not accessible for role {role_id!r}"
+                            )
                         )
-                    )
-        except Exception as exc:
-            # SECURITY: never skip the domain-access check on a parse/lookup error — fail closed.
-            await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
-            raise PermissionError(
-                f"Domain-access check could not be evaluated for role {role_id!r}: {exc}"
-            ) from exc
+            except Exception as exc:
+                # SECURITY: never skip the domain-access check on a parse/lookup error — fail closed.
+                await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
+                raise PermissionError(
+                    f"Domain-access check could not be evaluated for role {role_id!r}: {exc}"
+                ) from exc
 
-    if violations:
-        msgs = "; ".join(f"[{v.code}] {v.message}" for v in violations)
-        await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
-        raise PermissionError(msgs)
+        if violations:
+            msgs = "; ".join(f"[{v.code}] {v.message}" for v in violations)
+            await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
+            raise PermissionError(msgs)
+
+        state.compiled_query_cache.put(_cq_key, CompiledOutcome())
 
     # REQ-074/REQ-1386: open the audit record once governance has accepted the statement and the
     # table references have resolved. The terminal finalizes it with the real status and duration.

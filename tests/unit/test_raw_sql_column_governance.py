@@ -31,6 +31,7 @@ from unittest.mock import patch
 
 import pytest
 
+from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import build_governance_context, apply_governance
@@ -246,6 +247,9 @@ def _fake_pipeline_state(*, tables: list[dict]) -> SimpleNamespace:
         source_pools=SimpleNamespace(source_ids={SOURCE_ID}, has=lambda _: False),
         view_sql_map={},
         tables=tables,
+        schema_boot_id="test-boot",
+        schema_version=1,
+        compiled_query_cache=CompiledQueryCache(),
     )
 
 

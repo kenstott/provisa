@@ -33,6 +33,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_types import TableMeta
 
@@ -88,6 +89,9 @@ def _fake_state():
         view_sql_map=None,
         security_high=False,
         metrics={},
+        schema_boot_id="test-boot",
+        schema_version=1,
+        compiled_query_cache=CompiledQueryCache(),
     )
 
 
