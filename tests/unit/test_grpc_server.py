@@ -129,8 +129,8 @@ class TestServicerDynamicDispatch:
 
 class TestHandleQuery:
     @pytest.mark.asyncio
-    async def test_request_to_sql_to_result(self):
-        """Test the full request -> SQL -> result flow with mocks."""
+    async def test_request_to_sql_to_result_cache_route(self):
+        """CACHE/API-routed requests still go through the general _execute_plan terminal."""
         pb2, msg_cls = _make_pb2_module("Orders", ["id", "amount"])
         state = _make_state()
 
@@ -144,7 +144,7 @@ class TestHandleQuery:
 
         # New pipeline seam: _handle_query lowers the request to a semantic SELECT, then
         # governs/routes/executes via provisa.pgwire._pipeline. Mock at that boundary.
-        fake_plan = SimpleNamespace(route=Route.DIRECT, source_id="pg1")
+        fake_plan = SimpleNamespace(route=Route.CACHE, source_id=None)
         fake_result = SimpleNamespace(column_names=["id", "amount"], rows=[[1, 100.0], [2, 200.0]])
 
         with (
@@ -161,7 +161,7 @@ class TestHandleQuery:
                 "provisa.pgwire._pipeline._execute_plan",
                 new_callable=AsyncMock,
                 return_value=fake_result,
-            ),
+            ) as mock_execute_plan,
         ):
             rows_yielded = []
             async for msg in servicer._handle_query(request, context, "Orders", "orders"):
@@ -170,6 +170,83 @@ class TestHandleQuery:
             assert len(rows_yielded) == 2
             msg_cls.assert_any_call(id=1, amount=100.0)
             msg_cls.assert_any_call(id=2, amount=200.0)
+            mock_execute_plan.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_direct_route_takes_fast_path(self):
+        """REQ-1891: DIRECT route bypasses _execute_plan (and its residency/freshness machinery)
+        entirely and calls execute_native directly, mirroring Flight SQL's DIRECT fast path."""
+        pb2, msg_cls = _make_pb2_module("Orders", ["id", "amount"])
+        state = _make_state()
+        state.source_pools = MagicMock()
+        state.source_pools.has.return_value = True
+
+        servicer = ProvisaServicer(state, pb2, MagicMock())
+        context = AsyncMock(spec=grpc.aio.ServicerContext)
+        context.invocation_metadata.return_value = [("x-provisa-role", "admin")]
+        request = MagicMock()
+        request.limit = 0
+
+        from provisa.transpiler.router import Route
+
+        fake_plan = SimpleNamespace(
+            route=Route.DIRECT,
+            source_id="pg1",
+            sql="SELECT id, amount FROM orders",
+            exec_params=None,
+            audit_written=False,
+            audit=MagicMock(),
+        )
+        fake_result = SimpleNamespace(column_names=["id", "amount"], rows=[[1, 100.0], [2, 200.0]])
+
+        with (
+            patch(
+                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
+                return_value="SELECT id, amount FROM orders",
+            ),
+            patch(
+                "provisa.pgwire._pipeline._govern_and_route_compiled",
+                new_callable=AsyncMock,
+                return_value=fake_plan,
+            ),
+            patch(
+                "provisa.pgwire._pipeline._execute_plan",
+                new_callable=AsyncMock,
+            ) as mock_execute_plan,
+            patch(
+                "provisa.federation.query_residency.ensure_resident",
+                new_callable=AsyncMock,
+            ) as mock_ensure_resident,
+            patch(
+                "provisa.pgwire._pipeline.finalize_audit",
+                new_callable=AsyncMock,
+            ) as mock_finalize_audit,
+            patch.object(
+                state.federation_engine,
+                "execute_native",
+                new_callable=AsyncMock,
+                return_value=fake_result,
+            ) as mock_execute_native,
+        ):
+            rows_yielded = []
+            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
+                rows_yielded.append(msg)
+
+            assert len(rows_yielded) == 2
+            msg_cls.assert_any_call(id=1, amount=100.0)
+            msg_cls.assert_any_call(id=2, amount=200.0)
+
+            # The fast path was taken: _execute_plan (and hence ensure_resident's freshness-check
+            # machinery, which only _execute_plan_in_org calls) is never reached on DIRECT route.
+            mock_execute_plan.assert_not_awaited()
+            mock_ensure_resident.assert_not_awaited()
+
+            # The correct native-execute terminal was called instead, against the DIRECT plan's
+            # own source/sql/params.
+            mock_execute_native.assert_awaited_once_with(
+                state.source_pools, "pg1", "SELECT id, amount FROM orders", []
+            )
+            mock_finalize_audit.assert_awaited_once_with(fake_plan, 200, state)
 
     @pytest.mark.asyncio
     async def test_unknown_role_aborts(self):

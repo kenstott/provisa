@@ -509,8 +509,37 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await finalize_audit(plan, 200, state)
             return
 
-        # Bounded routes (DIRECT / metadata / registered-function) buffer via the materializing
-        # terminal — async-native, memory bounded by the route's own contract.
+        # REQ-1891: DIRECT route (single reachable source, live pooled driver — decide_route never
+        # produces DIRECT for a MATERIALIZED/row_materialize read, see router.py's has_driver/
+        # VIRTUAL_SOURCES branches) skips _execute_plan's ENGINE-oriented machinery entirely,
+        # mirroring Flight SQL's proven fast path (api/flight/server.py:989-1006). Engine-wake
+        # already ran in _govern_and_route_compiled above (_wake_before_governing), so nothing here
+        # needs it again. Unlike Flight/pgwire, _handle_query_bound already runs natively on the
+        # event loop (no worker-thread hop), so the async execute_native (buffered QueryResult) is
+        # the correct terminal here — NOT execute_native_stream, which is documented SYNCHRONOUS-
+        # for-a-worker-thread and drives itself via run_coroutine_threadsafe(..., loop).result();
+        # calling that from the loop's own thread would deadlock.
+        if plan.route == Route.DIRECT and state.source_pools.has(plan.source_id):
+            result = await state.federation_engine.execute_native(
+                state.source_pools, plan.source_id, plan.sql, plan.exec_params or []
+            )
+            self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
+            _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
+            out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
+            col_fields = _col_fields_for(out_cols)
+            from provisa.pgwire._pipeline import finalize_audit
+
+            try:
+                for row in result.rows:
+                    yield msg_cls(**_kwargs_for(col_fields, row))
+            except Exception:
+                await finalize_audit(plan, 500, state)
+                raise
+            await finalize_audit(plan, 200, state)
+            return
+
+        # Bounded routes (CACHE / API) buffer via the materializing terminal — async-native, memory
+        # bounded by the route's own contract.
         result = await _execute_plan(plan, state)
         self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
         # Stream rows as proto messages, mapping result column names to proto fields by the same key
