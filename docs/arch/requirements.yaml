@@ -64655,6 +64655,25 @@
     sequences) unless the caller manually CAST(col AS varchar), which most callers won't know to
     do since the column looks like a normal string column everywhere else (ClickHouse itself,
     postgres_fdw analogues, application code).
+
+    (Amended 2026-09-28, ROOT CAUSE:) Confirmed by inspecting Trino's own
+    io.trino_trino-clickhouse-481.jar bytecode: ClickHouseClient.class contains zero references
+    to "LowCardinality" anywhere -- the connector has no type-mapping logic for the wrapper at
+    all. The clickhouse-jdbc driver (0.9.8, the new client-v2 codebase) itself reports these
+    columns with JDBC SQL type VARBINARY directly, not as an "unrecognized type" Trino falls
+    back on -- confirmed by setting unsupported-type-handling=CONVERT_TO_VARCHAR on the catalog,
+    which had zero effect (column stayed varbinary), because that setting only intercepts types
+    the driver can't classify at all, and this one is misclassified, not unclassified. Root
+    cause sits in the clickhouse-jdbc driver's own type metadata, upstream of Trino's connector.
+    CAST(col AS varchar) does NOT work as the workaround (Trino raises "Cannot cast varbinary to
+    varchar" -- varbinary/varchar aren't cast-compatible in Trino's type system); the real,
+    verified workaround is from_utf8(col), which correctly decodes the dictionary-encoded bytes
+    back to text (confirmed live: from_utf8(event_type) returned "shipped"/"delivered"/
+    "returned" correctly). Any query plan reading a ClickHouse LowCardinality(String) column
+    through Trino must wrap it in from_utf8(...), not CAST, until this is fixed upstream (or
+    Provisa's own trino_connectors.py TrinoClickhouseConnector, if one is ever specialized
+    beyond the current generic JDBC passthrough, could inject this wrap automatically per
+    column based on the source schema's declared LowCardinality types).
   use_case: >-
     Live-reproduced 2026-09-28 standing up a real Trino coordinator on the perf-bench VM against
     the same ClickHouse container the pg-engine benchmark uses (perf-clickhouse-1,
