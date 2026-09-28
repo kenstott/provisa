@@ -19925,3 +19925,91 @@ Raw-SQL-text surfaces (pgwire, Flight SQL, HTTP Cypher-to-SQL, Bolt) should cach
 **Code:** `provisa/compiler/sql_rewrite.py`, `provisa/pgwire/_pipeline.py`, `provisa/api/rest/generator.py`
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-1867 · File & Lake Sources {#REQ-1867}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+
+The pg engine's snowflake/databricks/bigquery source types should be reachable as a live, zero-copy ATTACH_R via each warehouse's Iceberg REST catalog (Snowflake Iceberg Tables' catalog integration or SYSTEM$GET_ICEBERG_TABLE_INFORMATION, Databricks Unity Catalog's Iceberg REST endpoint / UniForm, BigQuery BigLake Metastore), instead of only Mechanism.DIRECT (native driver, materialize-required). PgDuckdbIcebergConnector (provisa/federation/connector_duckdb.py) already reads an Iceberg table in place via iceberg_scan, but only from a bare storage path (source.path) — it has no REST-catalog client, credential/token handling, or table discovery. This closes that gap: resolve the warehouse's current metadata.json location via its catalog API, then hand the resolved path to the existing scan connector unchanged.
+
+**Use case:** Snowflake/Databricks/BigQuery sources attached to the pg engine currently require a full materialized replica even when the underlying table is already Iceberg-format and could be scanned live — closing this gap removes that replica lag/cost for customers who already use Iceberg-backed warehouse tables.
+
+**Code:** `provisa/federation/connector_duckdb.py`, `provisa/federation/engine.py`
+
+**Tests:** —
+
+### REQ-1868 · DuckDB Connectors {#REQ-1868}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+
+The pg engine should gain a PgDuckdbMotherDuckConnector (Mechanism.ATTACH_RW) using pg_duckdb's own FOREIGN DATA WRAPPER duckdb TYPE 'motherduck' SERVER + USER MAPPING (token) mechanism, confirmed present in pg_duckdb's own source (src/pgduckdb_fdw.cpp's FdwType::MD, test/pycheck/motherduck_test.py) — pg_duckdb can live-attach a MotherDuck-hosted DuckDB database today, but no Provisa connector wires this up for the pg engine. This is distinct from, and does NOT cover, attaching an arbitrary standalone local/remote .duckdb file: pg_duckdb's FDW only exposes SERVER TYPEs motherduck/s3/gcs — s3/gcs are credential servers for the existing scan connectors, not a general foreign-duckdb-file attach — so the pg engine's plain `duckdb` source type correctly stays Mechanism.DIRECT (native driver, materialize) for anything that isn't MotherDuck.
+
+**Use case:** Orgs with a MotherDuck-hosted DuckDB database currently get only a materialized replica via the pg engine even though pg_duckdb can attach it live — closing this gap gives them zero-copy access the same way postgres/mysql/oracle/sqlite sources already get.
+
+**Code:** `provisa/federation/connector_duckdb.py`, `provisa/federation/engine.py`
+
+**Tests:** —
+
+### REQ-1869 · Federation {#REQ-1869}
+
+**Status:** ✗ rejected · **Priority:** MAY · **Type:** behavioral
+
+(Amended 2026-09-28, live-tested — REJECTED, not just deferred:) mongo_fdw has a solid official redistribution point (EnterpriseDB's PGDG apt repo — `apt-get install postgresql-16-mongo-fdw` installs cleanly with zero build step, confirmed live), so per team decision it would stay OPERATOR-installed via that channel, never compiled into provisa_pg_ext. That packaging question is moot: live testing (2026-09-28) against MongoDB 7.0.43 + mongo_fdw 5.5.3 (PGDG Debian trixie build) found the extension NON-FUNCTIONAL — CREATE SERVER/USER MAPPING/FOREIGN TABLE all succeed, a real TCP connection opens (db.serverStatus().connections.totalCreated increments), the extension correctly RAISES a real error for a genuine failure (wrong credentials -> "Authentication failed", ruling out blanket error-swallowing) — but every SELECT against a real collection returns ZERO rows, reproduced down to a single freshly-inserted flat document with exactly-matching types (order_id: BSON int32 -> declared `integer`, no nesting). MongoDB's own profiler (setProfilingLevel(2), samples every operation) recorded ZERO operations during the scan, meaning IterateForeignScan never issues a real find/aggregate command to mongod at all — a defect internal to the extension's scan path, not a config/auth/replica-set/document-shape issue (all four ruled out individually). Also tried, per mongo_fdw's own documented requirement that a foreign table's first column be `_id NAME` (EDB docs + GitHub issue #184) — still zero rows with `_id` present as the first column. IMPORT FOREIGN SCHEMA is also unimplemented in this build, ruling out that workaround. ROOT CAUSE CONFIRMED via upstream issue tracker, not just isolated to this environment: EnterpriseDB/mongo_fdw#194 (filed 2025-10-28, OPEN, unresolved) — the Debian package maintainer packaging this exact version (mongo_fdw 5.5.3) for Debian trixie hit the identical symptom (first query silently returns 0 rows, second query crashes the Postgres backend with `mongoc-ts-pool.c:191 _try_get(): assertion failed: pthread_mutex_lock`) — a genuine thread-safety/connection-pool incompatibility between mongo_fdw 5.5.3 and the newer libmongoc 2.x-series thread-safe pool implementation Debian ships, exactly matching this session's environment. Separately, EnterpriseDB/mongo_fdw#132 (older, EDB-acknowledged) documents that ANY connection/reachability failure silently returns zero rows with no error logged anywhere — a recurring design weakness in this FDW's error handling, not a one-off. Confidently rejected pending an upstream fix.
+
+**Use case:** MongoDB sources currently require a full materialized replica on every pg-engine query even for a simple lookup — this remains true; mongo_fdw does not currently offer a working alternative. provisa/federation/query_residency.py's row_materialize mechanism ([REQ-1865](#REQ-1865), make_mongodb_keyed_loader) already gives MongoDB per-key freshness without a full replica scan, which stays the recommended path for MongoDB sources until/unless mongo_fdw is fixed upstream.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-1870 · Federation {#REQ-1870}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+
+(Amended 2026-09-28, LIVE-VERIFIED WORKING:) The pg engine's clickhouse source type should be reachable as a live ATTACH via ClickHouse's own official pg_clickhouse extension (FDW name `clickhouse_fdw`, github.com/ClickHouse/pg_clickhouse), added to provisa_pg_ext's bundled FDW set, instead of only Mechanism.DIRECT (native driver, materialize-required). No apt/PGDG package exists (confirmed) — provisa_pg_ext bundling it is the correct path per the solid-redistribution-point rule (contrast [REQ-1869](#REQ-1869)/mongo_fdw). Built and tested LIVE against ClickHouse 24.3 (v0.10.0 release source, github.com/ClickHouse/pg_clickhouse/releases, `make && make install` against postgresql-server-dev-16 + libcurl/libssl/liblz4/libzstd/uuid dev headers — clean build, no errors): CREATE SERVER (driver 'binary') + CREATE USER MAPPING + IMPORT FOREIGN SCHEMA auto-generated the full correctly-typed 22-column schema for a real ~60M-row table; `SELECT count(*)` returned the exact live row count (59,989,933); a filtered query (`WHERE order_id = 1`) showed via EXPLAIN VERBOSE that the ENTIRE predicate and aggregate pushed down as remote SQL executed by ClickHouse itself, not locally. Genuinely solid — recommend prioritizing this over the other [REQ-186](#REQ-186)x/187x Iceberg-catalog gaps given it's already proven working end to end, not just theoretically feasible.
+
+**Use case:** ClickHouse sources currently require a full materialized replica on every pg-engine query — live-verified this closes the gap correctly with real predicate/aggregate pushdown, not just a naive full-table pull. Unlike mongo_fdw ([REQ-1869](#REQ-1869), rejected — non-functional), this one is ready to bundle as soon as [REQ-1873](#REQ-1873)'s install-script work lands.
+
+**Code:** `scripts/ci/build_pg_extensions.sh`, `provisa/federation/connector_duckdb.py`, `provisa/federation/engine.py`
+
+**Tests:** —
+
+### REQ-1871 · Federation {#REQ-1871}
+
+**Status:** 💡 proposed · **Priority:** MAY · **Type:** structural
+
+Evaluate replacing/supplementing [REQ-1869](#REQ-1869)/[REQ-1870](#REQ-1870)'s hand-rolled per-source C FDWs with Supabase's `wrappers` framework (github.com/supabase/wrappers, Apache-2.0, pgrx/Rust) as provisa_pg_ext's general mechanism for adding new live-attach source types. One native binary per platform (same packaging shape as today) plus a WASM guest-module mode — a platform-independent package per additional source, sidestepping the per-source native-compile step build_pg_extensions.sh otherwise needs for each new FDW. Already covers bigquery, clickhouse, iceberg, duckdb, and several source types Provisa has NO live reach for today at all (Airtable, Stripe, HubSpot, Notion, Auth0, AWS Cognito, Cloudflare D1, S3, Logflare, Calendly) — a candidate path to close those gaps without a bespoke connector per type.
+
+**Use case:** A single actively-maintained framework, rather than N separately-sourced/maintained C FDWs of varying license/maintenance quality ([REQ-1869](#REQ-1869)/1870 already flag mongo_fdw's LGPLv3 status and clickhouse_fdw's fork history as things to track per-FDW) — reduces the ongoing maintenance surface of provisa_pg_ext and could open several currently-unreached source types at once.
+
+**Code:** `scripts/ci/build_pg_extensions.sh`, `provisa/federation/connector_duckdb.py`, `provisa/federation/engine.py`
+
+**Tests:** —
+
+### REQ-1872 · Federation {#REQ-1872}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+FederationEngine.discover() (provisa/federation/engine.py:401-426) already probes every candidate connector's functional availability against the live engine connection (each Connector.probe() already checks pg_available_extensions/pg_extension/ pg_foreign_data_wrapper) and prunes engine.connectors to the active set — but it is NEVER CALLED anywhere in the application (confirmed live: grepping the full ``provisa/`` tree for ``.discover(`` outside test files finds zero call sites — only a comment mentioning it). engine.__init__ instead populates engine.connectors OPTIMISTICALLY from every candidate (own comment: "Optimistic until discover() probes them"), so the pg engine believes every FDW/extension it knows how to attach is available, whether or not it actually is, for the life of the process. Wire discover() into app startup (provisa/api/app.py, around the "engine-connect" phase mark, once state.federation_engine's terminal is actually connected) with a fetch(sql) adapter over that live connection, so an external/BYO Postgres the operator points PROVISA_ENGINE_URL at gets its ACTUAL installed FDW set probed and reflected, instead of every source type being assumed reachable until a query hard-fails.
+
+**Use case:** Confirmed live this session: pointing PROVISA_ENGINE_URL at a real external Postgres with no FDWs installed produced no startup warning at all — the pg engine reported every candidate connector as usable, and the gap only surfaced as a raw "relation does not exist" error deep in query execution. A startup probe would report this immediately and let the planner route around it (materialize instead of attempting a dead attach), instead of failing at query time.
+
+**Code:** `provisa/api/app.py`, `provisa/federation/engine.py`
+
+**Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-1873 · Feature {#REQ-1873}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** infrastructure
+
+An end-user-facing script (scripts/install-pg-ext.sh or similar) that stages provisa_pg_ext's bundled FDW/extension binaries into an OPERATOR-SUPPLIED, external Postgres instance — the same manual sequence performed live this session (pip install provisa-pg-ext; docker cp the platform-matched lib/*.so + share/extension/* files into the target's pg_config --pkglibdir/--sharedir; ALTER SYSTEM SET shared_preload_libraries for pg_duckdb; restart; CREATE EXTENSION). Today _stage_bundled_extensions() (provisa/core/control_plane_pg.py:47) only stages into Provisa's OWN embedded pgserver instance — there is no equivalent path for a customer's own Postgres (Docker, RDS-with-filesystem-access, bare-metal, etc.), which is the common real-world "point Provisa at your existing Postgres" deployment shape.
+
+**Use case:** Every operator who wants live FDW-attach reach (postgres_fdw/pg_duckdb and, once [REQ-1869](#REQ-1869)/1870 land, mongo_fdw/pg_clickhouse) against their OWN Postgres today has to hand-copy files and run ALTER SYSTEM manually, exactly as this session did by hand against perf-postgresql-1 — a packaged script turns that into a one-command operation and is the natural companion to [REQ-1872](#REQ-1872)'s startup probe (probe reports what's missing; this script is how an operator fixes it, for both Docker and bare-metal Postgres).
+
+**Code:** `scripts/ci/build_pg_extensions.sh`, `provisa/core/control_plane_pg.py`
+
+**Tests:** —

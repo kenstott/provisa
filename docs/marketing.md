@@ -35,7 +35,8 @@ BSL 1.1 license: source-available, converts to Apache 2 after time window, preve
 - SEO: "Hasura V2 alternative", "Hasura DDN migration", "self-hosted GraphQL" — low competition, high intent
 - Show up in Hasura GitHub Discussions, /r/graphql, Hacker News — genuine participation, not ads
 - Honest comparison page: V2 vs DDN vs Provisa. The community respects directness and shares it
-- Broader GraphQL community angle: "GraphQL over anything" — 53 sources including Kafka, Iceberg, things Hasura never touched
+- Broader GraphQL community angle: "GraphQL over anything" — 55 sources including Kafka, Iceberg, MotherDuck, things Hasura never touched
+- Zero-copy warehouse angle: Snowflake, Databricks, and BigQuery tables reachable live via their own Iceberg catalogs, not just materialize-and-copy — a warehouse team keeps its data in place
 
 **Conversion moment:** Team grows → needs governance, SSO, or managed hosting → upgrade to SaaS or Enterprise.
 
