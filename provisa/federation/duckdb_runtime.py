@@ -27,6 +27,7 @@ This is the engine primitive a live EngineRuntime dispatch would call; routing/H
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shutil
 import sqlite3
@@ -43,6 +44,8 @@ from provisa.federation import store_writer
 from provisa.federation.engine import build_duckdb_engine
 from provisa.federation.runtime_support import columns_from_describe, stream_from_dbapi
 from provisa.transpiler.transpile import transpile
+
+log = logging.getLogger(__name__)
 
 # Rows per Arrow record batch when lazily streaming the engine result (REQ-1214). Larger than the
 # DBAPI row-stream batch (1000) because Arrow batches carry columnar overhead per batch; still bounds
@@ -171,6 +174,17 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._pg_ext_loaded = False  # postgres DuckDB extension INSTALL/LOAD (source ATTACH)
         self._httpfs_loaded = False  # httpfs INSTALL/LOAD for S3-compatible (e.g. R2) sources
         self._store_attached = False  # materialization-store ATTACH (distinct from source attaches)
+        # REQ-1901: set instead of a `mat_store` ATTACH when the store is embedded DuckDB — see
+        # ensure_materialize_attached. `_store_relations` maps this connection's own exposed
+        # physical name -> (schema, table) in the store, for the query-time refresh in run/
+        # run_sync/run_arrow/run_arrow_stream that re-registers a fresh Arrow snapshot from the
+        # broker immediately before any query touching it executes.
+        self._store_broker: Any = None
+        self._store_relations: dict[str, tuple[str, str]] = {}
+        # Guards the register()+CREATE TABLE pair in _refresh_store_relations: run()/run_arrow()
+        # dispatch to a thread pool, so two concurrent queries touching the same landed table
+        # would otherwise race registering under the same temp name.
+        self._store_relation_lock = threading.Lock()
         self._phys_catalogs: set[str] = set()  # in-memory catalogs holding the physical views
         self._raw_attached: set[str] = set()  # source ids whose remote DB is already ATTACHed
         self._ext_loaded: set[str] = (
@@ -582,7 +596,19 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def ensure_materialize_attached(self) -> str:
         """ATTACH the materialization store under ``mat_store`` (idempotent); return the alias. The
         DuckDB ATTACH type is derived from the store URL scheme; the driver parses the URL and owns
-        its own defaults — the runtime injects none. A missing store is a hard error (via _store_dsn)."""
+        its own defaults — the runtime injects none. A missing store is a hard error (via _store_dsn).
+
+        REQ-1901: a `duckdb`-scheme (embedded, single-writer) store is NEVER attached on THIS
+        connection at all — DuckDB's file lock is exclusive regardless of requested access mode
+        (confirmed empirically across three topologies: full mesh, hub-and-spoke, plain
+        writer/reader pair), so under `--workers N` any second connection to the same file, in any
+        mode, deadlocks or crashes against the first. Instead this runtime routes every operation
+        against the store through `materialize_broker.get_broker()` — the one process-wide (or, if
+        elected, cross-process) singleton connection (see that module). This runtime's own `self._con`
+        never holds `mat_store` attached; `self._store_broker` is set instead, and every duckdb-store
+        call site below (materialize_source/attach_landed_source/land_table/apply_cdc_events/
+        reconcile_mv_table/persist_mv_table/_expose_landed, plus the query-time relation refresh in
+        run/run_sync/run_arrow/run_arrow_stream) goes through it."""
         dsn = self._store_dsn()
         if not self._store_attached:
             from sqlalchemy import make_url
@@ -592,16 +618,23 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             store_type = self._ATTACH_TYPE_BY_SCHEME.get(scheme)
             if store_type is None:
                 raise RuntimeError(f"materialize store scheme {scheme!r} is not attachable")
-            if store_type not in self._NO_EXTENSION_TYPES:
-                self._con.execute(f"INSTALL {store_type}")
-                self._con.execute(f"LOAD {store_type}")
             # A file-backed store (sqlite/duckdb) attaches the FILESYSTEM PATH; postgres attaches the
             # full URL. Use make_url(...).database, not urlparse(...).path: on Windows a
             # ``duckdb:///C:\...`` DSN parses to ``/C:\...`` under urlparse (leading slash), which
             # DuckDB then reads as a ``//C:`` UNC network path and fails ("network path not found").
             # SQLAlchemy's URL parser strips the leading slash for a drive-letter path on every OS.
             target = url.database if store_type in self._FILE_ATTACH_TYPES else dsn
-            self._con.execute(f"ATTACH '{target}' AS {self._MAT_STORE} (TYPE {store_type})")
+            if store_type == "duckdb":
+                if not target:
+                    raise RuntimeError(f"materialize store DSN {dsn!r} has no file path")
+                from provisa.federation.materialize_broker import get_broker
+
+                self._store_broker = get_broker(target)
+            else:
+                if store_type not in self._NO_EXTENSION_TYPES:
+                    self._con.execute(f"INSTALL {store_type}")
+                    self._con.execute(f"LOAD {store_type}")
+                self._con.execute(f"ATTACH '{target}' AS {self._MAT_STORE} (TYPE {store_type})")
             self._store_attached = True
         return self._MAT_STORE
 
@@ -631,18 +664,15 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         store = self.ensure_materialize_attached()  # errors if the store is not configured
         mat_table = _mat_table_name(source)  # unique per (source, physical table) — no collision
         if self._store_is_duckdb():
-            # DuckDB store is single-writer: land through THIS engine's own connection (REQ-989).
-            from provisa.federation.store_connection import land_duckdb_native
-
-            land_duckdb_native(
-                self._con,
-                catalog=store,
-                schema=self._store_schema(),
-                table=mat_table,
-                columns=columns,
-                rows=rows,
-                change_signal=change_signal,
-                watermark_column=watermark_column,
+            # REQ-1901: through the broker singleton, never this connection (see
+            # ensure_materialize_attached — a duckdb store is never ATTACHed here at all).
+            self._store_broker.land(
+                self._store_schema(),
+                mat_table,
+                columns,
+                rows,
+                change_signal,
+                watermark_column,
             )
         else:
             # Land through the ONE server-store write face — the engine never writes that store.
@@ -668,15 +698,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         store = self.ensure_materialize_attached()
         mat_table = _mat_table_name(source)
         if self._store_is_duckdb():
-            from provisa.federation.store_connection import reconcile_duckdb_native
-
-            reconcile_duckdb_native(
-                self._con,
-                catalog=store,
-                schema=self._store_schema(),
-                table=mat_table,
-                columns=columns,
-            )
+            self._store_broker.reconcile(self._store_schema(), mat_table, columns)
         else:
             await store_writer.reconcile_table(
                 self._store_dsn(),
@@ -704,30 +726,25 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         refresh path — no source-object physical-name exposure, that is boot-time reconcile's job).
         Duckdb-native dispatch mirroring ``materialize_source``: through the engine's own connection
         for an embedded DuckDB store (REQ-989), else the server-store write face."""
-        store = self.ensure_materialize_attached()
+        self.ensure_materialize_attached()
         if self._store_is_duckdb():
-            from provisa.federation.store_connection import land_duckdb_native
-
-            # Dispatched to the executor, not called inline: this is a synchronous, potentially
-            # multi-second bulk insert (REQ-990's whole-batch executemany). Called inline on this
-            # coroutine, it blocks the event loop for its whole duration — and every OTHER query,
-            # on any table, that needs this loop to service its own run_coroutine_threadsafe(...)
-            # call stalls right along with it, not just callers of this table. Confirmed live: an
-            # unrelated point-lookup on a completely different table hung behind a Neo4j-source TTL
-            # land of bench_placed_edge. land_duckdb_native takes its own private cursor, so this
-            # thread doesn't race a query thread's cursor on the same shared connection.
+            # REQ-1901: land goes through the broker singleton (see ensure_materialize_attached),
+            # a synchronous, potentially blocking RPC call — still dispatched to the executor, not
+            # called inline, for the same reason as before this existed: called on this coroutine
+            # directly, it blocks the event loop for its whole duration, and every OTHER query that
+            # needs this loop to service its own run_coroutine_threadsafe(...) call stalls right
+            # along with it. Confirmed live (pre-broker): an unrelated point-lookup on a completely
+            # different table hung behind a Neo4j-source TTL land of bench_placed_edge.
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(
                 self._land_executor,
-                lambda: land_duckdb_native(
-                    self._con,
-                    catalog=store,
-                    schema=schema,
-                    table=table,
-                    columns=columns,
-                    rows=rows,
-                    change_signal=change_signal,
-                    watermark_column=watermark_column,
+                lambda: self._store_broker.land(
+                    schema,
+                    table,
+                    columns,
+                    rows,
+                    change_signal,
+                    watermark_column,
                 ),
             )
         return await store_writer.land(
@@ -756,19 +773,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         ``land_table``: through the engine's own connection for an embedded DuckDB store (REQ-989 —
         a second connection cannot open a file the engine already ATTACHed), else the server-store
         write face."""
-        store = self.ensure_materialize_attached()
+        self.ensure_materialize_attached()
         if self._store_is_duckdb():
-            from provisa.federation.store_connection import apply_cdc_duckdb_native
-
-            return apply_cdc_duckdb_native(
-                self._con,
-                catalog=store,
-                schema=schema,
-                table=table,
-                columns=columns,
-                pk_columns=pk_columns,
-                events=events,
-            )
+            return self._store_broker.apply_cdc(schema, table, columns, pk_columns, events)
         from sqlalchemy.schema import CreateSchema
 
         from provisa.federation.materialize_exec import apply_cdc, build_table
@@ -791,13 +798,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         """Converge an MV's OWN store table to its output ``columns`` (REQ-970). Duckdb-native
         dispatch mirroring ``attach_landed_source``: through the engine's own connection for an
         embedded DuckDB store (REQ-989), else the server-store write face."""
-        store = self.ensure_materialize_attached()
+        self.ensure_materialize_attached()
         if self._store_is_duckdb():
-            from provisa.federation.store_connection import reconcile_duckdb_native
-
-            return reconcile_duckdb_native(
-                self._con, catalog=store, schema=schema, table=table, columns=columns
-            )
+            return self._store_broker.reconcile(schema, table, columns)
         return await store_writer.reconcile_table(
             self._store_dsn(), schema=schema, table=table, columns=columns, pk_columns=pk_columns
         )
@@ -817,20 +820,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         outcome (REQ-965). Duckdb-native dispatch mirroring ``materialize_source``: through the
         engine's own connection for an embedded DuckDB store (REQ-989), else the server-store write
         face."""
-        store = self.ensure_materialize_attached()
+        self.ensure_materialize_attached()
         if self._store_is_duckdb():
-            from provisa.federation.store_connection import persist_duckdb_native
-
-            return persist_duckdb_native(
-                self._con,
-                catalog=store,
-                schema=schema,
-                table=table,
-                columns=columns,
-                rows=rows,
-                persist=persist,
-                pk_columns=pk_columns,
-            )
+            return self._store_broker.persist(schema, table, columns, rows, persist, pk_columns)
         return await store_writer.persist_land(
             self._store_dsn(),
             schema=schema,
@@ -843,12 +835,57 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         )
 
     def _expose_landed(self, source: Any, store: str, mat_table: str) -> None:
-        """Create the engine's physical-named READ view over the landed store table (idempotent)."""
+        """Expose the landed store table under the engine's physical name.
+
+        REQ-1901: for the embedded-DuckDB store this connection never ATTACHes `mat_store` at all
+        (see ensure_materialize_attached) — so `phys` cannot be a DuckDB VIEW over it. Instead
+        `phys` is recorded in `_store_relations`; the query-time refresh in run/run_sync/run_arrow/
+        run_arrow_stream re-registers it as a live-fetched local relation immediately before any
+        query referencing it executes. Every OTHER store backend still ATTACHes normally, so its
+        `phys` stays a real VIEW, unchanged from before."""
         phys = self._phys_name(source)
+        if self._store_is_duckdb():
+            self._store_relations[phys] = (self._store_schema(), mat_table)
+            return
         self._con.execute(
             f"CREATE VIEW IF NOT EXISTS {phys} AS "
             f'SELECT * FROM {store}."{self._store_schema()}"."{mat_table}"'
         )
+
+    def _refresh_store_relations(self, duck_sql: str) -> None:
+        """REQ-1901: for every embedded-DuckDB-store-backed physical name that appears (as text) in
+        `duck_sql`, fetch its current contents from the broker singleton and (re)materialize it
+        under that physical name as an ordinary local TABLE, so the query about to run sees live
+        data without this connection ever holding the store file open itself.
+
+        A real TABLE, not a VIEW over a `register()`-ed Python object: `register()` binds a
+        "replacement scan" that is scoped to the SPECIFIC connection object it was called on, but
+        every query below runs on a PRIVATE `self._con.cursor()` (a separate connection clone) —
+        confirmed live: a VIEW built that way raised ``Catalog Error: Table ... does not exist``
+        the moment a cursor, rather than `self._con` itself, tried to read it. A materialized
+        TABLE has no such scoping — it is ordinary catalog data any cursor of this connection can
+        read — so the registration is only ever a transient staging step, unregistered right after.
+
+        A plain substring check, not a parsed reference list — false positives (a name that
+        happens to appear inside an unrelated literal) only cost one extra broker round-trip,
+        never a correctness problem; a false negative (missed reference) is the only failure mode
+        that would matter, and cannot happen since `phys` is a fully qualified, syntactically-
+        required identifier in any query that actually reads the relation."""
+        if not self._store_relations:
+            return
+        with self._store_relation_lock:
+            for phys, (schema, table) in self._store_relations.items():
+                if phys not in duck_sql:
+                    continue
+                arrow_tbl = self._store_broker.fetch_arrow(schema, table)
+                reg_name = f"_matbroker_{table}"
+                self._con.register(reg_name, arrow_tbl)
+                try:
+                    self._con.execute(
+                        f'CREATE OR REPLACE TABLE {phys} AS SELECT * FROM "{reg_name}"'
+                    )
+                finally:
+                    self._con.unregister(reg_name)
 
     # -- metadata --------------------------------------------------------------
 
@@ -884,6 +921,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             # Read gate: a control-plane rebuild swaps the provisa_admin snapshot out from under any
             # query already bound to it, which returns zero rows rather than failing (_CatalogGate).
             with self._catalog_gate.read():
+                self._refresh_store_relations(duck_sql)
                 # A PRIVATE cursor, never the shared connection: run() is dispatched to an executor
                 # thread, so two queries overlap routinely. A DuckDB connection holds ONE pending
                 # result — the second execute() replaces the first, and the first thread's fetchall()
@@ -914,6 +952,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # from the cursor lazily, so the scan is still live and a rebuild mid-drain would empty it.
         self._catalog_gate.acquire_read()
         try:
+            self._refresh_store_relations(duck_sql)
             cur = self._con.cursor()
             cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
         except BaseException:
@@ -932,6 +971,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         """Execute dialect-DuckDB SQL and return a ``pyarrow.Table`` — DuckDB produces Arrow natively
         (``fetch_arrow_table``), so no Python rows are materialized for the Flight transport."""
         with self._catalog_gate.read():
+            self._refresh_store_relations(duck_sql)
             # PRIVATE cursor for the same reason as run_sync/run_arrow_stream: a concurrent query on
             # the shared connection replaces this one's pending result, and the fetch then yields
             # nothing instead of raising.
@@ -956,6 +996,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # Held for the whole stream — same reason as run_sync: the batches are scanned on demand.
         self._catalog_gate.acquire_read()
         try:
+            self._refresh_store_relations(duck_sql)
             cur = self._con.cursor()
             cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
             reader = cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
