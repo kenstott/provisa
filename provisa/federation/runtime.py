@@ -95,6 +95,12 @@ class EngineRuntime:  # REQ-825, REQ-840
         the single seam generic callers use instead of hardcoding a specific engine's dialect."""
         return self._backend.transpile_physical(pg_sql)
 
+    def connector_pushdown(self, source_type: str):
+        """The bound engine's declared pushdown Capability for ``source_type`` — the same
+        passthrough pattern as ``dialect``/``transpile_physical``, so callers reach the engine's
+        planner input through the runtime seam rather than needing ``.engine`` themselves."""
+        return self.engine.connector_pushdown(source_type)
+
     @property
     def has_otel_catalog(self) -> bool:
         """Whether the bound engine exposes the ``otel`` telemetry catalog — the seam the ops
