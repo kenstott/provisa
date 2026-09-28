@@ -340,7 +340,16 @@ class TestREQ617RoleSelectionViaMetadata:
         request.limit = 0
 
         # New pipeline seam: govern/route/execute via provisa.pgwire._pipeline. Three rows in.
-        fake_plan = SimpleNamespace(route=Route.DIRECT, source_id="test-pg")
+        # REQ-1891: DIRECT route now fast-paths through execute_native, not _execute_plan.
+        state.source_pools.has.return_value = True
+        fake_plan = SimpleNamespace(
+            route=Route.DIRECT,
+            source_id="test-pg",
+            sql="SELECT id, amount FROM orders",
+            exec_params=None,
+            audit_written=False,
+            audit=MagicMock(),
+        )
         fake_result = SimpleNamespace(
             column_names=["id", "amount"], rows=[[1, 10.0], [2, 20.0], [3, 30.0]]
         )
@@ -356,7 +365,12 @@ class TestREQ617RoleSelectionViaMetadata:
                 return_value=fake_plan,
             ),
             patch(
-                "provisa.pgwire._pipeline._execute_plan",
+                "provisa.pgwire._pipeline.finalize_audit",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                state.federation_engine,
+                "execute_native",
                 new_callable=AsyncMock,
                 return_value=fake_result,
             ),

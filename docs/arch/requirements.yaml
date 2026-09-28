@@ -65384,7 +65384,7 @@
   target: "2026-Q3"
 
 - id: REQ-1891
-  status: proposed
+  status: complete
   group: "6. Execution, Routing, Caching & Performance"
   category: gRPC Dispatch
   priority: SHOULD
@@ -65425,10 +65425,66 @@
     remains (the earlier investigation's `grpc.aio`-vs-pyarrow-C++ hypothesis, still
     unverified) was not isolated further this session — fixing this fast-path gap and
     re-measuring is the natural next step before chasing framework-level causes further.
+
+    (Amended 2026-09-28, IMPLEMENTED:) `_handle_query_bound` (`provisa/grpc/server.py`)
+    now branches on `plan.route == Route.DIRECT and state.source_pools.has(plan.source_id)`
+    BEFORE the generic bounded-route fallback, calling
+    `state.federation_engine.execute_native(state.source_pools, plan.source_id, plan.sql,
+    plan.exec_params or [])` directly and streaming `result.rows` as proto messages via the
+    same `msg_cls(**_kwargs_for(...))` pattern the ENGINE branch already uses, then calling
+    `provisa.pgwire._pipeline.finalize_audit` itself (mirroring the ENGINE branch's own
+    self-audit, since this path no longer reaches `_execute_plan`'s audit write either).
+    `_execute_plan` and its `ensure_resident`/`ensure_rows_resident` residency machinery are
+    skipped entirely on this path, matching Flight SQL's proven DIRECT fast path.
+
+    Terminal choice: `execute_native` (async, buffered `QueryResult`), NOT
+    `execute_native_stream`. `execute_native_stream` is documented SYNCHRONOUS-for-a-
+    worker-thread — it drives its cursor via
+    `asyncio.run_coroutine_threadsafe(coro, loop).result()`, which is how Flight's `do_get`
+    (running on Flight's own thread pool, off the event loop) and pgwire's socketserver
+    worker can call it safely. gRPC's `_handle_query_bound` is a native `grpc.aio` async
+    generator already running ON the event loop — calling `.result()` on a coroutine
+    scheduled back onto that same loop from inside itself would deadlock. `execute_native`
+    is a plain coroutine and is the correct terminal for gRPC's dispatch shape.
+
+    Residency safety, confirmed from `provisa/transpiler/router.py`'s `decide_route`
+    (not assumed from "Flight already does this"): every branch that returns `Route.DIRECT`
+    — mutation-always-direct (single source), steward-override-direct, colocated-same-DSN
+    sources, single RDBMS source with `has_driver(stype)` true, and the govdata bridge — is
+    gated on the query naming exactly one source with a live pooled/native driver
+    connection. A MATERIALIZED/`row_materialize` source is never one of those: it has no
+    `has_driver` entry and is either a `VIRTUAL_SOURCES` member or reached only via a
+    multi-source query, both of which `decide_route` sends to `Route.ENGINE` — the only
+    route whose terminal reads the federation engine's own landed materialize store (see
+    `query_residency.py`'s `materialize_pending`/`land_rows`, reached only from
+    `_execute_plan_in_org`'s ENGINE-only `pushdown_row_materialize` call and the ENGINE
+    branch's own `ensure_resident` calls in both `_pipeline.py` and `grpc/server.py`).
+    `Route.DIRECT` therefore never reads a materialized/landed copy by construction — the
+    residency skip is not a shortcut copied on faith from Flight, it is a consequence of
+    `decide_route`'s own routing contract, which Flight's fast path already relies on for
+    the identical reason.
+
+    The govdata bridge is `Route.DIRECT` but is NOT `source_pools.has(...)` (router.py's own
+    comment: "not a pooled driver or the engine"), so the new fast path's guard falls
+    through to the pre-existing `_execute_plan` path for it unchanged — no regression for
+    that route.
   code:
     - provisa/grpc/server.py
     - provisa/pgwire/_pipeline.py
-  tests: []
+  tests:
+    - tests/unit/test_grpc_server.py::TestHandleQuery::test_direct_route_takes_fast_path
+    - tests/unit/test_grpc_server.py::TestHandleQuery::test_request_to_sql_to_result_cache_route
+    - tests/unit/test_grpc_requirements.py::TestREQ617RoleSelectionViaMetadata::test_streaming_query_emits_one_message_per_row
+  scenario: |
+    Given a gRPC query request whose governed plan routes Route.DIRECT to a single reachable
+    source with a live pooled driver
+    When _handle_query_bound dispatches it
+    Then it calls federation_engine.execute_native directly and never calls _execute_plan or
+    ensure_resident, streaming one proto message per result row
+
+    Given a gRPC query request whose governed plan routes Route.CACHE or Route.API
+    When _handle_query_bound dispatches it
+    Then it still calls _execute_plan (the fast path is DIRECT-route only)
   target: "2027-Q1"
 
 - id: REQ-1892
