@@ -953,6 +953,92 @@ class PgDuckdbIcebergConnector(_PgDuckdbScanConnector):  # REQ-908
         )
 
 
+def resolve_snowflake_iceberg_metadata_location(source: Source) -> str:  # REQ-1867
+    """Resolve a Snowflake-managed Iceberg table's LIVE ``metadata_location`` via
+    ``SYSTEM$GET_ICEBERG_TABLE_INFORMATION``, over the same snowflake-connector-python connection
+    ``SnowflakeDriver`` (executor/drivers/snowflake.py) uses — ``account``/``warehouse``/``role``
+    come from ``source.federation_hints`` by that same convention. Synchronous: ``Connector.details``
+    is a sync method, so this opens/queries/closes its own connection rather than reusing the async
+    DirectDriver.
+    """
+    import json
+
+    import snowflake.connector as sf
+
+    hints = source.federation_hints
+    account = hints.get("account") or source.host
+    if not account:
+        raise ValueError("snowflake source requires 'account' in federation_hints or host")
+    table = hints.get("iceberg_table")
+    if not table:
+        raise ValueError(
+            "snowflake iceberg source requires 'iceberg_table' (fully-qualified table name) "
+            "in federation_hints"
+        )
+    conn = sf.connect(
+        account=account,
+        user=source.username,
+        password=source.password,
+        database=source.database or None,
+        schema=hints.get("schema"),
+        warehouse=hints.get("warehouse"),
+        role=hints.get("role"),
+    )
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(f"SELECT SYSTEM$GET_ICEBERG_TABLE_INFORMATION('{table}')")
+            row = cur.fetchone()
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+    if row is None:
+        raise ValueError(f"SYSTEM$GET_ICEBERG_TABLE_INFORMATION('{table}') returned no row")
+    info = json.loads(row[0])
+    return info["metadataLocation"]
+
+
+class PgDuckdbSnowflakeIcebergConnector(PgDuckdbIcebergConnector):  # REQ-1867
+    """Attach a Snowflake-managed Iceberg table IN PLACE via pg_duckdb's iceberg_scan, resolved to
+    the table's LIVE ``metadata_location`` through Snowflake's own
+    ``SYSTEM$GET_ICEBERG_TABLE_INFORMATION`` — catalog-aware, unlike ``PgDuckdbIcebergConnector``'s
+    bare storage path (``source.path``). A snowflake source stays reachable DIRECT too
+    (SnowflakeDriver, materialize-required land path) — this SCAN reach is ADDITIONAL, not a
+    replacement (REQ-947/951).
+    """
+
+    source_type = "snowflake"
+    key = "pg_duckdb_snowflake_iceberg"
+    mechanisms = frozenset({Mechanism.SCAN, Mechanism.DIRECT})
+    runtime_deps = (
+        *PgDuckdbIcebergConnector.runtime_deps,
+        RuntimeDep("snowflake-connector-python", DriverProvider.OPERATOR),
+    )
+
+    def details(self, source: Source) -> dict:
+        metadata_location = resolve_snowflake_iceberg_metadata_location(source)
+        return {
+            "requires_preload": "pg_duckdb",
+            "reader": self._reader,
+            "scan": f"{self._reader}('{metadata_location}'{self._scan_args})",
+        }
+
+    async def probe(self, fetch) -> ProbeResult:  # REQ-904/1867
+        base = await super().probe(fetch)
+        if not base.available:
+            return base
+        try:
+            import snowflake.connector  # noqa: F401
+        except ImportError:
+            return ProbeResult(
+                False,
+                "snowflake-connector-python not installed",
+                "pip install snowflake-connector-python",
+            )
+        return ProbeResult(True, "pg_duckdb with iceberg extension and snowflake-connector-python")
+
+
 class PgDuckdbDeltaConnector(_PgDuckdbScanConnector):  # REQ-900
     """Attach a Delta Lake table IN PLACE via pg_duckdb's delta_scan (DuckDB delta extension).
 
