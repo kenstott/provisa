@@ -42,8 +42,16 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
     """Every registered source: the config's Source where the config declares the id (it carries
     the operator's settings), else the control-plane row -- which since REQ-1695 carries its own
     password reference too. Built-in sources (provisa-admin, provisa-otel, the derived-view source)
-    are never landed and stay out."""
+    are never landed and stay out.
+
+    REQ-1892: cached (TTL + schema-generation-keyed) when called on the pool-acquire path
+    (``conn`` unset) -- this is read 2-3 times per governed call (`ensure_rows_resident`,
+    `ensure_resident`, `materialize_pending`) with no cache before this, the same shape of finding
+    REQ-1882 already fixed for `registered_tables` in this file. A caller supplying its own
+    ``conn`` (already inside an explicit transaction) bypasses the cache, unchanged from before."""
     from provisa.core.repositories import source as source_repo
+    from provisa.core.request_context import current_org
+    from provisa.federation.registered_sources_cache import get_cache_for
 
     config = getattr(state, "config", None)
     by_id: dict[str, Source] = {s.id: s for s in (getattr(config, "sources", None) or [])}
@@ -52,9 +60,28 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
         return list(by_id.values())
     if conn is not None:
         rows = await source_repo.list_all(conn)
-    else:
-        async with db.acquire() as _conn:
-            rows = await source_repo.list_all(_conn)
+        return _merge_source_rows(by_id, rows)
+
+    generation = (
+        current_org.get(None),
+        getattr(state, "schema_boot_id", ""),
+        getattr(state, "schema_version", 0),
+    )
+    rs_cache = get_cache_for(state)
+    cached = rs_cache.get(generation)
+    if cached is not None:
+        return cached
+    async with db.acquire() as _conn:
+        rows = await source_repo.list_all(_conn)
+    out = _merge_source_rows(by_id, rows)
+    rs_cache.put(generation, out)
+    return out
+
+
+def _merge_source_rows(by_id: dict[str, Source], rows: list[dict]) -> list[Source]:
+    """The control-plane rows merged over `by_id` (config-declared sources), factored out so both
+    the cached (pool-acquire) and uncached (caller-supplied ``conn``) paths build identically."""
+    by_id = dict(by_id)
     for row in rows:
         sid = row["id"]
         if sid in by_id or sid in BUILT_IN_SOURCE_IDS:

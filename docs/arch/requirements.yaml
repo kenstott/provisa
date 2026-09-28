@@ -65430,3 +65430,46 @@
     - provisa/pgwire/_pipeline.py
   tests: []
   target: "2027-Q1"
+
+- id: REQ-1892
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Concurrency
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    `registry_view.registered_sources` extends REQ-1882's cache to itself: it was NOT cached —
+    every call ran a real `db.acquire()` + `source_repo.list_all(conn)` round trip, on every
+    single governed call, warm or cold — found while tracing the Cypher/Bolt transport's timing
+    behavior this session (`provisa/federation/registry_view.py:41-63`). `_execute_plan_in_org`
+    alone calls it 2-3 times per invocation (`ensure_rows_resident`, `ensure_resident`, and again
+    inside `materialize_pending`). Same fix as REQ-1882 applied identically: a per-``state``-
+    instance, TTL(5s) + generation-keyed (`current_org`, `schema_boot_id`, `schema_version`)
+    cache on the pool-acquire path only (`conn is None`); a caller supplying its own ``conn``
+    (`backend.py`, `app.py`, `push_wiring.py`) bypasses the cache unchanged, exactly as
+    `registered_tables` already does. Implemented via `registered_sources_cache.py`, which reuses
+    `RegisteredTablesCache` directly (its TTL/generation-key shape is already source/table-
+    agnostic) rather than duplicating the class, attached to `state` under its own attribute so it
+    never collides with `registered_tables`'s cache on the same instance.
+  use_case: >-
+    Every governed query (Flight SQL, gRPC, Bolt/Cypher, pgwire) pays a synchronous DB round trip
+    for `registered_sources` 2-3 times per call on the shared event loop identified in REQ-1882's
+    py-spy investigation; caching it the same way removes that repeated blocking work without
+    changing residency/freshness semantics (the generation key invalidates on the same
+    schema/table-mutation signal `registered_tables` already relies on).
+  code:
+    - provisa/federation/registry_view.py
+    - provisa/federation/registered_sources_cache.py
+  tests:
+    - tests/unit/test_registered_sources_cache.py
+  scenario: >-
+    Given a governed query invokes `_execute_plan_in_org`, which calls `registered_sources`
+    2-3 times (`ensure_rows_resident`, `ensure_resident`, `materialize_pending`) within the same
+    schema generation
+
+    When the second and third calls run
+
+    Then only the first performs a `db.acquire()` + `source_repo.list_all` round trip; the rest
+    are served from the per-state cache until the schema generation changes or the TTL expires
+  target: "2026-Q3"
