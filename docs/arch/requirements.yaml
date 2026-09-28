@@ -65210,6 +65210,22 @@
     sql/cypher/http/flight/graphql/grpc). Requested by the maintainer so a results file is
     self-describing about what was actually exercised (which backend engines/sources, which
     transports) without cross-referencing fragment.yaml or the run's own stderr log separately.
+
+    (Amended 2026-09-28, fixed a real nocache-set duplication bug:) Live-caught running the full
+    duckdb matrix end to end: the written JSON's `results` list had every nocache query/transport
+    combo appearing TWICE (21 unique combos x2 = 42 entries) while cache-pass combos appeared once
+    (21 entries) — 63 total instead of the correct 42. Root cause: `main()`'s two post-loop calls
+    to `_checkpoint(results)` (after saturation, and at the very end before writing the final
+    report) passed the ALREADY-combined `results = nocache_results + cache_results` list, but
+    `_checkpoint` unconditionally computes `_prior_pass_results + results_so_far` — and
+    `_prior_pass_results` was still bound to `nocache_results` from the pass-boundary checkpoint
+    wiring, so it got prepended a second time on top of a `results` argument that already
+    contained it. Fixed by resetting `_prior_pass_results = []` immediately after computing the
+    combined `results`, so any later `_checkpoint(results)` call treats it as already
+    self-contained. Verified with an isolated reproduction of the exact checkpoint logic (2
+    QueryResults in, `_prior_pass_results` reset, `_checkpoint` output length asserted == 2) —
+    this file has no pytest coverage (a standalone benchmark harness, not imported by the test
+    suite), so this was the verification available short of a full live rerun.
   use_case: >-
     Live benchmark methodology bug caught by the maintainer while reviewing REQ-1889's reported
     "-99.6%" GraphQL federated_join win: asked directly whether repeated-identical-query iterations

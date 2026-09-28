@@ -1337,6 +1337,11 @@ def main() -> int:
     print(f"Running benchmark matrix (cache pass), engine={args.engine}...", file=sys.stderr)
     cache_results = run_all(transports, query_ids, on_result=_checkpoint, no_cache=False)
     results = nocache_results + cache_results
+    # `results` is now self-contained (both passes) — any later _checkpoint(results) call must
+    # not also re-prepend _prior_pass_results, or the nocache set gets counted twice (confirmed
+    # live: 21 nocache query/transport combos each appeared 2x in the written JSON, cache combos
+    # only once, from the two _checkpoint(results) calls below before this reset existed).
+    _prior_pass_results = []
 
     if not args.skip_saturation:
         # sql (pgwire) + cypher (Bolt) + flight + grpc here; "http" AND "graphql" are excluded —
