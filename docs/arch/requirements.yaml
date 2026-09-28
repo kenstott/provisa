@@ -66166,6 +66166,25 @@
     ~23.1MB/batch for order_items, safe under the raised 32MB ceiling but NOT under the old 4MB
     default, so this specific table/batch_rows combination genuinely needs the raised ceiling to
     work at all.
+
+    (Amended 2026-09-28, live-verified: batch-size tuning is exhausted past ~5,000 rows.)
+    `large_scan via grpc` at batch_rows=65,536 (raised ceiling, 3 iterations): 39,646ms / 39,695ms
+    — statistically IDENTICAL to batch_rows=10,000's 38,468-38,870ms and only marginally worse
+    than batch_rows=5,000's 36,216-36,697ms. Message count dropped from 400 (5,000/batch) to 31
+    (65,536/batch, matching Flight's own batch count) with ZERO further latency improvement. This
+    conclusively rules out per-message gRPC/HTTP2 framing overhead as the residual cost beyond
+    the initial 2,000,000-to-~400-message win (the real, large, one-time gain landed already at
+    batch_rows=5,000; everything past that point is noise). The remaining ~2x gap to Flight SQL's
+    ~20s is NOT closeable by batch-size tuning at any setting — confirms the standing hypothesis
+    from this REQ's first amendment: it is per-row protobuf sub-message construction (each row
+    still individually built as a Python object before being placed in the batch, regardless of
+    how many rows share one wire message) vs. Arrow's columnar buffers having no per-row Python
+    object at all. Closing that gap fully would mean reinventing a columnar response encoding
+    inside gRPC — effectively re-implementing what Flight SQL already is — not attempted; Flight
+    already exists and serves exactly this use case. batch_rows stays at 65,536 for `large_scan`
+    (still a genuine, real, ~5.2x win over the original per-row RPC) since there is no evidence a
+    smaller value performs any better and no reason to expect the ceiling/ergonomics tradeoff of a
+    different value to matter at this plateau.
   use_case: >-
     Direct follow-up to the maintainer's "find a fix" after REQ-1898's amendment reported the real
     root cause (one-message-per-row wire contract, not a fetch-strategy bug) rather than a working
