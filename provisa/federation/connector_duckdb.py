@@ -577,6 +577,68 @@ class PostgresFdwConnector(Connector):  # REQ-893
         }
 
 
+class PgDuckdbMotherDuckConnector(Connector):  # REQ-1868
+    """Attach a MotherDuck-hosted DuckDB database into a Postgres engine, LIVE, via pg_duckdb's own
+    FOREIGN DATA WRAPPER (``TYPE 'motherduck'``) — distinct from ``_PgDuckdbScanConnector``, which
+    wraps a DuckDB scanner table function in a view; this is pg_duckdb's FDW/foreign-server path, the
+    same SQL/MED shape ``PostgresFdwConnector`` uses for postgres_fdw. Read + write reaches the live
+    MotherDuck database in place (REQ-951).
+    """
+
+    engine = "postgres"
+    source_type = "motherduck"
+    mechanism = Mechanism.ATTACH_RW
+    key = "pg_duckdb_motherduck"
+    runtime_deps = (RuntimeDep("libduckdb", DriverProvider.BUNDLED),)  # the embedded DuckDB engine
+
+    async def probe(self, fetch) -> ProbeResult:  # REQ-904/1868
+        pre = await fetch("SELECT current_setting('shared_preload_libraries') AS v")
+        if not (pre and "pg_duckdb" in (pre[0]["v"] or "")):
+            return ProbeResult(
+                False,
+                "pg_duckdb not in shared_preload_libraries",
+                "add pg_duckdb to shared_preload_libraries and restart Postgres",
+            )
+        if await fetch("SELECT 1 FROM pg_foreign_data_wrapper WHERE fdwname = 'duckdb'"):
+            return ProbeResult(True, "pg_duckdb duckdb foreign data wrapper registered")
+        return ProbeResult(
+            False,
+            "pg_duckdb duckdb foreign data wrapper not registered",
+            "CREATE EXTENSION pg_duckdb",
+        )
+
+    def capability(self) -> Capability:
+        return Capability(
+            predicate_pushdown=True, join_pushdown=True, aggregate_pushdown=True, write=True
+        )
+
+    def details(self, source: Source) -> dict:
+        if not source.password:
+            raise ValueError(
+                f"Source {source.id!r}: 'password' (MotherDuck token) is required for the "
+                "motherduck connector"
+            )
+        server = f"fdw_{source.id}"
+        option_pairs = {
+            "default_database": source.federation_hints.get("default_database"),
+            "tables_owner_role": source.federation_hints.get("tables_owner_role"),
+            "background_catalog_refresh_inactivity_timeout": source.federation_hints.get(
+                "background_catalog_refresh_inactivity_timeout"
+            ),
+        }
+        options = ", ".join(f"{k} '{v}'" for k, v in option_pairs.items() if v)
+        options_clause = f" OPTIONS ({options})" if options else ""
+        return {
+            "attach_ddl": [
+                f"CREATE SERVER IF NOT EXISTS {server} TYPE 'motherduck' "
+                f"FOREIGN DATA WRAPPER duckdb{options_clause}",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {server} "
+                f"OPTIONS (token '{source.password}')",
+            ],
+            "server": server,
+        }
+
+
 class _PgPgwireConnector(Connector):  # REQ-1730
     """Attach a connector-pgwire-replica source (files/sharepoint/splunk, ``strategy.py``'s
     ``_CONNECTOR_PGWIRE_REPLICA``) into a Postgres engine LIVE via postgres_fdw, pointed at the
