@@ -643,6 +643,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         PgDuckdbIcebergConnector,
         PgDuckdbJsonConnector,
         PgDuckdbParquetConnector,
+        PgDuckdbSnowflakeIcebergConnector,
         PgFilesConnector,
         PgSharepointConnector,
         PgSplunkConnector,
@@ -665,6 +666,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             PgDuckdbParquetConnector(),  # parquet
             PgDuckdbJsonConnector(),  # json
             PgDuckdbIcebergConnector(),  # iceberg (DuckDB iceberg ext; probe verifies it's compiled in)
+            PgDuckdbSnowflakeIcebergConnector(),  # snowflake iceberg tables, live catalog-resolved (REQ-1867)
             PgDuckdbDeltaConnector(),  # delta_lake (DuckDB delta ext; probe verifies it's compiled in)
             SqliteFdwConnector(),  # sqlite (system libsqlite3)
             MysqlFdwConnector(),  # mysql (needs a bundled client lib; probe-gated)
