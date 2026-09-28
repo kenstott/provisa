@@ -21,9 +21,11 @@ import importlib.util
 import logging
 import re
 import sys
+from datetime import date, datetime
 
 import grpc
 import grpc.aio
+from google.protobuf.descriptor import FieldDescriptor
 
 log = logging.getLogger(__name__)
 
@@ -39,11 +41,12 @@ def _proto_value(field, value):
     on any column whose registration widens or narrows the physical type. Every other transport
     normalizes at its own serialization boundary (serialize_rows / Arrow / the pgwire encoders);
     this is gRPC's.
+
+    REQ-1884: date/datetime and FieldDescriptor are module-level imports, not per-call — this
+    function runs once per (row, column) on the ENGINE-route streaming path (millions of times
+    for a large scan), and a per-call ``import`` statement still pays a sys.modules lookup +
+    attribute bind every time even when the module is already loaded.
     """
-    from datetime import date, datetime
-
-    from google.protobuf.descriptor import FieldDescriptor
-
     if field.type == FieldDescriptor.TYPE_MESSAGE:
         if field.message_type.full_name == "google.protobuf.Timestamp":
             ts = field.message_type._concrete_class()
@@ -434,11 +437,16 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
             return
 
-        def _kwargs_for(out_cols: list[str], row) -> dict:
+        def _col_fields_for(out_cols: list[str]) -> list[tuple[str, object]]:
+            # REQ-1884: resolved once per query, not once per (row, column) — out_cols is fixed
+            # for the life of the result set, so descriptor.fields_by_name.get(col) doesn't need
+            # re-running on every row on the ENGINE-route path (millions of rows for a large scan).
+            return [(col, descriptor.fields_by_name.get(col)) for col in out_cols]
+
+        def _kwargs_for(col_fields: list[tuple[str, object]], row) -> dict:
             kwargs = {}
-            for i, col in enumerate(out_cols):
+            for i, (col, field) in enumerate(col_fields):
                 if i < len(row) and row[i] is not None:
-                    field = descriptor.fields_by_name.get(col)
                     # No field => let msg_cls(**kwargs) raise on the unknown name rather than
                     # dropping the column silently.
                     kwargs[col] = _proto_value(field, row[i]) if field is not None else row[i]
@@ -482,6 +490,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
             _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
             out_cols = [_proto_by_norm.get(_norm(c), c) for c in stream.column_names]
+            col_fields = _col_fields_for(out_cols)
             batch_iter = stream.batches()
             # REQ-074/REQ-1386: this streaming terminal never reaches _execute_plan, so the audit
             # row is written here — after the last batch, or on the way out of a failed drain.
@@ -493,7 +502,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                     if batch is None:
                         break
                     for row in batch:
-                        yield msg_cls(**_kwargs_for(out_cols, row))
+                        yield msg_cls(**_kwargs_for(col_fields, row))
             except Exception:
                 await finalize_audit(plan, 500, state)
                 raise
@@ -508,8 +517,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # (governance may re-case or alias a column).
         _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
         out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
+        col_fields = _col_fields_for(out_cols)
         for row in result.rows:
-            yield msg_cls(**_kwargs_for(out_cols, row))
+            yield msg_cls(**_kwargs_for(col_fields, row))
 
     # --- REQ-1359: aggregate / group-by protocol parity -----------------------------------------
     # gRPC synthesizes GraphQL query text (query_ir.grpc_table_to_aggregate_graphql_text /

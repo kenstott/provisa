@@ -64937,4 +64937,84 @@
     Then it offers the same column list the funcs picker's table exposes via
     /data/grpc-group-by-columns/{role_id}/{type_name}, for both Aggregate- and GroupBy-suffixed
     type names
-  target: "2026-09"
+  target: "2026-Q3"
+
+- id: REQ-1884
+  status: in-progress
+  group: "6. Execution, Routing, Caching & Performance"
+  category: gRPC Row Streaming
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    A 2,000,000-row unfiltered scan (`large_scan`, provisa/grpc/server.py's ENGINE-route
+    `_handle_query` loop, `yield msg_cls(**_kwargs_for(...))` once per row) took ~225s over gRPC
+    vs ~16s over Arrow Flight for the IDENTICAL query against IDENTICAL data (~14x), live-
+    benchmarked this session — a distinct issue from REQ-1883 (wrong aggregate-column-selection
+    cost, already fixed) and from REQ-1882 (single-event-loop governance serialization, which
+    affects concurrent throughput, not single-request row-streaming cost). Two per-row costs in
+    the ENGINE-route loop were confirmed and fixed: (1) `_proto_value` ran `from datetime import
+    date, datetime` and `from google.protobuf.descriptor import FieldDescriptor` on every call —
+    once per (row, column), i.e. tens of millions of times for a 2M-row/16-col scan; even with
+    the module already in `sys.modules`, the repeated import statement still pays a dict lookup +
+    attribute bind every time. (2) `_kwargs_for`'s `descriptor.fields_by_name.get(col)` re-ran per
+    row though `out_cols` is fixed for the life of a result set. Local in-process benchmark (no
+    network, no VM — isolates `_kwargs_for` + `msg_cls(**kwargs)` + `SerializeToString()` from DB
+    fetch/governance/network) against a REAL protoc-compiled message class (built via
+    `provisa.grpc.schema_gen.compile_proto`, matching perf-bench's 16-column `order_items` table,
+    500,000 rows): current code 105,160 rows/s vs fixed code 217,911 rows/s — a 2.07x
+    serialization-path speedup from these two changes alone (script:
+    /private/tmp/claude-501/-Volumes-main-Users-kennethstott-PycharmProjects-provisa/
+    0273a341-8c58-4f02-9c36-9741aca6430c/scratchpad/bench_grpc_row_stream.py, not committed —
+    scratchpad only). This does NOT close the 14x live gap by itself: 2x on the isolated
+    serialization slice is a modest fraction of 14x on the full RPC, so the dominant cost is
+    elsewhere (DB fetch/executor-thread hops, gRPC's own per-message framing on the wire, or the
+    per-row `yield` crossing the `grpc.aio` async-generator boundary 2,000,000 times) — not
+    verified further this session per the no-live-VM constraint.
+
+    Also corrected during investigation: the originating task description assumed `msg_cls` is a
+    dynamically-generated `message_factory` class (documented as slower to construct than
+    `protoc`-compiled classes). Verified false by reading provisa/grpc/schema_gen.py's
+    `compile_proto` (calls real `grpc_tools.protoc`) and server.py's `_load_module`
+    (importlib-loads the resulting `_pb2.py` file per role). The classes ARE real protoc-compiled
+    classes, dynamically LOADED (importlib) per role's own compiled schema, not dynamically
+    GENERATED (message_factory) message types — the role-specific-schema design is preserved
+    either way, and there is no message_factory construction cost to mitigate.
+
+    Flagged, NOT implemented (bigger architectural decisions needing the maintainer's call):
+    (a) Batching multiple rows into fewer, larger stream messages (a `repeated` sub-message field,
+    or a columnar encoding) instead of one message per row — would cut per-message gRPC framing
+    overhead 2,000,000x down to (row_count / batch_size)x, but changes the RPC response shape any
+    real client depends on (one `{Type}` message per stream item today) — a wire-protocol-breaking
+    change, out of scope here. (b) Response compression (gzip or another codec) is not enabled
+    anywhere in provisa/grpc/server.py's `grpc.aio.server(...)` construction today (verified: no
+    `compression=` argument, no `options=` with compression keys) — untested here per the no-
+    live-VM constraint; for compact scalar rows compression could cut wire bytes or could simply
+    add CPU cost for little size win, and needs a real measurement, not a guess. (c) Reusing/
+    caching message instances instead of constructing a new `msg_cls(**kwargs)` per row was
+    considered and NOT pursued — protobuf messages aren't designed for a clear/reuse cycle in the
+    generator-yield pattern used here, and the constructor cost was not shown to dominate versus
+    the import/lookup fixes actually made.
+  use_case: >-
+    Exploratory task this session: investigate gRPC row-streaming throughput vs the ~14x-faster
+    Flight transport for the same query, implement safe/contained/verified fixes, flag bigger
+    wire-protocol changes rather than implementing them. No live VM/SSH/network access was
+    available or used — all verification is local (pytest + an isolated in-process benchmark).
+  code:
+    - provisa/grpc/server.py
+  tests:
+    - tests/unit/test_grpc_server.py
+    - tests/unit/test_grpc_aggregates.py
+    - tests/unit/test_grpc_requirements.py
+    - tests/unit/test_grpc_proxy_translation.py
+  scenario: |
+    Given the ENGINE-route streaming RPC handler serving a large unfiltered scan
+    When each row is converted to a proto message via `_kwargs_for` + `msg_cls(**kwargs)`
+    Then `_proto_value`'s type-coercion imports and `_kwargs_for`'s column-to-field resolution
+    run once per query, not once per (row, column)
+
+    Given the existing gRPC servicer unit/integration test suite
+    When the import-hoist and field-list-precompute changes are applied
+    Then all existing tests continue to pass unchanged (no RPC response shape or field-mapping
+    behavior changes)
+  target: "2026-Q4"
