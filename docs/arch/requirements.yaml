@@ -64799,3 +64799,77 @@
     When the rewrite runs
     Then no wrapping occurs regardless of source type or column data_type
   target: "2027-Q1"
+
+- id: REQ-1882
+  status: proposed
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Concurrency
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    A single expensive concurrent query (e.g. a full-table GROUP BY aggregation) serializes and
+    blocks ALL OTHER concurrent query processing across every governed transport (Flight SQL,
+    gRPC, Bolt/Cypher, pgwire) for its entire duration, including trivially cheap, table-disjoint
+    point lookups submitted on entirely separate client connections. Live-verified on the
+    perf-bench VM (2026-09-28): a single-row PK lookup (perf_bench.orders WHERE order_id = 12345,
+    normally ~120ms) took 12.1s when submitted 0.5s after a concurrent GROUP BY aggregation over
+    the same table (11.3s of its own), and returned to its normal ~120ms latency for every
+    subsequent call once the aggregation completed. A 50-way-concurrent A/B test with 200 Flight
+    SQL requests further showed IDENTICAL median/p99 latency whether the client used one shared
+    `pyarrow.flight.FlightClient` or a pool of 8 — ruling out client-side FlightClient thread-
+    safety as a cause. `pg_stat_activity` on the embedded control-plane Postgres during the same
+    load showed only 1 active query and 12 idle connections (max_connections=100) — ruling out
+    Postgres connection/resource exhaustion as a cause. The most likely mechanism, based on a
+    live py-spy dump of the running server during concurrent load, is `_run_on_loop`
+    (provisa/api/flight/server.py:212-234): every governed query's plan/residency work
+    (govern_batch_final_plan, ensure_rows_resident, pushdown_row_materialize, ensure_resident)
+    is dispatched via `asyncio.run_coroutine_threadsafe(..., self._main_loop).result()` onto ONE
+    shared asyncio event loop, and the py-spy dump caught that single MainThread synchronously
+    executing SQL tokenization (sqlglot), a synchronous DB catalog fetch (fetch_tables ->
+    registered_tables -> row_materialized_tables_by_name), and SQL-rewrite regex work in-line —
+    i.e. doing blocking, non-yielding work directly on the one loop thread every other concurrent
+    request's governance step must also pass through. This is NOT fully isolated to the
+    governance phase alone: the observed 12.1s block on the small query tracked the heavy query's
+    own ~11.3s total duration closely enough that residency/pushdown logic that re-runs all or
+    part of a query during governance (see pushdown_row_materialize's "run the query, AS WRITTEN,
+    through the engine once" mechanism) has not been ruled out as a contributing factor. This is
+    a real server-side concurrency ceiling, not a benchmark harness artifact: the perf-bench
+    saturation ramp's collapse (demo/named/perf/bench/run_benchmark.py's run_saturation) for the
+    `flight` transport, and the gRPC transport's total 0-completions result at every rate
+    including rate=1, are both consistent with this mechanism once a 30%-weighted heavy
+    aggregation enters the concurrent mix. gRPC is hit even harder by a second, compounding,
+    already-documented gap (REQ-1361: an empty/unset `funcs` list computes every aggregate
+    function across every column instead of the single sum(amount) other transports compute) —
+    live-measured at 23.4s per call for single_source_aggregation via gRPC vs ~2.3s for the
+    equivalent SQL/GraphQL/Flight query, guaranteeing gRPC's heavy calls alone exceed every
+    saturation phase's window (max 30s) and, per the mechanism above, block the other 70% of
+    concurrent gRPC traffic behind them too.
+  use_case: >-
+    Originating investigation: pg-engine perf benchmark saturation ramp collapse for the Flight
+    SQL transport (rate=500/s: 0/15000 ok, 712 errors — most of the ~14288 "missing" requests
+    neither completed nor errored within the phase window, meaning they stalled). The initial
+    hypothesis (a single shared pyarrow FlightClient serializing concurrent do_get calls
+    client-side) was directly tested and refuted; the real cause is this server-side governance
+    serialization. Benchmark numbers from this ramp may be reported/compared against other
+    engines, so misattributing the collapse to the harness rather than this real limitation would
+    be costly.
+  code:
+    - provisa/api/flight/server.py
+    - provisa/federation/query_residency.py
+    - provisa/grpc/server.py
+  tests: []
+  scenario: |
+    Given two concurrent clients on separate connections, one submitting a full-table GROUP BY
+    aggregation and the other a single-row primary-key lookup on the same table, submitted ~0.5s
+    apart
+    When both run concurrently against the Provisa server
+    Then the point lookup's latency should stay close to its unloaded baseline (~120ms), not
+    balloon to track the aggregation's own multi-second duration
+
+    Given the perf-bench saturation ramp (demo/named/perf/bench/run_benchmark.py::run_saturation)
+    at a moderate rate (e.g. 200/s) for the `flight` transport
+    When the 70/30 point_lookup/single_source_aggregation mix is submitted at that rate
+    Then completed-plus-errored requests should account for close to 100% of submitted requests
+    within the phase window, not silently drop the majority as neither ok nor error
+  target: "2026-Q4"
