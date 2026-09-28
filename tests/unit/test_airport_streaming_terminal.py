@@ -88,6 +88,7 @@ def _plan(route, **kwargs):
         source_id="wh",
         sources=frozenset({"wh"}),
         exec_params=[],
+        pk_bounds=(),  # REQ-1865: row-materialize residency reads this on every plan
         audit=None,
         audit_written=False,
         **kwargs,
@@ -117,6 +118,7 @@ def airport(monkeypatch, main_loop):
     direct_stream = _RowStream([(1,), (2,), (3,)], ["id"], ["integer"])
 
     engine = types.SimpleNamespace(
+        dialect="trino",
         execute_engine_stream=lambda sql, params: (engine_schema, reader),
         execute_native_stream=lambda pools, source_id, sql, params, loop=None: direct_stream,
     )

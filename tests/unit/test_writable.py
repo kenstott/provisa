@@ -95,9 +95,11 @@ def test_engine_writable_source_types_lists_only_write_connectors():
     from provisa.federation.engine import build_pg_engine
 
     got = engine_writable_source_types(build_pg_engine())
-    # write=True connectors: postgres_fdw, sqlite_fdw, mysql_fdw, oracle_fdw (REQ-900). tds_fdw
-    # (sqlserver) is read-only; file/lake scanners are read-only.
-    assert got == {"postgresql", "sqlite", "mysql", "oracle"}
+    # write=True connectors: postgres_fdw, sqlite_fdw, mysql_fdw, oracle_fdw (REQ-900), pg_duckdb's
+    # duckdb FDW for motherduck (REQ-1868). tds_fdw (sqlserver) is read-only; file/lake scanners and
+    # the Iceberg-catalog SCAN/ATTACH_R connectors (snowflake/databricks/bigquery, REQ-1867) are
+    # read-only.
+    assert got == {"postgresql", "sqlite", "mysql", "oracle", "motherduck"}
     assert "csv" not in got and "parquet" not in got and "json" not in got
     assert "sqlserver" not in got  # tds_fdw is read-only
 

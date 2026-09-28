@@ -64,6 +64,8 @@ class _FakeStream:
 
 
 class _FakeEngine:
+    dialect = "trino"
+
     def __init__(self, rows: list[tuple], closed_flag: list[bool]) -> None:
         self._rows = rows
         self._closed = closed_flag

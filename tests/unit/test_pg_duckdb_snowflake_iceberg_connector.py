@@ -82,7 +82,7 @@ def test_snowflake_iceberg_runtime_deps_include_snowflake_connector():
 
 def test_details_resolves_live_metadata_location(monkeypatch):
     monkeypatch.setattr(
-        "provisa.federation.connector_duckdb.resolve_snowflake_iceberg_metadata_location",
+        "provisa.federation.snowflake_runtime.resolve_snowflake_iceberg_metadata_location",
         lambda source: "s3://bucket/warehouse/db/schema/tbl/metadata/00003-abc.metadata.json",
     )
     source = _src(
@@ -106,7 +106,7 @@ def test_details_resolves_live_metadata_location(monkeypatch):
 
 
 def test_resolver_raises_loud_when_iceberg_table_hint_missing():
-    from provisa.federation.connector_duckdb import resolve_snowflake_iceberg_metadata_location
+    from provisa.federation.snowflake_runtime import resolve_snowflake_iceberg_metadata_location
 
     source = _src("sf_lake", username="u", password="p", federation_hints={"account": "acct"})
     with pytest.raises(ValueError, match="iceberg_table"):
@@ -114,7 +114,7 @@ def test_resolver_raises_loud_when_iceberg_table_hint_missing():
 
 
 def test_resolver_raises_loud_when_account_missing():
-    from provisa.federation.connector_duckdb import resolve_snowflake_iceberg_metadata_location
+    from provisa.federation.snowflake_runtime import resolve_snowflake_iceberg_metadata_location
 
     source = Source(
         id="sf_lake",

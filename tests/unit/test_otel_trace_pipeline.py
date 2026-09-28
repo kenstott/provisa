@@ -586,6 +586,8 @@ class TestPipelineSpanAttributes:
         seen: dict = {}
 
         class _Engine:
+            dialect = "trino"
+
             async def execute_engine(self, sql, params=None, session_hints=None, span_attrs=None):
                 seen["span_attrs"] = span_attrs
                 return QueryResult(rows=[(1,)], column_names=["n"])
@@ -713,8 +715,10 @@ class TestNonEngineTerminalsAreReported:
         assert captured["span_attrs"] == self._ATTRS
 
     def test_the_direct_plan_carries_the_span_attributes(self):
-        """Every terminal branch each planner can return from must set span_attrs — ENGINE,
-        ordinary DIRECT, and (issue #119) the single-source neo4j Cypher DIRECT fast path."""
+        """Every terminal branch each planner can return from must set span_attrs — ENGINE and
+        ordinary DIRECT. (Removed 2026-09-26, REQ-1864 reversal: the single-source neo4j Cypher
+        DIRECT fast path no longer exists as a separate branch — that case now always falls
+        through to Route.ENGINE unconditionally, so there are two branches, not three.)"""
         import inspect
 
         from provisa.pgwire import _pipeline
@@ -727,7 +731,7 @@ class TestNonEngineTerminalsAreReported:
             _pipeline._govern_and_route_compiled_planned,
         ):
             src = inspect.getsource(fn)
-            assert src.count("span_attrs=_plan_span_attrs(") == 3, fn.__name__
+            assert src.count("span_attrs=_plan_span_attrs(") == 2, fn.__name__
 
     async def test_admin_terminal_emits_an_attributed_query_span(self, otel_spans):
         from contextlib import asynccontextmanager

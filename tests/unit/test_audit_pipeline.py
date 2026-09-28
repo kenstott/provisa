@@ -347,6 +347,10 @@ def test_require_governed_plan_callers_are_the_known_surface_set():
         "provisa/pgwire/_pipeline.py",
         "provisa/pgwire/server.py",
         "provisa/pgwire/copy_handler.py",
+        # bolt's single-source DIRECT branch reuses cypher_router.py's own
+        # _dispatch_execution_direct, whose finalize_audit calls (already tracked under "cypher
+        # REST router" below) cover this call site too — no separate finalize needed here.
+        "provisa/bolt/session.py",
         "provisa/api/flight/server.py",
         "provisa/api/airport/query.py",
         "provisa/api/rest/cypher_exec.py",

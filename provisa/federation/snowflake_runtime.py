@@ -468,3 +468,58 @@ class SnowflakeFederationRuntime:  # REQ-825, REQ-840, REQ-988
 
     def close(self) -> None:
         self._conn.close()
+
+
+def snowflake_connector_available() -> bool:  # REQ-1867
+    """Functional presence check for snowflake-connector-python (the connector owns the import)."""
+    try:
+        import snowflake.connector  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def resolve_snowflake_iceberg_metadata_location(source: Any) -> str:  # REQ-1867
+    """Resolve a Snowflake-managed Iceberg table's LIVE ``metadata_location`` via
+    ``SYSTEM$GET_ICEBERG_TABLE_INFORMATION``, over its own snowflake-connector-python connection —
+    ``account``/``warehouse``/``role`` come from ``source.federation_hints``, the same convention
+    ``SnowflakeDriver`` (executor/drivers/snowflake.py) uses. Synchronous: the pg engine's
+    ``Connector.details`` is a sync method, so this opens/queries/closes its own connection rather
+    than reusing an async connection.
+    """
+    import json
+
+    import snowflake.connector as sf
+
+    hints = source.federation_hints
+    account = hints.get("account") or source.host
+    if not account:
+        raise ValueError("snowflake source requires 'account' in federation_hints or host")
+    table = hints.get("iceberg_table")
+    if not table:
+        raise ValueError(
+            "snowflake iceberg source requires 'iceberg_table' (fully-qualified table name) "
+            "in federation_hints"
+        )
+    conn = sf.connect(
+        account=account,
+        user=source.username,
+        password=source.password,
+        database=source.database or None,
+        schema=hints.get("schema"),
+        warehouse=hints.get("warehouse"),
+        role=hints.get("role"),
+    )
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(f"SELECT SYSTEM$GET_ICEBERG_TABLE_INFORMATION('{table}')")
+            row = cur.fetchone()
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+    if row is None:
+        raise ValueError(f"SYSTEM$GET_ICEBERG_TABLE_INFORMATION('{table}') returned no row")
+    info = json.loads(row[0])
+    return info["metadataLocation"]

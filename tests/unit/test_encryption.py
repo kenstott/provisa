@@ -147,6 +147,10 @@ def test_factory_local_from_env(monkeypatch):
 
 def test_factory_local_missing_key_raises(monkeypatch):
     monkeypatch.delenv("PROVISA_ENCRYPTION_KEY", raising=False)
+    # A real OS keychain entry or file-fallback keystore on the machine running this test would
+    # otherwise satisfy LocalKeychain.from_config and mask the "genuinely missing" case this test
+    # covers — isolate against both ambient sources, not just the env var.
+    monkeypatch.setattr("provisa.encryption.providers._load_from_keychain", lambda key_id: None)
     with pytest.raises(RuntimeError, match="master key"):
         build_encryption_service("local")
 

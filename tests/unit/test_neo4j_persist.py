@@ -165,7 +165,11 @@ class TestEndpointShape:
         with respx.mock:
             respx.post("http://h:7474/db/neo4j/tx/commit").mock(side_effect=_capture)
             pages = await call_api(ep, {}, base_url="http://h:7474")
-        assert seen["body"] == {"statements": [{"statement": "MATCH (a) RETURN a.name AS name"}]}
+        # REQ-1865: "parameters" is always sent (even empty) — its prior absence meant no neo4j_tx
+        # call ever bound a value into the query.
+        assert seen["body"] == {
+            "statements": [{"statement": "MATCH (a) RETURN a.name AS name", "parameters": {}}]
+        }
         assert pages[0]["results"][0]["data"][0]["row"] == ["x"]
 
     def test_tabular_normalizer_refuses_a_cypher_error(self):

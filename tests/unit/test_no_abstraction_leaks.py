@@ -75,6 +75,11 @@ OWNERS: dict[str, set[str]] = {
     "asyncpg": {
         "provisa/executor/drivers/postgresql.py",
         "provisa/federation/connector_postgres.py",
+        # Raw wire-byte DataRow passthrough (REQ-1863) — deliberately bypasses asyncpg's own
+        # row-decoding for a source/engine that's genuinely Postgres, relaying DataRow bytes
+        # unmodified; a distinct capability from the row-decoded federation drivers above, so it
+        # owns its own asyncpg connections rather than routing through them.
+        "provisa/pgwire/pg_passthrough.py",
         # self-connects to Provisa's own pgwire endpoint for the LAND-via-SELECT
         # flow — not a leak into an external physical store.
         "provisa/federation/pgwire_replica.py",
