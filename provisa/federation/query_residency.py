@@ -856,3 +856,28 @@ async def ensure_rows_resident(
             results.append((source.id, table.table_name, len(fetched)))
 
     return results
+
+
+async def prepare_engine_residency(state: Any, plan: Any) -> None:
+    """Land ENGINE-route residency in ONE coroutine (REQ-1887).
+
+    ``ensure_rows_resident`` must run before ``pushdown_row_materialize`` (REQ-1865: the
+    key-pushdown probe needs directly-bound row_materialize tables populated first), and
+    ``pushdown_row_materialize``'s result feeds ``ensure_resident`` — a real data dependency
+    chain, but not a cross-thread one: all three already run on the main loop, so folding them
+    here cuts three ``run_coroutine_threadsafe``/``_run_on_loop`` dispatches to one without
+    changing order or arguments.
+
+    Shared by Flight SQL (``provisa/api/flight/server.py``) and pgwire
+    (``provisa/pgwire/server.py``) — both dispatch ``plan``/``governed`` objects of the same
+    ``provisa.pgwire._pipeline._Plan`` type across their own worker-thread bridge. Living here,
+    in the lower-layer module both already import ``ensure_resident``/``ensure_rows_resident``/
+    ``pushdown_row_materialize`` from, avoids a Flight<->pgwire cross-import (``provisa.api.flight``
+    already imports ``provisa.pgwire._pipeline``; a pgwire import of ``provisa.api.flight.server``
+    would create a mutual package dependency import-linter has no contract for today but the
+    layering does not want)."""
+    await ensure_rows_resident(state, plan.pk_bounds)
+    pushed_down = await pushdown_row_materialize(
+        state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
+    )
+    await ensure_resident(state, plan.sources, pushed_down=pushed_down)
