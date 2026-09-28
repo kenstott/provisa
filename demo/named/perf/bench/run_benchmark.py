@@ -62,7 +62,8 @@ import sys
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1026,6 +1027,8 @@ class SaturationPoint:
     submitted: int
     completed: int
     errors: int
+    timeouts: int
+    achieved_ops_per_sec: float
     latency_ms_p50: float
     latency_ms_p99: float
     bytes_per_sec: float
@@ -1062,6 +1065,16 @@ def _saturation_mix(method: str) -> list[tuple[float, str, dict, str]]:
     ]
 
 
+# REQ-1894: bound on how long a phase's DRAIN wait can run past its own submission window, so a
+# genuinely-overloaded phase (backlog far exceeds what the phase's own duration could ever drain)
+# doesn't stall the whole ramp indefinitely — this caps drain time, not submission time; the
+# submission schedule itself is never affected. A future still pending when this deadline hits is
+# reported as a timeout (counted, not silently dropped) — matches how real load-testing tools
+# (wrk2, vegeta) treat a request that outlives its budget, rather than waiting forever for a
+# system that's actually falling over to eventually respond.
+_SATURATION_DRAIN_CAP_S = 60.0
+
+
 def run_saturation(transport: Transport, method: str) -> list[SaturationPoint]:
     """How many queries of varying size can this transport handle before it falls over.
 
@@ -1080,6 +1093,19 @@ def run_saturation(transport: Transport, method: str) -> list[SaturationPoint]:
     ThreadedConnectionPool.getconn() raises immediately rather than queuing (fail-fast at the
     pool limit) — that shows up as errors in the report once load passes ~50 concurrent sql
     requests, which is a real, distinct "falling over" signal, not a bug in this harness.
+
+    REQ-1894: a request is attributed to the phase it was SUBMITTED in (via its own Future,
+    tracked explicitly — not a shared list snapshotted at a fixed wall-clock instant), and this
+    function waits on that phase's own futures (bounded by _SATURATION_DRAIN_CAP_S) rather than a
+    fixed `min(5.0, interval*50)` sleep. The old design under-counted any phase whose real service
+    time exceeded that short fixed sleep — live-caught: a 30%-heavy-aggregate mix (2-6s/call)
+    reported "0 ok" at every rate above 1/s for BOTH flight and grpc, because the drain sleep never
+    gave those in-flight aggregate calls a chance to finish before the snapshot was taken. Waiting
+    on the actual futures (up to the drain cap) fixes that without waiting unboundedly on a
+    genuinely-overloaded system. `achieved_ops_per_sec` (completed / duration_s) is reported
+    explicitly, so a straight offered-rate-vs-achieved-throughput curve is directly available
+    (the standard way to express a saturation/capacity finding) instead of only a binary
+    completed/submitted count per phase.
     """
     mix = _saturation_mix(method)
     if not mix:
@@ -1089,40 +1115,49 @@ def run_saturation(transport: Transport, method: str) -> list[SaturationPoint]:
     choices = [(t, p, c) for _, t, p, c in mix]
     points: list[SaturationPoint] = []
     pool = ThreadPoolExecutor(max_workers=4000)
+
+    def _one(text: str, params: dict, category: str) -> Sample:
+        t0 = time.perf_counter()
+        try:
+            n, byte_count, overhead_s = (
+                call(text, params, category) if method == "sql" else call(text, params)
+            )
+            return Sample((time.perf_counter() - t0) - overhead_s, n, byte_count)
+        except Exception as exc:  # noqa: BLE001 - recorded as a failed sample, not fatal
+            return Sample(time.perf_counter() - t0, 0, 0, error=str(exc))
+
     try:
         for duration_s, rate in SATURATION_PHASES:
-            phase_samples: list[Sample] = []
-            lock = threading.Lock()
-
-            def _one(text: str, params: dict, category: str) -> None:
-                t0 = time.perf_counter()
-                try:
-                    n, byte_count, overhead_s = (
-                        call(text, params, category) if method == "sql" else call(text, params)
-                    )
-                    s = Sample((time.perf_counter() - t0) - overhead_s, n, byte_count)
-                except Exception as exc:  # noqa: BLE001 - recorded as a failed sample, not fatal
-                    s = Sample(time.perf_counter() - t0, 0, 0, error=str(exc))
-                with lock:
-                    phase_samples.append(s)
-
             interval = 1.0 / rate if rate > 0 else 1.0
             end = time.monotonic() + duration_s
-            submitted = 0
+            futures: list[Future] = []
             next_fire = time.monotonic()
             while time.monotonic() < end:
                 text, params, category = random.choices(choices, weights=weights, k=1)[0]
-                pool.submit(_one, text, params, category)
-                submitted += 1
+                futures.append(pool.submit(_one, text, params, category))
                 next_fire += interval
                 sleep_for = next_fire - time.monotonic()
                 if sleep_for > 0:
                     time.sleep(sleep_for)
-            time.sleep(min(5.0, interval * 50))  # let in-flight requests drain before measuring
-            with lock:
-                samples = list(phase_samples)
+            submitted = len(futures)
+
+            drain_deadline = time.monotonic() + _SATURATION_DRAIN_CAP_S
+            samples: list[Sample] = []
+            timeouts = 0
+            for fut in futures:
+                remaining = drain_deadline - time.monotonic()
+                if remaining <= 0:
+                    timeouts += 1
+                    continue
+                try:
+                    samples.append(fut.result(timeout=remaining))
+                except FuturesTimeoutError:
+                    timeouts += 1
+
             ok = [s for s in samples if s.error is None]
             errors = len(samples) - len(ok)
+            wall_s = time.monotonic() - (end - duration_s)  # actual span incl. drain, for QPS
+            achieved = len(ok) / wall_s if wall_s > 0 else 0.0
             if ok:
                 lat = sorted(s.elapsed_s * 1000 for s in ok)
                 total_bytes = sum(s.payload_bytes for s in ok)
@@ -1132,15 +1167,20 @@ def run_saturation(transport: Transport, method: str) -> list[SaturationPoint]:
                         submitted,
                         len(ok),
                         errors,
+                        timeouts,
+                        achieved,
                         statistics.median(lat),
                         lat[int(len(lat) * 0.99) - 1] if len(lat) > 1 else lat[0],
-                        total_bytes / duration_s,
+                        total_bytes / wall_s if wall_s > 0 else 0.0,
                     )
                 )
             else:
-                points.append(SaturationPoint(rate, submitted, 0, errors, 0.0, 0.0, 0.0))
+                points.append(
+                    SaturationPoint(rate, submitted, 0, errors, timeouts, 0.0, 0.0, 0.0, 0.0)
+                )
             print(
-                f"    saturation[{transport.name}] rate={rate}/s: {len(ok)}/{submitted} ok, {errors} errors",
+                f"    saturation[{transport.name}] rate={rate}/s: {len(ok)}/{submitted} ok, "
+                f"{errors} errors, {timeouts} timeouts, achieved={achieved:.1f}/s",
                 file=sys.stderr,
             )
     finally:

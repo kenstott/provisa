@@ -65226,6 +65226,35 @@
     QueryResults in, `_prior_pass_results` reset, `_checkpoint` output length asserted == 2) —
     this file has no pytest coverage (a standalone benchmark harness, not imported by the test
     suite), so this was the verification available short of a full live rerun.
+
+    (Amended 2026-09-28, redesigned saturation reporting so it can back real capacity claims:)
+    `run_saturation`'s old design reset a per-phase sample list and snapshotted it after only a
+    short fixed `min(5.0, interval*50)` drain sleep — any phase whose real service time exceeded
+    that sleep reported "0 ok" regardless of whether the system was actually handling the load,
+    because in-flight completions simply hadn't landed by snapshot time and were then silently
+    discarded when the list was reset for the next phase. Live-caught: the full duckdb run's
+    30%-heavy-aggregate mix (2-6s/call) showed 0 completions at every rate above 1/s for BOTH
+    flight and grpc — not because the system broke, but because the drain sleep never gave those
+    calls a chance to finish. The maintainer asked directly whether the numbers were even
+    expressed the standard way for reporting a saturation/capacity finding (achieved-throughput-
+    vs-offered-load curve with per-rate latency percentiles and error rate, not a per-phase
+    binary snapshot), then confirmed the intent was to use these numbers for real capacity claims,
+    warranting a proper fix rather than leaving the known limitation in place.
+
+    Fixed: each submitted request's `Future` is tracked explicitly (not a shared list reset per
+    phase), and after a phase's submission window closes, that phase waits on ONLY its own
+    futures via `Future.result(timeout=...)`, bounded by a new `_SATURATION_DRAIN_CAP_S` (60s)
+    ceiling — this bounds DRAIN time only, never submission time, so the open-loop arrival
+    schedule is unaffected. A future still pending when the deadline hits is counted as a new
+    `timeouts` field (never silently dropped) — every submitted request now resolves to exactly
+    one of completed/errored/timed-out, verified with three isolated scenarios: a fast transport
+    (all complete inside the cap), a slow-but-within-cap transport (backlog clears before the
+    deadline, correctly showing `achieved_ops_per_sec` well below the offered rate), and a
+    genuinely-too-slow transport (correctly reports timeouts, not silent 0/0 loss).
+    `SaturationPoint` gained `timeouts: int` and `achieved_ops_per_sec: float` fields — the latter
+    is the direct offered-rate-vs-achieved-throughput number a capacity claim actually needs,
+    computed from the real wall-clock span (submission window + however long the drain actually
+    took), not assumed to equal the phase's nominal duration.
   use_case: >-
     Live benchmark methodology bug caught by the maintainer while reviewing REQ-1889's reported
     "-99.6%" GraphQL federated_join win: asked directly whether repeated-identical-query iterations
