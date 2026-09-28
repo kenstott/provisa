@@ -64548,3 +64548,39 @@
     Given an explicit refresh request for a previously registered GraphQL remote source
     When the refresh endpoint is called
     Then full live introspection is performed, bypassing any fast path
+- id: REQ-1876
+  status: proposed
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Compilation Caching
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    A compiler-level SQL rewrite that propagates a literal/constant WHERE predicate across an
+    equi-join onto the joined table's own join column as an additional literal predicate — e.g.
+    "A JOIN B ON A.col = B.col WHERE A.col = 5" becomes "... WHERE A.col = 5 AND B.col = 5" —
+    so an ATTACH-mechanism connector with literal-only pushdown (predicate_pushdown=True,
+    join_pushdown=False: no GetForeignPaths-style parameterized-path support) gets a chance to
+    push the filter down instead of full-scanning the far side. Applies only to genuine equality
+    joins with a true literal/constant predicate (no subqueries, no correlated references, no
+    volatile functions) and only for INNER JOIN — LEFT/RIGHT/FULL OUTER JOIN must NOT propagate,
+    since it would incorrectly filter out preserved-side NULL-extended rows. Gated on the target
+    connector's declared Capability, not on source type.
+  use_case: >-
+    Live-verified via EXPLAIN this session (REQ-1871's mongodb wrapper investigation): a literal
+    WHERE on a table alone pushes down to MongoDB via wrappers, but a join-derived predicate does
+    not, even with the table on the parameterized side of a Nested Loop — causing a full 20M-row
+    scan that never completed (killed by Postgres's own idle-in-transaction timeout) for a query
+    that only needed 5 rows. NOT mongodb-specific: surveyed the full connector landscape
+    (provisa/federation/*.py) and found predicate_pushdown=True with join_pushdown left at its
+    default False on the MAJORITY of connectors — BigQuery, Snowflake, Databricks, MSSQL
+    warehouse, most ClickHouse connectors, most Trino sub-connectors (S3/lake/JDBC-backed
+    catalogs), several DuckDB scan connectors. Only a handful (DuckDB's own Postgres/MySQL
+    attach, Trino's native connector, a few custom ones) declare join_pushdown=True. This
+    optimization benefits that whole majority, not one source type — the MongoDB case is simply
+    the first one anyone hit live.
+  code:
+    - provisa/compiler/sql_rewrite.py
+    - provisa/pgwire/_pipeline.py
+    - provisa/federation/connector_base.py
+  target: "2027-Q1"

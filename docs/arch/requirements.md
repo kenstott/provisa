@@ -20027,3 +20027,31 @@ An end-user-facing script (scripts/install-pg-ext.sh or similar) that stages pro
 **Code:** `provisa/federation/pgwire_replica.py`, `provisa/federation/connector_duckdb.py`
 
 **Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-1875 · GraphQL Remote Registration {#REQ-1875}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The GraphQL remote source registration endpoint supports a "known schema" fast path for a small allowlist of well-known public GraphQL APIs (e.g., GitHub) by loading pre-baked introspection artifacts instead of expensive live schema walking, while still performing lightweight live auth verification to ensure the caller's token is valid. Refresh operations deliberately bypass the fast path and always perform full live introspection.
+
+**Use case:** Registration of large public GraphQL APIs (e.g., GitHub with 1835 types) takes ~9 minutes via live introspection. Pre-baked schemas reduce this to seconds. The fast path is restricted to known public, versioned schemas identical for all consumers; private or customer-specific endpoints are never eligible and always use live introspection.
+
+**Code:** `provisa/graphql_remote/known_schemas.py`, `provisa/api/admin/graphql_remote_router.py`, `scripts/bake_github_graphql_schema.py`
+
+**Tests:** —
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-1876 · Compilation Caching {#REQ-1876}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A compiler-level SQL rewrite that propagates a literal/constant WHERE predicate across an equi-join onto the joined table's own join column as an additional literal predicate — e.g. "A JOIN B ON A.col = B.col WHERE A.col = 5" becomes "... WHERE A.col = 5 AND B.col = 5" — so an ATTACH-mechanism connector with literal-only pushdown (predicate_pushdown=True, join_pushdown=False: no GetForeignPaths-style parameterized-path support) gets a chance to push the filter down instead of full-scanning the far side. Applies only to genuine equality joins with a true literal/constant predicate (no subqueries, no correlated references, no volatile functions) and only for INNER JOIN — LEFT/RIGHT/FULL OUTER JOIN must NOT propagate, since it would incorrectly filter out preserved-side NULL-extended rows. Gated on the target connector's declared Capability, not on source type.
+
+**Use case:** Live-verified via EXPLAIN this session ([REQ-1871](#REQ-1871)'s mongodb wrapper investigation): a literal WHERE on a table alone pushes down to MongoDB via wrappers, but a join-derived predicate does not, even with the table on the parameterized side of a Nested Loop — causing a full 20M-row scan that never completed (killed by Postgres's own idle-in-transaction timeout) for a query that only needed 5 rows. NOT mongodb-specific: surveyed the full connector landscape (provisa/federation/*.py) and found predicate_pushdown=True with join_pushdown left at its default False on the MAJORITY of connectors — BigQuery, Snowflake, Databricks, MSSQL warehouse, most ClickHouse connectors, most Trino sub-connectors (S3/lake/JDBC-backed catalogs), several DuckDB scan connectors. Only a handful (DuckDB's own Postgres/MySQL attach, Trino's native connector, a few custom ones) declare join_pushdown=True. This optimization benefits that whole majority, not one source type — the MongoDB case is simply the first one anyone hit live.
+
+**Code:** `provisa/compiler/sql_rewrite.py`, `provisa/pgwire/_pipeline.py`, `provisa/federation/connector_base.py`
+
+**Tests:** —
