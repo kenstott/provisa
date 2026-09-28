@@ -12,7 +12,34 @@ import pytest
 
 from provisa.executor.result import QueryResult, StreamingQueryResult
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
-from provisa.federation.runtime_support import _STREAM_BATCH_ROWS, stream_from_dbapi
+from provisa.federation.runtime_support import (
+    _ARROW_STREAM_BATCH_ROWS,
+    _STREAM_BATCH_ROWS,
+    stream_from_dbapi,
+)
+
+
+def test_stream_batch_rows_matches_arrow_batch_rows():
+    # REQ-1893: row-cursor batches now match the Arrow-native batch size (65,536) — a 65x cut in
+    # per-batch thread-pool/run_coroutine_threadsafe hops for gRPC's ENGINE-route stream and the
+    # DIRECT-route stream shared by pgwire/Flight SQL, with no memory-bound guarantee depending on
+    # the old 1000 value (see docs/arch/requirements.yaml REQ-1893).
+    assert _STREAM_BATCH_ROWS == _ARROW_STREAM_BATCH_ROWS == 65_536
+
+
+def test_stream_from_dbapi_calls_fetchmany_with_stream_batch_rows():
+    class _FakeCursor:
+        description = [("x",)]
+        calls: list[int] = []
+
+        def fetchmany(self, size):
+            self.calls.append(size)
+            return []
+
+    cur = _FakeCursor()
+    res = stream_from_dbapi(cur)
+    list(res.batches())
+    assert cur.calls == [_STREAM_BATCH_ROWS]
 
 
 @pytest.fixture

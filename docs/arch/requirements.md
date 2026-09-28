@@ -20136,6 +20136,18 @@ A 2,000,000-row unfiltered scan (`large_scan`, provisa/grpc/server.py's ENGINE-r
 
 **Tests:** `tests/unit/test_grpc_server.py`, `tests/unit/test_grpc_aggregates.py`, `tests/unit/test_grpc_requirements.py`, `tests/unit/test_grpc_proxy_translation.py`
 
+### REQ-1893 · Row-Cursor Streaming Batch Size {#REQ-1893}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+Extends [REQ-1884](#REQ-1884)'s gRPC-serialization investigation: `provisa/federation/runtime_support.py`'s `_STREAM_BATCH_ROWS` (the `fetchmany` batch granularity for row-cursor streaming) was 1000, vs the Arrow-native streaming path's `_ARROW_STREAM_BATCH_ROWS` of 65,536 — a 65x difference. Read fully before changing: `_STREAM_BATCH_ROWS` is NOT gRPC-specific — it is shared by every row-cursor streaming consumer in the codebase: `runtime_support.stream_from_dbapi` (DuckDB's non-Arrow ROWS path, `run_sync`), `pg_runtime.py`'s named-cursor `itersize`/`fetchmany` (DIRECT PG streaming), `sqlalchemy_runtime.py`'s `yield_per`/`fetchmany`, and `runtime.py`'s `execute_native_stream` / `_pg_passthrough_stream` (the DIRECT-route stream shared by pgwire AND Flight SQL, driven via `run_coroutine_threadsafe` per batch — an even costlier per-batch hop than gRPC's `run_in_executor`). gRPC's ENGINE-route reaches this constant through `execute_engine_sync` -> backend `execute_sync` -> `run_sync`, then pulls each batch via `await loop.run_in_executor(None, next, batch_iter, None)` (`provisa/grpc/server.py` line ~501) — one thread-pool round trip per batch, so at 1000 rows/batch a 2,000,000-row scan costs ~2,000 executor hops. The docstring's [REQ-028](#REQ-028) guarantee is "peak memory bounded to one batch, not the whole result" — not a specific batch size. A row-cursor batch holds plain Python tuples/objects (or, for gRPC, is converted into protobuf messages downstream), a costlier per-row representation than Arrow's packed columnar buffers, so the two constants were not assumed interchangeable without checking. `tests/integration/test_streaming_memory_bounded_e2e.py` ([REQ-1220](#REQ-1220)'s memory-bound proof suite) measures this concretely: a 3-column row (bigint, bigint, char(40)) over 5,000,000 rows totals ~1 GiB materialized (~215 bytes/row including Python object overhead), against a 400 MiB RLIMIT_AS headroom and 500 MiB peak-RSS ceiling for the streaming variants. At that per-row cost a 65,536-row batch is ~10-20 MiB — trivial against either ceiling, with no test in that suite asserting on a specific batch size (only on `_STREAM_BATCH_ROWS` symbolically in `tests/unit/test_duckdb_stream_terminal.py`). No consumer's correctness or memory-bound guarantee depends on the batch staying near 1000. `_STREAM_BATCH_ROWS` raised from 1000 to 65,536, matching `_ARROW_STREAM_BATCH_ROWS` exactly — cutting gRPC's executor-hop count for the benchmarked 2,000,000-row `large_scan` from ~2,000 to ~31 (~65x), and equivalently reducing `run_coroutine_threadsafe` hop counts for the DIRECT-route pgwire/Flight-SQL stream and network round trips for `pg_runtime`'s named-cursor `itersize`.
+
+**Use case:** Exploratory task this session, spawned off [REQ-1884](#REQ-1884)'s gRPC row-streaming investigation: determine whether `_STREAM_BATCH_ROWS`'s small batch size vs Flight's Arrow batch size is a genuine, safely-fixable cost, and fix it if so. No live VM/SSH/network access was available or used — verification is local unit/integration tests only.
+
+**Code:** `provisa/federation/runtime_support.py`
+
+**Tests:** `tests/unit/test_duckdb_stream_terminal.py`, `tests/integration/test_streaming_memory_bounded_e2e.py`
+
 ### REQ-1885 · Bolt Protocol {#REQ-1885}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
