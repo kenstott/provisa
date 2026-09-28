@@ -79,44 +79,46 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     for meta in ctx.tables.values():
         table_id_to_meta[meta.table_id] = meta
 
-    # Build (src_table_id, tgt_table_id, src_col, tgt_col) approved join set
-    type_to_meta: dict[str, TableMeta] = {}
-    for meta in ctx.tables.values():
-        type_to_meta[meta.type_name] = meta
-
-    valid_joins: set[tuple[int, int, str, str]] = set()
-    for (type_name, _), jm in ctx.joins.items():
-        src = type_to_meta.get(type_name)
-        if not src:
-            continue
-        valid_joins.add((src.table_id, jm.target.table_id, jm.source_column, jm.target_column))
-        valid_joins.add((jm.target.table_id, src.table_id, jm.target_column, jm.source_column))
-        # REQ-1586: a junction-backed (via_table) relationship's approved SQL join shape is
-        # node -> junction -> node on the junction's own via_source_column/via_target_column —
-        # not a direct node-to-node pair on the relationship's nominal source/target columns
-        # (that pair names the relationship, it is never a literal equality in real data).
-        # Without this, raw SQL joining the junction table directly (the only way to express a
-        # junction-backed relationship in SQL — there is no other join shape for it) was rejected
-        # by V002 even though the identical relationship compiles to an approved Cypher type.
-        # Single-column via_source_column/via_target_column only (this schema's shape); a
-        # composite junction key is not covered here — same as the rest of V002, an unrecognized
-        # shape stays a loud rejection rather than a silent pass.
-        via = jm.via
-        if via is not None and len(via.source_columns) == 1 and len(via.target_columns) == 1:
-            via_id = via.table.table_id
-            v_src_col = via.source_columns[0]
-            v_tgt_col = via.target_columns[0]
-            valid_joins.add((src.table_id, via_id, jm.source_column, v_src_col))
-            valid_joins.add((via_id, src.table_id, v_src_col, jm.source_column))
-            valid_joins.add((via_id, jm.target.table_id, v_tgt_col, jm.target_column))
-            valid_joins.add((jm.target.table_id, via_id, jm.target_column, v_tgt_col))
-
     domain_access: list[str] = role.get("domain_access") or []
 
     violations += _check_domain_access(
         tree, gov_ctx, table_id_to_meta, domain_access, cte_names_set
     )
     if not bypass_relationship_guard:
+        # Build (src_table_id, tgt_table_id, src_col, tgt_col) approved join set — only
+        # consumed by _check_join_relationships below, so skipped entirely (not just its
+        # result discarded) when the relationship guard itself is bypassed for this role.
+        type_to_meta: dict[str, TableMeta] = {}
+        for meta in ctx.tables.values():
+            type_to_meta[meta.type_name] = meta
+
+        valid_joins: set[tuple[int, int, str, str]] = set()
+        for (type_name, _), jm in ctx.joins.items():
+            src = type_to_meta.get(type_name)
+            if not src:
+                continue
+            valid_joins.add((src.table_id, jm.target.table_id, jm.source_column, jm.target_column))
+            valid_joins.add((jm.target.table_id, src.table_id, jm.target_column, jm.source_column))
+            # REQ-1586: a junction-backed (via_table) relationship's approved SQL join shape is
+            # node -> junction -> node on the junction's own via_source_column/via_target_column
+            # — not a direct node-to-node pair on the relationship's nominal source/target
+            # columns (that pair names the relationship, it is never a literal equality in real
+            # data). Without this, raw SQL joining the junction table directly (the only way to
+            # express a junction-backed relationship in SQL — there is no other join shape for
+            # it) was rejected by V002 even though the identical relationship compiles to an
+            # approved Cypher type. Single-column via_source_column/via_target_column only (this
+            # schema's shape); a composite junction key is not covered here — same as the rest of
+            # V002, an unrecognized shape stays a loud rejection rather than a silent pass.
+            via = jm.via
+            if via is not None and len(via.source_columns) == 1 and len(via.target_columns) == 1:
+                via_id = via.table.table_id
+                v_src_col = via.source_columns[0]
+                v_tgt_col = via.target_columns[0]
+                valid_joins.add((src.table_id, via_id, jm.source_column, v_src_col))
+                valid_joins.add((via_id, src.table_id, v_src_col, jm.source_column))
+                valid_joins.add((via_id, jm.target.table_id, v_tgt_col, jm.target_column))
+                valid_joins.add((jm.target.table_id, via_id, jm.target_column, v_tgt_col))
+
         violations += _check_join_relationships(
             tree,
             gov_ctx,
