@@ -4,11 +4,12 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-1866: the pre-governance prepared-statement cache in provisa.compiler.prepared.
+"""REQ-1866/REQ-1885: the pre-governance prepared-statement cache in provisa.compiler.prepared.
 
-Covers exactly the narrow scope that module claims: cache hit/miss keying on (sql text, role,
-schema generation), and the hard "never cache a statement that localized an inline command"
-carve-out — never governance, RLS, masking, or routing, which this module never touches.
+Covers the narrow scope that module claims: cache hit/miss keying on (SQL shape, role, schema
+generation), the no-stale-literal correctness guarantee a shape-based key requires, and the hard
+"never cache a statement that localized an inline command" carve-out — never governance, RLS,
+masking, or routing, which this module never touches.
 """
 
 from __future__ import annotations
@@ -97,17 +98,44 @@ async def test_schema_boot_id_change_invalidates():
 
 
 @pytest.mark.asyncio
-async def test_different_sql_text_is_a_cache_miss():
+async def test_different_sql_shape_is_a_cache_miss():
+    """Different STRUCTURE (not just a different literal) must still miss."""
     state = _state()
 
     await prepared.prepare_front_end(
         "SELECT * FROM perf_bench.orders WHERE order_id = 1", "org_admin", state, _no_localize
     )
     different = await prepared.prepare_front_end(
-        "SELECT * FROM perf_bench.orders WHERE order_id = 2", "org_admin", state, _no_localize
+        "SELECT id, status FROM perf_bench.orders WHERE order_id = 1 AND status = 'open'",
+        "org_admin",
+        state,
+        _no_localize,
     )
 
     assert different.cache_hit is False
+
+
+@pytest.mark.asyncio
+async def test_same_shape_different_literal_is_a_cache_hit_with_correct_literal():
+    """REQ-1885: the dominant point-lookup traffic shape (same query, different id per call) must
+    now actually hit — and the returned SQL must reflect the SECOND call's own literal, never the
+    first call's stale one. This is the single most important correctness property of the
+    shape-keyed cache: a hit must never silently replay a prior call's literal value."""
+    state = _state()
+
+    first = await prepared.prepare_front_end(
+        "SELECT * FROM perf_bench.orders WHERE order_id = 1", "org_admin", state, _no_localize
+    )
+    second = await prepared.prepare_front_end(
+        "SELECT * FROM perf_bench.orders WHERE order_id = 999999", "org_admin", state, _no_localize
+    )
+
+    assert first.cache_hit is False
+    assert second.cache_hit is True
+    assert "999999" in second.normalized_sql
+    assert "999999" in second.parsed.sql(dialect="postgres")
+    assert "order_id = 1" not in second.normalized_sql
+    assert second.normalized_sql != first.normalized_sql
 
 
 @pytest.mark.asyncio
@@ -144,3 +172,125 @@ async def test_metric_semantic_sql_survives_a_cache_hit():
     if first.metric_semantic_sql is not None:  # only meaningful if expansion actually matched
         assert second.cache_hit is True
         assert second.metric_semantic_sql == first.metric_semantic_sql
+
+
+@pytest.mark.asyncio
+async def test_metric_query_template_hit_uses_current_calls_own_literal():
+    """REQ-1885: a metric-expanded shape is cached as a template (skipping the join-plan rebuild
+    on a hit) and its WHERE-clause literal is spliced from the CURRENT call, never replayed from
+    the call that built the template. Proves the template+splice path (not just the plain path)
+    honors the no-stale-literal correctness property."""
+    from provisa.core.models import Metric
+
+    metrics = {"order_count": Metric(name="order_count", expression="COUNT(orders.id)")}
+    tables = [
+        {
+            "id": 1,
+            "table_name": "orders",
+            "columns": [{"column_name": "id"}, {"column_name": "status"}],
+        }
+    ]
+    state = _state(metrics=metrics, tables=tables)
+
+    first = await prepared.prepare_front_end(
+        "SELECT status, value FROM metrics.order_count WHERE status = 'open'",
+        "org_admin",
+        state,
+        _no_localize,
+    )
+    second = await prepared.prepare_front_end(
+        "SELECT status, value FROM metrics.order_count WHERE status = 'closed'",
+        "org_admin",
+        state,
+        _no_localize,
+    )
+
+    assert first.cache_hit is False
+    assert first.metric_semantic_sql is not None
+    assert second.cache_hit is True
+    assert second.metric_semantic_sql is not None
+    assert "'closed'" in second.metric_semantic_sql
+    assert "'open'" not in second.metric_semantic_sql
+    assert "'closed'" in second.parsed.sql(dialect="postgres")
+    assert second.metric_semantic_sql != first.metric_semantic_sql
+
+
+@pytest.mark.asyncio
+async def test_wrapped_sampling_metric_query_still_reflects_current_literal():
+    """The UI-sampling wrapper (`SELECT * FROM (<inner>) _sample LIMIT n`) is excluded from
+    template-splicing (module docstring) and reruns `expand_metric_query` fresh on every hit —
+    still must never leak a prior call's literal."""
+    from provisa.core.models import Metric
+
+    metrics = {"order_count": Metric(name="order_count", expression="COUNT(orders.id)")}
+    tables = [
+        {
+            "id": 1,
+            "table_name": "orders",
+            "columns": [{"column_name": "id"}, {"column_name": "status"}],
+        }
+    ]
+    state = _state(metrics=metrics, tables=tables)
+
+    def _sql(status: str) -> str:
+        return (
+            "SELECT * FROM (SELECT status, value FROM metrics.order_count "
+            f"WHERE status = '{status}') _sample LIMIT 100"
+        )
+
+    first = await prepared.prepare_front_end(_sql("open"), "org_admin", state, _no_localize)
+    second = await prepared.prepare_front_end(_sql("closed"), "org_admin", state, _no_localize)
+
+    assert first.cache_hit is False
+    assert second.cache_hit is True
+    assert second.metric_semantic_sql is not None
+    assert "'closed'" in second.metric_semantic_sql
+    assert "'open'" not in second.metric_semantic_sql
+
+
+@pytest.mark.asyncio
+async def test_three_successive_calls_never_leak_a_stale_literal():
+    """The cached template must never be mutated in place — each hit splices into a fresh copy.
+    A bug that mutated the shared template (or returned it directly) would only surface once a
+    THIRD call proved the second call's literal didn't linger."""
+    from provisa.core.models import Metric
+
+    metrics = {"order_count": Metric(name="order_count", expression="COUNT(orders.id)")}
+    tables = [
+        {
+            "id": 1,
+            "table_name": "orders",
+            "columns": [{"column_name": "id"}, {"column_name": "status"}],
+        }
+    ]
+    state = _state(metrics=metrics, tables=tables)
+
+    def _sql(status: str) -> str:
+        return f"SELECT status, value FROM metrics.order_count WHERE status = '{status}'"
+
+    results = []
+    for status in ("open", "closed", "pending"):
+        results.append(
+            await prepared.prepare_front_end(_sql(status), "org_admin", state, _no_localize)
+        )
+
+    assert results[0].cache_hit is False
+    assert results[1].cache_hit is True
+    assert results[2].cache_hit is True
+    for status, result in zip(("open", "closed", "pending"), results):
+        assert f"'{status}'" in result.metric_semantic_sql
+        for other in ("open", "closed", "pending"):
+            if other != status:
+                assert f"'{other}'" not in result.metric_semantic_sql
+
+
+def test_splice_raises_loudly_on_literal_count_mismatch():
+    """A literal-count mismatch between a cached template and the current call must never be
+    silently papered over — it must raise, per this project's no-silent-fallback rule."""
+    import sqlglot
+
+    template = sqlglot.parse_one("SELECT a FROM t WHERE x = 1 AND y = 2", read="postgres")
+    current = sqlglot.parse_one("SELECT a FROM t WHERE x = 1", read="postgres")
+
+    with pytest.raises(RuntimeError, match="literal count drifted"):
+        prepared._splice_current_literals(template, current, cache_key="k")
