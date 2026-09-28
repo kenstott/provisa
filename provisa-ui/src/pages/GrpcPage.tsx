@@ -133,6 +133,7 @@ function buildMessageTemplate(
   byColumns?: string[] | null,
   funcs?: string[] | null,
   projection?: NodeProjection | null,
+  columns?: string[] | null,
 ): string {
   if (method.operation === "query") {
     // REQ-1359: Query{Type}Aggregate takes google.protobuf.Empty; Query{Type}GroupBy takes
@@ -142,11 +143,13 @@ function buildMessageTemplate(
     if (method.typeName.endsWith("Aggregate")) {
       const body: Record<string, unknown> = {};
       if (funcs && funcs.length > 0) body.funcs = funcs;
+      if (columns && columns.length > 0) body.columns = columns; // REQ-1882
       return JSON.stringify(body, null, 2);
     }
     if (method.typeName.endsWith("GroupBy")) {
       const body: Record<string, unknown> = { by: byColumns ?? [] };
       if (funcs && funcs.length > 0) body.funcs = funcs;
+      if (columns && columns.length > 0) body.columns = columns; // REQ-1882
       if (projection?.includeNodes) {
         body.include_nodes = true;
         if (projection.include.length > 0) body.include = projection.include;
@@ -232,6 +235,7 @@ export function GrpcPage() {
   // REQ-1361 picker: group-by columns + restricted agg funcs for Query{Type}Aggregate/GroupBy.
   const [groupByCols, setGroupByCols] = useState<string[]>([]);
   const [selectedFuncs, setSelectedFuncs] = useState<string[]>([]);
+  const [selectedAggColumns, setSelectedAggColumns] = useState<string[]>([]); // REQ-1882
   const [fetchedGroupByColumns, setFetchedGroupByColumns] = useState<string[]>([]);
   const [includeNodes, setIncludeNodes] = useState(false);
   const [includeFields, setIncludeFields] = useState<string[]>([]);
@@ -257,12 +261,13 @@ export function GrpcPage() {
       setSelectedMethod(method);
       setGroupByCols(byColumns ?? []);
       setSelectedFuncs(funcs ?? []);
+      setSelectedAggColumns([]); // REQ-1882: not carried over nav call syntax, same as before this field existed
       setIncludeNodes(projection?.includeNodes ?? false);
       setIncludeFields(projection?.include ?? []);
       setMessageText(
         method.operation === "command"
           ? buildCommandTemplate(commandsMapRef.current[method.name])
-          : buildMessageTemplate(method, proto.messages, byColumns, funcs, projection),
+          : buildMessageTemplate(method, proto.messages, byColumns, funcs, projection, null),
       );
       setResponse("");
       setError("");
@@ -298,13 +303,14 @@ export function GrpcPage() {
     if (!isAggregate && !isGroupBy) return;
     const body: Record<string, unknown> = isGroupBy ? { by: groupByCols } : {};
     if (selectedFuncs.length > 0) body.funcs = selectedFuncs;
+    if (selectedAggColumns.length > 0) body.columns = selectedAggColumns; // REQ-1882
     if (isGroupBy && includeNodes) {
       body.include_nodes = true;
       if (includeFields.length > 0) body.include = includeFields;
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs picker state (source of truth) into the JSON editor; selectedMethod change is the trigger, not something read back
     setMessageText(JSON.stringify(body, null, 2));
-  }, [groupByCols, selectedFuncs, includeNodes, includeFields, selectedMethod]);
+  }, [groupByCols, selectedFuncs, selectedAggColumns, includeNodes, includeFields, selectedMethod]);
 
   const fetchProto = useCallback(
     async (rid: string, domains: string) => {
@@ -377,8 +383,14 @@ export function GrpcPage() {
   // REQ-1361: the group-by picker must offer only columns the server's {Type}DistinctOnColumn
   // enum actually accepts — the {Type}Filter message's fields (a different, broader set) yield
   // runtime 400s when selected.
+  // REQ-1882: also fetched for an Aggregate method now, so the columns picker below has the
+  // same aggregate-eligible column list the server's _agg_fields_selection restricts against —
+  // the endpoint returns ctx.aggregate_columns either way, so one fetch serves both pickers.
+  const isAggOrGroupByMethod =
+    !!selectedMethod &&
+    (selectedMethod.typeName.endsWith("GroupBy") || selectedMethod.typeName.endsWith("Aggregate"));
   useEffect(() => {
-    if (!selectedMethod || !roleId || !selectedMethod.typeName.endsWith("GroupBy")) return;
+    if (!selectedMethod || !roleId || !isAggOrGroupByMethod) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -394,13 +406,21 @@ export function GrpcPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedMethod, roleId]);
+  }, [selectedMethod, roleId, isAggOrGroupByMethod]);
 
-  // Only a GroupBy method has group-by columns to offer, and the previous method's must not
-  // linger. Deriving that keeps the fetch the sole writer of the state.
+  // Only a GroupBy method has group-by ("by") columns to offer, and the previous method's must
+  // not linger. Deriving that keeps the fetch the sole writer of the state.
   const groupByColumnOptions = useMemo(
     () => (selectedMethod?.typeName.endsWith("GroupBy") && roleId ? fetchedGroupByColumns : []),
     [selectedMethod, roleId, fetchedGroupByColumns],
+  );
+
+  // REQ-1882: the aggregate-function columns picker (sum/avg/stddev/variance over a caller-
+  // chosen numeric subset, min/max over a caller-chosen comparable subset) — offered for both
+  // Aggregate and GroupBy, same fetched list as the by-columns picker (see effect above).
+  const aggColumnOptions = useMemo(
+    () => (isAggOrGroupByMethod && roleId ? fetchedGroupByColumns : []),
+    [isAggOrGroupByMethod, roleId, fetchedGroupByColumns],
   );
 
   // Include entries a group-by request accepts (REQ-1408), read off the proto's data message:
@@ -662,6 +682,19 @@ export function GrpcPage() {
                     ))}
                   </Group>
                 </Checkbox.Group>
+                <MultiSelect
+                  mt="xs"
+                  aria-label={t("grpcPage.aggregateColumns")}
+                  data-testid="grpc-columns-picker"
+                  size="xs"
+                  label={t("grpcPage.aggregateColumns")}
+                  placeholder={t("grpcPage.aggregateColumns")}
+                  data={aggColumnOptions}
+                  value={selectedAggColumns}
+                  onChange={setSelectedAggColumns}
+                  searchable
+                  clearable
+                />
               </div>
             )}
           {leftTab === "body" ? (

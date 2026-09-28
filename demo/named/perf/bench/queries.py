@@ -187,18 +187,26 @@ QUERIES: list[Query] = [
         """,
         # Same shape server-side: Query{Type}GroupBy's `by` also un-filtered — this SQL has no
         # WHERE either, so the gap doesn't affect this query. funcs=["count","sum"] matches what
-        # sql/graphql actually compute (count + sum(amount)) as closely as the RPC allows --
-        # confirmed live 2026-09-27 that _agg_fields_selection (provisa/grpc/query_ir.py) has no
-        # per-column restriction, only per-function-type across every eligible column of that
-        # type, so this still computes sum() over all 9 numeric columns (not just amount), never
-        # every function (count/sum/avg/stddev/variance/min/max) over all ~30 columns the way an
-        # unset funcs did before this benchmark started actually forwarding the spec's own funcs
-        # key (run_benchmark.py's GrpcTransport.run_grpc silently dropped it until fixed here).
+        # sql/graphql actually compute (count + sum(amount)) as closely as the RPC allows.
+        #
+        # REQ-1882/REQ-1883 (2026-09-28): funcs alone was NOT enough -- confirmed live that
+        # _agg_fields_selection (provisa/grpc/query_ir.py) applied each selected function across
+        # EVERY eligible column of that type, so this computed sum() over all 9 numeric columns
+        # (not just amount): 4.24s/call vs ~2.3s for the identical sql/graphql/flight query.
+        # `columns` (new GroupByRequest field, REQ-1883) closes that gap by restricting funcs to
+        # a caller-chosen column subset the same way funcs restricts by function -- with
+        # columns=["amount"], the live-measured cost drops to 2.45s/call, matching the other
+        # transports. Before either fix, an unset funcs meant EVERY function
+        # (count/sum/avg/stddev/variance/min/max) over all ~30 columns (23.4s/call) -- that number
+        # was never actually exercised by this spec (funcs was already set), but was a real risk
+        # for any other caller leaving funcs/columns unset; run_benchmark.py's GrpcTransport.run_grpc
+        # forwards this spec's own funcs/columns keys verbatim.
         grpc={
             "mode": "group_by",
             "type_name": "PbOrders",
             "by": ["region"],
             "funcs": ["count", "sum"],
+            "columns": ["amount"],
         },
         iterations=10,
     ),

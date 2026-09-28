@@ -144,6 +144,8 @@ def _emit_aggregate_messages(lines: list[str], t) -> None:
 
     lines.append(f"message {t.type_name}AggregateRequest {{")
     lines.append("  repeated string funcs = 1;")
+    # REQ-1882: mirrors GroupByRequest.columns — see that field's comment.
+    lines.append("  repeated string columns = 2;")
     lines.append("}")
     lines.append("")
 
@@ -176,6 +178,12 @@ def _emit_aggregate_messages(lines: list[str], t) -> None:
         lines.append("  bool include_nodes = 5;")
         lines.append("  repeated string include = 6;")
         lines.append("  repeated string funcs = 7;")
+        # REQ-1882: restricts sum/avg/stddev/variance/min/max to a caller-chosen subset of
+        # columns, mirroring `funcs`'s function-level restriction but at the column level — an
+        # unset `funcs` already meant "every function"; before this field existed, an unset (or
+        # even a set) `funcs` still meant "every eligible column of that type" with no way to
+        # narrow further. Empty/unset means every eligible column, same convention as `funcs`.
+        lines.append("  repeated string columns = 8;")
         lines.append("}")
         lines.append("")
 

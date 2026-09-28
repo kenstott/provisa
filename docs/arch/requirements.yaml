@@ -64838,13 +64838,18 @@
     saturation ramp's collapse (demo/named/perf/bench/run_benchmark.py's run_saturation) for the
     `flight` transport, and the gRPC transport's total 0-completions result at every rate
     including rate=1, are both consistent with this mechanism once a 30%-weighted heavy
-    aggregation enters the concurrent mix. gRPC is hit even harder by a second, compounding,
-    already-documented gap (REQ-1361: an empty/unset `funcs` list computes every aggregate
-    function across every column instead of the single sum(amount) other transports compute) —
-    live-measured at 23.4s per call for single_source_aggregation via gRPC vs ~2.3s for the
-    equivalent SQL/GraphQL/Flight query, guaranteeing gRPC's heavy calls alone exceed every
-    saturation phase's window (max 30s) and, per the mechanism above, block the other 70% of
-    concurrent gRPC traffic behind them too.
+    aggregation enters the concurrent mix. gRPC is hit even harder by a compounding, separate cost
+    multiplier in its GroupBy aggregate-function selection, now fixed and tracked as its own
+    entry — see REQ-1883.
+
+    (Amended 2026-09-28:) An earlier draft of this description measured gRPC's
+    single_source_aggregation call with `funcs=[]` (empty) and reported 23.4s — that number did
+    NOT reflect the real benchmark spec, which already sets `funcs=["count","sum"]`
+    (demo/named/perf/bench/queries.py); re-measured with the actual spec, the call takes 4.24s,
+    not 23.4s. The 23.4s figure was a measurement artifact of an isolated test script using the
+    wrong request shape, not a live benchmark result — corrected here so it is not
+    misattributed/reused elsewhere. REQ-1883 covers the real residual gap (4.24s vs ~2.3s for the
+    equivalent SQL/GraphQL/Flight query) and its fix.
   use_case: >-
     Originating investigation: pg-engine perf benchmark saturation ramp collapse for the Flight
     SQL transport (rate=500/s: 0/15000 ok, 712 errors — most of the ~14288 "missing" requests
@@ -64873,3 +64878,63 @@
     Then completed-plus-errored requests should account for close to 100% of submitted requests
     within the phase window, not silently drop the majority as neither ok nor error
   target: "2026-Q4"
+
+- id: REQ-1883
+  status: complete
+  group: "4. Source Connectors"
+  category: gRPC Aggregates
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    `Query{Type}AggregateRequest`/`Query{Type}GroupByRequest` gain a `columns` field (repeated
+    string) restricting `funcs` (REQ-1361) to a caller-chosen subset of columns, the same way
+    `funcs` restricts to a caller-chosen subset of functions. Before this field existed,
+    `_agg_fields_selection` (provisa/grpc/query_ir.py) applied every selected function to EVERY
+    eligible column of that function's numeric/comparable type — restricting `funcs` to
+    `["sum"]` still summed every numeric column the table exposed, not just the one the caller
+    wanted. Empty/unset `columns` means every eligible column, same convention as `funcs`.
+  use_case: >-
+    Found investigating REQ-1882's Flight/gRPC saturation collapse: the perf benchmark's
+    single_source_aggregation query (revenue rollup by region, real query: `sum(amount)`) had no
+    way to tell gRPC's GroupBy RPC to sum only `amount` — `funcs=["count","sum"]` alone still
+    summed all 9 numeric columns on perf_bench.orders. Live-verified on the perf-bench VM
+    2026-09-28 (provisa.v1.ProvisaService/QueryPbOrdersGroupBy, funcs=["count","sum"]): 4.24s per
+    call with no `columns` restriction vs 2.45s with `columns=["amount"]` — matching the ~2.3s
+    the identical query takes via SQL/GraphQL/Flight. An unset `funcs` (not what this benchmark's
+    spec actually sets, but a real risk for any other caller that leaves both unset) computes all
+    7 functions across every eligible column — live-measured at 23.4s for the same query, over
+    9x the cost of the equivalent SQL/GraphQL/Flight call. This directly reduces (though per
+    REQ-1882 does not fully eliminate — the underlying single-event-loop serialization remains)
+    how far one gRPC aggregation call can inflate the saturation ramp's per-request cost and, per
+    REQ-1882's finding, how long it can block concurrent unrelated traffic behind it.
+  code:
+    - provisa/grpc/proto_gen.py
+    - provisa/grpc/query_ir.py
+    - provisa/grpc/server.py
+    - provisa/api/data/endpoint_grpc_proxy.py
+    - provisa-ui/src/pages/GrpcPage.tsx
+    - demo/named/perf/bench/run_benchmark.py
+    - demo/named/perf/bench/queries.py
+  tests:
+    - tests/unit/test_grpc_aggregates.py
+    - tests/integration/test_grpc_proxy.py
+  scenario: |
+    Given a Query{Type}GroupByRequest with funcs=["sum"] and columns=["amount"] on a table with
+    multiple numeric columns
+    When the request is served
+    Then the response's sum sub-message includes only "amount", not every numeric column
+
+    Given a Query{Type}GroupByRequest/Query{Type}AggregateRequest with funcs set and columns
+    unset or empty
+    When the request is served
+    Then every eligible column of each selected function's type is included, unchanged from
+    columns' introduction (backward compatible)
+
+    Given the gRPC Explorer UI (provisa-ui/src/pages/GrpcPage.tsx) with an Aggregate or GroupBy
+    method selected
+    When the visitor opens the aggregate-columns picker
+    Then it offers the same column list the funcs picker's table exposes via
+    /data/grpc-group-by-columns/{role_id}/{type_name}, for both Aggregate- and GroupBy-suffixed
+    type names
+  target: "2026-09"

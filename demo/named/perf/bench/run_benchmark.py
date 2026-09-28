@@ -791,7 +791,18 @@ class GrpcTransport(Transport):
             # numeric AND comparable column regardless of what the spec asked for, not just the
             # single sum(amount) the sql/graphql/flight variants of the same query compute --
             # inflating this transport's measured cost with work no other transport was asked to do.
-            request = request_cls(by=spec["by"], funcs=spec.get("funcs") or [])
+            #
+            # REQ-1882: even with funcs narrowed (e.g. ["count","sum"]), each function still
+            # applied to EVERY eligible column of that type -- live-measured 2026-09-28 on the
+            # perf-bench VM: single_source_aggregation's grpc spec (funcs=["count","sum"], no
+            # columns) took 4.24s per call vs ~2.3s for the identical sql/graphql/flight query,
+            # because sum() ran over all 9 numeric columns instead of just "amount". `columns`
+            # (new GroupByRequest field, provisa/grpc/query_ir.py::_agg_fields_selection) closes
+            # that gap the same way `funcs` narrows by function -- see this spec's own "columns"
+            # key below.
+            request = request_cls(
+                by=spec["by"], funcs=spec.get("funcs") or [], columns=spec.get("columns") or []
+            )
             if filter_dict:
                 filter_cls = self._resolve_message_class(f"provisa.v1.{type_name}Filter")
                 request.filter.CopyFrom(filter_cls(**filter_dict))

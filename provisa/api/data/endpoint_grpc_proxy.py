@@ -183,7 +183,10 @@ async def grpc_command(role_id: str, request: Request):  # REQ-1156
 
 @router.get("/grpc-group-by-columns/{role_id}/{type_name}")
 async def grpc_group_by_columns(role_id: str, type_name: str):  # REQ-1361
-    """List the columns valid in a Query{Type}GroupBy request's ``by`` argument.
+    """List the columns valid in a Query{Type}GroupBy request's ``by`` argument, and (REQ-1882)
+    the same table's aggregate-eligible columns for a GroupBy/Aggregate request's ``columns``
+    picker — both draw from ``ctx.aggregate_columns``, the identical universe
+    ``_agg_fields_selection`` (provisa/grpc/query_ir.py) restricts against server-side.
 
     The gRPC Explorer's group-by picker must offer only columns the server's
     ``{Type}DistinctOnColumn`` enum (the schema's actual source of truth for valid ``by``
@@ -200,7 +203,14 @@ async def grpc_group_by_columns(role_id: str, type_name: str):  # REQ-1361
             404, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
         )
     ctx = state.contexts[role_id]
-    base_type_name = type_name[: -len("GroupBy")] if type_name.endswith("GroupBy") else type_name
+    # REQ-1882: an Aggregate-suffixed typeName (the columns picker's caller for Query{Type}
+    # Aggregate) needs the same stripping GroupBy already got, or _find_table_meta never matches.
+    if type_name.endswith("GroupBy"):
+        base_type_name = type_name[: -len("GroupBy")]
+    elif type_name.endswith("Aggregate"):
+        base_type_name = type_name[: -len("Aggregate")]
+    else:
+        base_type_name = type_name
     meta = _find_table_meta(ctx, base_type_name)
     if meta is None:
         return []
