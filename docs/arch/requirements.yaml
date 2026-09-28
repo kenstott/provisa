@@ -65288,12 +65288,36 @@
     returning across the bridge once, cutting hop count without touching who owns the event loop
     or the connection pools.
 
+    [SUPERSEDED by REQ-1887, 2026-09-28 -- pgwire's 3 residency hops are now folded too, see the
+    2026-09-28 "pgwire fold" amendment below. Kept here for history; do not implement against it.]
     (Amended 2026-09-28, implemented: scope narrowed to `provisa/api/flight/server.py` only —
     `provisa/pgwire/server.py`'s own ENGINE-route residency calls (`ensure_rows_resident` +
     `pushdown_row_materialize` + `ensure_resident`, `provisa/pgwire/server.py:698-722`) were left
     unfolded; pgwire already folded the function-invocation hop into `govern_pgwire_plan` before
     this REQ existed, and folding its remaining 3 residency hops was out of scope for this pass —
     a candidate follow-up, not done here.)
+    [END SUPERSEDED BLOCK]
+
+    (Amended 2026-09-28, pgwire fold: closed the gap the amendment above left open.
+    `provisa/pgwire/server.py`'s 3 separate ENGINE-route residency dispatches
+    (`ensure_rows_resident` + `pushdown_row_materialize` + `ensure_resident`) are now folded into
+    ONE `asyncio.run_coroutine_threadsafe` dispatch too, via a NEW shared helper,
+    `prepare_engine_residency` (`provisa/federation/query_residency.py`), that both pgwire and
+    Flight SQL call — not pgwire importing Flight's own `_prepare_engine_residency` directly, and
+    not two duplicated copies of the fold logic. Flight's `_prepare_engine_residency` is now a
+    thin wrapper delegating to the shared helper. Reasoning: `provisa.api.flight` already imports
+    `provisa.pgwire._pipeline` (for `_Plan`, `govern_batch_final_plan_with_fn`, etc.), so a pgwire
+    import of `provisa.api.flight.server` would make the two packages depend on each other in both
+    directions — no import-linter contract forbids it today (`lint-imports` passes either way,
+    confirmed live this session), but the layering is wrong regardless: `provisa/federation/`
+    already the shared lower layer `ensure_resident`/`ensure_rows_resident`/
+    `pushdown_row_materialize` themselves live in, so `prepare_engine_residency` belongs there,
+    not in either transport's own module. pgwire ENGINE-route hop count: 5 -> 3 (govern (1) +
+    residency (1, was 3) + finalize_audit (1)); pgwire DIRECT-route hop count unchanged at 2
+    (govern + finalize_audit — pgwire already folded the function-invocation hop into
+    `govern_pgwire_plan` before this REQ existed, per the original use_case). Same ordering/
+    exception-handling preserved: `ensure_rows_resident` still runs before
+    `pushdown_row_materialize`, whose result still feeds `ensure_resident`.)
   use_case: >-
     Live-traced this session (`provisa/api/flight/server.py:220-234`'s `_run_on_loop`): Flight SQL
     pays 3 hops on every DIRECT-route request (`maybe_invoke_registered_function`,
@@ -65334,8 +65358,11 @@
   code:
     - provisa/api/flight/server.py
     - provisa/pgwire/_pipeline.py
+    - provisa/pgwire/server.py
+    - provisa/federation/query_residency.py
   tests:
     - tests/unit/test_flight_server_helpers.py
+    - tests/unit/pgwire/test_server.py
   scenario: |
     Given a Flight SQL DIRECT-route ticket naming a registered function
     When _do_get_sql_governed dispatches govern_batch_final_plan_with_fn
@@ -65351,6 +65378,15 @@
     Then ensure_rows_resident, pushdown_row_materialize, and ensure_resident run inside ONE
     _run_on_loop call (still in that order, pushdown fed by the resident-rows step, ensure_resident
     fed by pushdown's result), not three separate dispatches
+
+    Given a pgwire ENGINE-route statement (execute_sql's streaming sink)
+    When _execute_sql_bound prepares residency via the shared
+    provisa.federation.query_residency.prepare_engine_residency
+    Then ensure_rows_resident, pushdown_row_materialize, and ensure_resident run inside ONE
+    asyncio.run_coroutine_threadsafe dispatch (still in that order, pushdown fed by the
+    resident-rows step, ensure_resident fed by pushdown's result), not three separate dispatches,
+    and Flight SQL's own _prepare_engine_residency delegates to the same shared helper rather than
+    duplicating it
   target: "2027-Q1"
 
 - id: REQ-1888

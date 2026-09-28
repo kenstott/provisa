@@ -67,22 +67,12 @@ _CYPHER_PREFIX = re.compile(
 async def _prepare_engine_residency(state, plan) -> None:
     """Land ENGINE-route residency in ONE coroutine (REQ-1887).
 
-    ``ensure_rows_resident`` must run before ``pushdown_row_materialize`` (REQ-1865: the
-    key-pushdown probe needs directly-bound row_materialize tables populated first), and
-    ``pushdown_row_materialize``'s result feeds ``ensure_resident`` — a real data dependency
-    chain, but not a cross-thread one: all three already run on the main loop, so folding them
-    here cuts three ``_run_on_loop`` dispatches to one without changing order or arguments."""
-    from provisa.federation.query_residency import (
-        ensure_resident,
-        ensure_rows_resident,
-        pushdown_row_materialize,
-    )
+    Thin wrapper around the shared ``provisa.federation.query_residency.prepare_engine_residency``
+    (moved there so pgwire's own ENGINE-route dispatch can reuse the identical fold without a
+    Flight<->pgwire cross-import — see that function's docstring)."""
+    from provisa.federation.query_residency import prepare_engine_residency
 
-    await ensure_rows_resident(state, plan.pk_bounds)
-    pushed_down = await pushdown_row_materialize(
-        state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
-    )
-    await ensure_resident(state, plan.sources, pushed_down=pushed_down)
+    await prepare_engine_residency(state, plan)
 
 
 async def _run_with_org(org_id: str | None, coro):

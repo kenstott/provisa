@@ -372,3 +372,91 @@ class TestProvisaSessionEngineStreaming:
             t.join(timeout=2)
             with srv_mod._loop_lock:
                 srv_mod._loop = None
+
+
+class TestPgwireDispatchHopCount:
+    """REQ-1887: pgwire's ENGINE-route residency prep collapses three sequential
+    ``asyncio.run_coroutine_threadsafe`` dispatches (``ensure_rows_resident`` +
+    ``pushdown_row_materialize`` + ``ensure_resident``) into one, via the shared
+    ``provisa.federation.query_residency.prepare_engine_residency`` also used by Flight SQL. Spies
+    on ``asyncio.run_coroutine_threadsafe`` and asserts the post-fix call count directly, the same
+    way ``TestFlightSqlDispatchHopCount`` does for Flight — asserting the request still succeeds
+    isn't proof the hop count actually dropped."""
+
+    @staticmethod
+    def _counting_dispatch(monkeypatch):
+        """Wrap the real ``asyncio.run_coroutine_threadsafe`` so downstream code still gets a real
+        ``concurrent.futures.Future``, while recording how many times the worker-thread/event-loop
+        bridge boundary was crossed."""
+        import asyncio as _asyncio_mod
+
+        real = _asyncio_mod.run_coroutine_threadsafe
+        calls: list = []
+
+        def _fake(coro, loop):
+            calls.append(coro)
+            return real(coro, loop)
+
+        monkeypatch.setattr(_asyncio_mod, "run_coroutine_threadsafe", _fake)
+        return calls
+
+    def test_engine_route_residency_is_three_hops(self, monkeypatch):
+        """A governed ENGINE-route statement: govern (1) + residency (1, folds
+        ensure_rows_resident + pushdown_row_materialize + ensure_resident) + finalize_audit (1)
+        = 3 hops, where it used to be 5 (govern + 3 separate residency dispatches +
+        finalize_audit)."""
+        import asyncio
+        import threading
+        from unittest.mock import AsyncMock, MagicMock
+
+        from provisa.pgwire import _pipeline
+        from provisa.pgwire._pipeline import _Plan, _mint_stamp
+        from provisa.transpiler.router import Route
+        import provisa.federation.query_residency as residency_mod
+        import provisa.pgwire.server as srv_mod
+        from provisa.pgwire.server import ProvisaSession
+
+        plan = _Plan(
+            route=Route.ENGINE,
+            sql="select 1",
+            source_id="s",
+            dialect="postgres",
+            exec_params=None,
+            physical_sql="SELECT 1",
+            pk_bounds=[],
+            sources=["s"],
+            stamp=_mint_stamp(),
+        )
+
+        async def _govern(sql, role_id):
+            return plan
+
+        monkeypatch.setattr(_pipeline, "govern_pgwire_plan", _govern)
+        monkeypatch.setattr(residency_mod, "prepare_engine_residency", AsyncMock(return_value=None))
+        monkeypatch.setattr(_pipeline, "finalize_audit", AsyncMock(return_value=None))
+
+        state = MagicMock()
+        state.federation_engine.execute_engine_sync.return_value = MagicMock(
+            rows=[(1,)], column_names=["n"]
+        )
+        monkeypatch.setattr("provisa.api.app.state", state)
+
+        calls = self._counting_dispatch(monkeypatch)
+
+        loop = asyncio.new_event_loop()
+        with srv_mod._loop_lock:
+            srv_mod._loop = loop
+        t = threading.Thread(target=loop.run_forever, daemon=True)
+        t.start()
+        try:
+            sess = ProvisaSession()
+            sess.role_id = "alice"
+            sess.user_id = "alice"
+            sess.execute_sql("select n from t")
+
+            assert len(calls) == 3  # was 5 before REQ-1887
+        finally:
+            loop.call_soon_threadsafe(loop.stop)
+            t.join(timeout=2)
+            with srv_mod._loop_lock:
+                srv_mod._loop = None

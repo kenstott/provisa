@@ -668,7 +668,6 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         _t_govern1 = time.perf_counter()
 
         from provisa.api.app import state
-        from provisa.federation.query_residency import ensure_resident
         from provisa.transpiler.router import Route
 
         try:
@@ -695,30 +694,18 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 # at all. Must run BEFORE the key-pushdown probe below: a join where every table is
                 # row_materialize needs the directly-bound ones populated first, or the probe's
                 # LEFT-preserved "known" side is itself still empty and resolves zero keys.
-                from provisa.federation.query_residency import (
-                    ensure_rows_resident,
-                    pushdown_row_materialize,
-                )
-
-                asyncio.run_coroutine_threadsafe(
-                    ensure_rows_resident(state, governed.pk_bounds), loop
-                ).result(timeout=120)
                 # REQ-1865 key pushdown: same reason this streaming sink needs its own
                 # ensure_resident call applies to pushdown_row_materialize -- it must run here too,
                 # not just in _execute_plan_in_org, or a JOIN-reached row_materialize table (e.g.
                 # cypher_cross_engine's bench_contains_edge) never gets landed for this transport at
                 # all (confirmed live: 0 rows, no [DIAG] trace, for every SQL-transport query here).
-                _pushed_down = asyncio.run_coroutine_threadsafe(
-                    pushdown_row_materialize(
-                        state,
-                        governed.physical_sql,
-                        state.federation_engine.dialect,
-                        governed.exec_params,
-                    ),
-                    loop,
-                ).result(timeout=120)
+                # REQ-1887: folded into one run_coroutine_threadsafe dispatch — see
+                # prepare_engine_residency (provisa/federation/query_residency.py), shared with
+                # Flight SQL's identical ENGINE-route fold.
+                from provisa.federation.query_residency import prepare_engine_residency
+
                 asyncio.run_coroutine_threadsafe(
-                    ensure_resident(state, governed.sources, pushed_down=_pushed_down), loop
+                    prepare_engine_residency(state, governed), loop
                 ).result(timeout=120)
                 # REQ-1863 counterpart: when the bound federation ENGINE is itself Postgres
                 # (PROVISA_ENGINE=pg), pgwire and the engine both speak real Postgres wire
