@@ -863,6 +863,47 @@ async def _govern_and_route_planned(
                     _qualified = propagate_literal_join_predicates(
                         _qualified, "postgres", _eligible_targets, _column_types
                     )
+        # REQ-1881: wrap ClickHouse LowCardinality(String)-family column references in
+        # from_utf8(...) when this route lands on Trino AND the referenced table's own registered
+        # source is clickhouse-typed. Trino's ClickHouse JDBC connector/driver reports these
+        # columns as raw dictionary-encoded VARBINARY bytes with no type-mapping for the wrapper
+        # at all (verified live: connector bytecode has zero "LowCardinality" references);
+        # CAST(col AS varchar) does not work either ("Cannot cast varbinary to varchar" --
+        # varbinary/varchar aren't cast-compatible in Trino), from_utf8() is the only verified
+        # decode. Gated strictly on engine dialect + source type + column data_type (see
+        # is_clickhouse_lowcardinality_string) -- never applied to any other engine or source
+        # type, this is a Trino/ClickHouse-JDBC-driver-specific bug, not general behavior. Runs
+        # unconditionally (no join required, unlike REQ-1880 above -- a bare SELECT on an affected
+        # column needs the same wrap), on the same already-governed physical-ish SQL text, BEFORE
+        # the catalog-fold/transpile below.
+        if state.federation_engine.dialect == "trino":
+            _referenced_phys_ch = {
+                (_tbl.db.lower(), _tbl.name.lower())
+                for _tbl in _tree.find_all(_exp.Table)
+                if _tbl.db
+            }
+            if _referenced_phys_ch:
+                from provisa.compiler.sql_rewrite import is_clickhouse_lowcardinality_string
+                from provisa.federation.registry_view import registered_sources, registered_tables
+
+                _sources_by_id_ch = {s.id: s for s in await registered_sources(state)}
+                _affected_lowcard_cols: dict[tuple[str, str], set[str]] = {}
+                for _t in await registered_tables(state):
+                    _phys = (_t.schema_name.lower(), _t.table_name.lower())
+                    if _phys not in _referenced_phys_ch:
+                        continue
+                    _src = _sources_by_id_ch.get(_t.source_id)
+                    if _src is None or _src.type.value != "clickhouse":
+                        continue
+                    for _col in _t.columns:
+                        if is_clickhouse_lowcardinality_string(_col.data_type):
+                            _affected_lowcard_cols.setdefault(_phys, set()).add(_col.name.lower())
+                if _affected_lowcard_cols:
+                    from provisa.compiler.sql_rewrite import wrap_lowcardinality_columns
+
+                    _qualified = wrap_lowcardinality_columns(
+                        _qualified, "postgres", _affected_lowcard_cols
+                    )
         # REQ-1730: this ENGINE route's own catalog-qualification (unlike Route.DIRECT's own
         # `strip_catalog`, applied unconditionally a few lines below in the other branch) was never
         # engine-aware — every engine got a catalog.schema.table physical reference regardless of

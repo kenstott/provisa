@@ -64641,7 +64641,7 @@
     Then no predicate is propagated (ambiguous shapes are always left alone)
   target: "2026-Q3"
 - id: REQ-1881
-  status: proposed
+  status: complete
   group: "4. Source Connectors"
   category: Trino Engine
   priority: SHOULD
@@ -64674,6 +64674,36 @@
     Provisa's own trino_connectors.py TrinoClickhouseConnector, if one is ever specialized
     beyond the current generic JDBC passthrough, could inject this wrap automatically per
     column based on the source schema's declared LowCardinality types).
+
+    (Amended 2026-09-28, IMPLEMENTED:) The automatic from_utf8() injection sketched above is
+    built, not just proposed. Detection needed no upstream fix: introspect.py's native_columns
+    clickhouse branch (system.columns) already stores ClickHouse's raw type string verbatim
+    (e.g. "LowCardinality(String)"), and schema_query.py's native-columns path only .lower()s it
+    before it reaches Column.data_type -- the LowCardinality wrapper was never normalized away.
+    provisa/compiler/sql_rewrite.py's new is_clickhouse_lowcardinality_string() matches
+    LowCardinality(String) and LowCardinality(Nullable(String)) (whitespace/case-insensitive),
+    defaulting False for anything else or missing data_type -- a missed wrap is visible, debuggable
+    garbage; a wrong wrap risks an error or corrupting correct data, so unmatched/unknown never
+    wraps. wrap_lowcardinality_columns() (leaf module, sqlglot-only) wraps every value-context
+    exp.Column reference (SELECT list, WHERE/HAVING, ORDER BY, GROUP BY, function args, JOIN ON) in
+    from_utf8(...), resolving each column to its nearest enclosing SELECT so nested-subquery
+    aliases are never confused with an outer query's; idempotent against a reference already
+    wrapped by an earlier pass or by the caller's own SQL. Wired into
+    provisa/pgwire/_pipeline.py's _govern_and_route_planned, Route.ENGINE branch, immediately
+    after REQ-1880's join-predicate-propagation step and before fold_catalog_into_schema/
+    transpile_physical -- gated strictly on state.federation_engine.dialect == "trino" AND the
+    referenced table's own registered source type == "clickhouse" AND the column's data_type
+    matching the LowCardinality(String) family; never applied to any other engine or source type.
+    Runs unconditionally (no join required, unlike REQ-1880) since a bare SELECT of an affected
+    column needs the same wrap. Live-verified against the real perf-bench Trino coordinator
+    (104.196.4.57, trino-bench container, bench_clickhouse catalog): DESCRIBE order_events
+    confirmed event_type/channel/device/browser/os/geo_country still report varbinary; running the
+    rewrite's exact generated SQL shape (multi-column SELECT list + WHERE + ORDER BY, all wrapped)
+    directly against that coordinator returned correctly decoded text ("shipped"/"marketplace"/
+    "desktop", etc.) for every wrapped reference. This was a direct Trino-CLI SQL-text
+    verification, not a full Provisa pgwire round-trip -- the unit test suite
+    (tests/unit/test_sql_rewrite_lowcardinality.py) covers the rewrite logic itself, including the
+    ineligible-source, non-matching-type, and idempotency cases.
   use_case: >-
     Live-reproduced 2026-09-28 standing up a real Trino coordinator on the perf-bench VM against
     the same ClickHouse container the pg-engine benchmark uses (perf-clickhouse-1,
@@ -64693,4 +64723,28 @@
     column shape).
   code:
     - provisa/federation/trino_connectors.py
+    - provisa/compiler/sql_rewrite.py
+    - provisa/pgwire/_pipeline.py
+    - provisa/api/admin/introspect.py
+  tests:
+    - tests/unit/test_sql_rewrite_lowcardinality.py
+  scenario: |
+    Given a Trino-routed query reading a column whose registered source is clickhouse-typed and
+    whose data_type matches LowCardinality(String) or LowCardinality(Nullable(String))
+    When the column is referenced in the SELECT list, WHERE/HAVING, ORDER BY, GROUP BY, a JOIN ON,
+    or as a function argument
+    Then the reference is wrapped in from_utf8(...) in the generated physical SQL
+
+    Given the same column reference already wrapped in from_utf8(...)
+    When the rewrite runs
+    Then it is not wrapped a second time
+
+    Given a column with the same name on a non-clickhouse source, or a clickhouse column whose
+    data_type is not LowCardinality(String)-family (e.g. String, UInt64, LowCardinality(UInt64))
+    When the rewrite runs
+    Then the reference is left unwrapped
+
+    Given the target engine is not Trino
+    When the rewrite runs
+    Then no wrapping occurs regardless of source type or column data_type
   target: "2027-Q1"
