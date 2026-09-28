@@ -65804,10 +65804,19 @@
     pg engine's per-query cost as dominated by connection setup rather than query execution itself
     — traced to `run_sync`/`run_arrow` opening a fresh connection on every call instead of reusing
     one across a session, unlike the duckdb engine.
+    (Amended 2026-09-28: fixed a stale assertion this change's own verification run surfaced in
+    `tests/integration/test_pg_runtime_e2e.py` — the test queried the source's bare
+    `"sales"."orders"` name, predating `attach_source`'s REQ-1730 schema fold
+    (`"{source_to_catalog(source.id)}_{schema_name}"` = `"ord_sales"`), so every `run_sync`/
+    `run_arrow`/`run_arrow_stream` call in that test hit `UndefinedTable` — reproduced identically
+    against unmodified pre-REQ-1895 `pg_runtime.py`, confirming it as a preexisting test bug, not a
+    pooling regression. Test now computes the folded name via `source_to_catalog` and queries it,
+    same as `attach_source` does; full e2e run is green.)
   code:
     - provisa/federation/pg_runtime.py
   tests:
     - tests/unit/federation/test_pg_runtime_pool.py
+    - tests/integration/test_pg_runtime_e2e.py
   scenario: |
     Given a PgFederationRuntime instance
     When run_sync is called twice in a row for the same or different SQL

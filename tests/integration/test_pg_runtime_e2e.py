@@ -76,19 +76,26 @@ async def test_pg_runtime_federates_postgres_source(pg_with_fdw):
         )
         rt.attach_source(src)
 
-        res = rt.run_sync('SELECT "id", "amount" FROM "sales"."orders" ORDER BY "id"')
+        # REQ-1730: attach_source folds catalog.schema into one schema segment
+        # ("{source_to_catalog(source.id)}_{schema_name}") on this catalog-incapable engine — the
+        # view lands at "ord_sales"."orders", not the source's bare native "sales"."orders".
+        from provisa.compiler.naming import source_to_catalog
+
+        folded = f"{source_to_catalog(src.id)}_{src.schema_name}"
+
+        res = rt.run_sync(f'SELECT "id", "amount" FROM "{folded}"."orders" ORDER BY "id"')
         assert res.column_names == ["id", "amount"]
         assert len(res.rows) == 3
         assert [r[0] for r in res.rows] == [1, 2, 3]
 
         # REQ-1220: ADBC zero-copy Arrow — materialized table.
-        tbl = rt.run_arrow('SELECT "id", "amount" FROM "sales"."orders" ORDER BY "id"')
+        tbl = rt.run_arrow(f'SELECT "id", "amount" FROM "{folded}"."orders" ORDER BY "id"')
         assert tbl.column_names == ["id", "amount"]
         assert tbl.column("id").to_pylist() == [1, 2, 3]
 
         # REQ-1220: ADBC lazy record-batch stream — (schema, generator), memory-bounded.
         schema, batch_gen = rt.run_arrow_stream(
-            'SELECT "id", "amount" FROM "sales"."orders" ORDER BY "id"'
+            f'SELECT "id", "amount" FROM "{folded}"."orders" ORDER BY "id"'
         )
         assert schema.names == ["id", "amount"]
         import pyarrow as pa
