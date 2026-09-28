@@ -1183,6 +1183,13 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
             state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
         )
     await ensure_resident(state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down)
+    # REQ-1897: the result cache is GraphQL's Route.CACHE candidate route, extended here so every
+    # other raw-SQL surface that reaches this one chokepoint (Bolt, pgwire's non-COPY path) gets
+    # the same served-without-touching-the-engine hit -- with the same audit row and tier/egress
+    # accounting a live execution would have written, not a silent skip.
+    cached_result = await check_response_cache(plan, state)
+    if cached_result is not None:
+        return cached_result
     _t0 = _time.perf_counter()
     # REQ-074/REQ-1386: one audit row per executed statement, with the terminal's real outcome —
     # written here rather than in each transport, so no surface can omit it.
@@ -1245,6 +1252,100 @@ def _apply_output_cap(plan: _Plan, result: QueryResult) -> QueryResult:
     from provisa.core.commerce import enforce_output_cap
 
     return enforce_output_cap(result, plan.tier_caps, plan.tier_plan)
+
+
+def _response_cache_org_id(state: Any) -> str | None:
+    """The acting org for cache key/entry prefixing (REQ-595) -- same resolution `_attach_tier_caps`
+    uses, so a cache entry a plan can write is one that same org's later plans can read back."""
+    from provisa.core.request_context import current_org
+
+    return current_org.get() or getattr(state, "org_id", None)
+
+
+def _response_cache_key(plan: _Plan) -> str | None:
+    """This plan's shared-cache key (REQ-1897), or ``None`` when it is not cacheable at all.
+
+    Raw-SQL surfaces never carry a separate RLS-rules dict the way GraphQL's ``rls.rules`` does --
+    the resolved identity is already baked into the governed ``plan.sql``/``plan.exec_params`` by
+    the time a plan reaches here. Passing an empty rules dict to ``is_cacheable`` therefore leaves
+    exactly the one residual fail-closed gate that still matters for a raw-SQL plan: a governed SQL
+    string that itself depends on unresolved session state (REQ-866's ``current_setting(`` check).
+    """
+    # REQ-1194/REQ-1195: a materialize-directive plan's result is a sink redirect handle, not row
+    # data -- serving it from a row/column cache entry would skip the sink write and hand back a
+    # stale redirect URL (or a plain row result) instead of running the materialize terminal.
+    if plan.materialize is not None:
+        return None
+    sql = plan.sql
+    if not sql:
+        return None
+    from provisa.cache.key import cache_key, is_cacheable
+
+    cacheable, _ = is_cacheable(sql, {})
+    if not cacheable:
+        return None
+    role_id = plan.audit.role_id if plan.audit is not None else ""
+    return cache_key(sql, plan.exec_params or [], role_id, {})
+
+
+async def check_response_cache(plan: _Plan, state: Any) -> QueryResult | None:  # REQ-1897
+    """Cache-HIT short circuit shared by every surface that runs a plan through the engine
+    (REQ-1897): this chokepoint, and the direct ``execute_engine_sync`` call sites in
+    ``provisa/api/flight/server.py``, ``provisa/grpc/server.py`` and ``provisa/pgwire/server.py``
+    that bypass it. Returns ``None`` on a MISS or when the plan is not cacheable (REQ-866
+    fail-closed) -- the caller must then run the plan through the engine as usual.
+
+    A HIT is served without touching the engine, but is NOT a skipped statement: it still goes
+    through the exact same egress-cap (REQ-1044) and audit (REQ-074/REQ-1386) accounting a live
+    execution would have, in the same order (`_apply_output_cap` first, audited outcome after) --
+    this is a known gap the maintainer wants closed for cache hits everywhere, GraphQL's own
+    Route.CACHE hit included.
+    """
+    ck = _response_cache_key(plan)
+    if ck is None:
+        return None
+    store = getattr(state, "response_cache_store", None)
+    if store is None:
+        return None
+    from provisa.cache.middleware import check_cache, decode_cached_result
+
+    cached = await check_cache(store, ck, _response_cache_org_id(state))
+    if cached is None:
+        return None
+    payload, column_types = decode_cached_result(cached)
+    column_names: list[str] = payload.get("column_names") or []
+    # msgpack has no tuple type -- every row decodes back as a list, not the tuple QueryResult.rows
+    # contracts for. Restore row shape here so a cache HIT is indistinguishable from a live result.
+    cached_rows = [tuple(row) for row in payload.get("rows", [])]
+    result = QueryResult(
+        rows=cached_rows,
+        column_names=column_names,
+        column_types=column_types if column_types is not None else payload.get("column_types"),
+    )
+    try:
+        result = _apply_output_cap(plan, result)
+    except Exception:
+        await finalize_audit(plan, 402, state)
+        raise
+    await finalize_audit(plan, 200, state)
+    return result
+
+
+async def prepare_residency_and_check_cache(plan: _Plan, state: Any) -> QueryResult | None:
+    # REQ-1887, REQ-1897: folds check_response_cache into the SAME dispatch as
+    # prepare_engine_residency for the terminals that call both back-to-back (Flight SQL's
+    # Cypher terminal, pgwire's ENGINE route) -- one asyncio.run_coroutine_threadsafe/_run_on_loop
+    # hop, not two, preserving REQ-1887's hop-count fold. A HIT means the plan never touches the
+    # engine, so residency prep (potentially a real materialization) is skipped entirely, not
+    # merely deferred, on a cache HIT; a MISS prepares residency exactly as before REQ-1897 existed
+    # and returns None so the caller executes the plan against a now-resident source set.
+    cached = await check_response_cache(plan, state)
+    if cached is not None:
+        return cached
+    from provisa.federation.query_residency import prepare_engine_residency
+
+    await prepare_engine_residency(state, plan)
+    return None
 
 
 async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027, REQ-028

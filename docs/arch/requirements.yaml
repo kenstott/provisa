@@ -65832,3 +65832,129 @@
     When close() is called
     Then every connection in self._read_pool is closed
   target: "2026-Q3"
+
+- id: REQ-1896
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Response Cache
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    `provisa/cache/middleware.py`'s `store_result` encoded response-cache values with
+    `json.dumps(result_data, default=str)` — lossy: a `Decimal` became a string (precision only
+    recoverable if the reader remembers to re-parse it), `bytes` became its `repr()`
+    (unrecoverable), and integer width/type identity was not preserved as a distinct wire concept.
+    This was tolerable while GraphQL's `Route.CACHE` was the only reader of its own writes, but
+    REQ-1897 makes the response cache shared across every query transport (Flight SQL, gRPC, Bolt,
+    HTTP-Cypher, pgwire) — a value one transport writes must be readable, byte-for-byte, by any
+    other, and JSON's lossy defaults silently break that for exactly the value types query results
+    are full of.
+
+    Fixed with a new `provisa/cache/codec.py`: `encode_cache_payload`/`decode_cache_payload`
+    msgpack-encode an arbitrary JSON-like payload dict, with `Decimal`/`datetime`/`date`/`time`
+    preserved via msgpack ext types (`bytes` is msgpack's native bin type already); an unsupported
+    type raises `TypeError` rather than silently stringifying. This is an internal-only wire format
+    for cache values this process itself wrote, never exposed to untrusted deserialization.
+    `store_result` gained a `column_types` parameter (the result's real column types, stored
+    alongside the row data) so a transport serving a cache HIT in its own native wire shape
+    (Arrow/protobuf/COPY-binary) can rebuild it without re-deriving types from the row values.
+    `decode_cached_result` is the paired read helper GraphQL's own cache-hit path
+    (`provisa/api/data/endpoint.py`) and the shared `check_response_cache` helper (REQ-1897) both
+    use.
+  use_case: >-
+    Discovered while extending GraphQL's response cache to be shared across transports (REQ-1897):
+    a Bolt/pgwire/Flight/gRPC query result containing a `Decimal` or `bytes` column written to the
+    shared cache by one surface must decode back to the identical typed value for any other surface
+    that reads it — a lossy JSON round trip silently corrupts that contract.
+  code:
+    - provisa/cache/codec.py
+    - provisa/cache/middleware.py
+    - provisa/api/data/endpoint.py
+  tests:
+    - tests/unit/test_response_cache_codec.py
+  scenario: |
+    Given a payload containing a Decimal, bytes, datetime, date, and time value
+    When it is encoded with encode_cache_payload and decoded with decode_cache_payload
+    Then every value round-trips to its original type and value, not a string/repr approximation
+
+    Given a datetime value and a date value in the same payload
+    When decoded
+    Then datetime is not collapsed down to date, despite datetime being a date subclass
+
+    Given a payload containing a value of an unsupported type
+    When encode_cache_payload is called
+    Then it raises TypeError rather than silently stringifying the value
+  target: "2026-Q3"
+
+- id: REQ-1897
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Response Cache
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    GraphQL's response cache (`Route.CACHE`, `provisa/api/data/endpoint.py`) was the only query
+    transport with a result cache — Flight SQL, gRPC, Bolt, HTTP-Cypher, and pgwire's non-COPY path
+    all recompiled and re-executed identical governed SQL against the engine on every call, with no
+    way to share a cache entry across transports even for the exact same governed shape/role.
+
+    Fixed with a shared cache-HIT short circuit: `check_response_cache` (new,
+    `provisa/pgwire/_pipeline.py`, alongside `_response_cache_key`/`_response_cache_org_id`), wired
+    into `_execute_plan_in_org` so every surface that reaches that one chokepoint (Bolt, pgwire's
+    non-COPY path) gets cache-hit short-circuiting for free. Three surfaces bypass that chokepoint
+    via a direct `execute_engine_sync`/`execute_engine_sync`-equivalent call and each got its own
+    `check_response_cache` call site, serving a HIT in that transport's native wire shape without
+    ever touching the engine: `provisa/api/flight/server.py` (Cypher-via-Flight terminal),
+    `provisa/grpc/server.py` (its streaming RPC), and `provisa/pgwire/server.py` (the ENGINE-route
+    COPY-binary sink). A raw-SQL plan has no separate RLS-rules dict the way GraphQL's `rls.rules`
+    does (the resolved identity is already baked into the governed `plan.sql`/`plan.exec_params`),
+    so `_response_cache_key` passes an empty rules dict to `is_cacheable` — leaving REQ-866's
+    `current_setting(`-dependent-SQL fail-closed gate as the one check that still matters for a
+    raw-SQL plan.
+
+    A HIT is not a skipped statement: `check_response_cache` runs the same egress-cap
+    (`_apply_output_cap`, REQ-1044) and audit (`finalize_audit`, REQ-074/REQ-1386) accounting a live
+    execution would have, in the same order (output cap first, so a HIT that would blow the tier
+    cap audits 402 rather than 200; audited outcome after). `finalize_audit`'s existing
+    per-plan idempotence guard (`plan.audit_written`) means a plan already audited by
+    `check_response_cache` is not double-audited when a transport's own terminal calls
+    `finalize_audit` again afterward (gRPC's streaming RPC does this).
+
+    The response cache is currently only ever POPULATED by GraphQL's own `Route.CACHE` write path
+    (`endpoint_executors.py`'s `_store_response_cache`/`_store_api_source_cache`) — no raw-SQL
+    surface writes to it yet, only reads. A raw-SQL query only hits when its governed SQL text,
+    params, and role produce the same `cache_key` as an entry GraphQL already wrote (or another
+    raw-SQL query previously read but did not itself (re-)write). Raw-SQL surfaces populating their
+    own cache entries on a MISS is a natural follow-up, not done here.
+  use_case: >-
+    Maintainer-directed extension of the response cache from a GraphQL-only optimization to a
+    cross-transport one, so identical governed queries reaching Provisa through different wire
+    protocols share one cache rather than each transport paying full engine cost independently.
+  code:
+    - provisa/pgwire/_pipeline.py
+    - provisa/api/flight/server.py
+    - provisa/grpc/server.py
+    - provisa/pgwire/server.py
+  tests:
+    - tests/unit/test_response_cache_shared.py
+  scenario: |
+    Given a cacheable plan whose key is a MISS in the response cache
+    When check_response_cache is called
+    Then it returns None and the caller runs the plan through the engine as usual
+
+    Given a cacheable plan whose key is a HIT
+    When check_response_cache is called
+    Then it returns a QueryResult built from the cached rows/column_names/column_types, without
+    calling the engine, and writes exactly one audit row (200, or 402 if the output cap rejects it)
+
+    Given a plan whose governed SQL depends on unresolved session state (REQ-866's
+    current_setting( gate)
+    When check_response_cache is called
+    Then it returns None regardless of any matching cache entry — never cacheable
+
+    Given two plans with identical SQL/params but different role_id
+    When each computes its cache key
+    Then the keys differ, so one role's cached result is never served to another
+  target: "2026-Q3"

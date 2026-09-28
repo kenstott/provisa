@@ -148,7 +148,9 @@ class TestREQ595InlineResultWritesTenantScoped:
 
         captured: dict = {}
 
-        async def _fake_store(store, key, data, ttl, table_ids=None, org_id=None):
+        async def _fake_store(
+            store, key, data, ttl, table_ids=None, org_id=None, column_types=None
+        ):
             captured.update(key=key, org_id=org_id)
 
         monkeypatch.setattr(ee, "store_result", _fake_store)

@@ -807,21 +807,33 @@ class ProvisaFlightServer(
         # REQ-1865: a directly-bound row_materialize table must be keyed-fetched before the
         # pushdown probe below runs, or a join where every table is row_materialize probes an
         # empty replica end to end (see provisa/pgwire/server.py's identical fix for why).
-        # REQ-1887: folded into one _run_on_loop dispatch — see _prepare_engine_residency.
-        self._run_on_loop(_prepare_engine_residency(self._state, plan))
+        # REQ-1887: folded into one _run_on_loop dispatch — see prepare_residency_and_check_cache.
+        # REQ-1897: this terminal bypasses _execute_plan_in_org entirely (that's the whole point --
+        # Flight drains the engine directly), so it needs its own cache-HIT check too — folded
+        # into this SAME dispatch (not a second hop) via prepare_residency_and_check_cache, which
+        # checks the cache FIRST and skips residency prep entirely on a HIT (nothing to land if the
+        # engine is never dialled). A hit is served in Flight's own native shape (the row-dict list
+        # below, same as a live execution builds) without ever touching the engine -- but still
+        # audited/egress-accounted, via check_response_cache's own finalize_audit call.
+        from provisa.pgwire._pipeline import prepare_residency_and_check_cache
 
-        def _run() -> list[dict[str, object]]:
-            # On a worker thread — go through the sync engine terminal, not a raw cursor.
-            res = engine.execute_engine_sync(physical_sql, resolved_params or [])
-            return [dict(zip(res.column_names, row, strict=False)) for row in res.rows]
+        cached = self._run_on_loop(prepare_residency_and_check_cache(plan, self._state))
+        if cached is not None:
+            raw_rows = [dict(zip(cached.column_names, row, strict=False)) for row in cached.rows]
+        else:
 
-        try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                raw_rows = pool.submit(_run).result()
-        except Exception:
-            self._finalize_audit(plan, 500)  # REQ-074/REQ-1386
-            raise
-        self._finalize_audit(plan, 200)  # REQ-074/REQ-1386
+            def _run() -> list[dict[str, object]]:
+                # On a worker thread — go through the sync engine terminal, not a raw cursor.
+                res = engine.execute_engine_sync(physical_sql, resolved_params or [])
+                return [dict(zip(res.column_names, row, strict=False)) for row in res.rows]
+
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    raw_rows = pool.submit(_run).result()
+            except Exception:
+                self._finalize_audit(plan, 500)  # REQ-074/REQ-1386
+                raise
+            self._finalize_audit(plan, 200)  # REQ-074/REQ-1386
 
         assembled = assemble_rows(raw_rows, graph_vars)
         serialized = [to_serializable(r) for r in assembled]

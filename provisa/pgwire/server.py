@@ -700,20 +700,35 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 # cypher_cross_engine's bench_contains_edge) never gets landed for this transport at
                 # all (confirmed live: 0 rows, no [DIAG] trace, for every SQL-transport query here).
                 # REQ-1887: folded into one run_coroutine_threadsafe dispatch — see
-                # prepare_engine_residency (provisa/federation/query_residency.py), shared with
+                # prepare_residency_and_check_cache (provisa/pgwire/_pipeline.py), shared with
                 # Flight SQL's identical ENGINE-route fold.
-                from provisa.federation.query_residency import prepare_engine_residency
+                # REQ-1897: this streaming sink bypasses _execute_plan_in_org entirely, so it needs
+                # its own cache-HIT check too — folded into this SAME dispatch (not a second hop)
+                # via prepare_residency_and_check_cache, which checks the cache FIRST and skips
+                # residency prep entirely on a HIT (nothing to land if the engine is never dialled).
+                # A HIT is served as ordinary decoded rows -- the COPY-binary encoder downstream
+                # consumes any QueryResult-shaped `result` identically whether it came from the
+                # engine or the cache -- skipping BOTH the raw-wire-forwarding passthrough below
+                # and execute_engine_sync. check_response_cache itself audits/egress-accounts a HIT.
+                from provisa.pgwire._pipeline import prepare_residency_and_check_cache
 
-                asyncio.run_coroutine_threadsafe(
-                    prepare_engine_residency(state, governed), loop
+                result = asyncio.run_coroutine_threadsafe(
+                    prepare_residency_and_check_cache(governed, state), loop
                 ).result(timeout=120)
                 # REQ-1863 counterpart: when the bound federation ENGINE is itself Postgres
                 # (PROVISA_ENGINE=pg), pgwire and the engine both speak real Postgres wire
                 # protocol end to end — the same raw-DataRow-forwarding passthrough applies here,
                 # not just to a DIRECT-route source. Same fallback discipline: any PassthroughError
                 # falls through to the normal decode/re-encode execute_engine_sync call below.
-                result = None
-                if result_fmt and state.federation_engine.dialect in ("postgres", "postgresql"):
+                if (
+                    result is None
+                    and result_fmt
+                    and state.federation_engine.dialect
+                    in (
+                        "postgres",
+                        "postgresql",
+                    )
+                ):
                     from provisa.pgwire.pg_passthrough import PassthroughError
 
                     try:

@@ -658,6 +658,7 @@ async def _store_response_cache(
     response_cache_ttl: int | None,
     no_cache: bool,
     org_id: str | None = None,
+    column_types: list[str] | None = None,
 ) -> None:
     """Store response_data in the response cache if TTL allows."""
     from provisa.cache.policy import resolve_policy
@@ -687,6 +688,7 @@ async def _store_response_cache(
             ttl=resolved_ttl,
             table_ids=table_ids,
             org_id=org_id,
+            column_types=column_types,
         )
 
 
@@ -997,6 +999,7 @@ async def _exec_inline_result(
             response_cache_ttl,
             no_cache,
             org_id=org_id,
+            column_types=getattr(result, "column_types", None),
         )
 
     _n_rows = len(field_rows) if isinstance(field_rows, list) else 0

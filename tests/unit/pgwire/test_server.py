@@ -304,6 +304,11 @@ class TestProvisaSessionEngineStreaming:
 
         state = MagicMock()
         state.federation_engine.execute_engine_sync.side_effect = _execute_engine_sync
+        # REQ-1897: check_response_cache's `getattr(state, "response_cache_store", None)` never
+        # sees the None default on a bare MagicMock (it auto-vivifies the attribute instead) --
+        # set it explicitly so this test's ENGINE-route streaming path is exercised, not the
+        # cache-HIT short circuit.
+        state.response_cache_store = None
         monkeypatch.setattr("provisa.api.app.state", state)
 
         loop = asyncio.new_event_loop()
@@ -439,6 +444,9 @@ class TestPgwireDispatchHopCount:
         state.federation_engine.execute_engine_sync.return_value = MagicMock(
             rows=[(1,)], column_names=["n"]
         )
+        # REQ-1897: see the identical fix/comment in test_engine_route_streams_via_sync_terminal
+        # above -- a bare MagicMock never yields the getattr(..., None) default.
+        state.response_cache_store = None
         monkeypatch.setattr("provisa.api.app.state", state)
 
         calls = self._counting_dispatch(monkeypatch)

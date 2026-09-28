@@ -56,6 +56,7 @@ import argparse
 import asyncio
 import json
 import random
+import re
 import statistics
 import sys
 import threading
@@ -158,6 +159,15 @@ class QueryResult:
     transport: str
     samples: list[Sample] = field(default_factory=list)
     concurrency: int | None = None  # set for concurrency-ramp samples
+    # REQ-1894: which of the two full passes produced these samples (see run_both_cache_passes).
+    # "nocache": every iteration forced no_cache=True end-to-end (global kill switch/header) — no
+    # response-cache hit is possible, so ALL iterations are real, independent executions and the
+    # full percentile set over them is a statistically valid "cold" measurement (not one sample).
+    # "cache": normal run, cache allowed to engage — iteration 1 is dropped before computing
+    # percentiles (per-maintainer instruction) because it is not guaranteed cache-cold (a prior
+    # pass, or another query sharing the same governed shape/role, may have already warmed this
+    # exact cache key), so it is neither a reliable cold sample nor a reliable warm one.
+    cache_pass: str = "cache"
 
     @property
     def ok_samples(self) -> list[Sample]:
@@ -172,17 +182,24 @@ class QueryResult:
                 "category": self.category,
                 "transport": self.transport,
                 "concurrency": self.concurrency,
+                "cache_pass": self.cache_pass,
                 "errors": errors,
                 "status": "all_failed",
             }
-        latencies_ms = sorted(s.elapsed_s * 1000 for s in ok)
-        total_bytes = sum(s.payload_bytes for s in ok)
-        total_rows = sum(s.row_count for s in ok)
+        # REQ-1894: the "nocache" pass measures every iteration; the "cache" pass drops iteration
+        # 1 (see cache_pass field doc above) before computing percentiles. Both are still
+        # multi-sample percentiles, never a single-iteration number — a single sample is not
+        # statistically reliable regardless of which pass it came from.
+        measured = ok if self.cache_pass == "nocache" else ok[1:] or ok
+        latencies_ms = sorted(s.elapsed_s * 1000 for s in measured)
+        total_bytes = sum(s.payload_bytes for s in measured)
+        total_rows = sum(s.row_count for s in measured)
         wall_s = (
-            sum(s.elapsed_s for s in ok)
+            sum(s.elapsed_s for s in measured)
             if self.concurrency is None
-            else max(s.elapsed_s for s in ok)
+            else max(s.elapsed_s for s in measured)
         )
+        qps = len(measured) / wall_s if wall_s > 0 else None
         # Concurrency runs overlap in wall-clock time; sequential runs sum their own elapsed time
         # as a proxy for "time spent doing this query" (each ran back-to-back, single-threaded).
         return {
@@ -190,12 +207,14 @@ class QueryResult:
             "category": self.category,
             "transport": self.transport,
             "concurrency": self.concurrency,
-            "n": len(ok),
+            "cache_pass": self.cache_pass,
+            "n": len(measured),
             "errors": errors,
             "total_rows": total_rows,
             "total_bytes": total_bytes,
             "bytes_per_sec": total_bytes / wall_s if wall_s > 0 else None,
-            "qps": len(ok) / wall_s if wall_s > 0 else None,
+            "qps": qps,
+            "ops_per_hour": qps * 3600 if qps is not None else None,
             "latency_ms_p50": statistics.median(latencies_ms),
             "latency_ms_p95": latencies_ms[int(len(latencies_ms) * 0.95) - 1]
             if len(latencies_ms) > 1
@@ -607,12 +626,23 @@ class GraphqlTransport(Transport):
     def available(self) -> bool:
         return self._client is not None
 
-    def run_graphql(self, query: str, params: dict) -> tuple[int, int, float]:
+    def run_graphql(
+        self, query: str, params: dict, no_cache: bool = False
+    ) -> tuple[int, int, float]:
         # Same non-streaming caveat as HttpTransport: httpx already buffers the full response
         # before this code runs, but GraphqlTransport never runs large_scan/large_federated_join
         # (see class docstring), so the once-materialized row list is bounded — small enough that
         # sampling (_ByteEstimator) isn't needed here, unlike the streaming transports.
         assert self._client is not None
+        if no_cache:
+            # REQ-1894: @noCache (provisa/compiler/directives.py) is a real, already-shipped
+            # operation-level GraphQL directive — "bypass response cache (no read, no write)".
+            # This is the ONLY transport with a response cache today (Route.CACHE, endpoint.py),
+            # so this is also the only run_* method with a no_cache param; the other transports
+            # have nothing to disable yet. Inserted right after the operation signature
+            # ("query(...)" or bare "query"), before the first "{" — every query in queries.py
+            # uses that exact shape.
+            query = re.sub(r"(query(?:\([^)]*\))?)\s*\{", r"\1 @noCache {", query, count=1)
         resp = self._client.post("/data/graphql", json={"query": query, "variables": params})
         resp.raise_for_status()
         body = resp.json()
@@ -892,15 +922,26 @@ _CALL_METHOD: dict[str, str] = {
 }
 
 
-def _run_sequential(transport: Transport, q: Query, method: str, text: str | dict) -> QueryResult:
-    result = QueryResult(query_id=q.id, category=q.category, transport=transport.name)
+def _run_sequential(
+    transport: Transport, q: Query, method: str, text: str | dict, no_cache: bool = False
+) -> QueryResult:
+    # REQ-1894: cache_pass records which of the two full passes (see run_all/main) produced this
+    # result — QueryResult.summary() reads it to decide whether to measure every iteration
+    # ("nocache") or drop iteration 1 ("cache"). See QueryResult.cache_pass's own docstring.
+    cache_pass = "nocache" if no_cache else "cache"
+    result = QueryResult(
+        query_id=q.id, category=q.category, transport=transport.name, cache_pass=cache_pass
+    )
     call = getattr(transport, _CALL_METHOD[method])
     for i in range(q.iterations):
         t0 = time.perf_counter()
         try:
-            n, byte_count, overhead_s = (
-                call(text, q.params, q.category) if method == "sql" else call(text, q.params)
-            )
+            if method == "sql":
+                n, byte_count, overhead_s = call(text, q.params, q.category)
+            elif method == "graphql":
+                n, byte_count, overhead_s = call(text, q.params, no_cache=no_cache)
+            else:
+                n, byte_count, overhead_s = call(text, q.params)
             # overhead_s (time spent computing _payload_bytes, and for Flight, Arrow->Python
             # conversion) is the benchmark harness's own client-side bookkeeping cost, not
             # Provisa's/the network's — excluded so reported latency reflects query cost, not
@@ -1056,6 +1097,7 @@ def run_all(
     transports: dict[str, Transport],
     query_ids: set[str] | None = None,
     on_result: Callable[[list[QueryResult]], object] | None = None,
+    no_cache: bool = False,
 ) -> list[QueryResult]:
     # concurrency_ramp is NOT in QUERIES — it runs separately via artillery-concurrency-ramp.yml
     # (open-model arrival-rate load; this module only does closed-model sequential runs — see
@@ -1102,7 +1144,7 @@ def run_all(
                     file=sys.stderr,
                     flush=True,
                 )
-                results.append(_run_sequential(t, q, method, text))
+                results.append(_run_sequential(t, q, method, text, no_cache=no_cache))
                 if on_result is not None:
                     on_result(results)
     return results
@@ -1201,9 +1243,19 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.json"
     saturation: dict[str, list[dict]] = {}
+    # REQ-1894: two full passes, not one run split after the fact — "cold"/uncached numbers must
+    # come from every iteration with the response cache genuinely disabled (@noCache, the only
+    # transport with a cache today — see GraphqlTransport.run_graphql), so they're real,
+    # independent executions throughout, not a single first-iteration sample (not statistically
+    # reliable) and not contaminated by a warm cache entry left by a prior identical call. The
+    # cache-enabled pass is still run in full (not skipped) — it exercises the cache-hit code path
+    # itself (key computation, lookup, audit/egress accounting for a hit), which is real product
+    # behavior worth measuring on its own, not just a contaminant to avoid; QueryResult.summary()
+    # drops that pass's iteration 1 (not guaranteed cache-cold) before computing its percentiles.
+    _prior_pass_results: list[QueryResult] = []
 
     def _checkpoint(results_so_far: list[QueryResult]) -> list[dict]:
-        summaries = [r.summary() for r in results_so_far]
+        summaries = [r.summary() for r in _prior_pass_results + results_so_far]
         report = {
             "engine": args.engine,
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -1220,8 +1272,12 @@ def main() -> int:
         tmp_path.replace(out_path)  # atomic on POSIX — out_path is never left half-written
         return summaries
 
-    print(f"Running benchmark matrix, engine={args.engine}...", file=sys.stderr)
-    results = run_all(transports, query_ids, on_result=_checkpoint)
+    print(f"Running benchmark matrix (no-cache pass), engine={args.engine}...", file=sys.stderr)
+    nocache_results = run_all(transports, query_ids, on_result=_checkpoint, no_cache=True)
+    _prior_pass_results = nocache_results
+    print(f"Running benchmark matrix (cache pass), engine={args.engine}...", file=sys.stderr)
+    cache_results = run_all(transports, query_ids, on_result=_checkpoint, no_cache=False)
+    results = nocache_results + cache_results
 
     if not args.skip_saturation:
         # sql (pgwire) + cypher (Bolt) + flight + grpc here; "http" AND "graphql" are excluded —

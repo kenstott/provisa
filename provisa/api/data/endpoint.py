@@ -28,7 +28,6 @@ Mutations: parse -> compile_mutation -> RLS inject -> direct execute (never the 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time as _time
 
@@ -40,7 +39,7 @@ from pydantic import BaseModel
 
 from provisa.api.errors import ApiError
 from provisa.cache.key import cache_key, is_cacheable
-from provisa.cache.middleware import build_cache_headers, check_cache
+from provisa.cache.middleware import build_cache_headers, check_cache, decode_cached_result
 from provisa.compiler.hints import extract_graphql_hints
 from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
 from provisa.compiler.rls import RLSContext
@@ -605,8 +604,8 @@ async def _execute_one_field(
         no_cache=_cache_off,
     )
     if decision.route == Route.CACHE and cached is not None:
-        cached_data = json.loads(cached.data)
-        field_rows = cached_data.get("data", {}).get(root_field, [])
+        cached_data, _ = decode_cached_result(cached)  # REQ-1896: typed binary, not lossy JSON
+        field_rows = cached_data.get(root_field, [])
         _qs_mod.record(
             field=root_field,
             source="cache",

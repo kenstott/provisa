@@ -481,12 +481,20 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
             )
             loop = asyncio.get_running_loop()
-            stream = await loop.run_in_executor(
-                None,
-                lambda: state.federation_engine.execute_engine_sync(
-                    plan.physical_sql, [], session_hints=plan.session_hints
-                ),
-            )
+            # REQ-1897: this streaming terminal bypasses _execute_plan_in_org entirely, so it needs
+            # its own cache-HIT check. A hit is served as a stream over the cached rows -- the same
+            # `.batches()` shape a live QueryResult exposes below -- without touching the engine;
+            # check_response_cache itself audits/egress-accounts the hit.
+            from provisa.pgwire._pipeline import check_response_cache, finalize_audit
+
+            stream = await check_response_cache(plan, state)
+            if stream is None:
+                stream = await loop.run_in_executor(
+                    None,
+                    lambda: state.federation_engine.execute_engine_sync(
+                        plan.physical_sql, [], session_hints=plan.session_hints
+                    ),
+                )
             self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
             _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
             out_cols = [_proto_by_norm.get(_norm(c), c) for c in stream.column_names]
@@ -494,7 +502,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
             batch_iter = stream.batches()
             # REQ-074/REQ-1386: this streaming terminal never reaches _execute_plan, so the audit
             # row is written here — after the last batch, or on the way out of a failed drain.
-            from provisa.pgwire._pipeline import finalize_audit
+            # (A cache HIT above already finalized its own audit inside check_response_cache; this
+            # finalize is a no-op for that plan per finalize_audit's own idempotence guard.)
 
             try:
                 while True:
