@@ -64463,6 +64463,24 @@
     `PgWrappersMongoDbConnector` (implemented this session, live-verified working, bundled
     directly in the engine) should be superseded by this pattern for mongodb once it exists — not
     removed until the captive path is available.
+
+    TWO DEPLOYMENT MODES, split by TIER, both needed: (1) SAAS — PROVISA-MANAGED, DYNAMIC —
+    reuse the existing GKE per-org shard provisioner (provisa/federation/k8s_provisioner.py:
+    isolated_shard(org_id), the deployment/service manifest + wake/idle lifecycle already
+    provisioning each org's Trino engine shard on demand and scaling it to zero when idle) for a
+    captive wrapper pod too: one dynamically-provisioned, scale-to-zero captive Postgres+wrappers
+    pod per (org, wrapped source), woken/idled the same way a shard already is. This is the
+    primary/default path — matches the project's own stated PLG philosophy (docs/marketing.md:
+    "connect a source... zero required config") and mirrors the auto-provision-on-demand shape
+    pgwire_replica.py already uses for files/sharepoint/splunk, just on Kubernetes instead of a
+    local subprocess. (2) SELF-HOSTED/CE/ON-PREM — DOCKER-COMPOSE, either Provisa-orchestrated
+    (a docker-compose service Provisa brings up/down alongside itself) or fully OPERATOR-SUPPLIED
+    (an operator runs their own captive instance independently, any lifecycle, and just registers
+    it as a plain `postgresql` source; Provisa only PROBES it — REQ-1872's discover()/probe-on-
+    startup work, extended to confirm the specific expected foreign server/tables exist, not just
+    that generic postgres_fdw is available). The docker-compose artifact for mode 2 is a natural
+    REQ-1873 install-script companion (spin up a correctly-shaped captive instance with one
+    command) and does double duty as the reference shape mode 1's GKE manifest also follows.
   use_case: >-
     Gives access to wrappers' whole catalog (mongodb, Stripe, HubSpot, Airtable, Notion, Auth0,
     AWS Cognito, Cloudflare D1, Logflare, Calendly) without hand-rolling a bespoke Calcite adapter
