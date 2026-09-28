@@ -64160,3 +64160,53 @@
     - provisa/pgwire/_pipeline.py
     - provisa/api/rest/generator.py
   target: "2027-Q1"
+- id: REQ-1867
+  status: proposed
+  group: "4. Source Connectors"
+  category: File & Lake Sources
+  priority: MAY
+  type: behavioral
+  description: >-
+    The pg engine's snowflake/databricks/bigquery source types should be reachable as a live,
+    zero-copy ATTACH_R via each warehouse's Iceberg REST catalog (Snowflake Iceberg Tables' catalog
+    integration or SYSTEM$GET_ICEBERG_TABLE_INFORMATION, Databricks Unity Catalog's Iceberg REST
+    endpoint / UniForm, BigQuery BigLake Metastore), instead of only Mechanism.DIRECT (native
+    driver, materialize-required). PgDuckdbIcebergConnector (provisa/federation/connector_duckdb.py)
+    already reads an Iceberg table in place via iceberg_scan, but only from a bare storage path
+    (source.path) — it has no REST-catalog client, credential/token handling, or table discovery.
+    This closes that gap: resolve the warehouse's current metadata.json location via its catalog
+    API, then hand the resolved path to the existing scan connector unchanged.
+  use_case: >-
+    Snowflake/Databricks/BigQuery sources attached to the pg engine currently require a full
+    materialized replica even when the underlying table is already Iceberg-format and could be
+    scanned live — closing this gap removes that replica lag/cost for customers who already use
+    Iceberg-backed warehouse tables.
+  code:
+    - provisa/federation/connector_duckdb.py
+    - provisa/federation/engine.py
+  target: "2027-Q2"
+- id: REQ-1868
+  status: proposed
+  group: "4. Source Connectors"
+  category: DuckDB Connectors
+  priority: MAY
+  type: behavioral
+  description: >-
+    The pg engine should gain a PgDuckdbMotherDuckConnector (Mechanism.ATTACH_RW) using pg_duckdb's
+    own FOREIGN DATA WRAPPER duckdb TYPE 'motherduck' SERVER + USER MAPPING (token) mechanism,
+    confirmed present in pg_duckdb's own source (src/pgduckdb_fdw.cpp's FdwType::MD,
+    test/pycheck/motherduck_test.py) — pg_duckdb can live-attach a MotherDuck-hosted DuckDB database
+    today, but no Provisa connector wires this up for the pg engine. This is distinct from, and does
+    NOT cover, attaching an arbitrary standalone local/remote .duckdb file: pg_duckdb's FDW only
+    exposes SERVER TYPEs motherduck/s3/gcs — s3/gcs are credential servers for the existing
+    scan connectors, not a general foreign-duckdb-file attach — so the pg engine's plain `duckdb`
+    source type correctly stays Mechanism.DIRECT (native driver, materialize) for anything that
+    isn't MotherDuck.
+  use_case: >-
+    Orgs with a MotherDuck-hosted DuckDB database currently get only a materialized replica via the
+    pg engine even though pg_duckdb can attach it live — closing this gap gives them zero-copy access
+    the same way postgres/mysql/oracle/sqlite sources already get.
+  code:
+    - provisa/federation/connector_duckdb.py
+    - provisa/federation/engine.py
+  target: "2027-Q2"

@@ -1039,6 +1039,58 @@ class PgDuckdbSnowflakeIcebergConnector(PgDuckdbIcebergConnector):  # REQ-1867
         return ProbeResult(True, "pg_duckdb with iceberg extension and snowflake-connector-python")
 
 
+class PgDuckdbDatabricksIcebergConnector(_PgDuckdbScanConnector):  # REQ-1867
+    """Attach a Databricks Unity Catalog table IN PLACE via pg_duckdb's iceberg_scan.
+
+    Adds a live, zero-copy reach for a Databricks source ALONGSIDE its existing Mechanism.DIRECT
+    reach (REQ-987) — not a replacement (``mechanisms`` carries both). The metadata pointer is
+    resolved per-query from Unity Catalog's Iceberg REST catalog endpoint (never cached on the
+    connector: the whole point is reading the table's CURRENT snapshot, not a stale copy), then
+    fed into the same iceberg_scan DDL shape as ``PgDuckdbIcebergConnector``. Only tables that are
+    native Iceberg or UniForm-Iceberg-enabled resolve; anything else fails loud at the REST call.
+    """
+
+    source_type = "databricks"
+    _reader = "iceberg_scan"
+    _scan_args = ", allow_moved_paths := true"
+    key = "pg_duckdb_databricks_iceberg"
+    mechanism = Mechanism.SCAN  # iceberg_scan reads the table in place — no copy (REQ-951)
+    mechanisms = frozenset({Mechanism.SCAN, Mechanism.DIRECT})  # adds to, doesn't replace, DIRECT
+    runtime_deps = (
+        RuntimeDep("libduckdb", DriverProvider.BUNDLED),  # the embedded DuckDB engine
+        # aws-sdk-cpp / avro-c / roaring — static-linked into libduckdb via vcpkg
+        RuntimeDep("aws-sdk-cpp / avro-c / roaring", DriverProvider.BUNDLED),
+    )
+
+    async def probe(self, fetch) -> ProbeResult:  # REQ-904/1867
+        # The Unity Catalog REST call itself is per-SOURCE (host/token/catalog/schema/table), and
+        # probe(fetch) is engine-wide with no source in scope — a live network check here would have
+        # nothing to check against. The only thing honestly probeable at this point is the same local
+        # dependency PgDuckdbIcebergConnector already verifies: pg_duckdb built WITH iceberg_scan.
+        base = await super().probe(fetch)
+        if not base.available:
+            return base
+        if await fetch("SELECT 1 FROM pg_proc WHERE proname = 'iceberg_scan'"):
+            return ProbeResult(True, "pg_duckdb with iceberg extension")
+        return ProbeResult(
+            False,
+            "pg_duckdb is loaded but was built without the iceberg extension",
+            "rebuild pg_duckdb with the iceberg DuckDB extension (vcpkg)",
+        )
+
+    def details(self, source: Source) -> dict:
+        from provisa.federation.databricks_iceberg_resolver import (
+            resolve_databricks_iceberg_metadata_location,
+        )
+
+        metadata_location = resolve_databricks_iceberg_metadata_location(source)
+        return {
+            "requires_preload": "pg_duckdb",
+            "reader": self._reader,
+            "scan": f"{self._reader}('{metadata_location}'{self._scan_args})",
+        }
+
+
 class PgDuckdbDeltaConnector(_PgDuckdbScanConnector):  # REQ-900
     """Attach a Delta Lake table IN PLACE via pg_duckdb's delta_scan (DuckDB delta extension).
 
