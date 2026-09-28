@@ -20,6 +20,7 @@
     "includeNodes": "Include nodes",
     "includeFields": "Include fields (relationship, relationship.column, or column)",
     "aggregateFunctions": "Aggregate functions",
-    "selectAtLeastOneFunc": "Select at least one aggregate function"
+    "selectAtLeastOneFunc": "Select at least one aggregate function",
+    "aggregateColumns": "Aggregate columns (blank = every eligible column)"
   }
 }

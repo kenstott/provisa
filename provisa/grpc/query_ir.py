@@ -115,7 +115,12 @@ def _group_by_field_name(field_name: str) -> str:
 AGG_FUNCS = ("count", "sum", "avg", "stddev", "variance", "min", "max")
 
 
-def _agg_fields_selection(ctx: Any, table_id: int, funcs: list[str] | None = None) -> str:
+def _agg_fields_selection(
+    ctx: Any,
+    table_id: int,
+    funcs: list[str] | None = None,
+    columns: list[str] | None = None,
+) -> str:
     """``{ count sum { ... } avg { ... } stddev { ... } variance { ... } min { ... } max { ... } }``
     selection text, only including sub-selections the schema actually exposes for this table —
     mirrors ``build_agg_fields_type``'s numeric/comparable classification (REQ-196), reused rather
@@ -123,8 +128,17 @@ def _agg_fields_selection(ctx: Any, table_id: int, funcs: list[str] | None = Non
 
     ``funcs`` restricts the selection to a caller-chosen subset (REQ-1361), matching the
     ``aggregate=count,sum`` function filter JSON:API/REST already support — None/empty means
-    every function the schema exposes for this table."""
+    every function the schema exposes for this table.
+
+    ``columns`` (REQ-1882) restricts sum/avg/stddev/variance/min/max to a caller-chosen subset of
+    columns — None/empty means every eligible column of that function's type, same convention as
+    ``funcs``. Without this, even a caller that already narrows ``funcs`` to e.g. ``["sum"]``
+    still gets sum() computed over every numeric column the table exposes, not just the one it
+    wanted — live-measured as a real, avoidable cost multiplier on a wide aggregate table."""
     cols = ctx.aggregate_columns.get(table_id, [])
+    want_cols = set(columns) if columns else None
+    if want_cols is not None:
+        cols = [(c, t) for c, t in cols if c in want_cols]
     numeric = [c for c, t in cols if _is_numeric(t)]
     comparable = [c for c, t in cols if _is_comparable(t)]
     want = set(funcs) if funcs else None
@@ -185,18 +199,22 @@ def split_group_by_columns(columns: list[Any]) -> tuple[list[Any], list[int], li
 
 
 def grpc_table_to_aggregate_graphql_text(
-    ctx: Any, type_name: str, funcs: list[str] | None = None
+    ctx: Any,
+    type_name: str,
+    funcs: list[str] | None = None,
+    columns: list[str] | None = None,
 ) -> str | None:
     """GraphQL query text for ``Query{Type}Aggregate`` (REQ-1359): targets the same
     ``{field}_aggregate`` root field JSON:API/REST synthesize, so gRPC runs the identical
     parse_query/compile_query pipeline instead of a third, divergent aggregate implementation.
 
-    ``funcs`` restricts to a caller-chosen subset of aggregate functions (REQ-1361)."""
+    ``funcs`` restricts to a caller-chosen subset of aggregate functions (REQ-1361).
+    ``columns`` restricts those functions to a caller-chosen subset of columns (REQ-1882)."""
     meta = _find_table_meta(ctx, type_name)
     if meta is None:
         return None
     agg_field = _aggregate_field_name(meta.field_name)
-    selection = _agg_fields_selection(ctx, meta.table_id, funcs)
+    selection = _agg_fields_selection(ctx, meta.table_id, funcs, columns)
     # {Type}Aggregate nests its functions under an "aggregate" sub-field (build_aggregate_types
     # in aggregate_gen.py: {"aggregate": ..., "nodes": ...}) — the compiler's
     # _collect_agg_aliases looks for a selection literally named "aggregate", so the synthesized
@@ -315,11 +333,15 @@ def grpc_table_to_group_by_graphql_text(
     include_nodes: bool = False,
     include: list[str] | None = None,
     filter_msg: Any | None = None,
+    columns: list[str] | None = None,
 ) -> str | None:
     """GraphQL query text for ``Query{Type}GroupBy`` (REQ-1359): targets the same
     ``{field}_group_by(by: [...])`` root field JSON:API/REST synthesize.
 
     ``funcs`` restricts to a caller-chosen subset of aggregate functions (REQ-1361).
+    ``columns`` restricts those functions to a caller-chosen subset of columns (REQ-1882) —
+    without it, ``funcs=["sum"]`` still sums every numeric column the table exposes, not just
+    the one the caller wanted.
     ``include_nodes`` (REQ-1401) appends a ``nodes { ... }`` sub-selection of the base table's
     scalar columns, mirroring JSON:API/REST's ``?includeNodes=true`` (provisa/api/jsonapi/
     generator.py::_build_group_by_graphql_query). ``include`` (REQ-1405/REQ-1408) selects what
@@ -335,7 +357,7 @@ def grpc_table_to_group_by_graphql_text(
         return None
     gb_field = _group_by_field_name(meta.field_name)
     by_arg = "[" + ", ".join(apply_gql_name(c) for c in by_columns) + "]"
-    agg_selection = _agg_fields_selection(ctx, meta.table_id, funcs)
+    agg_selection = _agg_fields_selection(ctx, meta.table_id, funcs, columns)
     nodes_part = ""
     if include_nodes:
         node_fields = _include_node_fields(ctx, meta, include or [])

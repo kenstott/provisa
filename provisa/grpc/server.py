@@ -589,7 +589,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return None
 
         funcs = list(getattr(request, "funcs", [])) or None
-        gql_text = grpc_table_to_aggregate_graphql_text(ctx, type_name, funcs)
+        columns = list(getattr(request, "columns", [])) or None  # REQ-1882
+        gql_text = grpc_table_to_aggregate_graphql_text(ctx, type_name, funcs, columns)
         if gql_text is None:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
             return None
@@ -664,6 +665,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         include_nodes = bool(getattr(request, "include_nodes", False))
         include = list(getattr(request, "include", []))
         funcs = list(getattr(request, "funcs", [])) or None
+        columns = list(getattr(request, "columns", [])) or None  # REQ-1882
         filter_msg = request.filter if request.HasField("filter") else None
         gql_text = grpc_table_to_group_by_graphql_text(
             ctx,
@@ -673,6 +675,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             include_nodes=include_nodes,
             include=include,
             filter_msg=filter_msg,
+            columns=columns,
         )
         if gql_text is None:
             await context.abort(
