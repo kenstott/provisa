@@ -639,6 +639,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         MysqlFdwConnector,
         OracleFdwConnector,
         PgDuckdbCsvConnector,
+        PgDuckdbDatabricksIcebergConnector,
         PgDuckdbDeltaConnector,
         PgDuckdbIcebergConnector,
         PgDuckdbJsonConnector,
@@ -665,6 +666,9 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             PgDuckdbParquetConnector(),  # parquet
             PgDuckdbJsonConnector(),  # json
             PgDuckdbIcebergConnector(),  # iceberg (DuckDB iceberg ext; probe verifies it's compiled in)
+            # databricks: zero-copy live reach ADDED alongside the existing DIRECT reach (REQ-987),
+            # resolving Unity Catalog's live Iceberg metadata pointer per source (REQ-1867).
+            PgDuckdbDatabricksIcebergConnector(),
             PgDuckdbDeltaConnector(),  # delta_lake (DuckDB delta ext; probe verifies it's compiled in)
             SqliteFdwConnector(),  # sqlite (system libsqlite3)
             MysqlFdwConnector(),  # mysql (needs a bundled client lib; probe-gated)
