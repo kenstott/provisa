@@ -65173,7 +65173,7 @@
     Then it is never entered into or served from the cache, on any call
   target: "2026-Q3"
 
-- id: REQ-1887
+- id: REQ-1889
   status: complete
   group: "11. Platform, Infrastructure & Delivery"
   category: Performance Benchmarking
