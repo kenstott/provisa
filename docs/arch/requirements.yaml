@@ -65126,6 +65126,19 @@
     - provisa/bolt/session.py
   tests:
     - tests/unit/test_bolt_pull_metering.py
+  scenario: |
+    Given a Bolt PULL response streaming multiple rows to a client
+    When the server's log level is above DEBUG (the default)
+    Then no per-row WARNING-level log line is emitted for any row
+
+    Given the same PULL response
+    When the batch completes (or a row raises partway through)
+    Then egress metering is reported once for the batch's total bytes (rows already sent before
+    a raise are still counted), not once per row
+
+    Given the server's log level is set to DEBUG
+    When a PULL response streams rows
+    Then the per-row send/record debug lines ARE emitted, at DEBUG severity, not WARNING
   target: "2027-Q1"
 
 - id: REQ-1886
