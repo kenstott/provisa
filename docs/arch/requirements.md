@@ -20135,3 +20135,15 @@ A 2,000,000-row unfiltered scan (`large_scan`, provisa/grpc/server.py's ENGINE-r
 **Code:** `provisa/grpc/server.py`
 
 **Tests:** `tests/unit/test_grpc_server.py`, `tests/unit/test_grpc_aggregates.py`, `tests/unit/test_grpc_requirements.py`, `tests/unit/test_grpc_proxy_translation.py`
+
+### REQ-1885 · Bolt Protocol {#REQ-1885}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The Bolt protocol's row-streaming path does two unconditional WARNING-level log calls plus a metering call PER ROW, with no log-level gate. `provisa/bolt/session.py`'s `send_record` (near line 96-98) logs `[BOLT] send tag=...` via `logging.getLogger("uvicorn.error").warning(...)` unconditionally on every framed write, and the `PULL` handler (near line 568) logs a second `[BOLT] PULL sending record row=%r` warning for every row before calling `send_record`, plus a `report(...)` metering call per row. None of these are gated behind a log-level check (e.g. `if log.isEnabledFor(logging.DEBUG)`) — they format and emit unconditionally regardless of the configured log level, incurring string-formatting + I/O cost on every single row of every Cypher result set streamed over Bolt.
+
+**Use case:** Found live-tracing the Cypher/Bolt transport's benchmark numbers (2026-09-28, perf-bench query-timing investigation): a fixed per-row cost real for any Bolt-served result set, small at the row counts this session's benchmark queries return but scaling badly for a larger result and pure waste in a production deployment (WARNING-level logging every row reads as a stray debug leftover, not an intentional operational signal — nothing about a normal successful row PULL warrants WARNING severity). Mitigation: either remove these two log calls entirely, downgrade to DEBUG and gate behind `isEnabledFor`, or both. The metering `report(...)` call's necessity (vs. batching metering per-PULL-batch instead of per-row) was not evaluated — flagged for whoever picks this up to check whether per-row metering granularity is actually required or a coarser granularity is equally correct and cheaper.
+
+**Code:** `provisa/bolt/session.py`
+
+**Tests:** —
