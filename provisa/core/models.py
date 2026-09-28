@@ -59,7 +59,11 @@ class SourceType(str, Enum):
     sqlserver = "sqlserver"
     oracle = "oracle"
     firebird = "firebird"  # Firebird 3/4/5 — DuckDB firebird community extension (REQ-899)
-    duckdb = "duckdb"
+    duckdb = "duckdb"  # standalone .duckdb file, attached by the DuckDB engine only (REQ-900)
+    # MotherDuck-hosted DuckDB database, reached LIVE via pg_duckdb's own FOREIGN DATA WRAPPER
+    # (REQ-1868) — distinct from `duckdb` above, which attaches a local file and is scoped to the
+    # DuckDB engine; motherduck attaches a remote cloud database on the pg engine.
+    motherduck = "motherduck"
     saphana = "saphana"  # SAP HANA — generic self-only landing engine (hana+hdbcli dialect)
     # Postgres-wire-compatible RDBs — reuse the postgres driver/dialect/Trino connector (REQ-950)
     cockroachdb = "cockroachdb"

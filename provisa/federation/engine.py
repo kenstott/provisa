@@ -644,6 +644,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         PgDuckdbDeltaConnector,
         PgDuckdbIcebergConnector,
         PgDuckdbJsonConnector,
+        PgDuckdbMotherDuckConnector,
         PgDuckdbParquetConnector,
         PgDuckdbSnowflakeIcebergConnector,
         PgFilesConnector,
@@ -674,6 +675,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             PgDuckdbDatabricksIcebergConnector(),
             PgDuckdbDeltaConnector(),  # delta_lake (DuckDB delta ext; probe verifies it's compiled in)
             PgDuckdbBigQueryIcebergConnector(),  # bigquery live BigLake Iceberg reach (REQ-1867)
+            PgDuckdbMotherDuckConnector(),  # motherduck (pg_duckdb duckdb FDW; live ATTACH_RW)
             SqliteFdwConnector(),  # sqlite (system libsqlite3)
             MysqlFdwConnector(),  # mysql (needs a bundled client lib; probe-gated)
             TdsFdwConnector(),  # sqlserver via tds_fdw (bundled freetds; probe-gated)
