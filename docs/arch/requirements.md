@@ -20209,3 +20209,17 @@ The perf benchmark (demo/named/perf/bench/run_benchmark.py) gains a `--bypass-re
 **Code:** `demo/named/perf/bench/run_benchmark.py`, `demo/named/perf/fragment.yaml`
 
 **Tests:** —
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-1891 · gRPC Dispatch {#REQ-1891}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+gRPC's `point_lookup`-shaped DIRECT-route queries (`provisa/grpc/server.py:397-522`, `_handle_query_bound`) fall through to `result = await _execute_plan(plan, state)` — the SAME general-purpose execution path ENGINE-route queries use (`provisa/pgwire/_pipeline.py:1112` `_execute_plan` -> `:1153` `_execute_plan_in_org`), including its full residency/freshness-check machinery (`provisa/federation/query_residency.py:202` `ensure_resident`, which calls `registered_tables` and per-table freshness comparisons) even though a single-row PK lookup needs none of it. Flight SQL's DIRECT route (`provisa/api/flight/server.py:989-998`) bypasses `_execute_plan` entirely via a dedicated `execute_native_stream` fast path for exactly this case. gRPC has no equivalent fast path — every DIRECT-route gRPC query pays ENGINE-route-style overhead it does not need.
+
+**Use case:** Live-profiled this session (perf-bench VM, py-spy `--rate 200` against a running `uvicorn` process under sustained gRPC `point_lookup` load, 3485 samples / 17.4s) — this is a LIVE, measured finding, not static analysis: a prior static-reading pass this session concluded gRPC's point_lookup path had "zero thread hops, a pure await chain," which was WRONG — it missed that `_execute_plan_in_org` is reached at all. The live profile's leaf-frame breakdown shows real work in this chain on sampled calls: live `asyncpg` query execution (`asyncpg/connection.py:354`), `registered_tables`'s cache-miss DB-fetch branch (`registry_view.py:96`, ~152 samples), SQLAlchemy row-mapping/cache-key generation (~90 samples combined), and non-trivial JSON decoding of column metadata (~130 samples combined) — a genuine, not-fully-quantified chunk of gRPC's ~100ms latency gap above the flight/cypher/http band on `point_lookup` (confirmed reproducible: 5 sequential calls averaged 238ms p50 against the live VM, matching the benchmark's own 193-214ms). `registered_tables` itself IS cached ([REQ-1882](#REQ-1882), 5s TTL + generation key, a legitimate per-process singleton via `get_cache_for(state)` — not a per-request cache-bypass bug), so this is not "the cache is broken"; it's that `ensure_resident`'s freshness-check machinery runs on every call regardless of cache state, work a true point lookup never needed to begin with. Exact ms-level split between "residency-check overhead" and whatever framework-level cost remains (the earlier investigation's `grpc.aio`-vs-pyarrow-C++ hypothesis, still unverified) was not isolated further this session — fixing this fast-path gap and re-measuring is the natural next step before chasing framework-level causes further.
+
+**Code:** `provisa/grpc/server.py`, `provisa/pgwire/_pipeline.py`
+
+**Tests:** —
