@@ -65079,7 +65079,7 @@
   target: "2026-Q4"
 
 - id: REQ-1885
-  status: proposed
+  status: complete
   group: "6. Execution, Routing, Caching & Performance"
   category: Bolt Protocol
   priority: SHOULD
@@ -65095,6 +65095,22 @@
     `if log.isEnabledFor(logging.DEBUG)`) — they format and emit unconditionally regardless of the
     configured log level, incurring string-formatting + I/O cost on every single row of every
     Cypher result set streamed over Bolt.
+
+    (Implemented 2026-09-28.) `_send` now takes `meter: bool = True` and gates its log call behind
+    `log.isEnabledFor(logging.DEBUG)`, downgraded from `.warning(...)` to `.debug(...)`.
+    `send_record` gained the same `meter` passthrough and now returns the byte count `_send`
+    reports. `handle_pull`'s per-row `[BOLT] PULL sending record row=%r` line is gated the same
+    way and downgraded to DEBUG. The per-row `report(...)` metering call is batched: the PULL loop
+    calls `send_record(row, meter=False)`, sums the returned byte counts, and reports the batch
+    total once via a single `report(self.org_id, batch_bytes)` in a `finally` block (so bytes for
+    rows already written are still reported if a later row in the batch raises — matches the prior
+    report-immediately-per-row behavior on partial failure). Granularity check (per REQ-1452 /
+    REQ-1455): `provisa/core/egress.py`'s `report()` only accumulates `n_bytes` into an in-memory
+    per-org dict (`_PENDING[org_id] += n_bytes`), drained periodically by `drain()` into
+    `meter_egress`; REQ-1455 confirms billing reads a summed `org_usage_hour.egress_bytes` counter
+    with no per-row audit requirement. Per-row and per-PULL-batch totals are identical, so batching
+    is correct and removes N lock acquisitions per PULL down to 1. `send_success`/`send_failure`/
+    `send_ignored` are unaffected (still meter individually — each is one message, not a loop).
   use_case: >-
     Found live-tracing the Cypher/Bolt transport's benchmark numbers (2026-09-28, perf-bench
     query-timing investigation): a fixed per-row cost real for any Bolt-served result set, small
@@ -65108,7 +65124,8 @@
     required or a coarser granularity is equally correct and cheaper.
   code:
     - provisa/bolt/session.py
-  tests: []
+  tests:
+    - tests/unit/test_bolt_pull_metering.py
   target: "2027-Q1"
 
 - id: REQ-1886

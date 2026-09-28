@@ -88,18 +88,29 @@ class BoltSession:
 
     # ── Response helpers ───────────────────────────────────────────────────────
 
-    def _send(self, data: bytes) -> None:
-        import logging as _logging
+    def _send(self, data: bytes, *, meter: bool = True) -> int:
+        """Write one framed Bolt message. Returns bytes put on the wire.
+
+        ``meter=False`` skips the per-call ``report()`` (REQ-1885): a caller that writes many
+        messages in a tight loop (row streaming) accumulates the returned byte counts itself and
+        reports the batch total once, instead of taking the egress-meter lock per message.
+        """
         from provisa.bolt.framing import write_message
         from provisa.core.egress import report
 
-        _logging.getLogger("uvicorn.error").warning(
-            "[BOLT] send tag=0x%02X len=%d", data[1] if len(data) >= 2 else 0, len(data)
-        )
-        # REQ-1452/REQ-1455: metered here rather than at the socket because this is the one seam
-        # both Bolt transports (raw TCP and the WebSocket surface) pass through, so neither can be
-        # counted twice or missed. Pre-auth messages report no org and are dropped by the meter.
-        report(self.org_id, write_message(self.writer, data))
+        # REQ-1885: was an unconditional WARNING on every framed write (send_record fires once per
+        # streamed row) — downgraded to DEBUG and gated so a normal successful send costs nothing
+        # at production log levels.
+        if log.isEnabledFor(logging.DEBUG):
+            log.debug("[BOLT] send tag=0x%02X len=%d", data[1] if len(data) >= 2 else 0, len(data))
+        n = write_message(self.writer, data)
+        if meter:
+            # REQ-1452/REQ-1455: metered here rather than at the socket because this is the one
+            # seam both Bolt transports (raw TCP and the WebSocket surface) pass through, so
+            # neither can be counted twice or missed. Pre-auth messages report no org and are
+            # dropped by the meter.
+            report(self.org_id, n)
+        return n
 
     def send_success(self, meta: dict | None = None) -> None:
         self._send(pack_message(msg.SUCCESS, meta or {}))
@@ -111,8 +122,8 @@ class BoltSession:
     def send_ignored(self) -> None:
         self._send(pack_message(msg.IGNORED))
 
-    def send_record(self, values: list[Any]) -> None:
-        self._send(pack_message(msg.RECORD, values))
+    def send_record(self, values: list[Any], *, meter: bool = True) -> int:
+        return self._send(pack_message(msg.RECORD, values), meter=meter)
 
     # ── Auth ───────────────────────────────────────────────────────────────────
 
@@ -560,15 +571,29 @@ class BoltSession:
         _dbg.warning(
             "[BOLT] PULL n=%d offset=%d total_rows=%d", n, self._pull_offset, len(self._result_rows)
         )
+        # REQ-1885: send_record's per-row report() call is batched into one call per PULL below —
+        # egress metering (REQ-1452/REQ-1455) is a summed byte count with no per-row granularity
+        # requirement, so summing here and reporting once is equally correct and avoids taking the
+        # egress-meter lock per row. The per-row DEBUG log is gated the same way _send gates its own.
         rows_sent = 0
-        while self._pull_offset < len(self._result_rows):
-            if n != -1 and rows_sent >= n:
-                break
-            row = self._result_rows[self._pull_offset]
-            _dbg.warning("[BOLT] PULL sending record row=%r", row)
-            self.send_record(row)
-            self._pull_offset += 1
-            rows_sent += 1
+        batch_bytes = 0
+        try:
+            while self._pull_offset < len(self._result_rows):
+                if n != -1 and rows_sent >= n:
+                    break
+                row = self._result_rows[self._pull_offset]
+                if _dbg.isEnabledFor(logging.DEBUG):
+                    _dbg.debug("[BOLT] PULL sending record row=%r", row)
+                batch_bytes += self.send_record(row, meter=False)
+                self._pull_offset += 1
+                rows_sent += 1
+        finally:
+            # Reported even on a mid-batch exception, so bytes for rows actually written are never
+            # dropped from the meter (matches the prior per-row report-immediately behavior).
+            if batch_bytes:
+                from provisa.core.egress import report
+
+                report(self.org_id, batch_bytes)
 
         has_more = self._pull_offset < len(self._result_rows)
         in_tx = self.state == State.TX_STREAMING
