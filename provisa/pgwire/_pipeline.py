@@ -18,6 +18,7 @@ Called from pgwire handler threads via asyncio.run_coroutine_threadsafe.
 
 from __future__ import annotations
 
+import asyncio
 import collections
 import logging
 import re
@@ -474,6 +475,28 @@ async def _wake_before_governing(state: Any) -> None:
     await ensure_engine_awake(state)
 
 
+async def _off_loop(fn, *args, **kwargs):
+    """REQ-1882: run a synchronous, CPU-bound call (sqlglot parsing, the regex-based SQL-rewrite
+    passes) on the default thread pool executor instead of in-line on the caller's event loop.
+
+    Every call site this wraps was named by a live py-spy dump of the running server under
+    concurrent load (docs/arch/requirements.yaml, REQ-1882): one expensive governed query's
+    tokenize/rewrite work, run in-line on the ONE shared event loop every governed query's
+    ``_run_on_loop`` dispatch (``provisa/api/flight/server.py``) passes through, blocked every
+    other concurrent request's governance step for its duration. This does not introduce a second
+    event loop or a loop-per-thread architecture (explicitly out of scope) — it only moves the
+    blocking function call itself off whichever loop is running, via the loop's own default
+    executor.
+    """
+    loop = asyncio.get_running_loop()
+    if kwargs:
+        from functools import partial
+
+        fn = partial(fn, **kwargs)
+        return await loop.run_in_executor(None, fn, *args)
+    return await loop.run_in_executor(None, fn, *args)
+
+
 async def _govern_and_route(
     sql: str,
     role_id: str,
@@ -625,7 +648,10 @@ async def _govern_and_route_planned(
         _role_domain_access = (role or {}).get("domain_access") or []
         if "*" not in _role_domain_access:
             try:
-                parsed_tree = sqlglot.parse_one(normalized_sql, read="postgres")
+                # REQ-1882: off-loaded, same rationale as prepare_front_end's parse.
+                parsed_tree = await _off_loop(
+                    lambda: sqlglot.parse_one(normalized_sql, read="postgres")
+                )
                 for tbl in parsed_tree.find_all(exp.Table):
                     tbl_name = tbl.name
                     tbl_db = tbl.db
@@ -662,7 +688,9 @@ async def _govern_and_route_planned(
     # a query-construction feature with no equivalent for already-formed raw SQL, so it is N/A
     # here; there is no ungoverned access path.
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
-    governed_semantic = apply_governance(normalized_sql, gov_ctx)
+    # REQ-1882: apply_governance re-parses+transforms the statement's AST (sqlglot) synchronously;
+    # off-load it (see _off_loop's own docstring).
+    governed_semantic = await _off_loop(apply_governance, normalized_sql, gov_ctx)
 
     # REQ-1120/REQ-1682: resolve RLS session predicates (current_setting('provisa.<var>')) to
     # SQL literals on EVERY route. A caller that supplies session vars out-of-band (the airport
@@ -710,8 +738,12 @@ async def _govern_and_route_planned(
     # reaches the engine unchanged ("no such table").
     from provisa.compiler.nf_extractor import extract_nf_args
 
-    _physical_sql = rewrite_semantic_to_catalog_physical(
-        normalize_table_refs(governed_semantic, ctx), ctx
+    # REQ-1882: both stages are sqlglot-parse-based regex/AST rewrite work; off-load the combined
+    # call (see _off_loop's own docstring).
+    _physical_sql = await _off_loop(
+        lambda: rewrite_semantic_to_catalog_physical(
+            normalize_table_refs(governed_semantic, ctx), ctx
+        )
     )
     _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
         _physical_sql, embedded_params or []
@@ -1461,7 +1493,10 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
 
     import sqlglot as _sg
 
-    _compiled_tree = _sg.parse_one(sql, read="postgres")
+    # REQ-1882: sqlglot tokenization off-loaded — see _off_loop's own docstring. This is the
+    # Flight SQL / gRPC compiled path's own parse, the same class of blocking call the raw-SQL
+    # path's prepare_front_end/_govern_and_route_planned already off-load above.
+    _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
 
     # REQ-1319: the compiled path serves Flight and the gRPC proxy — a metric ask arriving
     # as semantic SQL (metrics.<name>) must expand through the SAME single expansion the
@@ -1515,7 +1550,8 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx)
 
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
-    governed_sql = apply_governance(sql, gov_ctx)
+    # REQ-1882: off-loaded, same rationale as the raw-SQL path's own apply_governance call above.
+    governed_sql = await _off_loop(apply_governance, sql, gov_ctx)
     # REQ-1682: session-variable predicates resolve to the request's literals on every route (see
     # the raw path above for why the direct Postgres route cannot keep native current_setting).
     from provisa.core.request_context import session_vars_for
@@ -1528,7 +1564,8 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     # inline hot/API tables as VALUES CTEs, prune unreachable union branches, and rewrite cached
     # tables. This MUST complete before extract_sources/decide_route so routing observes the
     # reduced source set (a query whose second source is fully inlined collapses to DIRECT).
-    _exec_sql = rewrite_semantic_to_catalog_physical(governed_sql, ctx)
+    # REQ-1882: off-loaded, same rationale as the raw-SQL path's rewrite call above.
+    _exec_sql = await _off_loop(rewrite_semantic_to_catalog_physical, governed_sql, ctx)
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map:
         from provisa.compiler.view_expand import expand_view_refs

@@ -41,6 +41,7 @@ separately) — a schema/config change invalidates every cached entry for every 
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import threading
 from collections.abc import Awaitable, Callable
@@ -126,8 +127,16 @@ async def prepare_front_end(
 
     with _lock:
         cached = _cache.get(key)
+    loop = asyncio.get_running_loop()
     if cached is not None and cached[0] == generation:
-        parsed = sqlglot.parse_one(cached[1], read="postgres")
+        # REQ-1882: sqlglot tokenization is synchronous CPU work — a live py-spy dump caught it
+        # running in-line on the shared governance event loop under concurrent load, blocking
+        # every other concurrent request's governance step for its duration. run_in_executor
+        # moves it to the default thread pool so the loop stays free to dispatch other work while
+        # this parse runs.
+        parsed = await loop.run_in_executor(
+            None, lambda: sqlglot.parse_one(cached[1], read="postgres")
+        )
         return PreparedFrontEnd(
             normalized_sql=cached[1],
             parsed=parsed,
@@ -135,7 +144,10 @@ async def prepare_front_end(
             metric_semantic_sql=cached[2],
         )
 
-    parsed_input = sqlglot.parse_one(raw_sql, read="postgres")
+    # REQ-1882: same rationale as the cache-hit parse above.
+    parsed_input = await loop.run_in_executor(
+        None, lambda: sqlglot.parse_one(raw_sql, read="postgres")
+    )
     normalized_sql = raw_sql
 
     localized = await localize_inline_commands(parsed_input, role_id, state)

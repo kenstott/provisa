@@ -64801,7 +64801,7 @@
   target: "2027-Q1"
 
 - id: REQ-1882
-  status: proposed
+  status: in-progress
   group: "6. Execution, Routing, Caching & Performance"
   category: Concurrency
   priority: SHOULD
@@ -64850,6 +64850,58 @@
     wrong request shape, not a live benchmark result — corrected here so it is not
     misattributed/reused elsewhere. REQ-1883 covers the real residual gap (4.24s vs ~2.3s for the
     equivalent SQL/GraphQL/Flight query) and its fix.
+
+    (Amended 2026-09-28, fix scope 1/2 implemented -- NOT live-verified:) Per the maintainer's
+    explicit direction, the fix is scoped narrowly: move the specific blocking, synchronous calls
+    the py-spy dump named off the shared event loop via `loop.run_in_executor(None, ...)`, without
+    introducing a dedicated event loop or a loop-per-worker-thread architecture (explicitly out of
+    scope; flagged as a follow-up below, not implemented). Changed: `provisa/compiler/prepared.py`
+    (`prepare_front_end`) now runs both its cache-hit and cache-miss `sqlglot.parse_one` calls via
+    `run_in_executor`. `provisa/pgwire/_pipeline.py` gained a small `_off_loop(fn, *args, **kwargs)`
+    helper (wraps `loop.run_in_executor`) and now routes through it: `apply_governance` (both the
+    raw-SQL `_govern_and_route_planned` and compiled `_govern_and_route_compiled_planned` paths —
+    the latter also serves gRPC, since `provisa/grpc/server.py` calls the same
+    `_govern_and_route_compiled`/`_govern_and_route_compiled_planned` chain directly, in-loop, with
+    no separate thread-dispatch of its own), the domain-access-check `sqlglot.parse_one` in the
+    raw-SQL path, the compiled path's own initial `sqlglot.parse_one`, and both paths'
+    `rewrite_semantic_to_catalog_physical`(`normalize_table_refs`(...)) regex/AST-rewrite calls.
+    NOT off-loaded (left in-line, deliberately, as conditional/secondary): the `__derived__`-view
+    reference check's own `sqlglot.parse_one` in `_govern_and_route_planned` (only reached when
+    `state.view_sql_map` is set and the route isn't already ENGINE, not the always-hit path).
+
+    The synchronous-DB-catalog-fetch piece the py-spy dump named
+    (`fetch_tables`/`registered_tables`/`row_materialized_tables_by_name`) had no visible cache, so
+    per this task's fix-scope item 2, `provisa/federation/registered_tables_cache.py` (new) adds
+    one: a small TTL (5s) + schema-generation-keyed (`schema_boot_id`, `schema_version` — the same
+    pair `register_table`/`update_table` already bump via `_rebuild_schemas` on every table
+    registration/mutation, confirmed by reading `provisa/api/admin/schema_mutation.py` and
+    `provisa/api/app.py`) cache, wired into `registered_tables`'s pool-acquire path
+    (`provisa/federation/registry_view.py`). The cache instance is attached per-`state`-instance
+    (`get_cache_for`, lazily set on the `state`/`AppState` object itself), not a module-global
+    singleton, and its key additionally folds in `current_org` (REQ-1266) — both were deliberate
+    choices to avoid a cross-org or cross-process-instance cache leak a naive global would risk. A
+    caller passing its own `conn` (an explicit transaction/connection reuse) bypasses the cache
+    unchanged from before.
+
+    Fix-scope item 3 (whether `pushdown_row_materialize` re-running query text is a *significant*
+    contributing cost) was checked by reading, not fixed (explicitly out of scope): it returns
+    early (`return set()`, no engine re-run) unless the statement JOINs a table registered with
+    `row_materialize=True` AND that JOIN is actually present in `all_joins`
+    (`provisa/federation/query_residency.py:404-422`) — i.e. it is conditional on schema
+    registration + query shape, not a per-query cost every governed query pays, unlike the
+    tokenize/fetch/regex pieces this amendment fixes.
+
+    NOT LIVE-VERIFIED: this task's hard constraint prohibited any live/VM/SSH testing (no access to
+    the perf-bench VM or any remote host). Verification here is unit-test-only — confirms
+    `run_in_executor` is actually invoked (not just present in source) and that the parse/rewrite
+    calls genuinely execute off the calling thread, and confirms the new cache's hit/miss/
+    invalidation/cross-instance-isolation behavior — see `tests:` below. Whether this actually
+    restores concurrent point-lookup latency under real load (the scenario below) is UNVERIFIED and
+    is the maintainer's call to schedule separately against the perf-bench VM.
+
+    FOLLOW-UP (explicitly out of scope for this fix, per the maintainer): a dedicated event loop or
+    loop-per-worker-thread architecture for Flight/gRPC governance dispatch, if `run_in_executor`
+    alone proves insufficient once verified live under real concurrent load.
   use_case: >-
     Originating investigation: pg-engine perf benchmark saturation ramp collapse for the Flight
     SQL transport (rate=500/s: 0/15000 ok, 712 errors — most of the ~14288 "missing" requests
@@ -64863,7 +64915,14 @@
     - provisa/api/flight/server.py
     - provisa/federation/query_residency.py
     - provisa/grpc/server.py
-  tests: []
+    - provisa/compiler/prepared.py
+    - provisa/pgwire/_pipeline.py
+    - provisa/federation/registered_tables_cache.py
+    - provisa/federation/registry_view.py
+  tests:
+    - tests/unit/test_prepared_front_end_offload.py
+    - tests/unit/test_pipeline_off_loop.py
+    - tests/unit/test_registered_tables_cache.py
   scenario: |
     Given two concurrent clients on separate connections, one submitting a full-table GROUP BY
     aggregation and the other a single-row primary-key lookup on the same table, submitted ~0.5s

@@ -66,9 +66,17 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
 async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  # REQ-1674
     """Every registered table, in the shape the landing paths read: the control plane's semantic
     sql name and resolved column types, with the config table's landing settings (live block, change
-    signal, watermark, cadence, probe) where the config declares the same source + table."""
+    signal, watermark, cadence, probe) where the config declares the same source + table.
+
+    REQ-1882: cached (TTL + schema-generation-keyed) when called on the pool-acquire path
+    (``conn`` unset) — this is read on every single governed query's residency/pk-bounds step with
+    no cache before this, and was one of the blocking-work sources a live py-spy dump caught
+    running in-line on the shared event loop under concurrent load. A caller supplying its own
+    ``conn`` (already inside an explicit transaction) bypasses the cache, unchanged from before."""
     from provisa.api.admin.db_queries import fetch_tables
     from provisa.compiler.naming import apply_sql_name
+    from provisa.core.request_context import current_org
+    from provisa.federation.registered_tables_cache import get_cache_for
 
     config = getattr(state, "config", None)
     cfg_by = {
@@ -80,9 +88,28 @@ async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  
         return []
     if conn is not None:
         registered = await fetch_tables(conn)
-    else:
-        async with db.acquire() as _conn:
-            registered = await fetch_tables(_conn)
+        return _build_registered_tables(registered, cfg_by)
+
+    generation = (
+        current_org.get(None),
+        getattr(state, "schema_boot_id", ""),
+        getattr(state, "schema_version", 0),
+    )
+    rt_cache = get_cache_for(state)
+    cached = rt_cache.get(generation)
+    if cached is not None:
+        return cached
+    async with db.acquire() as _conn:
+        registered = await fetch_tables(_conn)
+    out = _build_registered_tables(registered, cfg_by)
+    rt_cache.put(generation, out)
+    return out
+
+
+def _build_registered_tables(registered: list[dict], cfg_by: dict) -> list[Any]:
+    """The SimpleNamespace-shaping loop `registered_tables` runs over `fetch_tables`' rows,
+    factored out so both the cached (pool-acquire) and uncached (caller-supplied ``conn``) paths
+    build identically-shaped rows."""
     out: list[Any] = []
     for rt in registered:
         cfg = cfg_by.get((rt["source_id"], rt["table_name"]))
