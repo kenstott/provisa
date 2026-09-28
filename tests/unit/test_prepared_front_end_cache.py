@@ -4,7 +4,7 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-1866/REQ-1885: the pre-governance prepared-statement cache in provisa.compiler.prepared.
+"""REQ-1866/REQ-1886: the pre-governance prepared-statement cache in provisa.compiler.prepared.
 
 Covers the narrow scope that module claims: cache hit/miss keying on (SQL shape, role, schema
 generation), the no-stale-literal correctness guarantee a shape-based key requires, and the hard
@@ -117,7 +117,7 @@ async def test_different_sql_shape_is_a_cache_miss():
 
 @pytest.mark.asyncio
 async def test_same_shape_different_literal_is_a_cache_hit_with_correct_literal():
-    """REQ-1885: the dominant point-lookup traffic shape (same query, different id per call) must
+    """REQ-1886: the dominant point-lookup traffic shape (same query, different id per call) must
     now actually hit — and the returned SQL must reflect the SECOND call's own literal, never the
     first call's stale one. This is the single most important correctness property of the
     shape-keyed cache: a hit must never silently replay a prior call's literal value."""
@@ -176,7 +176,7 @@ async def test_metric_semantic_sql_survives_a_cache_hit():
 
 @pytest.mark.asyncio
 async def test_metric_query_template_hit_uses_current_calls_own_literal():
-    """REQ-1885: a metric-expanded shape is cached as a template (skipping the join-plan rebuild
+    """REQ-1886: a metric-expanded shape is cached as a template (skipping the join-plan rebuild
     on a hit) and its WHERE-clause literal is spliced from the CURRENT call, never replayed from
     the call that built the template. Proves the template+splice path (not just the plain path)
     honors the no-stale-literal correctness property."""

@@ -65077,7 +65077,7 @@
     Then all existing tests continue to pass unchanged (no RPC response shape or field-mapping
     behavior changes)
   target: "2026-Q4"
-- id: REQ-1885
+- id: REQ-1886
   status: complete
   group: "6. Execution, Routing, Caching & Performance"
   category: Compilation Caching

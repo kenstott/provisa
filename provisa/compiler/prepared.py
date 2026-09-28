@@ -24,7 +24,7 @@ including GraphQL, and are confirmed cheap (GraphQL's own ~17ms total includes t
 performance case for touching them, only risk. They keep running in full, on every call,
 unconditionally, whether this cache hits or misses.
 
-REQ-1885 (this revision): the key is now `(role_id, schema generation, SQL SHAPE)` — the same
+REQ-1886 (this revision): the key is now `(role_id, schema generation, SQL SHAPE)` — the same
 literal-blanked shape hash `compiled_query_cache.sql_shape_digest` uses (see below for why this
 module computes an equivalent digest itself rather than calling that function) — not the raw text.
 Before this change a cache HIT required byte-identical raw SQL, so any traffic shape whose only
@@ -113,7 +113,7 @@ change (see REQ-1866's own note on the pre-existing RLS/role-mutation rebuild ga
 separately) — a schema/config change invalidates every cached entry for every role at once.
 """
 
-# Requirements: REQ-1866, REQ-1885
+# Requirements: REQ-1866, REQ-1886
 
 from __future__ import annotations
 
