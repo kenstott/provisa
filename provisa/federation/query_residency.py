@@ -497,9 +497,6 @@ async def pushdown_row_materialize(
                 schema_name=table.schema_name,
                 table_name=table.table_name,
             )
-            cache_table = await _ensure_row_cache_table(
-                engine, backend, state, schema, cache_name, args.columns
-            )
             # REQ-1865 (amended): a coarse "does this table hold ANY fresh row" gate used to
             # decide whether to probe/fetch AT ALL -- correct only for a repeat query using the
             # exact same key set, and wrong for a query needing keys the cache doesn't have yet
@@ -510,13 +507,13 @@ async def pushdown_row_materialize(
             # target_col included, not just real_pk) BEFORE fetching, so a query whose keys are
             # already fresh does zero live-source work, and a query with a MIX of fresh and new/
             # stale keys fetches+lands only the reduced subset, never the full candidate set.
-            cached = await _read_row_cache(
+            cache_table, cached = await _ensure_and_read_row_cache(
                 engine,
                 backend,
                 state,
                 schema,
                 cache_name,
-                cache_table,
+                args.columns,
                 [target_col],
                 [(v,) for v in values],
             )
@@ -623,6 +620,44 @@ async def _ensure_row_cache_table(
     finally:
         await reconcile_engine.dispose()
     return cache_table
+
+
+async def _ensure_and_read_row_cache(
+    engine: Any,
+    backend: Any,
+    state: Any,
+    schema: str,
+    name: str,
+    columns: list[tuple[str, str]],
+    pk_columns: list[str],
+    keys: list[tuple[Any, ...]],
+) -> tuple[Any, dict[tuple[Any, ...], Any]]:
+    """Ensure the cache table's columns and read it back. On DuckDB, does both under ONE lock
+    hold (REQ-1901, ``_SyncedStore.ensure_and_read_row_cache``) to close the multi-worker race
+    window a separate ensure-then-read leaves open: another worker's ordinary whole-table
+    materialize land can recreate this same table (without the cache's bookkeeping columns) in
+    the gap between the two calls, so the read that follows hits a table the ensure step just
+    fixed and now finds broken again -- confirmed live under a real 8-worker benchmark run. The
+    generic (non-DuckDB) path has no single-writer lock to hold across two round trips, so it
+    simply sequences the existing two steps."""
+    if _is_duckdb_store(backend):
+        from provisa.federation.materialize_exec import _ROW_CACHED_AT, _ROW_EXPIRES_AT
+
+        runtime = _duckdb_runtime(backend, state)
+        runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
+        full_columns = list(columns) + [
+            (_ROW_CACHED_AT, "timestamp"),
+            (_ROW_EXPIRES_AT, "timestamp"),
+        ]
+        cached = runtime._store_broker.ensure_and_read_row_cache(
+            schema, name, full_columns, pk_columns, keys
+        )
+        return None, cached
+    cache_table = await _ensure_row_cache_table(engine, backend, state, schema, name, columns)
+    cached = await _read_row_cache(
+        engine, backend, state, schema, name, cache_table, pk_columns, keys
+    )
+    return cache_table, cached
 
 
 async def _read_row_cache(
@@ -778,11 +813,8 @@ async def ensure_rows_resident(
         )
         node = _node(schema, name)
         pk_columns = list(bound.pk_columns)
-        cache_table = await _ensure_row_cache_table(
-            engine, backend, state, schema, name, args.columns
-        )
-        cached = await _read_row_cache(
-            engine, backend, state, schema, name, cache_table, pk_columns, list(bound.values)
+        cache_table, cached = await _ensure_and_read_row_cache(
+            engine, backend, state, schema, name, args.columns, pk_columns, list(bound.values)
         )
 
         stale_or_missing = [

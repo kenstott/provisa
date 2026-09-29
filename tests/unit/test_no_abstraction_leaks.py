@@ -47,6 +47,10 @@ OWNERS: dict[str, set[str]] = {
         # A scratch in-memory DuckDB connection with S3 access via CREATE SECRET — reads Hive-on-S3
         # data, not federating through the live engine connection.
         "provisa/hive/fetch.py",
+        # REQ-1901: the flock-serialized materialize-store broker — every DuckDB-store operation
+        # opens its own transient `duckdb.connect(":memory:")`, ATTACHes the store file under the
+        # sentinel lock, and closes; this is the one place that connection is opened, by design.
+        "provisa/federation/materialize_broker.py",
     },
     "trino": {
         "provisa/federation/trino_types.py",  # REQ-1678: the connection/exception alias leaf

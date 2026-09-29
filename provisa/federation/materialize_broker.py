@@ -138,6 +138,44 @@ class _SyncedStore:
             ),
         )
 
+    def ensure_and_read_row_cache(
+        self,
+        schema: str,
+        table: str,
+        ensure_columns: list[tuple[str, str]],
+        pk_columns: list[str],
+        keys: list[tuple[Any, ...]],
+    ) -> dict[tuple[Any, ...], Any]:
+        """Reconcile the cache table's columns and read it back, under ONE lock hold.
+
+        Doing this as two separate ``_with_store`` calls (ensure, then read) leaves a window
+        between them: with ``--workers N``, another worker's ordinary whole-table materialize
+        land can recreate this same table (without the cache's ``_row_cached_at``/
+        ``_row_expires_at`` columns) in that gap, so the read that follows hits a table the
+        reconcile step just fixed and now finds broken again -- confirmed live (``Binder Error:
+        Referenced column "_row_expires_at" not found``) under a real 8-worker benchmark run.
+        Holding the lock across both closes the window: no other worker's call can touch this
+        file between the reconcile and the read that depends on it."""
+        from provisa.federation.store_connection import (
+            ensure_row_cache_table_duckdb_native,
+            read_row_cache_duckdb_native,
+        )
+
+        def _do(con: Any) -> dict[tuple[Any, ...], Any]:
+            ensure_row_cache_table_duckdb_native(
+                con, catalog=_MAT_STORE_ALIAS, schema=schema, table=table, columns=ensure_columns
+            )
+            return read_row_cache_duckdb_native(
+                con,
+                catalog=_MAT_STORE_ALIAS,
+                schema=schema,
+                table=table,
+                pk_columns=pk_columns,
+                keys=keys,
+            )
+
+        return _with_store(self._db_path, _do)
+
     def read_row_cache(
         self,
         schema: str,

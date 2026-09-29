@@ -122,8 +122,14 @@ async def test_source_land_through_duckdb_embedded_store(tmp_path, monkeypatch):
     result = await land([{"e": 1}], prior_hash=None)
     assert result is not None
     assert result[:2] == ("replace", {"rows": 2, "landed": 'mat_store."mat"."orders"'})
-    con = rt._backend._runtime_for(rt._state)._con
-    rows = con.execute('SELECT id, status FROM mat_store."mat"."orders" ORDER BY id').fetchall()
+    # REQ-1901: the flock-based store broker never attaches mat_store onto the engine's own
+    # long-lived connection -- each operation opens a fresh, transient connection onto the store
+    # file instead (see materialize_broker.py). Read back through the broker's own fetch_arrow,
+    # the same read path a real caller uses, rather than asserting an attachment that no longer
+    # exists by design.
+    runtime = rt._backend._runtime_for(rt._state)
+    table = runtime._store_broker.fetch_arrow("mat", "orders")
+    rows = sorted(zip(table.column("id").to_pylist(), table.column("status").to_pylist()))
     assert rows == [(1, "new"), (2, "sold")]
 
 
@@ -140,6 +146,7 @@ async def test_mv_generate_through_duckdb_embedded_store(tmp_path, monkeypatch):
     event_type, payload, digest = await generate([{"e": 1}], prior_hash=None)
     assert (event_type, payload) == ("replace", {"rows": 1, "landed": 'mat_store."mat"."mv_daily"'})
     assert isinstance(digest, str) and digest
-    con = rt._backend._runtime_for(rt._state)._con
-    rows = con.execute('SELECT id FROM mat_store."mat"."mv_daily"').fetchall()
-    assert rows == [(7,)]
+    # REQ-1901: see the matching comment in test_source_land_through_duckdb_embedded_store above.
+    runtime = rt._backend._runtime_for(rt._state)
+    table = runtime._store_broker.fetch_arrow("mat", "mv_daily")
+    assert table.column("id").to_pylist() == [7]
