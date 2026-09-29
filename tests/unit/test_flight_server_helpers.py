@@ -32,7 +32,8 @@ from provisa.compiler.sql_gen import ColumnRef  # noqa: E402
 from provisa.pgwire import _pipeline  # noqa: E402
 from provisa.transpiler.router import Route  # noqa: E402
 
-pytestmark = [pytest.mark.asyncio]
+# asyncio_mode = "auto" (pyproject.toml) already collects the async def tests below;
+# an explicit pytestmark here would double-mark the sync test classes too.
 
 
 class TestFlightServerBuildCatalogTable:
@@ -152,8 +153,8 @@ class TestFlightSqlDispatchHopCount:
     def _server() -> ProvisaFlightServer:
         """A server instance without binding a port — __init__ would open a listener."""
         srv = ProvisaFlightServer.__new__(ProvisaFlightServer)
-        srv._state = SimpleNamespace(federation_engine=None, source_pools=None, roles={})
-        srv._main_loop = None
+        srv._state = SimpleNamespace(federation_engine=None, source_pools=None, roles={})  # pyright: ignore[reportAttributeAccessIssue]
+        srv._main_loop = None  # pyright: ignore[reportAttributeAccessIssue]
         return srv
 
     @staticmethod
@@ -165,7 +166,7 @@ class TestFlightSqlDispatchHopCount:
 
         calls: list = []
 
-        def _fake(coro, *, timeout=None):  # noqa: ARG001  # timeout mirrors the real signature
+        def _fake(coro, *, timeout=None):  # noqa: ARG001  # pyright: ignore[reportUnusedVariable]  # timeout mirrors the real signature
             calls.append(coro)
             return asyncio.run(coro)
 
@@ -206,7 +207,7 @@ class TestFlightSqlDispatchHopCount:
         monkeypatch.setattr(
             _pipeline, "govern_batch_final_plan_with_fn", AsyncMock(return_value=plan)
         )
-        monkeypatch.setattr(_pipeline, "require_governed_plan", lambda p: None)
+        monkeypatch.setattr(_pipeline, "require_governed_plan", lambda _p: None)
         monkeypatch.setattr(_pipeline, "finalize_audit", AsyncMock(return_value=None))
 
         source_pools = MagicMock()
@@ -240,7 +241,7 @@ class TestFlightSqlDispatchHopCount:
         monkeypatch.setattr(
             _pipeline, "govern_batch_final_plan_with_fn", AsyncMock(return_value=plan)
         )
-        monkeypatch.setattr(_pipeline, "require_governed_plan", lambda p: None)
+        monkeypatch.setattr(_pipeline, "require_governed_plan", lambda _p: None)
         monkeypatch.setattr(_pipeline, "finalize_audit", AsyncMock(return_value=None))
         monkeypatch.setattr(
             flight_server, "_prepare_engine_residency", AsyncMock(return_value=None)
@@ -255,3 +256,25 @@ class TestFlightSqlDispatchHopCount:
 
         assert len(calls) == 3  # was 6 before REQ-1887
         assert isinstance(stream, pa.flight.GeneratorStream)
+
+
+class TestFlightErrorTruncation:
+    """A FlightServerError message is propagated as gRPC trailing metadata, which grpc rejects
+    outright above its default 16KB max_metadata_size (surfacing as an opaque RESOURCE_EXHAUSTED
+    error instead of the real message). ``_flight_error`` caps the message well under that limit."""
+
+    def test_short_message_passes_through_unmodified(self):
+        err = flight_server._flight_error("boom")
+        assert str(err) == "boom"
+
+    def test_long_message_is_truncated_with_marker(self):
+        msg = "x" * 20000
+        err = flight_server._flight_error(msg)
+        text = str(err)
+        assert len(text) <= flight_server._FLIGHT_ERROR_MAX_LEN + len("...(truncated)")
+        assert text.endswith("...(truncated)")
+
+    def test_cause_is_chained(self):
+        cause = ValueError("original")
+        err = flight_server._flight_error("wrapped", cause)
+        assert err.__cause__ is cause

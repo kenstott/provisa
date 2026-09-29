@@ -193,14 +193,31 @@ def _parse_where_variables(sql: str) -> dict[str, int | float | str]:
     return result
 
 
+_FLIGHT_ERROR_MAX_LEN = 8000
+
+
+def _flight_error(msg: str, cause: Exception | None = None) -> flight.FlightServerError:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Wrap *msg* as a FlightServerError, capped well under gRPC's 16KB metadata-size limit.
+
+    pyarrow propagates a FlightServerError's message as gRPC trailing metadata; an uncapped
+    message (e.g. a validation error embedding a large SQL statement) exceeds grpc's default
+    16KB max_metadata_size and surfaces to the client as an opaque RESOURCE_EXHAUSTED error
+    instead of the real message.
+    """
+    if len(msg) > _FLIGHT_ERROR_MAX_LEN:
+        msg = msg[:_FLIGHT_ERROR_MAX_LEN] + "...(truncated)"
+    err = flight.FlightServerError(msg)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    if cause is not None:
+        err.__cause__ = cause
+    return err
+
+
 def _parse_limit_value(value: int | bool | None) -> int | None:
     """Validate and return a row-limit integer, or None for unlimited."""
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]
-            "limit must be a non-negative integer"
-        )
+        raise _flight_error("limit must be a non-negative integer")
     return value
 
 
@@ -270,9 +287,7 @@ class ProvisaFlightServer(
         else:
             org_id = request.get("org")
             if not org_id or not isinstance(org_id, str):
-                raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                    "org is required under multitenancy"
-                )
+                raise _flight_error("org is required under multitenancy")
         from provisa.api.app import ensure_org_runtime
         from provisa.core.request_context import set_current_org
 
@@ -293,9 +308,7 @@ class ProvisaFlightServer(
         if getattr(self._state, "auth_config", None) is not None:
             return True
         if getattr(self._state, "auth_middleware_active", False):
-            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                "flight auth_config not configured"
-            )
+            raise _flight_error("flight auth_config not configured")
         return False
 
     def _authenticate(self, credential: str | None):
@@ -420,7 +433,7 @@ class ProvisaFlightServer(
             for cmd in list_visible_commands(self._state, None):
                 if cmd["domain"] == path[1] and cmd["name"] == path[2]:
                     return command_to_flight_info(cmd)
-            raise flight.FlightServerError(f"Command not found: {path[1]}.{path[2]}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"Command not found: {path[1]}.{path[2]}")
 
         # REQ-1319: a metric descriptor is ["metrics", <name>, <dim>...] — the metric shape
         # at the requested grain, discoverable alongside tables and commands. Execution rides
@@ -432,7 +445,7 @@ class ProvisaFlightServer(
             registry = getattr(self._state, "metrics", {})
             m = registry.get(name)
             if m is None:
-                raise flight.FlightServerError(f"Metric not found: {name}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                raise _flight_error(f"Metric not found: {name}")
             return metric_to_flight_info(name, dims, description=m.description or m.ai_context)
 
         if len(path) == 2:
@@ -441,9 +454,9 @@ class ProvisaFlightServer(
             for t in tables:
                 if t.domain_id == domain_id and t.table_name == table_name:
                     return catalog_table_to_flight_info(t)
-            raise flight.FlightServerError(f"Table not found: {domain_id}.{table_name}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"Table not found: {domain_id}.{table_name}")
 
-        raise flight.FlightServerError(f"Invalid descriptor path: {path}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise _flight_error(f"Invalid descriptor path: {path}")
 
     # ------------------------------------------------------------------
     # get_schema — Arrow schema for a catalog table
@@ -460,7 +473,7 @@ class ProvisaFlightServer(
         """
         path = list(descriptor.path)
         if len(path) != 2:
-            raise flight.FlightServerError(f"get_schema requires path [domain, table], got {path}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"get_schema requires path [domain, table], got {path}")
 
         domain_id = path[0].decode("utf-8") if isinstance(path[0], bytes) else path[0]
         table_name = path[1].decode("utf-8") if isinstance(path[1], bytes) else path[1]
@@ -471,7 +484,7 @@ class ProvisaFlightServer(
                 schema = catalog_table_to_arrow_schema(t)
                 return flight.SchemaResult(schema)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        raise flight.FlightServerError(f"Table not found: {domain_id}.{table_name}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise _flight_error(f"Table not found: {domain_id}.{table_name}")
 
     # ------------------------------------------------------------------
     # do_get — execute query or return catalog data
@@ -491,7 +504,7 @@ class ProvisaFlightServer(
         try:
             request = json.loads(ticket.ticket.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            raise flight.FlightServerError(f"Invalid ticket: {e}") from e  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"Invalid ticket: {e}", e) from e
 
         # REQ-1263: authenticate before anything reads the ticket. The role the rest of this call
         # runs under is the one the validated identity permits — the client's `role` string is a
@@ -537,7 +550,7 @@ class ProvisaFlightServer(
                 self._state, str(kms_key) if isinstance(kms_key, str) else None
             )
             if refusal is not None:
-                raise flight.FlightServerError(refusal)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                raise _flight_error(refusal)
         ticket_type = "sql" if _is_sql(str(query_text)) else "graphql"
         with _tracer.start_as_current_span("flight.do_get") as span:
             span.set_attribute("flight.ticket_type", ticket_type)
@@ -552,7 +565,7 @@ class ProvisaFlightServer(
             limiter = getattr(self._state, "rate_limiter", None)
             # role scopes the rate-limit bucket; defaulting to admin would bypass authz.
             if not request.get("role"):
-                raise flight.FlightServerError("role is required")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                raise _flight_error("role is required")
             role_id = str(request["role"])
             role = self._state.roles.get(role_id) or {}
             cap = (role.get("rate_limit") or {}).get("max_flight_streams")
@@ -562,9 +575,7 @@ class ProvisaFlightServer(
                     limiter.acquire(key, cap), self._main_loop
                 ).result()
                 if not ok:
-                    raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                        "max concurrent Arrow Flight streams reached"
-                    )
+                    raise _flight_error("max concurrent Arrow Flight streams reached")
                 try:
                     return self._execute_query(request)
                 finally:
@@ -612,7 +623,7 @@ class ProvisaFlightServer(
                     _catalog = self._build_columns_table(t)
                     _report_table(_catalog)
                     return flight.RecordBatchStream(_catalog)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            raise flight.FlightServerError(f"Table not found: {domain}.{table_name}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"Table not found: {domain}.{table_name}")
 
         # Return all tables as rows
         _catalog = self._build_catalog_table(tables, domain)
@@ -678,17 +689,17 @@ class ProvisaFlightServer(
         try:
             request = json.loads(ticket_bytes.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            raise flight.FlightServerError(f"Invalid ticket: {e}") from e  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"Invalid ticket: {e}", e) from e
 
         query_text = request.get("query")
         role_id = request.get("role", "org_admin")
         variables = request.get("variables")
 
         if not query_text:
-            raise flight.FlightServerError("Ticket must include 'query'")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error("Ticket must include 'query'")
 
         if role_id not in self._state.schemas:
-            raise flight.FlightServerError(f"No schema for role {role_id!r}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"No schema for role {role_id!r}")
 
         schema = cast("GraphQLSchema", self._state.schemas[role_id])
         ctx = self._state.contexts[role_id]
@@ -698,7 +709,7 @@ class ProvisaFlightServer(
         document = parse_query(schema, query_text, variables)
         compiled_queries = compile_query(document, ctx, variables)
         if not compiled_queries:
-            raise flight.FlightServerError("No query fields found")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error("No query fields found")
 
         compiled = compiled_queries[0]
 
@@ -736,20 +747,20 @@ class ProvisaFlightServer(
         query_text = str(request.get("query", ""))
         # role drives governance/RLS routing; defaulting to admin would bypass authz.
         if not request.get("role"):
-            raise flight.FlightServerError("role is required")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error("role is required")
         role_id = str(request["role"])
         params_obj = request.get("params") or {}
         params: dict[str, object] = params_obj if isinstance(params_obj, dict) else {}
 
         if role_id not in self._state.contexts:
-            raise flight.FlightServerError(f"No schema for role {role_id!r}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"No schema for role {role_id!r}")
 
         ctx = self._state.contexts[role_id]
 
         try:
             ast = parse_cypher(query_text)
         except CypherParseError as exc:
-            raise flight.FlightServerError(f"Cypher parse error: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"Cypher parse error: {exc}", exc) from exc
 
         label_map = CypherLabelMap.from_schema(ctx)
 
@@ -757,19 +768,19 @@ class ProvisaFlightServer(
         try:
             bind_params(param_names, params)
         except CypherParamError as exc:
-            raise flight.FlightServerError(f"Cypher param error: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"Cypher param error: {exc}", exc) from exc
 
         try:
             sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, params)
         except (CypherCrossSourceError, CypherTranslateError) as exc:
-            raise flight.FlightServerError(f"Cypher translate error: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"Cypher translate error: {exc}", exc) from exc
 
         sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
 
         try:
             sql_str = sql_ast.sql(dialect="postgres")
         except Exception as exc:
-            raise flight.FlightServerError(f"Cypher SQL render failed: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"Cypher SQL render failed: {exc}", exc) from exc
 
         from provisa.compiler.sql_rewrite import make_semantic_sql
 
@@ -784,19 +795,17 @@ class ProvisaFlightServer(
                 )
             )
         except PermissionError as exc:
-            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(str(exc), exc) from exc
         except ValueError as exc:
-            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(str(exc), exc) from exc
 
         engine = getattr(self._state, "federation_engine", None)
         if engine is None:
-            raise flight.FlightServerError("Federation engine not connected")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error("Federation engine not connected")
 
         physical_sql = plan.physical_sql
         if physical_sql is None:
-            raise flight.FlightServerError(
-                f"Route {plan.route!r} is not supported for Cypher via Flight"
-            )  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(f"Route {plan.route!r} is not supported for Cypher via Flight")
         require_governed_plan(
             plan
         )  # REQ-1176: verify at the last moment, before the engine executes
@@ -936,9 +945,9 @@ class ProvisaFlightServer(
         try:
             result = self._run_on_loop(govern_batch_final_plan_with_fn(sql, role_id, self._state))
         except PermissionError as exc:
-            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(str(exc), exc) from exc
         except ValueError as exc:
-            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(str(exc), exc) from exc
 
         if isinstance(result, QueryResult):
             columns = [
@@ -973,7 +982,7 @@ class ProvisaFlightServer(
                         plan.physical_sql, []
                     )
                 except RuntimeError as exc:
-                    raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                    raise _flight_error(str(exc), exc) from exc
                 self._finalize_audit(plan, 200)
                 return self._license_stream_gen(arrow_schema, batch_gen, role_id)  # REQ-1137
             elif plan.route == Route.DIRECT:
@@ -1011,9 +1020,7 @@ class ProvisaFlightServer(
                 self._finalize_audit(plan, 200)
                 return self._license_stream(table, role_id)  # REQ-1137
             else:
-                raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                    f"Route {plan.route!r} is not supported for SQL via Flight"
-                )
+                raise _flight_error(f"Route {plan.route!r} is not supported for SQL via Flight")
         except Exception:
             self._finalize_audit(plan, 500)
             raise
@@ -1033,9 +1040,9 @@ class ProvisaFlightServer(
                 _govern_and_route_compiled(compiled.sql, role_id, state=self._state)
             )
         except PermissionError as exc:
-            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(str(exc), exc) from exc
         except ValueError as exc:
-            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise _flight_error(str(exc), exc) from exc
 
         require_governed_plan(
             plan
@@ -1068,7 +1075,7 @@ class ProvisaFlightServer(
                     compiled.params,
                 )
             except RuntimeError as exc:
-                raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                raise _flight_error(str(exc), exc) from exc
             self._finalize_audit(plan, 200)
             return flight.GeneratorStream(arrow_schema, batch_gen)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         except Exception:
