@@ -56,11 +56,15 @@ sources:
   description: "Perf bench doc store — order_docs, wide nested per-order documents (MongoDB)"
   # This Mongo runs as a single-node replica set (docker-compose.yml), registered under its
   # Compose service name (mongodb:27017) — not resolvable from outside the compose network, e.g.
-  # a native (--native) Provisa reading this over the published host port above. If Provisa's own
-  # mongodb connector does normal replica-set topology discovery rather than a direct connection,
-  # it may need the same fix generate_mongo.py uses (directConnection=true in the connection URI)
-  # to avoid trying to reconnect to a hostname it can't resolve. Unverified whether Provisa's
-  # connector needs this — flag if sources register but queries against them fail to connect.
+  # a native (--native) Provisa reading this over the published host port above. CONFIRMED live
+  # (REQ-1902, 2026-09-29): enabling row_materialize on order_docs (below) hung server boot at
+  # "reconcile landed tables" indefinitely. Tried federation_hints.direct_connection (the fix
+  # generate_mongo.py itself uses for the identical replica-set-topology-discovery class of
+  # problem) — did NOT clear the hang; the dangling CLOSE-WAIT socket observed during the stuck
+  # boot was actually on the ClickHouse port, not Mongo's, suggesting the WHOLE async process was
+  # blocked on something synchronous (a blocking pymongo call never yielding to the event loop?)
+  # rather than this specific replica-set DNS issue. REVERTED again pending real investigation of
+  # the row-materialize reconcile code path itself, not just this connection hint.
 - id: bench-neo4j
   type: neo4j
   host: ${env:PROVISA_BENCH_NEO4J_HOST:-localhost}
@@ -176,6 +180,18 @@ tables:
   schema: provisa_bench
   table: order_docs
   description: Sales dept case-file doc-store orders — top-level + flattened nested fields, see generate_mongo.py
+  # REQ-1902 investigation (2026-09-29): PgWrappersMongoDbConnector's own capability() docstring
+  # already documents why a live JOIN against this table is slow -- NO parameterized-path support
+  # ("Wrappers: quals = []" when this table sits on the join-filtered side of a Nested Loop),
+  # confirmed live: orders JOIN order_events (ClickHouse, live FDW) for a ~1M-row range took 4s;
+  # orders JOIN order_docs (MongoDB, live FDW) for the identical shape exceeded 30s+.
+  # row_materialize (opting into the same keyed row-cache path bench-clickhouse/bench-neo4j
+  # already use, REQ-1865) was tried as the fix -- REVERTED twice: it hangs server boot
+  # indefinitely at "reconcile landed tables" (with and without federation_hints.
+  # direct_connection on the bench-mongodb source above), and during the stuck boot the whole
+  # async process appeared blocked on something synchronous, not specifically a replica-set DNS
+  # issue. Needs the row-materialize reconcile code path itself investigated before re-enabling
+  # this here, not just YAML config.
   columns:
   - {name: order_id, data_type: integer, is_primary_key: true, visible_to: [org_admin, analyst, org_admin_unguarded]}
   - {name: customer_id, data_type: integer, visible_to: [org_admin, analyst, org_admin_unguarded]}
