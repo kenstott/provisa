@@ -299,8 +299,23 @@ async def _start_servers(_log: logging.Logger) -> None:
     if state.wire_proto:
         try:
             import tempfile
+            from google.protobuf.internal import api_implementation
             from provisa.grpc.schema_gen import compile_proto
             from provisa.grpc.server import start_grpc_server
+
+            # REQ-1904: the pure-Python protobuf backend is a silent multi-x serialization
+            # slowdown versus the C++/upb backend — every gRPC row this process serializes pays
+            # it, with nothing in a passing test or a working RPC to reveal it. Fails loudly here
+            # (this repo's fail-closed convention, CLAUDE.md) rather than letting a misconfigured
+            # environment (e.g. PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python, or a protobuf wheel
+            # built without the upb extension) silently ship a working-but-slow server.
+            _protobuf_impl = api_implementation.Type()
+            if _protobuf_impl != "upb":
+                raise RuntimeError(
+                    f"protobuf backend is {_protobuf_impl!r}, not 'upb' — the pure-Python/cpp "
+                    "backend is a multi-x serialization slowdown for gRPC. Check the installed "
+                    "protobuf wheel and PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION."
+                )
 
             # state.wire_proto is the UNION of every role's surface (app_loaders builds it). A
             # per-role proto would make the served descriptor depend on dict order and leave the

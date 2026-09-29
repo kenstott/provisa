@@ -87,6 +87,26 @@ def _proto_value(field, value):
     return value
 
 
+def _status_for_exception(exc: BaseException) -> grpc.StatusCode:
+    """Map a mid-stream execution failure to a gRPC status code (REQ-1904).
+
+    These catch sites used to bare-``raise`` after finalizing the audit row, which surfaces as an
+    opaque ``UNKNOWN`` on the wire — the same information the validation paths elsewhere in this
+    file convey via ``context.abort(StatusCode.X, ...)``. Only exception TYPES that unambiguously
+    indicate a more specific condition than "the server failed" get a non-INTERNAL code; everything
+    else is INTERNAL, matching this repo's fail-closed convention (never guess a more lenient code
+    than the evidence supports)."""
+    if isinstance(exc, TimeoutError):
+        return grpc.StatusCode.DEADLINE_EXCEEDED
+    if isinstance(exc, PermissionError):
+        return grpc.StatusCode.PERMISSION_DENIED
+    if isinstance(exc, (ConnectionError, OSError)):
+        return grpc.StatusCode.UNAVAILABLE
+    if isinstance(exc, ValueError):
+        return grpc.StatusCode.INVALID_ARGUMENT
+    return grpc.StatusCode.INTERNAL
+
+
 def _pascal_to_snake(name: str) -> str:
     """Convert PascalCase to snake_case: CustomerSegments -> customer_segments."""
     return re.sub(r"(?<=[a-z0-9])([A-Z])", r"_\1", name).lower()
@@ -590,9 +610,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
                         break
                     for row in batch:
                         yield msg_cls(**_kwargs_for(col_fields, row))
-            except Exception:
+            except Exception as exc:
                 await finalize_audit(plan, 500, state)
-                raise
+                await context.abort(_status_for_exception(exc), str(exc))
+                return
             await finalize_audit(plan, 200, state)
             return
 
@@ -639,9 +660,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
                             break
                         for row in batch:
                             yield msg_cls(**_kwargs_for(col_fields, row))
-                except Exception:
+                except Exception as exc:
                     await finalize_audit(plan, 500, state)
-                    raise
+                    await context.abort(_status_for_exception(exc), str(exc))
+                    return
                 finally:
                     await ds.close()
                 await finalize_audit(plan, 200, state)
@@ -658,9 +680,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
             try:
                 for row in result.rows:
                     yield msg_cls(**_kwargs_for(col_fields, row))
-            except Exception:
+            except Exception as exc:
                 await finalize_audit(plan, 500, state)
-                raise
+                await context.abort(_status_for_exception(exc), str(exc))
+                return
             await finalize_audit(plan, 200, state)
             return
 
@@ -1010,11 +1033,51 @@ async def start_grpc_server(
     max_message_bytes = int(
         os.environ.get("GRPC_MAX_MESSAGE_BYTES", str(_default_max_message_bytes))
     )
+    # REQ-1904: overload had no fast-fail path — no concurrency ceiling meant a saturated server
+    # just queued RPCs indefinitely instead of returning RESOURCE_EXHAUSTED. REQ-369's
+    # max_flight_streams is a per-ROLE limit enforced by the rate limiter (fair-share across
+    # tenants); this is the server-WIDE hard ceiling gRPC itself enforces per worker process (this
+    # deployment runs `--workers N`, each its own process/server — the cap is per-process, not
+    # multiplied across workers). Configurable, same env-var-over-server_cfg-default pattern as
+    # grpc_max_message_bytes above. Sized well above the default DB pool (pool_size=5 per worker,
+    # provisa/core/database.py) since most RPCs stream rather than hold a connection for their
+    # whole lifetime, but still a real ceiling rather than "unbounded".
+    max_concurrent_rpcs = int(
+        os.environ.get(
+            "GRPC_MAX_CONCURRENT_RPCS",
+            str(state.server_cfg.get("grpc_max_concurrent_rpcs", 200)),
+        )
+    )
     server = grpc.aio.server(
         interceptors=[AuthInterceptor(state)],
+        maximum_concurrent_rpcs=max_concurrent_rpcs,
         options=[
             ("grpc.max_send_message_length", max_message_bytes),
             ("grpc.max_receive_message_length", max_message_bytes),
+            # REQ-1904: keepalive tuning. A dead/half-open TCP peer (client crash, NAT timeout,
+            # network partition) otherwise holds a server-side call slot forever — these bound
+            # that: the server pings an idle connection every 60s and considers it dead if no
+            # response lands within 20s.
+            ("grpc.keepalive_time_ms", 60_000),
+            ("grpc.keepalive_timeout_ms", 20_000),
+            # A client is allowed to keepalive-ping even between calls (many gRPC client libraries
+            # default to this) without being penalized as abusive.
+            ("grpc.keepalive_permit_without_calls", 1),
+            # Floor on how often a client may ping with no data in flight — below this the server
+            # responds GOAWAY("too_many_pings") instead of a pong, the standard defense against a
+            # ping-flood DoS. 10s comfortably tolerates a normally-configured client (gRPC's own
+            # client default keepalive is 2 hours; anything below a few seconds is not a real
+            # client) while still bounding the cost of a hostile one.
+            ("grpc.http2.min_ping_interval_without_data_ms", 10_000),
+            ("grpc.http2.max_ping_strikes", 2),
+            # REQ-1904: prep for a future L4 load balancer — no LB is confirmed in front of this
+            # deployment today, but a connection that never recycles is invisible to one when it
+            # does arrive (a long-lived client keeps talking to the same backend process forever,
+            # defeating rebalancing/rolling deploys). 30 minutes is long enough that this never
+            # matters for a normal request/response or even a large streaming scan, short enough
+            # that a future LB actually gets to redistribute load periodically.
+            ("grpc.max_connection_age_ms", 30 * 60 * 1000),
+            ("grpc.max_connection_age_grace_ms", 30_000),
         ],
     )
 
@@ -1031,13 +1094,46 @@ async def start_grpc_server(
     add_fn = getattr(pb2_grpc, add_fn_name)
     add_fn(servicer, server)
 
-    # Enable reflection
-    from provisa.grpc.reflection import enable_reflection
+    # REQ-1904: grpc.health.v1 HealthServicer so an orchestrator gets a real gRPC health check
+    # (SERVING/NOT_SERVING per service) instead of falling back to bare TCP reachability, which
+    # says nothing about whether the process can actually serve a query. Registered ahead of
+    # reflection/health-check exemption in AuthInterceptor (provisa/grpc/auth.py) so a probe never
+    # needs a bearer credential — matches the HTTP surface's unauthenticated /health,/live,/ready.
+    from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
+    health_servicer = health.HealthServicer()
+    health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     service_names = [
         pb2.DESCRIPTOR.services_by_name[s].full_name for s in pb2.DESCRIPTOR.services_by_name
     ]
-    enable_reflection(server, service_names)
+    for _svc_name in ("", *service_names):
+        health_servicer.set(_svc_name, health_pb2.HealthCheckResponse.SERVING)
+
+    # REQ-1904: reflection exposes the full generated schema descriptor to anyone who can reach the
+    # port. AuthInterceptor already intercepts reflection calls when auth is active (REQ-273/
+    # REQ-1263), but that relied SOLELY on auth being configured — enable_reflection() ran
+    # unconditionally, so an unsecured/dev-parity deployment (no auth configured, common for
+    # local-dev) left the whole service surface enumerable by default with no explicit decision
+    # behind it. Gate it on an explicit signal instead: auth_active(state) covers the normal
+    # (secured) case, and grpc_allow_unsecured_reflection is a documented, explicit opt-in for a
+    # deployment that wants reflection's discovery convenience despite having no auth. Not caught:
+    # auth_active raising RuntimeError (a misconfigured, supposedly-active auth middleware) is a
+    # real problem that must fail the server start loudly, not be swallowed into "reflection off".
+    from provisa.grpc.auth import auth_active
+    from provisa.grpc.reflection import enable_reflection
+
+    _allow_unsecured_reflection = bool(
+        os.environ.get("GRPC_ALLOW_UNSECURED_REFLECTION")
+        or state.server_cfg.get("grpc_allow_unsecured_reflection", False)
+    )
+    if auth_active(state) or _allow_unsecured_reflection:
+        enable_reflection(server, service_names)
+    else:
+        log.warning(
+            "gRPC reflection disabled: no auth configured and grpc_allow_unsecured_reflection is "
+            "unset. Set it explicitly (provisa.yaml server.grpc_allow_unsecured_reflection or "
+            "GRPC_ALLOW_UNSECURED_REFLECTION) to enable reflection on an unsecured deployment."
+        )
 
     if tls is not None:
         # REQ-1228: client-certificate verification, when the deployment configures a CA. grpc

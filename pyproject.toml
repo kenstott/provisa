@@ -25,6 +25,7 @@ dependencies = [
     "grpcio",
     "grpcio-tools",
     "grpcio-reflection",
+    "grpcio-health-checking",  # REQ-1904: grpc.health.v1 HealthServicer for orchestrator probes
     "pyarrow",
     "adbc-driver-flightsql",
     "adbc-driver-manager",
