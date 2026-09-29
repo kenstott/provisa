@@ -66488,6 +66488,43 @@
     caller of a function about to change its contract (not just the call sites in the file being
     edited) is required before declaring a refactor like this complete — this session's earlier
     "done" claim for REQ-1901 was premature by exactly this gap.
+
+    (Amended 2026-09-29, BROKER RECONNECT RESILIENCE:) `get_broker()`'s handle was cached in
+    `_local_cache` for the life of a process and never re-validated — confirmed live under the
+    first real `--workers 8` full-sweep run: the elected broker's OWN worker process was killed
+    and respawned by uvicorn (its own unrelated crash) independently of every OTHER worker's
+    already-cached proxy to it, and every one of those workers then got `BrokenPipeError` on every
+    subsequent materialize call, forever, since nothing ever re-elected.
+
+    Root-caused and fixed in two parts:
+    - `_connect_or_elect`'s stale-socket detection only caught `ConnectionRefusedError`, but a
+      just-killed peer's orphaned socket produces `BrokenPipeError` on this OS (they are SIBLING
+      subclasses of `ConnectionError`, not parent/child) — broadened to catch the whole
+      `ConnectionError` family so a genuinely dead peer's socket is actually cleaned up and
+      re-elected, instead of retrying the same dead entry until giving up.
+    - Wrapped `get_broker()`'s return value in a new `_ResilientBrokerHandle` (replacing the bare
+      cached reference) that catches `ConnectionError`/`EOFError` on any method call, evicts the
+      stale cache entry, and re-runs election — bounded (4 attempts, 0.1s backoff), not a single
+      retry: confirmed live a freshly re-elected handle can itself fail on its very first call in
+      some same-process timing windows, so one retry alone was not reliable.
+
+    A same-process self-loopback connect (a process connecting to the manager server it JUST
+    bound, to serve its own subsequent calls) is where the real subtlety turned up: confirmed live
+    it is SAFE on a process's first-ever `multiprocessing.managers` connection (validated across
+    15+ concurrent 4-process election-race trials, zero split-brain) but BREAKS — every call after
+    the first raises `BrokenPipeError` — when the SAME process already held an earlier connection
+    that has since died (the resilience/reconnect path this amendment is about). Bypassing the
+    self-connect entirely (constructing the `_Broker` directly with no socket round-trip) fixes
+    the reconnect case but, confirmed live, reintroduces split-brain (`Unique file handle
+    conflict`, `Conflicting lock is held`) when applied unconditionally to the fresh-election race
+    path — 12/15 trials failed. Neither behavior is safe unconditionally; a new
+    `_process_used_manager_before` module flag, set the first time this process establishes ANY
+    manager connection (self-loop or peer-connect), gates which path a subsequent winning bind
+    takes — self-loopback on a process's first election (proven safe for the concurrent-race
+    case), the direct-construction bypass only once this process has already held a manager
+    connection before (the narrower, already-differentiated reconnect case). Verified live with
+    both test shapes after the fix: 15/15 clean concurrent-election trials, 8/8 clean
+    kill-and-recover resilience trials (one re-election, zero further errors in either case).
   use_case: >-
     Same live saturation-tuning thread as REQ-1900 (the maintainer asked to tune worker count),
     extended once a live `--workers 2` test surfaced this as a second, independent blocker beyond

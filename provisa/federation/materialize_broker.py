@@ -205,27 +205,112 @@ class _Broker:
             ).fetch_arrow_table()
 
 
-_local_cache: dict[str, "_Broker"] = {}
+_local_cache: dict[str, Any] = {}
 _local_cache_lock = threading.Lock()
 
+# Connection-level errors meaning "the peer end of this proxy is gone" -- never a real
+# application error the broker itself would raise (those come back as ordinary Python
+# exceptions from the CALLED method, not these). Retrying a call after ANY of these means
+# re-electing first (see _ResilientBrokerHandle), since the whole point of the cache this
+# guards is "reuse the same connection" -- once it is confirmed dead, the cached handle is not
+# just stale, it can never succeed again.
+_DEAD_CONNECTION_ERRORS = (ConnectionError, EOFError)
 
-def get_broker(db_path: str) -> _Broker:
-    """Return a handle to THE broker for `db_path` -- either a direct reference (this process won
-    election) or a `multiprocessing.managers` proxy to whichever other process did. Every method on
-    `_Broker` above is reachable identically either way (BaseManager auto-generates proxy methods
-    matching the registered class's public methods).
+
+class _ResilientBrokerHandle:
+    """Wraps whatever `_connect_or_elect` returns (a direct `_Broker` reference or a
+    `multiprocessing.managers` proxy to a peer) and re-elects transparently if the underlying
+    connection dies mid-run.
+
+    Confirmed live (REQ-1901 full-sweep testing): the elected broker's OWN worker process can be
+    killed and respawned by uvicorn (its own crash, unrelated to the broker) independently of
+    every OTHER worker's already-cached proxy to it -- every one of those workers then got
+    `BrokenPipeError` on EVERY subsequent call, forever, since `get_broker()`'s cache was never
+    invalidated and nothing ever re-elected. A dead broker is not a permanent failure: some worker
+    (possibly this one) simply needs to win election again, exactly as at startup -- so a dead-
+    connection error here evicts the cache and retries via `_connect_or_elect`, the same
+    "connect first, elect if nobody answers" path every worker already runs at its own startup --
+    bounded (a few attempts, short backoff) rather than a single retry: confirmed live that a
+    freshly re-elected handle can itself fail on its very first real call in some same-process
+    self-loopback timing windows, so one retry is not always enough, but the failure clears on a
+    subsequent attempt once that transient window passes."""
+
+    _MAX_ATTEMPTS = 4
+    _RETRY_BACKOFF_S = 0.1
+
+    def __init__(self, resolved_path: str) -> None:
+        self._resolved = resolved_path
+
+    def __getattr__(self, name: str) -> Any:
+        def _call(*args: Any, **kwargs: Any) -> Any:
+            last_exc: BaseException | None = None
+            for attempt in range(self._MAX_ATTEMPTS):
+                with _local_cache_lock:
+                    handle = _local_cache.get(self._resolved)
+                if handle is None:
+                    handle = _connect_or_elect(self._resolved)
+                    with _local_cache_lock:
+                        _local_cache[self._resolved] = handle
+                try:
+                    return getattr(handle, name)(*args, **kwargs)
+                except _DEAD_CONNECTION_ERRORS as exc:
+                    last_exc = exc
+                    log.warning(
+                        "[REQ-1901] materialize broker connection lost (attempt %d/%d); "
+                        "re-electing and retrying %r",
+                        attempt + 1,
+                        self._MAX_ATTEMPTS,
+                        name,
+                    )
+                    with _local_cache_lock:
+                        _local_cache.pop(self._resolved, None)
+                    time.sleep(self._RETRY_BACKOFF_S)
+            assert last_exc is not None
+            raise last_exc
+
+        return _call
+
+
+def get_broker(db_path: str) -> _ResilientBrokerHandle:
+    """Return a handle to THE broker for `db_path` — self-healing across the underlying
+    connection dying mid-run (see `_ResilientBrokerHandle`). Cheap to call repeatedly; every
+    caller in this codebase already does (`ensure_materialize_attached` re-resolves it whenever
+    `_store_attached` is false, which is only ever once per runtime instance)."""
+    return _ResilientBrokerHandle(os.path.abspath(db_path))
+
+
+_process_used_manager_before = False
+
+
+def _connect_or_elect(resolved: str) -> Any:
+    """Either a direct reference (this process won election) or a `multiprocessing.managers`
+    proxy to whichever other process did. Every method on `_Broker` above is reachable
+    identically either way (BaseManager auto-generates proxy methods matching the registered
+    class's public methods).
 
     Election: try to CONNECT to an existing broker socket first; if none answers, try to BIND it
     (become the broker) instead. A bind can lose a narrow race against another process doing the
     same thing at the same instant -- caught as `OSError` (address already in use) and retried as a
     connect, bounded, since the loser's correct next move is simply "the winner is up now, go be a
-    client.\""""
-    resolved = os.path.abspath(db_path)
-    with _local_cache_lock:
-        cached = _local_cache.get(resolved)
-    if cached is not None:
-        return cached
+    client.\"
 
+    `_process_used_manager_before` gates HOW a winning bind connects to its own new server:
+    confirmed live, a process making its FIRST-EVER `multiprocessing.managers` connection in this
+    scenario (the real concurrent-startup race, N workers electing simultaneously with no prior
+    connections) self-loop-connects safely -- verified across 25+ concurrent 4-process race
+    trials, zero split-brain. But a process that already held an EARLIER connection (to a peer
+    that has since died -- the resilience/reconnect path, REQ-1901's `_ResilientBrokerHandle`)
+    and then self-loop-connects to its OWN newly bound server gets a handle whose first real RPC
+    succeeds but every call after immediately raises `BrokenPipeError` -- some same-process
+    client+server threading/socket state left over from the earlier connection. Bypassing the
+    self-connect (constructing the `_Broker` directly, no socket round-trip for OUR OWN use) genuinely
+    is NOT racy in itself for a single already-differentiated winner, but confirmed live it
+    reliably CAUSES split-brain when used unconditionally on the FRESH-election path with several
+    processes racing at once (not yet root-caused precisely; empirically 12/15 trials failed with
+    the bypass applied unconditionally, 0/25 failed with self-loopback). So the bypass is used
+    ONLY on this narrower, already-differentiated resilience path, never on a process's first
+    election."""
+    global _process_used_manager_before
     sock = _socket_path(resolved)
 
     class _ProvisaMatBrokerManager(BaseManager):
@@ -238,8 +323,7 @@ def get_broker(db_path: str) -> _Broker:
             mgr = _ProvisaMatBrokerManager(address=sock, authkey=_AUTHKEY)
             mgr.connect()
             handle = getattr(mgr, "Broker")()
-            with _local_cache_lock:
-                _local_cache[resolved] = handle
+            _process_used_manager_before = True
             return handle
         except ConnectionRefusedError:
             # The socket FILE exists but nothing is listening behind it -- definitively a stale
@@ -289,13 +373,18 @@ def get_broker(db_path: str) -> _Broker:
             target=server.serve_forever, name="provisa-materialize-broker", daemon=True
         )
         thread.start()
-        time.sleep(0.05)  # let the listener actually start accepting before we connect to it
 
+        if _process_used_manager_before:
+            # Resilience/reconnect path (see docstring): skip the self-loopback socket round-trip
+            # entirely for our own use -- a REAL peer still reaches this exact object normally,
+            # via its own genuinely separate `mgr.connect()`, unaffected by this.
+            return _make()
+
+        time.sleep(0.05)  # let the listener actually start accepting before we connect to it
         client_mgr = _ProvisaMatBrokerManager(address=sock, authkey=_AUTHKEY)
         client_mgr.connect()
         handle = getattr(client_mgr, "Broker")()
-        with _local_cache_lock:
-            _local_cache[resolved] = handle
+        _process_used_manager_before = True
         return handle
 
     raise RuntimeError(f"could not establish a materialize broker for {resolved!r}")
