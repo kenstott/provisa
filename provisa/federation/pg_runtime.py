@@ -43,6 +43,32 @@ _POOL_MINCONN = 1
 _POOL_MAXCONN = 10
 
 
+def _psycopg2_exec_args(sql: str, params: list | None) -> tuple[str, dict[str, Any] | None]:
+    """Rewrite Postgres-native ``$1``/``$2`` positional placeholders to psycopg2's own
+    ``%(pN)s`` paramstyle, with a matching ``{"p1": ..., "p2": ...}`` dict.
+
+    The compiled pipeline (GraphQL/Cypher/Flight/gRPC — every compiled-surface transport shares
+    one physical-SQL construction) emits real Postgres wire-protocol placeholders, since that is
+    what pgwire/asyncpg both speak natively. This runtime's connection is psycopg2, whose DBAPI
+    paramstyle is ``%s``/``%(name)s`` — it has no notion of ``$N`` at all, so hitting ``cur.
+    execute(sql, params)`` with unconverted ``$1``/``$2`` text sends the literal characters
+    ``$1``/``$2`` straight through with nothing bound, and Postgres rejects it with "there is no
+    parameter $1" — confirmed live (GraphQL federated_join against the pg engine, the first
+    compiled query whose params survive un-inlined all the way to this runtime; every other
+    compiled query either carries no params or has them literal-substituted upstream). A named
+    dict (not positional ``%s``) is used because ``%s`` consumes params strictly in occurrence
+    order — a repeated ``$1`` reference would then need its value repeated in the tuple too,
+    which the caller's ``params`` list (ordered by first appearance, one entry per placeholder
+    NUMBER) does not guarantee; the dict form binds by number regardless of how many times or
+    where each ``$N`` appears."""
+    if not params:
+        return sql, None
+    import re
+
+    converted = re.sub(r"\$(\d+)", lambda m: f"%(p{m.group(1)})s", sql)
+    return converted, {f"p{i + 1}": v for i, v in enumerate(params)}
+
+
 class _AdbcConnectionPool:
     """Minimal thread-safe bounded pool for ADBC connections (``run_arrow``/``run_arrow_stream``).
 
@@ -458,7 +484,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         try:
             cur = read_con.cursor(name="provisa_stream")  # named ⇒ server-side portal
             cur.itersize = _STREAM_BATCH_ROWS
-            cur.execute(sql, params or None)
+            cur.execute(*_psycopg2_exec_args(sql, params))
             # psycopg2 populates a NAMED cursor's ``.description`` only after the first FETCH, so peek
             # one batch to force the portal and expose the columns before building the stream.
             first = cur.fetchmany(_STREAM_BATCH_ROWS)
@@ -554,7 +580,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
 
         def _run() -> QueryResult:
             cur = self._con.cursor()
-            cur.execute(sql, params or None)
+            cur.execute(*_psycopg2_exec_args(sql, params))
             cols = [d[0] for d in cur.description] if cur.description else []
             rows = list(cur.fetchall()) if cur.description else []
             cur.close()
