@@ -897,6 +897,62 @@ async def _mat_api_ep_table(
     )
 
 
+def would_materialize_optimize(exec_sql: str, state) -> bool:
+    """REQ-1877 routing addendum: cheap, no-I/O predictor of whether
+    `_materialize_api_to_engine_cache(exec_sql, state, ...)` would do ANYTHING for this call —
+    i.e. whether its LIVE/time-varying branches (hot-table inline, TTL-cached API-endpoint fetch,
+    graphql_remote/grpc_remote/openapi remote fetch) are reachable at all.
+
+    Mirrors that function's own control flow table name-by-name, using the exact same lookups
+    (`find_api_table_names`, `_lookup_ep`, `_lookup_gql_remote_table`, `_lookup_grpc_remote_table`,
+    `_lookup_openapi_table`) — all in-memory dict lookups / CPU-only spec re-parses (see
+    `_lookup_openapi_table`'s own docstring), never I/O. Returns True the moment any table COULD
+    reach a live branch; a caller must treat True as "cannot prove this call is a no-op" and take
+    the full, uncached path.
+
+    IMPORTANT: `find_api_table_names` returns every table name in the query's FROM/JOIN clauses,
+    not only API-backed ones — an ordinary multi-table SQL query is NOT "no candidates" just
+    because it has tables; it only returns False here once every one of those tables is checked
+    and none is hot, row_materialize-skipped-with-a-pg-pool, or registered as an API/graphql_remote/
+    grpc_remote/openapi table. A table registered as a (non-hot) API endpoint is ALWAYS live here
+    (its TTL cache can go stale between calls) except in the one case
+    `_materialize_api_to_engine_cache` itself treats as a no-op: no PG pool to read the landed
+    cache from at all (`state.tenant_db is None`).
+    """
+    from provisa.compiler.nf_extractor import find_api_table_names
+
+    table_names = find_api_table_names(exec_sql)
+    if not table_names:
+        return False
+    hot_mgr = getattr(state, "hot_manager", None)
+    has_pg_pool = getattr(state, "tenant_db", None) is not None
+    row_materialize_table_names = {
+        t.get("table_name")
+        for t in (getattr(state, "tables", None) or [])
+        if t.get("row_materialize")
+    }
+    for tn in table_names:
+        if tn in row_materialize_table_names:
+            continue
+        if hot_mgr is not None and hot_mgr.is_hot(tn):
+            return True
+        ep = _lookup_ep(state, tn)
+        if ep is not None:
+            if has_pg_pool:
+                return True
+            continue
+        gql_reg, _gql_tbl = _lookup_gql_remote_table(state, tn)
+        if gql_reg is not None:
+            return True
+        _grpc_source_id, grpc_reg, _grpc_query = _lookup_grpc_remote_table(state, tn)
+        if grpc_reg is not None:
+            return True
+        _oa_source_id, oa_entry, _oa_query = _lookup_openapi_table(state, tn)
+        if oa_entry is not None:
+            return True
+    return False
+
+
 async def _materialize_api_to_engine_cache(
     exec_sql: str,
     state,

@@ -285,6 +285,96 @@ async def _optimize_and_route(
     return exec_sql, decision, default_source, optimized, sources, tuple(opt_labels)
 
 
+async def _optimize_and_route_cached(
+    exec_sql: str,
+    governed_sql: str,
+    gov_ctx,
+    ctx,
+    state,
+    role_id: str,
+    *,
+    nf_args=None,
+    has_json_extract=False,
+    is_mutation=False,
+):
+    """REQ-1877 routing addendum: cache `_optimize_and_route`'s output for the ONE case proven
+    safe — see `provisa/compiler/compiled_query_cache.py`'s "ROUTING-DECISION CACHING" section
+    before touching this.
+
+    `would_materialize_optimize(exec_sql, state)` (`provisa/api/data/materialization.py`) is
+    re-run on EVERY call, hit or miss alike (cheap, no I/O — it mirrors
+    `_materialize_api_to_engine_cache`'s own control flow table-by-table using the same in-memory
+    lookups). When it returns True, caching is skipped entirely and the full, unmodified
+    `_optimize_and_route` runs — identical to pre-addendum behavior, including the live hot-table
+    check. Only when it returns False (a structural guarantee that no live/time-varying branch
+    inside `_materialize_api_to_engine_cache` can fire for this call) is the routing cache
+    consulted; on that path `_optimize_and_route` is itself a pure function of (exec-SQL shape,
+    role, schema generation), proven by the module docstring's earlier `validate_sql` write-up
+    applying identically to `extract_sources`/`decide_route` (structural, no literal or live
+    dependency) once the live branch is ruled out.
+    """
+    from provisa.api.data.materialization import would_materialize_optimize
+
+    if would_materialize_optimize(exec_sql, state):
+        return await _optimize_and_route(
+            exec_sql,
+            governed_sql,
+            gov_ctx,
+            ctx,
+            state,
+            nf_args=nf_args,
+            has_json_extract=has_json_extract,
+            is_mutation=is_mutation,
+        )
+
+    from provisa.compiler.compiled_query_cache import RoutingOutcome, routing_cache_key
+
+    _rt_key = routing_cache_key(exec_sql, role_id, state.schema_boot_id, state.schema_version)
+    _cached = state.routing_cache.get(_rt_key)
+    if _cached is not None:
+        from provisa.transpiler.router import Route, RouteDecision
+
+        decision = RouteDecision(
+            route=Route(_cached.route),
+            source_id=_cached.source_id,
+            dialect=_cached.dialect,
+            reason=_cached.reason,
+        )
+        return exec_sql, decision, _cached.default_source, False, set(_cached.sources), ()
+
+    result = await _optimize_and_route(
+        exec_sql,
+        governed_sql,
+        gov_ctx,
+        ctx,
+        state,
+        nf_args=nf_args,
+        has_json_extract=has_json_extract,
+        is_mutation=is_mutation,
+    )
+    _exec_sql_out, decision, default_source, optimized, sources, opt_labels = result
+    # Guaranteed by would_materialize_optimize(exec_sql, state) being False (see module docstring):
+    # no rewrite/inline/drop branch had anything to act on, so exec_sql passed through unchanged
+    # and no optimization fired. Only cache when that guarantee actually held for THIS call — a
+    # defensive check, never expected to be False, but a correctness invariant is never trusted
+    # unverified.
+    if not optimized and _exec_sql_out == exec_sql and not opt_labels:
+        state.routing_cache.put(
+            _rt_key,
+            RoutingOutcome(
+                route=str(
+                    decision.route.value if hasattr(decision.route, "value") else decision.route
+                ),
+                source_id=decision.source_id,
+                dialect=decision.dialect,
+                reason=decision.reason,
+                default_source=default_source,
+                sources=frozenset(sources),
+            ),
+        )
+    return result
+
+
 def _reject_physical_source_refs(parsed: Any, state: Any) -> None:
     """Reject any physical source-catalog table reference — enforce the one accepted model.
 
@@ -753,12 +843,20 @@ async def _govern_and_route_planned(
     )
     _nf_args = _extracted_nf or None
 
-    _qualified, decision, _default_source, _optimized, _sources, _opts = await _optimize_and_route(
+    (
+        _qualified,
+        decision,
+        _default_source,
+        _optimized,
+        _sources,
+        _opts,
+    ) = await _optimize_and_route_cached(
         _physical_sql,
         governed_semantic,
         gov_ctx,
         ctx,
         state,
+        role_id,
         has_json_extract="->>" in governed_semantic,
         is_mutation=_is_mutation,
         nf_args=_nf_args,
@@ -1704,8 +1802,15 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     _nf_args = {**(api_args or {}), **(_extracted_nf or {})} or None
     # Route on the OUTPUT of the optimization stage (REQ-863): sources whose every referenced
     # table was inlined/pruned drop out of the routing set.
-    _exec_sql, decision, _default_source, _optimized, sources, _opts = await _optimize_and_route(
-        _exec_sql, governed_sql, gov_ctx, ctx, state, nf_args=_nf_args
+    (
+        _exec_sql,
+        decision,
+        _default_source,
+        _optimized,
+        sources,
+        _opts,
+    ) = await _optimize_and_route_cached(
+        _exec_sql, governed_sql, gov_ctx, ctx, state, role_id, nf_args=_nf_args
     )
 
     # REQ-135/REQ-1163: a query referencing a __derived__ view MUST route through the engine, where

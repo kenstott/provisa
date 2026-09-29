@@ -163,6 +163,15 @@ class OrgRuntime:
     # schema_version, so a stale generation's entries simply stop matching (see that module).
     compiled_query_cache: CompiledQueryCache = field(default_factory=CompiledQueryCache)
 
+    # REQ-1877 (routing addendum, 2026-09-29): sibling cache of `RoutingOutcome` — the structural
+    # routing decision (`_optimize_and_route`'s route/source/dialect/source-set) for a query shape
+    # whose exec SQL referenced no candidate API-backed table (see
+    # provisa/compiler/compiled_query_cache.py's "ROUTING-DECISION CACHING" section for the exact
+    # safety boundary). Kept as a second instance rather than reusing `compiled_query_cache`
+    # because `routing_cache_key` builds an unrelated key shape (no person_id/bypass flag) — see
+    # that module's `CompiledQueryCache` docstring.
+    routing_cache: CompiledQueryCache = field(default_factory=CompiledQueryCache)
+
     # Governance / masking. (table_id, role_id) → {col: (rule, dtype)}.
     masking_rules: dict[Any, Any] = field(default_factory=dict)
 

@@ -250,6 +250,7 @@ def _fake_pipeline_state(*, tables: list[dict]) -> SimpleNamespace:
         schema_boot_id="test-boot",
         schema_version=1,
         compiled_query_cache=CompiledQueryCache(),
+        routing_cache=CompiledQueryCache(),
     )
 
 

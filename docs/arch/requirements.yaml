@@ -64631,9 +64631,12 @@
   description: >-
     Per-organization, in-memory, TTL-evicted cache of governance-pipeline outcomes (SQL shape-based
     key, not raw text) for compiled queries. Caches only the `validate_sql` outcome
-    (relationship-guard + row-level violations check) and domain-access-check result — does NOT cache
-    routing decisions or physical SQL, which depend on live hot-table/tier-cap state
+    (relationship-guard + row-level violations check) and domain-access-check result —
+    [SUPERSEDED by REQ-1877, 2026-09-29 -- routing/physical-SQL caching is now done for the one case
+    proven safe; see the amendment below. Kept here for history; do not implement against it.] does
+    NOT cache routing decisions or physical SQL, which depend on live hot-table/tier-cap state
     (provisa/api/data/materialization.py's `state.hot_manager`) that is not schema-version-bound.
+    [END SUPERSEDED BLOCK]
     Cache key includes: SQL shape digest (sqlglot literal-blanked via
     provisa.observability.stage_trace.redact_sql), role_id, person_id, schema_boot_id, schema_version,
     and relationship-guard bypass flag. TTL default 60 seconds, configurable via
@@ -64644,6 +64647,34 @@
     RLS-rule and role create/delete/mutation call sites (provisa/api/admin/schema_mutation.py)
     now bump state.schema_version via _rebuild_schemas() so that schema_version serves as a sound
     invalidation signal.
+
+    (Amended 2026-09-29, routing-decision cache:) Extended to also cache `_optimize_and_route`'s
+    structural routing output (route, source_id, dialect, reason, default_source, source set) as
+    `RoutingOutcome`, in a second per-org `CompiledQueryCache` instance
+    (`OrgRuntime.routing_cache` / `state.routing_cache`), keyed by
+    `routing_cache_key(exec_sql, role_id, schema_boot_id, schema_version)` — narrower than the
+    validate-outcome key (no person_id/bypass flag: routing doesn't read either). Gated on a cheap,
+    no-I/O pre-check, `would_materialize_optimize(exec_sql, state)`
+    (provisa/api/data/materialization.py), re-run on EVERY call, hit or miss alike, mirroring
+    `_materialize_api_to_engine_cache`'s own table-by-table control flow (row_materialize skip,
+    `hot_mgr.is_hot`, registered API-endpoint/graphql_remote/grpc_remote/openapi lookups — all
+    in-memory, no I/O). Only when it returns False (no live/time-varying branch reachable for this
+    call, so `_optimize_and_route` is a pure function of exec-SQL shape/role/schema generation) is
+    the routing cache consulted or written; when it returns True, the full uncached
+    `_optimize_and_route` runs exactly as before this amendment, including the live hot-table check
+    — this preserves the original REQ-1877 constraint for every query that could possibly need it,
+    and only closes the gap for the (empirically common) point-lookup case that touches no
+    API-backed/hot table at all. Wired into both raw-SQL pipeline entrypoints that call
+    `_optimize_and_route` (`_govern_and_route_planned` and `_govern_and_route_compiled_planned`,
+    provisa/pgwire/_pipeline.py) via a shared wrapper, `_optimize_and_route_cached`. NOT wired into
+    the third, independent GraphQL execution path (`_execute_engine_standard` /
+    `_execute_one_field`'s `decide_route` call, provisa/api/data/endpoint_executors.py and
+    provisa/api/data/endpoint.py) — investigated and rejected: that path's `decide_route` call
+    already runs on the compiler's pre-computed `compiled.sources` with no `extract_sources`
+    re-parse to save, and it explicitly reads a live `cache_hit` signal from the response-result
+    cache as one of its own inputs, so caching its output would risk serving a stale
+    Route.CACHE/non-CACHE decision after the response cache changed — an outcome-correctness
+    regression, not a missed optimization.
   use_case: >-
     Compiled query outcomes for governance validation are deterministic per (SQL shape, role, person,
     schema version) and expensive (relationship-guard and row-level constraint evaluation over complex
@@ -64656,6 +64687,10 @@
     - provisa/api/app.py
     - provisa/pgwire/_pipeline.py
     - provisa/api/admin/schema_mutation.py
+    - provisa/api/data/materialization.py
+  tests:
+    - tests/unit/test_compiled_query_cache.py
+    - tests/unit/test_routing_cache.py
   scenario: |
     Given an org with a compiled query that passes governance validation
     When the same query (same SQL shape, same user role/person) is submitted again within the TTL window
@@ -64668,6 +64703,17 @@
     Given a role or RLS rule is created, deleted, or modified
     When schema_version is bumped via _rebuild_schemas()
     Then any cached outcomes tied to the previous schema_version are invalidated
+
+    Given a query shape whose exec SQL references no hot/API-eligible table
+    When the same shape, role and schema generation is queried again
+    Then the routing cache returns the prior route/source/dialect/source-set without re-running
+    extract_sources/decide_route
+
+    Given a query shape whose exec SQL references a table that is hot or API-cache-eligible
+    When the table's hot/registration state changes between two otherwise-identical calls
+    Then the routing decision is NEVER served from cache for that shape — every call re-runs the
+    live would_materialize_optimize check and _optimize_and_route in full, and the resulting route
+    reflects the live state at call time
 
     Given a routing decision or physical SQL generation is needed
     When the query plan stage requires live hot-table/tier-cap state

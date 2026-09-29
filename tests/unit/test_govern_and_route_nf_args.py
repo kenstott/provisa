@@ -92,6 +92,7 @@ def _fake_state():
         schema_boot_id="test-boot",
         schema_version=1,
         compiled_query_cache=CompiledQueryCache(),
+        routing_cache=CompiledQueryCache(),
     )
 
 

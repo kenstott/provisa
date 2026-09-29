@@ -15,21 +15,35 @@ check in `_govern_and_route_planned` (`provisa/pgwire/_pipeline.py`) — the rel
 row-level SQL validation and per-table domain-access walk — for the raw-SQL pipeline. Default
 TTL 60s, configurable via `PROVISA_COMPILED_QUERY_CACHE_TTL_SECONDS`.
 
-WHY NOT ALSO THE ROUTING DECISION / PHYSICAL SQL, despite that being the original ask: read
-verified against the current code (2026-09-28), not the larger out-of-scope plan this task cites
-as background. `_optimize_and_route` (`provisa/pgwire/_pipeline.py`) — the function that produces
-the routing `Route`/`source_id`/`dialect` AND the physical SQL — calls
-`_materialize_api_to_engine_cache` (`provisa/api/data/materialization.py`), which reads
-`state.hot_manager`: LIVE, time-varying hot-table/API-cache state that is NOT bumped by
-`schema_version` and can flip the route (DIRECT/API -> ENGINE, or reduce a multi-source query to
-single-source via VALUES-CTE inlining) between two calls of the identical SQL shape, same role,
-same schema generation. Both this task's own instructions and the background plan explicitly list
-"tier-cap/hot-table lookups" as a signal that must be rechecked on EVERY call, hit or miss alike —
-never cached. Caching `_optimize_and_route`'s output (route or physical SQL) would violate that
-constraint and risk silently serving a stale route/physical-SQL pair for up to one TTL window.
-Doing this safely needs `_optimize_and_route` split into a live, always-fresh half (the hot-table
-check) and a structural, cacheable half (`decide_route` proper) — real, separate work, not done
-here. Flagged as a follow-up (see the requirements tracker entry alongside this one).
+ROUTING-DECISION CACHING (added 2026-09-29, REQ-1877 follow-up — read this before touching
+`RoutingOutcome`/`routing_cache_key` below): `_optimize_and_route`
+(`provisa/pgwire/_pipeline.py`) — the function that produces the routing `Route`/`source_id`/
+`dialect` AND the physical SQL — calls `_materialize_api_to_engine_cache`
+(`provisa/api/data/materialization.py`), which reads `state.hot_manager`: LIVE, time-varying
+hot-table/API-cache state that is NOT bumped by `schema_version` and can flip the route (DIRECT/API
+-> ENGINE, or reduce a multi-source query to single-source via VALUES-CTE inlining) between two
+calls of the identical SQL shape, same role, same schema generation.
+
+Verified by reading `_materialize_api_to_engine_cache` in full: it starts with a CHEAP, in-memory,
+no-I/O pre-check — `find_api_table_names(exec_sql)` — and returns immediately, unchanged, when that
+finds NO candidate API-backed table names in the exec SQL at all (`provisa/api/data/
+materialization.py` lines ~925-927). When that pre-check is empty, EVERY live/time-varying branch
+below it (the `hot_mgr.is_hot`/`hot_mgr.get_entry` VALUES-CTE inline, the registered-API-endpoint
+TTL-cache fetch, the graphql_remote/grpc_remote/openapi remote fetch, the row_materialize skip) is
+unreachable for this call — the loop body never executes because there is nothing to iterate. This
+is a real, structural guarantee (an empty list has no live branch to take), not a probabilistic one.
+`_pipeline.py`'s `_optimize_and_route_cached` re-does this exact cheap check on EVERY call, hit or
+miss alike, and only consults the routing cache when it comes back empty; when it finds ANY
+candidate table name, caching is skipped entirely and the full, uncached `_optimize_and_route` runs,
+unchanged from before this addendum — including the hot-table check.
+
+This does NOT close the general case flagged in the original REQ-1877 addendum: a query whose exec
+SQL references ANY API-backed table name is never routing-cached, even if that particular table
+turns out not to be hot/registered on this call (confirmed by reading `_materialize_api_to_engine_cache`:
+a registered, non-hot API endpoint still runs a TTL-based cache fetch — itself time-varying — on
+every call, not just a hot-table check, so "candidate present but not hot" is NOT provably a
+no-op). Splitting `_optimize_and_route` into a live half and a structural half for THAT case is
+still real, separate work, not done here.
 
 What IS safely cacheable, confirmed by reading: `validate_sql` (relationship-guard + row-level
 violations) and the standalone domain-access table-walk block right after it are pure functions of
@@ -127,19 +141,70 @@ def compiled_query_cache_key(
     )
 
 
+@dataclass(frozen=True)
+class RoutingOutcome:
+    """The cached structural routing result — `_optimize_and_route`'s output for a query whose
+    exec SQL referenced NO candidate API-backed table (see the module docstring's "ROUTING-DECISION
+    CACHING" section for the exact safety boundary). A hit means the identical exec-SQL shape,
+    under this role and schema generation, is guaranteed to produce this route/source/dialect/
+    source-set with no optimization applied — `_optimize_and_route`'s own `exec_sql` output is
+    always the caller's unmodified input in this case (nothing rewrites/inlines/drops when there
+    are no candidate tables to begin with), so the caller reuses its own already-computed exec_sql
+    rather than this dataclass carrying a second copy of it.
+    """
+
+    route: str
+    source_id: str | None
+    dialect: str | None
+    reason: str
+    default_source: str
+    sources: frozenset[str]
+
+
+def routing_cache_key(
+    exec_sql: str,
+    role_id: str,
+    schema_boot_id: str,
+    schema_version: int,
+) -> str:
+    """Build the routing-cache key. Deliberately narrower than `compiled_query_cache_key`: routing
+    (`extract_sources`/`decide_route`) depends only on the exec SQL's table/join STRUCTURE, the
+    role (via `gov_ctx`/`ctx`, both role-derived) and the schema generation — never on the acting
+    person or the relationship-guard-bypass flag, neither of which `_optimize_and_route` reads.
+    `exec_sql` here is the already-governed, catalog-physical SQL passed into `_optimize_and_route`
+    (post-`apply_governance`/post-session-var-resolution), not the caller's original raw text —
+    shape-hashed for the same literal-independence reason `compiled_query_cache_key` shape-hashes
+    its SQL component."""
+    return "\x00".join(
+        [
+            schema_boot_id,
+            str(schema_version),
+            role_id,
+            sql_shape_digest(exec_sql),
+        ]
+    )
+
+
 @dataclass
 class _Entry:
-    outcome: CompiledOutcome
+    outcome: CompiledOutcome | RoutingOutcome
     expires_at: float
 
 
 class CompiledQueryCache:
-    """A per-org, in-memory, TTL-evicted cache of `CompiledOutcome`.
+    """A per-org, in-memory, TTL-evicted cache of compiled-query outcomes (`CompiledOutcome` or
+        `RoutingOutcome`).
 
-    One instance lives on each `OrgRuntime` (mirroring how `contexts`/`rls_contexts` are scoped
-    per org — see `provisa/api/org_runtime.py`), so a compiled outcome for one org's role never
-    leaks into another org's cache. Thread-safe: pgwire's socketserver worker calls the pipeline
-    from worker threads via `asyncio.run_coroutine_threadsafe`.
+        One instance lives on each `OrgRuntime` (mirroring how `contexts`/`rls_contexts` are scoped
+        per org — see `provisa/api/org_runtime.py`), so a compiled outcome for one org's role never
+        leaks into another org's cache. Thread-safe: pgwire's socketserver worker calls the pipeline
+        from worker threads via `asyncio.run_coroutine_threadsafe`.
+
+    `compiled_query_cache_key` and `routing_cache_key` build unrelated key shapes (different
+        components, no shared prefix), so a validate/domain-access outcome and a routing outcome are
+        kept in two separate `CompiledQueryCache` instances (`OrgRuntime.compiled_query_cache` and
+        `OrgRuntime.routing_cache`) rather than one shared dict — cheaper than a type-prefixed key and
+        makes an accidental cross-kind collision structurally impossible.
     """
 
     def __init__(self, ttl_seconds: int | None = None) -> None:
@@ -147,7 +212,7 @@ class CompiledQueryCache:
         self._lock = threading.Lock()
         self._entries: dict[str, _Entry] = {}
 
-    def get(self, key: str) -> CompiledOutcome | None:
+    def get(self, key: str) -> CompiledOutcome | RoutingOutcome | None:
         now = time.monotonic()
         with self._lock:
             entry = self._entries.get(key)
@@ -158,7 +223,7 @@ class CompiledQueryCache:
                 return None
             return entry.outcome
 
-    def put(self, key: str, outcome: CompiledOutcome) -> None:
+    def put(self, key: str, outcome: CompiledOutcome | RoutingOutcome) -> None:
         now = time.monotonic()
         with self._lock:
             if len(self._entries) >= _MAX_ENTRIES and key not in self._entries:

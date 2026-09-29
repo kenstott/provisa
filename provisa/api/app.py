@@ -599,6 +599,12 @@ class AppState:
         return self._active_runtime().compiled_query_cache
 
     @property
+    def routing_cache(self) -> "CompiledQueryCache":
+        # REQ-1877 (routing addendum): per-org routing-decision cache — see
+        # provisa/compiler/compiled_query_cache.py's "ROUTING-DECISION CACHING" section.
+        return self._active_runtime().routing_cache
+
+    @property
     def masking_rules(self) -> MaskingRules:
         return self._active_runtime().masking_rules
 
