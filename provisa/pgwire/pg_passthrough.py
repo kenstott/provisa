@@ -86,26 +86,62 @@ async def open_raw_connection(connect_kwargs: dict[str, Any]) -> RawPgConnection
 
     if not connect_kwargs:
         raise PassthroughError("no connect parameters given (connect() never called)")
+    # uvloop's own transport socket, once dup()'d, is still a `uvloop.loop.PseudoSocket` (not a
+    # genuine `socket.socket` the way the stdlib SelectorEventLoop's is) — its `.send()` is a
+    # deliberate stub that raises `TypeError: transport sockets do not support send() method`.
+    # 100% reproducible live: govern+execute both succeed (confirmed via [PGWIRE TIMING] logs),
+    # then PassthroughCursor.fetch's loop.sock_sendall raises this on literally every call, which
+    # propagates uncaught through the passthrough generator (nothing downstream of the initial
+    # open_passthrough() call catches PassthroughError — see server.py) and kills the client
+    # connection with zero visible signal outside ~/pgwire_debug.log. Detect and refuse up front
+    # — matches this whole module's own fallback discipline (falls back to the ordinary
+    # decode/re-encode path on ANY PassthroughError, never a correctness risk) — rather than ever
+    # attempting a technique this event loop cannot support.
+    _loop_for_check = asyncio.get_event_loop()
+    if type(_loop_for_check).__module__.startswith("uvloop"):
+        raise PassthroughError(
+            "raw-socket passthrough is not supported under uvloop "
+            "(PseudoSocket.send() unconditionally raises TypeError)"
+        )
     conn = await asyncpg.connect(**connect_kwargs)
-    # conn._transport (asyncpg.Connection's own slot, connection.py), NOT conn._protocol.transport:
-    # CoreProtocol's `transport` is a plain `cdef object` (coreproto.pxd) with no `public`/`readonly`
-    # modifier, so it is never exposed to Python at all — reading it raises AttributeError, live-
-    # confirmed against asyncpg 0.31.0 ('Protocol' object has no attribute 'transport').
-    transport = conn._transport
-    transport.pause_reading()
-    wrapped = transport.get_extra_info("socket")
-    if wrapped is None:
+    # Everything below is real I/O/attribute-access that can raise (the AttributeError/
+    # TransportSocket bugs this function's history is full of are exactly the kind of thing this
+    # guards against) — on ANY failure past this point, `conn` is a live, connected asyncpg
+    # connection against the REAL backend Postgres that nothing else will ever close. Confirmed:
+    # during the period this function's bugs were live, every one of the (thousands of) failed
+    # calls leaked one such connection — never explicitly `conn.close()`d, only reclaimed whenever
+    # Python's GC/asyncpg's own __del__ got around to it, if ever, which can exhaust the backend's
+    # max_connections and hang unrelated later callers (e.g. federated_join) with no clean error.
+    try:
+        # conn._transport (asyncpg.Connection's own slot, connection.py), NOT
+        # conn._protocol.transport: CoreProtocol's `transport` is a plain `cdef object`
+        # (coreproto.pxd) with no `public`/`readonly` modifier, so it is never exposed to Python at
+        # all — reading it raises AttributeError, live-confirmed against asyncpg 0.31.0
+        # ('Protocol' object has no attribute 'transport').
+        transport = conn._transport
+        transport.pause_reading()
+        wrapped = transport.get_extra_info("socket")
+        if wrapped is None:
+            raise PassthroughError("transport exposes no raw socket (unexpected transport type)")
+        # transport.get_extra_info("socket") is an asyncio.trsock.TransportSocket — a SAFE wrapper
+        # around the real fd that deliberately does not implement send()/recv() (only metadata
+        # calls like getsockname/fileno), specifically to stop code from doing what this module
+        # needs to do. Live-confirmed: loop.sock_sendall() on the bare wrapper raises
+        # AttributeError: 'TransportSocket' object has no attribute 'send'. `.dup()` returns a
+        # genuine `socket.socket` sharing the same underlying fd — real send()/recv(), safe for
+        # loop.sock_* while the original transport stays paused. Must be non-blocking for loop.sock_*.
+        sock = wrapped.dup()
+        sock.setblocking(False)
+    except BaseException:
+        # Live-confirmed: conn.close() can itself hang forever here if reads are still paused
+        # (pause_reading() above already ran) — the same reason RawPgConnection.close() resumes
+        # reading before closing. Best-effort; conn is being discarded either way.
+        try:
+            conn._transport.resume_reading()
+        except Exception:  # noqa: BLE001
+            pass
         await conn.close()
-        raise PassthroughError("transport exposes no raw socket (unexpected transport type)")
-    # transport.get_extra_info("socket") is an asyncio.trsock.TransportSocket — a SAFE wrapper
-    # around the real fd that deliberately does not implement send()/recv() (only metadata calls
-    # like getsockname/fileno), specifically to stop code from doing what this module needs to do.
-    # Live-confirmed: loop.sock_sendall() on the bare wrapper raises
-    # AttributeError: 'TransportSocket' object has no attribute 'send'. `.dup()` returns a genuine
-    # `socket.socket` sharing the same underlying fd — real send()/recv(), safe for loop.sock_*
-    # while the original transport stays paused. Must be set non-blocking for loop.sock_* to work.
-    sock = wrapped.dup()
-    sock.setblocking(False)
+        raise
     return RawPgConnection(conn, asyncio.get_event_loop(), sock)
 
 
