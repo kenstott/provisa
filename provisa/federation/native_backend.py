@@ -541,7 +541,20 @@ class NativeEngineBackend(EngineBackend):
             if span_attrs:
                 for k, v in span_attrs.items():
                     span.set_attribute(k, v)
-            return await self._runtime_for(state).run(sql, params)
+            # _runtime_for's lazy _attach_registered() is a plain synchronous method: on a
+            # source's FIRST attach it runs blocking DDL (IMPORT FOREIGN SCHEMA) + ANALYZE
+            # against the remote FDW source directly -- for a ClickHouse-backed foreign table,
+            # live-confirmed ANALYZE alone can take 100s of seconds. Called un-wrapped, this ran
+            # straight on the shared governance event loop (REQ-1882's exact pattern), starving
+            # every other concurrent request for the whole attach+ANALYZE duration and surfacing
+            # as an empty-message ~120s timeout with zero server-side trace. Off-loaded via the
+            # default executor, matching every other REQ-1882 fix site.
+            import asyncio
+
+            runtime = await asyncio.get_running_loop().run_in_executor(
+                None, self._runtime_for, state
+            )
+            return await runtime.run(sql, params)
 
     def execute_sync(
         self,

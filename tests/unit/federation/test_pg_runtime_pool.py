@@ -9,11 +9,13 @@
 # permission from the copyright holder.
 
 """``PgFederationRuntime.run_sync`` borrows/returns pooled connections instead of opening a fresh
-``psycopg2.connect`` per call (REQ-1895). Exercises the pool against a fake psycopg2 connection —
-no live Postgres needed — so this runs in the unit tier, not integration."""
+``psycopg2.connect`` per call (REQ-1895). ``run`` (the async variant) does the same, instead of
+sharing ``self._con`` with ``attach_source`` (REQ-1906). Exercises the pool against a fake
+psycopg2 connection — no live Postgres needed — so this runs in the unit tier, not integration."""
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -38,6 +40,10 @@ class _FakeCursor:
         self._rows = [(1,), (2,)]
 
     def fetchmany(self, n: int) -> list[Any]:
+        rows, self._rows = self._rows, []
+        return rows
+
+    def fetchall(self) -> list[Any]:
         rows, self._rows = self._rows, []
         return rows
 
@@ -170,3 +176,46 @@ def test_close_closes_read_pool(fake_psycopg2) -> None:
     rt.close()
 
     assert all(c.closed for c in pooled)
+
+
+def test_run_borrows_from_pool_not_self_con(fake_psycopg2) -> None:
+    # REQ-1906: run() must never touch self._con -- attach_source's DDL/ANALYZE connection --
+    # since a run() call that outlives its caller's timeout keeps executing on whatever
+    # connection it borrowed, and self._con is shared with attach_source.
+    rt = _runtime(fake_psycopg2)
+    self_con: _FakeConnection = rt._con  # type: ignore[assignment]
+
+    res = asyncio.run(rt.run("SELECT id FROM t"))
+
+    assert res.rows == [(1,), (2,)]
+    assert self_con.executed == []  # nothing ran on the shared attach connection
+
+
+def test_run_reuses_pooled_connection_across_calls(fake_psycopg2) -> None:
+    rt = _runtime(fake_psycopg2)
+    made_after_init = len(fake_psycopg2)
+
+    asyncio.run(rt.run("SELECT id FROM t"))
+    asyncio.run(rt.run("SELECT id FROM t"))
+
+    # No NEW connections were opened for either run() call: the pool's already-created
+    # connection was borrowed and returned both times.
+    assert len(fake_psycopg2) == made_after_init
+
+
+def test_run_discards_connection_on_failure(fake_psycopg2) -> None:
+    rt = _runtime(fake_psycopg2)
+    made_after_init = len(fake_psycopg2)
+
+    borrowed = rt._read_pool.getconn()
+    borrowed.raise_on_execute = RuntimeError("boom")
+    rt._read_pool.putconn(borrowed)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        asyncio.run(rt.run("SELECT id FROM t"))
+
+    assert borrowed.closed  # the broken connection was discarded, not returned for reuse
+
+    res = asyncio.run(rt.run("SELECT id FROM t"))
+    assert res.rows == [(1,), (2,)]
+    assert len(fake_psycopg2) == made_after_init + 1

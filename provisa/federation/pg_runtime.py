@@ -166,27 +166,38 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         details = entry.details
         cur = self._con.cursor()
         if "attach_ddl" in details:  # postgres_fdw / sqlite_fdw — import a foreign schema
+            remote = f'"{details["local_schema"]}"."{source.table_name}"'
             if source.id not in self._raw_attached:
                 for ddl in details["attach_ddl"]:
                     cur.execute(ddl)
                 self._raw_attached.add(source.id)
-            remote = f'"{details["local_schema"]}"."{source.table_name}"'
-            # REQ-1900: `IMPORT FOREIGN SCHEMA` creates the foreign table with NO statistics —
-            # postgres_fdw/clickhouse_fdw/mongodb_wrapper foreign tables are never touched by
-            # autovacuum, so pg_statistic stays empty until something explicitly ANALYZEs them.
-            # Confirmed live: a real 3-way federated join (up to 1M matching rows per side) planned
-            # against the FDW's placeholder default estimate (`rows=1000`/`rows=1`, not real data)
-            # chose a hash join sized for that tiny estimate, spilled to disk repeatedly under the
-            # ACTUAL row count, and ran 13+ minutes for what should be a few seconds — root-caused
-            # by comparing EXPLAIN VERBOSE's default estimate against the query's own literal
-            # BETWEEN range. ANALYZE here, once per source at attach time (guarded the same way as
-            # the DDL above), gives the planner real cardinality/selectivity before any query ever
-            # runs against it.
-            cur.execute(f"ANALYZE {remote}")
+                # REQ-1900: `IMPORT FOREIGN SCHEMA` creates the foreign table with NO statistics —
+                # postgres_fdw/clickhouse_fdw/mongodb_wrapper foreign tables are never touched by
+                # autovacuum, so pg_statistic stays empty until something explicitly ANALYZEs them.
+                # Confirmed live: a real 3-way federated join (up to 1M matching rows per side)
+                # planned against the FDW's placeholder default estimate (`rows=1000`/`rows=1`, not
+                # real data) chose a hash join sized for that tiny estimate, spilled to disk
+                # repeatedly under the ACTUAL row count, and ran 13+ minutes for what should be a
+                # few seconds — root-caused by comparing EXPLAIN VERBOSE's default estimate against
+                # the query's own literal BETWEEN range. ANALYZE here, once per source at attach
+                # time, gives the planner real cardinality/selectivity before any query ever runs
+                # against it.
+                #
+                # This must stay INSIDE the `source.id not in self._raw_attached` guard above (it
+                # previously ran unconditionally on every call): confirmed live, an un-guarded
+                # ANALYZE against a large ClickHouse-backed foreign table (order_events) took
+                # >120s EVERY SINGLE CALL, not just the first — including calls made long after
+                # the table's statistics were already current, turning a one-time cold-attach cost
+                # into a permanent per-query tax and masking as an indefinite hang once REQ-1882's
+                # shared-loop fix moved it off the main thread (it stopped blocking OTHER
+                # concurrent requests, but this query's own call still paid the full re-ANALYZE
+                # cost every time).
+                cur.execute(f"ANALYZE {remote}")
         elif (
             "server_ddl" in details
         ):  # file_fdw (csv) — per-table foreign table from column metadata
-            if source.id not in self._raw_attached:
+            first_attach = source.id not in self._raw_attached
+            if first_attach:
                 for ddl in details["server_ddl"]:
                     cur.execute(ddl)
                 self._raw_attached.add(source.id)
@@ -197,7 +208,8 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 f"SERVER {details['server']} {details['table_options']}"
             )
             remote = ft
-            cur.execute(f"ANALYZE {remote}")  # REQ-1900: see the postgres_fdw branch's comment
+            if first_attach:
+                cur.execute(f"ANALYZE {remote}")  # REQ-1900: see the postgres_fdw branch's comment
         else:
             raise KeyError(f"pg connector for {source.type.value!r} has no attach/server DDL")
         # REQ-1730: the ENGINE route's own physical SQL, on this catalog-incapable engine, folds
@@ -574,16 +586,34 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
         """Async variant: MATERIALIZES on the executor (unlike ``run_sync``), because a lazy
-        server-side ``fetchmany`` pulled across the async boundary would block the event loop. Runs on
-        the engine's autocommit connection with a client-side cursor (REQ-1217)."""
+        server-side ``fetchmany`` pulled across the async boundary would block the event loop.
+
+        Runs on a connection BORROWED FROM ``self._read_pool`` (REQ-1906), not ``self._con``: a
+        query dispatched here can run past its caller's ``.result(timeout=...)`` deadline (the
+        caller gives up but nothing cancels the executor thread underneath), and ``self._con`` is
+        also ``attach_source``'s DDL/ANALYZE connection. Confirmed live on the perf-bench VM — a
+        federated_join call that outran its pgwire caller's 120s budget kept running on
+        ``self._con`` for several more minutes; a second, unrelated call's ``attach_source`` (a
+        genuinely new source, not yet in ``_raw_attached``) blocked the entire time waiting for
+        that same connection to free up, surfacing as an indefinite ~120s+ hang with no trace of
+        why. Borrowing from the pool isolates one call's overrun from every other call's attach
+        or query work, exactly as REQ-1895 already isolates ``run_sync``'s reads from ``self._con``."""
         loop = asyncio.get_event_loop()
 
         def _run() -> QueryResult:
-            cur = self._con.cursor()
-            cur.execute(*_psycopg2_exec_args(sql, params))
-            cols = [d[0] for d in cur.description] if cur.description else []
-            rows = list(cur.fetchall()) if cur.description else []
-            cur.close()
+            con = self._read_pool.getconn()
+            try:
+                cur = con.cursor()
+                cur.execute(*_psycopg2_exec_args(sql, params))
+                cols = [d[0] for d in cur.description] if cur.description else []
+                rows = list(cur.fetchall()) if cur.description else []
+                con.commit()
+                cur.close()
+            except Exception:
+                self._read_pool.putconn(con, close=True)
+                raise
+            else:
+                self._read_pool.putconn(con)
             return QueryResult(rows=rows, column_names=cols)
 
         return await loop.run_in_executor(None, _run)

@@ -67041,3 +67041,46 @@
     per-role max_flight_streams state
     Then the request is rejected with a FlightServerError distinguishing the server-wide limit
     from the per-role limit, before the per-role gate or query execution is reached
+- id: REQ-1906
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: Async Query Connection Isolation
+  priority: MUST
+  type: constraint
+  description: >-
+    The PostgreSQL federation runtime's async `run()` method (executed via `run_in_executor`
+    for async ENGINE route dispatch) must borrow a connection from `self._read_pool` instead of
+    using the single unpooled `self._con` — the same pattern `run_sync()` (the pgwire streaming
+    path) already uses per REQ-1895. This isolates one call's timeout-outrun query from every
+    other call's attach or query work sharing the runtime.
+  use_case: >-
+    Root cause of cascading attach-blocking under timeout: Python's executor futures cannot
+    be cancelled once running. When a federated query's `.result(timeout=120)` expires at the
+    caller, the `run_in_executor` future keeps executing in the background for several more
+    minutes, holding `self._con`. Since every subsequent call needing `attach_source()` (DDL
+    for a not-yet-attached source) blocks indefinitely waiting for the same connection, every
+    retry after the first slow call also fails at ~120s, looking like a permanent hang even
+    though the underlying attach-caching was working correctly.
+  code:
+    - provisa/federation/pg_runtime.py
+  tests:
+    - tests/unit/federation/test_pg_runtime_pool.py::test_run_borrows_from_pool_not_self_con
+    - tests/unit/federation/test_pg_runtime_pool.py::test_run_reuses_pooled_connection_across_calls
+    - tests/unit/federation/test_pg_runtime_pool.py::test_run_discards_connection_on_failure
+  since: "2026-09"
+  scenario: |
+    Given a federated join query is dispatched via run() to the shared asyncio executor
+    When the caller's .result(timeout=120) expires
+    Then the background executor task continues to completion, holding self._con for several
+    more minutes
+
+    Given a second query requiring attach_source() (a not-yet-attached source) arrives while
+    the first query's connection is still held
+    When attach_source() attempts to acquire self._con
+    Then it blocks indefinitely instead of failing at ~120s or acquiring an available connection
+    from the pool
+
+    Given run() borrows from self._read_pool (getconn/putconn pattern) instead of self._con
+    When one query's timeout expires and the background task continues
+    Then the connection is returned to the pool on success or discarded on error, freeing it
+    for subsequent attach() or query() work immediately
