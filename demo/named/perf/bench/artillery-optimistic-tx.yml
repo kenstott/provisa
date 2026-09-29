@@ -1,0 +1,41 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Most-optimistic-case saturation test: a single fixed GraphQL query, no WHERE predicate at
+# all (just LIMIT 1), returning exactly 1 row / 1 column against the pg engine. Every call is
+# byte-identical, so the response cache (provisa/api/data/endpoint.py's check_cache/
+# is_cacheable, REQ-865/866) serves every call after the first from cache — no SQL execution,
+# no engine round trip. This isolates the pure app/protocol-layer ceiling (routing, auth,
+# serialization, HTTP) from any real query cost — the theoretical best-case tx/sec the stack
+# can ever reach.
+#
+# Usage: PROVISA_HTTP_BASE_URL=http://localhost:8001 \
+#   /tmp/artillery-install/node_modules/.bin/artillery run \
+#   --output results/<engine>/artillery-optimistic-tx.json \
+#   artillery-optimistic-tx.yml
+# Then: artillery report results/<engine>/artillery-optimistic-tx.json
+config:
+  target: "{{ $processEnvironment.PROVISA_HTTP_BASE_URL }}"
+  phases:
+    - { name: "warmup",       duration: 10,  arrivalRate: 1 }
+    - { name: "ramp-to-2000", duration: 300, arrivalRate: 1, rampTo: 2000 }
+    - { name: "sustain-2000", duration: 60,  arrivalRate: 2000 }
+  defaults:
+    headers:
+      Content-Type: "application/json"
+scenarios:
+  - name: cached single-row single-column, no predicate
+    weight: 1
+    flow:
+      - post:
+          url: "/data/graphql"
+          json:
+            query: "query { pb__orders(limit: 1) { orderId } }"
+          expect:
+            - statusCode: 200

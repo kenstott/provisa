@@ -1,0 +1,76 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# GraphQL-specific saturation test — mirrors artillery-concurrency-ramp.yml's shape (same two
+# scenario weights, same 1 -> 2000 arrivals/sec open-model ramp) but targets /data/graphql
+# directly. artillery-concurrency-ramp.yml only ever exercised /data/cypher; despite
+# run_benchmark.py's own saturation-ramp comment treating "http" as covering both cypher-over-
+# HTTP and GraphQL, GraphQL is a genuinely separate endpoint/code path (provisa/api/data/
+# endpoint.py) that was never actually load-tested under this open-model ramp until now.
+#
+# Query text is queries.py's own live-verified point_lookup/single_source_aggregation GraphQL
+# text (pb__orders / pb__ordersGroupBy), not reconstructed here — see queries.py's comments for
+# the verification trail (root-field prefix, camelCase args, property names).
+#
+# No auth: --demo perf runs with auth.provider: none (see artillery-concurrency-ramp.yml's own
+# docstring for the same note).
+#
+# Usage: PROVISA_HTTP_BASE_URL=http://localhost:8001 \
+#   /tmp/artillery-install/node_modules/.bin/artillery run \
+#   --output results/<engine>/artillery-graphql-saturation.json \
+#   artillery-graphql-ramp.yml
+# Then: artillery report results/<engine>/artillery-graphql-saturation.json
+config:
+  target: "{{ $processEnvironment.PROVISA_HTTP_BASE_URL }}"
+  phases:
+    - { name: "warmup",       duration: 10,  arrivalRate: 1 }
+    - { name: "ramp-to-2000", duration: 300, arrivalRate: 1, rampTo: 2000 }
+    - { name: "sustain-2000", duration: 60,  arrivalRate: 2000 }
+  defaults:
+    headers:
+      Content-Type: "application/json"
+scenarios:
+  - name: point lookup (small)
+    weight: 7
+    flow:
+      - post:
+          url: "/data/graphql"
+          json:
+            query: >-
+              query($order_id: Int!) {
+                pb__orders(where: {orderId: {eq: $order_id}}) {
+                  orderId
+                  customerId
+                  region
+                  status
+                  amount
+                }
+              }
+            variables:
+              order_id: 12345
+          expect:
+            - statusCode: 200
+  - name: revenue rollup by region (heavy)
+    weight: 3
+    flow:
+      - post:
+          url: "/data/graphql"
+          json:
+            query: >-
+              query {
+                pb__ordersGroupBy(by: [region]) {
+                  groupKey
+                  aggregate {
+                    count
+                    sum { amount }
+                  }
+                }
+              }
+          expect:
+            - statusCode: 200
