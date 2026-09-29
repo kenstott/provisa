@@ -66470,6 +66470,24 @@
     connection into a losing process's own next retry within the SAME process. Verified live with
     an 8-trial, 4-process concurrent-startup race (near-zero stagger): all 4 workers converge to
     one consistent view every trial, no split state.
+
+    (Amended 2026-09-29, ROW-MATERIALIZE CACHE CALL SITES:) `duckdb_runtime.py`'s own six
+    duckdb-store methods were not the only callers of the `store_connection.py` native functions —
+    confirmed live under the first real `--workers 8` full-sweep run: `query_residency.py`'s
+    row-materialize cache path (`_ensure_row_cache_table`/`_read_row_cache`/`_land_row_cache`/
+    `_tombstone_row_cache`) calls `ensure_row_cache_table_duckdb_native`/
+    `read_row_cache_duckdb_native`/`apply_cdc_duckdb_native`/`tombstone_row_cache_duckdb_native`
+    directly against `runtime.connection`, bypassing the broker entirely — surfaced as
+    `duckdb.BinderException: Binder Error: Catalog "mat_store" does not exist!` the moment a
+    gRPC/Flight query actually exercised row-cache pushdown under multi-worker load (a path the
+    earlier unit-test/integration-test verification never reached). Fixed by adding the matching
+    methods (`ensure_row_cache_table`/`read_row_cache`/`tombstone_row_cache`; `apply_cdc` already
+    existed with a compatible signature and is now shared) to `_Broker` in
+    `materialize_broker.py`, and repointing all four `query_residency.py` call sites at
+    `runtime._store_broker` instead of `runtime.connection`. The lesson: `grep`-ing for every
+    caller of a function about to change its contract (not just the call sites in the file being
+    edited) is required before declaring a refactor like this complete — this session's earlier
+    "done" claim for REQ-1901 was premature by exactly this gap.
   use_case: >-
     Same live saturation-tuning thread as REQ-1900 (the maintainer asked to tune worker count),
     extended once a live `--workers 2` test surfaced this as a second, independent blocker beyond

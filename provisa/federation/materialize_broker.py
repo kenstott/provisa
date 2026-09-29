@@ -122,6 +122,54 @@ class _Broker:
                 events=events,
             )
 
+    def ensure_row_cache_table(
+        self, schema: str, table: str, columns: list[tuple[str, str]]
+    ) -> None:
+        from provisa.federation.store_connection import ensure_row_cache_table_duckdb_native
+
+        with self._lock:
+            ensure_row_cache_table_duckdb_native(
+                self._con, catalog=_MAT_STORE_ALIAS, schema=schema, table=table, columns=columns
+            )
+
+    def read_row_cache(
+        self,
+        schema: str,
+        table: str,
+        pk_columns: list[str],
+        keys: list[tuple[Any, ...]],
+    ) -> dict[tuple[Any, ...], Any]:
+        from provisa.federation.store_connection import read_row_cache_duckdb_native
+
+        with self._lock:
+            return read_row_cache_duckdb_native(
+                self._con,
+                catalog=_MAT_STORE_ALIAS,
+                schema=schema,
+                table=table,
+                pk_columns=pk_columns,
+                keys=keys,
+            )
+
+    def tombstone_row_cache(
+        self,
+        schema: str,
+        table: str,
+        pk_columns: list[str],
+        keys: list[tuple[Any, ...]],
+    ) -> None:
+        from provisa.federation.store_connection import tombstone_row_cache_duckdb_native
+
+        with self._lock:
+            tombstone_row_cache_duckdb_native(
+                self._con,
+                catalog=_MAT_STORE_ALIAS,
+                schema=schema,
+                table=table,
+                pk_columns=pk_columns,
+                keys=keys,
+            )
+
     def persist(
         self,
         schema: str,

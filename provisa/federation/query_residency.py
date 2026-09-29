@@ -590,17 +590,13 @@ async def _ensure_row_cache_table(
     )
 
     if _is_duckdb_store(backend):
-        from provisa.federation.store_connection import ensure_row_cache_table_duckdb_native
-
         runtime = _duckdb_runtime(backend, state)
-        catalog = runtime.ensure_materialize_attached()
+        runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
         full_columns = list(columns) + [
             (_ROW_CACHED_AT, "timestamp"),
             (_ROW_EXPIRES_AT, "timestamp"),
         ]
-        ensure_row_cache_table_duckdb_native(
-            runtime.connection, catalog=catalog, schema=schema, table=name, columns=full_columns
-        )
+        runtime._store_broker.ensure_row_cache_table(schema, name, full_columns)
         return None
 
     from provisa.federation import store_writer
@@ -626,18 +622,9 @@ async def _read_row_cache(
     keys: list[tuple[Any, ...]],
 ) -> dict[tuple[Any, ...], Any]:
     if _is_duckdb_store(backend):
-        from provisa.federation.store_connection import read_row_cache_duckdb_native
-
         runtime = _duckdb_runtime(backend, state)
-        catalog = runtime.ensure_materialize_attached()
-        return read_row_cache_duckdb_native(
-            runtime.connection,
-            catalog=catalog,
-            schema=schema,
-            table=name,
-            pk_columns=pk_columns,
-            keys=keys,
-        )
+        runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
+        return runtime._store_broker.read_row_cache(schema, name, pk_columns, keys)
     from provisa.federation import store_writer
 
     dsn = engine.engine.materialize_store()
@@ -665,10 +652,9 @@ async def _land_row_cache(
             _ROW_EXPIRES_AT,
             _UpsertEvent,
         )
-        from provisa.federation.store_connection import apply_cdc_duckdb_native
 
         runtime = _duckdb_runtime(backend, state)
-        catalog = runtime.ensure_materialize_attached()
+        runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
         now = datetime.now(UTC)
         expires_at = now + timedelta(seconds=resolved_ttl)
         stamped = [{**r, _ROW_CACHED_AT: now, _ROW_EXPIRES_AT: expires_at} for r in rows]
@@ -676,14 +662,8 @@ async def _land_row_cache(
             (_ROW_CACHED_AT, "timestamp"),
             (_ROW_EXPIRES_AT, "timestamp"),
         ]
-        apply_cdc_duckdb_native(
-            runtime.connection,
-            catalog=catalog,
-            schema=schema,
-            table=name,
-            columns=full_columns,
-            pk_columns=pk_columns,
-            events=[_UpsertEvent(r) for r in stamped],
+        runtime._store_broker.apply_cdc(
+            schema, name, full_columns, pk_columns, [_UpsertEvent(r) for r in stamped]
         )
         return
     from provisa.federation import store_writer
@@ -707,18 +687,9 @@ async def _tombstone_row_cache(
     if not keys:
         return
     if _is_duckdb_store(backend):
-        from provisa.federation.store_connection import tombstone_row_cache_duckdb_native
-
         runtime = _duckdb_runtime(backend, state)
-        catalog = runtime.ensure_materialize_attached()
-        tombstone_row_cache_duckdb_native(
-            runtime.connection,
-            catalog=catalog,
-            schema=schema,
-            table=name,
-            pk_columns=pk_columns,
-            keys=keys,
-        )
+        runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
+        runtime._store_broker.tombstone_row_cache(schema, name, pk_columns, keys)
         return
     from provisa.federation import store_writer
 
