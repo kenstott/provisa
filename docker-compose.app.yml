@@ -10,6 +10,26 @@ services:
       context: .
       args:
         PROVISA_EXTRAS: "${PROVISA_EXTRAS:-firebase,vector}"
+    # 8 workers on the shared hosted instance: overrides the Dockerfile's default single-worker
+    # CMD (that default stays generic — local/demo tiers don't need multiple processes). Safe as
+    # of REQ-1900 (gRPC/Bolt/pgwire port-sharing + a real Flight port pool, so every auxiliary
+    # protocol server survives `--workers N` instead of only the first worker serving it) and
+    # REQ-1901 (the embedded-DuckDB materialize store no longer crashes a second worker's
+    # readiness probe). This node's PROVISA_ENGINE is trino (preflight_engine enforces it), whose
+    # materialize store is Postgres — no analogous multi-connection constraint at all.
+    command:
+      [
+        "uvicorn",
+        "main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--timeout-keep-alive",
+        "620",
+        "--workers",
+        "8",
+      ]
     ports:
       - "${API_PORT:-8000}:8000"
       - "${FLIGHT_PORT:-8815}:8815"

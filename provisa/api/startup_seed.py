@@ -66,6 +66,12 @@ from provisa.api.app import state  # noqa: E402
 from provisa.api.app_loaders import _META_TABLE_ALIAS, _META_TABLES  # noqa: E402
 from provisa.core.models import DERIVED_SOURCE_ID
 
+# REQ-1900: arbitrary fixed key for the Postgres session advisory lock that serializes
+# _seed_built_in_sources' meta/ops-domain schema phase across concurrent `--workers N` processes
+# (see the lock's own call site for why). Any distinct bigint works; this one is just
+# "PROVISA1" packed as ASCII bytes, chosen so it reads as clearly app-specific in pg_locks output.
+_SEED_DOMAIN_ADVISORY_LOCK_KEY = 0x50524F5649534131
+
 # Views registered in the ops domain alongside the raw Iceberg tables.
 # Each entry: (view_name, [(col_name, data_type, is_pk)], ddl_sql)
 _OPS_VIEWS: list[tuple[str, list[tuple[str, str, bool]], str]] = [
@@ -848,12 +854,37 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         # seed is the only writer either id ever had — so retiring the row here is the rename
         # finishing, not a data migration.
         await _conn.execute_core(_delete(_sources_t).where(_sources_t.c.id == "__provisa__"))
-        await _seed_tag_param_values(_conn)  # REQ-1467
-        await _seed_meta_domain(_conn, org_id=eff_org, env=env)
-        await _seed_ops_pg(_conn)
-        await _seed_ops_domain(_conn, org_id=eff_org, env=env)  # REQ-884
-        await _ensure_ops_steward_grant(_conn)  # REQ-1386
-        await _seed_meta_relationships(_conn)
+        # REQ-1900: `--workers N` runs this whole boot sequence in N processes concurrently
+        # against the SAME control-plane Postgres, each with its own connection/session. Every
+        # step below (view DDL, then reflect_columns on that same view to register its columns)
+        # is autocommit-per-statement (Connection._commit_if_autocommit), so a peer worker's
+        # concurrent DDL on the SAME view can commit — or transiently rebuild it — in the tiny
+        # window between one worker's own CREATE and its own reflect, since Postgres catalog
+        # visibility is a property of the OTHER session's DDL, not this session's ordering.
+        # Confirmed live under `--workers 8`: `sqlalchemy.exc.NoSuchTableError` on
+        # `org_default.usage_ranking`/`org_default.pii_access` from exactly this reflect step.
+        # A session advisory lock serializes the whole phase across every worker regardless of
+        # the exact interleaving — only one worker's pass ever runs at a time, so by the time any
+        # OTHER worker's turn starts, every view this phase creates is fully committed and stable;
+        # every worker's own pass is already idempotent (CREATE OR REPLACE VIEW, upserts), so a
+        # later worker's now-serialized pass is just a fast no-op confirmation. Session-scoped
+        # (`pg_advisory_lock`, unlocked in `finally`), not `pg_advisory_xact_lock`, because these
+        # statements autocommit individually rather than running inside one wrapping transaction.
+        # Sqlite (the embedded demo tier) has no multi-worker story and no advisory-lock function.
+        _seed_lock_held = False
+        if cp_dialect == "postgresql":
+            await _conn.execute("SELECT pg_advisory_lock($1)", _SEED_DOMAIN_ADVISORY_LOCK_KEY)
+            _seed_lock_held = True
+        try:
+            await _seed_tag_param_values(_conn)  # REQ-1467
+            await _seed_meta_domain(_conn, org_id=eff_org, env=env)
+            await _seed_ops_pg(_conn)
+            await _seed_ops_domain(_conn, org_id=eff_org, env=env)  # REQ-884
+            await _ensure_ops_steward_grant(_conn)  # REQ-1386
+            await _seed_meta_relationships(_conn)
+        finally:
+            if _seed_lock_held:
+                await _conn.execute("SELECT pg_advisory_unlock($1)", _SEED_DOMAIN_ADVISORY_LOCK_KEY)
         needs_clusters = (
             await _conn.execute_core(
                 select(_sa_func.count())

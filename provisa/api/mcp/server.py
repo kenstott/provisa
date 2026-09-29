@@ -712,8 +712,27 @@ def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | No
     require_token = host not in ("127.0.0.1", "localhost", "::1")
     app = _wrap_role_auth(app, state, require_token=require_token)
 
+    # REQ-1900/1901: `uvicorn.run(host=, port=)` binds its own socket with no SO_REUSEPORT (unlike
+    # the bolt/pgwire fix in this same requirement), so under `--workers N` every worker but the
+    # first crashed here with "address already in use" -- confirmed live on a real `--workers 8`
+    # boot. `uvicorn.run` has no reuse_port kwarg, but it does accept an already-open file
+    # descriptor (`fd=`), so the socket is pre-created here with SO_REUSEPORT set and handed to it
+    # that way instead -- the same fix shape as bolt/pgwire, just via the fd seam rather than a
+    # library-level flag. Kept alive for the server's whole lifetime (never closed here): closing
+    # it would pull the listening socket out from under uvicorn's own wrapping of the same fd.
+    import socket as _socket
+
+    # PROVISA_MCP_HOST may be a raw IPv6 literal ("::1") -- an AF_INET socket cannot bind that
+    # address at all, so pick the family the configured host actually needs rather than assuming
+    # IPv4 (the overwhelmingly common case: "0.0.0.0" default, "127.0.0.1", or a hostname).
+    _family = _socket.AF_INET6 if ":" in host else _socket.AF_INET
+    _sock = _socket.socket(_family, _socket.SOCK_STREAM)
+    _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+    _sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEPORT, 1)
+    _sock.bind((host, port))  # nosec B104 - same wildcard host this server always advertised
+
     def _serve() -> None:
-        uvicorn.run(app, host=host, port=port, log_level="warning", **ssl_kwargs)  # nosec B104
+        uvicorn.run(app, fd=_sock.fileno(), log_level="warning", **ssl_kwargs)
 
     threading.Thread(target=_serve, daemon=True).start()
     _log.info("MCP Streamable %s server listening on %s:%d", scheme.upper(), host, port)
