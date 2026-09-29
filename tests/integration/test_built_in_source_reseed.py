@@ -108,6 +108,95 @@ async def test_otel_dialect_follows_the_repinned_engine(seeded_schema):
     assert (await seeded_schema.row("provisa-otel"))["dialect"] == "trino"
 
 
+async def test_reseed_of_an_unchanged_view_does_not_drop_its_dependents(seeded_schema):
+    """`deprecated_usage`/`pii_access` (``_OPS_REPORT_VIEWS``) both `FROM ops_table_usage`, so the
+    old unconditional `DROP VIEW ops_table_usage CASCADE` also dropped (and took an
+    AccessExclusiveLock across) both of them on EVERY boot, even one where nothing had changed
+    since a prior warm-up. That multi-object CASCADE lock, taken unconditionally on every restart,
+    is what a concurrent reader's AccessShareLock on one of the dependents (an already-ready peer
+    `--workers N` process serving ordinary traffic — not itself part of REQ-1900's seed-phase
+    advisory lock) can deadlock against; this is the live `asyncpg.exceptions.DeadlockDetectedError`
+    seen inside `_seed_meta_domain`/`_seed_ops_domain` on an 8-worker cold boot right after a clean
+    1-worker warm-up.
+
+    `_seed_view`'s fix removes the mechanism, not just the symptom: `CREATE OR REPLACE VIEW` locks
+    only `ops_table_usage` and is a true no-op when unchanged, so `deprecated_usage` is never
+    touched — and therefore never dropped — by an ordinary reseed. Asserted here directly, without
+    needing to reproduce Postgres's own lock-scheduling nondeterminism: the pre-fix
+    `_adapt_view_ddl` path cascade-drops `deprecated_usage` outright (it stops existing at all),
+    while `_seed_view` leaves its `oid` untouched (same object, never re-created).
+    """
+    from provisa.api._meta_views import _ops_table_usage_ddl
+    from provisa.api.startup_seed import _adapt_view_ddl, _seed_view
+
+    await seeded_schema.seed("trino")  # creates ops_table_usage + deprecated_usage.
+    schema = seeded_schema.schema
+    ddl = _ops_table_usage_ddl("postgresql")
+
+    async def _dependent_oid() -> int | None:
+        async with seeded_schema.db.acquire() as conn:
+            return await conn.fetchval(f"SELECT to_regclass('{schema}.deprecated_usage')::oid")
+
+    assert await _dependent_oid() is not None
+
+    async with seeded_schema.db.acquire() as conn:
+        await conn.execute(_adapt_view_ddl(ddl, "postgresql"))
+    assert await _dependent_oid() is None, (
+        "expected the pre-fix DROP...CASCADE path to actually cascade-drop deprecated_usage — "
+        "otherwise this test isn't exercising the real bug"
+    )
+
+    await seeded_schema.seed("trino")  # repair: recreate deprecated_usage's registration.
+    oid_before = await _dependent_oid()
+    assert oid_before is not None
+
+    async with seeded_schema.db.acquire() as conn:
+        await _seed_view(conn, ddl, "postgresql")
+    assert await _dependent_oid() == oid_before, (
+        "_seed_view's CREATE OR REPLACE VIEW must never touch deprecated_usage at all when "
+        "ops_table_usage's own shape is unchanged"
+    )
+
+
+async def test_concurrent_worker_reseed_does_not_error(seeded_schema):
+    """Basic multi-worker sanity check: N concurrent `_seed_built_in_sources` passes (one per
+    simulated `--workers N` process) against an already-warm schema must not raise. This does not
+    by itself reproduce the CASCADE-vs-concurrent-reader deadlock covered by
+    `test_reseed_of_an_unchanged_view_does_not_drop_its_dependents` above (Postgres's own lock
+    scheduler decides whether two sessions' lock requests actually interleave, and REQ-1900's
+    advisory lock already serializes worker-vs-worker access to this phase either way) — it exists
+    to catch a plainer regression, like an exception thrown by re-running the seed concurrently at
+    all.
+    """
+    import asyncio
+
+    await seeded_schema.seed("trino")  # warm-up: nothing left to reconcile below.
+
+    await asyncio.gather(*(seeded_schema.seed("trino") for _ in range(8)))
+
+
+async def test_reseed_skips_drop_cascade_when_view_shape_is_unchanged(seeded_schema, monkeypatch):
+    """The `_seed_view` fast path (`CREATE OR REPLACE VIEW`, no CASCADE) must be what actually
+    runs on an ordinary reseed — not just that it happens not to raise. Asserts the DROP...CASCADE
+    fallback (`_adapt_view_ddl`) is never invoked on a second, unchanged boot.
+    """
+    from provisa.api import startup_seed
+
+    await seeded_schema.seed("trino")  # first boot creates every view.
+
+    calls = []
+    original = startup_seed._adapt_view_ddl
+
+    def _tracking_adapt(ddl, dialect):
+        calls.append(ddl)
+        return original(ddl, dialect)
+
+    monkeypatch.setattr(startup_seed, "_adapt_view_ddl", _tracking_adapt)
+    await seeded_schema.seed("trino")  # second boot: shape is unchanged, no CASCADE needed.
+
+    assert calls == []
+
+
 async def test_a_user_edited_description_survives_reseeding(seeded_schema):
     # The counterpart constraint. `description` is the one column here a person owns, so it stays
     # out of update_columns and the set_extra coalesce restores the seed text only when blank —
