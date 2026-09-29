@@ -48,12 +48,24 @@ class MongoConnection:  # REQ-1730
     def client(self) -> Iterator[Any]:
         from pymongo import MongoClient
 
+        # directConnection=True: without it, pymongo's replica-set discovery (SDAM) trusts the
+        # server's own hello/isMaster response for where to actually connect -- a single-node
+        # replica set started for transaction/change-stream support (mongo:7 --replSet, the
+        # perf-bench compose posture) self-reports its Docker-internal hostname (e.g.
+        # "mongodb:27017") as that address, which is unresolvable from outside the compose
+        # network. Confirmed live: every real query against provisa-perf-bench's order_docs
+        # (row_materialize keyed fetch, REQ-1865) hung ~150-210s and failed with an EMPTY
+        # exception message -- pymongo silently redirected to "mongodb:27017", retried against
+        # it until serverSelectionTimeoutMS elapsed, and the caller's own outer
+        # concurrent.futures.TimeoutError (str() == "") surfaced first. directConnection=True
+        # makes the driver honor host/port as given and skip topology discovery entirely.
         client: Any = MongoClient(
             host=self.host,
             port=self.port,
             username=self.username,
             password=self.password,
             serverSelectionTimeoutMS=30000,
+            directConnection=True,
         )
         try:
             yield client
