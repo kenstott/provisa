@@ -145,6 +145,18 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                     cur.execute(ddl)
                 self._raw_attached.add(source.id)
             remote = f'"{details["local_schema"]}"."{source.table_name}"'
+            # REQ-1900: `IMPORT FOREIGN SCHEMA` creates the foreign table with NO statistics —
+            # postgres_fdw/clickhouse_fdw/mongodb_wrapper foreign tables are never touched by
+            # autovacuum, so pg_statistic stays empty until something explicitly ANALYZEs them.
+            # Confirmed live: a real 3-way federated join (up to 1M matching rows per side) planned
+            # against the FDW's placeholder default estimate (`rows=1000`/`rows=1`, not real data)
+            # chose a hash join sized for that tiny estimate, spilled to disk repeatedly under the
+            # ACTUAL row count, and ran 13+ minutes for what should be a few seconds — root-caused
+            # by comparing EXPLAIN VERBOSE's default estimate against the query's own literal
+            # BETWEEN range. ANALYZE here, once per source at attach time (guarded the same way as
+            # the DDL above), gives the planner real cardinality/selectivity before any query ever
+            # runs against it.
+            cur.execute(f"ANALYZE {remote}")
         elif (
             "server_ddl" in details
         ):  # file_fdw (csv) — per-table foreign table from column metadata
@@ -159,6 +171,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 f"SERVER {details['server']} {details['table_options']}"
             )
             remote = ft
+            cur.execute(f"ANALYZE {remote}")  # REQ-1900: see the postgres_fdw branch's comment
         else:
             raise KeyError(f"pg connector for {source.type.value!r} has no attach/server DDL")
         # REQ-1730: the ENGINE route's own physical SQL, on this catalog-incapable engine, folds

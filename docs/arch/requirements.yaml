@@ -66599,3 +66599,67 @@
     Then it succeeds — the snapshot was materialized as a real TABLE, not a VIEW over a
     connection-scoped register() binding
   target: "2026-Q3"
+
+- id: REQ-1902
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: PG-Engine Foreign Table Statistics
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    A real 3-way federated join under the PG engine (Postgres orders JOIN ClickHouse order_events
+    JOIN MongoDB order_docs, each reached via a Foreign Data Wrapper — postgres_fdw/clickhouse_fdw/
+    Supabase `mongodb_wrapper`), filtered to a 1M-row range on each side, took 13+ minutes and
+    hash-joined with repeated disk spill (`wait_event=IO/BufFileRead`) — for a query the benchmark
+    expected to complete in seconds.
+
+    Root-caused by comparing `EXPLAIN VERBOSE` against the query's own literal filters (never
+    assumed): `IMPORT FOREIGN SCHEMA`/`CREATE FOREIGN TABLE` (`pg_runtime.py`'s `attach_source`)
+    creates the foreign table with NO statistics populated — a foreign table is never touched by
+    autovacuum, so `pg_statistic` stays empty until something explicitly runs `ANALYZE`. Every
+    foreign scan the planner considered was therefore costed against the FDW's hardcoded PLACEHOLDER
+    default (`rows=1000` for clickhouse_fdw, `rows=1` for `mongodb_wrapper`), not the query's real
+    match count — for the actual ~1,000,000-row range, that misestimate led the planner to size a
+    hash join for a tiny result and spill to disk repeatedly under the true row count.
+
+    A parallel investigation into whether `mongodb_wrapper`'s predicate pushdown itself was at
+    fault (it does NOT support range operators, only literal equality) was DISPROVEN empirically:
+    `EXPLAIN VERBOSE` on the isolated MongoDB view showed the wrapper's own `Wrappers: quals =
+    [...]` diagnostic correctly capturing BOTH `"="` and `">="`/`"<="` operators as pushdown-
+    eligible — confirmed the wrapper pushes down range predicates exactly like equality ones. The
+    apparent "hang" on isolated single-table test queries during this investigation was a SEPARATE
+    artifact — an unrelated, still-running long query (before this fix) held the whole Postgres
+    instance in a state where even planning an unrelated query blocked on a `transactionid` wait;
+    killing that backend immediately unblocked normal planning, and the isolated pushdown tests
+    then confirmed instantly. Neither the "pushdown doesn't work" nor the "backend is stuck" leads
+    were the real cause — the missing `ANALYZE` was.
+
+    Fixed by calling `ANALYZE` on each foreign table immediately after `attach_source` imports/
+    creates it (both the `IMPORT FOREIGN SCHEMA` branch — postgres_fdw/clickhouse_fdw/
+    mongodb_wrapper — and the `CREATE FOREIGN TABLE` branch — file_fdw/csv), guarded by the same
+    `source.id not in self._raw_attached` per-source-once gate the DDL itself already uses. Runs
+    once per source at attach time, not per query.
+  use_case: >-
+    Surfaced directly from live `--workers 8` benchmark sweep testing (the same session as
+    REQ-1900/1901): the maintainer pushed back hard on treating a 13-minute benchmark query as
+    merely "large, so it's slow" ("no query should take more than a couple of minutes... its just
+    wrong"), which is what led to actually reading the query plan instead of accepting the
+    assumption.
+  code:
+    - provisa/federation/pg_runtime.py
+  tests: []
+  scenario: |
+    Given a Postgres-engine source attached via postgres_fdw/clickhouse_fdw/mongodb_wrapper,
+    freshly imported and never queried before
+    When attach_source completes
+    Then the foreign table already has real statistics (pg_statistic populated via ANALYZE),
+    so the FIRST query against it gets an accurate cardinality estimate rather than the FDW's
+    placeholder default
+
+    Given a filtered federated join across Postgres/ClickHouse/MongoDB foreign tables that
+    previously took 13+ minutes with disk-spilled hash joins
+    When re-run after this fix
+    Then the planner's estimates reflect real row counts and the join completes in a time
+    proportional to the actual matching data, not the FDW's placeholder guess
+  target: "2026-Q3"
