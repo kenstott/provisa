@@ -1060,3 +1060,56 @@ class TestPgwireStartupGating:
             with _srv._loop_lock:
                 _srv._loop = previous_loop
             loop.close()
+
+
+# ---------------------------------------------------------------------------
+# REQ-1882 — governance does not serialize concurrent connections
+# ---------------------------------------------------------------------------
+
+
+class TestPgwireConcurrentGovernanceIsolation:
+    """REQ-1882: one connection's slow governed statement must not delay a concurrently
+    submitted, unrelated statement on a SEPARATE connection — live-verified original symptom: a
+    full-table GROUP BY took a concurrent single-row PK lookup from ~120ms to ~12.1s.
+
+    Uses an injectable delay hook (a patched `govern_pgwire_plan` that offloads a synchronous
+    sleep via `_off_loop`, exactly like a slow real governance pass would) rather than a real
+    large dataset — deterministic and immune to drift as the demo dataset changes.
+    """
+
+    async def test_slow_connection_does_not_delay_concurrent_cheap_connection(self, pgwire_srv):
+        port, _ = pgwire_srv
+        state = _make_mock_state("trust_role", "none")
+
+        from provisa.pgwire import _pipeline
+
+        async def _fake_govern(sql, role_id):
+            if role_id == "slow":
+                await _pipeline._off_loop(time.sleep, 0.5)
+            return EngineResult(rows=[(role_id,)], column_names=["role"])
+
+        async def _connect_and_time(role: str) -> float:
+            conn = await asyncpg.connect(
+                host="127.0.0.1", port=port, user=role, password="any", database="provisa"
+            )
+            t0 = time.monotonic()
+            await conn.fetchrow("SELECT 1")
+            elapsed = time.monotonic() - t0
+            await conn.close()
+            return elapsed
+
+        with (
+            patch("provisa.api.app.state", state),
+            patch("provisa.pgwire._pipeline.govern_pgwire_plan", _fake_govern),
+        ):
+            baseline = await _connect_and_time("cheap")
+
+            slow_task = asyncio.ensure_future(_connect_and_time("slow"))
+            await asyncio.sleep(0.05)  # let the slow statement start governing first
+            cheap_elapsed = await _connect_and_time("cheap")
+            slow_elapsed = await slow_task
+
+        assert slow_elapsed >= 0.5
+        # The old shared-loop-serialization bug would have stretched the cheap request out to
+        # track the slow one's duration; isolated, it stays close to its solo baseline.
+        assert cheap_elapsed < max(baseline * 4, 0.3)

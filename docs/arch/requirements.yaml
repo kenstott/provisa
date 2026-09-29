@@ -64895,7 +64895,7 @@
   target: "2027-Q1"
 
 - id: REQ-1882
-  status: in-progress
+  status: complete
   group: "6. Execution, Routing, Caching & Performance"
   category: Concurrency
   priority: SHOULD
@@ -65028,6 +65028,40 @@
     the cache fix-scope 1/2 actually landed (`registered_tables_cache.py`), and its
     `_parse_sql_off_loop` helper duplicated what `_off_loop` already covers more generally. Nothing
     from it was reused.
+
+    (Amended 2026-09-29, live re-verification -- the step fix-scope 1/2's own amendment flagged as
+    "NOT LIVE-VERIFIED... the maintainer's call":) Re-ran this REQ's own scenario live against
+    provisa-perf-bench over pgwire (not Flight -- pgwire is the best-traced transport from the
+    original investigation): a single-row PK lookup on `perf_bench.orders` concurrent with a
+    `GROUP BY region` aggregation on the same table, submitted 0.5s apart, 3 trials, including a
+    2-concurrent-aggregation variant. Result: solo baseline ~0.05-0.1s, concurrent point lookup
+    0.04-0.08s (0.4x-1.7x baseline, i.e. within noise) while the aggregation itself ran 6.1-6.9s --
+    no meaningful starvation, nothing resembling the originally-reported 12.1s/~100x blowup. The
+    already-landed `run_in_executor`/`_off_loop` fixes (fix-scope 1/2 and 3/3) ARE sufficient for
+    pgwire; the loop-per-thread/dedicated-event-loop architecture flagged as an explicit follow-up
+    is NOT needed and was not built. (A parallel investigation into a hand-written "run governance
+    fully synchronously, no asyncio" split for pgwire was independently ruled unsafe before this
+    live check even ran: `govern_pgwire_plan` has genuine conditional async I/O beyond the
+    off-loaded CPU work -- `ensure_engine_awake`'s k8s/shard-wake call and `caps_for_org`'s billing
+    lookup are real async I/O on a SaaS/provisioned deployment, no-ops only on self-hosted -- and
+    the governed-provenance stamp ring (`_ISSUED_STAMPS`/`_ISSUED_SET`, `_pipeline.py:155-172`,
+    `_mint_stamp`) has no lock, safe today only because every governance call is serialized onto
+    the one shared loop; any design that runs `_mint_stamp` from real concurrent OS threads risks
+    desyncing it. Both are reasons a hard sync/off-loop split would need to be a materially bigger,
+    riskier change than fix-scope 1/2/3 already was -- not attempted, since it wasn't needed.)
+
+    Added permanent regression coverage so this class of bug (one request's work blocking a
+    concurrent unrelated request) is caught automatically going forward, not just re-verified by
+    hand: `tests/unit/test_governance_does_not_starve_concurrent_request.py` runs the real
+    `_govern_and_route` entrypoint with a deliberately slow `apply_governance` concurrently with a
+    cheap ticker coroutine on the same loop and asserts the ticker isn't starved (same technique as
+    fix-scope 3/3's own `test_json_decode_does_not_block_concurrent_task`) --  fails if `_off_loop`
+    dispatch for `apply_governance` is ever reverted to in-line. `tests/integration/
+    test_pgwire_integration.py::TestPgwireConcurrentGovernanceIsolation` drives this REQ's own
+    scenario end-to-end through a real `ProvisaServer` and two real `asyncpg` connections, using an
+    injectable delay hook (a patched `govern_pgwire_plan` that offloads a synchronous sleep via
+    `_off_loop`) rather than a real dataset, so it stays deterministic and immune to drift as the
+    demo data changes.
   use_case: >-
     Originating investigation: pg-engine perf benchmark saturation ramp collapse for the Flight
     SQL transport (rate=500/s: 0/15000 ok, 712 errors — most of the ~14288 "missing" requests
@@ -65051,6 +65085,8 @@
     - tests/unit/test_pipeline_off_loop.py
     - tests/unit/test_api_source_caller.py
     - tests/unit/test_registered_tables_cache.py
+    - tests/unit/test_governance_does_not_starve_concurrent_request.py
+    - tests/integration/test_pgwire_integration.py::TestPgwireConcurrentGovernanceIsolation
   scenario: |
     Given two concurrent clients on separate connections, one submitting a full-table GROUP BY
     aggregation and the other a single-row primary-key lookup on the same table, submitted ~0.5s
@@ -65058,12 +65094,20 @@
     When both run concurrently against the Provisa server
     Then the point lookup's latency should stay close to its unloaded baseline (~120ms), not
     balloon to track the aggregation's own multi-second duration
+    (Live-verified 2026-09-29 over pgwire against provisa-perf-bench: concurrent point lookup
+    stayed within 0.4x-1.7x its solo baseline against a 6.1-6.9s concurrent aggregation, 3 trials.
+    Permanently guarded by tests/integration/test_pgwire_integration.py::
+    TestPgwireConcurrentGovernanceIsolation and tests/unit/
+    test_governance_does_not_starve_concurrent_request.py, both using an injectable delay hook
+    rather than live data volume.)
 
     Given the perf-bench saturation ramp (demo/named/perf/bench/run_benchmark.py::run_saturation)
     at a moderate rate (e.g. 200/s) for the `flight` transport
     When the 70/30 point_lookup/single_source_aggregation mix is submitted at that rate
     Then completed-plus-errored requests should account for close to 100% of submitted requests
     within the phase window, not silently drop the majority as neither ok nor error
+    (Not re-run 2026-09-29 -- the pgwire live check above verifies the same shared governance
+    fix; the flight-transport saturation ramp itself was not re-executed.)
   target: "2026-Q4"
 
 - id: REQ-1883

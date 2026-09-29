@@ -117,6 +117,13 @@ def _build_state():
     state.source_pools.source_ids = ["sales-pg"]
     state.server_limits = {}
     state.engine_conn = None
+    state.schema_boot_id = "test-boot"
+    state.schema_version = 1
+
+    from provisa.compiler.compiled_query_cache import CompiledQueryCache
+
+    state.compiled_query_cache = CompiledQueryCache()
+    state.routing_cache = CompiledQueryCache()
     return state
 
 
