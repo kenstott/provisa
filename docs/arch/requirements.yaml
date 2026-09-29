@@ -64996,6 +64996,38 @@
     FOLLOW-UP (explicitly out of scope for this fix, per the maintainer): a dedicated event loop or
     loop-per-worker-thread architecture for Flight/gRPC governance dispatch, if `run_in_executor`
     alone proves insufficient once verified live under real concurrent load.
+
+    (Amended 2026-09-29, fix scope 3/3 implemented:) Live re-proof after fix-scope 1/2 still showed
+    federated_join hanging ~150s even with the unrelated mongodb direct-connect fix applied,
+    matching the neo4j_materialize_cold/cypher_cross_engine "whole server hangs, empty error"
+    symptoms this REQ already attributes to a shared mechanism, not three bugs. Traced to a gap
+    fix-scope 1/2 didn't cover: `provisa/api_source/caller.py`'s `_paginate` calls `resp.json()`
+    (httpx) inline — a synchronous, non-yielding `json.loads` over the full buffered body. For a
+    large source response (confirmed live: neo4j_materialize_cold's 2M-row/~485MB unfiltered land)
+    this is seconds of pure CPU. `call_api` is reached from the row_materialize residency-prep path
+    (`ensure_rows_resident`/`pushdown_row_materialize`/`ensure_resident`,
+    `provisa/federation/query_residency.py`), itself dispatched via `_run_on_loop` onto the same
+    single shared loop as every other governed query's governance step — so this decode blocks all
+    of them for its duration, same mechanism as the originally-fixed sqlglot/catalog-fetch pieces.
+    Fix: all 5 `resp.json()` call sites in `_paginate` now run via
+    `loop.run_in_executor(None, resp.json)`, same default pool `_off_loop` (fix-scope 1/2) and
+    every other `run_in_executor(None, ...)` call site in this codebase already uses — no dedicated
+    pool introduced, per the same "narrowly-scoped fix, no new architecture" direction as
+    fix-scope 1/2. `_fetch_oauth2_token`'s own synchronous `httpx.post`/`resp.json()`
+    (`provisa/api_source/caller.py:319-321`) was left unchanged — it is a plain sync function, not
+    reached from the async governance path this REQ covers, and out of this fix's scope.
+    NOT LIVE-VERIFIED, same posture as fix-scope 1/2: confirmed via a new unit test
+    (`tests/unit/test_api_source_caller.py::TestPaginate::test_json_decode_does_not_block_concurrent_task`)
+    that a slow `.json()` no longer starves a concurrently-scheduled coroutine on the same loop;
+    whether this resolves federated_join's live 150s hang is the maintainer's call to verify
+    against the perf-bench VM.
+
+    An earlier, independent worktree attempt at this REQ (branch
+    `fix/flight-saturation-investigation`, well behind current `main`) was reviewed and discarded:
+    its `RegisteredTablesCache` was TTL-only with no schema-generation key, strictly weaker than
+    the cache fix-scope 1/2 actually landed (`registered_tables_cache.py`), and its
+    `_parse_sql_off_loop` helper duplicated what `_off_loop` already covers more generally. Nothing
+    from it was reused.
   use_case: >-
     Originating investigation: pg-engine perf benchmark saturation ramp collapse for the Flight
     SQL transport (rate=500/s: 0/15000 ok, 712 errors — most of the ~14288 "missing" requests
@@ -65013,9 +65045,11 @@
     - provisa/pgwire/_pipeline.py
     - provisa/federation/registered_tables_cache.py
     - provisa/federation/registry_view.py
+    - provisa/api_source/caller.py
   tests:
     - tests/unit/test_prepared_front_end_offload.py
     - tests/unit/test_pipeline_off_loop.py
+    - tests/unit/test_api_source_caller.py
     - tests/unit/test_registered_tables_cache.py
   scenario: |
     Given two concurrent clients on separate connections, one submitting a full-table GROUP BY

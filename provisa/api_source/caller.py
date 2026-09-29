@@ -131,6 +131,16 @@ async def _paginate(
     form_body: dict | None = None,
 ) -> list[dict]:
     """Follow pagination, collecting all pages."""
+    # REQ-1882: `resp.json()` runs a synchronous json.loads over the full buffered body -- for a
+    # large source response (confirmed live: neo4j_materialize_cold's 2M-row/485MB unfiltered
+    # land) that's tens of milliseconds to double-digit seconds of pure CPU. call_api is reached
+    # from the governance/residency-prep path every governed query is dispatched onto ONE shared
+    # asyncio loop (see provisa/api/flight/server.py's `_run_on_loop`), so a decode running inline
+    # here blocks every OTHER concurrent query's governance for its duration -- this is the
+    # confirmed root cause of the "whole server hangs, empty error" symptoms seen live on
+    # federated_join/neo4j_materialize_cold/cypher_cross_engine. run_in_executor moves it off the
+    # loop, same pattern as _off_loop in provisa/pgwire/_pipeline.py.
+    loop = asyncio.get_running_loop()
     pagination = endpoint.pagination
     if pagination is None:
         resp = await _request_with_retry(
@@ -143,7 +153,7 @@ async def _paginate(
             form_body=form_body,
             timeout=timeout,
         )
-        return [resp.json()]
+        return [await loop.run_in_executor(None, resp.json)]
 
     pages: list[dict] = []
     max_pages = pagination.max_pages
@@ -163,7 +173,7 @@ async def _paginate(
                 form_body=form_body,
                 timeout=timeout,
             )
-            pages.append(resp.json())
+            pages.append(await loop.run_in_executor(None, resp.json))
             link = resp.headers.get("link", "")
             match = re.search(r'<([^>]+)>;\s*rel="next"', link)
             next_url = match.group(1) if match else None
@@ -183,7 +193,7 @@ async def _paginate(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = resp.json()
+            data = await loop.run_in_executor(None, resp.json)
             pages.append(data)
             cursor = data.get(cursor_field) if isinstance(data, dict) else None
             if not cursor:
@@ -210,7 +220,7 @@ async def _paginate(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = resp.json()
+            data = await loop.run_in_executor(None, resp.json)
             pages.append(data)
             # Heuristic: if response is a list shorter than page_size, we're done
             if isinstance(data, list) and len(data) < page_size:
@@ -235,7 +245,7 @@ async def _paginate(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = resp.json()
+            data = await loop.run_in_executor(None, resp.json)
             pages.append(data)
             if isinstance(data, list) and len(data) < page_size:
                 break

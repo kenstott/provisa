@@ -17,6 +17,7 @@ since caller.py does `import httpx` at module scope.
 from __future__ import annotations
 
 import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -351,6 +352,42 @@ class TestPaginate:
         client.request = AsyncMock(return_value=_resp(200, [1, 2]))
         pages = await _paginate(client, endpoint, "/pets", {}, {}, None, 30.0)
         assert len(pages) == 2
+
+    @pytest.mark.asyncio
+    async def test_json_decode_does_not_block_concurrent_task(self):
+        """REQ-1882: `resp.json()` must run off the calling loop (`run_in_executor`), not inline,
+        so a large/slow decode (confirmed live: neo4j_materialize_cold's 2M-row/485MB unfiltered
+        land) doesn't starve every other query's governance dispatched onto the same shared loop
+        (see provisa/api/flight/server.py's `_run_on_loop`). A slow synchronous `.json()` call
+        here, run inline, would block the concurrently-scheduled `ticker` task below for its
+        whole duration; run off-loop, `ticker` keeps incrementing throughout."""
+        endpoint = _endpoint(pagination=None)
+        client = MagicMock()
+
+        def _slow_json():
+            time.sleep(0.2)
+            return {"items": [1, 2]}
+
+        resp = _resp(200, {})
+        resp.json = _slow_json
+        client.request = AsyncMock(return_value=resp)
+
+        ticks = 0
+
+        async def ticker():
+            nonlocal ticks
+            for _ in range(20):
+                await asyncio.sleep(0.01)
+                ticks += 1
+
+        ticker_task = asyncio.ensure_future(ticker())
+        pages = await _paginate(client, endpoint, "/pets", {}, {}, None, 30.0)
+        await ticker_task
+
+        assert pages == [{"items": [1, 2]}]
+        # If .json() ran inline on the loop, ticker would have been starved for the whole 0.2s
+        # decode and accumulated far fewer than 20 ticks by the time _paginate returned.
+        assert ticks >= 15
 
 
 # ---------------------------------------------------------------------------
