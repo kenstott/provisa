@@ -61,7 +61,7 @@ class RawPgConnection:
 
     async def close(self) -> None:
         try:
-            self._asyncpg_conn.transport.resume_reading()
+            self._asyncpg_conn._transport.resume_reading()
         except Exception:  # noqa: BLE001 - best-effort; the connection is being discarded either way
             pass
         await self._asyncpg_conn.close()
@@ -80,7 +80,11 @@ async def open_raw_connection(connect_kwargs: dict[str, Any]) -> RawPgConnection
     if not connect_kwargs:
         raise PassthroughError("no connect parameters given (connect() never called)")
     conn = await asyncpg.connect(**connect_kwargs)
-    transport = conn._protocol.transport
+    # conn._transport (asyncpg.Connection's own slot, connection.py), NOT conn._protocol.transport:
+    # CoreProtocol's `transport` is a plain `cdef object` (coreproto.pxd) with no `public`/`readonly`
+    # modifier, so it is never exposed to Python at all — reading it raises AttributeError, live-
+    # confirmed against asyncpg 0.31.0 ('Protocol' object has no attribute 'transport').
+    transport = conn._transport
     transport.pause_reading()
     sock = transport.get_extra_info("socket")
     if sock is None:
