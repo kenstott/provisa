@@ -66426,6 +66426,8 @@
     exact outcome it was meant to avoid. Hub-and-spoke has the identical constraint (confirmed by
     directly testing that exact writer+reader shape) — it is not topology-dependent.
 
+    [SUPERSEDED by REQ-1901's 2026-09-29 "SIMPLER FINAL DESIGN" amendment below -- kept here for
+    history; do not implement against it.]
     Final design: exactly ONE process ever opens the file. A singleton broker (`provisa/federation/
     materialize_broker.py`), elected by "first process to bind a local Unix-domain-socket address
     wins" (the same pattern REQ-1900 uses for the Flight port pool), owns the one real DuckDB
@@ -66457,6 +66459,9 @@
     `self._con.cursor()` (a separate connection clone) — a VIEW built that way raised `Catalog
     Error: Table ... does not exist` the moment a cursor tried to read it. This makes every read
     "live as of the query that needed it" without ever letting two connections hold the file open.
+    (The read-materialization mechanism — real TABLE via `_refresh_store_relations`, never a
+    `register()`-backed VIEW — is UNCHANGED by the later amendment; only how `fetch_arrow` itself
+    reaches the file changed.)
 
     Election-race hardening: the broker's `get_broker()` only removes a stale socket file on a
     definitively dead listener (`ConnectionRefusedError` — file exists, nothing answers); a generic
@@ -66470,6 +66475,7 @@
     connection into a losing process's own next retry within the SAME process. Verified live with
     an 8-trial, 4-process concurrent-startup race (near-zero stagger): all 4 workers converge to
     one consistent view every trial, no split state.
+    [END SUPERSEDED BLOCK]
 
     (Amended 2026-09-29, ROW-MATERIALIZE CACHE CALL SITES:) `duckdb_runtime.py`'s own six
     duckdb-store methods were not the only callers of the `store_connection.py` native functions —
@@ -66489,6 +66495,11 @@
     edited) is required before declaring a refactor like this complete — this session's earlier
     "done" claim for REQ-1901 was premature by exactly this gap.
 
+    [SUPERSEDED by REQ-1901's 2026-09-29 "SIMPLER FINAL DESIGN" amendment below -- despite the
+    fixes and passing test trials described in this block, a real split-brain (`Unique file handle
+    conflict`) STILL recurred live during an actual `--workers 8` benchmark sweep, in a scenario
+    (an established 7-worker broker plus one respawned worker rejoining) this block's own test
+    coverage did not include. Kept here for history; do not implement against it.]
     (Amended 2026-09-29, BROKER RECONNECT RESILIENCE:) `get_broker()`'s handle was cached in
     `_local_cache` for the life of a process and never re-validated — confirmed live under the
     first real `--workers 8` full-sweep run: the elected broker's OWN worker process was killed
@@ -66525,13 +66536,41 @@
     connection before (the narrower, already-differentiated reconnect case). Verified live with
     both test shapes after the fix: 15/15 clean concurrent-election trials, 8/8 clean
     kill-and-recover resilience trials (one re-election, zero further errors in either case).
+    [END SUPERSEDED BLOCK]
+
+    (Amended 2026-09-29, SIMPLER FINAL DESIGN:) The whole socket + `multiprocessing.managers` +
+    election + resilience-wrapper design above was overengineering — replaced entirely with a
+    dedicated sentinel lock file (`<db_path>.lock`) and `fcntl.flock`. Every operation acquires
+    the lock (a blocking OS-level mutex — no polling, no backoff, no parsing DuckDB's own error
+    text to guess "busy" vs. "broken"), ATTACHes the store file (now guaranteed uncontested by any
+    other process), does its one operation, DETACHes (closes the connection), and releases the
+    lock. `materialize_broker.py` shrank from a singleton-broker module (election, a background
+    server thread, a resilient-reconnect wrapper, a same-process self-loopback special case) to a
+    single `_with_store(db_path, fn)` helper plus a thin `_SyncedStore` exposing the same method
+    surface every call site already used — zero changes needed in `duckdb_runtime.py`'s or
+    `query_residency.py`'s call sites.
+
+    This is categorically simpler than every prior design because `flock` is a KERNEL-GUARANTEED
+    primitive: mutual exclusion cannot be gotten wrong by an application-level protocol (there is
+    no election to race, no persistent connection to lose and reconnect, no "who is the current
+    owner" question at all), and it is tied to the file descriptor — a process that dies mid-
+    operation (crash, SIGKILL) releases the lock automatically, with no stale-socket or stale-lock
+    cleanup logic needed anywhere. This directly fixes the split-brain that recurred live even
+    after the previous design's resilience fixes (see the superseded block above): split-brain is
+    not possible by construction here, because no process ever holds the file open longer than one
+    call. Verified live: 15/15 clean concurrent 8-process election-style race trials (each landing
+    then reading back its own write with no cross-contamination), 10/10 clean trials with 8
+    processes each issuing 15 overlapping calls, and the full `DuckDBFederationRuntime` end-to-end
+    integration test (land from one runtime instance, read back live from another).
   use_case: >-
     Same live saturation-tuning thread as REQ-1900 (the maintainer asked to tune worker count),
     extended once a live `--workers 2` test surfaced this as a second, independent blocker beyond
     the auxiliary-protocol port-sharing REQ-1900 already covered. The maintainer explicitly steered
-    the design across several iterations (pool+mesh -> hub-and-spoke -> single shared file with a
-    singleton broker serializing every operation, reads included) before landing on the final
-    shape described above.
+    the design across several iterations (pool+mesh -> hub-and-spoke -> singleton broker with
+    socket-based election -> the final `flock`-on-a-sentinel-file design), the last of which the
+    maintainer proposed directly after flagging the broker/election design as unnecessary
+    overengineering — a per-call OS-level file lock gives the identical guarantee with none of the
+    incidental complexity.
   code:
     - provisa/federation/materialize_broker.py
     - provisa/federation/duckdb_runtime.py
