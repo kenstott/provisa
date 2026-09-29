@@ -651,7 +651,6 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         PgFilesConnector,
         PgSharepointConnector,
         PgSplunkConnector,
-        PgWrappersMongoDbConnector,
         PostgresFdwConnector,
         SqliteFdwConnector,
         TdsFdwConnector,
@@ -681,9 +680,14 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             # clickhouse: live-verified predicate+aggregate pushdown ADDED alongside the existing
             # DIRECT reach — not a replacement (REQ-1870).
             PgClickHouseFdwConnector(),
-            # mongodb: live-verified working ADDITIONAL reach (REQ-1871) — a distinct
-            # implementation from the rejected mongo_fdw candidate (REQ-1869).
-            PgWrappersMongoDbConnector(),
+            # mongodb: REQ-1871's wrappers/mongodb_wrapper FDW is REMOVED (Amended 2026-09-29,
+            # REQ-1871) — its own capability() had already confirmed live no join-pushdown
+            # support (empty "Wrappers: quals" on any join-derived predicate); a live perf-bench
+            # federated join over it at 1M-row scale did not return in 6+ minutes, and the
+            # maintainer decided not to carry the connector at all rather than accept that
+            # failure mode. row_materialize (make_mongodb_keyed_loader, REQ-1865) is the only
+            # mongodb reach for the pg engine now — see connector_duckdb.py's git history for
+            # the removed class if it needs to be reconsidered.
             SqliteFdwConnector(),  # sqlite (system libsqlite3)
             MysqlFdwConnector(),  # mysql (needs a bundled client lib; probe-gated)
             TdsFdwConnector(),  # sqlserver via tds_fdw (bundled freetds; probe-gated)

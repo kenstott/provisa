@@ -599,15 +599,29 @@ async def _ensure_row_cache_table(
         runtime._store_broker.ensure_row_cache_table(schema, name, full_columns)
         return None
 
+    from provisa.core.database import create_engine_from_url
+    from provisa.core.db import add_missing_columns
     from provisa.federation import store_writer
-    from sqlalchemy.schema import CreateSchema, CreateTable
+    from sqlalchemy.schema import CreateSchema
 
     cache_table = build_row_cache_table(schema, name, columns, (), dialect_name=backend.dialect)
     dsn = engine.engine.materialize_store()
     async with store_writer.store_connection(dsn) as conn:
         if schema and conn.capabilities.schemas:
             await conn.execute_core(CreateSchema(schema, if_not_exists=True))
-        await conn.execute_core(CreateTable(cache_table, if_not_exists=True))
+    # Additive reconcile (REQ-828 pattern, same as add_missing_columns's other callers): a cache
+    # table already landed at this name by an OLDER row-materialize schema (missing the cache's
+    # own _row_cached_at/_row_expires_at bookkeeping columns) never gets those columns from
+    # CREATE TABLE IF NOT EXISTS alone -- confirmed live (UndefinedColumnError on _row_expires_at
+    # against a table created before that column existed). ``add_missing_columns`` also creates
+    # the table outright when absent, so this replaces the old CreateTable-only step entirely.
+    async_url = store_writer.async_store_url(dsn)
+    reconcile_engine = create_engine_from_url(async_url, pool_size=1)
+    try:
+        async with reconcile_engine.begin() as raw_conn:
+            await raw_conn.run_sync(add_missing_columns, [cache_table], schema)
+    finally:
+        await reconcile_engine.dispose()
     return cache_table
 
 

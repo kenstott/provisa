@@ -64345,11 +64345,29 @@
     (EnterpriseDB/mongo_fdw#194: an internal assertion failure kills the Postgres BACKEND PROCESS,
     not just the query) confirming that a bug in one bundled extension can take down every other
     query the engine's own serving Postgres is running. A captive sidecar contains that blast
-    radius to one container. `PgWrappersMongoDbConnector` (provisa/federation/connector_duckdb.py,
+    radius to one container.
+    [SUPERSEDED by REQ-1871's 2026-09-29 amendment below -- kept here for history; do not
+    implement against it.]
+    `PgWrappersMongoDbConnector` (provisa/federation/connector_duckdb.py,
     implemented this session, live-verified working) should be superseded by a captive-Postgres+
     wrappers deployment for mongodb specifically — same mechanism as REQ-1874's SaaS-API sources,
     not a separate design. Do not remove the already-working connector code without first setting
     up the captive path; this is a migration target, not an immediate rip-out.
+    [END SUPERSEDED BLOCK]
+
+    (Amended 2026-09-29, REMOVED — maintainer decision, no captive-sidecar migration needed:)
+    `PgWrappersMongoDbConnector` is deleted outright (provisa/federation/connector_duckdb.py,
+    unregistered from provisa/federation/engine.py's build_pg_engine candidate list). Trigger: a
+    live perf-bench run of `large_federated_join` (pg engine, orders JOIN order_events JOIN
+    order_docs, 1M-row range) against this connector did not return within 6+ minutes and had to
+    be killed — consistent with, and now confirming at real scale, the connector's own
+    capability() finding that it supports no join-pushdown at all (empty "Wrappers: quals" on
+    every join-derived predicate, live-verified 2026-09-28). The maintainer's call: don't carry a
+    connector whose only reach mode degrades this badly under a real federated join, migration
+    path or not — row_materialize (make_mongodb_keyed_loader, REQ-1865) remains the sole
+    supported mongodb reach for the pg engine. The captive-sidecar migration this REQ previously
+    proposed as the next step is dropped along with it; if wrappers-based mongodb reach is wanted
+    again later, it needs a fresh REQ, not a revival of this one.
   use_case: >-
     Confirmed this session: mongo_fdw (REQ-1869) is genuinely broken upstream, and `wrappers`'
     independent Rust implementation is a working replacement for MongoDB specifically, found
