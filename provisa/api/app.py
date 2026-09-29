@@ -1914,6 +1914,16 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
         expand_grants(tracked_functions, role_chains_by_id)
         expand_grants(tracked_webhooks, role_chains_by_id)
 
+        # REQ-1903: stable gRPC proto field numbers across schema regenerations — loaded from this
+        # org's tenant DB before the build, persisted after it sees every role's + the wire
+        # schema's columns.
+        from provisa.grpc.field_numbering import (
+            load_field_number_allocator,
+            persist_field_numbers,
+        )
+
+        _field_numbers = await load_field_number_allocator(conn)
+
         _build_and_register_schemas(
             roles=roles,
             tables=tables,
@@ -1928,7 +1938,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
             gql_object_cols=_gql_object_cols,
             rls_rules=rls_rules,
             metrics=_metric_dicts,  # REQ-1319
+            field_numbers=_field_numbers,
         )
+
+        await persist_field_numbers(conn, _field_numbers)
 
     # REQ-263, REQ-264, REQ-265: publish filtered table+column dicts for raw-SQL governance
     # (pgwire / Flight SQL / airport). build_governance_context reads state.tables to derive

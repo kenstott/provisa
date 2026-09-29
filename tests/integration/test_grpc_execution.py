@@ -49,6 +49,22 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 
 _TEST_GRPC_PORT = int(os.environ.get("PROVISA_TEST_GRPC_PORT", "50151"))
 
+
+def _free_port() -> int:
+    """An OS-assigned free TCP port (same convention as tests/conftest.py's own _free_port).
+
+    The fixed _TEST_GRPC_PORT+N ports below are reproducibly reused by every worktree running
+    this file concurrently (this session's swarm runs several gRPC-focused agents in parallel
+    worktrees) — confirmed live: `[::]:50153` failed with "Address already in use" identically
+    against both the pre-hardening baseline server.py and this branch's, so it is not a
+    regression, just this file's own fixed-port scheme not surviving concurrent worktree runs."""
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
+
 MINIMAL_PROTO = """\
 syntax = "proto3";
 package test.grpc.v1;
@@ -141,6 +157,10 @@ class TestGrpcServerStarts:
         # has its own fixture.
         state.auth_config = None
         state.auth_middleware_active = False
+        # REQ-1904: server_cfg.get(...) is read for real (grpc_max_message_bytes,
+        # grpc_max_concurrent_rpcs) during server construction — a bare MagicMock attribute
+        # answers .get() with another MagicMock, which int() then rejects.
+        state.server_cfg = {}
         state.schemas = {}
         state.contexts = {}
         state.rls_contexts = {}
@@ -183,6 +203,10 @@ class TestGrpcServerStarts:
         # has its own fixture.
         state.auth_config = None
         state.auth_middleware_active = False
+        # REQ-1904: server_cfg.get(...) is read for real (grpc_max_message_bytes,
+        # grpc_max_concurrent_rpcs) during server construction — a bare MagicMock attribute
+        # answers .get() with another MagicMock, which int() then rejects.
+        state.server_cfg = {}
         state.schemas = {}
         state.contexts = {}
         state.rls_contexts = {}
@@ -331,6 +355,10 @@ class TestGrpcQueryExecution:
         # has its own fixture.
         state.auth_config = None
         state.auth_middleware_active = False
+        # REQ-1904: server_cfg.get(...) is read for real (grpc_max_message_bytes,
+        # grpc_max_concurrent_rpcs) during server construction — a bare MagicMock attribute
+        # answers .get() with another MagicMock, which int() then rejects.
+        state.server_cfg = {}
         # REQ-693: a bare MagicMock attribute is truthy, which would put this unsecured
         # deployment behind the high-security KMS-key gate. Name it standard mode.
         state.security_high = False
@@ -354,7 +382,7 @@ class TestGrpcQueryExecution:
 
         state.federation_engine = EngineRuntime(build_trino_engine(), state)
 
-        port = _TEST_GRPC_PORT + 2
+        port = _free_port()
         server = await start_grpc_server(
             port=port,
             state=state,
@@ -456,6 +484,10 @@ class TestGrpcQueryExecution:
         # has its own fixture.
         state.auth_config = None
         state.auth_middleware_active = False
+        # REQ-1904: server_cfg.get(...) is read for real (grpc_max_message_bytes,
+        # grpc_max_concurrent_rpcs) during server construction — a bare MagicMock attribute
+        # answers .get() with another MagicMock, which int() then rejects.
+        state.server_cfg = {}
         state.schemas = {}  # empty — will cause NOT_FOUND
 
         servicer = ProvisaServicer(state, pb2_mock, pb2_grpc_mock)
@@ -477,8 +509,6 @@ class TestGrpcQueryExecution:
 # ---------------------------------------------------------------------------
 # Secured deployment: the credential gate on the wire (REQ-273, REQ-617, REQ-1263)
 # ---------------------------------------------------------------------------
-
-_SECURED_GRPC_PORT = int(os.environ.get("PROVISA_TEST_GRPC_AUTH_PORT", "50161"))
 
 _SECURED_AUTH_CONFIG = {
     "provider": "oidc",
@@ -527,6 +557,8 @@ class TestSecuredGrpcRequiresACredential:
         state.multitenancy = False
         state.auth_config = _SECURED_AUTH_CONFIG
         state.auth_middleware_active = True
+        # REQ-1904: server_cfg.get(...) is read for real during server construction.
+        state.server_cfg = {}
         # REQ-693: a bare MagicMock attribute is truthy, which would put this deployment
         # behind the high-security KMS-key gate on top of the credential gate under test.
         state.security_high = False
@@ -546,13 +578,14 @@ class TestSecuredGrpcRequiresACredential:
 
         state.federation_engine = EngineRuntime(build_trino_engine(), state)
 
+        secured_port = _free_port()
         server = await start_grpc_server(
-            port=_SECURED_GRPC_PORT,
+            port=secured_port,
             state=state,
             pb2_path=pb2_path,
             pb2_grpc_path=pb2_grpc_path,
         )
-        channel = grpc.aio.insecure_channel(f"localhost:{_SECURED_GRPC_PORT}")
+        channel = grpc.aio.insecure_channel(f"localhost:{secured_port}")
         # Wait for the channel to reach READY before yielding — 30 s tolerates a loaded CI lane.
         await asyncio.wait_for(channel.channel_ready(), timeout=30.0)
         stub_cls = next(

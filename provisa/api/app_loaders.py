@@ -1282,6 +1282,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     gql_object_cols: dict,
     rls_rules: list[dict],
     metrics: list[dict],  # REQ-1319: config metric registry for schema projection
+    field_numbers=None,  # FieldNumberAllocator | None (REQ-1903) — the caller owns load/persist
 ) -> None:
     """Build and register GraphQL schemas, contexts, and protos for each role."""
     from provisa.api.app import state
@@ -1365,7 +1366,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         # No swallow: an unmapped column type is a real gap in the proto type map, not a reason to
         # silently disable gRPC for the role. Let generate_proto raise so it surfaces at startup and
         # gets fixed at the source (the type map) — never patched around here.
-        state.proto_files[role["id"]] = generate_proto(si)
+        state.proto_files[role["id"]] = generate_proto(si, field_numbers=field_numbers)
 
     # REQ-045/REQ-143: the SERVED gRPC wire descriptor. A grpc.aio server registers exactly one
     # generated service and stock reflection serves exactly one descriptor pool, so the wire
@@ -1384,7 +1385,13 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         {**t, "columns": [{**c, "visible_to": []} for c in t["columns"]]} for t in tables
     ]
     _wire_metrics = [{**m, "visible_to": []} for m in metrics]
-    state.wire_proto = generate_proto(_schema_input(_wire_role, _wire_tables, _wire_metrics))
+    # REQ-1903: authoritative=True — this is the only call in the build that sees every column of
+    # every table (visible_to=[]), so it's the only one allowed to retire a field number.
+    state.wire_proto = generate_proto(
+        _schema_input(_wire_role, _wire_tables, _wire_metrics),
+        field_numbers=field_numbers,
+        authoritative=True,
+    )
 
     # REQ-1443: a YAML-registered checker table's contract names pgwire (semantic) names, which
     # exist only now that the contexts are compiled — config load could not check them.

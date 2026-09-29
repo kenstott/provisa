@@ -66663,3 +66663,199 @@
     Then the planner's estimates reflect real row counts and the join completes in a time
     proportional to the actual matching data, not the FDW's placeholder guess
   target: "2026-Q3"
+
+- id: REQ-1903
+  status: complete
+  group: "6. Execution, Routing, Caching & Performance"
+  category: gRPC Proto Field-Number Stability
+  priority: MUST
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    A read-only audit of `provisa/grpc/server.py`/`proto_gen.py` found `generate_proto`
+    (`proto_gen.py`) assigned every message's field numbers via `enumerate(sorted_cols, start=1)`
+    freshly on EVERY schema regeneration, with no `reserved` tracking. Since protobuf field
+    identity on the wire is the NUMBER, not the name, this is silent data corruption waiting to
+    happen: a client holding an older-generation stub (downloaded from `GET /data/proto/{role}`)
+    decodes a later generation's bytes using the OLD number->field mapping. Any change that shifts
+    the sort order for a table — a column added, renamed, or (for relation fields) a relationship
+    added — reassigns every subsequent field's number, and the client reads the wrong column's
+    bytes into the wrong field. No error on either side; just wrong data.
+
+    Traced the actual regeneration lifecycle before designing the fix: `state.wire_proto` (the
+    UNION of every role's visible columns, `app_loaders._build_and_register_schemas`) is compiled
+    ONCE into the served `_pb2`/`_pb2_grpc` modules at process startup (`app_startup._start_servers`
+    -> `compile_proto` -> `start_grpc_server`) — there is no live-hot-reload path that recompiles
+    and re-registers the running gRPC service. But `_build_and_register_schemas` itself (and thus
+    `generate_proto`) DOES re-run on every schema rebuild (`build_org_runtime`, config reload),
+    which regenerates BOTH `state.wire_proto` (compiled into the next process restart's served
+    descriptor) and each role's downloadable `.proto` (`GET /data/proto/{role}`, read live by any
+    client that redownloads it) — so the instability is real across restarts/rebuilds even within
+    one long-lived deployment, not just a theoretical multi-version concern.
+
+    Fixed with a persisted, monotonic field-number allocator (`provisa/grpc/field_numbering.py`,
+    `FieldNumberAllocator`): a number is assigned once per `(table_id, namespace, field_name)` —
+    `namespace` separates the independent field-number spaces of `{Type}` (row + relation fields),
+    `{Type}Filter`, `{Type}Input`, and the aggregate `SumFields`/`AvgFields`/`.../MinFields`/
+    `MaxFields` sub-messages, since each is its own protobuf message with its own numbering — and
+    never reassigned. A new field gets `max(every number this (table_id, namespace) has ever used,
+    including retired ones) + 1`, so a retired number is never handed to a differently-named field
+    later (the `reserved` guarantee, enforced at generation time instead of in a static `.proto`).
+    Persisted in a `grpc_field_numbers` table in the org's own tenant-DB schema (same
+    `CREATE TABLE IF NOT EXISTS` bootstrap convention `init_audit_schema` uses for
+    `query_audit_log`, in the same `org_<id>` schema — table_id is only unique within one org's
+    `registered_tables`, so the registry is scoped per org like the audit log is). Postgres-only,
+    matching `init_audit_schema`'s own restriction (the upsert uses `ON CONFLICT`); a non-Postgres
+    tenant DB gets an allocator with nothing persisted, so `generate_proto` calls there fall back
+    to the pre-fix fresh-enumerate behavior for that backend rather than a partially-persisted,
+    inconsistent one.
+
+    `generate_proto(si, field_numbers=None, authoritative=False)`: the SAME allocator instance is
+    threaded through every `generate_proto` call in one schema build (every role's proto plus the
+    union/wire proto), loaded once (`load_field_number_allocator`) before the role loop in
+    `app.py`'s schema-rebuild path and flushed once (`persist_field_numbers`) after. This is
+    required for correctness, not just for stability across restarts: the server's wire bytes are
+    always decoded against a ROLE's own downloaded `.proto`, so a role's proto and the wire/union
+    proto must agree on the field number for the same column, which only holds if they share one
+    allocator per build. `authoritative=True` (passed only for the union/wire call, the only call
+    that sees a table's FULL column set — every column, `visible_to=[]`) is the only point allowed
+    to retire a field number (`reconcile_removed`); a role-scoped call seeing fewer columns than the
+    union is a normal permission restriction, never evidence a column was dropped from the table.
+
+    `field_numbers=None` (the default) preserves the pre-fix fresh-enumerate behavior — used only
+    by `provisa/api/data/endpoint_dev.py`'s design-time proto preview, which is never decoded by a
+    real cached client stub, so stability doesn't apply there and requiring DB access at that call
+    site would be scope creep unrelated to the served wire schema.
+  use_case: >-
+    Read-only gRPC hardening audit this session (parallel worktree `fix/grpc-hardening`) flagged
+    this as the single most important, most silently-dangerous finding: every other gap found in
+    the same audit (bare-except status codes, no concurrency ceiling, no health check, reflection
+    gating, upb backend verification — REQ-1904) fails LOUDLY or DEGRADES SAFELY; this one
+    corrupts data with no signal to either side.
+  code:
+    - provisa/grpc/field_numbering.py
+    - provisa/grpc/proto_gen.py
+    - provisa/api/app_loaders.py
+    - provisa/api/app.py
+  tests: []
+  scenario: |
+    Given a table's columns are re-sorted alphabetically by an added column (e.g. inserting
+    column "b" between existing "a" and "c")
+    When generate_proto is called again for the SAME table_id with a shared FieldNumberAllocator
+    that already assigned numbers to "a" and "c" in a prior call
+    Then "a" and "c" keep their previously assigned field numbers, and "b" gets a NEW number that
+    was never used before for this (table_id, namespace) — no existing field's number changes
+
+    Given a column is removed from a table between two schema builds
+    When the authoritative (wire/union) generate_proto call runs with the column no longer in the
+    table's visible_columns
+    Then the allocator marks that column's number removed (reconcile_removed) and a later column
+    with a DIFFERENT name is never assigned that same number
+
+    Given a role sees only a SUBSET of a table's columns (permission-restricted, not dropped)
+    When that role's generate_proto call runs (authoritative=False)
+    Then the columns absent from the role's view are NOT marked removed — their numbers stay
+    reserved for when a broader-access role or the wire schema needs them
+  target: "2026-Q3"
+
+- id: REQ-1904
+  status: complete
+  group: "8. Reliability, Security & Observability"
+  category: gRPC Server Hardening
+  priority: SHOULD
+  type: behavioral
+  since: "2026-09"
+  description: >-
+    Remaining findings from the same read-only gRPC audit (REQ-1903 covers the field-number
+    correctness finding), all in `provisa/grpc/server.py` unless noted:
+
+    1. Mid-stream error status codes: `_handle_query_bound`'s three ENGINE/DIRECT streaming
+    terminals caught `Exception`, finalized the audit row, then bare-`raise`d — surfacing as opaque
+    `UNKNOWN` on the wire, unlike the request-validation paths in the same file which already use
+    `context.abort(StatusCode.X, ...)`. Added `_status_for_exception(exc)`, mapping
+    `TimeoutError`->`DEADLINE_EXCEEDED`, `PermissionError`->`PERMISSION_DENIED`,
+    `(ConnectionError, OSError)`->`UNAVAILABLE`, `ValueError`->`INVALID_ARGUMENT`, else `INTERNAL`;
+    each site now calls `await context.abort(_status_for_exception(exc), str(exc))` after
+    `finalize_audit`, preserving the audit-finalization behavior.
+
+    2. No concurrency ceiling: `grpc.aio.server(...)` had no `maximum_concurrent_rpcs`, so an
+    overloaded server queued RPCs indefinitely instead of fast-failing with `RESOURCE_EXHAUSTED`.
+    Added `maximum_concurrent_rpcs=200` (env `GRPC_MAX_CONCURRENT_RPCS` / `server_cfg
+    ["grpc_max_concurrent_rpcs"]`, same override pattern as the existing
+    `grpc_max_message_bytes`). This is a per-PROCESS ceiling (this deployment runs `--workers N`,
+    each its own process/server) — distinct from REQ-369's `max_flight_streams`, a per-ROLE
+    fair-share limit enforced by the rate limiter, not a server-wide gRPC construction option.
+    200 is sized well above the default DB pool (`pool_size=5` per worker, `core/database.py`)
+    since most RPCs stream rather than hold one connection for their whole lifetime.
+
+    3. No keepalive tuning: added `grpc.keepalive_time_ms=60_000`,
+    `grpc.keepalive_timeout_ms=20_000`, `grpc.keepalive_permit_without_calls=1`,
+    `grpc.http2.min_ping_interval_without_data_ms=10_000`, `grpc.http2.max_ping_strikes=2` — a dead
+    peer's call slot is now reclaimed within ~80s instead of held forever, and a normally-configured
+    client's between-call keepalive pings aren't penalized as abusive.
+
+    4. No `grpc.max_connection_age_ms`: added (30 minutes, `grpc_connection_age_grace_ms=30_000`)
+    — prep for a future L4 load balancer (none confirmed in front of this deployment today) so a
+    long-lived connection eventually recycles instead of pinning one client to one backend process
+    forever.
+
+    5. No real gRPC health check: registered the standard `grpc.health.v1` `HealthServicer`
+    (`grpcio-health-checking`, added to `pyproject.toml`) alongside the generated service, set
+    SERVING for `""` and every registered service name. `AuthInterceptor.intercept_service`
+    (`provisa/grpc/auth.py`) now exempts `/grpc.health.v1.Health/*` from both the high-security
+    KMS-key check and the bearer-credential check — mirrors the HTTP surface's own unauthenticated
+    `/health`/`/live`/`/ready` (`provisa/api/app.py`), since a health probe returns no row data or
+    schema and an orchestrator that can't reach it without a bearer credential could kill a live
+    pod over an unrelated auth outage.
+
+    6. Reflection gated unconditionally: `enable_reflection(...)` ran regardless of whether auth
+    was configured — safe when auth IS active (`AuthInterceptor` covers reflection too, REQ-273/
+    REQ-1263), but an unsecured/dev-parity deployment left the whole service surface enumerable
+    with no explicit decision behind it. Gated behind `auth_active(state) or
+    grpc_allow_unsecured_reflection` (env `GRPC_ALLOW_UNSECURED_REFLECTION` / `server_cfg`) — the
+    latter a documented, explicit opt-in for a deployment that wants reflection's discovery
+    convenience despite having no auth. `auth_active` raising `RuntimeError` (a misconfigured,
+    supposedly-active auth middleware) is NOT caught here — that must fail server startup loudly,
+    not be silently read as "reflection off".
+
+    7. upb protobuf backend verification: added a startup check in
+    `app_startup._start_servers` (`google.protobuf.internal.api_implementation.Type() == "upb"`)
+    that raises loudly if the pure-Python/cpp backend is active instead — a silent multi-x
+    serialization slowdown with nothing in a passing test to reveal it, matching this repo's
+    fail-closed convention (CLAUDE.md).
+  use_case: >-
+    Read-only gRPC hardening audit this session (parallel worktree `fix/grpc-hardening`), alongside
+    live Artillery saturation testing (up to 2000 req/s) that separately confirmed the app
+    saturates hard under load — this hardens the gRPC surface specifically rather than
+    investigating the saturation point itself (that's a parallel workstream).
+  code:
+    - provisa/grpc/server.py
+    - provisa/grpc/auth.py
+    - provisa/api/app_startup.py
+    - pyproject.toml
+  tests: []
+  scenario: |
+    Given a streaming query RPC whose engine execution raises mid-stream after some rows were
+    already sent
+    When the exception propagates out of the ENGINE or DIRECT route's row loop
+    Then the audit row is finalized with status 500 AND the RPC terminates with a specific gRPC
+    status code (not UNKNOWN) derived from the exception type
+
+    Given more concurrent RPCs are in flight than maximum_concurrent_rpcs
+    When a new RPC arrives
+    Then it is refused fast with RESOURCE_EXHAUSTED rather than queued indefinitely
+
+    Given an orchestrator sends a grpc.health.v1 Check RPC with no credentials, including under
+    high-security mode
+    When the request reaches AuthInterceptor
+    Then it is NOT refused for lacking a bearer credential or a KMS key, and HealthServicer answers
+    SERVING
+
+    Given no auth is configured for this deployment and grpc_allow_unsecured_reflection is unset
+    When start_grpc_server runs
+    Then reflection is NOT enabled and a warning is logged
+
+    Given the pure-Python protobuf backend is active instead of upb
+    When _start_servers runs its startup checks
+    Then gRPC server startup fails loudly with a message naming the active backend
+  target: "2026-Q3"

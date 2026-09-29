@@ -133,6 +133,9 @@ def _text(metadata, name: str) -> str | None:
     return None
 
 
+_HEALTH_SERVICE_PREFIX = "/grpc.health.v1.Health/"
+
+
 class AuthInterceptor(grpc.aio.ServerInterceptor):
     """Refuses any RPC that does not present a valid credential, and fixes its role.
 
@@ -140,12 +143,20 @@ class AuthInterceptor(grpc.aio.ServerInterceptor):
     not be able to enumerate the schema either. The same reasoning covers the high-security check
     (REQ-693) — it runs ahead of the credential check on every RPC, reflection included, because a
     client that cannot receive plaintext rows has no reason to be reading the descriptor either.
+
+    ``grpc.health.v1.Health`` (REQ-1904) is the one exception, matching the HTTP surface's own
+    ``/health``/``/live``/``/ready`` (``provisa/api/app.py``) — unauthenticated and reachable even
+    in high-security mode, because it returns liveness/readiness only, never row data or schema. An
+    orchestrator probe that required a bearer credential could kill a live pod on an auth outage
+    that has nothing to do with whether the pod is actually healthy.
     """
 
     def __init__(self, state):
         self._state = state
 
     async def intercept_service(self, continuation, handler_call_details):
+        if (handler_call_details.method or "").startswith(_HEALTH_SERVICE_PREFIX):
+            return await continuation(handler_call_details)
         metadata = handler_call_details.invocation_metadata
         # REQ-693: gRPC stays open in high-security mode — it is one of the two transports an
         # encrypting client actually uses — but each call must carry the same client-side

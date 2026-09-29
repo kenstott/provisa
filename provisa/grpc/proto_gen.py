@@ -16,6 +16,8 @@ Mirrors schema_gen visibility logic: only visible tables/columns per role.
 # Requirements: REQ-039, REQ-045, REQ-051
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
 from provisa.compiler.aggregate_gen import _classify_columns
 from provisa.compiler.schema_gen import (
     SchemaInput,
@@ -25,6 +27,9 @@ from provisa.compiler.schema_gen import (
     _build_visible_tables,
     _can_see_relationship,
 )
+
+if TYPE_CHECKING:
+    from provisa.grpc.field_numbering import FieldNumberAllocator
 
 # the engine type → proto type
 _PROTO_TYPE_MAP: dict[str, str] = {
@@ -117,7 +122,31 @@ def command_rpc_name(fn_name: str) -> str:
     return "".join(part.capitalize() for part in fn_name.replace("__", "_").split("_") if part)
 
 
-def _emit_aggregate_messages(lines: list[str], t) -> None:
+def _numbers_for(
+    field_numbers: "FieldNumberAllocator | None",
+    table_id,
+    namespace: str,
+    names: list[str],
+    authoritative: bool,
+) -> dict[str, int]:
+    """Field numbers for ``names`` in this (table_id, namespace) — stable across regenerations when
+    ``field_numbers`` is given (REQ-1903), else the old fresh-enumerate behavior. ``field_numbers``
+    is only None for callers outside the served wire/per-role schema build (e.g. endpoint_dev.py's
+    design-time proto preview), which is never decoded by a real cached client stub."""
+    if field_numbers is None:
+        return {name: i for i, name in enumerate(names, start=1)}
+    numbers = field_numbers.numbers_for(table_id, namespace, names)
+    if authoritative:
+        field_numbers.reconcile_removed(table_id, namespace, set(names))
+    return numbers
+
+
+def _emit_aggregate_messages(
+    lines: list[str],
+    t,
+    field_numbers: "FieldNumberAllocator | None" = None,
+    authoritative: bool = False,
+) -> None:
     """Emit ``{Type}AggregateResult`` (+ its per-function sub-messages) for a table with
     ``enable_aggregates`` and/or ``enable_group_by`` set (REQ-1359).
 
@@ -127,18 +156,30 @@ def _emit_aggregate_messages(lines: list[str], t) -> None:
     numeric_cols, comparable_cols = _classify_columns(t.visible_columns, t.column_metadata)
 
     if numeric_cols:
+        numeric_names = [col_name for col_name, _col_type in numeric_cols]
+        numbers = _numbers_for(
+            field_numbers, t.table_id, "agg_numeric", numeric_names, authoritative
+        )
         for suffix in ("SumFields", "AvgFields", "StddevFields", "VarianceFields"):
             lines.append(f"message {t.type_name}{suffix} {{")
-            for i, (col_name, _col_type) in enumerate(numeric_cols, start=1):
-                lines.append(f"  double {col_name} = {i};")
+            for col_name in numeric_names:
+                lines.append(f"  double {col_name} = {numbers[col_name]};")
             lines.append("}")
             lines.append("")
 
     if comparable_cols:
+        comparable_names = [col_name for col_name, _col_type in comparable_cols]
+        numbers = _numbers_for(
+            field_numbers, t.table_id, "agg_comparable", comparable_names, authoritative
+        )
+        comparable_type = dict(comparable_cols)
         for suffix in ("MinFields", "MaxFields"):
             lines.append(f"message {t.type_name}{suffix} {{")
-            for i, (col_name, col_type) in enumerate(comparable_cols, start=1):
-                lines.append(f"  {_physical_to_proto(col_type)} {col_name} = {i};")
+            for col_name in comparable_names:
+                lines.append(
+                    f"  {_physical_to_proto(comparable_type[col_name])} {col_name} "
+                    f"= {numbers[col_name]};"
+                )
             lines.append("}")
             lines.append("")
 
@@ -216,8 +257,24 @@ def _visible_commands(si: SchemaInput) -> list[dict]:
     return sorted(out, key=lambda f: f["name"])
 
 
-def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
-    """Generate a .proto file content string for a role's visible schema."""
+def generate_proto(
+    si: SchemaInput,
+    field_numbers: "FieldNumberAllocator | None" = None,
+    authoritative: bool = False,
+) -> str:  # REQ-039, REQ-045, REQ-051, REQ-1903
+    """Generate a .proto file content string for a role's visible schema.
+
+    ``field_numbers`` (REQ-1903): when given, every per-column field number is allocated through it
+    instead of a fresh ``enumerate(sorted_cols)`` — stable across regenerations, so an older-
+    generation client stub never decodes a later generation's bytes into the wrong field. Pass the
+    SAME allocator instance across every ``generate_proto`` call in one schema build (every role
+    plus the union/wire schema): the server's wire bytes are decoded against a role's own
+    downloaded ``.proto``, so they must agree on numbers for the same column.
+
+    ``authoritative``: set only for the union/wire schema call, whose column set for a table is the
+    FULL set (every column, ``visible_to=[]``) — the one point in a build that can tell a genuinely
+    dropped column from a role simply not seeing it, so only that call may retire a field number.
+    """
     tables = _build_visible_tables(si)
     if not tables:
         raise ValueError(f"No tables visible to role {si.role['id']!r}. Cannot generate proto.")
@@ -275,37 +332,47 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
     nosql_types = {"mongodb", "cassandra"}
     for t in sorted(tables, key=lambda t: t.type_name):
         sorted_cols = sorted(t.visible_columns, key=lambda c: c["column_name"])
-        field_num = 1
+        col_names = [
+            c["column_name"] for c in sorted_cols if t.column_metadata.get(c["column_name"])
+        ]
 
-        lines.append(f"message {t.type_name} {{")
-        used_fields: set[str] = set()
-        for col in sorted_cols:
-            meta = t.column_metadata.get(col["column_name"])
-            if meta is None:
-                continue
-            proto_type = _physical_to_proto(meta.data_type)
-            repeated = "repeated " if _is_array_type(meta.data_type) else ""
-            lines.append(f"  {repeated}{proto_type} {col['column_name']} = {field_num};")
-            used_fields.add(col["column_name"])
-            field_num += 1
-
+        used_fields: set[str] = set(col_names)
+        rel_fields: list[tuple[dict, Any]] = []
         for rel in visible_rels:
             if rel["source_table_id"] == t.table_id:
                 target = table_lookup.get(rel["target_table_id"])
                 if target is None or target.field_name in used_fields:
                     continue
                 used_fields.add(target.field_name)
-                if rel["cardinality"] in ("many-to-one", "one-to-one"):
-                    lines.append(f"  {target.type_name} {target.field_name} = {field_num};")
-                elif rel["cardinality"] == "one-to-many":
-                    lines.append(
-                        f"  repeated {target.type_name} {target.field_name} = {field_num};"
-                    )
-                else:
-                    raise ValueError(
-                        f"unhandled relationship cardinality {rel['cardinality']!r} for {rel['id']!r}"
-                    )
-                field_num += 1
+                rel_fields.append((rel, target))
+        rel_names = [target.field_name for _rel, target in rel_fields]
+
+        # REQ-1903: columns + relation fields share ONE number space per table (they're all fields
+        # of the same {Type} message), numbered stably across regenerations.
+        row_numbers = _numbers_for(
+            field_numbers, t.table_id, "row", col_names + rel_names, authoritative
+        )
+
+        lines.append(f"message {t.type_name} {{")
+        for col in sorted_cols:
+            meta = t.column_metadata.get(col["column_name"])
+            if meta is None:
+                continue
+            proto_type = _physical_to_proto(meta.data_type)
+            repeated = "repeated " if _is_array_type(meta.data_type) else ""
+            field_num = row_numbers[col["column_name"]]
+            lines.append(f"  {repeated}{proto_type} {col['column_name']} = {field_num};")
+
+        for rel, target in rel_fields:
+            field_num = row_numbers[target.field_name]
+            if rel["cardinality"] in ("many-to-one", "one-to-one"):
+                lines.append(f"  {target.type_name} {target.field_name} = {field_num};")
+            elif rel["cardinality"] == "one-to-many":
+                lines.append(f"  repeated {target.type_name} {target.field_name} = {field_num};")
+            else:
+                raise ValueError(
+                    f"unhandled relationship cardinality {rel['cardinality']!r} for {rel['id']!r}"
+                )
 
         lines.append("}")
         lines.append("")
@@ -322,8 +389,10 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
         lines.append("}")
         lines.append("")
 
+        # REQ-1903: {Type}Filter is its own message, so it gets its own independent number space
+        # (a filter-only field doesn't have to start where the row message's numbering left off).
+        filter_numbers = _numbers_for(field_numbers, t.table_id, "filter", col_names, authoritative)
         lines.append(f"message {t.type_name}Filter {{")
-        filter_num = 1
         for col in sorted_cols:
             meta = t.column_metadata.get(col["column_name"])
             if meta is None:
@@ -332,8 +401,8 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
             filter_proto = "string" if proto_type == "google.protobuf.Timestamp" else proto_type
             # `optional` gives HasField() real presence detection on these scalar fields, so
             # query_ir can distinguish "filter col = 0/false/\"\"" from "col not filtered" (REQ-1860).
+            filter_num = filter_numbers[col["column_name"]]
             lines.append(f"  optional {filter_proto} {col['column_name']} = {filter_num};")
-            filter_num += 1
         lines.append("}")
         lines.append("")
 
@@ -355,22 +424,29 @@ def generate_proto(si: SchemaInput) -> str:  # REQ-039, REQ-045, REQ-051
 
         # REQ-1359: aggregate/group-by protocol parity with GraphQL/JSON:API/REST.
         if t.enable_aggregates or t.enable_group_by:
-            _emit_aggregate_messages(lines, t)
+            _emit_aggregate_messages(lines, t, field_numbers, authoritative)
 
     # --- Mutation input messages ---
     for t in sorted(tables, key=lambda t: t.type_name):
         if si.source_types and si.source_types.get(t.source_id, "") in nosql_types:
             continue
         sorted_cols = sorted(t.visible_columns, key=lambda c: c["column_name"])
+        input_col_names = [
+            c["column_name"] for c in sorted_cols if t.column_metadata.get(c["column_name"])
+        ]
+        # REQ-1903: {Type}Input is its own message — independent number space, same as Filter.
+        input_numbers = _numbers_for(
+            field_numbers, t.table_id, "input", input_col_names, authoritative
+        )
         lines.append(f"message {t.type_name}Input {{")
-        input_num = 1
         for col in sorted_cols:
             meta = t.column_metadata.get(col["column_name"])
             if meta is None:
                 continue
             proto_type = _physical_to_proto(meta.data_type)
-            lines.append(f"  {proto_type} {col['column_name']} = {input_num};")
-            input_num += 1
+            lines.append(
+                f"  {proto_type} {col['column_name']} = {input_numbers[col['column_name']]};"
+            )
         lines.append("}")
         lines.append("")
 
