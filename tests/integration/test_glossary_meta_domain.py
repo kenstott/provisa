@@ -51,8 +51,36 @@ async def _init_schema(tenant_db):
         await conn.execute(SCHEMA_SQL)
 
 
+@pytest_asyncio.fixture(scope="module", loop_scope="session")
+async def _admin_db():
+    """Binds ``state.admin_db`` for the module (mirrors `conftest.py`'s `graphql_client` fixture).
+
+    `_upsert_sources` (REQ-1730) unconditionally binds the request org for the duration of its
+    loop so a control-plane-only source's `${secret:...}` password can resolve — and that bind
+    reads the org's vault out of `admin_db` even when, as here, no source in `_config` actually
+    uses one. Without a real platform Database standing behind it, `_request_org_for_secrets`
+    (`provisa/api/app.py`) asserts `state.admin_db is not None` before `load_config` ever gets to
+    `_setup`'s own sources.
+    """
+    import os
+
+    import provisa.api.app as app_mod
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_admin import init_registry_schema
+
+    engine = create_engine_from_url(os.environ["PLATFORM_DATABASE_URL"], pool_size=2)
+    db = Database(engine, name="platform")
+    await init_registry_schema(db, "root")
+    app_mod.state.admin_db = db
+    try:
+        yield db
+    finally:
+        app_mod.state.admin_db = None
+        await db.close()
+
+
 @pytest_asyncio.fixture(autouse=True)
-async def _clean(tenant_db, _init_schema):
+async def _clean(tenant_db, _init_schema, _admin_db):
     domain_policy.reset()
     async with tenant_db.acquire() as conn:
         await conn.execute(
