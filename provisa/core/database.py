@@ -851,7 +851,12 @@ def _normalize_admin_url(url: str) -> str:
         )
     async_driver = _ADMIN_ASYNC_DRIVER[backend]
     if not driver:
-        return str(parsed.set(drivername=f"{backend}+{async_driver}"))
+        # ``str(url)``/``URL.__str__`` renders with the password masked (``***``) — the
+        # right default for logging, wrong here since this string becomes the actual
+        # connect URI. render_as_string(hide_password=False) keeps the real password.
+        return parsed.set(drivername=f"{backend}+{async_driver}").render_as_string(
+            hide_password=False
+        )
     if driver != async_driver:
         raise ValueError(
             f"control-plane store {backend!r} requires the async driver "
