@@ -32,7 +32,7 @@ import datetime
 import json
 from typing import Any, Protocol
 
-from sqlalchemy import JSON, Column, MetaData, Table
+from sqlalchemy import JSON, Column, DateTime, MetaData, Table
 from sqlalchemy.sql.elements import quoted_name
 from sqlalchemy.schema import CreateTable
 
@@ -335,9 +335,14 @@ def build_row_cache_table(
     result = build_table(schema, table, cols, pk_columns, dialect_name=dialect_name)
     # Both bookkeeping columns are NOT NULL (section 2a) — every cached row always carries its own
     # freshness stamps, never a nullable placeholder. build_table itself has no per-column nullable
-    # override, so set it directly on the two columns it just built.
+    # override, so set it directly on the two columns it just built. They also must be tz-aware:
+    # land_rows stamps them with datetime.now(timezone.utc), but the shared IR "timestamp" mapping
+    # (provisa/core/ir_types.py) resolves to a naive DateTime for every other ordinary column, so
+    # override the type here rather than widening that mapping's blast radius to every landed table.
     result.c[_ROW_CACHED_AT].nullable = False
+    result.c[_ROW_CACHED_AT].type = DateTime(timezone=True)
     result.c[_ROW_EXPIRES_AT].nullable = False
+    result.c[_ROW_EXPIRES_AT].type = DateTime(timezone=True)
     return result
 
 
