@@ -1784,6 +1784,17 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
                         )
         except ValueError:
             raise
+        # REQ-1730: mirrors _govern_and_route_planned's identical fold — PostgreSQL cannot express
+        # a catalog.schema.table reference (no cross-database queries), so an engine that declares
+        # catalog_qualified=False needs the catalog folded into the schema name here too, or a
+        # multi-source query on the compiled path (GQL/Cypher/Flight/gRPC) fails with "cross-
+        # database references are not implemented" — confirmed live: federated_join over GraphQL
+        # against the pg engine, which the raw-SQL/pgwire path handles fine because only that path
+        # applied this fold before now.
+        if not state.federation_engine.engine.catalog_qualified:
+            from provisa.compiler.sql_rewrite import fold_catalog_into_schema
+
+            _exec_sql = fold_catalog_into_schema(_exec_sql)
         physical_sql = state.federation_engine.transpile_physical(_exec_sql)
         # REQ-041/402: RLS is added to the governed semantic SQL as a
         # current_setting('provisa.<var>') predicate; PostgreSQL resolves it

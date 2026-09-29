@@ -520,6 +520,7 @@ class TestExecuteEngineStandard:
             transpile_physical=lambda s: s,
             dialect="postgres",
             execute_engine=AsyncMock(return_value=engine_result),
+            engine=SimpleNamespace(catalog_qualified=True),
         )
         state = SimpleNamespace(
             federation_engine=engine,
@@ -555,6 +556,7 @@ class TestExecuteEngineStandard:
             transpile_physical=lambda s: s,
             dialect="postgres",
             execute_engine=AsyncMock(return_value=engine_result),
+            engine=SimpleNamespace(catalog_qualified=True),
         )
         state = SimpleNamespace(
             federation_engine=engine,
@@ -590,6 +592,7 @@ class TestExecuteEngineStandard:
             transpile_physical=lambda s: s,
             dialect="postgres",
             execute_engine=AsyncMock(return_value=engine_result),
+            engine=SimpleNamespace(catalog_qualified=True),
         )
         hot_mgr = SimpleNamespace(maybe_promote=AsyncMock())
         state = SimpleNamespace(

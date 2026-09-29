@@ -525,6 +525,17 @@ async def _execute_engine_standard(
     session_hints.update(query_session_props or {})
     session_hints.update(comment_hints)
 
+    # REQ-1730: PostgreSQL cannot express a catalog.schema.table reference (no cross-database
+    # queries), so an engine that declares catalog_qualified=False needs the catalog folded into
+    # the schema name before transpile, or a multi-source query on this, the native /data/graphql
+    # ENGINE-route terminal, fails with "cross-database references are not implemented" —
+    # confirmed live (federated_join over GraphQL against the pg engine). pgwire/_pipeline.py's
+    # two _govern_and_route*_planned functions already apply this same fold; this terminal is a
+    # third, independent place that calls transpile_physical and had never gotten it.
+    if not state.federation_engine.engine.catalog_qualified:
+        from provisa.compiler.sql_rewrite import fold_catalog_into_schema
+
+        exec_sql = fold_catalog_into_schema(exec_sql)
     physical_sql = state.federation_engine.transpile_physical(exec_sql)
     _t_engine = _time.perf_counter()
     _engine_ck = getattr(state, "engine_conn_kwargs", None)
