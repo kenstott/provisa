@@ -36,6 +36,14 @@ class ApiNotFoundError(Exception):
 _MAX_RETRIES = 3
 _RETRY_BACKOFF_BASE = 1.0
 _DEFAULT_TIMEOUT = 30.0
+# httpx's `timeout` float bounds each individual connect/read/write op, not the call's total
+# wall-clock time -- a response that keeps streaming without ever idling past _DEFAULT_TIMEOUT
+# between chunks never trips it, however long the transfer runs. Every caller of call_api sits
+# under a hard external deadline (e.g. pgwire's `.result(timeout=120)`); without a total-duration
+# cap here, a call that overruns that deadline keeps running to completion in the background while
+# the outer wait already gave up with an empty/masked error (confirmed live: neo4j_materialize_cold's
+# unfiltered whole-table land pulls 2M rows / ~485MB and takes 60s+ just to transfer).
+_DEFAULT_TOTAL_TIMEOUT = 90.0
 
 
 def _build_request_parts(
@@ -323,8 +331,14 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
     base_url: str = "",
     auth=None,
     timeout: float = _DEFAULT_TIMEOUT,
+    total_timeout: float = _DEFAULT_TOTAL_TIMEOUT,
 ) -> list[dict]:
-    """Make the API call and return raw response data (list of page responses)."""
+    """Make the API call and return raw response data (list of page responses).
+
+    ``timeout`` bounds each individual connect/read/write op (httpx semantics); ``total_timeout``
+    bounds the whole call's wall-clock time, including every paginated page, so a response that
+    streams continuously without ever idling still fails explicitly instead of outrunning a
+    caller's own external deadline (see module docstring on ``_DEFAULT_TOTAL_TIMEOUT``)."""
     url, query_params, headers, body = _build_request_parts(endpoint, resolved_params)
 
     # Prepend base_url if path is relative
@@ -362,21 +376,28 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
     else:
         json_body = body
 
-    import logging as _logging
+    async def _run() -> list[dict]:
+        async with httpx.AsyncClient() as client:
+            return await _paginate(
+                client,
+                endpoint,
+                url,
+                query_params,
+                headers,
+                body=json_body,
+                timeout=timeout,
+                form_body=form_body,
+            )
 
-    _log = _logging.getLogger(__name__)
-    async with httpx.AsyncClient() as client:
-        pages = await _paginate(
-            client,
-            endpoint,
-            url,
-            query_params,
-            headers,
-            body=json_body,
-            timeout=timeout,
-            form_body=form_body,
-        )
-    return pages
+    try:
+        return await asyncio.wait_for(_run(), timeout=total_timeout)
+    except asyncio.TimeoutError as exc:
+        raise ApiCallError(
+            f"API call to {url!r} exceeded total_timeout={total_timeout}s "
+            f"(source={endpoint.source_id!r}, table={endpoint.table_name!r}) -- "
+            f"response kept streaming without idling past a single connect/read op, so httpx's "
+            f"per-op timeout={timeout}s never tripped"
+        ) from exc
 
 
 async def _call_grpc(  # REQ-322, REQ-325

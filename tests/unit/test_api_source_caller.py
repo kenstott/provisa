@@ -16,6 +16,7 @@ since caller.py does `import httpx` at module scope.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -515,6 +516,28 @@ class TestCallApi:
         assert pages == [{"items": [1]}]
         call_kwargs = mock_client.request.await_args.kwargs
         assert call_kwargs["params"] == {"status": "open"}
+
+    @pytest.mark.asyncio
+    async def test_total_timeout_fails_fast_on_never_idle_stream(self):
+        """A response that never idles long enough to trip httpx's per-op timeout (e.g. a huge
+        continuously-streaming body) must still fail once the call's own total wall-clock budget
+        is exceeded, instead of running past an external caller's deadline undetected."""
+        endpoint = _endpoint()
+
+        async def _never_finishes(*args, **kwargs):
+            await asyncio.sleep(10)
+            return _resp(200, {})
+
+        mock_client = MagicMock()
+        mock_client.request = _never_finishes
+        mock_ctx = MagicMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_ctx.__aexit__ = AsyncMock(return_value=False)
+        with patch("provisa.api_source.caller.httpx.AsyncClient", return_value=mock_ctx):
+            with pytest.raises(ApiCallError, match="exceeded total_timeout"):
+                await call_api(
+                    endpoint, {}, base_url="http://api.test", timeout=30.0, total_timeout=0.05
+                )
 
     @pytest.mark.asyncio
     async def test_prepends_base_url_for_relative_path(self):
