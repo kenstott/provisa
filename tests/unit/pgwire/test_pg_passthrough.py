@@ -53,9 +53,14 @@ def _make_raw_connection() -> tuple[RawPgConnection, socket.socket]:
 
 
 async def _server_recv_parse_and_bind(server_sock: socket.socket) -> None:
-    """Drain the Parse+Bind messages the cursor sends on its first fetch() — enough bytes to
-    unblock the test without fully parsing them (this test asserts on OUTPUT, not on-wire input)."""
+    """Answer the cursor's opening BEGIN (REQ-1863 multi-batch fix: the whole fetch lifecycle now
+    runs inside an explicit transaction, see PassthroughCursor.fetch's docstring) with
+    CommandComplete+ReadyForQuery('T', in-transaction), then drain the Parse+Bind messages the
+    cursor sends right after — enough bytes to unblock the test without fully parsing them (this
+    test asserts on OUTPUT, not on-wire input)."""
     loop = asyncio.get_event_loop()
+    await loop.sock_recv(server_sock, 65536)  # BEGIN (Simple Query)
+    await loop.sock_sendall(server_sock, _msg(b"C", b"BEGIN\x00") + _msg(b"Z", b"T"))
     # Parse and Bind together are comfortably under 4KB for these small test queries.
     await loop.sock_recv(server_sock, 65536)
 

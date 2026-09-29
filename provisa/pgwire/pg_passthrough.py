@@ -60,6 +60,13 @@ class RawPgConnection:
     _sock: socket_module.socket
 
     async def close(self) -> None:
+        # self._sock is a dup() of the transport's fd (see open_raw_connection) — a separate
+        # descriptor this module owns outright and must close itself; the original transport's
+        # own fd is unaffected and is released by self._asyncpg_conn.close() below.
+        try:
+            self._sock.close()
+        except Exception:  # noqa: BLE001 - best-effort; the connection is being discarded either way
+            pass
         try:
             self._asyncpg_conn._transport.resume_reading()
         except Exception:  # noqa: BLE001 - best-effort; the connection is being discarded either way
@@ -86,10 +93,19 @@ async def open_raw_connection(connect_kwargs: dict[str, Any]) -> RawPgConnection
     # confirmed against asyncpg 0.31.0 ('Protocol' object has no attribute 'transport').
     transport = conn._transport
     transport.pause_reading()
-    sock = transport.get_extra_info("socket")
-    if sock is None:
+    wrapped = transport.get_extra_info("socket")
+    if wrapped is None:
         await conn.close()
         raise PassthroughError("transport exposes no raw socket (unexpected transport type)")
+    # transport.get_extra_info("socket") is an asyncio.trsock.TransportSocket — a SAFE wrapper
+    # around the real fd that deliberately does not implement send()/recv() (only metadata calls
+    # like getsockname/fileno), specifically to stop code from doing what this module needs to do.
+    # Live-confirmed: loop.sock_sendall() on the bare wrapper raises
+    # AttributeError: 'TransportSocket' object has no attribute 'send'. `.dup()` returns a genuine
+    # `socket.socket` sharing the same underlying fd — real send()/recv(), safe for loop.sock_*
+    # while the original transport stays paused. Must be set non-blocking for loop.sock_* to work.
+    sock = wrapped.dup()
+    sock.setblocking(False)
     return RawPgConnection(conn, asyncio.get_event_loop(), sock)
 
 
@@ -247,6 +263,22 @@ def _parse_error_response(payload: bytes) -> str:
     return "; ".join(parts) if parts else "unknown Postgres error"
 
 
+async def _simple_query(
+    loop: "asyncio.AbstractEventLoop", sock: "socket_module.socket", sql: str
+) -> None:
+    """Send a Simple Query ('Q') message and drain the response up to ReadyForQuery. Used only
+    for the cursor's own BEGIN/COMMIT bracket (never the governed statement itself, which always
+    goes through the Extended Query Parse/Bind/Execute path — see ``_build_extended_query_messages``)."""
+    body = sql.encode("utf-8") + b"\x00"
+    await loop.sock_sendall(sock, b"Q" + _INT32.pack(4 + len(body)) + body)
+    while True:
+        tag, payload = await _read_message(loop, sock)
+        if tag == b"E":  # ErrorResponse
+            raise PassthroughError(_parse_error_response(payload))
+        if tag == b"Z":  # ReadyForQuery
+            return
+
+
 class PassthroughCursor:
     """Drives one query's Extended Query Protocol exchange over a :class:`RawPgConnection`'s raw
     socket, ``fetch(limit)`` at a time — the same shape as ``_PgDirectStream`` (``postgresql.py``)
@@ -268,6 +300,7 @@ class PassthroughCursor:
         self._expected_column_count = expected_column_count
         self._sent_parse_bind = False
         self._exhausted = False
+        self._began_txn = False
 
     async def fetch(self, limit: int) -> list[bytes]:
         """Return up to ``limit`` complete, wire-framed DataRow messages, or ``[]`` once the
@@ -276,6 +309,15 @@ class PassthroughCursor:
             return []
         sock, loop = self._raw._sock, self._raw._loop
         if not self._sent_parse_bind:
+            # REQ-1863 multi-batch fix: an unnamed portal only survives a Sync while an explicit
+            # transaction is open — outside one, Sync commits the implicit transaction Postgres
+            # auto-starts and destroys the portal with it. `fetch()` sends Execute+Sync on every
+            # call (see _build_execute_sync below), so a >1-batch result (limit < total rows,
+            # e.g. large_scan) sent its SECOND Execute against an already-destroyed portal —
+            # live-confirmed: `ERROR: portal "" does not exist`. Same bracket _PgDirectStream
+            # (executor/drivers/postgresql.py) already holds for its own asyncpg-level cursor.
+            self._began_txn = True
+            await _simple_query(loop, sock, "BEGIN")
             self._sent_parse_bind = True
             await loop.sock_sendall(
                 sock,
@@ -309,4 +351,12 @@ class PassthroughCursor:
         return rows
 
     async def close(self) -> None:
+        if self._began_txn:
+            # Read-only statement (governed SQL never mutates on this route — see the module
+            # docstring), so COMMIT vs ROLLBACK is immaterial; COMMIT mirrors _PgDirectStream's
+            # own close (postgresql.py). Best-effort: the connection is discarded either way.
+            try:
+                await _simple_query(self._raw._loop, self._raw._sock, "COMMIT")
+            except Exception:  # noqa: BLE001
+                pass
         await self._raw.close()
