@@ -343,9 +343,22 @@ class EngineRuntime:  # REQ-825, REQ-840
         def _batches() -> Any:
             try:
                 while True:
-                    chunk = asyncio.run_coroutine_threadsafe(
-                        pr.cursor.fetch(_STREAM_BATCH_ROWS), loop
-                    ).result()
+                    try:
+                        chunk = asyncio.run_coroutine_threadsafe(
+                            pr.cursor.fetch(_STREAM_BATCH_ROWS), loop
+                        ).result()
+                    except Exception:
+                        # server.py's `except PassthroughError` only wraps the INITIAL
+                        # open_passthrough() call, not this ongoing fetch loop -- an error here
+                        # (a real Postgres error mid-stream, or the uvloop PseudoSocket
+                        # incompatibility pg_passthrough.py's open_raw_connection now refuses up
+                        # front) previously propagated silently all the way to the client as a
+                        # bare socket close ("connection was closed in the middle of operation"),
+                        # with zero server-side trace anywhere outside ~/pgwire_debug.log's
+                        # separate buenavista/provisa.pgwire handler. Log here too so a mid-stream
+                        # passthrough failure is never silent again, regardless of cause.
+                        log.exception("[PASSTHROUGH] mid-stream fetch failed")
+                        raise
                     if not chunk:
                         return
                     yield [RawDataRowBytes(msg) for msg in chunk]

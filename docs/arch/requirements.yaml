@@ -63973,6 +63973,23 @@
     When routing a pgwire DIRECT-route query to a PostgreSQL source, avoid decode/re-encode
     overhead by forwarding raw DataRow wire messages directly to the downstream client,
     exploiting the fact that masking/RLS is always pre-applied in the compiled SQL.
+
+
+    (Amended 2026-09-29, uvloop incompatibility:) Live-confirmed the raw-socket-driving technique
+    (open_raw_connection's transport.pause_reading() + .dup() + manual loop.sock_sendall/
+    sock_recv) does not work under uvloop: the dup'd socket is still a uvloop.loop.PseudoSocket,
+    whose .send() is a deliberate stub that unconditionally raises TypeError: transport sockets
+    do not support send() method -- 100% reproducible on every passthrough-eligible query when
+    the process event loop is uvloop. This violated the "falls back on any error" guarantee
+    below: the exception propagated from deep inside the streaming generator
+    (provisa/federation/runtime.py's _pg_passthrough_stream), past the ONE call site in
+    provisa/pgwire/server.py that catches PassthroughError (which only wraps the initial
+    open_passthrough() call, not the ongoing fetch loop), and killed the downstream client
+    connection with zero visible signal outside ~/pgwire_debug.log's separate buenavista/
+    provisa.pgwire file handler -- silently breaking every SQL-transport query under a live
+    server for an entire benchmark session before being traced. Fixed by detecting uvloop in
+    open_raw_connection and raising PassthroughError immediately, before ever attempting the
+    incompatible technique -- restores the documented fallback guarantee rather than changing it.
   use_case: >-
     Decoding source DataRow messages into Python objects and re-encoding them into pgwire
     format is pure overhead when all per-row access control is already enforced by the
@@ -66421,6 +66438,29 @@
       (`CREATE OR REPLACE VIEW`, upserts), so the now-serialized repeat passes are fast no-ops.
       Postgres-only (`cp_dialect == "postgresql"`) — the embedded sqlite demo tier has no
       multi-worker story and no advisory-lock function.
+
+    (Amended 2026-09-29, THE ADVISORY LOCK ALONE WAS NOT ENOUGH:) a later 8-worker cold boot —
+    run immediately AFTER a clean 1-worker warm-up that had already left every meta/ops view in
+    its final shape — hit `asyncpg.exceptions.DeadlockDetectedError` inside `_seed_meta_domain`
+    itself, evidenced live via `AccessShareLock`/`AccessExclusiveLock` wait-for cycle in the
+    server logs. The session advisory lock above only serializes this seed phase against OTHER
+    workers ALSO running it; it says nothing about a peer worker that already finished its own
+    pass and is now serving ordinary read traffic against the SAME views. The real bug: every
+    view DDL call (`_adapt_view_ddl`) unconditionally ran `DROP VIEW ... CASCADE` + recreate on
+    EVERY boot, even this one where nothing had changed since warm-up — and CASCADE takes an
+    AccessExclusiveLock across the WHOLE dependent-view chain in one statement, which deadlocks
+    against a concurrent reader's AccessShareLock on one of those dependents taken in the
+    opposite order. Fixed with `_seed_view` (`provisa/api/startup_seed.py`): on PostgreSQL, try
+    the original `CREATE OR REPLACE VIEW` first — it locks only the one view (no CASCADE, no
+    dependent chain) and is a true no-op when the definition is unchanged, which is the common
+    case on every ordinary restart; it only fails with `cannot drop columns from view` on a
+    genuine shape-narrowing upgrade, which is the one case that still falls back to the existing
+    `DROP ... CASCADE` + recreate path. SQLite/DuckDB (no `CREATE OR REPLACE VIEW`, no
+    multi-worker story) skip straight to the existing path. Verified with
+    `tests/integration/test_built_in_source_reseed.py::test_concurrent_worker_reseed_does_not_deadlock`
+    (8 concurrent reseed passes against an already-warm schema, repeated run-to-run since this is
+    timing-dependent) and `::test_reseed_skips_drop_cascade_when_view_shape_is_unchanged` (asserts
+    the CASCADE fallback is never invoked on an unchanged reseed).
   use_case: >-
     Direct follow-up to live saturation findings on the perf-bench VM: the maintainer asked to
     tune the number of uvicorn workers to raise the saturation ceiling, which first required
@@ -66437,7 +66477,9 @@
     - provisa/api/app_startup.py
     - provisa/api/mcp/server.py
     - provisa/api/startup_seed.py
-  tests: []
+  tests:
+    - tests/integration/test_built_in_source_reseed.py::test_concurrent_worker_reseed_does_not_deadlock
+    - tests/integration/test_built_in_source_reseed.py::test_reseed_skips_drop_cascade_when_view_shape_is_unchanged
   scenario: |
     Given two independent processes each calling grpc.aio.server().add_insecure_port on the same
     port
@@ -66801,7 +66843,8 @@
     - provisa/grpc/proto_gen.py
     - provisa/api/app_loaders.py
     - provisa/api/app.py
-  tests: []
+  tests:
+    - tests/unit/test_proto_gen.py
   scenario: |
     Given a table's columns are re-sorted alphabetically by an added column (e.g. inserting
     column "b" between existing "a" and "c")
@@ -66824,7 +66867,7 @@
 
 - id: REQ-1904
   status: complete
-  group: "8. Reliability, Security & Observability"
+  group: "8. Client Access & Protocols"
   category: gRPC Server Hardening
   priority: SHOULD
   type: behavioral
