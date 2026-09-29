@@ -49,6 +49,8 @@ class FakeState:
         self.tenant_db = None
         self.engine_conn = None
         self.flight_client = None
+        self.rate_limiter: object | None = None
+        self.flight_global_cap: int | None = None
 
 
 @pytest.fixture()
@@ -329,3 +331,117 @@ class TestDoGet:
         ticket = flight.Ticket(json.dumps({"query": "{ x }", "role": "nope"}).encode())
         with pytest.raises(flight.FlightServerError, match="No schema for role"):
             server.do_get(None, ticket)
+
+
+# ---------------------------------------------------------------------------
+# REQ-1905: server-wide Flight concurrency cap
+# ---------------------------------------------------------------------------
+
+
+class _FakeLimiter:
+    """Records acquire/release calls; rejects a configured set of keys."""
+
+    def __init__(self, reject_keys=()):
+        self._reject_keys = set(reject_keys)
+        self.acquired: list[str] = []
+        self.released: list[str] = []
+
+    async def acquire(self, key: str, limit: int) -> bool:
+        if key in self._reject_keys:
+            return False
+        self.acquired.append(key)
+        return True
+
+    async def release(self, key: str) -> None:
+        self.released.append(key)
+
+
+@pytest.fixture(scope="module")
+def cap_loop():
+    """A live event loop on another thread — what the acquire/release dispatch uses."""
+    import asyncio
+    import threading
+
+    made = asyncio.new_event_loop()
+    thread = threading.Thread(target=made.run_forever, daemon=True)
+    thread.start()
+    yield made
+    made.call_soon_threadsafe(made.stop)
+    thread.join(timeout=5)
+
+
+class TestGlobalFlightConcurrencyCap:
+    """The global cap (rl:flight:global) is independent of, and checked before, the
+    per-role cap (REQ-369's max_flight_streams) — either one alone must be able to
+    reject a request regardless of the other's state."""
+
+    def _server(self, state, loop, monkeypatch):
+        server = ProvisaFlightServer.__new__(ProvisaFlightServer)
+        server._state = state
+        server._main_loop = loop
+        monkeypatch.setattr(server, "_execute_query", lambda request: "ok")
+        return server
+
+    def test_global_cap_rejects_even_with_no_role_cap_configured(self, cap_loop, monkeypatch):
+        """A role with no per-role rate_limit configured is still gated by the global cap."""
+        state = FakeState()
+        state.roles = {"analyst": {}}  # no rate_limit at all
+        state.rate_limiter = _FakeLimiter(reject_keys={"rl:flight:global"})
+        state.flight_global_cap = 4
+
+        server = self._server(state, cap_loop, monkeypatch)
+        ticket = flight.Ticket(json.dumps({"query": "SELECT 1", "role": "analyst"}).encode())
+
+        with pytest.raises(flight.FlightServerError, match="server-wide"):
+            server.do_get(None, ticket)
+
+    def test_global_cap_has_room_role_cap_still_enforced(self, cap_loop, monkeypatch):
+        """The global gate admitting a request does not bypass the existing per-role gate."""
+        state = FakeState()
+        state.roles = {"analyst": {"rate_limit": {"max_flight_streams": 1}}}
+        state.rate_limiter = _FakeLimiter(reject_keys={"rl:flight:analyst"})
+        state.flight_global_cap = 4
+
+        server = self._server(state, cap_loop, monkeypatch)
+        ticket = flight.Ticket(json.dumps({"query": "SELECT 1", "role": "analyst"}).encode())
+
+        with pytest.raises(
+            flight.FlightServerError, match="max concurrent Arrow Flight streams reached$"
+        ):
+            server.do_get(None, ticket)
+
+        # Global slot was acquired then released even though the per-role check failed after it.
+        assert state.rate_limiter.acquired == ["rl:flight:global"]
+        assert state.rate_limiter.released == ["rl:flight:global"]
+
+    def test_both_caps_have_room_query_executes_and_both_slots_released(
+        self, cap_loop, monkeypatch
+    ):
+        state = FakeState()
+        state.roles = {"analyst": {"rate_limit": {"max_flight_streams": 4}}}
+        state.rate_limiter = _FakeLimiter()
+        state.flight_global_cap = 4
+
+        server = self._server(state, cap_loop, monkeypatch)
+        ticket = flight.Ticket(json.dumps({"query": "SELECT 1", "role": "analyst"}).encode())
+
+        result = server.do_get(None, ticket)
+
+        assert result == "ok"
+        assert state.rate_limiter.acquired == ["rl:flight:global", "rl:flight:analyst"]
+        assert set(state.rate_limiter.released) == {"rl:flight:global", "rl:flight:analyst"}
+
+    def test_no_global_cap_configured_skips_the_gate(self, cap_loop, monkeypatch):
+        """flight_global_cap unset/0 (e.g. NoopRateLimiter deployments) never calls acquire."""
+        state = FakeState()
+        state.roles = {"analyst": {}}
+        state.rate_limiter = _FakeLimiter()
+        state.flight_global_cap = None
+
+        server = self._server(state, cap_loop, monkeypatch)
+        ticket = flight.Ticket(json.dumps({"query": "SELECT 1", "role": "analyst"}).encode())
+
+        result = server.do_get(None, ticket)
+
+        assert result == "ok"
+        assert state.rate_limiter.acquired == []

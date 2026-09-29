@@ -207,6 +207,11 @@ class AppState:
     auth_middleware_active: bool = False  # True only when wire_auth installed AuthMiddleware
     redis_url: str | None = None  # resolved Redis URL (REDIS_URL env or cache.redis_url)
     rate_limiter: Any | None = None  # REQ-369-371: Redis-backed RateLimiter (None until startup)
+    # REQ-1905: server-wide Arrow Flight concurrency ceiling — protects pgwire/Bolt/gRPC/GraphQL
+    # (which share the asyncio default executor with Flight) from being starved by a burst of
+    # long-running Flight scans. Distinct from max_flight_streams (REQ-369, per-role fairness
+    # among Flight callers only). Computed once at startup; see build_rate_limiter call site.
+    flight_global_cap: int | None = None
     approval_hook: Any | None = None  # REQ-247: ApprovalHook instance (None = disabled)
     approval_hook_config: Any | None = None  # REQ-247: ApprovalHookConfig
     table_approval_hooks: dict[int, bool] = {}  # table_id → approval_hook flag
@@ -2323,6 +2328,23 @@ def create_app() -> FastAPI:
     from provisa.api.rate_limit import build_rate_limiter
 
     state.rate_limiter = build_rate_limiter(getattr(state, "redis_url", None))
+
+    # REQ-1905: server-wide Flight concurrency ceiling, same env-var-over-server_cfg-default
+    # pattern as GRPC_MAX_CONCURRENT_RPCS (provisa/grpc/server.py). Default reserves at most a
+    # third of the shared asyncio default executor (min(32, cpu_count()+4), the same pool
+    # pg_runtime.run() dispatches onto) for Flight, guaranteeing the rest as a floor for
+    # pgwire/Bolt/gRPC/GraphQL even under a sustained Flight burst.
+    _flight_pool_size = min(32, (os.cpu_count() or 1) + 4)
+    state.flight_global_cap = int(
+        os.environ.get(
+            "FLIGHT_MAX_CONCURRENT_STREAMS",
+            str(
+                state.server_cfg.get(
+                    "flight_max_concurrent_streams", max(2, _flight_pool_size // 3)
+                )
+            ),
+        )
+    )
     from provisa.api.middleware.rate_limit_middleware import RateLimitMiddleware
 
     app.add_middleware(RateLimitMiddleware)

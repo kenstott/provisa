@@ -67003,3 +67003,41 @@
     When _start_servers runs its startup checks
     Then gRPC server startup fails loudly with a message naming the active backend
   target: "2026-Q3"
+- id: REQ-1905
+  status: complete
+  group: "1. Access Governance & Security"
+  category: Rate Limiting
+  priority: MUST
+  type: behavioral
+  description: >-
+    A server-wide (not per-role) concurrency ceiling on Arrow Flight query execution,
+    enforced via the same Redis-backed rate_limiter admission-control primitive as REQ-369
+    but under a fixed key (`rl:flight:global`) instead of a per-role key. Configurable via
+    `FLIGHT_MAX_CONCURRENT_STREAMS` env var or `server_cfg["flight_max_concurrent_streams"]`,
+    defaulting to one-third of the shared asyncio default executor's size (`min(32, cpu_count()+4)`,
+    floor 2). Checked and acquired before, and released after, the existing per-role
+    `max_flight_streams` gate in `do_get` (provisa/api/flight/server.py).
+  use_case: >-
+    Arrow Flight scans are long-running bulk/streaming operations that hold a shared-executor
+    thread for tens of seconds, while pgwire/Bolt/gRPC/GraphQL are short request/response
+    transports sharing that same bounded thread pool (via provisa/federation/pg_runtime.py's
+    run()/run_sync()). Without a server-wide Flight ceiling, a burst of concurrent Flight scans
+    can starve unrelated cheap queries on other transports of a thread. REQ-369's max_flight_streams
+    only protects one role's Flight callers from another role's Flight callers — it does not
+    protect non-Flight transports from Flight as a whole. A dedicated separate thread pool for
+    Flight was considered and rejected because it would permanently reserve capacity that sits
+    idle whenever Flight isn't running; a global admission-control cap achieves the same guaranteed
+    floor of free capacity for other transports without that waste.
+  code:
+    - provisa/api/flight/server.py
+    - provisa/api/app.py
+    - provisa/api/rate_limit.py
+  tests:
+    - tests/unit/test_flight_modes.py
+  since: "2026-09"
+  scenario: |
+    Given the server-wide Flight concurrency cap (rl:flight:global) is at its configured limit
+    When a new Arrow Flight query ticket arrives via do_get, regardless of its role's own
+    per-role max_flight_streams state
+    Then the request is rejected with a FlightServerError distinguishing the server-wide limit
+    from the per-role limit, before the per-role gate or query execution is reached
