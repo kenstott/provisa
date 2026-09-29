@@ -106,6 +106,41 @@ def test_a_peeked_batch_is_emitted_rather_than_dropped():
     assert stream.pulled == 3
 
 
+def test_a_batch_abandoned_mid_way_by_the_clients_own_limit_is_resumed_not_dropped():
+    """REQ-1863 large-result fix: vendor/buenavista's send_data_rows calls .rows() fresh on every
+    Execute and stops pulling from it (abandoning that generator) the instant it has forwarded the
+    client's own requested `limit` for that one Execute — nearly always mid-batch when the engine's
+    internal batch size doesn't evenly divide the client's fetch size. Live-confirmed against a
+    real 2,000,000-row scan pulled 10,000 rows at a time (asyncpg's own cursor.fetch(10000)): only
+    310,000 rows (31 x 10,000) ever reached the client — the remaining ~1.69M were pulled from the
+    source and silently discarded. Modeled here with a 3-row-per-batch stream fetched 2 rows at a
+    time (buenavista's own send_data_rows loop, not asyncpg) so the same mid-batch abandonment
+    happens without booting a real server."""
+    stream = _CountingStream(
+        [[[1], [2], [3]], [[4], [5], [6]], [[7], [8]]],
+        ["id"],
+        column_types=["integer"],
+    )
+    result = ProvisaQueryResult(stream, "SELECT id FROM t")
+
+    def _fetch(limit: int) -> list:
+        # Mirrors vendor/buenavista/buenavista/postgres.py's send_data_rows: a FRESH .rows() call
+        # per Execute, stopping (abandoning the generator) as soon as `limit` rows are collected.
+        out = []
+        for row in result.rows():
+            out.append(row)
+            if len(out) >= limit:
+                break
+        return out
+
+    assert _fetch(2) == [[1], [2]]
+    assert _fetch(2) == [[3], [4]]
+    assert _fetch(2) == [[5], [6]]
+    assert _fetch(2) == [[7], [8]]
+    assert _fetch(2) == []  # exhausted, not an early false "done"
+    assert stream.pulled == 3
+
+
 def test_a_result_with_no_columns_reports_no_results():
     """A DML statement returns a status line, not a row description."""
     stream = _CountingStream([], [], column_types=[])

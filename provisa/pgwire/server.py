@@ -297,6 +297,14 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         self._status = _tag_from_sql(original_sql)
         self._batch_iter: Iterator[list] = engine_result.batches()  # type: ignore[assignment]
         self._head: list | None = None
+        # REQ-1863 large-result fix: a batch pulled from self._batch_iter but only PARTIALLY
+        # forwarded when send_data_rows (vendor/buenavista) stops early at the client's own
+        # Execute limit — see rows()'s own docstring for why that happens on every multi-batch
+        # fetch. Persisted on self (not local to one .rows() call) so the NEXT .rows() call
+        # resumes this exact batch at this exact offset instead of pulling a fresh one and
+        # silently dropping the unforwarded tail.
+        self._pending: list | None = None
+        self._pending_pos: int = 0
         ctypes = engine_result.column_types
         # A None entry (or absent types) means the type must be inferred from data, which
         # requires the first batch on hand before RowDescription is sent.
@@ -329,9 +337,33 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         # first row is yielded, makes the peek genuinely one-time.
         if self._head is not None:
             head, self._head = self._head, None
-            yield from head
-        for batch in self._batch_iter:
-            yield from batch
+            self._pending, self._pending_pos = head, 0
+        # REQ-1863 large-result fix: send_data_rows stops calling next() on this generator as
+        # soon as it has forwarded `limit` rows for THIS Execute — nearly always mid-batch when
+        # the engine's own internal batch size (e.g. _STREAM_BATCH_ROWS, provisa/federation/
+        # runtime_support.py) doesn't evenly divide the client's own fetch size (e.g. asyncpg
+        # cursor.fetch(n)). This generator is simply abandoned at that point (a fresh one is
+        # created for the NEXT Execute), so `for batch in self._batch_iter: yield from batch`
+        # silently drops whatever of the current `batch` list was never reached — live-confirmed
+        # against a real 2,000,000-row scan: only 310,000 (31 x asyncpg's own 10,000-row
+        # cursor.fetch batch size) rows ever reached the client, with the remaining ~1.69M rows
+        # pulled from the source and discarded without any error. self._pending/_pending_pos
+        # track exactly how far into the current batch this call got, on `self` (not a local
+        # generator frame), so the NEXT .rows() call resumes the SAME batch at the SAME offset
+        # instead of pulling (and partially discarding) a new one.
+        while True:
+            if self._pending is not None:
+                while self._pending_pos < len(self._pending):
+                    row = self._pending[self._pending_pos]
+                    self._pending_pos += 1
+                    yield row
+                self._pending = None
+                self._pending_pos = 0
+                continue
+            batch = next(self._batch_iter, None)
+            if batch is None:
+                return
+            self._pending, self._pending_pos = batch, 0
 
     def status(self) -> str:
         return self._status or "OK"
