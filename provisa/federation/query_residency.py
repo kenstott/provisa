@@ -119,6 +119,7 @@ async def ensure_resident(
     *,
     pk_bounds: Iterable[Any] = (),
     pushed_down: Iterable[str] = (),
+    unbound_targets: Iterable[str] = (),
 ) -> list[tuple[str, str]]:
     """Land what a query reads and is not resident (REQ-1661). Returns the (source_id, table_name)
     pairs landed. A no-op without an engine, config or tenant store, or when nothing is stale.
@@ -130,16 +131,23 @@ async def ensure_resident(
     a bounded PK set falls back to the table's ordinary whole-table materialize/live resolution
     unchanged"), a row_materialize table with NO bound for this query still needs the same whole-
     table land any other table would get -- a query with no filter on that table is, by
-    definition, asking for the whole table. Confirmed live: cypher_cross_engine joins
-    bench_contains_edge on order_id (a plain FK column, not its own contains_id PK) with no literal
-    predicate on contains_id at all -- unconditionally excluding it starved the table of every row,
-    since ensure_rows_resident's keyed fetch never had a contains_id bound to key off either."""
+    definition, asking for the whole table.
+
+    ``unbound_targets`` (REQ-1865) is the set of physical table names the CURRENT query's own SQL
+    text names directly (its base FROM/JOIN tables, e.g. ``_table_names_in_sql``) -- NOT every
+    table that merely shares a source with one the query reads. Without this, a row_materialize
+    table's own whole-table fallback (above) cannot be told apart from an unrelated row_materialize
+    table that just happens to be registered under the same ``source_ids`` the query touches for a
+    different table entirely -- landing the latter is pure collateral cost row_materialize exists
+    to avoid (confirmed live: a row_materialize table swept into a whole-source land triggered by
+    an unrelated sibling table going stale paid the same full-table cost a keyed lookup exists to
+    avoid). The fallback below only ever fires for a table both stale AND named in this set."""
     wanted = {s for s in source_ids if s}
     engine = getattr(state, "federation_engine", None)  # the EngineRuntime (write face + engine)
     backend = getattr(getattr(engine, "engine", None), "backend", None)
     config = getattr(state, "config", None)
     db = getattr(state, "tenant_db", None)
-    if not wanted or backend is None or config is None or db is None:
+    if not wanted or engine is None or backend is None or config is None or db is None:
         return []
     from provisa.federation.registry_view import registered_sources, registered_tables
 
@@ -149,6 +157,7 @@ async def ensure_resident(
     if not sources:
         return []
     _bound_tables = {getattr(b, "table_name", None) for b in pk_bounds} | set(pushed_down)
+    _unbound_targets = set(unbound_targets)
     tables_by_source: dict[str, list[Any]] = {}
     for t in await registered_tables(state):
         if t.source_id in wanted and not (
@@ -181,7 +190,10 @@ async def ensure_resident(
     landed: list[tuple[str, str]] = []
     from contextlib import AsyncExitStack
 
+    from provisa.federation.backend import _env_store_schema
     from provisa.events.land_lock import land_lock
+
+    store_schema = _env_store_schema(engine.engine.materialize_store())
 
     for source in sources:
         # The same per-node locks the event loop's land takes, so the boot land and a first query
@@ -220,6 +232,57 @@ async def ensure_resident(
                     ),
                     now=now,
                 )
+                # REQ-1865 gap: materialize_pending's own registered_tables() sweep (backend.py)
+                # unconditionally excludes row_materialize tables ("governed EXCLUSIVELY by the
+                # row-level cache") — but a row_materialize table with NO bound for THIS query
+                # (the only reason it survived the `tables_by_source` filter above) still needs a
+                # whole-table land, per this module's own documented fallback. Neither path
+                # actually performed that land: confirmed live (neo4j_materialize_cold's unfiltered
+                # `SELECT count(*)` against a row_materialize table hit "relation does not exist"
+                # on a fresh boot — materialize_pending silently skipped it, and nothing else ever
+                # created/populated its row-cache table). Land it here via the same row-cache infra
+                # the keyed paths use, fetching every row instead of a key subset.
+                for t in tables_by_source.get(source.id, []):
+                    if (
+                        not getattr(t, "row_materialize", False)
+                        or t.table_name not in _unbound_targets
+                        or not is_stale(source.id)
+                    ):
+                        continue
+                    pk_columns = [c.name for c in t.columns if c.is_primary_key]
+                    if len(pk_columns) != 1:
+                        continue
+                    args = resolve_landing_args_for(source, t, backend.dialect)
+                    resolved_ttl = t.cache_ttl if t.cache_ttl is not None else source.cache_ttl
+                    if resolved_ttl is None:
+                        raise ValueError(
+                            f"row-materialize table {t.table_name!r}: no resolved cache_ttl at "
+                            "fetch time (registration should have rejected this — REQ-1865)"
+                        )
+                    rm_schema, rm_name = backend.landing_target(
+                        store_schema=store_schema,
+                        source_id=source.id,
+                        source_type=source.type,
+                        schema_name=t.schema_name,
+                        table_name=t.table_name,
+                    )
+                    cache_table = await _ensure_row_cache_table(
+                        engine, backend, state, rm_schema, rm_name, args.columns
+                    )
+                    rows = await loader.load(source, t)
+                    await _land_row_cache(
+                        engine,
+                        backend,
+                        state,
+                        rm_schema,
+                        rm_name,
+                        cache_table,
+                        pk_columns,
+                        args.columns,
+                        rows,
+                        resolved_ttl,
+                    )
+                    landed.append((source.id, t.table_name))
                 backend.mark_landed(source.id)
                 ok = True
             except Exception:  # noqa: BLE001 - the adapter's error type is its own
@@ -346,6 +409,23 @@ def resolve_landing_args_for(source: Any, table: Any, dialect: str | None) -> An
     from provisa.federation.residency import resolve_landing_args
 
     return resolve_landing_args(source, table, platform=dialect)
+
+
+def table_names_in_sql(physical_sql: str, dialect: str) -> set[str]:
+    """Every physical table name this statement's FROM/JOIN clauses name directly (REQ-1865) --
+    the ``unbound_targets`` ``ensure_resident`` needs to tell "this query's own row_materialize
+    table, no bound resolved" apart from an unrelated row_materialize table that merely shares a
+    source with one the query reads (see that function's docstring). Parse-error or non-SELECT
+    statements yield an empty set -- the caller's fallback then simply does not fire, same as any
+    other row_materialize table this pass found nothing to do for."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    try:
+        tree = sqlglot.parse_one(physical_sql, read=dialect)
+    except Exception:
+        return set()
+    return {t.name for t in tree.find_all(exp.Table) if t.name}
 
 
 async def pushdown_row_materialize(

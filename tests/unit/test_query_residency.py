@@ -37,9 +37,14 @@ def _source(sid, **kw):
     return SimpleNamespace(**base)
 
 
-def _table(sid, name, schema="pet_store", row_materialize=False):
+def _table(sid, name, schema="pet_store", row_materialize=False, columns=None, cache_ttl=300):
     return SimpleNamespace(
-        source_id=sid, schema_name=schema, table_name=name, row_materialize=row_materialize
+        source_id=sid,
+        schema_name=schema,
+        table_name=name,
+        row_materialize=row_materialize,
+        columns=columns or [],
+        cache_ttl=cache_ttl,
     )
 
 
@@ -95,6 +100,7 @@ class _Backend:
     def __init__(self, fail=False):
         self.calls = []
         self.fail = fail
+        self.dialect = "postgres"
         self._landed_this_process: set[str] = set()
 
     def is_first_touch(self, source_id: str) -> bool:
@@ -200,6 +206,60 @@ async def test_row_materialize_table_never_swept_into_the_whole_source_land(wiri
     landed = await ensure_resident(state, {"bench-neo4j"})
     assert landed == [("bench-neo4j", "bench_placed_edge")]
     assert ("bench-neo4j", "bench_order_node") not in landed
+
+
+@pytest.mark.asyncio
+async def test_row_materialize_table_named_unbound_gets_whole_table_land(wiring, monkeypatch):
+    """REQ-1865: unlike the sibling-collateral case above, a row_materialize table THIS query's
+    own SQL names directly (``unbound_targets``, e.g. ``neo4j_materialize_cold``'s unfiltered
+    ``SELECT count(*) FROM bench_order_node``) has no PK bound for ensure_rows_resident to key
+    off and no sibling table to collaterally starve it -- it must get the whole-table fallback
+    REQ-1865 documents, or its row-cache table never gets created at all. Confirmed live: this
+    exact query hit "relation ... does not exist" on a fresh boot because neither this function
+    nor materialize_pending (REQ-1865's OWN blanket row_materialize exclusion) ever landed it."""
+    landed_calls = []
+
+    async def fake_ensure(engine, backend, state, schema, name, columns):
+        return SimpleNamespace(schema=schema, name=name)
+
+    async def fake_land(
+        engine, backend, state, schema, name, cache_table, pk_columns, columns, rows, ttl
+    ):
+        landed_calls.append((schema, name, pk_columns, rows, ttl))
+
+    class _Loader:
+        async def load(self, source, table):
+            return [{"order_id": 1}, {"order_id": 2}]
+
+    monkeypatch.setattr("provisa.federation.query_residency._ensure_row_cache_table", fake_ensure)
+    monkeypatch.setattr("provisa.federation.query_residency._land_row_cache", fake_land)
+    monkeypatch.setattr(
+        "provisa.federation.query_residency.resolve_landing_args_for",
+        lambda source, table, dialect: SimpleNamespace(columns=[("order_id", "integer")]),
+    )
+    monkeypatch.setattr(
+        "provisa.events.source_loader.SourceRowLoader",
+        lambda engine, adapter_loaders=None, keyed_adapter_loaders=None: _Loader(),
+    )
+    backend = _Backend()
+    state = _state(
+        [_source("bench-neo4j")],
+        [
+            _table(
+                "bench-neo4j",
+                "bench_order_node",
+                schema="neo4j",
+                row_materialize=True,
+                columns=[SimpleNamespace(name="order_id", is_primary_key=True)],
+            ),
+        ],
+        backend,
+    )
+    landed = await ensure_resident(state, {"bench-neo4j"}, unbound_targets={"bench_order_node"})
+    assert landed == [("bench-neo4j", "bench_order_node")]
+    assert landed_calls == [
+        ("neo4j", "bench_order_node", ["order_id"], [{"order_id": 1}, {"order_id": 2}], 300)
+    ]
 
 
 @pytest.mark.asyncio

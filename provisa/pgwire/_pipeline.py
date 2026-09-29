@@ -1258,6 +1258,7 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
         ensure_resident,
         ensure_rows_resident,
         pushdown_row_materialize,
+        table_names_in_sql,
     )
     from provisa.transpiler.router import Route
 
@@ -1276,11 +1277,19 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
     # ENGINE-route only: this is a multi-table join concern, and only the ENGINE route has a
     # physical_sql to probe.
     _pushed_down: set[str] = set()
+    _unbound_targets: set[str] = set()
     if plan.route == Route.ENGINE and plan.physical_sql is not None:
         _pushed_down = await pushdown_row_materialize(
             state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
         )
-    await ensure_resident(state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down)
+        _unbound_targets = table_names_in_sql(plan.physical_sql, state.federation_engine.dialect)
+    await ensure_resident(
+        state,
+        plan.sources,
+        pk_bounds=plan.pk_bounds,
+        pushed_down=_pushed_down,
+        unbound_targets=_unbound_targets,
+    )
     # REQ-1897: the result cache is GraphQL's Route.CACHE candidate route, extended here so every
     # other raw-SQL surface that reaches this one chokepoint (Bolt, pgwire's non-COPY path) gets
     # the same served-without-touching-the-engine hit -- with the same audit row and tier/egress
