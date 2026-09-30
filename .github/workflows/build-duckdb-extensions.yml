@@ -147,6 +147,8 @@ jobs:
         run: |
           set -o pipefail
           python -m venv /tmp/toolchain-venv
+          # `python -m venv` seeds the runner's bundled pip, which pip-audit then flags; upgrade it first.
+          /tmp/toolchain-venv/bin/pip install --upgrade pip -q
           /tmp/toolchain-venv/bin/pip install --upgrade build cyclonedx-bom pip-audit -q
           mkdir -p sbom
           /tmp/toolchain-venv/bin/cyclonedx-py environment --of JSON \
