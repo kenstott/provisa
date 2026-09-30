@@ -17,16 +17,32 @@ from __future__ import annotations
 
 import shutil
 import sys
+import tomllib
 from pathlib import Path
 
-_DEST = Path(__file__).resolve().parent / "provisa_duckdb_ext" / "_ext"
+_HERE = Path(__file__).resolve().parent
+_DEST = _HERE / "provisa_duckdb_ext" / "_ext"
+
+
+def _pinned_duckdb_version() -> str:
+    deps = tomllib.loads((_HERE / "pyproject.toml").read_text())["project"]["dependencies"]
+    (pin,) = [d for d in deps if d.startswith("duckdb==")]
+    return pin.removeprefix("duckdb==")
 
 
 def main(src_root: Path) -> int:
+    pinned = _pinned_duckdb_version()
     n = 0
     for ext_file in sorted(src_root.rglob("*.duckdb_extension")):
         # Preserve the trailing <raw_version>/<platform>/<name>.duckdb_extension the loader expects.
         rel = Path(*ext_file.parts[-3:])
+        if rel.parts[0].lstrip("v") != pinned:
+            print(
+                f"[collect] ERROR: {ext_file} was mirrored from DuckDB {rel.parts[0]}, "
+                f"but the wheel pins duckdb=={pinned}",
+                file=sys.stderr,
+            )
+            return 1
         dst = _DEST / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ext_file, dst)
