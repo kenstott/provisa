@@ -71,6 +71,16 @@ class _RecordingBackend:
     def __init__(self) -> None:
         self.lands = 0
 
+    def require_reconciled(self, source_ids) -> None:
+        """As EngineBackend.require_reconciled: the replica here reconciled."""
+        del source_ids
+
+    def pending_lands(self, sources, *, is_stale, **kw):
+        """As EngineBackend.pending_lands for a source this engine cannot read in place (rss) with
+        neither operator setting on: it lands when the query path's oracle says it is stale."""
+        del kw
+        return [s.id for s in sources if is_stale(s.id)]
+
     def is_first_touch(self, sid: str) -> bool:
         return False  # this process already holds the replica; only the persisted clock decides
 
