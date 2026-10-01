@@ -272,6 +272,10 @@ async def _init_schema_portable(pool: "Database") -> None:
         # reaches an existing SQLite/MySQL file — the portable equivalent of schema.sql's
         # ALTER ... ADD COLUMN IF NOT EXISTS blocks.
         add_missing_columns(conn, schema_org.metadata.sorted_tables)
+        # REQ-1914: the stamp rows and the triggers that advance them, once every table exists.
+        from provisa.core import config_stamp
+
+        config_stamp.install(conn, config_stamp.TENANT_TABLES)
     async with pool.acquire() as conn:
         for domain_id, description, steward in _SEED_DOMAINS:
             result = await conn.execute_core(select(domains.c.id).where(domains.c.id == domain_id))
@@ -336,6 +340,10 @@ async def init_schema(
 
         with engine.begin() as sa_conn:
             add_missing_columns(sa_conn, schema_org.metadata.sorted_tables, schema_name)
+            # REQ-1914: the stamp rows and the triggers that advance them, once every table exists.
+            from provisa.core import config_stamp
+
+            config_stamp.install(sa_conn, config_stamp.TENANT_TABLES, schema_name)
 
 
 async def _apply_tenancy_role_grants_portable(pool: "Database", *, multitenancy: bool) -> None:

@@ -90,37 +90,17 @@ async def read_org_overrides(tenant_db: Database) -> dict[str, Any]:
     return {row[0]: row[1] for row in rows}
 
 
-# How stale a worker's cached copy of an org's rows may be (REQ-1900): a setting an org changes
-# through one worker process is in force on every other within this many seconds — the same
-# bound the deployment-wide settings (provisa/core/deployment_settings.py) and the debug-trace
-# windows give.
-SNAPSHOT_TTL_SECONDS = 5.0
+async def read_org_overrides_stamped(tenant_db: Database) -> tuple[int, dict[str, Any]]:
+    """The org's override rows and the ``settings`` config stamp they were read at (REQ-1914).
 
+    A setting an org changes through one worker process advances that stamp, and every other
+    worker's config watcher reloads its copy when the stored stamp differs from this one. The
+    stamp is read BEFORE the rows, so a change stored between the two reads is reloaded once more
+    rather than missed."""
+    from provisa.core import config_stamp
 
-def read_org_overrides_sync(tenant_db: Database) -> dict[str, Any]:
-    """``read_org_overrides`` for a synchronous caller: the query path reads these settings from
-    properties and resolvers that cannot await. One short statement on the org's schema."""
-    from sqlalchemy import select, text
-
-    from provisa.core.schema_org import org_settings
-
-    with tenant_db.engine.connect() as conn:
-        enter = (
-            tenant_db.capabilities.enter_org_sql(tenant_db.search_path)
-            if tenant_db.search_path
-            else None
-        )
-        if enter:
-            conn.execute(text(enter))
-        try:
-            rows = conn.execute(select(org_settings.c.key, org_settings.c.value)).fetchall()
-        finally:
-            if enter:
-                # The pooled connection must not carry this org's search_path to its next user
-                # (see Database.acquire).
-                conn.execute(text("RESET search_path"))
-            conn.commit()
-    return {row[0]: row[1] for row in rows}
+    stamp = (await config_stamp.read(tenant_db))[config_stamp.SETTINGS]
+    return stamp, await read_org_overrides(tenant_db)
 
 
 async def resolve_org_config(tenant_db: Database) -> dict[str, Any]:

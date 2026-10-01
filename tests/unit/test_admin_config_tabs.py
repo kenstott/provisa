@@ -22,6 +22,7 @@ import yaml
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from provisa.core import config_stamp
 from provisa.api.admin._config_io import read_config
 from provisa.api.admin.ai_models_router import router as ai_models_router
 from provisa.api.admin.security_router import router as security_router
@@ -255,7 +256,9 @@ def settings_store(cfg_env, tmp_path, monkeypatch):
 
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'settings.db'}")
     with engine.begin() as conn:
-        metadata.create_all(conn, tables=[settings_table])
+        metadata.create_all(conn, tables=[settings_table, metadata.tables["config_stamp"]])
+        # REQ-1914: the settings snapshot is loaded with the plane's `settings` stamp.
+        config_stamp.install(conn, config_stamp.PLATFORM_TABLES)
     db = Database(engine, name="platform")
     monkeypatch.setattr(deployment_settings, "_held", None)
     monkeypatch.setattr(deployment_settings, "_db", db)

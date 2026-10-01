@@ -90,7 +90,16 @@ async def _load_columns(conn: "Connection", table_id: int) -> list[dict]:
 async def upsert(
     conn: "Connection", table: Table
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
-    """Upsert a registered table and its columns. Returns the table row id."""
+    """Upsert a registered table and its columns. Returns the table row id.
+
+    REQ-1914: one transaction. The table row, the wholesale column replace and the glossary refs
+    commit together, so the config stamp they advance is seen only with the finished table —
+    another worker never reloads a table whose columns are deleted and not yet re-inserted."""
+    async with conn.transaction():
+        return await _upsert(conn, table)
+
+
+async def _upsert(conn: "Connection", table: Table) -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
     # REQ-1634: a DataProduct's member tables must all share its domain_id — a table cannot
     # reference a DataProduct in a different domain. Enforced at the last write gate so every

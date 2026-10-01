@@ -922,6 +922,17 @@ org_settings = Table(
     Column("updated_by", Text),
 )
 
+# REQ-1914: the config stamp of this plane -- one row per kind ("model", "settings"), advanced by
+# trigger in the same transaction as any write to a table of that kind (see
+# provisa/core/config_stamp.py). Every process reloads when the stored stamp differs from the one
+# it loaded. V1: schema-defined, no migration.
+config_stamp = Table(
+    "config_stamp",
+    metadata,
+    Column("kind", Text, primary_key=True),
+    Column("stamp", BigInteger, nullable=False),
+)
+
 # REQ-1395: per-org secrets (e.g. Anthropic API key), encrypted at rest via
 # provisa.encryption.runtime.encryption_service() — same pattern as api_sources.auth.
 # Kept out of org_settings because that table's `value` column is unencrypted JSON.

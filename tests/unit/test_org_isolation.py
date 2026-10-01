@@ -104,6 +104,9 @@ class TestInitSchema:
         )
 
         mock_pool.dialect = "postgresql"
+        # A raw driver pool (no SQLAlchemy engine): init_schema's metadata pass, which reflects
+        # the live schema through an engine, does not apply to it.
+        mock_pool.engine = None
         await init_schema(mock_pool, "SELECT 1", org_id="myorg")
 
         # CREATE SCHEMA is now issued via execute_core(CreateSchema(...)); its compiled SQL
@@ -125,6 +128,9 @@ class TestInitSchema:
         )
 
         mock_pool.dialect = "postgresql"
+        # A raw driver pool (no SQLAlchemy engine): init_schema's metadata pass, which reflects
+        # the live schema through an engine, does not apply to it.
+        mock_pool.engine = None
         await init_schema(mock_pool, "CREATE TABLE t (id INT)", org_id="myorg")
 
         # Invariant (REQ-697): search_path is set before the schema DDL runs. Both the
@@ -156,6 +162,9 @@ class TestInitSchema:
                 )
             )
             mock_pool.dialect = "postgresql"
+            # A raw driver pool (no SQLAlchemy engine): init_schema's metadata pass, which
+            # reflects the live schema through an engine, does not apply to it.
+            mock_pool.engine = None
             await init_schema(mock_pool, "SELECT 1", org_id="myorg", env=env)
 
             core_sql = [str(c.args[0]) for c in mock_conn.execute_core.await_args_list if c.args]

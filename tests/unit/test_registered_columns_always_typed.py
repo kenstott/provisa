@@ -17,6 +17,7 @@ type at each writer and pin the repository's refusal as the backstop.
 """
 
 from types import SimpleNamespace
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -30,6 +31,11 @@ class _FakeConn:
     def __init__(self):
         self.execute = AsyncMock()
         self.upsert = AsyncMock()
+
+    @asynccontextmanager
+    async def transaction(self):
+        """table_repo.upsert runs as one transaction (REQ-1914); the fake has nothing to commit."""
+        yield
 
     async def execute_core(self, *_a, **_k):
         result = MagicMock()

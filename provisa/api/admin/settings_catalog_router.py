@@ -34,7 +34,7 @@ from sqlalchemy import select
 from provisa.api.admin import settings_guards
 from provisa.api.admin._platform_guard import is_anonymous, require_deployment_settings
 from provisa.api.errors import ApiError
-from provisa.core import deployment_settings, settings_registry
+from provisa.core import config_watch, settings_registry
 from provisa.core.schema_admin import deployment_settings as _table
 from provisa.core.settings_registry import Setting, SettingInvalid, UnknownSetting
 
@@ -96,7 +96,9 @@ async def get_catalog(request: Request) -> dict[str, Any]:  # REQ-1913
     for s in settings_registry.all_settings():
         by_card.setdefault(s.card, []).append(_entry(s, audit))
     return {
-        "snapshot_ttl_seconds": deployment_settings.SNAPSHOT_TTL_SECONDS,
+        # REQ-1914: how long a saved setting takes to reach every other worker — the config
+        # reload interval, under the name the settings page already reads.
+        "snapshot_ttl_seconds": settings_registry.value(config_watch.INTERVAL_SETTING),
         "pending_restart": settings_registry.pending(),
         "cards": [
             {"id": card, "settings": by_card[card]}

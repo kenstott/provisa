@@ -22,6 +22,7 @@ import logging
 
 import pytest
 
+from provisa.core import config_stamp
 from provisa.core import deployment_settings, settings_registry
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import deployment_settings as settings_table
@@ -142,7 +143,9 @@ def registry(monkeypatch):
 def control_plane(tmp_path, registry):
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
     with engine.begin() as conn:
-        metadata.create_all(conn, tables=[settings_table])
+        metadata.create_all(conn, tables=[settings_table, metadata.tables["config_stamp"]])
+        # REQ-1914: the settings snapshot is loaded with the plane's `settings` stamp.
+        config_stamp.install(conn, config_stamp.PLATFORM_TABLES)
     db = Database(engine, name="platform")
     deployment_settings.bind(db)
     yield db

@@ -14,6 +14,7 @@ admin-persisted live config drives the engine via reconcile.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -153,6 +154,11 @@ class TestReconcileLiveEngine:
         conn.fetch.assert_not_called()
 
 
+@asynccontextmanager
+async def _no_transaction():
+    yield
+
+
 class TestRepoUpsertSerializesLive:
     @pytest.mark.asyncio
     async def test_live_persisted_as_json(self):
@@ -175,6 +181,7 @@ class TestRepoUpsertSerializesLive:
             live=live,
         )
         conn = AsyncMock()
+        conn.transaction = _no_transaction  # table_repo.upsert runs as one transaction (REQ-1914)
         conn.upsert_returning = AsyncMock(return_value=1)
         _empty = MagicMock()
         _empty.fetchall.return_value = []  # no pre-existing column types to preserve
@@ -201,6 +208,7 @@ class TestRepoUpsertSerializesLive:
             live=None,
         )
         conn = AsyncMock()
+        conn.transaction = _no_transaction  # table_repo.upsert runs as one transaction (REQ-1914)
         conn.upsert_returning = AsyncMock(return_value=1)
         _empty = MagicMock()
         _empty.fetchall.return_value = []  # no pre-existing column types to preserve

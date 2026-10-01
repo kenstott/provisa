@@ -976,6 +976,14 @@ CREATE TABLE IF NOT EXISTS org_settings (
     updated_by  TEXT
 );
 
+-- REQ-1914: the config stamp of this plane -- one row per kind ('model', 'settings'), advanced by
+-- trigger in the same transaction as any write to a table of that kind. The rows and the triggers
+-- are created by provisa/core/config_stamp.py once every table exists.
+CREATE TABLE IF NOT EXISTS config_stamp (
+    kind   TEXT PRIMARY KEY,
+    stamp  BIGINT NOT NULL
+);
+
 -- REQ-1395: per-org secrets (e.g. the org's Anthropic API key), encrypted at rest via
 -- provisa.encryption.runtime.encryption_service() — same pattern as api_sources.auth.
 -- Never echoed back in reads; write-only from the admin API.

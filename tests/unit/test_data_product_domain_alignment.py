@@ -15,6 +15,7 @@ GraphQL, introspection — is covered, not only the picker UI (provisa/core/repo
 """
 
 from typing import cast
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -34,6 +35,11 @@ class _FakeConn:
         self.upsert = AsyncMock()
         self.upsert_returning = AsyncMock(return_value=7)
         self.inserted_columns: list[dict] = []
+
+    @asynccontextmanager
+    async def transaction(self):
+        """table_repo.upsert runs as one transaction (REQ-1914); the fake has nothing to commit."""
+        yield
 
     async def execute_core(self, stmt, *_a, **_k):
         if isinstance(stmt, Select) and stmt.get_final_froms()[0] is data_products:

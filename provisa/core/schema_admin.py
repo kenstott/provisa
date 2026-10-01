@@ -41,6 +41,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    BigInteger,
     JSON,
     Boolean,
     CheckConstraint,
@@ -565,6 +566,17 @@ deployment_settings = Table(
 )
 
 
+# REQ-1914: the config stamp of the platform plane -- one row per kind ("settings"), advanced by
+# trigger in the same transaction as any write to a table of that kind (see
+# provisa/core/config_stamp.py).
+config_stamp = Table(
+    "config_stamp",
+    metadata,
+    Column("kind", Text, primary_key=True),
+    Column("stamp", BigInteger, nullable=False),
+)
+
+
 # REQ-1910: the roles the operator permits the per-request debug-trace hint. A row is the
 # permission; no row means a request from that role carrying the hint is rejected (REQ-030).
 debug_trace_hint_roles = Table(
@@ -684,6 +696,7 @@ REGISTRY_TABLES = [
     debug_trace_windows,
     debug_trace_hint_roles,
     deployment_settings,
+    config_stamp,
 ]
 
 
@@ -719,6 +732,10 @@ async def init_registry_schema(db: "Database", org_id: str) -> None:  # REQ-696,
         from provisa.core.db import add_missing_columns
 
         add_missing_columns(conn, REGISTRY_TABLES)
+        # REQ-1914: the platform plane's stamp rows and the triggers that advance them.
+        from provisa.core import config_stamp as _config_stamp
+
+        _config_stamp.install(conn, _config_stamp.PLATFORM_TABLES)
     async with db.acquire() as conn:
         result = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
         if result.scalar() is None:

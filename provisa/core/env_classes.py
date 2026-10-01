@@ -117,6 +117,10 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # grpc_remote sources — nothing else reads it, and it belongs to the environment that
         # produced the registration, same as the other operational logs above.
         "provisa_sources",
+        # REQ-1914: the environment's own config stamp. The database advances it for every write
+        # a copy or a merge makes to this environment's tables; carrying another environment's
+        # value over it would move it backwards and hide a change from the workers watching it.
+        "config_stamp",
     }
 )
 

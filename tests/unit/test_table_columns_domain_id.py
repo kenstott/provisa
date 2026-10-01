@@ -16,6 +16,7 @@ domain without a separate lookup at read time.
 """
 
 from typing import cast
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -33,6 +34,11 @@ class _FakeConn:
         self.upsert = AsyncMock()
         self.upsert_returning = AsyncMock(return_value=7)
         self.inserted_columns: list[dict] = []
+
+    @asynccontextmanager
+    async def transaction(self):
+        """table_repo.upsert runs as one transaction (REQ-1914); the fake has nothing to commit."""
+        yield
 
     async def execute_core(self, stmt, *_a, **_k):
         if isinstance(stmt, Insert) and stmt.table is table_columns:

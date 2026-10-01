@@ -8,19 +8,20 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Deployment-wide settings changed at runtime (REQ-165, REQ-1900).
+"""Deployment-wide settings changed at runtime (REQ-165, REQ-1900, REQ-1914).
 
 `PUT /admin/settings` used to apply a deployment-wide scalar by writing ``os.environ`` in the
 worker process that served the request. The other workers of the launch and every other instance
 never saw the change, and a restart lost it.
 
 A setting changed at runtime is now a row in the platform control plane (``deployment_settings``:
-key, JSON value) — the one store every worker and instance reaches. Readers do not query it per
-call: they resolve against a snapshot of the rows held in the process and refreshed at most once
-per ``SNAPSHOT_TTL_SECONDS``, the same shape the debug-trace windows use
-(``provisa/core/trace_scope.py``). So a change made through one worker is in force on every
-other within that many seconds, on the worker that made it at once, and after a restart because
-it never lived in a process.
+key, JSON value) — the one store every worker and instance reaches. Readers never query it: they
+resolve against a snapshot of the rows held in the process. REQ-1914: the snapshot is loaded
+together with the platform plane's ``settings`` config stamp, and the process's config watcher
+(``provisa/core/config_watch.py``) reloads it when the stored stamp differs. So a change made
+through one worker is in force on every other within the reload interval
+(``config.reload_interval``), on the worker that made it at once, and after a restart because it
+never lived in a process.
 
 PRECEDENCE, for a reader of one of these settings: the stored row, when there is one; else what
 the process was started with (its environment variable, then the config file) — a stored row is
@@ -30,32 +31,26 @@ A process that has not bound a control plane (a script, a unit test compiling a 
 stored settings and reads only what it was started with.
 """
 
-# Requirements: REQ-165, REQ-1900
+# Requirements: REQ-165, REQ-1900, REQ-1914
 
 from __future__ import annotations
 
 import json
 import threading
-import time
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, select
 
+from provisa.core import config_stamp
 from provisa.core.schema_admin import deployment_settings as _table
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
 
-# How stale a reader's snapshot may be: a setting changed on another worker or instance takes
-# effect here within this many seconds.
-SNAPSHOT_TTL_SECONDS = 5.0
-
-_monotonic = time.monotonic
-
 _db: "Database | None" = None
-# (when it was read, the rows).
-_held: tuple[float, dict[str, Any]] | None = None
-_refreshing = threading.Lock()
+# (the platform plane's ``settings`` stamp read just before the rows, the rows).
+_held: tuple[int, dict[str, Any]] | None = None
+_loading = threading.Lock()
 
 
 def bind(db: "Database") -> None:
@@ -65,10 +60,14 @@ def bind(db: "Database") -> None:
     _held = None
 
 
-def _load(db: "Database") -> dict[str, Any]:
+def _load(db: "Database") -> tuple[int, dict[str, Any]]:
+    """The stamp, then the rows. In that order: a change stored between the two reads leaves the
+    snapshot holding the older stamp, so the watcher reloads it once more — never the reverse,
+    newer stamp over older rows, which nothing would correct."""
+    stamp = config_stamp.read_sync(db)[config_stamp.SETTINGS]
     with db.engine.connect() as conn:
         rows = conn.execute(select(_table.c.key, _table.c.value)).fetchall()
-    return {key: json.loads(value) for key, value in rows}
+    return stamp, {key: json.loads(value) for key, value in rows}
 
 
 def _snapshot() -> dict[str, Any]:
@@ -77,20 +76,36 @@ def _snapshot() -> dict[str, Any]:
     if db is None:
         return {}
     held = _held
-    if held is not None and _monotonic() - held[0] < SNAPSHOT_TTL_SECONDS:
+    if held is not None:
         return held[1]
-    # One thread refreshes; the others keep the snapshot they have rather than queueing on the
-    # control plane. A thread with nothing to serve reads for itself.
-    owns_refresh = _refreshing.acquire(blocking=False)
-    if held is not None and not owns_refresh:
-        return held[1]
-    try:
-        rows = _load(db)
-        _held = (_monotonic(), rows)
-        return rows
-    finally:
-        if owns_refresh:
-            _refreshing.release()
+    # Nothing loaded yet (first read after binding, or after this process's own write).
+    with _loading:
+        if _held is None:
+            _held = _load(db)
+        return _held[1]
+
+
+def loaded_stamp() -> int | None:
+    """The ``settings`` stamp this process's snapshot was loaded at; ``None`` when none is held."""
+    held = _held
+    return None if held is None else held[0]
+
+
+def current_stamp() -> int | None:
+    """:func:`loaded_stamp` of the snapshot a reader would get now, loading it if this process
+    holds none (it dropped its own on a write). ``None`` only when no control plane is bound."""
+    _snapshot()
+    return loaded_stamp()
+
+
+def reload() -> None:
+    """Read the stored rows again (the config watcher, on a changed stamp)."""
+    global _held
+    db = _db
+    if db is None:
+        raise RuntimeError("no control plane is bound: there are no deployment settings to reload")
+    with _loading:
+        _held = _load(db)
 
 
 def get(key: str) -> Any | None:
@@ -99,8 +114,9 @@ def get(key: str) -> Any | None:
 
 
 def write(db: "Database", values: dict[str, Any], *, updated_by: str) -> None:
-    """Store ``values`` (key -> JSON value), in one transaction. The writing process sees them at
-    once; every other within ``SNAPSHOT_TTL_SECONDS``.
+    """Store ``values`` (key -> JSON value), in one transaction — the one that also advances the
+    platform plane's ``settings`` stamp (by trigger). The writing process sees them at once; every
+    other when its config watcher next reads the stamp.
 
     A value of ``None`` CLEARS the setting: its row is removed and nothing is written in its
     place (REQ-1913) — ``get`` reads "no row" as "no stored value", so a JSON null is never stored.

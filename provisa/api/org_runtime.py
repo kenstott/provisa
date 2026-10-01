@@ -32,7 +32,6 @@ once at the entrypoint (never silently here).
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -215,11 +214,19 @@ class OrgRuntime:
     # control-plane round trip per query is not a cost those readers can carry. Empty for an org
     # that has overridden nothing — every read then resolves the deployment value.
     settings_overrides: dict[str, Any] = field(default_factory=dict)
-    # When that copy was read (time.monotonic). REQ-1900: another worker process may have changed
-    # the rows since, so a copy older than org_settings.SNAPSHOT_TTL_SECONDS is re-read before it
-    # is used (AppState.settings_overrides) — a control-plane read every few seconds per org, not
-    # one per query.
-    settings_overrides_read_at: float = field(default_factory=time.monotonic)
+
+    # REQ-1914: the config stamps this runtime's copies were loaded at — the tenant plane's
+    # ``model`` stamp read before the schema build read the model, and its ``settings`` stamp read
+    # before ``settings_overrides`` was. ``None`` until the first load. The process's config
+    # watcher (provisa/api/model_reload.py) compares each with the stored stamp and reloads the
+    # copy when they differ, so a change made through another worker process or instance is in
+    # force here within the reload interval; no request reads the control plane for it.
+    model_stamp: int | None = None
+    settings_stamp: int | None = None
+    # REQ-1914: what each ``sources`` row held when this runtime last built its per-source state
+    # (pool, dialect, catalog name), so a reload rebuilds that state only for a source whose row
+    # was added, changed or removed. ``None`` until the first schema build.
+    source_rows: dict[str, tuple] | None = None
 
 
 class OrgRegistry:

@@ -33,7 +33,6 @@ script, a unit test compiling a query) has nothing frozen and reads what it was 
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import logging
 import os
@@ -535,14 +534,10 @@ def _to_store(s: Setting, raw: Any) -> Any:
 # Most live settings are read where they are used, so the stored value is in force on the next
 # read. A few are STATE a worker built from the value — the bounds of its request-thread pools —
 # and a stored change has to be applied to that state in every worker. The owning module registers
-# how (:func:`on_change`); each worker checks on a short tick and applies what its settings
-# snapshot shows has changed, so a change stored through one worker is applied by every other
-# within the snapshot TTL plus one tick, with no restart.
-
-# How often a worker compares what it has applied with what its settings snapshot resolves to.
-# The snapshot itself is read from the control plane at most once per its own TTL; a tick between
-# reads costs no query.
-APPLY_TICK_SECONDS = 1.0
+# how (:func:`on_change`). REQ-1914: each worker's config watcher reloads its settings snapshot
+# when the platform plane's ``settings`` stamp changes and then calls :func:`apply_changes`, so a
+# change stored through one worker is applied by every other within the reload interval, with no
+# restart.
 
 
 @dataclass
@@ -553,7 +548,6 @@ class _Applier:
 
 
 _appliers: list[_Applier] = []
-_applier_task: Any = None
 
 
 def on_change(keys: tuple[str, ...], apply: Callable[..., None]) -> None:
@@ -584,23 +578,11 @@ def applied(key: str) -> Any | None:
     return None
 
 
-async def _apply_loop() -> None:
-    while True:
-        await asyncio.sleep(APPLY_TICK_SECONDS)
-        try:
-            apply_changes()
-        except Exception:  # allow-ble: a background loop's boundary — logged, next tick retries
-            log.exception("applying changed settings failed; retrying on the next tick")
-
-
-def start_applier() -> None:
-    """Start this worker's tick (once per process; stopped with the other background work)."""
-    global _applier_task
-    if _applier_task is not None and not _applier_task.done():
-        return
-    from provisa.core.connection_loop import spawn_long_lived
-
-    _applier_task = spawn_long_lived(_apply_loop(), name="settings-applier")
+async def reload_and_apply() -> None:
+    """Read the stored settings again and apply what changed: the config watcher's reload for the
+    platform plane's ``settings`` stamp (REQ-1914)."""
+    deployment_settings.reload()
+    apply_changes()
 
 
 def validate(values: dict[str, Any]) -> None:

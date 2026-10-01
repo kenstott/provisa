@@ -23,6 +23,7 @@ import types
 
 import pytest
 
+from provisa.core import config_stamp, config_watch
 import provisa.api.app  # noqa: F401 - imported before a test narrows the registry to its own settings
 from provisa.api.admin import settings_catalog_router as catalog
 from provisa.api.errors import ApiError
@@ -85,6 +86,18 @@ LOCATOR = Setting(
     readonly_reason="locates_control_plane",
 )
 ALL = (LIMIT, POOL, MODE, PASSWORD, LOCATOR)
+# REQ-1914: the catalog also reports how long a saved setting takes to reach every other worker,
+# which is the config reload interval — a setting of the real catalog, registered beside the
+# test's own so the report resolves.
+RELOAD_INTERVAL = Setting(
+    key=config_watch.INTERVAL_SETTING,
+    card="concurrency",
+    type="float",
+    effect="live",
+    req="REQ-1914",
+    default=2.0,
+    min=0.5,
+)
 
 PLATFORM_ADMIN = ("platform_settings", "cross_org")
 SINGLE_TENANT_ORG_ADMIN = ("platform_settings", "org_settings")
@@ -92,7 +105,7 @@ SINGLE_TENANT_ORG_ADMIN = ("platform_settings", "org_settings")
 
 @pytest.fixture
 def control_plane(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings_registry, "_settings", {s.key: s for s in ALL})
+    monkeypatch.setattr(settings_registry, "_settings", {s.key: s for s in (*ALL, RELOAD_INTERVAL)})
     monkeypatch.setattr(settings_registry, "_loaded", True)
     monkeypatch.setattr(settings_registry, "_config", {})
     monkeypatch.setattr(settings_registry, "_frozen", None)
@@ -101,7 +114,9 @@ def control_plane(tmp_path, monkeypatch):
     monkeypatch.delenv(settings_registry.IGNORE_STORED_ENV, raising=False)
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
     with engine.begin() as conn:
-        metadata.create_all(conn, tables=[settings_table])
+        metadata.create_all(conn, tables=[settings_table, metadata.tables["config_stamp"]])
+        # REQ-1914: the settings snapshot is loaded with the plane's `settings` stamp.
+        config_stamp.install(conn, config_stamp.PLATFORM_TABLES)
     db = Database(engine, name="platform")
     monkeypatch.setattr(deployment_settings, "_held", None)
     monkeypatch.setattr(deployment_settings, "_db", db)
@@ -184,8 +199,18 @@ async def test_a_deployment_with_no_auth_provider_reads_the_catalog(caller):
 async def test_the_catalog_groups_every_setting_into_its_card_in_display_order(caller):
     payload = await catalog.get_catalog(caller(*PLATFORM_ADMIN))
     assert [c["id"] for c in payload["cards"]] == ["limits", "concurrency", "security", "bootstrap"]
-    assert set(_by_key(payload)) == {s.key for s in ALL}
-    assert payload["snapshot_ttl_seconds"] == deployment_settings.SNAPSHOT_TTL_SECONDS
+    assert set(_by_key(payload)) == {s.key for s in (*ALL, RELOAD_INTERVAL)}
+
+
+async def test_the_catalog_says_how_long_a_save_takes_to_reach_every_worker(caller):
+    """REQ-1914: that is the config reload interval, the operator's own setting."""
+    payload = await catalog.get_catalog(caller(*PLATFORM_ADMIN))
+    assert payload["snapshot_ttl_seconds"] == 2.0
+    await catalog.put_catalog(
+        caller(*PLATFORM_ADMIN, body={"values": {config_watch.INTERVAL_SETTING: 0.5}})
+    )
+    payload = await catalog.get_catalog(caller(*PLATFORM_ADMIN))
+    assert payload["snapshot_ttl_seconds"] == 0.5
 
 
 async def test_a_setting_carries_value_source_range_and_who_changed_it(caller):

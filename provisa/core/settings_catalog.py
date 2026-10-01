@@ -218,6 +218,22 @@ DECLARED: list[Setting] = [
         min=1,
         unit="threads",
     ),
+    # REQ-1914: how often each worker reads the control plane's config stamps. A model, governance
+    # or settings change made through one worker is in force on every other worker of every
+    # instance within this long (provisa/core/config_watch.py). Live: a worker re-reads it on
+    # every tick.
+    Setting(
+        key="config.reload_interval",
+        card="concurrency",
+        type="float",
+        effect="live",
+        req="REQ-1914",  # 2 s: one short read per control plane per worker, per interval
+        env="PROVISA_CONFIG_RELOAD_INTERVAL",
+        config_path=("server", "config_reload_interval"),
+        default=2.0,
+        min=0.5,
+        unit="seconds",
+    ),
     Setting(
         key="concurrency.grpc_max_concurrent_rpcs",
         card="concurrency",

@@ -1181,15 +1181,20 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
     roles: list[dict],
     role_chains: dict[str, list[str]] | None = None,
 ) -> None:
-    """Load masking rules from table_columns and populate state.masking_rules.
+    """Load masking rules from table_columns and publish them as state.masking_rules.
 
     REQ-1677: a role is exempt from a mask when it or an ancestor is in ``unmasked_to``.
+
+    REQ-1914: the new set is built aside and published in ONE assignment at the end. Every
+    worker now rebuilds on every model change, with requests running on their own threads
+    meanwhile; a set cleared first and refilled here would answer those requests unmasked.
     """
     from provisa.api.app import state
     from provisa.security.inheritance import holds_grant
     from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
 
     chains = role_chains if role_chains is not None else {r["id"]: [r["id"]] for r in roles}
+    rules: dict[Any, dict[str, Any]] = {}
 
     masking_rows = [
         dict(_r._mapping)
@@ -1231,10 +1236,8 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
         for role in roles:
             if holds_grant(role["id"], unmasked_to, chains):
                 continue
-            key = (table_id, role["id"])
-            if key not in state.masking_rules:
-                state.masking_rules[key] = {}
-            state.masking_rules[key][col_name] = (mask_rule, data_type)
+            rules.setdefault((table_id, role["id"]), {})[col_name] = (mask_rule, data_type)
+    state.masking_rules = rules
 
 
 def _json_list(value: Any) -> list:

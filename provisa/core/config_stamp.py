@@ -1,0 +1,244 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0c7e5a31-9d42-4b86-a1f3-6e2d8b5c7a90
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The config stamp: one stored counter per kind of configuration, per control plane (REQ-1914).
+
+``config_stamp(kind, stamp)`` holds one row per kind. The DATABASE advances a row, by trigger, in
+the same transaction as any write to a table of that kind — so no write path can forget it, and
+the value is one the control plane assigned, never a clock reading. Every process remembers the
+stamp it loaded and reloads when the stored one differs (``provisa/core/config_watch.py``).
+
+The stamp is used strictly for reloading. It is never what an update is checked against.
+
+Kinds, and where their row lives:
+
+* ``model`` — the tenant plane (one per org and environment): the governed model and its rules.
+* ``settings`` — the tenant plane (``org_settings``) and the platform plane
+  (``deployment_settings``), each with its own row.
+"""
+
+# Requirements: REQ-1914
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from sqlalchemy import text
+
+if TYPE_CHECKING:
+    from provisa.core.database import Database
+
+MODEL = "model"
+SETTINGS = "settings"
+
+# Tenant-plane tables and the kind a write to each advances. ``model`` is every table the governed
+# model is built from (what ``_rebuild_schemas`` reads). Tables a reload itself writes, and runtime
+# state (events, freshness, refresh logs, audit), are deliberately absent: stamping them would make
+# every worker reload on its own bookkeeping. So is ``provisa_sources``: the grpc_remote router
+# creates it on first use (an org that registered none has no such table), and every row it holds
+# is written beside the ``sources`` and ``registered_tables`` rows of the same registration.
+#
+# THE ONE PLACE a table is added: name it here with its kind and, when only some of its columns
+# are configuration, name those columns in UPDATE_COLUMNS below. The table must exist in the
+# plane's schema definition (schema.sql and schema_org.py, or schema_admin.py).
+TENANT_TABLES: dict[str, str] = {
+    "sources": MODEL,
+    "domains": MODEL,
+    "data_products": MODEL,
+    "naming_rules": MODEL,
+    "registered_tables": MODEL,
+    "table_columns": MODEL,
+    "relationships": MODEL,
+    "metrics": MODEL,
+    "roles": MODEL,
+    "rls_rules": MODEL,
+    "tags": MODEL,
+    "tag_param_values": MODEL,
+    "tag_assignments": MODEL,
+    "tracked_functions": MODEL,
+    "tracked_webhooks": MODEL,
+    "api_sources": MODEL,
+    "api_endpoints": MODEL,
+    "kafka_sources": MODEL,
+    "kafka_topics": MODEL,
+    "kafka_sinks": MODEL,
+    "table_meta_links": MODEL,
+    "calendars": MODEL,
+    "materialized_views": MODEL,
+    "org_settings": SETTINGS,
+}
+
+PLATFORM_TABLES: dict[str, str] = {"deployment_settings": SETTINGS}
+
+# A table whose UPDATEs advance the stamp only when they set one of these columns. A materialized
+# view's row also carries its refresh state (status, row count, lease, input versions), written on
+# every refresh; only its definition is configuration.
+UPDATE_COLUMNS: dict[str, tuple[str, ...]] = {
+    "materialized_views": (
+        "source_tables",
+        "target_catalog",
+        "target_schema",
+        "target_table",
+        "refresh_interval",
+        "enabled",
+        "join_pattern",
+        "custom_sql",
+        "expose_in_sdl",
+        "sdl_config",
+        "calendar",
+        "grain",
+        "allowed_lateness",
+        "expected_events",
+        "business_day_grain",
+    ),
+}
+
+# Serializes trigger creation across the worker processes of a launch (PostgreSQL). "PROVISA4".
+_INSTALL_LOCK_KEY = 0x50524F5649534134
+
+_PG_FUNCTION = "advance_config_stamp"
+
+
+def _seed(conn: Any, qualified: str, kinds: set[str]) -> None:
+    for kind in sorted(kinds):
+        conn.execute(
+            text(
+                f"INSERT INTO {qualified} (kind, stamp) SELECT :kind, 0 "
+                f"WHERE NOT EXISTS (SELECT 1 FROM {qualified} WHERE kind = :kind)"
+            ),
+            {"kind": kind},
+        )
+
+
+def _install_postgresql(conn: Any, tables: dict[str, str], schema: str | None) -> None:
+    conn.execute(text(f"SELECT pg_advisory_xact_lock({_INSTALL_LOCK_KEY})"))
+    if schema is None:
+        schema = conn.execute(text("SELECT current_schema()")).scalar_one()
+    stamp = f'"{schema}".config_stamp'
+    _seed(conn, stamp, set(tables.values()))
+    function = f'"{schema}".{_PG_FUNCTION}'
+    # The table's own schema names the stamp it advances, so the trigger is right whatever
+    # search_path the writing connection carries.
+    conn.execute(
+        text(
+            f"CREATE OR REPLACE FUNCTION {function}() RETURNS trigger LANGUAGE plpgsql AS $fn$ "
+            "BEGIN "
+            "EXECUTE format('UPDATE %I.config_stamp SET stamp = stamp + 1 WHERE kind = $1', "
+            "TG_TABLE_SCHEMA) USING TG_ARGV[0]; "
+            "RETURN NULL; "
+            "END $fn$"
+        )
+    )
+    existing = {
+        (row[0], row[1])
+        for row in conn.execute(
+            text(
+                "SELECT c.relname, t.tgname FROM pg_trigger t "
+                "JOIN pg_class c ON c.oid = t.tgrelid "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = :schema AND NOT t.tgisinternal"
+            ),
+            {"schema": schema},
+        )
+    }
+    # A table holding a ``json`` column (one created from the portable metadata rather than
+    # schema.sql, which declares jsonb) cannot be compared row to row: json has no equality
+    # operator. Its every UPDATE advances the stamp.
+    uncomparable = {
+        row[0]
+        for row in conn.execute(
+            text(
+                "SELECT DISTINCT table_name FROM information_schema.columns "
+                "WHERE table_schema = :schema AND data_type = 'json'"
+            ),
+            {"schema": schema},
+        )
+    }
+    for table, kind in tables.items():
+        target = f'"{schema}"."{table}"'
+        call = f"EXECUTE FUNCTION {function}('{kind}')"
+        columns = UPDATE_COLUMNS.get(table)
+        update_of = f" OF {', '.join(columns)}" if columns else ""
+        # A row rewritten with the values it already holds is not a change.
+        changed = "" if table in uncomparable else "WHEN (OLD.* IS DISTINCT FROM NEW.*) "
+        wanted = {
+            "config_stamp_rows": f"AFTER INSERT OR DELETE ON {target} FOR EACH ROW {call}",
+            "config_stamp_update": (
+                f"AFTER UPDATE{update_of} ON {target} FOR EACH ROW {changed}{call}"
+            ),
+            "config_stamp_truncate": f"AFTER TRUNCATE ON {target} FOR EACH STATEMENT {call}",
+        }
+        for name, definition in wanted.items():
+            if (table, name) not in existing:
+                conn.execute(text(f"CREATE TRIGGER {name} {definition}"))
+
+
+def _install_sqlite(conn: Any, tables: dict[str, str]) -> None:
+    _seed(conn, "config_stamp", set(tables.values()))
+    for table, kind in tables.items():
+        advance = f"UPDATE config_stamp SET stamp = stamp + 1 WHERE kind = '{kind}'"
+        columns = UPDATE_COLUMNS.get(table)
+        update_of = f" OF {', '.join(columns)}" if columns else ""
+        for name, event in (
+            ("insert", "INSERT"),
+            ("delete", "DELETE"),
+            ("update", f"UPDATE{update_of}"),
+        ):
+            conn.exec_driver_sql(
+                f'CREATE TRIGGER IF NOT EXISTS "config_stamp_{table}_{name}" '
+                f'AFTER {event} ON "{table}" BEGIN {advance}; END'
+            )
+
+
+def install(conn: Any, tables: dict[str, str], schema: str | None = None) -> None:
+    """Seed the stamp rows and create the triggers that advance them, for ``tables`` (table name →
+    kind) in ``schema``. Idempotent. ``conn`` is a SQLAlchemy connection inside a transaction, on
+    which ``config_stamp`` and every one of ``tables`` already exist.
+
+    An embedded DuckDB control plane (REQ-828) gets the rows and no triggers: DuckDB has none,
+    and a DuckDB file admits one process, so there is no second process for a change to reach —
+    the process that made the change rebuilds itself. A control plane on any other dialect is
+    refused: without the triggers a change would reach only the process that made it."""
+    dialect = conn.dialect.name
+    if dialect == "postgresql":
+        _install_postgresql(conn, tables, schema)
+    elif dialect == "sqlite":
+        _install_sqlite(conn, tables)
+    elif dialect == "duckdb":
+        _seed(conn, "config_stamp", set(tables.values()))
+    else:
+        raise NotImplementedError(
+            f"the config stamp (REQ-1914) is not implemented for a {dialect} control plane; "
+            "PostgreSQL, SQLite and (single-process) DuckDB are supported"
+        )
+
+
+async def read(db: "Database") -> dict[str, int]:
+    """The stored stamps of ``db``'s plane, by kind. One short statement."""
+    async with db.acquire() as conn:
+        rows = await conn.fetch("SELECT kind, stamp FROM config_stamp")
+    return {row["kind"]: int(row["stamp"]) for row in rows}
+
+
+def read_sync(db: "Database") -> dict[str, int]:
+    """:func:`read` for a caller that cannot await (the settings snapshot)."""
+    with db.engine.connect() as conn:
+        enter = db.capabilities.enter_org_sql(db.search_path) if db.search_path else None
+        if enter:
+            conn.execute(text(enter))
+        try:
+            rows = conn.execute(text("SELECT kind, stamp FROM config_stamp")).fetchall()
+        finally:
+            if enter:
+                # The pooled connection must not carry this org's search_path to its next user
+                # (see Database.acquire).
+                conn.execute(text("RESET search_path"))
+            conn.commit()
+    return {row[0]: int(row[1]) for row in rows}

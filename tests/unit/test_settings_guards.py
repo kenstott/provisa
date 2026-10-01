@@ -24,6 +24,7 @@ import types
 
 import pytest
 
+from provisa.core import config_stamp
 from provisa.api.admin import settings_catalog_router as catalog
 from provisa.api.errors import ApiError
 from provisa.core import deployment_settings, settings_registry
@@ -50,7 +51,9 @@ def save(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime, "_service", None)
     engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.db'}")
     with engine.begin() as conn:
-        metadata.create_all(conn, tables=[settings_table])
+        metadata.create_all(conn, tables=[settings_table, metadata.tables["config_stamp"]])
+        # REQ-1914: the settings snapshot is loaded with the plane's `settings` stamp.
+        config_stamp.install(conn, config_stamp.PLATFORM_TABLES)
     db = Database(engine, name="platform")
     monkeypatch.setattr(deployment_settings, "_held", None)
     monkeypatch.setattr(deployment_settings, "_db", db)

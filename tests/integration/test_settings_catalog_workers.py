@@ -13,7 +13,9 @@
 Boots ``uvicorn --workers 4`` on a fresh control plane and asks EACH worker — on a connection
 pinned to it — what it runs on after a setting is saved through one of them:
 
-* a live setting is in force on every worker within the store's snapshot TTL;
+* a live setting is in force on every worker within the config reload interval (REQ-1914: a
+  saved setting advances the platform plane's ``settings`` stamp, and each worker's config
+  watcher reloads its settings when the stored stamp differs from the one it loaded);
 * a restart setting keeps its booted value on every worker, reports a pending restart, and is in
   force after the launch is restarted;
 * the stored value takes precedence over the environment, and clearing it returns to the
@@ -24,7 +26,7 @@ pinned to it — what it runs on after a setting is saved through one of them:
 The test instance only: its own database, org, data directory and leased ports
 (``tests/integration/worker_boot_harness.py``)."""
 
-# Requirements: REQ-1913, REQ-1900
+# Requirements: REQ-1913, REQ-1900, REQ-1914
 
 from __future__ import annotations
 
@@ -34,7 +36,7 @@ import time
 
 import pytest
 
-from provisa.core.deployment_settings import SNAPSHOT_TTL_SECONDS
+from provisa.core import config_watch, settings_registry
 from tests.integration.cross_worker_evidence import Worker
 from tests.integration.worker_boot_harness import WorkerBoot
 
@@ -44,9 +46,10 @@ _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
 _WORKERS = 4
 CATALOG = "/admin/settings/catalog"
-# How long a worker may take to see another worker's write: one snapshot TTL plus slack for the
-# request itself. Not a tuning knob — a worker still on the old value after this is the defect.
-_REACHES_EVERY_WORKER_S = SNAPSHOT_TTL_SECONDS + 5.0
+# How long a worker may take to see another worker's write: one config reload interval (the
+# launch runs on the setting's default) plus slack for the request itself. Not a tuning knob — a
+# worker still on the old value after this is the defect.
+_REACHES_EVERY_WORKER_S = settings_registry.setting(config_watch.INTERVAL_SETTING).default + 5.0
 # The harness launches with these in the environment (see WorkerBoot.start / `env=` below).
 _ENV_MCP_MAX_ROWS = 50
 _ENV_REDIRECT_SECRET = "minioadmin"

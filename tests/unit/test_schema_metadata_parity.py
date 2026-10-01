@@ -105,6 +105,11 @@ METADATA_ONLY_TABLES = REGISTRY_ONLY_TABLES | {
     "provisa_sources",
 }
 
+# Tables BOTH planes hold, each its own copy. The tenant plane's is mirrored in schema.sql like
+# any other tenant table; the platform plane's is portable metadata only, as every platform table
+# is. config_stamp (REQ-1914): one config stamp per plane.
+ON_BOTH_PLANES = {"config_stamp"}
+
 _CONSTRAINT_KW = {
     "unique",
     "primary",
@@ -289,6 +294,8 @@ def test_table_set_matches(parsed, meta_module, is_admin):
     expected = _bucket(parsed, is_admin)
     # Metadata-only tables have no parsed SQL counterpart; compare on the raw-DDL-mirrored set.
     actual = set(meta_module.metadata.tables.keys()) - METADATA_ONLY_TABLES
+    if is_admin:
+        actual -= ON_BOTH_PLANES
     assert actual == expected, (
         f"table mismatch (admin={is_admin}): missing={expected - actual}, extra={actual - expected}"
     )

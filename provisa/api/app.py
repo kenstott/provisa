@@ -673,26 +673,16 @@ class AppState:
     def settings_overrides(self) -> dict:
         """The active org's ``org_settings`` rows (REQ-1349). Empty when it has overridden nothing.
 
-        REQ-1900: the runtime's copy is re-read from the org's control plane when it is older
-        than the snapshot TTL, so a setting the org changed through ANOTHER worker process is in
-        force here within that many seconds. The worker that made the change sets the copy
-        itself (below) and sees it at once."""
-        from provisa.core.org_settings import SNAPSHOT_TTL_SECONDS, read_org_overrides_sync
-
-        rt = self._active_runtime()
-        now = time.monotonic()
-        if rt.tenant_db is not None and now - rt.settings_overrides_read_at >= SNAPSHOT_TTL_SECONDS:
-            # Claimed first: the other request threads keep the copy they have rather than each
-            # reading the control plane.
-            rt.settings_overrides_read_at = now
-            rt.settings_overrides = read_org_overrides_sync(rt.tenant_db)
-        return rt.settings_overrides
+        REQ-1914: read from the runtime's copy, never from the control plane. A setting the org
+        changed through ANOTHER worker process advances the org's ``settings`` config stamp, and
+        this process's config watcher reloads the copy within the reload interval
+        (provisa/api/model_reload.py). The worker that made the change sets the copy itself
+        (below) and sees it at once."""
+        return self._active_runtime().settings_overrides
 
     @settings_overrides.setter
     def settings_overrides(self, value: dict) -> None:
-        rt = self._active_runtime()
-        rt.settings_overrides = value
-        rt.settings_overrides_read_at = time.monotonic()
+        self._active_runtime().settings_overrides = value
 
     @property
     def response_cache_default_ttl(self) -> int:
@@ -880,6 +870,14 @@ async def _load_and_build(
 
     _mark("pg+schema+seed")
 
+    # REQ-1349: the default org's own settings rows, layered over the deployment config. Read here
+    # rather than at first use because the query path (response TTL, redirect) reads them off the
+    # runtime. build_org_runtime does the same for every other org. REQ-1914: read with the
+    # ``settings`` stamp they were loaded at, which this worker's config watcher compares.
+    from provisa.api.model_reload import load_org_settings as _load_org_settings
+
+    await _load_org_settings(state._default_runtime())
+
     path = Path(config_path)
     if not path.exists():
         return
@@ -1051,13 +1049,6 @@ async def _load_and_build(
 
     _mark("load_config")
 
-    # REQ-1349: the default org's own settings rows, layered over the deployment config just loaded.
-    # Read here rather than at first use because the query path (response TTL, redirect) reads them
-    # off the runtime. build_org_runtime does the same for every other org.
-    from provisa.core.org_settings import read_org_overrides as _read_org_overrides
-
-    assert state.tenant_db is not None
-    state.settings_overrides = await _read_org_overrides(state.tenant_db)
     # REQ-1266: the org's domain mode wins over the deployment's, applied after load_config (which
     # configured the scope from the config file) and before the schema build reads the policy.
     _naming_override = state.settings_overrides.get("naming") or {}
@@ -1516,9 +1507,11 @@ async def build_org_runtime(
         # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
         # when the org writes one. The query path (response-cache TTL, large-result redirect)
         # reads them off the runtime, so a control-plane round trip per query is not on that path.
-        from provisa.core.org_settings import read_org_overrides
+        # REQ-1914: read with the ``settings`` stamp they were loaded at, which this worker's
+        # config watcher compares.
+        from provisa.api.model_reload import load_org_settings
 
-        rt.settings_overrides = await read_org_overrides(state.tenant_db)
+        await load_org_settings(rt)
 
         host, port, database, username, _pw = cp.tenant_parts()
         assert database, "control_plane.tenant_url must specify a database"
@@ -1633,7 +1626,7 @@ async def build_org_runtime(
 _rebuild_schemas_lock = CrossLoopLock()
 
 
-async def _rebuild_schemas(raw_config: dict | None = None) -> None:
+async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = True) -> None:
     # Serialize rebuilds: the body below fetches DB state across many `await`s and then
     # publishes state.schema_build_cache/state.tables in one shot at the end. Two overlapping
     # callers (e.g. graphql_remote_router's back-to-back calls, or create_source's rebuild
@@ -1641,11 +1634,13 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     # fetched an earlier, incomplete table list -- finishes later and clobbers a newer call's
     # already-published state with stale data. Serializing guarantees each rebuild's own DB
     # fetch happens after every prior rebuild's writes have committed and been published.
+    #
+    # ``announce=False`` (REQ-1914) is a reload: another worker made the change and announced it.
     async with _rebuild_schemas_lock:
-        await _rebuild_schemas_impl(raw_config)
+        await _rebuild_schemas_impl(raw_config, announce=announce)
 
 
-async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
+async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: bool = True) -> None:
     # Rebuild per-role schemas from DB state. Column types come from the authoritative
     # table_columns store (introspect_tables does NOT query the engine), so this runs on any
     # engine; a missing the engine connection only skips the engine-catalog ops seeding below.
@@ -1654,6 +1649,14 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
     if state.tenant_db is None:
         _rebuild_log.warning("_rebuild_schemas: tenant_db is None, returning")
         return
+
+    # REQ-1914: the ``model`` stamp this build is loaded at, read BEFORE the model. A change that
+    # lands while the build reads leaves the runtime at the older stamp, so the config watcher
+    # rebuilds once more; reading it afterwards would record a stamp newer than the model built.
+    from provisa.core import config_stamp as _config_stamp
+
+    _stamped_runtime = state._active_runtime()
+    _model_stamp = (await _config_stamp.read(state.tenant_db))[_config_stamp.MODEL]
 
     kafka_physical = getattr(state, "kafka_table_physical", {})
     domain_prefix, raw_config = _resolve_naming_config(raw_config)
@@ -1664,8 +1667,9 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
 
     configure_encryption_and_secrets(raw_config or {})
 
-    # Clear mutable state before rebuild
-    state.masking_rules = {}
+    # REQ-1914: the masking rules are NOT cleared here. Requests run on their own threads while
+    # this build reads the control plane, and one that found the rules empty would be answered
+    # unmasked; _load_masking_rules builds the new set aside and publishes it in one assignment.
     # Invalidate the MCP catalog search index (REQ-1008) — the catalog is changing, so the
     # server-lifetime HNSW index is stale; next search_catalog rebuilds it from the new catalog.
     state.mcp_catalog_index = None
@@ -1842,6 +1846,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
         # Publish the full DB source map so NativeEngineBackend._attach_registered can attach
         # dynamically registered sources that are not in state.config (YAML-loaded only).
         state.runtime_sources = _connection_rows
+        # REQ-1914: this worker's per-source state follows the rows — a source another worker
+        # registered, changed or deleted gets its pool, dialect and catalog name here.
+        from provisa.api.model_reload import reconcile_sources
+
+        await reconcile_sources(_connection_rows)
         roles = [
             dict(r._mapping)
             for r in (
@@ -2037,13 +2046,15 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
         "metrics": _metric_dicts,  # REQ-1319
     }
     state.schema_version += 1
+    _stamped_runtime.model_stamp = _model_stamp  # REQ-1914
     await _finalize_rebuild_state(_rebuild_log)
     # REQ-1072: the governed model just changed, so the external catalog is now stale. This is
     # the one chokepoint every model mutation passes through, which is why the event is posted
     # here rather than at each mutation — a new mutation cannot forget to publish.
     from provisa.api.metadata_export.publishing import notify_model_changed
 
-    await notify_model_changed(state.active_org_id, reason="schema rebuild")
+    if announce:
+        await notify_model_changed(state.active_org_id, reason="schema rebuild")
 
     # REQ-1882 (amended 2026-09-29): the re-wiring below starts process-lifetime listeners, ingest
     # engines and scheduler jobs. Run inline on the process loop; from a connection-thread loop (an
@@ -2258,11 +2269,14 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     _prewarm_govdata_jvm(_log)
 
     # REQ-1913: the live operator settings this worker holds as state (its request-thread bounds)
-    # are applied now, from the stored values, and again whenever its settings snapshot changes.
-    from provisa.core import settings_registry
+    # are applied now, from the stored values. REQ-1914: this worker's config watcher applies
+    # them again when the stored settings change, and reloads each org's model and settings when
+    # theirs do — one mechanism, on the operator's reload interval.
+    from provisa.api import model_reload
+    from provisa.core import config_watch, settings_registry
 
     settings_registry.apply_changes()
-    settings_registry.start_applier()
+    config_watch.start(model_reload.targets)
 
     await _start_background_tasks(_log)
 
@@ -3007,12 +3021,17 @@ def create_app() -> FastAPI:
         else:
             assert state.admin_db is not None
             ready = await ready_worker_count(state.admin_db, _launch)
+        # REQ-1914: the config stamps this worker has loaded beside the ones the control plane
+        # stores, so a worker that is behind is visible.
+        from provisa.api.model_reload import health as _config_health
+
         return {
             "status": "ok",
             "dependencies": {
                 "postgres": pg_status,
             },
             "workers": {"ready": ready, "expected": expected_workers()},
+            "config": await _config_health() if pg_status == "ok" else None,
         }
 
     @app.api_route("/live", methods=["GET", "HEAD"])
