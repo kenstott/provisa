@@ -188,6 +188,33 @@ async def test_the_redis_address_is_never_returned_with_its_password(deployment)
     assert settings_registry.resolve("cache.redis_url") == (None, "default")
 
 
+async def test_the_store_addresses_are_never_returned_with_their_passwords(deployment):
+    from provisa.api.admin._config_io import read_config
+    from provisa.api.admin.settings_router import get_cache_storage, set_cache_storage
+
+    mat = "postgresql://svc:hunter2@pg.example:5432/mat"
+    ops = "postgresql://ops:s3cret@pg.example:5432/ops"
+    await set_cache_storage(
+        deployment.request({"materialize": {"store_url": mat}, "ops": {"store_url": ops}})
+    )
+    page = await get_cache_storage(deployment.request())
+    assert page["materialize"]["store_url"] == "postgresql://svc@pg.example:5432/mat"
+    assert page["ops"]["store_url"] == "postgresql://ops@pg.example:5432/ops"
+    assert "hunter2" not in repr(page) and "s3cret" not in repr(page)
+    # Saving the page back unchanged keeps the stored credentials.
+    await set_cache_storage(
+        deployment.request(
+            {
+                "materialize": {"store_url": page["materialize"]["store_url"]},
+                "ops": {"store_url": page["ops"]["store_url"]},
+            }
+        )
+    )
+    cfg = read_config()
+    assert cfg["materialize_store_url"] == mat
+    assert cfg["ops_store_url"] == ops
+
+
 def test_the_hot_tier_refreshes_on_its_own_interval_else_the_view_ttl(deployment):
     """REQ-231: with no interval of its own the hot tier follows the materialized-view TTL."""
     from provisa.cache import hot_tables

@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Protocol, cast
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -31,6 +31,7 @@ from provisa.api.errors import ApiError
 
 from provisa.core.schema_org import sources
 from provisa.source_adapters.registry import get_adapter
+from provisa.api.admin.capabilities import require_capability_request
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -60,7 +61,7 @@ class UniqueConstraintsResponse(BaseModel):  # REQ-1093
 
 @router.get("/unique-constraints/{source_id}", response_model=UniqueConstraintsResponse)
 async def get_unique_constraints(
-    source_id: str, schema: str, table: str
+    request: Request, source_id: str, schema: str, table: str
 ) -> UniqueConstraintsResponse:  # REQ-1093
     """Introspect declared UNIQUE constraints for one (schema, table) on an RDB source.
 
@@ -68,6 +69,7 @@ async def get_unique_constraints(
     exposes none or does not support constraint introspection — uniqueness is never
     inferred from data.
     """
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
     from provisa.discovery.fk_introspect import introspect_unique_constraints
 
@@ -97,10 +99,11 @@ async def get_unique_constraints(
 
 
 @router.get("/ir-types", response_model=list[str])
-async def list_ir_types() -> list[str]:
+async def list_ir_types(request: Request) -> list[str]:
     """The canonical IR data-type vocabulary (REQ-846) — the type names the UI offers when a steward
     assigns a column's type during schema discovery, so an assigned type is engine-independent (the
     landing write face maps IR → the store's physical type). Sorted for a stable dropdown order."""
+    require_capability_request(request, "source_registration")
     from provisa.core.ir_types import IR_TYPES
 
     return sorted(IR_TYPES)
@@ -154,9 +157,10 @@ class DiscoverRequest(BaseModel):
 
 @router.post("/discover/{source_id}", response_model=DiscoverResponse)
 async def discover_source_schema(
-    source_id: str, body: DiscoverRequest | None = None
+    request: Request, source_id: str, body: DiscoverRequest | None = None
 ):  # REQ-017, REQ-252
     """Look up source, call adapter.discover_schema(), return columns."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
     if state.tenant_db is None:

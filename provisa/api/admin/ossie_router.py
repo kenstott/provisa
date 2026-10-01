@@ -13,14 +13,16 @@ from dataclasses import asdict
 import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
+from provisa.api.admin._platform_guard import require_org_settings
 
 router = APIRouter()
 
 
 @router.get("/admin/ossie")
-async def download_ossie():  # REQ-1321
+async def download_ossie(request: Request):  # REQ-1321
     """THE canonical live Ossie endpoint: the semantic model derived from live state on
     every read — no caching, no regeneration step."""
+    require_org_settings(request)
     from provisa.api.admin.config_export import build_live_config
     from provisa.core.models import ProvisaConfig
     from provisa.ossie.convert import ossie_yaml
@@ -38,6 +40,7 @@ async def import_ossie(request: Request):  # REQ-1316
     """Parse a posted Ossie document (YAML or JSON) into registration PROPOSALS. Nothing
     is registered here — imported definitions never bypass registration review; the UI
     review screen applies proposals via the existing registration mutations."""
+    require_org_settings(request)
     from provisa.ossie.convert import parse_ossie_model
 
     body = (await request.body()).decode("utf-8")

@@ -34,6 +34,7 @@ from provisa.neo4j.source import (
     build_endpoint,
     infer_columns,
 )
+from provisa.api.admin.capabilities import require_capability_request
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/sources/neo4j", tags=["admin", "neo4j"])
@@ -71,6 +72,7 @@ class Neo4jTableRequest(BaseModel):
 @router.post("")
 async def register_neo4j_source(body: Neo4jSourceRequest, request: Request):  # REQ-295
     """Register a Neo4j source."""
+    require_capability_request(request, "source_registration")
     state = request.app.state
     cfg = Neo4jSourceConfig(
         source_id=body.source_id,
@@ -103,6 +105,7 @@ async def preview_neo4j_query(  # REQ-296, REQ-298, REQ-299
 
     Returns sample rows or a shape validation error if node objects are returned.
     """
+    require_capability_request(request, "source_registration")
     # REQ-1670: the same preview the registerTable form runs (a Source row registered through
     # createSource resolves here too, not only one registered through this router).
     from provisa.api.admin._neo4j_registration import preview_neo4j
@@ -128,6 +131,7 @@ async def register_neo4j_table(  # REQ-295, REQ-296, REQ-299
 
     The table appears in the GraphQL schema via the api_source schema integration.
     """
+    require_capability_request(request, "source_registration")
     state = request.app.state
     api_source = getattr(state, "api_sources", {}).get(source_id)
     if api_source is None:

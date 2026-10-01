@@ -21,6 +21,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from sqlglot.errors import SqlglotError
 
+from provisa.api.admin.capabilities import require_capability_request
 from provisa.lineage.graph import build_column_graph
 from provisa.lineage.merge import MergedGraph
 from provisa.core.models import DERIVED_SOURCE_ID
@@ -111,8 +112,9 @@ def _referenced_view_closure(
 
 
 @router.post("/admin/lineage/graph")
-async def lineage_graph(body: LineageGraphRequest) -> dict:
+async def lineage_graph(request: Request, body: LineageGraphRequest) -> dict:
     """Return the column-level lineage DAG (nodes + edges + outputs) for a SQL statement (REQ-1160)."""
+    require_capability_request(request, "view_governance")
     from provisa.api.app import state
 
     commands = getattr(state, "tracked_functions", None) or {}
@@ -275,7 +277,6 @@ async def federation_graph(
     Reading the federation from an arbitrary role's vantage point discloses which columns that role can
     query, which is the same disclosure ``visible_to`` is, so the endpoint carries the gate that
     governance metadata carries: ``view_governance`` (REQ-1628)."""
-    from provisa.api.admin.capabilities import require_capability_request
     from provisa.api.app import state
     from provisa.lineage.merge import (
         ancestor_closure,

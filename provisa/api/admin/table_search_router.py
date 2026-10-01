@@ -12,9 +12,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from provisa.discovery.table_search import TableCandidate, search_tables
+from provisa.api.admin.capabilities import require_capability_request
 
 router = APIRouter(prefix="/admin/sources", tags=["admin", "table-search"])
 
@@ -101,7 +102,8 @@ async def _candidates_live(
 
 
 @router.get("/{source_id}/tables/search")
-async def search_source_tables(  # REQ-464
+async def search_source_tables(
+    request: Request,  # REQ-464
     source_id: str,
     q: str = Query(..., description="Natural language search query"),
     schema_name: str = Query("public", description="Schema to search within"),
@@ -112,6 +114,7 @@ async def search_source_tables(  # REQ-464
     Falls back to live the engine introspection on a cold cache.
     Two-pass ranking: token overlap pre-filter, then haiku LLM (if ANTHROPIC_API_KEY set).
     """
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
     from provisa.api.admin.schema import _get_pool
     from provisa.core.org_secrets import read_org_api_keys

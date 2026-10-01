@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, func, select, update
 
@@ -25,6 +25,7 @@ import httpx
 
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
+from provisa.api.admin.capabilities import require_capability_request
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
@@ -115,8 +116,9 @@ def _row_to_webhook(row: dict) -> dict:
 
 
 @router.get("")
-async def list_actions():  # REQ-205, REQ-209
+async def list_actions(request: Request):  # REQ-205, REQ-209
     """Return all tracked functions and webhooks."""
+    require_capability_request(request, "table_registration")
     from provisa.api.app import state
 
     if state.tenant_db is None:
@@ -189,9 +191,11 @@ class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
 
 @router.post("/functions")
 async def create_function(
+    request: Request,
     body: FunctionInput,
 ):  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-253, REQ-304
     """Create a tracked DB function."""
+    require_capability_request(request, "table_registration")
     from provisa.api.app import state
     from provisa.core.models import DatasetColumn, Function, FunctionArgument
     from provisa.core.repositories import function as function_repo
@@ -237,8 +241,11 @@ async def create_function(
 
 
 @router.put("/functions/{name}")
-async def update_function(name: str, body: FunctionInput):  # REQ-205, REQ-253, REQ-304
+async def update_function(
+    request: Request, name: str, body: FunctionInput
+):  # REQ-205, REQ-253, REQ-304
     """Update a tracked DB function by name."""
+    require_capability_request(request, "table_registration")
     from provisa.api.app import state
 
     if state.tenant_db is None:
@@ -301,8 +308,9 @@ async def update_function(name: str, body: FunctionInput):  # REQ-205, REQ-253, 
 
 
 @router.delete("/functions/{name}")
-async def delete_function(name: str):  # REQ-205, REQ-253
+async def delete_function(request: Request, name: str):  # REQ-205, REQ-253
     """Delete a tracked DB function by name."""
+    require_capability_request(request, "table_registration")
     from provisa.api.app import state
 
     if state.tenant_db is None:
@@ -326,8 +334,11 @@ async def delete_function(name: str):  # REQ-205, REQ-253
 
 
 @router.post("/webhooks")
-async def create_webhook(body: WebhookInput):  # REQ-209, REQ-210, REQ-211, REQ-253, REQ-434
+async def create_webhook(
+    request: Request, body: WebhookInput
+):  # REQ-209, REQ-210, REQ-211, REQ-253, REQ-434
     """Create a tracked webhook."""
+    require_capability_request(request, "table_registration")
     from provisa.api.app import state
 
     if state.tenant_db is None:
@@ -398,8 +409,9 @@ async def create_webhook(body: WebhookInput):  # REQ-209, REQ-210, REQ-211, REQ-
 
 
 @router.put("/webhooks/{name}")
-async def update_webhook(name: str, body: WebhookInput):  # REQ-209, REQ-253
+async def update_webhook(request: Request, name: str, body: WebhookInput):  # REQ-209, REQ-253
     """Update a tracked webhook by name."""
+    require_capability_request(request, "table_registration")
     from provisa.api.app import state
 
     if state.tenant_db is None:
@@ -437,8 +449,9 @@ async def update_webhook(name: str, body: WebhookInput):  # REQ-209, REQ-253
 
 
 @router.delete("/webhooks/{name}")
-async def delete_webhook(name: str):  # REQ-209, REQ-253
+async def delete_webhook(request: Request, name: str):  # REQ-209, REQ-253
     """Delete a tracked webhook by name."""
+    require_capability_request(request, "table_registration")
     from provisa.api.app import state
 
     if state.tenant_db is None:
@@ -548,8 +561,9 @@ def _apply_row_governance(  # REQ-062, REQ-207, REQ-245
 
 
 @router.post("/test")
-async def test_action(body: TestActionInput):  # REQ-004, REQ-062, REQ-245
+async def test_action(request: Request, body: TestActionInput):  # REQ-004, REQ-062, REQ-245
     """Run a no-arg test invocation of a tracked function or webhook."""
+    require_capability_request(request, "table_registration")
     if not _test_endpoints_enabled():
         raise ApiError(
             404,

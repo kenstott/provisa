@@ -247,7 +247,7 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
         },
         # Materialization-store DSN — the admin UI reads its scheme to decide native-CDC
         # availability for materialized views. Canonical write path is /admin/cache-storage.
-        "materialize": {"store_url": cfg.get("materialize_store_url") or ""},
+        "materialize": {"store_url": redact_url_password(cfg.get("materialize_store_url")) or ""},
         "sampling": {
             "default_sample_size": _get_sample_size(),
         },
@@ -733,8 +733,9 @@ async def set_domain_policy(request: Request):  # REQ-165, REQ-1266, REQ-1349
 
 
 @router.get("/admin/federation-engine")
-async def get_federation_engine():  # REQ-916
+async def get_federation_engine(request: Request):  # REQ-916
     """Current federation-engine selection + connection config, and the selectable-engine registry."""
+    require_deployment_settings(request)
     from provisa.federation.engine import engine_registry
     from provisa.core.models import ProvisaConfig
 
@@ -919,13 +920,13 @@ async def get_cache_storage(request: Request):  # REQ-917
         # REQ-543: default MV refresh TTL for MVs without their own
         "materialized_views": _tier("materialized_views", "default_ttl"),
         "materialize": {
-            "store_url": cfg.get("materialize_store_url") or "",
-            "default_store_url": default_store or "",
+            "store_url": redact_url_password(cfg.get("materialize_store_url")) or "",
+            "default_store_url": redact_url_password(default_store) or "",
         },
         # Telemetry-store DSN (REQ — mirrors materialize_store_url). Read by
         # observability.ops_schema.configured_ops_store_url(); empty -> embedded
         # DuckDB under telemetry_dir().
-        "ops": {"store_url": cfg.get("ops_store_url") or ""},
+        "ops": {"store_url": redact_url_password(cfg.get("ops_store_url")) or ""},
         "restart_required_note": "Redis and materialize-store connections bind at startup — changes take effect after a service restart.",
     }
 
@@ -970,10 +971,15 @@ async def set_cache_storage(request: Request):  # REQ-917
         except SettingInvalid as err:
             raise _invalid(err) from None
     if "materialize" in body and "store_url" in body["materialize"]:
-        cfg["materialize_store_url"] = body["materialize"]["store_url"] or None
+        cfg["materialize_store_url"] = (
+            restore_url_password(body["materialize"]["store_url"], cfg.get("materialize_store_url"))
+            or None
+        )
         updated.append("materialize_store_url")
     if "ops" in body and "store_url" in body["ops"]:
-        cfg["ops_store_url"] = body["ops"]["store_url"] or None
+        cfg["ops_store_url"] = (
+            restore_url_password(body["ops"]["store_url"], cfg.get("ops_store_url")) or None
+        )
         updated.append("ops_store_url")
 
     write_config(path, cfg)
@@ -1472,8 +1478,9 @@ async def restart_query_engine(request: Request, container: str | None = None): 
 
 
 @router.post("/admin/schema-clusters/recompute")
-async def recompute_schema_clusters():  # REQ-510
+async def recompute_schema_clusters(request: Request):  # REQ-510
     """Rerun Louvain clustering on the schema graph and refresh schema_clusters."""
+    require_org_settings(request)
     from provisa.api.app import state
     from provisa.api.startup_seed import _compute_and_store_clusters
 

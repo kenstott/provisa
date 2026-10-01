@@ -21,12 +21,13 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import and_, delete, select
 
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import domains, registered_tables, sources, table_columns
+from provisa.api.admin.capabilities import require_capability_request
 
 if TYPE_CHECKING:
     pass
@@ -249,10 +250,12 @@ async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
 
 
 @router.post("")
-async def register_graphql_remote_source(  # REQ-307, REQ-308, REQ-311, REQ-312, REQ-597, REQ-598, REQ-599
+async def register_graphql_remote_source(
+    request: Request,  # REQ-307, REQ-308, REQ-311, REQ-312, REQ-597, REQ-598, REQ-599
     body: GraphQLRemoteSourceRequest,
 ):
     """Register a GraphQL remote source: introspect schema and auto-register tables/functions."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
     try:
@@ -361,8 +364,9 @@ async def register_graphql_remote_source(  # REQ-307, REQ-308, REQ-311, REQ-312,
 
 
 @router.post("/{source_id}/refresh")
-async def refresh_graphql_remote_source(source_id: str):  # REQ-311, REQ-598
+async def refresh_graphql_remote_source(request: Request, source_id: str):  # REQ-311, REQ-598
     """Re-introspect a registered remote source and update its table/function registrations."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
     sources = getattr(state, "graphql_remote_sources", {})
@@ -429,8 +433,9 @@ async def refresh_graphql_remote_source(source_id: str):  # REQ-311, REQ-598
 
 
 @router.get("")
-async def list_graphql_remote_sources():  # REQ-598
+async def list_graphql_remote_sources(request: Request):  # REQ-598
     """List all registered GraphQL remote sources."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
     sources = getattr(state, "graphql_remote_sources", {})

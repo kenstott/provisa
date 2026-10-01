@@ -15,13 +15,14 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, HTTPException, Header, Request
 from sqlalchemy import select
 
 from provisa.api.app import state
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import registered_tables
 from provisa.core.models import DERIVED_SOURCE_ID
+from provisa.api.admin.capabilities import require_capability_request
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection  # noqa: F401
@@ -37,9 +38,11 @@ _TABLESAMPLE_PCT = 10  # BERNOULLI(10) — 10% of blocks
 
 @router.post("/{table_id}/profile")
 async def profile_table(
+    request: Request,
     table_id: int,
     x_provisa_role: str | None = Header(None),
 ) -> dict:  # REQ-452
+    require_capability_request(request, "table_registration")
     if state.tenant_db is None:
         raise ApiError(503, "profile.database_unavailable", "Database unavailable")
     if state.federation_engine is None:

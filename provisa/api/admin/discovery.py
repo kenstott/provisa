@@ -18,7 +18,7 @@ import logging as _logging
 import os
 from typing import TYPE_CHECKING, cast
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from provisa.api.app import state
@@ -29,6 +29,7 @@ from provisa.discovery.collector import collect_fk_candidates, collect_metadata
 from provisa.discovery.prompt import build_prompt
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
+from provisa.api.admin.capabilities import require_capability_request
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -57,8 +58,11 @@ _log = _logging.getLogger(__name__)
 
 
 @router.post("/relationships")
-async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413, REQ-612
+async def trigger_discovery(
+    request: Request, body: DiscoverRequest
+):  # REQ-018, REQ-167, REQ-413, REQ-612
     """Trigger relationship discovery: FK constraints always, LLM inference if ANTHROPIC_API_KEY set."""
+    require_capability_request(request, "create_relationship")
     with _stage(_tracer, "admin.discovery") as span:
         scope_id: str | int | None = None
         if body.scope == "table":
@@ -142,8 +146,9 @@ async def trigger_discovery(body: DiscoverRequest):  # REQ-018, REQ-167, REQ-413
 
 
 @router.get("/candidates")
-async def list_candidates():  # REQ-612
+async def list_candidates(request: Request):  # REQ-612
     """List pending relationship candidates."""
+    require_capability_request(request, "create_relationship")
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
@@ -151,8 +156,11 @@ async def list_candidates():  # REQ-612
 
 
 @router.post("/candidates/{candidate_id}/accept")
-async def accept_candidate(candidate_id: int, body: AcceptRequest | None = None):  # REQ-612
+async def accept_candidate(
+    request: Request, candidate_id: int, body: AcceptRequest | None = None
+):  # REQ-612
     """Accept a relationship candidate."""
+    require_capability_request(request, "create_relationship")
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
@@ -162,8 +170,9 @@ async def accept_candidate(candidate_id: int, body: AcceptRequest | None = None)
 
 
 @router.post("/candidates/{candidate_id}/reject")
-async def reject_candidate(candidate_id: int, body: RejectRequest):  # REQ-612
+async def reject_candidate(request: Request, candidate_id: int, body: RejectRequest):  # REQ-612
     """Reject a relationship candidate."""
+    require_capability_request(request, "create_relationship")
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:
@@ -172,8 +181,9 @@ async def reject_candidate(candidate_id: int, body: RejectRequest):  # REQ-612
 
 
 @router.get("/candidates/rejected/count")
-async def rejected_count():
+async def rejected_count(request: Request):
     """Count rejected candidates."""
+    require_capability_request(request, "create_relationship")
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as conn:
@@ -184,8 +194,9 @@ async def rejected_count():
 
 
 @router.delete("/candidates/rejected")
-async def clear_rejections():
+async def clear_rejections(request: Request):
     """Delete all rejected candidates."""
+    require_capability_request(request, "create_relationship")
     pool = state.tenant_db
     assert pool is not None
     async with pool.acquire() as _conn:

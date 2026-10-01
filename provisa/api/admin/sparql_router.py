@@ -33,6 +33,7 @@ from provisa.sparql.source import (
     infer_columns,
     probe_endpoint,
 )
+from provisa.api.admin.capabilities import require_capability_request
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/sources/sparql", tags=["admin", "sparql"])
@@ -64,6 +65,7 @@ class SparqlTableRequest(BaseModel):
 @router.post("")
 async def register_sparql_source(body: SparqlSourceRequest, request: Request):  # REQ-297, REQ-298
     """Register a SPARQL source."""
+    require_capability_request(request, "source_registration")
     state = request.app.state
     cfg = SparqlSourceConfig(
         source_id=body.source_id,
@@ -96,6 +98,7 @@ async def register_sparql_table(  # REQ-297, REQ-296, REQ-299
     from the SPARQL SELECT variables. The table appears in the GraphQL schema
     via the api_source schema integration.
     """
+    require_capability_request(request, "source_registration")
     state = request.app.state
     api_source = getattr(state, "api_sources", {}).get(source_id)
     if api_source is None:

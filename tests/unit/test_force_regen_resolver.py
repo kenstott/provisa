@@ -110,29 +110,36 @@ def _awaited(value):
     return _coro()
 
 
-async def test_a_landed_source_table_regens_at_source_scope(wire, posted):
+def _info(monkeypatch):
+    import provisa.api.app as app_mod
+    from tests.unit.gate_identity import grant
+
+    return grant(monkeypatch, "org_settings", state=app_mod.state)[0]
+
+
+async def test_a_landed_source_table_regens_at_source_scope(wire, posted, monkeypatch):
     """Re-landing the source is what an operator means by "run this table now" — the cascade to its
     dependents is the event loop's, not a second thing to ask for."""
     wire(row=("sales", "orders", "wh"))
-    res = await Mutation().force_regen(table_id=7, reason="bad overnight load")
+    res = await Mutation().force_regen(_info(monkeypatch), table_id=7, reason="bad overnight load")
     assert res.success is True
     assert posted == [{"scope": "source", "node": "sales.orders", "reason": "bad overnight load"}]
     assert res.params["event"] == 4242
 
 
-async def test_a_derived_view_regens_at_node_scope(wire, posted):
+async def test_a_derived_view_regens_at_node_scope(wire, posted, monkeypatch):
     """A view's rows come from its own SQL, so recomputing it must not re-land every input it reads."""
     wire(row=("marts", "revenue", "wh"), views={"view-revenue": object()})
-    res = await Mutation().force_regen(table_id=9, reason="changed the SQL")
+    res = await Mutation().force_regen(_info(monkeypatch), table_id=9, reason="changed the SQL")
     assert res.success is True
     assert posted[0]["scope"] == "node"
     assert posted[0]["node"] == "marts.revenue"
 
 
-async def test_a_live_federated_table_is_refused(wire, posted):
+async def test_a_live_federated_table_is_refused(wire, posted, monkeypatch):
     """Nothing lands it, so a forced event would sit in the queue with no processor to claim it."""
     wire(row=("sales", "orders", "wh"), strategy=Strategy.VIRTUAL)
-    res = await Mutation().force_regen(table_id=7, reason="just because")
+    res = await Mutation().force_regen(_info(monkeypatch), table_id=7, reason="just because")
     assert res.success is False
     assert res.code == "schema.table_not_landed"
     assert posted == []
@@ -143,14 +150,14 @@ async def test_a_regen_with_no_reason_is_refused(wire, posted, monkeypatch):
     reports that refusal rather than swallowing it."""
     monkeypatch.undo()  # keep the real injector so its own guard is what answers
     wire(row=("sales", "orders", "wh"))
-    res = await Mutation().force_regen(table_id=7, reason="   ")
+    res = await Mutation().force_regen(_info(monkeypatch), table_id=7, reason="   ")
     assert res.success is False
     assert res.code == "schema.regen_refused"
 
 
-async def test_an_unknown_table_is_reported_not_posted(wire, posted):
+async def test_an_unknown_table_is_reported_not_posted(wire, posted, monkeypatch):
     wire(row=None)
-    res = await Mutation().force_regen(table_id=404, reason="x")
+    res = await Mutation().force_regen(_info(monkeypatch), table_id=404, reason="x")
     assert res.success is False
     assert res.code == "schema.table_not_found"
     assert posted == []

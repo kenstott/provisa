@@ -32,6 +32,7 @@ from pydantic import BaseModel
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import domains, provisa_sources, sources
 from provisa.grpc_remote.executor import open_channel
+from provisa.api.admin.capabilities import require_capability_request
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
@@ -361,9 +362,11 @@ async def _register_schema(  # REQ-325, REQ-326, REQ-599
 
 @router.post("/register")
 async def register_grpc_remote_source(
+    request: Request,
     body: GrpcRemoteRegisterRequest,
 ):  # REQ-322, REQ-323, REQ-324, REQ-325, REQ-326, REQ-598
     """Compile proto stubs and auto-register virtual tables + tracked functions."""
+    require_capability_request(request, "source_registration")
     # REQ-1742: this handler used `request.app.state` (Starlette's per-request state, a bare
     # object with none of provisa's attributes) instead of provisa's own app-state singleton —
     # every real call raised AttributeError ('State' object has no attribute 'catalog_for')
@@ -406,8 +409,9 @@ async def register_grpc_remote_source(
 
 
 @router.post("/refresh/{source_id}")
-async def refresh_grpc_remote_source(source_id: str):  # REQ-329
+async def refresh_grpc_remote_source(request: Request, source_id: str):  # REQ-329
     """Re-compile proto stubs from stored path and re-run registration."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state  # REQ-1742: see register_grpc_remote_source
 
     sources = getattr(state, "grpc_remote_sources", {})
@@ -452,8 +456,9 @@ async def refresh_grpc_remote_source(source_id: str):  # REQ-329
 
 
 @router.get("/list")
-async def list_grpc_remote_sources():  # REQ-598
+async def list_grpc_remote_sources(request: Request):  # REQ-598
     """Return all registered gRPC remote sources (without channel/pb2 objects)."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state  # REQ-1742: see register_grpc_remote_source
 
     sources = getattr(state, "grpc_remote_sources", {})
@@ -478,8 +483,9 @@ async def list_grpc_remote_sources():  # REQ-598
 
 
 @router.get("/{source_id}/proto")
-async def get_grpc_proto(source_id: str):  # REQ-525
+async def get_grpc_proto(request: Request, source_id: str):  # REQ-525
     """Return stored proto text for a registered gRPC source."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state  # REQ-1742: see register_grpc_remote_source
 
     sources = getattr(state, "grpc_remote_sources", {})
@@ -496,6 +502,7 @@ async def get_grpc_proto(source_id: str):  # REQ-525
 @router.put("/{source_id}/proto")
 async def put_grpc_proto(source_id: str, request: Request):  # REQ-329
     """Store new proto text and re-run registration."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state  # REQ-1742: see register_grpc_remote_source
 
     sources = getattr(state, "grpc_remote_sources", {})

@@ -71,9 +71,16 @@ def admin(monkeypatch):
     return SimpleNamespace(pool=pool, rebuild=rebuild)
 
 
-async def test_the_source_setter_refuses_a_config_declared_source(admin):
+def _info(monkeypatch):
+    import provisa.api.app as app_mod
+    from tests.unit.gate_identity import grant
+
+    return grant(monkeypatch, "source_registration", "table_registration", state=app_mod.state)[0]
+
+
+async def test_the_source_setter_refuses_a_config_declared_source(admin, monkeypatch):
     result = await Mutation().update_source_prefer_materialized(
-        source_id="from-config", prefer_materialized=True
+        _info(monkeypatch), source_id="from-config", prefer_materialized=True
     )
     assert result.success is False
     assert result.code == "schema.source_setting_config_declared"
@@ -83,24 +90,28 @@ async def test_the_source_setter_refuses_a_config_declared_source(admin):
     admin.rebuild.assert_not_awaited()
 
 
-async def test_the_source_setter_still_sets_a_source_the_control_plane_owns(admin):
+async def test_the_source_setter_still_sets_a_source_the_control_plane_owns(admin, monkeypatch):
     result = await Mutation().update_source_prefer_materialized(
-        source_id="from-api", prefer_materialized=True
+        _info(monkeypatch), source_id="from-api", prefer_materialized=True
     )
     assert result.success is True and result.code == "schema.source_prefer_materialized_set"
     assert len(admin.pool.statements) == 1
     admin.rebuild.assert_awaited_once()
 
 
-async def test_the_table_setter_refuses_a_table_of_a_config_declared_source(admin):
-    result = await Mutation().update_table_prefer_materialized(table_id=7, prefer_materialized=True)
+async def test_the_table_setter_refuses_a_table_of_a_config_declared_source(admin, monkeypatch):
+    result = await Mutation().update_table_prefer_materialized(
+        _info(monkeypatch), table_id=7, prefer_materialized=True
+    )
     assert result.success is False
     assert result.code == "schema.source_setting_config_declared"
     assert "'from-config'" in result.message and "configuration file" in result.message
     assert admin.pool.statements == []
 
 
-async def test_the_table_setter_still_sets_a_table_of_a_control_plane_source(admin):
-    result = await Mutation().update_table_prefer_materialized(table_id=8, prefer_materialized=True)
+async def test_the_table_setter_still_sets_a_table_of_a_control_plane_source(admin, monkeypatch):
+    result = await Mutation().update_table_prefer_materialized(
+        _info(monkeypatch), table_id=8, prefer_materialized=True
+    )
     assert result.success is True and result.code == "schema.table_prefer_materialized_set"
     assert len(admin.pool.statements) == 1

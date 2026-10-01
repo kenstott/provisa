@@ -37,6 +37,7 @@ DEPLOYMENT_ENDPOINTS = [
     "set_federation_engine",
     "get_cache_storage",
     "set_cache_storage",
+    "get_federation_engine",
     "get_encryption",
     "set_encryption",
     "get_secrets_service",

@@ -26,6 +26,7 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter, HTTPException, Request
+from provisa.api.admin.capabilities import require_capability_request
 
 router = APIRouter()
 
@@ -172,6 +173,7 @@ async def mcp_search_catalog(request: Request):  # REQ-1008
     actually holds it (never a raw, unverified header/body value) — and results
     are filtered to that role's accessible domains exactly as the MCP tool does.
     """
+    require_capability_request(request, "query_development")
     from provisa.api.app import state
     from provisa.api.mcp import tools
 
@@ -200,6 +202,7 @@ async def mcp_chat(request: Request):  # REQ-1008
     caller's verified identity (e.g. a capability check before bypassing a review queue) can use
     the SAME trust boundary the admin GraphQL mutations do, not the bare role string.
     """
+    require_capability_request(request, "query_development")
     import json as _json
 
     from fastapi.responses import StreamingResponse

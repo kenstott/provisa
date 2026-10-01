@@ -19,10 +19,11 @@ Endpoints:
 from __future__ import annotations
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from provisa.federation import connector_mssql, connector_mysql, connector_postgres
+from provisa.api.admin.capabilities import require_capability_request
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/source-meta", tags=["admin", "source-meta"])
@@ -39,7 +40,7 @@ class DbDescriptionRequest(BaseModel):
 
 
 @router.post("/db-description")
-async def get_db_description(body: DbDescriptionRequest) -> dict:  # REQ-012
+async def get_db_description(request: Request, body: DbDescriptionRequest) -> dict:  # REQ-012
     """Connect to the DB and return the database-level comment, if any.
 
     Best-effort autofill, never a validation gate: the actual connectivity check a source must
@@ -51,6 +52,7 @@ async def get_db_description(body: DbDescriptionRequest) -> dict:  # REQ-012
     422 turned an expected, harmless outcome into a hard browser-console error for every caller
     (verified live 2026-09-16: SourcesPage.tsx's own caller already treats a non-OK response as
     "skip the autofill", so the 422 bought nothing but console noise no caller acted on)."""
+    require_capability_request(request, "source_registration")
     description = ""
 
     try:

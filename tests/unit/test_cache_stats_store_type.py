@@ -26,8 +26,11 @@ async def _stats(monkeypatch, store):
     from provisa.api import app as app_module
     from provisa.api.admin.schema_query import Query
 
+    from tests.unit.gate_identity import grant
+
     monkeypatch.setattr(app_module.state, "response_cache_store", store, raising=False)
-    return await Query().cache_stats()
+    info, _ = grant(monkeypatch, "observability")
+    return await Query().cache_stats(info)
 
 
 @pytest.mark.asyncio

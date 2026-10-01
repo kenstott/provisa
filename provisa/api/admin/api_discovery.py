@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from urllib.parse import urlparse
 
@@ -37,6 +37,7 @@ from sqlalchemy.exc import IntegrityError
 from provisa.core.schema_org import api_sources
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
+from provisa.api.admin.capabilities import require_capability_request
 
 _tracer = _get_tracer(__name__)
 
@@ -55,8 +56,9 @@ class AcceptRequest(BaseModel):
 
 
 @router.post("/discover")
-async def discover(req: DiscoverRequest):  # REQ-307, REQ-314, REQ-322
+async def discover(request: Request, req: DiscoverRequest):  # REQ-307, REQ-314, REQ-322
     """Trigger introspection of an API source."""
+    require_capability_request(request, "source_registration")
     with _stage(_tracer, "admin.api_discovery"):
         from provisa.api.app import state
 
@@ -103,8 +105,11 @@ async def discover(req: DiscoverRequest):  # REQ-307, REQ-314, REQ-322
 
 
 @router.get("/candidates")
-async def get_candidates(source_id: str | None = None):  # REQ-308, REQ-316, REQ-325
+async def get_candidates(
+    request: Request, source_id: str | None = None
+):  # REQ-308, REQ-316, REQ-325
     """List discovered (pending) candidates."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
     if state.tenant_db is None:
@@ -119,8 +124,11 @@ async def get_candidates(source_id: str | None = None):  # REQ-308, REQ-316, REQ
 
 
 @router.post("/candidates/{candidate_id}/accept")
-async def accept(candidate_id: int, req: AcceptRequest | None = None):  # REQ-311, REQ-321, REQ-329
+async def accept(
+    request: Request, candidate_id: int, req: AcceptRequest | None = None
+):  # REQ-311, REQ-321, REQ-329
     """Accept a candidate and register it as an endpoint."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
     if state.tenant_db is None:
@@ -146,8 +154,9 @@ async def accept(candidate_id: int, req: AcceptRequest | None = None):  # REQ-31
 
 
 @router.post("/candidates/{candidate_id}/reject")
-async def reject(candidate_id: int):  # REQ-311, REQ-321, REQ-329
+async def reject(request: Request, candidate_id: int):  # REQ-311, REQ-321, REQ-329
     """Reject a candidate."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
     if state.tenant_db is None:

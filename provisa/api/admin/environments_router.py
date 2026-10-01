@@ -56,6 +56,7 @@ from provisa.core.env_store import (
 )
 from provisa.core.environments import PROD, EnvironmentNameError
 from provisa.core.schema_admin import user_org_memberships, user_profiles
+from provisa.api.admin._platform_guard import require_platform_settings
 
 log = logging.getLogger(__name__)
 
@@ -1736,6 +1737,7 @@ async def fix_sandbox_membership(request: Request) -> dict:
     Clears env_name on sandbox membership to fall back to prod routing.
     Requires superuser or platform_admin auth.
     """
+    require_platform_settings(request)
     body = await request.json()
     email = body.get("email")
     if not email:

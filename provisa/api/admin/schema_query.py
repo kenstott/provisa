@@ -40,6 +40,7 @@ from provisa.core.repositories import rls as rls_repo
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.api.admin._config_io import config_path as _config_path, read_config
+from provisa.api.admin.capabilities import require_capability
 from provisa.api.admin.types import (
     AvailableColumnType,
     AvailableTableType,
@@ -946,8 +947,9 @@ class Query:  # REQ-021, REQ-042
     # ── Admin: Materialized Views ──
 
     @strawberry.field
-    async def mv_list(self) -> list[MVType]:
+    async def mv_list(self, info: StrawberryInfo) -> list[MVType]:
         """List all materialized views with status."""
+        require_capability(info, "observability")
         from provisa.api.app import state
 
         return [
@@ -1125,8 +1127,9 @@ class Query:  # REQ-021, REQ-042
     # ── Admin: Cache Stats ──
 
     @strawberry.field
-    async def cache_stats(self) -> CacheStatsType:
+    async def cache_stats(self, info: StrawberryInfo) -> CacheStatsType:
         """Return cache statistics."""
+        require_capability(info, "observability")
         from provisa.api.app import state
         from provisa.cache.store import RedisCacheStore
 
@@ -1145,38 +1148,40 @@ class Query:  # REQ-021, REQ-042
                         total_keys=total_keys, hit_count=0, miss_count=0, store_type="memory"
                     )
                 # Default INFO covers the memory, clients, and stats sections in one round-trip.
-                info = await store._redis.info()
+                redis_info = await store._redis.info()
                 return CacheStatsType(
                     total_keys=total_keys,
-                    hit_count=info.get("keyspace_hits", 0),
-                    miss_count=info.get("keyspace_misses", 0),
+                    hit_count=redis_info.get("keyspace_hits", 0),
+                    miss_count=redis_info.get("keyspace_misses", 0),
                     store_type="redis",
-                    used_memory_bytes=info.get("used_memory"),
+                    used_memory_bytes=redis_info.get("used_memory"),
                     # Redis reports maxmemory=0 when unbounded; surface that as "no cap" (None).
-                    max_memory_bytes=info.get("maxmemory") or None,
-                    evicted_keys=info.get("evicted_keys"),
-                    expired_keys=info.get("expired_keys"),
-                    connected_clients=info.get("connected_clients"),
-                    ops_per_sec=info.get("instantaneous_ops_per_sec"),
+                    max_memory_bytes=redis_info.get("maxmemory") or None,
+                    evicted_keys=redis_info.get("evicted_keys"),
+                    expired_keys=redis_info.get("expired_keys"),
+                    connected_clients=redis_info.get("connected_clients"),
+                    ops_per_sec=redis_info.get("instantaneous_ops_per_sec"),
                 )
         return CacheStatsType(total_keys=0, hit_count=0, miss_count=0, store_type="noop")
 
     @strawberry.field
-    async def cache_table_stats(self) -> list[CacheTableStatType]:
+    async def cache_table_stats(self, info: StrawberryInfo) -> list[CacheTableStatType]:
         """Per-table cached-entry counts (empty when no cache store is configured)."""
+        require_capability(info, "observability")
         from provisa.api.app import state
 
         counts = await state.response_cache_store.table_entry_counts()
         return [CacheTableStatType(table_id=tid, cached_entries=n) for tid, n in counts.items()]
 
     @strawberry.field
-    async def hot_tables(self) -> list[HotTableStatType]:
+    async def hot_tables(self, info: StrawberryInfo) -> list[HotTableStatType]:
         """Cached tables by tier: hot (mirrored for JOIN inlining) and warm (landed in Iceberg).
 
         Both tiers answer the same admin question — which tables is Provisa keeping a copy of —
         so they are one list with a tier on each row rather than two surfaces (REQ-241 keeps a
         table in at most one of them).
         """
+        require_capability(info, "observability")
         from provisa.api.app import state
 
         hot = getattr(state, "hot_manager", None)
@@ -1197,8 +1202,9 @@ class Query:  # REQ-021, REQ-042
         ]
 
     @strawberry.field
-    async def materialize_store_info(self) -> MaterializeStoreInfoType:
+    async def materialize_store_info(self, info: StrawberryInfo) -> MaterializeStoreInfoType:
         """Identity of the durable materialization store (landed sources + MV cache)."""
+        require_capability(info, "observability")
         from provisa.api.app import state
 
         engine = state.federation_engine
@@ -1213,8 +1219,9 @@ class Query:  # REQ-021, REQ-042
     # ── Admin: System Health ──
 
     @strawberry.field
-    async def system_health(self) -> SystemHealthType:
+    async def system_health(self, info: StrawberryInfo) -> SystemHealthType:
         """Return system component health status."""
+        require_capability(info, "observability")
         from provisa.api.admin.system_health import collect_system_health
 
         return await collect_system_health()
@@ -1222,8 +1229,9 @@ class Query:  # REQ-021, REQ-042
     # ── Admin: Scheduled Tasks ──
 
     @strawberry.field
-    async def scheduled_tasks(self) -> list[ScheduledTaskType]:
+    async def scheduled_tasks(self, info: StrawberryInfo) -> list[ScheduledTaskType]:
         """List scheduled triggers from config with runtime state."""
+        require_capability(info, "observability")
         path = _config_path()
         if not path.exists():
             return []

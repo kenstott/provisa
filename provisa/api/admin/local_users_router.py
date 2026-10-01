@@ -21,12 +21,15 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, func, insert, select, update
 
+from provisa.api.admin._platform_guard import has_deployment_settings
+from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
 from provisa.auth.scram_store import delete_verifier, write_verifier
 from provisa.core.database import Database
 from provisa.core.schema_admin import local_users
 from provisa.core.org_membership import SELF_ROLE_CHANGE_MESSAGE, is_self_role_change
 from provisa.core.schema_org import user_role_assignments
+from provisa.security.rights import Capability
 
 router = APIRouter(prefix="/admin/users", tags=["admin"])
 
@@ -83,9 +86,47 @@ def _admin_pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedP
     return state.admin_db
 
 
+_PLATFORM_RIGHTS = frozenset(
+    {
+        Capability.ADMIN.value,
+        Capability.SUPERADMIN.value,
+        Capability.PLATFORM_SETTINGS.value,
+        Capability.CROSS_ORG.value,
+    }
+)
+
+
+def _require_user_management(request: Request) -> None:
+    require_capability_request(request, Capability.USER_MANAGEMENT.value)
+
+
+def _refuse_platform_role(request: Request, role_ids: list[str]) -> None:
+    """Granting or removing a role that carries platform rights is the platform administrator's.
+
+    user_management lets an org administrator manage their org's people; it must not let them mint
+    a platform administrator. A role is platform-bearing when its resolved capabilities hold a
+    platform right, so no role name is tested.
+    """
+    from provisa.api.app import state
+
+    roles = getattr(state, "roles", {})
+    for role_id in role_ids:
+        caps = set((roles.get(role_id) or {}).get("capabilities") or [])
+        if caps & _PLATFORM_RIGHTS and not has_deployment_settings(request):
+            raise ApiError(
+                403,
+                "users.platform_role_requires_platform_admin",
+                f"role {role_id!r} carries platform rights; only a platform administrator may grant or remove it",
+                role=role_id,
+            )
+
+
 @router.post("/")
 async def create_user(body: CreateUserBody, request: Request):  # REQ-124, REQ-125
     import uuid
+
+    _require_user_management(request)
+    _refuse_platform_role(request, body.roles)
 
     pool = _admin_pool(request)
     user_id = str(uuid.uuid4())
@@ -117,6 +158,7 @@ async def create_user(body: CreateUserBody, request: Request):  # REQ-124, REQ-1
 
 @router.get("/")
 async def list_users(request: Request):
+    _require_user_management(request)
     pool = _admin_pool(request)
     async with pool.acquire() as conn:
         result = await conn.execute_core(select(local_users).order_by(local_users.c.created_at))
@@ -126,6 +168,7 @@ async def list_users(request: Request):
 
 @router.get("/{user_id}")
 async def get_user(user_id: str, request: Request):
+    _require_user_management(request)
     pool = _admin_pool(request)
     async with pool.acquire() as conn:
         result = await conn.execute_core(select(local_users).where(local_users.c.id == user_id))
@@ -147,7 +190,7 @@ def _reject_self_role_change(request: Request, user_id: str) -> None:  # REQ-130
 
 @router.put("/{user_id}")
 async def update_user(user_id: str, body: UpdateUserBody, request: Request):
-    pool = _admin_pool(request)
+    _require_user_management(request)
     values: dict[str, Any] = {}
     if body.email is not None:
         values["email"] = body.email
@@ -157,6 +200,7 @@ async def update_user(user_id: str, body: UpdateUserBody, request: Request):
         # REQ-1308: the local_users.roles list is a claims source, so editing your own is a self
         # role change no less than editing your own assignment row.
         _reject_self_role_change(request, user_id)
+        _refuse_platform_role(request, body.roles)
         # JSON columns take Python objects directly.
         values["roles"] = body.roles
     if body.attributes is not None:
@@ -166,6 +210,7 @@ async def update_user(user_id: str, body: UpdateUserBody, request: Request):
     if not values:
         raise ApiError(400, "users.no_fields_to_update", "No fields to update")
     values["updated_at"] = func.now()
+    pool = _admin_pool(request)
     async with pool.acquire() as conn:
         result = await conn.execute_core(
             update(local_users)
@@ -181,6 +226,10 @@ async def update_user(user_id: str, body: UpdateUserBody, request: Request):
 
 @router.patch("/{user_id}/password")
 async def change_password(user_id: str, body: ChangePasswordBody, request: Request):  # REQ-124
+    identity = getattr(request.state, "identity", None)
+    # A user may set their own password; setting anyone else's is user management.
+    if getattr(identity, "user_id", None) != user_id or identity is None:
+        _require_user_management(request)
     pool = _admin_pool(request)
     async with pool.acquire() as conn:
         result = await conn.execute_core(
@@ -201,6 +250,7 @@ async def change_password(user_id: str, body: ChangePasswordBody, request: Reque
 
 @router.delete("/{user_id}")
 async def delete_user(user_id: str, request: Request):
+    _require_user_management(request)
     pool = _admin_pool(request)
     async with pool.acquire() as conn:
         result = await conn.execute_core(
@@ -217,6 +267,7 @@ async def delete_user(user_id: str, request: Request):
 
 @router.get("/{user_id}/assignments")
 async def list_assignments(user_id: str, request: Request):
+    _require_user_management(request)
     pool = _pool(request)
     t = user_role_assignments
     async with pool.acquire() as conn:
@@ -231,7 +282,9 @@ async def list_assignments(user_id: str, request: Request):
 
 @router.post("/{user_id}/assignments")
 async def add_assignment(user_id: str, body: AssignmentBody, request: Request):  # REQ-042
+    _require_user_management(request)
     _reject_self_role_change(request, user_id)  # REQ-1308
+    _refuse_platform_role(request, [body.role_id])
     pool = _pool(request)
     t = user_role_assignments
     async with pool.acquire() as conn:
@@ -259,10 +312,17 @@ async def add_assignment(user_id: str, body: AssignmentBody, request: Request): 
 
 @router.delete("/{user_id}/assignments/{assignment_id}")
 async def remove_assignment(user_id: str, assignment_id: int, request: Request):
+    _require_user_management(request)
     _reject_self_role_change(request, user_id)  # REQ-1308
     pool = _pool(request)
     t = user_role_assignments
     async with pool.acquire() as conn:
+        held = await conn.execute_core(
+            select(t.c.role_id).where(t.c.id == assignment_id, t.c.user_id == user_id)
+        )
+        held_row = held.fetchone()
+        if held_row is not None:
+            _refuse_platform_role(request, [held_row[0]])
         result = await conn.execute_core(
             _delete(t).where(t.c.id == assignment_id, t.c.user_id == user_id).returning(t.c.id)
         )

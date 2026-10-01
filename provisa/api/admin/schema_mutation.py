@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 from provisa.compiler.sql_types import key_list
 from provisa.core.repositories import rls as rls_repo
 from provisa.api.admin._config_io import config_path as _config_path, read_config
+from provisa.api.admin.capabilities import require_capability
 from provisa.api.admin.types import (
     CalendarInput,
     ColumnAliasType,
@@ -499,8 +500,9 @@ def _refuse_config_declared(source_id: str) -> MutationResult | None:  # REQ-826
 @strawberry.type
 class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
-    async def rebuild_schemas(self) -> MutationResult:
+    async def rebuild_schemas(self, info: StrawberryInfo) -> MutationResult:
         """Rebuild in-memory schema from DB state. Useful after external DB changes."""
+        require_capability(info, "org_settings")
         await _rebuild_schemas()
         return MutationResult(
             success=True, message="Schemas rebuilt", code="schema.schemas_rebuilt"
@@ -508,7 +510,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def dry_run_dq_contract(  # REQ-1443 clause 7
-        self, source_id: str, contract_text: str
+        self, info: StrawberryInfo, source_id: str, contract_text: str
     ) -> DqDryRunType:
         """Run a contract against the live table and report the outcomes, landing none.
 
@@ -516,6 +518,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         cache invalidation would re-scan the table — but it writes nothing: the checker's rows go
         into the response instead of into the results table. What it proves is the thing a syntax
         check cannot: which governed table the dataset identifier actually resolved to."""
+        require_capability(info, "query_development")
         from provisa.api.admin._dq_resolvers import dry_run_contract
 
         pool = await _get_pool()
@@ -534,13 +537,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def run_dq_check_now(  # REQ-1443: "run now and retain" from the DQ check detail
-        self, schema_name: str, table_name: str
+        self, info: StrawberryInfo, schema_name: str, table_name: str
     ) -> MutationResult:
         """Fire a checker table's poll job immediately instead of waiting for its cadence.
 
         Reuses the same registered poll job the event loop already runs on cadence (REQ-941) — this
         does not re-scan into the response like the dry run; it lands the scan's rows the normal way,
         so results persist and the DQ check detail's history shows the new scan."""
+        require_capability(info, "query_development")
         from provisa.api.app import state
         from provisa.api.admin._dq_resolvers import run_dq_check_now as _run_now
         from provisa.core.request_context import current_org
@@ -568,10 +572,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def create_calendar(self, input: "CalendarInput") -> MutationResult:  # REQ-962
+    async def create_calendar(
+        self, info: StrawberryInfo, input: "CalendarInput"
+    ) -> MutationResult:  # REQ-962
         """Create/replace a versioned snapshot-boundary calendar (REQ-962). Validated by constructing
         the in-memory Calendar (fails loud on a bad base_system/tz/anchor) before it is persisted; a
         rebuild reloads the registry so a periodic MV can resolve it."""
+        require_capability(info, "table_registration")
         from datetime import date
 
         from provisa.core.repositories import calendar as calendar_repo
@@ -625,10 +632,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def delete_calendar(self, name: str) -> MutationResult:  # REQ-962
+    async def delete_calendar(self, info: StrawberryInfo, name: str) -> MutationResult:  # REQ-962
         """Delete a snapshot-boundary calendar (all versions) — ONLY when no MV references it. A
         calendar in use MUST NOT be removed (its snapshots would lose their boundary source), so this
         fails loud with the usage count rather than orphaning a periodic MV."""
+        require_capability(info, "table_registration")
         from provisa.core.repositories import calendar as calendar_repo
 
         pool = await _get_pool()
@@ -1130,7 +1138,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def rename_source(self, old_id: str, new_id: str) -> MutationResult:
+    async def rename_source(self, info: StrawberryInfo, old_id: str, new_id: str) -> MutationResult:
+        require_capability(info, "source_registration")
         from provisa.core.repositories import source as source_repo
 
         if not new_id.strip():
@@ -1155,7 +1164,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def delete_source(self, id: str) -> MutationResult:
+    async def delete_source(self, info: StrawberryInfo, id: str) -> MutationResult:
+        require_capability(info, "source_registration")
         from provisa.core.repositories import source as source_repo
         from provisa.api.app import state
 
@@ -1342,7 +1352,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def upsert_tag(self, input: TagInput) -> MutationResult:  # REQ-1373, REQ-1375
+    async def upsert_tag(
+        self, info: StrawberryInfo, input: TagInput
+    ) -> MutationResult:  # REQ-1373, REQ-1375
+        require_capability(info, "table_registration")
         from provisa.core.models import (
             DERIVED_TAG_IDS,
             SYSTEM_TAG_IDS,
@@ -1418,7 +1431,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def delete_tag(self, id: str) -> MutationResult:  # REQ-1373, REQ-1375
+    async def delete_tag(
+        self, info: StrawberryInfo, id: str
+    ) -> MutationResult:  # REQ-1373, REQ-1375
+        require_capability(info, "table_registration")
         from provisa.core.models import DERIVED_TAG_IDS, SYSTEM_TAG_IDS, base_tag_id
         from provisa.core.repositories import tag as tag_repo
 
@@ -1450,7 +1466,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def assign_tag(self, input: TagAssignmentInput) -> MutationResult:  # REQ-1376/1377
+    async def assign_tag(
+        self, info: StrawberryInfo, input: TagAssignmentInput
+    ) -> MutationResult:  # REQ-1376/1377
+        require_capability(info, "table_registration")
         from provisa.core.models import TagAssignment as TagAssignmentModel
         from provisa.core.repositories import tag as tag_repo
 
@@ -1584,7 +1603,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def unassign_tag(self, input: TagAssignmentInput) -> MutationResult:  # REQ-1377
+    async def unassign_tag(
+        self, info: StrawberryInfo, input: TagAssignmentInput
+    ) -> MutationResult:  # REQ-1377
+        require_capability(info, "table_registration")
         from provisa.core.models import TagAssignment as TagAssignmentModel
         from provisa.core.repositories import tag as tag_repo
 
@@ -1621,13 +1643,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def upsert_tag_param_value(self, input: TagParamValueInput) -> MutationResult:  # REQ-1467
+    async def upsert_tag_param_value(
+        self, info: StrawberryInfo, input: TagParamValueInput
+    ) -> MutationResult:  # REQ-1467
         """Add or re-describe a permitted parameter value for a parameterized tag.
 
         The value list is data, not definition — it is editable on a system tag, whose definition
         is not. An org that trades in vessels adds ``entity:vessel`` here; nothing in code has to
         know the word.
         """
+        require_capability(info, "table_registration")
         from provisa.core.models import TAG_PARAM_SEPARATOR, TagParamValue
         from provisa.core.repositories import tag as tag_repo
 
@@ -1673,12 +1698,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def delete_tag_param_value(self, tag_id: str, value: str) -> MutationResult:  # REQ-1467
+    async def delete_tag_param_value(
+        self, info: StrawberryInfo, tag_id: str, value: str
+    ) -> MutationResult:  # REQ-1467
         """Remove a permitted value, refusing while any assignment still carries it.
 
         Deleting a value in use would leave those assignments naming a type the list no longer
         admits — legal in the database, unreachable from the picker, and silently unfixable.
         """
+        require_capability(info, "table_registration")
         from provisa.core.repositories import tag as tag_repo
 
         pool = await _get_pool()
@@ -1776,11 +1804,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def register_table(
         self, info: StrawberryInfo, input: TableInput
     ) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434
+        require_capability(info, "table_registration", domain_id=input.domain_id)
         return await _ops.register_table(info, input)
 
     @strawberry.mutation
     async def register_entity(self, info: StrawberryInfo, input: "EntityInput") -> MutationResult:
         """REQ-1164: entity sugar → lower to a (bitemporal, when historized) MV and register it."""
+        require_capability(info, "table_registration")
         from provisa.api.admin.modeling_register import entity_table_input
 
         return await _ops.register_table(info, entity_table_input(input))
@@ -2059,6 +2089,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def delete_table(self, info: StrawberryInfo, id: int) -> MutationResult:  # REQ-1531
         # REQ-1531: deleting a registration is a change to the domain that holds it, so it asks the
         # same question register/update ask. The id names the object, so the domain is looked up.
+        require_capability(info, "table_registration")
         from provisa.api.admin.domain_guard import DomainLookupError, require_table_domain
         from provisa.core.repositories import table as table_repo
 
@@ -2373,7 +2404,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return await _upsert_relationship_impl(info, input)
 
     @strawberry.mutation
-    async def delete_relationship(self, id: str) -> MutationResult:
+    async def delete_relationship(self, info: StrawberryInfo, id: str) -> MutationResult:
+        require_capability(info, "create_relationship")
         from provisa.core.repositories import relationship as rel_repo
 
         pool = await _get_pool()
@@ -2398,9 +2430,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def update_source_cache(
-        self, source_id: str, cache_enabled: bool, cache_ttl: int | None = None
+        self,
+        info: StrawberryInfo,
+        source_id: str,
+        cache_enabled: bool,
+        cache_ttl: int | None = None,
     ) -> MutationResult:
         """Update cache settings for a source."""
+        require_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute_core(
@@ -2424,9 +2461,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def update_table_cache(
-        self, table_id: int, cache_ttl: int | None = None
+        self, info: StrawberryInfo, table_id: int, cache_ttl: int | None = None
     ) -> MutationResult:
         """Update cache TTL for a registered table."""
+        require_capability(info, "table_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute_core(
@@ -2450,9 +2488,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def update_source_prefer_materialized(
-        self, source_id: str, prefer_materialized: bool
+        self, info: StrawberryInfo, source_id: str, prefer_materialized: bool
     ) -> MutationResult:  # REQ-826
         """Force (or release) MATERIALIZED federation for a source's tables — the source-level default."""
+        require_capability(info, "source_registration")
         refused = _refuse_config_declared(source_id)
         if refused is not None:
             return refused
@@ -2482,9 +2521,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def update_table_prefer_materialized(
-        self, table_id: int, prefer_materialized: bool | None = None
+        self, info: StrawberryInfo, table_id: int, prefer_materialized: bool | None = None
     ) -> MutationResult:  # REQ-826
         """Override MATERIALIZED federation for one table; None = inherit the source-level default."""
+        require_capability(info, "table_registration")
         from provisa.api.app import state
 
         owner = next((t["source_id"] for t in state.tables if t["id"] == table_id), None)
@@ -2515,6 +2555,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def update_source_load_protection(
         self,
+        info: StrawberryInfo,
         source_id: str,
         load_protected: bool,
         off_peak_window: str | None = None,
@@ -2525,6 +2566,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         Enforces the REQ-1141 rule that a load-protected source MUST arm at least one refresh gate
         (off-peak window, a cache_ttl cadence, or a probing change_signal); a validation failure is a
         governed error, never a silently-accepted no-gate config."""
+        require_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _res = await conn.execute_core(
@@ -2570,6 +2612,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def update_table_load_protection(
         self,
+        info: StrawberryInfo,
         table_id: int,
         load_protected: bool | None = None,
         off_peak_window: str | None = None,
@@ -2579,6 +2622,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         When the EFFECTIVE load_protected is True, enforces the REQ-1141 ≥1-gate rule over the
         effective (table→source) window/cadence/probe."""
+        require_capability(info, "table_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _res = await conn.execute_core(
@@ -2657,9 +2701,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def update_gql_naming_convention(
-        self, convention: str
+        self, info: StrawberryInfo, convention: str
     ) -> MutationResult:  # REQ-253, REQ-416
         """Set the global naming convention and rebuild schemas for all roles."""
+        require_capability(info, "table_registration")
         from provisa.api.app import state
 
         from provisa.compiler import naming as _naming
@@ -2681,9 +2726,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def update_source_naming(
-        self, source_id: str, gql_naming_convention: Optional[str] = None
+        self, info: StrawberryInfo, source_id: str, gql_naming_convention: Optional[str] = None
     ) -> MutationResult:
         """Update naming convention for a source."""
+        require_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute_core(
@@ -2747,9 +2793,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def update_table_naming(
-        self, table_id: int, gql_naming_convention: Optional[str] = None
+        self, info: StrawberryInfo, table_id: int, gql_naming_convention: Optional[str] = None
     ) -> MutationResult:
         """Update naming convention for a registered table."""
+        require_capability(info, "table_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute_core(
@@ -2775,7 +2822,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     # ── Admin: Forced Regen ──
 
     @strawberry.mutation
-    async def force_regen(self, table_id: int, reason: str) -> MutationResult:  # REQ-968
+    async def force_regen(
+        self, info: StrawberryInfo, table_id: int, reason: str
+    ) -> MutationResult:  # REQ-968
         """Recompute one table's landed rows ON DEMAND, bypassing the REQ-958/981 change gate.
 
         THE SCOPE IS DERIVED, never asked of the operator: a derived view recomputes from its own SQL
@@ -2785,6 +2834,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         given an event nothing will ever claim. The reason is REQ-968's audit why-tag and rides on the
         posted event.
         """
+        require_capability(info, "org_settings")
         from provisa.api.app import state
         from provisa.api.admin._refresh_summary import _resolve_engine
         from provisa.events import injector
@@ -2872,8 +2922,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     # ── Admin: MV Management ──
 
     @strawberry.mutation
-    async def refresh_mv(self, mv_id: str) -> MutationResult:  # REQ-133, REQ-158
+    async def refresh_mv(
+        self, info: StrawberryInfo, mv_id: str
+    ) -> MutationResult:  # REQ-133, REQ-158
         """Trigger a manual refresh of a materialized view."""
+        require_capability(info, "table_registration")
         from provisa.api.app import state
 
         mv = state.mv_registry.get(mv_id)
@@ -2901,8 +2954,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return MutationResult(success=False, message=str(e))
 
     @strawberry.mutation
-    async def toggle_mv(self, mv_id: str, enabled: bool) -> MutationResult:
+    async def toggle_mv(self, info: StrawberryInfo, mv_id: str, enabled: bool) -> MutationResult:
         """Enable or disable a materialized view."""
+        require_capability(info, "table_registration")
         from provisa.api.app import state
         from provisa.mv.models import MVStatus
 
@@ -2929,8 +2983,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     # ── Admin: Cache Management ──
 
     @strawberry.mutation
-    async def purge_cache(self) -> MutationResult:
+    async def purge_cache(self, info: StrawberryInfo) -> MutationResult:
         """Purge all cached query results."""
+        require_capability(info, "org_settings")
         from provisa.api.app import state
 
         try:
@@ -2946,8 +3001,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return MutationResult(success=False, message=str(e))
 
     @strawberry.mutation
-    async def purge_cache_by_table(self, table_id: int) -> MutationResult:
+    async def purge_cache_by_table(self, info: StrawberryInfo, table_id: int) -> MutationResult:
         """Purge cached results for a specific table."""
+        require_capability(info, "org_settings")
         from provisa.api.app import state
 
         try:
@@ -2966,15 +3022,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return MutationResult(success=False, message=str(e))
 
     @strawberry.mutation
-    async def invalidate_file_source(self, table_id: int) -> MutationResult:
+    async def invalidate_file_source(self, info: StrawberryInfo, table_id: int) -> MutationResult:
         """Force a sqlite file-connector table's next access to re-sync from disk."""
+        require_capability(info, "source_registration")
         return await _ops.invalidate_file_source(table_id)
 
     # ── Admin: Scheduled Task Management ──
 
     @strawberry.mutation
-    async def toggle_scheduled_task(self, task_id: str, enabled: bool) -> MutationResult:
+    async def toggle_scheduled_task(
+        self, info: StrawberryInfo, task_id: str, enabled: bool
+    ) -> MutationResult:
         """Enable or disable a scheduled trigger in the config."""
+        require_capability(info, "org_settings")
         import yaml
 
         path = _config_path()
@@ -3013,6 +3073,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def create_scheduled_task(  # REQ-1003, REQ-1004
         self,
+        info: StrawberryInfo,
         id: str,
         name: str,
         cron: str,
@@ -3022,22 +3083,29 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         sql: Optional[str] = None,
     ) -> MutationResult:
         """Create a scheduled trigger (webhook or SQL) and register it live (REQ-1003/1004)."""
+        require_capability(info, "org_settings")
         return await _ops.create_scheduled_task_op(
             id, name, cron, kind, webhook_name, args_json, sql
         )
 
     @strawberry.mutation
-    async def delete_scheduled_task(self, task_id: str) -> MutationResult:  # REQ-1003
+    async def delete_scheduled_task(
+        self, info: StrawberryInfo, task_id: str
+    ) -> MutationResult:  # REQ-1003
         """Remove a scheduled trigger from config and the live scheduler."""
+        require_capability(info, "org_settings")
         return await _ops.delete_scheduled_task_op(task_id)
 
     @strawberry.mutation
-    async def refresh_source_statistics(self, source_id: str) -> MutationResult:  # REQ-276
+    async def refresh_source_statistics(
+        self, info: StrawberryInfo, source_id: str
+    ) -> MutationResult:  # REQ-276
         """Run ANALYZE on all registered tables for a source (Phase AL).
 
         Triggers the engine to collect fresh table statistics, which improves the
         quality of join-order and broadcast decisions for federated queries.
         """
+        require_capability(info, "source_registration")
         from provisa.api.app import state
 
         if state.federation_engine is None:
@@ -3099,7 +3167,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def compile_query(self, input: CompileQueryInput) -> list[CompileQueryResult]:  # REQ-161
+    async def compile_query(
+        self, info: StrawberryInfo, input: CompileQueryInput
+    ) -> list[CompileQueryResult]:  # REQ-161
+        require_capability(info, "query_development")
         from provisa.api.admin import dev_queries
 
         variables = cast(dict, input.variables) if input.variables else None
@@ -3148,6 +3219,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def deploy_view_to_db(self, info: StrawberryInfo, table_id: int) -> MutationResult:
         """Promote a virtual Provisa view to a real database view on its underlying native source."""
+        require_capability(info, "table_registration")
         return await _ops.deploy_view_to_db(info, table_id)
 
 

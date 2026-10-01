@@ -495,12 +495,14 @@ class TestTrackedLoadParsing:
 
 class TestWebhookApprovalGate:
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_create_webhook_enqueues_approval_request(self):
+    async def test_create_webhook_enqueues_approval_request(self, monkeypatch):
         from provisa.api.admin.actions_router import WebhookInput, create_webhook
+        from tests.unit.gate_identity import grant
 
         conn = _FakeConn()
         fake_state = MagicMock()
         fake_state.tenant_db = _FakePool(conn)
+        _, request = grant(monkeypatch, "table_registration", state=fake_state)
 
         with (
             patch("provisa.api.app.state", fake_state),
@@ -511,7 +513,7 @@ class TestWebhookApprovalGate:
                 new=AsyncMock(return_value=42),
             ) as cr_create,
         ):
-            result = await create_webhook(WebhookInput(name="notify", url="http://x"))
+            result = await create_webhook(request, WebhookInput(name="notify", url="http://x"))
 
         # webhook registered unapproved (exposure gated until the request is executed)
         assert result["approved"] is False
@@ -525,7 +527,7 @@ class TestWebhookApprovalGate:
         rebuild.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_list_actions_reports_webhook_approval(self):
+    async def test_list_actions_reports_webhook_approval(self, monkeypatch):
         """list_actions surfaces the REQ-209 exposure gate as an `approved` flag per webhook."""
         from provisa.api.admin import actions_router
 
@@ -558,6 +560,9 @@ class TestWebhookApprovalGate:
         conn = _Conn()
         fake_state = MagicMock()
         fake_state.tenant_db = _FakePool(conn)
+        from tests.unit.gate_identity import grant
+
+        _, request = grant(monkeypatch, "table_registration", state=fake_state)
 
         with (
             patch("provisa.api.app.state", fake_state),
@@ -567,7 +572,7 @@ class TestWebhookApprovalGate:
                 new=AsyncMock(return_value="pending"),
             ),
         ):
-            result = await actions_router.list_actions()
+            result = await actions_router.list_actions(request)
 
         assert result["webhooks"][0]["name"] == "add_pet"
         assert result["webhooks"][0]["approved"] is False

@@ -115,7 +115,7 @@ class TestCallDiscoverMongoDBNoPool:
 class TestDiscoverSourceSchemaMongoIssue13:
     """End-to-end test of the FastAPI handler for issue #13."""
 
-    async def test_endpoint_returns_503_not_empty_columns_for_mongo(self):
+    async def test_endpoint_returns_503_not_empty_columns_for_mongo(self, monkeypatch):
         """Before the fix: endpoint returned HTTP 200 with empty columns.
         After the fix: endpoint must return HTTP 503 with 'no live connection'.
 
@@ -144,6 +144,9 @@ class TestDiscoverSourceSchemaMongoIssue13:
 
         mock_state = MagicMock()
         mock_state.tenant_db = mock_pg_pool
+        from tests.unit.gate_identity import grant
+
+        _, request = grant(monkeypatch, "source_registration", state=mock_state)
 
         with (
             patch(
@@ -153,12 +156,14 @@ class TestDiscoverSourceSchemaMongoIssue13:
             patch("provisa.api.app.state", mock_state),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await discover_source_schema(source_id, DiscoverRequest(collection="products"))
+                await discover_source_schema(
+                    request, source_id, DiscoverRequest(collection="products")
+                )
 
         assert exc_info.value.status_code == 503
         assert "no live connection" in exc_info.value.detail.lower()
 
-    async def test_endpoint_returns_columns_with_live_pool(self):
+    async def test_endpoint_returns_columns_with_live_pool(self, monkeypatch):
         """When source_pools has a live connection for the MongoDB source,
         the endpoint returns discovered columns.
         """
@@ -189,6 +194,9 @@ class TestDiscoverSourceSchemaMongoIssue13:
 
         mock_state = MagicMock()
         mock_state.tenant_db = mock_pg_pool
+        from tests.unit.gate_identity import grant
+
+        _, request = grant(monkeypatch, "source_registration", state=mock_state)
 
         with (
             patch(
@@ -198,7 +206,7 @@ class TestDiscoverSourceSchemaMongoIssue13:
             patch("provisa.api.app.state", mock_state),
         ):
             response = await discover_source_schema(
-                source_id, DiscoverRequest(collection="books", sample_limit=10)
+                request, source_id, DiscoverRequest(collection="books", sample_limit=10)
             )
 
         assert response.source_id == source_id

@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from provisa.api.admin.capabilities import require_capability_request
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/sources", tags=["admin", "sources"])
@@ -36,13 +37,16 @@ class CrawlResponse(BaseModel):
 
 
 @router.post("/crawl", response_model=CrawlResponse)
-async def crawl_directory_endpoint(body: CrawlRequest) -> CrawlResponse:  # REQ-012, REQ-250
+async def crawl_directory_endpoint(
+    request: Request, body: CrawlRequest
+) -> CrawlResponse:  # REQ-012, REQ-250
     """Crawl *path* recursively and return discovered file-based tables.
 
     Supports local paths and fsspec URIs (``s3://``, ``ftp://``, etc.).
     Each entry in ``discovered`` contains ``name``, ``path``, ``type``,
     and ``tables`` (list of ``{name, columns}``).
     """
+    require_capability_request(request, "source_registration")
     from provisa.file_source.crawler import crawl_directory
 
     try:

@@ -29,6 +29,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, model_validator
 
 from provisa.api.errors import ApiError
+from provisa.api.admin.capabilities import require_capability_request
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -167,9 +168,11 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
 
 @router.post("/register")
 async def register_openapi_source(
+    request: Request,
     body: OpenAPIRegisterRequest,
 ):  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, REQ-406, REQ-407, REQ-408
     """Load an OpenAPI spec and auto-register tables and tracked functions."""
+    require_capability_request(request, "source_registration")
     try:
         _, n_tables, n_mutations = await _load_and_register(
             body.source_id,
@@ -205,8 +208,9 @@ async def register_openapi_source(
 
 
 @router.post("/refresh/{source_id}")
-async def refresh_openapi_source(source_id: str):  # REQ-321
+async def refresh_openapi_source(request: Request, source_id: str):  # REQ-321
     """Re-load spec from stored path and re-run auto-registration."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
     specs = getattr(state, "openapi_specs", {})
@@ -249,8 +253,9 @@ async def refresh_openapi_source(source_id: str):  # REQ-321
 
 
 @router.post("/preview")
-async def preview_openapi_spec(body: OpenAPIPreviewRequest):  # REQ-315, REQ-407
+async def preview_openapi_spec(request: Request, body: OpenAPIPreviewRequest):  # REQ-315, REQ-407
     """Parse spec and return discovered queries/mutations without persisting."""
+    require_capability_request(request, "source_registration")
     from provisa.openapi.loader import load_spec, parse_text
     from provisa.openapi.mapper import parse_spec
 
@@ -295,8 +300,9 @@ async def preview_openapi_spec(body: OpenAPIPreviewRequest):  # REQ-315, REQ-407
 
 
 @router.get("/list")
-async def list_openapi_sources():
+async def list_openapi_sources(request: Request):
     """Return registration metadata for all OpenAPI sources (without the parsed spec)."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
     specs = getattr(state, "openapi_specs", {})
@@ -317,8 +323,9 @@ async def list_openapi_sources():
 
 
 @router.get("/spec/{source_id}")
-async def get_openapi_spec(source_id: str):
+async def get_openapi_spec(request: Request, source_id: str):
     """Return stored spec JSON for a registered OpenAPI source."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
     specs = getattr(state, "openapi_specs", {})
@@ -335,6 +342,7 @@ async def get_openapi_spec(source_id: str):
 @router.put("/spec/{source_id}")
 async def put_openapi_spec(source_id: str, request: Request):  # REQ-316, REQ-317
     """Store raw spec JSON and run auto-registration."""
+    require_capability_request(request, "source_registration")
     from provisa.api.app import state
 
     try:
