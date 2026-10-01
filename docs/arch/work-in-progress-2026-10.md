@@ -186,6 +186,28 @@ What makes the final run publishable:
 Anything measured before that run — the sizing sweep, local timings, projections — is
 working data and is not published.
 
+## SaaS: its own track
+
+The hosted service has work that is separate from the items above and is not unblocked by
+them.
+
+- **Rightsizing the shared configuration.** Trial and Starter orgs run on shared
+  infrastructure. Its sizing — the shared engine, the control-plane node, the workers per
+  node, the request-thread and stream bounds, the per-transport timeouts, the Redis and
+  store behind them — was set before the per-request work and before the sizing sweep.
+  It needs to be derived again from measured per-core figures, for the load the shared
+  tier is meant to carry.
+- **Validating every SKU.** Each tier and each metered SKU has to be shown to behave as
+  specified: Trial, Starter and Pro ceilings (output rows, bytes scanned, peak memory,
+  execution time, REQ-1044), a rejection that names the upgrade which would run the query,
+  the active-hour and worker-hour meters (REQ-1280), shared against dedicated engines, and
+  scale-to-zero with wake on first query.
+- **Dependencies on this page.** The hosted node needs a new image before it can take any
+  build from this month (the control-plane driver changed). Running it with more than one
+  worker waits on config sync (REQ-1914) and on shared activity state for the idle reaper.
+  The published benchmark and the SaaS sizing are different exercises: one measures a
+  dedicated reference server, the other sizes a shared one.
+
 ## Performance items still open
 
 - No transport has been measured on a server since the per-request fixes.
