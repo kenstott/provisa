@@ -544,7 +544,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         Reuses the same registered poll job the event loop already runs on cadence (REQ-941) — this
         does not re-scan into the response like the dry run; it lands the scan's rows the normal way,
         so results persist and the DQ check detail's history shows the new scan."""
-        require_capability(info, "query_development")
+        require_capability(info, "table_registration")
         from provisa.api.app import state
         from provisa.api.admin._dq_resolvers import run_dq_check_now as _run_now
         from provisa.core.request_context import current_org

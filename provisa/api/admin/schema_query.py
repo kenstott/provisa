@@ -237,6 +237,7 @@ class Query:  # REQ-021, REQ-042
     ) -> list["CalendarType"]:  # REQ-962  # pyright: ignore[reportUnusedParameter]
         """Every registered snapshot-boundary calendar version (REQ-962) — feeds the snapshot-schedule
         config (a calendar picker) and confirms which calendars a periodic MV may reference."""
+        require_capability(info, "table_registration")
         from provisa.core.repositories import calendar as calendar_repo
 
         pool = await _get_pool()
@@ -283,9 +284,15 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def creation_requests(
         self, info: StrawberryInfo
-    ) -> list[CreationRequestType]:  # REQ-434, REQ-063  # pyright: ignore[reportUnusedParameter]
-        """REQ-434/063: pending creation requests, for users holding a create capability."""
+    ) -> list[CreationRequestType]:  # REQ-434, REQ-063
+        """REQ-434/063: pending creation requests, for users holding a create capability.
+
+        Each request names the capability its approval needs (the same one the REST approve/reject/
+        execute routes check), and the caller sees only the requests whose capability they hold.
+        """
         import json as _json
+
+        from provisa.api.admin.capabilities import has_capability
 
         from provisa.core.repositories import creation_request as cr_repo
 
@@ -303,6 +310,7 @@ class Query:  # REQ-021, REQ-042
                 payload_json=_json.dumps(r["payload"]),
             )
             for r in rows
+            if has_capability(info, r["capability"])
         ]
 
     @strawberry.field
@@ -635,15 +643,19 @@ class Query:  # REQ-021, REQ-042
             return [_role_from_row(dict(r._mapping)) for r in _res.fetchall()]
 
     @strawberry.field
-    async def rls_rules(self) -> list[RLSRuleType]:  # REQ-041, REQ-402, REQ-686
+    async def rls_rules(
+        self, info: StrawberryInfo
+    ) -> list[RLSRuleType]:  # REQ-041, REQ-402, REQ-686
+        require_capability(info, "access_config")
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await rls_repo.list_all(conn)  # repo decrypts filter_expr at the boundary
             return [_rls_from_row(r) for r in rows]
 
     @strawberry.field
-    async def available_schemas(self, source_id: str) -> list[str]:
+    async def available_schemas(self, info: StrawberryInfo, source_id: str) -> list[str]:
         """List schemas available in a source."""
+        require_capability(info, "table_registration")
         from provisa.api.app import state
         from provisa.api.admin.introspect import is_provisa_internal, native_schemas
 
@@ -685,7 +697,7 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def available_tables(
-        self, source_id: str, schema_name: str = "public"
+        self, info: StrawberryInfo, source_id: str, schema_name: str = "public"
     ) -> list[AvailableTableType]:
         """List tables available in a source, using native introspection first.
 
@@ -695,6 +707,7 @@ class Query:  # REQ-021, REQ-042
         For GraphQL sources, returns query fields returning a list type.
         For gRPC sources, returns server-streaming RPCs or RPCs with repeated response fields.
         """
+        require_capability(info, "table_registration")
         from provisa.api.app import state
         from provisa.api.admin.introspect import native_tables
 
@@ -750,6 +763,7 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def crawl_source(
         self,
+        info: StrawberryInfo,
         path: str,
         depth: Optional[int] = None,
         pattern: Optional[str] = None,
@@ -766,6 +780,7 @@ class Query:  # REQ-021, REQ-042
         endpoint (crawl_router.py), which has no frontend consumer, for GraphQL-schema
         consistency with every other admin operation.
         """
+        require_capability(info, "source_registration")
         from provisa.file_source.crawler import crawl_directory
 
         discovered = crawl_directory(
@@ -807,22 +822,24 @@ class Query:  # REQ-021, REQ-042
         )
 
     @strawberry.field
-    async def kaggle_token_valid(self, token: str) -> bool:  # REQ-1783
+    async def kaggle_token_valid(self, info: StrawberryInfo, token: str) -> bool:  # REQ-1783
         """Live check for the Kaggle source form's token-entry step: True only when the token
         authenticates against the real Kaggle API. Backs the token-gate that unlocks the dataset
         picker step, and re-editing an existing source whose token has since expired/revoked."""
+        require_capability(info, "source_registration")
         from provisa.kaggle.client import validate_token
 
         return await validate_token(token)
 
     @strawberry.field
     async def kaggle_datasets(  # REQ-1783
-        self, token: str, query: str = "", page: int = 1
+        self, info: StrawberryInfo, token: str, query: str = "", page: int = 1
     ) -> list[KaggleDatasetType]:
         """Live search over Kaggle's full public dataset catalog (wraps datasets/list) — backs
         the token-gated picker step. Deliberately NOT available_schemas/available_tables: those
         assume a fixed catalog belonging to an already-registered source; here there is no source
         yet and the catalog is Kaggle's entire public listing, searched by free text."""
+        require_capability(info, "source_registration")
         from provisa.kaggle.client import search_datasets
 
         results = await search_datasets(token, query=query, page=page)
@@ -837,12 +854,13 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def available_functions(
-        self, source_id: str, schema_name: str = "openapi"
+        self, info: StrawberryInfo, source_id: str, schema_name: str = "openapi"
     ) -> list[AvailableTableType]:
         """List available functions/mutations for a source.
 
         For OpenAPI sources: returns non-GET operations (POST/PUT/PATCH/DELETE).
         """
+        require_capability(info, "table_registration")
         from provisa.api.app import state
 
         if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
@@ -861,9 +879,10 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def available_columns(
-        self, source_id: str, schema_name: str, table_name: str
+        self, info: StrawberryInfo, source_id: str, schema_name: str, table_name: str
     ) -> list[str]:
         """List columns for a table in a source's the engine catalog."""
+        require_capability(info, "table_registration")
         from provisa.api.app import state
 
         source_type = state.source_types.get(source_id, "")
@@ -884,22 +903,26 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def available_columns_metadata(
-        self, source_id: str, schema_name: str, table_name: str
+        self, info: StrawberryInfo, source_id: str, schema_name: str, table_name: str
     ) -> list[AvailableColumnType]:
         """List columns with data types and comments from the physical database.
 
         For OpenAPI sources: derives columns from the operation's response schema + params.
         """
+        require_capability(info, "table_registration")
         return await resolve_available_columns_metadata(source_id, schema_name, table_name)
 
     @strawberry.field
-    async def suggest_table_alias(self, table_name: str, domain_id: str, source_id: str) -> str:
+    async def suggest_table_alias(
+        self, info: StrawberryInfo, table_name: str, domain_id: str, source_id: str
+    ) -> str:
         """Return the alias to use when registering table_name in domain_id from source_id.
 
         Returns a plain snake_case alias when no conflict exists, or a source-prefixed
         alias (e.g. sqlite_b_orders) when the effective name already exists in the domain
         from a different source.
         """
+        require_capability(info, "table_registration")
         from provisa.compiler.naming import apply_convention
 
         pool = await _get_pool()
@@ -970,6 +993,7 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def refresh_policy_preview(  # REQ-1143
         self,
+        info: StrawberryInfo,
         source_id: str,
         domain_id: str,
         schema_name: str,
@@ -987,6 +1011,7 @@ class Query:  # REQ-021, REQ-042
         values come from the in-flight editor form instead of the persisted row — so the top-of-form
         summary updates as fields change, without persisting or re-deriving the tree in the client.
         Returns None during startup (engine not yet connected)."""
+        require_capability(info, "table_registration")
         from provisa.api.admin._refresh_summary import preview_table_policy
 
         return await preview_table_policy(
@@ -1046,13 +1071,16 @@ class Query:  # REQ-021, REQ-042
         )
 
     @strawberry.field
-    async def dq_check_catalog(self, checker: str, dataset: str) -> DqCheckCatalogType:
+    async def dq_check_catalog(
+        self, info: StrawberryInfo, checker: str, dataset: str
+    ) -> DqCheckCatalogType:
         """The checks ``checker`` offers, scoped to the columns of ``dataset`` (REQ-1443 clause 7).
 
         The picker is scoped by the CONTRACT's dataset rather than by a table handed to the panel:
         the dataset identifier is what the scan observes, so resolving it here offers checks against
         the columns the checker will really see, through the same resolution the registration uses.
         """
+        require_capability(info, "table_registration")
         from provisa.api.admin._dq_resolvers import check_catalog_for
 
         pool = await _get_pool()
@@ -1075,12 +1103,13 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def dq_check_definition(
-        self, checker: str, check: DqCheckBuildInput
+        self, info: StrawberryInfo, checker: str, check: DqCheckBuildInput
     ) -> DqCheckDefinitionType:
         """One check's text from the panel's editors (REQ-1443 clause 7).
 
         Server-side for the same reason the whole contract's serialization is: the dialect has one
         implementation, so a builder-made check and a hand-typed one are the same object."""
+        require_capability(info, "table_registration")
         from provisa.api.admin._dq_resolvers import build_check
 
         built = build_check(
@@ -1100,13 +1129,14 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def dq_contract_build(
-        self, checker: str, dataset: str, checks: list[DqCheckInput]
+        self, info: StrawberryInfo, checker: str, dataset: str, checks: list[DqCheckInput]
     ) -> DqContractTextType:
         """Serialize edited check rows back into contract text (REQ-1443 clause 7).
 
         The inverse of :meth:`dq_contract_parse`, and deliberately server-side: the soda and GX
         dialects have exactly one implementation, so the panel cannot emit a shape the checker
         refuses to run."""
+        require_capability(info, "table_registration")
         from provisa.api.admin._dq_resolvers import serialize_contract
 
         built = serialize_contract(
@@ -1277,8 +1307,9 @@ class Query:  # REQ-021, REQ-042
     # ── AI: Generate table description ──
 
     @strawberry.field
-    async def generate_table_description(self, table_id: str) -> str:
+    async def generate_table_description(self, info: StrawberryInfo, table_id: str) -> str:
         """Use LLM to generate a description for a registered table."""
+        require_capability(info, "table_registration")
         import sys
 
         print(
@@ -1330,6 +1361,7 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def column_dependents(  # REQ-1484
         self,
+        info: StrawberryInfo,
         table_id: str,
         renamed: Optional[list[str]] = None,
         removed: Optional[list[str]] = None,
@@ -1340,6 +1372,7 @@ class Query:  # REQ-021, REQ-042
         ``removed`` are PHYSICAL column names; a renamed column is matched by the exposed name it
         still carries in the registry, which is the name its dependents were authored against, so
         this must be asked BEFORE the save."""
+        require_capability(info, "table_registration")
         from provisa.api.admin.column_dependents import dependents_for
 
         pool = await _get_pool()
@@ -1361,8 +1394,11 @@ class Query:  # REQ-021, REQ-042
         ]
 
     @strawberry.field
-    async def generate_column_description(self, table_id: str, column_name: str) -> str:
+    async def generate_column_description(
+        self, info: StrawberryInfo, table_id: str, column_name: str
+    ) -> str:
         """Use LLM to generate a description for a single column."""
+        require_capability(info, "table_registration")
         import sys
 
         print(

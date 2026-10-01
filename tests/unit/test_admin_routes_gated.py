@@ -108,16 +108,17 @@ EXEMPT: dict[tuple[str, str], str] = {
     ("GET", "/admin/mcp/chat/status"): "PENDING DECISION",
 }
 
-_PENDING_READS = (
-    "allRelationships availableColumns availableColumnsMetadata availableFunctions availableSchemas "
-    "availableTables calendars columnDependents crawlSource creationRequests dqCheckCatalog "
-    "dqCheckDefinition dqContractBuild dqContractParse generateColumnDescription "
-    "generateTableDescription kaggleDatasets kaggleTokenValid metrics neo4jPreview "
-    "refreshPolicyPreview relationships rlsRules schemaVersion source sources sparqlPreview "
-    "suggestTableAlias"
-).split()
+_PENDING_READS = ("allRelationships metrics relationships source sources").split()
 for _name in _PENDING_READS:
     EXEMPT[("graphql:query", _name)] = "PENDING DECISION"
+EXEMPT[("graphql:query", "schemaVersion")] = "identifier hash only; no model content"
+# Called by DqRulesModal on /data-products, a page opened with data_product_read (analyst,
+# developer, modeler), none of which hold table_registration.
+EXEMPT[("graphql:query", "dqContractParse")] = "PENDING DECISION"
+# Called by RegisterTableForm on /tables, which is opened with table_registration alone; gating on
+# source_registration would break a role that holds the one without the other.
+EXEMPT[("graphql:query", "neo4jPreview")] = "PENDING DECISION"
+EXEMPT[("graphql:query", "sparqlPreview")] = "PENDING DECISION"
 
 
 def _callees(fn) -> set[str]:

@@ -48,7 +48,7 @@ class _FakeAcquire:
 
 
 @pytest.mark.asyncio
-async def test_available_schemas_uses_engine_reachable_on_wrapped_engine():
+async def test_available_schemas_uses_engine_reachable_on_wrapped_engine(monkeypatch):
     # native_schemas returns None -> forces the engine-reachability branch (line 324).
     reachable = SimpleNamespace(reachable=lambda source_type: False)
     fake_state = SimpleNamespace(
@@ -58,12 +58,15 @@ async def test_available_schemas_uses_engine_reachable_on_wrapped_engine():
     )
     fake_pool = SimpleNamespace(acquire=lambda: _FakeAcquire(object()))
 
+    from tests.unit.gate_identity import grant
+
+    info, _ = grant(monkeypatch, "table_registration", state=fake_state)
     with (
         patch("provisa.api.app.state", fake_state),
         patch("provisa.api.admin.schema_query._get_pool", new=AsyncMock(return_value=fake_pool)),
         patch("provisa.api.admin.introspect.native_schemas", new=AsyncMock(return_value=None)),
     ):
-        result = await Query().available_schemas(source_id="warehouse")
+        result = await Query().available_schemas(info, source_id="warehouse")
 
     assert result == []  # unreachable -> no engine schemas, and no AttributeError
 
@@ -87,37 +90,43 @@ class _FakeConn:
 
 
 @pytest.mark.asyncio
-async def test_suggest_table_alias_defaults_to_snake_case():  # REQ-1831
+async def test_suggest_table_alias_defaults_to_snake_case(monkeypatch):  # REQ-1831
     # suggest_table_alias's own docstring promises "a plain snake_case alias" — it used to
     # instead read the SOURCE's gql_naming_convention (default "apollo_graphql", a camelCase
     # convention), producing e.g. "irisIris" instead of "iris_iris" for a two-word table name.
     fake_state = SimpleNamespace()  # no global_sql_naming_convention set -> getattr default "snake"
     fake_pool = SimpleNamespace(acquire=lambda: _FakeAcquire(_FakeConn()))
 
+    from tests.unit.gate_identity import grant
+
+    info, _ = grant(monkeypatch, "table_registration", state=fake_state)
     with (
         patch("provisa.api.app.state", fake_state),
         patch("provisa.api.admin.schema_query._get_pool", new=AsyncMock(return_value=fake_pool)),
     ):
         result = await Query().suggest_table_alias(
-            table_name="IrisSpecies", domain_id="shelter", source_id="kaggle-iris-dataset"
+            info, table_name="IrisSpecies", domain_id="shelter", source_id="kaggle-iris-dataset"
         )
 
     assert result == "iris_species"
 
 
 @pytest.mark.asyncio
-async def test_suggest_table_alias_honors_global_sql_naming_convention():  # REQ-1831
+async def test_suggest_table_alias_honors_global_sql_naming_convention(monkeypatch):  # REQ-1831
     # It IS still configurable — just from the deployment's own SQL-plane setting
     # (matching register_table's own auto-gen), never a per-source GraphQL convention.
     fake_state = SimpleNamespace(global_sql_naming_convention="apollo_graphql")
     fake_pool = SimpleNamespace(acquire=lambda: _FakeAcquire(_FakeConn()))
 
+    from tests.unit.gate_identity import grant
+
+    info, _ = grant(monkeypatch, "table_registration", state=fake_state)
     with (
         patch("provisa.api.app.state", fake_state),
         patch("provisa.api.admin.schema_query._get_pool", new=AsyncMock(return_value=fake_pool)),
     ):
         result = await Query().suggest_table_alias(
-            table_name="iris_species", domain_id="shelter", source_id="kaggle-iris-dataset"
+            info, table_name="iris_species", domain_id="shelter", source_id="kaggle-iris-dataset"
         )
 
     assert result == "irisSpecies"
