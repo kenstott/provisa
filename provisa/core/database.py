@@ -277,20 +277,23 @@ def _translate(sql: str, args: tuple, dialect: str = "") -> tuple[str, dict[str,
 
 
 _DOLLAR_QUOTE = re.compile(r"\$\$.*?\$\$", re.DOTALL)
-_SQL_STRING = re.compile(r"'(?:[^']|'')*'")
+# A string literal or a quoted identifier, matched in one pass so a quote character of one kind
+# inside the other is never read as a delimiter.
+_SQL_QUOTED = re.compile(r"""'(?:[^']|'')*'|"(?:[^"]|"")*\"""")
 _LINE_COMMENT = re.compile(r"--[^\n]*")
 
 
 def _is_multi_statement(sql: str) -> bool:
     """True if *sql* contains more than one top-level statement (separated by
-    ``;``), ignoring ``$$``-quoted blocks, string literals, and line comments.
+    ``;``), ignoring ``$$``-quoted blocks, string literals, quoted identifiers, and line
+    comments.
 
     asyncpg's extended/prepared protocol (what SQLAlchemy ``text()`` uses)
     rejects multiple commands with "cannot insert multiple commands into a
     prepared statement"; such scripts must run on the raw driver connection.
     A single ``DO $$ ... $$`` block is NOT multi-statement."""
     s = _DOLLAR_QUOTE.sub("", sql)
-    s = _SQL_STRING.sub("", s)
+    s = _SQL_QUOTED.sub("", s)
     s = _LINE_COMMENT.sub("", s)
     s = s.strip().rstrip(";").strip()
     return ";" in s

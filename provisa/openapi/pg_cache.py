@@ -50,6 +50,15 @@ _JSON_TO_PG: dict[str, str] = {
 _META_COLS = [("_params_hash", "TEXT"), ("_cached_at", "TIMESTAMPTZ")]
 
 
+def _ident(name: str) -> str:
+    """``name`` as a double-quoted SQL identifier, embedded double quotes doubled. Every table,
+    column and index name in this module goes through here: column names are OpenAPI property
+    names and response keys, which are data. Values are always bound parameters."""
+    if "\x00" in name:
+        raise ValueError(f"identifier contains a NUL character: {name!r}")
+    return '"' + name.replace('"', '""') + '"'
+
+
 def _relation(pg_conn: "Connection", pg_schema: str, pg_table: str) -> str:
     """The quoted relation name to address the cache table on THIS connection.
 
@@ -61,8 +70,8 @@ def _relation(pg_conn: "Connection", pg_schema: str, pg_table: str) -> str:
     to the compiler's SQL (transpiler/transpile.py::_strip_schema_qualifiers).
     """
     if not pg_conn.capabilities.schemas:
-        return f'"{pg_table}"'
-    return f'"{pg_schema}"."{pg_table}"'
+        return _ident(pg_table)
+    return f"{_ident(pg_schema)}.{_ident(pg_table)}"
 
 
 def _hash_params(params: dict) -> str:
@@ -152,7 +161,7 @@ async def _insert_rows(
     rel = _relation(pg_conn, pg_schema, pg_table)
     all_cols = col_names + ["_params_hash", "_cached_at"]
     placeholders = ", ".join(f"${i + 1}" for i in range(len(all_cols)))
-    col_list = ", ".join(f'"{c}"' for c in all_cols)
+    col_list = ", ".join(_ident(c) for c in all_cols)
     data_rows = [_to_row_tuple(row, col_names, phash, text_cols) for row in rows]
     await pg_conn.executemany(
         f"INSERT INTO {rel} ({col_list}) VALUES ({placeholders})",
@@ -177,14 +186,16 @@ async def _upsert_rows(
     rel = _relation(pg_conn, pg_schema, pg_table)
     all_cols = col_names + ["_params_hash", "_cached_at"]
     placeholders = ", ".join(f"${i + 1}" for i in range(len(all_cols)))
-    col_list = ", ".join(f'"{c}"' for c in all_cols)
+    col_list = ", ".join(_ident(c) for c in all_cols)
     update_set = ", ".join(
-        f'"{c}" = EXCLUDED."{c}"' for c in all_cols if c not in (pk_column, "_params_hash")
+        f"{_ident(c)} = EXCLUDED.{_ident(c)}"
+        for c in all_cols
+        if c not in (pk_column, "_params_hash")
     )
     data_rows = [_to_row_tuple(row, col_names, phash, text_cols) for row in rows]
     await pg_conn.executemany(
         f"INSERT INTO {rel} ({col_list}) VALUES ({placeholders})"
-        f' ON CONFLICT ("{pk_column}", "_params_hash") DO UPDATE SET {update_set}',
+        f' ON CONFLICT ({_ident(pk_column)}, "_params_hash") DO UPDATE SET {update_set}',
         data_rows,
     )
     return len(data_rows)
@@ -261,16 +272,16 @@ async def cache_openapi_table(  # REQ-318
         rows = _normalize_rows(r.json())
 
     all_cols = entity_cols + _META_COLS
-    col_defs = ", ".join(f'"{name}" {pg_type}' for name, pg_type in all_cols)
+    col_defs = ", ".join(f"{_ident(name)} {pg_type}" for name, pg_type in all_cols)
     rel = _relation(pg_conn, pg_schema, pg_table)
     if pg_conn.capabilities.schemas:
-        await pg_conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{pg_schema}"')
+        await pg_conn.execute(f"CREATE SCHEMA IF NOT EXISTS {_ident(pg_schema)}")
     await pg_conn.execute(f"DROP TABLE IF EXISTS {rel}")
     await pg_conn.execute(f"CREATE TABLE {rel} ({col_defs})")
     if pk_column:
         await pg_conn.execute(
-            f'CREATE UNIQUE INDEX IF NOT EXISTS "{pg_table}__pk_hash_uidx"'
-            f' ON {rel} ("{pk_column}", "_params_hash")'
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {_ident(pg_table + '__pk_hash_uidx')}"
+            f' ON {rel} ({_ident(pk_column)}, "_params_hash")'
         )
 
     col_names = [c[0] for c in entity_cols]
@@ -333,8 +344,8 @@ async def fill_api_table(  # REQ-318
     rel = _relation(pg_conn, pg_schema, pg_table)
     if pk_column and pk_column in col_names:
         await pg_conn.execute(
-            f'CREATE UNIQUE INDEX IF NOT EXISTS "{pg_table}__pk_hash_uidx"'
-            f' ON {rel} ("{pk_column}", "_params_hash")'
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {_ident(pg_table + '__pk_hash_uidx')}"
+            f' ON {rel} ({_ident(pk_column)}, "_params_hash")'
         )
         n = await _upsert_rows(
             pg_conn, pg_schema, pg_table, col_names, rows, phash, pk_column, text_cols
