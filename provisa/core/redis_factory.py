@@ -74,6 +74,11 @@ class SharedRedis:
         """The shared underlying sync client."""
         return self._client
 
+    @property
+    def embedded(self) -> bool:
+        """True when this is the in-process embedded Redis (REQ-829), not a Redis server."""
+        return type(self._client).__module__.startswith("fakeredis")
+
     def pipeline(self, *args: Any, **kwargs: Any) -> _AsyncPipeline:
         return _AsyncPipeline(self._client.pipeline(*args, **kwargs))
 

@@ -1140,7 +1140,7 @@ class Query:  # REQ-021, REQ-042
                 total_keys = await store._redis.dbsize()
                 # Embedded fakeredis (REQ-829) has no INFO command — report the keys it
                 # can and label it "memory" so the UI shows it as an enabled store, not "noop".
-                if type(store._redis).__module__.startswith("fakeredis"):
+                if store._redis.embedded:
                     return CacheStatsType(
                         total_keys=total_keys, hit_count=0, miss_count=0, store_type="memory"
                     )
