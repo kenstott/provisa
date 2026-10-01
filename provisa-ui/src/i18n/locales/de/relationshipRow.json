@@ -40,6 +40,8 @@
     "cardinalityWarning": "Warnung: Liefert dieser Join mehr als eine Zeile pro Elternzeile, wird nur der erste Wert verwendet.",
     "cancel": "Abbrechen",
     "save": "Speichern",
-    "toggleDetails": "Beziehungsdetails ein-/ausblenden"
+    "toggleDetails": "Beziehungsdetails ein-/ausblenden",
+    "junctionBadge": "über",
+    "junctionBadgeTitle": "Junction-gestützte Beziehung über {{table}}"
   }
 }

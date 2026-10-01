@@ -20,6 +20,7 @@
     "includeNodes": "包含节点",
     "includeFields": "包含字段（关系、关系.列或列）",
     "aggregateFunctions": "聚合函数",
-    "selectAtLeastOneFunc": "请至少选择一个聚合函数"
+    "selectAtLeastOneFunc": "请至少选择一个聚合函数",
+    "aggregateColumns": "聚合列（留空 = 所有符合条件的列）"
   }
 }

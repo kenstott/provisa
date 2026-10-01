@@ -297,6 +297,12 @@ async def bound(admin_db: "Database", org_id: str, *, user_id: str | None = None
         _bound.reset(token)
 
 
+def bound_org_id() -> str | None:
+    """The org whose vault is bound in this context, or None when none is."""
+    held = _bound.get()
+    return None if held is None else held.org_id
+
+
 #: REQ-1580: how a core-layer read learns WHICH org's vault a stored reference names. ``core``
 #: cannot import the API layer's ``current_org`` ContextVar or its AppState, so the API layer
 #: installs this resolver at import -- the same seam ``domain_policy`` already uses. It returns

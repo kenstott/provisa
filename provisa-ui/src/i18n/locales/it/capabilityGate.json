@@ -1,5 +1,16 @@
 {
   "capabilityGate": {
-    "checking": "Verifica delle credenziali…"
+    "checking": "Verifica delle credenziali…",
+    "demonstrated": {
+      "badge": "Funzionalità di produzione",
+      "explanation": "Questa fa parte del sistema di produzione. È mostrata qui per far vedere cosa fa Provisa, ma non è disponibile nella sandbox.",
+      "dismiss": "Ho capito",
+      "purpose": {
+        "environment_management": {
+          "title": "Gli ambienti sono una funzionalità di produzione",
+          "body": "Un ambiente è una copia completa e governata separatamente del modello: origini, tabelle, criteri, regole di mascheramento e concessioni. I team mantengono un ambiente dev in cui modificare il modello, uno staging in cui revisionarlo e prod da cui servirlo, poi portano avanti la modifica unendo un ambiente al successivo con un diff, un'approvazione e una cronologia annullabile.\n\nLa tua sandbox È uno di questi ambienti, creato solo per te. La gestione degli ambienti (creazione, merge, deployment, ritiro) spetta all'organizzazione che li possiede, quindi qui l'interfaccia viene mostrata e non consegnata: puoi vedere cosa fa, ma non agisce su nulla."
+        }
+      }
+    }
   }
 }

@@ -16,7 +16,7 @@
  *
  * A card is self-contained: it reads settings itself and saves only its own blocks, so an org
  * administrator saving `redirect` never sends a deployment-wide block the server would refuse. The
- * deployment-wide cards render nothing at all without `features.platform_settings`, which is the
+ * deployment-wide cards render nothing at all without `features.deployment_settings`, which is the
  * same right the server checks on the write.
  */
 
@@ -48,6 +48,7 @@ import {
   fetchConfigDiff,
   fetchSettings,
   setDomainPolicy,
+  updateSettings,
   uploadConfig,
 } from "../../api/admin";
 import type { PlatformSettings } from "../../api/admin";
@@ -66,6 +67,232 @@ export function SaveRow({ save, saving, msg }: { save: () => void; saving: boole
       </Button>
       {msg && <Text fz="sm">{msg}</Text>}
     </Group>
+  );
+}
+
+const TRANSPORTS = [
+  "graphql",
+  "rest",
+  "jsonapi",
+  "sql_http",
+  "cypher_http",
+  "pgwire",
+  "flight",
+  "bolt",
+  "grpc",
+  "mcp",
+] as const;
+
+/** Transports whose shipped value differs from the default, with the reason shown on the row. */
+const TRANSPORT_HELP = { flight: true, pgwire: true } as const;
+
+/** Positive seconds, or null when the text is not one. */
+function parseSeconds(text: string): number | null {
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * REQ-1905: the request timeout (default) and one value per transport. An empty transport value
+ * means it uses the default; the row says so and shows the effective value. A server 400 names its
+ * field in the error `params.field` and is shown on that field.
+ */
+export function ServerLimitsCard() {
+  const { t } = useTranslation();
+  const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [forbidden, setForbidden] = useState(false);
+  // Rows cleared in this session whose value in force is still a number: the server's shipped value.
+  const [shipped, setShipped] = useState<Record<string, number>>({});
+  const [def, setDef] = useState("");
+  const [rowLimit, setRowLimit] = useState("");
+  const [per, setPer] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    fetchSettings()
+      .then((s) => {
+        setSettings(s);
+        if (!s.features?.deployment_settings) return;
+        const limits = s.limits;
+        if (!limits || !limits.request_timeouts || limits.request_timeout === undefined) {
+          setLoadError(t("adminPage.requestTimeoutMissing"));
+          return;
+        }
+        setDef(String(limits.request_timeout));
+        setRowLimit(String(limits.default_row_limit));
+        setPer(
+          Object.fromEntries(
+            TRANSPORTS.map((k) => [
+              k,
+              limits.request_timeouts[k] == null ? "" : String(limits.request_timeouts[k]),
+            ]),
+          ),
+        );
+      })
+      .catch((e: unknown) => {
+        // The platform blocks are platform_admin only: a 403 is a state, not a failure.
+        if ((e as { status?: number }).status === 403) setForbidden(true);
+        else setLoadError(e instanceof Error ? e.message : String(e));
+      });
+  }, [t]);
+
+  if (forbidden) {
+    return (
+      <Alert color="gray" data-testid="limit-forbidden">
+        {t("adminPage.setting.forbidden")}
+      </Alert>
+    );
+  }
+  if (!settings?.features?.deployment_settings && !loadError) return null;
+  if (loadError) {
+    return (
+      <Alert color="red" data-testid="limit-settings-error">
+        {loadError}
+      </Alert>
+    );
+  }
+
+  const effective = parseSeconds(def);
+  const save = async () => {
+    const next: Record<string, string> = {};
+    const defaultSeconds = parseSeconds(def);
+    if (defaultSeconds === null) next.default = t("adminPage.requestTimeoutInvalid");
+    const rows = Number(rowLimit.trim());
+    if (rowLimit.trim() === "" || !Number.isInteger(rows) || rows <= 0) {
+      next.rowLimit = t("adminPage.rowLimitInvalid");
+    }
+    const timeouts: Record<string, number | null> = {};
+    for (const k of TRANSPORTS) {
+      const text = per[k] ?? "";
+      if (text.trim() === "") {
+        timeouts[k] = null;
+        continue;
+      }
+      const seconds = parseSeconds(text);
+      if (seconds === null) next[k] = t("adminPage.requestTimeoutInvalid");
+      else timeouts[k] = seconds;
+    }
+    setErrors(next);
+    setMsg("");
+    if (Object.keys(next).length) return;
+    setSaving(true);
+    try {
+      const result = await updateSettings({
+        limits: {
+          default_row_limit: rows,
+          request_timeout: defaultSeconds as number,
+          request_timeouts: timeouts,
+        },
+      });
+      setMsg(
+        result.updated.length
+          ? t("adminPage.settingsUpdated", { fields: result.updated.join(", ") })
+          : t("adminPage.settingsNoChanges"),
+      );
+      // Clearing a row removes its stored value; the API then reports the value in force. When that
+      // is still a number, it is the shipped value, not something the operator stored.
+      const fresh = (await fetchSettings()).limits?.request_timeouts;
+      if (fresh) {
+        const next: Record<string, number> = {};
+        for (const k of TRANSPORTS) {
+          const inForce = fresh[k];
+          if (timeouts[k] === null && inForce !== null && inForce !== undefined) next[k] = inForce;
+        }
+        setShipped(next);
+        setPer(
+          Object.fromEntries(
+            TRANSPORTS.map((k) => [k, timeouts[k] === null ? "" : String(timeouts[k])]),
+          ),
+        );
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      const field = (e as { params?: { field?: unknown } }).params?.field;
+      const named =
+        typeof field === "string"
+          ? field.endsWith("request_timeout")
+            ? "default"
+            : TRANSPORTS.find((k) => field.endsWith(`request_timeouts.${k}`))
+          : undefined;
+      const rowField = typeof field === "string" && field.endsWith("default_row_limit");
+      if (rowField) setErrors({ rowLimit: message });
+      else if (named) setErrors({ [named]: message });
+      else setMsg(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card withBorder padding="md" data-testid="limit-settings">
+      <Title order={4} mb="xs">
+        {t("adminPage.serverLimits")}
+      </Title>
+      <Text fz="sm" c="dimmed" mb="sm">
+        {t("adminPage.serverLimitsHint")}
+      </Text>
+      <Stack gap="sm">
+        <TextInput
+          label={t("adminPage.rowLimit")}
+          description={t("adminPage.rowLimitHint")}
+          value={rowLimit}
+          onChange={(e) => setRowLimit(e.currentTarget.value)}
+          error={
+            errors.rowLimit && (
+              <span data-testid="limit-default-row-limit-error">{errors.rowLimit}</span>
+            )
+          }
+          data-testid="limit-default-row-limit"
+        />
+        <TextInput
+          label={t("adminPage.requestTimeoutDefault")}
+          description={t("adminPage.requestTimeoutDefaultHint")}
+          value={def}
+          onChange={(e) => setDef(e.currentTarget.value)}
+          error={
+            errors.default && (
+              <span data-testid="limit-request-timeout-error">{errors.default}</span>
+            )
+          }
+          data-testid="limit-request-timeout"
+        />
+        {TRANSPORTS.map((k) => (
+          <TextInput
+            key={k}
+            label={t(`adminPage.transport.${k}`)}
+            description={
+              <>
+                {k in TRANSPORT_HELP && (
+                  <span data-testid={`limit-timeout-${k}-help`}>
+                    {t(`adminPage.transportHelp.${k}`)}{" "}
+                  </span>
+                )}
+                {(per[k] ?? "").trim() === "" && shipped[k] !== undefined && (
+                  <span data-testid={`limit-timeout-${k}-shipped`}>
+                    {t("adminPage.requestTimeoutUsesShipped", { seconds: shipped[k] })}
+                  </span>
+                )}
+                {(per[k] ?? "").trim() === "" && shipped[k] === undefined && effective !== null && (
+                  <span data-testid={`limit-timeout-${k}-effective`}>
+                    {t("adminPage.requestTimeoutUsesDefault", { seconds: effective })}
+                  </span>
+                )}
+              </>
+            }
+            value={per[k] ?? ""}
+            onChange={(e) => setPer({ ...per, [k]: e.currentTarget.value })}
+            error={errors[k] && <span data-testid={`limit-timeout-${k}-error`}>{errors[k]}</span>}
+            data-testid={`limit-timeout-${k}`}
+          />
+        ))}
+      </Stack>
+      <SaveRow save={save} saving={saving} msg={msg} />
+    </Card>
   );
 }
 
@@ -121,7 +348,7 @@ export function NamingConventionsCard() {
   const { settings, setSettings, save, saving, msg } = useSettingsBlocks(["naming"]);
   // The naming module those three fields configure is process-global, so they are the deployment's
   // and the payload omits them entirely for anyone else.
-  if (!settings?.features?.platform_settings || settings.naming.convention === undefined) {
+  if (!settings?.features?.deployment_settings || settings.naming.convention === undefined) {
     return null;
   }
   const conventionData = CONVENTIONS.map((value) => ({
@@ -327,7 +554,7 @@ export function FederationSettingsCards() {
     "cdc",
     "graphql_remote",
   ]);
-  if (!settings?.features?.platform_settings) return null;
+  if (!settings?.features?.deployment_settings) return null;
   const { sampling, cdc, graphql_remote: remote } = settings;
   if (!sampling || !cdc || !remote) return null;
 
@@ -430,6 +657,7 @@ export function FederationSettingsCards() {
                   />
                 </Stack>
               </Card>
+              <ServerLimitsCard />
             </SimpleGrid>
             <SaveRow save={save} saving={saving} msg={msg} />
           </Stack>
@@ -513,7 +741,7 @@ export function ConfigFileSection() {
   };
 
   // The file IS the deployment's configuration, so it is the deployment administrator's surface.
-  if (!settings?.features?.platform_settings) return null;
+  if (!settings?.features?.deployment_settings) return null;
 
   return (
     <Stack gap="sm" data-testid="config-file-section">

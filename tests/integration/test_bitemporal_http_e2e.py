@@ -33,7 +33,12 @@ async def client():
     app = create_app()
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
+        async with AsyncClient(
+            # REQ-273: the header carries the role; a body role must match it.
+            transport=transport,
+            base_url="http://test",
+            headers={"X-Provisa-Role": "org_admin"},
+        ) as c:
             yield c
     os.environ.pop("PROVISA_MATERIALIZE_URL", None)
 
@@ -46,7 +51,7 @@ async def _admin(client, query: str):
 
 async def _sql(client, sql: str, **headers):
     return await client.post(
-        "/data/sql", json={"sql": sql, "role": "admin"}, headers=headers or None
+        "/data/sql", json={"sql": sql, "role": "org_admin"}, headers=headers or None
     )
 
 

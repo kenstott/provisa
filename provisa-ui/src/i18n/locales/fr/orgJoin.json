@@ -1,0 +1,15 @@
+{
+  "orgJoin": {
+    "heading": "Qui peut rejoindre",
+    "help": "Les adresses e-mail autorisées à rejoindre cette organisation. Une invitation est vérifiée par rapport à cette règle ; avec l'adhésion automatique activée, toute personne se connectant avec une adresse correspondante devient membre sans invitation.",
+    "emailRuleLabel": "Règle d'e-mail",
+    "emailRuleDesc": "Une expression régulière appliquée à l'adresse. Laissez vide pour accepter toute adresse sur invitation.",
+    "autoJoinLabel": "Rejoindre automatiquement",
+    "autoJoinDesc": "Une adresse correspondante devient membre à la première connexion, sans invitation. Uniquement pour un domaine que votre organisation contrôle.",
+    "autoJoinRoleLabel": "Rôle accordé à l'adhésion automatique",
+    "autoJoinRoleDesc": "Le rôle que reçoit toute personne admise par la règle.",
+    "acceptRisk": "J'accepte que cette règle puisse admettre des personnes extérieures à mon organisation",
+    "save": "Enregistrer",
+    "saved": "Règle d'adhésion enregistrée."
+  }
+}

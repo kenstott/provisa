@@ -31,6 +31,8 @@
     "query": "クエリ",
     "domain": "ドメイン",
     "selectDomain": "ドメインを選択...",
+    "dataProduct": "データプロダクト(任意)",
+    "dataProductPlaceholder": "データプロダクトを選択...",
     "description": "説明",
     "descriptionPlaceholder": "任意",
     "arguments": "引数",
@@ -46,6 +48,18 @@
     "bindingCallable": "Python呼び出し可能オブジェクト（module:attr）",
     "materialize": "マテリアライズ（管理者/定義者の権限で実行）",
     "materializeHint": "オン: 管理者として実行し、出力をガバナンスします。オフ: 呼び出し元として実行し、入力をガバナンスします。",
-    "argKind": "引数の種別"
+    "argKind": "引数の種別",
+    "colVisibleTo": "公開先(ロール、カンマ区切り。空欄 = 全員)",
+    "colVisibleToPlaceholder": "analyst, org_admin",
+    "colUnmaskedTo": "マスク解除先(ロール、カンマ区切り)",
+    "colMask": "マスク",
+    "maskNone": "なし",
+    "maskRegex": "正規表現",
+    "maskConstant": "定数",
+    "maskTruncate": "切り捨て",
+    "maskPattern": "パターン",
+    "maskReplace": "置換",
+    "maskValue": "値",
+    "maskPrecision": "精度"
   }
 }

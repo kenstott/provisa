@@ -11,6 +11,8 @@
     "addViewTitle": "Criar uma nova exibição no SQL Explorer",
     "model": "+ Modelo",
     "modelTitle": "Modelar uma entidade ou fato (esquema estrela / Data Vault)",
+    "reportXlsx": "Planilha",
+    "reportXlsxTitle": "Baixar o modelo como planilha para revisão — fontes, tabelas, colunas, relacionamentos, exibições, métricas, exibições materializadas e termos do glossário, uma aba para cada",
     "viewErd": "Ver ERD",
     "colSource": "Fonte",
     "colDomain": "Domínio",
@@ -56,6 +58,11 @@
       "impliedDimensionTitle": "Dimensão implícita — «Habilitar Group By» está ativado para esta tabela"
     },
     "derived": "derivada",
+    "checker": {
+      "soda": "Soda",
+      "great_expectations": "Great Expectations",
+      "title": "Verificador de qualidade de dados — as linhas desta tabela são os resultados da execução do seu contrato"
+    },
     "dataProduct": "produto",
     "dataProductTitle": "Produto de dados — incluído em provisa metadata export",
     "purposeTitle": "O que o registro de uma tabela faz",

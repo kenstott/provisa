@@ -97,7 +97,7 @@ def _state(store, *, source_cache=None, table_cache=None, default_ttl=300):
 
 @pytest.fixture(autouse=True)
 def _no_audit_writes(monkeypatch):
-    async def _noop(pending, status_code, state=None):
+    async def _noop(pending, status_code, state=None, **outcome):
         return None
 
     monkeypatch.setattr("provisa.audit.pipeline.write_audit", _noop)

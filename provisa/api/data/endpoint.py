@@ -42,6 +42,7 @@ from provisa.core import request_deadline
 from provisa.api.errors import ApiError
 from provisa.cache.key import cache_key, is_cacheable
 from provisa.cache.middleware import build_cache_headers, check_cache, decode_cached_result
+from provisa.federation.replica_build import ReplicaBuilding
 from provisa.cache.store import CachedResult
 from provisa.cache.tenancy import cache_tenant
 from provisa.compiler.hints import extract_graphql_hints
@@ -55,6 +56,7 @@ from provisa.compiler.sql_rewrite import (
 )
 from provisa.executor import stats as _qs_mod
 from provisa.observability.request_facts import TimedJSONResponse as JSONResponse  # REQ-1910
+from provisa.audit.context import note_request_route, note_request_rows
 from provisa.observability.request_facts import observe_cache_hit
 from provisa.mv.rewriter import rewrite_if_mv_match
 from provisa.security.rights import Capability
@@ -74,7 +76,6 @@ from provisa.api.data.endpoint_helpers import (
     _inject_stats_into_response,
     _parse_accept,
     _record_per_source_stats,
-    _request_timeout,
 )
 from provisa.api.data.endpoint_executors import (
     _exec_api_route,
@@ -126,11 +127,13 @@ async def _resolve_apq(
                     ]
                 },
             )
-        return GraphQLRequest(
-            query=cached_query,
-            variables=request.variables,
-            role=request.role,
-        )
+        # The body's role is carried over only when the client sent one (REQ-273: a role the
+        # client did not name is not one to check against the acting role).
+        if "role" in request.model_fields_set:
+            return GraphQLRequest(
+                query=cached_query, variables=request.variables, role=request.role
+            )
+        return GraphQLRequest(query=cached_query, variables=request.variables)
     if apq_hash and request.query:
         from provisa.apq.cache import compute_apq_hash
 
@@ -197,7 +200,9 @@ async def _handle_normalized(document, ctx, rls, state, variables, role_id, role
         await _prepare_compiled(nt.compiled, ctx, rls, state, role_id, role, fresh_mvs)
         exec_sql = rewrite_semantic_to_catalog_physical(nt.compiled.sql, ctx)
         physical_sql = state.federation_engine.transpile_physical(exec_sql)
-        ctas = state.federation_engine.ctas_redirect(physical_sql, "parquet")
+        ctas = state.federation_engine.ctas_redirect(
+            physical_sql, "parquet", nt.compiled.params or None
+        )
         url = await presign_ctas_result(ctas["s3_prefix"], redirect_config)
         schedule_s3_cleanup(ctas["s3_prefix"], redirect_config)
         manifest.append(
@@ -239,9 +244,11 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     """
     from provisa.api.app import state
 
-    # Auth middleware role takes precedence, then header, then request body
-    auth_role = getattr(raw_request.state, "role", None)
-    role_id = auth_role or x_provisa_role or request.role
+    # REQ-273: the acting role is the auth layer's (identity, or X-Provisa-Role when unsecured);
+    # a body `role` that differs from it is refused.
+    from provisa.api.acting_role import acting_role, sent_role
+
+    role_id = acting_role(raw_request, x_provisa_role, sent_role(request), "org_admin")
 
     if role_id not in state.schemas:
         raise ApiError(
@@ -414,7 +421,12 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
 
     # REQ-049: X-Provisa-Normalized returns one governed, deduplicated relational table per
     # entity (PK/FK preserved) as a manifest of S3 URLs, instead of the denormalized result.
+    from provisa.audit.context import bind_request_audit
+
     _audit_started = _time.monotonic()
+    # What the request's terminal notes for that record: the route(s), the rows, and whether a
+    # statement of the request already wrote its own row (an action field).
+    _audit_outcome = bind_request_audit()
     try:
         if (x_provisa_normalized or "").lower() == "true" and not is_mut:
             response = await _handle_normalized(
@@ -459,7 +471,13 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     except Exception as exc:
         # The refusal or failure is the fact the row records (policy_denials reads the 403s).
         audit_graphql_request(
-            state, role_id, request.query, ctx, getattr(exc, "status_code", 500), _audit_started
+            state,
+            role_id,
+            request.query,
+            ctx,
+            getattr(exc, "status_code", 500),
+            _audit_started,
+            _audit_outcome,
         )
         raise
     audit_graphql_request(
@@ -470,6 +488,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         # A handler that returned a body rather than a Response completed normally.
         response.status_code if isinstance(response, Response) else 200,
         _audit_started,
+        _audit_outcome,
     )
     if (x_provisa_normalized or "").lower() == "true" and not is_mut:
         return response
@@ -669,6 +688,13 @@ async def _execute_one_field(
 
     await extend_trace_scope_to_sources(state, role_id, frozenset(compiled.sources))
 
+    # REQ-1915: a field that reads a row-level table without binding its key is refused here —
+    # before the cache and whichever route the field would take — by the pipeline's own decision
+    # point (``_pk_bounds``), as on every other surface.
+    from provisa.pgwire._pipeline import _resolve_pk_bounds
+
+    await _resolve_pk_bounds(compiled.sql, state, compiled.params)
+
     # Cache check. REQ-544 (amended 2026-09-30): the response cache is per-request OPT-IN — no
     # @cached / `-- @provisa cache` hint, no read and no write. REQ-866 fail-closed: when the
     # identity is not fully resolved into the key (empty RLS filter, or a current_setting-dependent
@@ -697,6 +723,12 @@ async def _execute_one_field(
         cache_opt_in=not _cache_off,
         operator_floor=await operator_floor(state),
     )
+    # REQ-074: the route this field is answered by, for the request's audit row.
+    note_request_route(
+        "cache"
+        if decision.route == Route.CACHE and cached is not None
+        else decision.route.name.lower()
+    )
     if decision.route == Route.CACHE and cached is not None:
         field_rows = cached_field_rows(cached, root_field)
         _qs_mod.record(
@@ -708,7 +740,6 @@ async def _execute_one_field(
             cache_hit=True,
         )
         observe_cache_hit(  # REQ-1910
-            role_id=role_id,
             sources=compiled.sources,
             rows=len(field_rows) if isinstance(field_rows, list) else 0,
             started=_t0,
@@ -765,14 +796,11 @@ async def _execute_one_field(
             and decision.source_id
             and state.source_pools.has(decision.source_id)
         ):
-            exec_sql = rewrite_semantic_to_physical(compiled.sql, ctx)
-            if probe_limit is not None:
-                exec_sql = _inject_probe_limit(exec_sql, probe_limit)
             return (
                 await state.federation_engine.execute_native(
                     state.source_pools,
                     decision.source_id,
-                    transpile(exec_sql, decision.dialect or "postgres"),
+                    _direct_exec_sql(state, role_id, compiled.sql, ctx, decision, probe_limit),
                     compiled.params,
                 ),
                 "",
@@ -847,6 +875,12 @@ async def _execute_one_field(
         log.error("Query resource error for %s: %s", root_field, e)
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
+        # REQ-1905: the request's deadline passing mid-statement is the request timing out, not
+        # a server fault — it goes up as the timeout it is, and the caller's handler answers 504
+        # naming the transport and the setting. Any other timeout (a source's own) stays a 500.
+        _deadline = request_deadline.current()
+        if isinstance(e, TimeoutError) and _deadline is not None and _deadline.fired:
+            raise
         log.exception("Query execution failed for %s", root_field)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -878,8 +912,16 @@ async def _execute_one_field(
                 decision,
             )
             return root_field, None, redirect_info, ck, None
-        except Exception:
-            log.exception("Redirect upload failed for %s, returning inline", root_field)
+        except (asyncio.TimeoutError, HTTPException):
+            # The request's deadline passing while the redirect's query runs is a timeout, and an
+            # error already shaped for the client is that error: neither is a redirect failure.
+            raise
+        except Exception as e:
+            # A redirect that cannot be delivered fails the request (REQ-171), as the forced
+            # redirect below does — it does not fall through to an inline result.
+            raise ApiError(
+                502, "data.redirect_upload_failed", f"Redirect upload failed: {e}", error=str(e)
+            ) from e
 
     if force_redirect:
         try:
@@ -900,6 +942,8 @@ async def _execute_one_field(
                 decision,
             )
             return root_field, None, redirect_info, ck, None
+        except (asyncio.TimeoutError, HTTPException):
+            raise  # a timeout or an already-shaped error is not a redirect failure (see above)
         except Exception as e:
             raise ApiError(
                 502, "data.redirect_upload_failed", f"Redirect upload failed: {e}", error=str(e)
@@ -925,6 +969,47 @@ async def _execute_one_field(
         physical_sql,
         org_id=org_id,
     )
+
+
+def _direct_exec_sql(
+    state: Any, role_id: str, governed_sql: str, ctx: Any, decision: Any, probe_limit: int | None
+) -> str:
+    """The statement a DIRECT read sends to its source: the governed SQL lowered to the source's
+    physical names, probe-limited when asked, and transpiled to its dialect.
+
+    REQ-1877: that is a function of the governed text, the role's compilation context, the
+    destination (source, dialect) and the probe limit — not of the request — so it is kept with
+    the plans (``governed_plan.PlanSlot``: schema generation, role, acting-role set and the
+    governance objects' identity) and a repeated request re-derives nothing. Bound values travel
+    separately as parameters; a value inlined into the governed text is part of the key."""
+    from provisa.pgwire.governed_plan import PlanSlot
+
+    dialect = decision.dialect or "postgres"
+    # The key's body is everything the derived text depends on beyond what PlanSlot already keys
+    # (generation, role, acting-role set, governance objects). REQ-1912: the address a read is
+    # sent to — replica or live — joins this body when a statement's text comes to depend on it.
+    slot = PlanSlot(
+        state, "graphql.direct_sql", role_id, governed_sql, decision.source_id, dialect, probe_limit
+    )
+    kept = slot.cached()
+    if kept is not None:
+        return kept
+    exec_sql = rewrite_semantic_to_physical(governed_sql, ctx)
+    if probe_limit is not None:
+        exec_sql = _inject_probe_limit(exec_sql, probe_limit)
+    exec_sql = transpile(exec_sql, dialect)
+    slot.keep(exec_sql)
+    return exec_sql
+
+
+def _note_field_outcome(field_rows: Any, cached_entry: Any) -> None:
+    """Note one executed root field on the request's audit outcome (REQ-074): its rows, and the
+    cache route when it was served from the response cache (an executed field notes its own route
+    where it is decided, in ``_execute_one_field``)."""
+    if cached_entry is not None:
+        note_request_route("cache")
+    if isinstance(field_rows, list):
+        note_request_rows(len(field_rows))
 
 
 async def _handle_query(
@@ -961,13 +1046,22 @@ async def _handle_query(
     they are and the compile/governance stages are skipped. ``plan_request`` records the plan this
     call builds when there was none; ``directives`` is recorded with it.
     """
-    # REQ-1174: cap execution wall-time at the tighter of the global request timeout and the role's
-    # max_query_time_ms (None → global only). Applied to every wait_for below.
+    # REQ-1174: cap execution wall-time at the tighter of this transport's request timeout
+    # (REQ-1905: GraphQL's own value, else the default) and the role's max_query_time_ms (None →
+    # the transport's only). Applied to every wait_for below.
     from provisa.compiler.limits import role_query_limits as _rql
+    from provisa.core.limits import request_timeout_for, request_timeout_setting
 
+    _transport_timeout = request_timeout_for("graphql")
     _rt_ms = _rql(role)[2]
     _role_timeout = (
-        _request_timeout() if _rt_ms is None else min(_request_timeout(), _rt_ms / 1000.0)
+        _transport_timeout if _rt_ms is None else min(_transport_timeout, _rt_ms / 1000.0)
+    )
+    # What a timed-out request's error names (REQ-1905): the setting its timeout came from.
+    _timeout_setting = (
+        f"role {role_id!r} max_query_time_ms"
+        if _rt_ms is not None and _rt_ms / 1000.0 < _transport_timeout
+        else request_timeout_setting("graphql")
     )
 
     if plan is not None:
@@ -1024,34 +1118,43 @@ async def _handle_query(
     # --- Single root field: preserve existing behavior for binary formats ---
     if len(prepared) == 1:
         try:
-            root_field, field_rows, redirect_info, _, cached_entry = await asyncio.wait_for(
-                _execute_one_field(
-                    prepared[0],
-                    ctx,
-                    rls,
-                    state,
-                    role_id,
-                    output_format,
-                    force_redirect=force_redirect,
-                    redirect_config=redirect_config,
-                    effective_redirect_format=effective_redirect_format,
-                    probe_limit=probe_limit,
-                    steward_hint=steward_hint,
-                    query_session_props=query_session_props,
-                    response_cache_ttl=cache_ttl,
-                    cache_opt_in=cache_opt_in,
-                    query_text=query_text,
-                    org_id=org_id,
-                ),
-                timeout=_role_timeout,
-            )
+            # The deadline is bound for the work, as on the multi-field path below: without it
+            # nothing under this call knows how long the request may wait (REQ-1882).
+            with request_deadline.within(_role_timeout):
+                root_field, field_rows, redirect_info, _, cached_entry = await asyncio.wait_for(
+                    _execute_one_field(
+                        prepared[0],
+                        ctx,
+                        rls,
+                        state,
+                        role_id,
+                        output_format,
+                        force_redirect=force_redirect,
+                        redirect_config=redirect_config,
+                        effective_redirect_format=effective_redirect_format,
+                        probe_limit=probe_limit,
+                        steward_hint=steward_hint,
+                        query_session_props=query_session_props,
+                        response_cache_ttl=cache_ttl,
+                        cache_opt_in=cache_opt_in,
+                        query_text=query_text,
+                        org_id=org_id,
+                    ),
+                    timeout=_role_timeout,
+                )
+        except ReplicaBuilding as exc:
+            # Not a slow query: the table's replica is still being built, and the message says so.
+            raise ApiError(504, "data.replica_building", str(exc), replica=exc.replica)
         except asyncio.TimeoutError:
             raise ApiError(
                 504,
                 "data.query_timeout",
-                f"Query timed out after {_role_timeout:.0f}s",
-                timeout_s=f"{_role_timeout:.0f}",
+                f"graphql request timed out after {_role_timeout:g}s ({_timeout_setting})",
+                timeout_s=f"{_role_timeout:g}",
+                transport="graphql",
+                setting=_timeout_setting,
             )
+        _note_field_outcome(field_rows, cached_entry)  # REQ-074: the request's audit row
         if cached_entry is not None:
             headers = build_cache_headers(cached_entry)
             return JSONResponse(
@@ -1105,15 +1208,21 @@ async def _handle_query(
         # fire while inline driver work holds the request thread (REQ-1882).
         with request_deadline.within(_role_timeout):
             results = await asyncio.wait_for(_execute_fields(), timeout=_role_timeout)
+    except ReplicaBuilding as exc:
+        # Not a slow query: the table's replica is still being built, and the message says so.
+        raise ApiError(504, "data.replica_building", str(exc), replica=exc.replica)
     except asyncio.TimeoutError:
         raise ApiError(
             504,
             "data.query_timeout",
-            f"Query timed out after {_role_timeout:.0f}s",
-            timeout_s=f"{_role_timeout:.0f}",
+            f"graphql request timed out after {_role_timeout:g}s ({_timeout_setting})",
+            timeout_s=f"{_role_timeout:g}",
+            transport="graphql",
+            setting=_timeout_setting,
         )
 
     for root_field, field_rows, redirect_info, _, cached_entry in results:
+        _note_field_outcome(field_rows, cached_entry)  # REQ-074: the request's audit row
         if redirect_info is not None:
             merged_data[root_field] = None
             merged_redirects[root_field] = redirect_info

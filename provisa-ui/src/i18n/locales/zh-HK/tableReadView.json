@@ -35,6 +35,8 @@
     "deployToDbTitle": "將此虛擬檢視提升為真正的數據庫檢視",
     "profileButton": "剖析",
     "profilingButton": "正在剖析…",
+    "previewButton": "預覽",
+    "previewTitle": "預覽此資料表的資料列（受治理的 SELECT *）",
     "profileTitle": "取樣並剖析此表格的欄",
     "policiesButton": "原則",
     "policiesTitle": "檢視此表格的 RLS 原則",
@@ -53,7 +55,6 @@
     "colTopValues": "最常見值",
     "editDefinitionButton": "編輯定義",
     "editDefinitionTitle": "編輯檢視定義（SQL 或指標／維度選擇器）",
-    "previewButton": "預覽",
-    "previewTitle": "預覽此資料表的資料列（受治理的 SELECT *）"
+    "queryTemplate": "Cypher："
   }
 }

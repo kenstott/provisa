@@ -35,6 +35,8 @@
     "deployToDbTitle": "Promover esta exibição virtual a uma exibição real do banco de dados",
     "profileButton": "Perfil",
     "profilingButton": "Criando perfil…",
+    "previewButton": "Pré-visualização",
+    "previewTitle": "Pré-visualização das linhas desta tabela (SELECT * governado)",
     "profileTitle": "Amostrar e criar o perfil das colunas desta tabela",
     "policiesButton": "Políticas",
     "policiesTitle": "Ver as políticas de RLS desta tabela",
@@ -53,7 +55,6 @@
     "colTopValues": "Valores mais frequentes",
     "editDefinitionButton": "Editar definição",
     "editDefinitionTitle": "Editar a definição da exibição (SQL ou seletor de métrica/dimensão)",
-    "previewButton": "Pré-visualização",
-    "previewTitle": "Pré-visualização das linhas desta tabela (SELECT * governado)"
+    "queryTemplate": "Cypher:"
   }
 }

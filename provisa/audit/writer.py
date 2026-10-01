@@ -101,6 +101,10 @@ class AuditRecord:
     logged_at: datetime
     trace_id: str | None
     encryption: "EncryptionService"
+    # How the statement was answered (cache | direct | engine) and the rows it delivered; None
+    # for a refused statement, which reached neither.
+    route: str | None = None
+    row_count: int | None = None
     # REQ-1454: the control-plane pool and org the statement is metered against; no pool = a
     # deployment without a control plane, which has nothing to meter.
     meter_pool: Any = None  # Any: the control-plane Database handle
@@ -118,6 +122,8 @@ class AuditRecord:
             "source": self.source,
             "status_code": self.status_code,
             "duration_ms": self.duration_ms,
+            "route": self.route,
+            "row_count": self.row_count,
             "trace_id": self.trace_id,
             "logged_at": self.logged_at,
         }

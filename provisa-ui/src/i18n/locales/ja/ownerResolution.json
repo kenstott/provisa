@@ -1,0 +1,8 @@
+{
+  "ownerResolution": {
+    "iconLabel": "解決先を表示",
+    "loading": "解決しています…",
+    "empty": "現在これを保持している個人はいません",
+    "columnIconLabel": "このカラムにアクセスできるユーザーを表示"
+  }
+}

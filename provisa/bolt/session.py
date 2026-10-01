@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 from enum import Enum, auto
 from typing import Any
@@ -34,10 +33,17 @@ _tracer = _get_tracer(__name__)
 
 _BOLT_VERSION = "5.4"
 _SERVER_AGENT = f"Neo4j/{_BOLT_VERSION} (Provisa)"
+
+
 # Server→client hint: how long a client should wait for a server response before
 # giving up. Federated reads (multi-source, cold Kafka/Iceberg) can be slow, so
 # this is generous and configurable via PROVISA_BOLT_RECV_TIMEOUT (seconds).
-_BOLT_RECV_TIMEOUT = int(os.environ.get("PROVISA_BOLT_RECV_TIMEOUT", "120"))
+def _recv_timeout() -> int:
+    from provisa.core import settings_registry  # REQ-1913: the operator setting
+
+    return settings_registry.value("bolt.recv_timeout")
+
+
 # REQ-1393: Neo4j's own code for a rejected-because-throttled login, so a driver reports the
 # lockout as a lockout rather than as one more wrong password.
 _RATE_LIMIT_CODE = "Neo.ClientError.Security.AuthenticationRateLimit"
@@ -314,7 +320,7 @@ class BoltSession:
             {
                 "server": _SERVER_AGENT,
                 "connection_id": "bolt-provisa-1",
-                "hints": {"connection.recv_timeout_seconds": _BOLT_RECV_TIMEOUT},
+                "hints": {"connection.recv_timeout_seconds": _recv_timeout()},
             }
         )
 
@@ -487,16 +493,14 @@ class BoltSession:
             role=role_id,
         )
 
-        from contextlib import nullcontext
-
         from provisa.core.request_context import reset_current_org, set_current_org
-        from provisa.audit.context import audit_identity_scope
+        from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
 
         _org_token = set_current_org(self.org_id) if self.org_id is not None else None
         # REQ-074/REQ-1386: attribute this RUN's governed statements to the authenticated principal.
-        # Bolt executes on the event loop (no thread hop), so a plain scope binds it. An unsecured
-        # deployment authenticates nobody — no principal to record, so nothing is bound.
-        _audit_scope = audit_identity_scope(self.user_id, "bolt") if self.user_id else nullcontext()
+        # Bolt executes on the event loop (no thread hop), so a plain scope binds it. A connection
+        # that named no principal (an unsecured deployment) is audited as the anonymous one.
+        _audit_scope = audit_identity_scope(self.user_id or ANONYMOUS_USER, "bolt")
         try:
             with _audit_scope:
                 columns, rows, redirect = await _execute_cypher(
@@ -657,25 +661,56 @@ def _bolt_label_map(ctx: Any, role_id: str, include_ops: bool, app_state: Any) -
     business view); include_ops=True keeps them ("provisa_ops_<role>"). The role's
     domain_access is always applied first, so no db name can exceed the role's rights.
     """
-    from provisa.core import domain_policy
+    from provisa.api.rest.cypher_plan import kept_label_map
     from provisa.cypher.label_map import CypherLabelMap
 
-    role = getattr(app_state, "roles", {}).get(role_id, {})
-    cache = getattr(app_state, "schema_build_cache", {})
-    base = CypherLabelMap.from_schema(
-        ctx,
-        domain_access=role.get("domain_access"),
-        all_tables=cache.get("tables"),
-        all_relationships=cache.get("relationships"),
-        all_column_types=cache.get("column_types"),
-        source_catalogs=getattr(app_state, "source_catalogs", None),
+    domain_access = _bolt_domain_access(app_state, role_id)
+    cache = app_state.schema_build_cache
+
+    def _role_map() -> CypherLabelMap:
+        return CypherLabelMap.from_schema(
+            ctx,
+            domain_access=domain_access,
+            all_tables=cache.get("tables"),
+            all_relationships=cache.get("relationships"),
+            all_column_types=cache.get("column_types"),
+            source_catalogs=app_state.source_catalogs,
+        )
+
+    # REQ-1877: a pure function of the registry — built once per schema generation and kept.
+    base = kept_label_map(
+        app_state,
+        role_id,
+        domain_access=domain_access,
+        cross_domain=True,
+        business_view=False,
+        build=_role_map,
     )
     if include_ops:
         return base
+    return kept_label_map(
+        app_state,
+        role_id,
+        domain_access=domain_access,
+        cross_domain=True,
+        business_view=True,
+        build=lambda: _business_view(base),
+    )
 
-    # Business view: drop system/meta/ops-domain nodes (and any relationship touching them).
-    # from_schema's domain_access only gates cross-domain node addition — it does not filter the
-    # base node set — so the exclusion must happen here, post-build.
+
+def _bolt_domain_access(app_state: Any, role_id: str) -> list[str] | None:
+    """The domain access a Bolt database's graph is scoped to: the selected role's own."""
+    return (app_state.roles.get(role_id) or {}).get("domain_access")
+
+
+def _business_view(base: Any) -> Any:
+    """``base`` without system/meta/ops-domain nodes (and any relationship touching them).
+
+    from_schema's domain_access only gates cross-domain node addition — it does not filter the
+    base node set — so the exclusion happens here, post-build."""
+    from provisa.core import domain_policy
+    from provisa.cypher.label_map import CypherLabelMap
+
     sys_ids = set(domain_policy.system_domain_ids())
     biz_nodes = {tn: nm for tn, nm in base.nodes.items() if (nm.domain_id or "") not in sys_ids}
     biz_rels = {
@@ -1212,42 +1247,70 @@ async def _execute_cypher(
             None,
         )
 
-    # Try write path first; fall through to read path if it doesn't parse as a write.
-    from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write
+    # REQ-1877: a read this role already translated under this schema generation is not parsed
+    # or translated again — only its values are bound. A write is never kept, so a hit is a read.
+    from provisa.api.rest.cypher_plan import CypherTranslation, TranslationRequest
 
+    kept = TranslationRequest(
+        app_state,
+        role_id,
+        surface="bolt-ops" if include_ops else "bolt",
+        domain_access=_bolt_domain_access(app_state, role_id),
+        cypher=cypher,
+        params=parameters,
+    )
+    translation = kept.cached()
+    if translation is None:
+        # Try write path first; fall through to read path if it doesn't parse as a write.
+        from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write
+
+        try:
+            parse_cypher_write(cypher)
+            return (
+                *await _execute_write_cypher(cypher, role_id, ctx, include_ops, app_state),
+                None,
+            )
+        except CypherWriteParseError:
+            pass
+
+        try:
+            ast = parse_cypher(cypher)
+        except CypherParseError as exc:
+            raise ValueError(str(exc)) from exc
+
+        label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
+
+        param_names = collect_param_names(cypher)
+        try:
+            bind_params(param_names, parameters)
+        except CypherParamError as exc:
+            raise ValueError(str(exc)) from exc
+
+        try:
+            sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, parameters)
+        except (CypherCrossSourceError, CypherTranslateError) as exc:
+            raise ValueError(str(exc)) from exc
+
+        sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+
+        try:
+            sql_str = sql_ast.sql(dialect="postgres")
+        except Exception as exc:
+            raise RuntimeError(f"SQL generation failed: {exc}") from exc
+
+        translation = CypherTranslation(
+            semantic_sql=make_semantic_sql(sql_str, ctx),
+            ordered_params=tuple(ordered_params),
+            param_names=tuple(param_names),
+            graph_vars=graph_vars,
+        )
+        kept.record(translation)
+
+    semantic_sql, graph_vars = translation.semantic_sql, translation.graph_vars
     try:
-        parse_cypher_write(cypher)
-        return (*await _execute_write_cypher(cypher, role_id, ctx, include_ops, app_state), None)
-    except CypherWriteParseError:
-        pass
-
-    try:
-        ast = parse_cypher(cypher)
-    except CypherParseError as exc:
-        raise ValueError(str(exc)) from exc
-
-    label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
-
-    param_names = collect_param_names(cypher)
-    try:
-        bind_params(param_names, parameters)
+        resolved_params = translation.bind(parameters)
     except CypherParamError as exc:
         raise ValueError(str(exc)) from exc
-
-    try:
-        sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, parameters)
-    except (CypherCrossSourceError, CypherTranslateError) as exc:
-        raise ValueError(str(exc)) from exc
-
-    sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
-
-    try:
-        sql_str = sql_ast.sql(dialect="postgres")
-    except Exception as exc:
-        raise RuntimeError(f"SQL generation failed: {exc}") from exc
-
-    semantic_sql = make_semantic_sql(sql_str, ctx)
-    resolved_params = [parameters.get(name) for name in ordered_params]
 
     # Un-buffered first pass: learn the route decision would-be forced by a buffered read
     # (REQ-1224) BEFORE paying for it. A single-source query's own router already picks
@@ -1268,8 +1331,15 @@ async def _execute_cypher(
         exec_params=resolved_params or None,
         deliver=deliver,
         cache_hint=cache_hint,
+        # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
+        serve_cached=True,
     )
-    if plan.route != Route.ENGINE and plan.source_id:
+    if plan.route == Route.CACHE:
+        # Answered before routing: the plan names no source and holds the entry. The pipeline
+        # terminal serves, accounts and audits it — nothing is routed, landed or dialled.
+        result = await _execute_plan(plan)
+        raw_rows = [dict(zip(result.column_names, row)) for row in result.rows]
+    elif plan.route != Route.ENGINE and plan.source_id:
         from provisa.api.rest.cypher_router import (
             _dispatch_execution_direct,
             cached_cypher_rows,

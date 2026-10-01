@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
+from importlib import resources
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -65,9 +66,15 @@ def _free_port() -> int:
     return lease_port()
 
 
+# The request message mirrors what provisa.grpc.proto_gen generates for every table — filter,
+# limit, offset, read_mask, batch_rows — because the servicer reads those fields off the request.
+_GRPC_AUDIT_ORG = "grpc_exec_itest"
+
 MINIMAL_PROTO = """\
 syntax = "proto3";
 package test.grpc.v1;
+
+import "google/protobuf/field_mask.proto";
 
 message Order {
   int32 id = 1;
@@ -76,15 +83,17 @@ message Order {
 }
 
 message OrderFilter {
-  int32 id = 1;
-  string region = 2;
-  double amount = 3;
+  optional int32 id = 1;
+  optional string region = 2;
+  optional double amount = 3;
 }
 
 message OrderRequest {
   OrderFilter filter = 1;
   int32 limit = 2;
   int32 offset = 3;
+  google.protobuf.FieldMask read_mask = 4;
+  int32 batch_rows = 5;
 }
 
 message MutationResponse {
@@ -121,6 +130,8 @@ def compiled_proto_paths():
             [
                 "grpc_tools.protoc",
                 f"--proto_path={tmpdir}",
+                # google/protobuf/field_mask.proto ships with grpc_tools.
+                f"--proto_path={resources.files('grpc_tools') / '_proto'}",
                 f"--python_out={tmpdir}",
                 f"--grpc_python_out={tmpdir}",
                 str(proto_path),
@@ -391,6 +402,23 @@ class TestGrpcQueryExecution:
         from tests.helpers import stub_materialization_noop
 
         stub_materialization_noop(state)
+        # REQ-074/REQ-1386: every executed statement writes its audit row to query_audit_log in
+        # the org's tenant schema, so the state serving a governed query is bound to one — this
+        # module's own org schema with the audit relations in it, dropped at teardown. ``org_id``
+        # is a real string: it is the row's tenant_id when no org ContextVar is bound.
+        from provisa.audit.query_log import init_audit_schema
+        from provisa.core.database import Database, create_engine_from_url
+        from provisa.core.environments import org_schema
+
+        audit_schema = org_schema(_GRPC_AUDIT_ORG)
+        audit_plane = Database(
+            create_engine_from_url(os.environ["TENANT_DATABASE_URL"], pool_size=2, max_overflow=2),
+            name="org",
+            search_path=audit_schema,
+        )
+        await init_audit_schema(audit_plane, _GRPC_AUDIT_ORG)
+        state.tenant_db = audit_plane
+        state.org_id = _GRPC_AUDIT_ORG
         # Mandatory terminal-execution binding (REQ-825) on the MagicMock scaffold state.
         from provisa.federation.engine import build_trino_engine
         from provisa.federation.runtime import EngineRuntime
@@ -423,6 +451,9 @@ class TestGrpcQueryExecution:
         await channel.close()
         server.stop(grace=0).wait()
         await source_pool.close_all()
+        async with audit_plane.acquire() as conn:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {audit_schema} CASCADE")
+        await audit_plane.close()
 
     async def test_grpc_query_returns_rows(self, grpc_server_and_stub):
         """Execute a query via gRPC and verify rows are returned."""

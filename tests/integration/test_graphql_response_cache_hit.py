@@ -61,7 +61,9 @@ async def test_identical_graphql_request_twice_returns_the_same_rows():
             app = FastAPI()
             app.include_router(data_router)
             transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test", headers={"X-Provisa-Role": "admin"}
+            ) as client:
                 await store.invalidate_by_pattern("*")
                 first = await client.post("/data/graphql", json=query)
                 second = await client.post("/data/graphql", json=query)
@@ -96,7 +98,9 @@ async def test_without_the_hint_every_request_misses():
             app = FastAPI()
             app.include_router(data_router)
             transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test", headers={"X-Provisa-Role": "admin"}
+            ) as client:
                 await store.invalidate_by_pattern("*")
                 first = await client.post("/data/graphql", json=query)
                 second = await client.post("/data/graphql", json=query)
@@ -127,7 +131,9 @@ async def test_a_disabled_source_blocks_the_hint():
             app = FastAPI()
             app.include_router(data_router)
             transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test", headers={"X-Provisa-Role": "admin"}
+            ) as client:
                 await store.invalidate_by_pattern("*")
                 await client.post("/data/graphql", json=query)
                 second = await client.post("/data/graphql", json=query)

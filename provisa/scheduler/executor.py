@@ -18,12 +18,12 @@ background worker pool, where it runs on the worker's own connection loop. The s
 wakeup timer stays on the process loop: it only computes due times and submits, never blocks.
 """
 
-# Requirements: REQ-1882
+# Requirements: REQ-1882, REQ-1900
 
 from __future__ import annotations
 
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from apscheduler.executors.base import BaseExecutor, run_coroutine_job, run_job
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -32,13 +32,40 @@ from apscheduler.util import iscoroutinefunction_partial
 from provisa.core.connection_loop import spawn_background
 
 
+if TYPE_CHECKING:
+    from provisa.scheduler.holder import SchedulerHolder
+
+# Jobs that are this PROCESS's own work and so run in every worker (REQ-1900). Every other job is
+# the deployment's and runs only in the worker that holds the scheduler lock.
+#   egress_drain — drains THIS process's in-memory egress counters into the meter.
+#   engine_watch — replaces THIS process's engine connection when it is dead.
+PER_WORKER_JOB_IDS = frozenset({"egress_drain", "engine_watch"})
+
+
 class BackgroundJobExecutor(BaseExecutor):
-    """Run each APScheduler job on a background worker's connection loop."""
+    """Run each APScheduler job on a background worker's connection loop.
+
+    With a ``holder`` (the server's own scheduler), the deployment's jobs run only in the worker
+    that holds the scheduler lock — see ``provisa.scheduler.holder``. Without one, every job runs:
+    a scheduler whose jobs all belong to this process (the live-query engine's polls feed
+    subscribers connected to THIS process)."""
+
+    def __init__(self, holder: "SchedulerHolder | None" = None) -> None:
+        super().__init__()
+        self._holder = holder
 
     def _do_submit_job(self, job: Any, run_times: list[Any]) -> None:
         logger_name = self._logger.name
 
         async def _run() -> None:
+            # Asked here, on the background worker: the question is a control-plane statement,
+            # and the process loop that submitted this job must not wait on one.
+            holder = self._holder
+            if holder is not None and job.id not in PER_WORKER_JOB_IDS and not holder.holds():
+                # Another worker holds the lock and runs this firing. Reported as a run with no
+                # events so the scheduler releases the job's instance slot.
+                self._run_job_success(job.id, [])
+                return
             try:
                 if iscoroutinefunction_partial(job.func):
                     events = await run_coroutine_job(
@@ -56,6 +83,6 @@ class BackgroundJobExecutor(BaseExecutor):
         spawn_background(_run(), name=f"scheduled:{job.id}")
 
 
-def background_scheduler() -> AsyncIOScheduler:
+def background_scheduler(holder: "SchedulerHolder | None" = None) -> AsyncIOScheduler:
     """An ``AsyncIOScheduler`` whose jobs run on background worker threads."""
-    return AsyncIOScheduler(executors={"default": BackgroundJobExecutor()})
+    return AsyncIOScheduler(executors={"default": BackgroundJobExecutor(holder)})

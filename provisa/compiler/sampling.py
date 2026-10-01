@@ -22,21 +22,26 @@ user query feature (GraphQL ``sample`` arg → ``TABLESAMPLE``), handled in the 
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
-import os
 
 from provisa.compiler.sql_gen import CompiledQuery
 from provisa.compiler.stage2 import _apply_limit_ceiling, resolve_row_cap
+from provisa.core import settings_registry
 
-DEFAULT_SAMPLE_SIZE: int = 10000
+
+def __getattr__(name: str) -> Any:
+    # REQ-1913: DEFAULT_SAMPLE_SIZE is declared once, in the settings catalog — looked up when
+    # asked for, so importing this module does not load the settings declarations.
+    if name == "DEFAULT_SAMPLE_SIZE":
+        return settings_registry.setting("sampling.default_sample_size").default
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def get_sample_size() -> int:
-    """Return the configured sample size from PROVISA_SAMPLE_SIZE env var."""
-    raw = os.environ.get("PROVISA_SAMPLE_SIZE")
-    if raw is not None:
-        return int(raw)
-    return DEFAULT_SAMPLE_SIZE
+    """The sample size: the value set through the admin API when there is one (a control-plane
+    row every worker reads, REQ-1900), else ``PROVISA_SAMPLE_SIZE``, else the default."""
+    return settings_registry.value("sampling.default_sample_size")
 
 
 def apply_sampling(compiled: CompiledQuery, sample_size: int) -> CompiledQuery:  # REQ-263, REQ-478

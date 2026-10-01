@@ -51,6 +51,7 @@
     "revokeButton": "Révoquer",
     "revokeInvite": "Révoquer l'invitation pour {{org}}",
     "invitePagination": "Pagination des liens d'invitation",
-    "orgIdDesc": "2 à 40 caractères, lettres minuscules et chiffres, commençant par une lettre. Il devient le nom du schéma et le sous-domaine, et ne peut plus être modifié ensuite."
+    "orgIdDesc": "2 à 40 caractères, lettres minuscules et chiffres, commençant par une lettre. Il devient le nom du schéma et le sous-domaine, et ne peut plus être modifié ensuite.",
+    "spentStatus": "Entièrement utilisée"
   }
 }

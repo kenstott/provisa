@@ -21,6 +21,7 @@
     "graphStats": "グラフ統計",
     "properties": "プロパティ",
     "copyValue": "値をコピー",
-    "resizePanel": "インスペクターパネルをリサイズ"
+    "resizePanel": "インスペクターパネルをリサイズ",
+    "junctionTable": "{{table}} 経由"
   }
 }

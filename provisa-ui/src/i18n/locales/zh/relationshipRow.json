@@ -40,6 +40,8 @@
     "cardinalityWarning": "警告：如果此联接为每个父行返回多于一行，则只会使用第一个值。",
     "cancel": "取消",
     "save": "保存",
-    "toggleDetails": "切换关系详情"
+    "toggleDetails": "切换关系详情",
+    "junctionBadge": "经由",
+    "junctionBadgeTitle": "经由 {{table}} 的联接表关系"
   }
 }

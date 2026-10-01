@@ -87,14 +87,9 @@ def _check_origin(origin: str | None, writer: asyncio.StreamWriter) -> None:
     """
     if origin is None:
         return
-    import os
+    from provisa.core import settings_registry  # REQ-1913: `bolt.allowed_origins`
 
-    allowed = {
-        o.strip()
-        for o in os.environ.get("PROVISA_BOLT_ALLOWED_ORIGINS", "").split(",")
-        if o.strip()
-    }
-    if origin in allowed:
+    if origin in settings_registry.value("bolt.allowed_origins"):
         return
     writer.write(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
     raise ConnectionError(f"WebSocket upgrade refused: origin {origin!r} is not allowed")

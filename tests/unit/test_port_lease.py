@@ -158,3 +158,57 @@ def test_session_stack_ports_are_leased(monkeypatch):
     ports.append(int(env["PROVISA_URL"].rsplit(":", 1)[1]))
     assert len(set(ports)) == len(ports)
     assert all(port_lease.LEASE_FIRST <= p <= port_lease.LEASE_LAST for p in ports)
+
+
+def test_itest_compose_env_keeps_its_own_ports_when_the_e2e_stack_assigns_the_same_names():
+    """An e2e session provisions two stacks. tests/e2e/conftest.py leases its own ports and exports
+    them under the SAME env names tests/conftest.py used (PG_PORT, TRINO_PORT, ...), because the
+    in-process app and the e2e clients read those names. The itest stack is brought up later, at
+    collection finish, and compose interpolates ``${PG_PORT}`` from the env it is given — so that
+    env must still carry the itest stack's own ports, or the itest postgres binds the e2e stack's
+    port and the e2e stack cannot start ("Bind for 0.0.0.0:<port> failed: port is already
+    allocated").
+
+    Run in a child process: importing the two conftests assigns ports and env at import time."""
+    script = textwrap.dedent(
+        """
+        import json, os
+        import tests.conftest as root
+        itest = {name: os.environ[name] for name in root._ITEST_PORT_ENV}
+        import tests.e2e.conftest as e2e
+        print(json.dumps({
+            "itest": itest,
+            "e2e": {name: os.environ[name] for name in e2e._PORT_ENV},
+            "compose": {name: root._itest_compose_env()[name] for name in root._ITEST_PORT_ENV},
+            "other": root._itest_compose_env().get("PROVISA_ITEST_PROJECT"),
+            "project": os.environ.get("PROVISA_ITEST_PROJECT"),
+        }))
+        """
+    )
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("PYTEST_NO_DOCKER", "PROVISA_E2E_EXTERNAL_STACK")
+    }
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    import json
+
+    seen = json.loads(proc.stdout.strip().splitlines()[-1])
+    itest, e2e, compose = seen["itest"], seen["e2e"], seen["compose"]
+
+    # The e2e stack took the shared names for itself ...
+    assert all(e2e[name] != itest[name] for name in e2e)
+    # ... on ports no itest service publishes ...
+    assert not set(e2e.values()) & set(itest.values())
+    assert len(set(e2e.values())) == len(e2e) and len(set(itest.values())) == len(itest)
+    # ... and the env the itest compose commands run with still names the itest stack's own.
+    assert compose == itest
+    # Everything else in that env is the live environment.
+    assert seen["other"] == seen["project"]

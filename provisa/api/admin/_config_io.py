@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 
 from provisa.core.config_location import config_path as _config_path
+from provisa.core.config_location import note_config_changed
 
 # Profiled live (REQ-1730 engine-swap investigation): a schema rebuild's landing loop calls
 # platform_config() -> read_config() once per materialized table (17-90+ times per rebuild,
@@ -70,3 +71,4 @@ def write_config(path: Path, cfg: dict) -> None:  # REQ-164
         path.with_suffix(".yaml.bak").write_text(path.read_text())
     with open(path, "w") as f:
         yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+    note_config_changed()

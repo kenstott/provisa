@@ -62,8 +62,10 @@ def evaluate(
     first_seen = anchors.reconcile_first_seen(
         machine_id=machine_id, today_iso=today_iso, paths=anchor_paths
     )
-    hw_path = highwater_path if highwater_path is not None else monotonic.default_highwater_path()
-    high_water = monotonic.update_highwater(hw_path, now_epoch)
+    if highwater_path is not None:
+        high_water = monotonic.update_highwater(highwater_path, now_epoch)
+    else:
+        high_water = monotonic.advance_default_highwater(now_epoch)
     expired = monotonic.trial_expired(
         now_epoch=now_epoch, high_water=high_water, first_seen_iso=first_seen
     )

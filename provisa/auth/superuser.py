@@ -41,6 +41,13 @@ def resolve_superuser_config(config: dict | None) -> dict | None:  # REQ-125
     checks never touch the secrets backend; an unset secret raises here (fail fast at
     startup) rather than silently disabling the superuser at request time.
     """
+    # REQ-1913: a pair stored through the settings page replaces the configured one.
+    from provisa.core import settings_registry
+
+    stored_username = settings_registry.stored_value("security.superuser.username")
+    stored_password = settings_registry.stored_value("security.superuser.password")
+    if stored_username is not None and stored_password is not None:
+        return {"username": stored_username, "password": stored_password}
     if not config:
         return None
     username = config.get("username")

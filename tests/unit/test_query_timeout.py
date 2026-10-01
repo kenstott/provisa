@@ -69,12 +69,20 @@ class TestTrinoQueryTimeoutValue:
         monkeypatch.setenv("PROVISA_ENGINE_QUERY_TIMEOUT", "45")
         assert _trino_query_timeout() == 45
 
-    def test_server_limit_takes_precedence(self, _clean_limits, monkeypatch):
-        monkeypatch.setenv("PROVISA_ENGINE_QUERY_TIMEOUT", "45")
+    def test_config_value_applies_and_env_overrides_it(self, _clean_limits, monkeypatch):
+        """REQ-1913: one resolution order — stored, then env, then config, then the default.
+        The copy app state takes at boot is not consulted (it cannot see a stored change)."""
+        from provisa.core import settings_registry
+
         monkeypatch.setattr(
-            _clean_limits.state, "server_limits", {"engine_query_timeout": 77}, raising=False
+            settings_registry, "_config", {"server": {"limits": {"engine_query_timeout": 77}}}
+        )
+        monkeypatch.setattr(
+            _clean_limits.state, "server_limits", {"engine_query_timeout": 999}, raising=False
         )
         assert _trino_query_timeout() == 77
+        monkeypatch.setenv("PROVISA_ENGINE_QUERY_TIMEOUT", "45")
+        assert _trino_query_timeout() == 45
 
 
 class TestExecuteTrinoInjectsTimeout:

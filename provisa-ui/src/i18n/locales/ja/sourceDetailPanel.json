@@ -24,6 +24,10 @@
     "navigateTitle": "登録済みテーブルを表示",
     "deleteTitle": "ソース「{{id}}」を削除しますか?",
     "deleteTitleShort": "削除",
-    "deleteConsequence": "データソース「{{id}}」を削除します。これを参照するテーブルが動作しなくなる可能性があります。"
+    "deleteConsequence": "データソース「{{id}}」を削除します。これを参照するテーブルが動作しなくなる可能性があります。",
+    "refreshKaggleTitle": "Kaggle から更新",
+    "refreshKaggleHint": "{{owner}}/{{ref}} を Kaggle から再ダウンロードし、ステージング済みのファイルをその場で上書きします。Kaggle トークンは保存されないため、この更新のために再度入力してください。",
+    "kaggleTokenLabel": "Kaggle API トークン",
+    "refreshKaggleSubmit": "更新"
   }
 }

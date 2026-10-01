@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import random
 import re
 
@@ -42,14 +41,9 @@ def _backoff_secs(attempt: int, cap: float = 30.0) -> float:
 
 
 def _retry_budget() -> float:
-    try:
-        from provisa.api.app import state
+    from provisa.core import settings_registry  # REQ-1913: an operator setting
 
-        return state.server_limits.get(
-            "retry_budget_secs", float(os.environ.get("PROVISA_RETRY_BUDGET_SECS", "30"))
-        )
-    except Exception:
-        return float(os.environ.get("PROVISA_RETRY_BUDGET_SECS", "30"))
+    return settings_registry.value("limits.retry_budget_secs")
 
 
 async def execute_direct(  # REQ-027, REQ-031

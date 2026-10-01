@@ -13,6 +13,10 @@
     "roleIdPlaceholder": "analyst",
     "capabilities": "Capacités",
     "domainAccess": "Accès aux domaines",
+    "parentRole": "Hérite de",
+    "parentRoleNone": "Aucun parent",
+    "parentRoleHelp": "Les octrois, la visibilité des colonnes et les règles RLS du rôle sont hérités ; la règle RLS propre à ce rôle pour une table remplace celle du parent.",
+    "labelParentRole": "Hérite de :",
     "allDomains": "Tous les domaines",
     "save": "Enregistrer",
     "cancel": "Annuler",
@@ -51,6 +55,11 @@
     "rolePurposeTitle": "À quoi servent les rôles",
     "rolePurposeBody": "Le rôle est l'unité contre laquelle toute autre autorisation est écrite. Ses capacités déterminent les opérations qu'il peut exécuter, et son accès aux domaines détermine les parties du modèle qu'il atteint. Les règles de ligne, comme les contrôles d'accès de chaque surface, visent un rôle et non une personne : ce que quelqu'un peut voir et faire se change en changeant le rôle qu'il détient.",
     "rolePurposeAdd": "Un rôle porte aussi ses propres plafonds : requêtes par seconde, et limites de profondeur, de nombre de nœuds et de temps d'exécution. C'est ainsi qu'un rôle reçoit de la portée sans recevoir un coût illimité — une requête trop coûteuse est refusée par le rôle qui l'a émise, non par la source qu'elle aurait atteinte.",
-    "rolePurposeAria": "À propos des rôles"
+    "rolePurposeAria": "À propos des rôles",
+    "applyToAction": "Action (fonction ou webhook)",
+    "action": "Action",
+    "actionPrefix": "action :",
+    "loadActionsFailed": "Impossible de charger les actions : {{message}}",
+    "labelAction": "Action :"
   }
 }

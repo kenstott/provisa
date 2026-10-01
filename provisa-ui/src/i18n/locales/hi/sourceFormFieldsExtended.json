@@ -11,6 +11,7 @@
     "metadataSheetId": "मेटाडेटा शीट ID",
     "metadataSheetIdPlaceholder": "टेबल परिभाषाओं के लिए शीट ID",
     "endpointUrl": "एंडपॉइंट URL",
+    "defaultGraphUri": "डिफ़ॉल्ट ग्राफ़ URI",
     "namespace": "नेमस्पेस",
     "cacheTtlSeconds": "कैश TTL (सेकंड)",
     "protoPathOrUrl": "Proto पथ या URL",
@@ -78,6 +79,12 @@
     "topicPrefixPlaceholder": "dbserver1 (टॉपिक: {prefix}.{schema}.{table})",
     "schemaRegistryUrlCdcPlaceholder": "खाली = JSON; Avro के लिए सेट करें",
     "consumerGroupId": "कंज़्यूमर ग्रुप ID (वैकल्पिक)",
-    "consumerGroupIdPlaceholder": "वैश्विक से इनहेरिट करें (provisa-debezium)"
+    "consumerGroupIdPlaceholder": "वैश्विक से इनहेरिट करें (provisa-debezium)",
+    "useSsl": "SSL/TLS का उपयोग करें",
+    "eventPath": "इवेंट पाथ (वैकल्पिक)",
+    "reconnectIntervalSeconds": "पुनः कनेक्ट अंतराल (सेकंड)",
+    "subscribePayload": "सब्सक्राइब पेलोड (JSON, वैकल्पिक)",
+    "feedUrlOverride": "फ़ीड URL (वैकल्पिक ओवरराइड)",
+    "pollIntervalSeconds": "पोल अंतराल (सेकंड)"
   }
 }

@@ -30,9 +30,13 @@ from fastapi.responses import JSONResponse
 from provisa.api.errors import ApiError
 from provisa.grpc.query_ir import (
     AGG_FUNCS,
+    FilterError,
+    ReadMaskError,
     grpc_table_to_aggregate_graphql_text,
     grpc_table_to_group_by_graphql_text,
     grpc_table_to_semantic_sql,
+    resolve_read_mask,
+    restrict_json,
     split_agg_columns,
     split_group_by_columns,
 )
@@ -45,53 +49,31 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/data", tags=["data"])
 
 
-def _parse_read_mask(body: dict) -> dict[str, set[str] | None]:
-    """Parse read_mask (proto field names, dot-notation) into a projection map.
-
-    "status" → include status fully; "_meta" → include _meta with all sub-fields
-    (None); "_meta.source_id" → include _meta restricted to source_id.
-    """
-    read_mask = body.get("read_mask") or {}
-    mask_paths = read_mask.get("paths") or [] if isinstance(read_mask, dict) else []
-    mask_map: dict[str, set[str] | None] = {}
-    for p in mask_paths:
-        parts = p.split(".", 1)
-        top = parts[0]
-        sub = parts[1] if len(parts) > 1 else None
-        if top not in mask_map:
-            mask_map[top] = set() if sub else None
-        if sub and mask_map[top] is not None:
-            mask_map[top].add(sub)  # type: ignore[union-attr]
-        elif not sub:
-            mask_map[top] = None
-    return mask_map
+def _read_mask_paths(body: dict) -> list[str]:
+    """The request body's ``read_mask.paths`` (proto field names, dot-notation into JSON-valued
+    fields). An absent ``read_mask`` or ``paths`` is the empty mask — every field."""
+    read_mask = body.get("read_mask")
+    if read_mask is None:
+        return []
+    paths = read_mask.get("paths", []) if isinstance(read_mask, dict) else None
+    if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+        raise ApiError(
+            400,
+            "data.invalid_read_mask",
+            'read_mask must be an object {"paths": [<field path>, ...]}',
+        )
+    return paths
 
 
-def _apply_read_mask(proto_rows, mask_map: dict[str, set[str] | None]):
-    """Project proto-keyed rows to the read_mask (mask_map keys are proto names)."""
-    if not (mask_map and isinstance(proto_rows, list)):
-        return proto_rows
-
-    def _restrict(v, subs: set[str]):
-        if isinstance(v, dict):
-            return {sk: sv for sk, sv in v.items() if sk in subs}
-        if isinstance(v, list):
-            return [_restrict(item, subs) for item in v]
-        return v
-
-    projected: list[object] = []
-    for row in proto_rows:
-        if not isinstance(row, dict):
-            projected.append(row)
-            continue
-        kept: dict[str, object] = {}
-        for k, v in row.items():
-            if k not in mask_map:
-                continue
-            subs = mask_map[k]
-            kept[k] = v if subs is None else _restrict(v, subs)
-        projected.append(kept)
-    return projected
+def _filter_object(body: dict) -> dict | None:
+    """The request body's ``filter`` — field → value equality, the JSON form of the native
+    request's ``{Type}Filter`` message. Absent means no filter."""
+    filter_ = body.get("filter")
+    if filter_ is not None and not isinstance(filter_, dict):
+        raise ApiError(
+            400, "data.invalid_filter", "filter must be an object {<field>: <value>, ...}"
+        )
+    return filter_
 
 
 @router.get("/grpc-commands/{role_id}")
@@ -278,7 +260,6 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
         )
 
     ctx = state.contexts[role_id]
-    mask_map = _parse_read_mask(body)
 
     # REQ-1359: Aggregate/GroupBy synthetic proto type names have no semantic-SQL table match —
     # route them through the same GraphQL-text synthesis + compile path the native gRPC servicer
@@ -319,14 +300,26 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
         include = list(body.get("include") or [])
         if is_group_by:
             by_columns = list(body.get("by") or [])
-            gql_text = grpc_table_to_group_by_graphql_text(
-                ctx,
-                base_type_name,
-                by_columns,
-                funcs,
-                include_nodes=include_nodes,
-                include=include,
-            )
+            # REQ-803: the body's filter is the native request's {Type}GroupByRequest.filter — the
+            # same lowering (a GraphQL where argument), so both surfaces group the same rows.
+            try:
+                gql_text = grpc_table_to_group_by_graphql_text(
+                    ctx,
+                    base_type_name,
+                    by_columns,
+                    funcs,
+                    include_nodes=include_nodes,
+                    include=include,
+                    filter_msg=_filter_object(body),
+                )
+            except FilterError as exc:
+                raise ApiError(
+                    400,
+                    "data.invalid_filter_field",
+                    str(exc),
+                    field=exc.field,
+                    type_name=base_type_name,
+                ) from exc
         else:
             gql_text = grpc_table_to_aggregate_graphql_text(ctx, base_type_name, funcs)
 
@@ -355,6 +348,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                 exec_params=compiled.params or None,
                 state=state,
                 cache_hint=cache_hint,
+                serve_cached=True,  # REQ-1897: _execute_plan serves the pre-route HIT
             )
             result = await _execute_plan(plan, state)
         except PermissionError as exc:
@@ -382,6 +376,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                         exec_params=compiled.nodes_params or None,
                         state=state,
                         cache_hint=cache_hint,
+                        serve_cached=True,  # REQ-1897
                     )
                     nodes_result = await _execute_plan(nodes_plan, state)
                 except PermissionError as exc:
@@ -418,8 +413,24 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
 
     # Same IR path as the native gRPC servicer (query language → IR → governed IR → plan → physical).
     # Lower the request straight to a semantic SELECT — never round-trip through GraphQL.
-    semantic_sql = grpc_table_to_semantic_sql(ctx, type_name, limit)
-    if semantic_sql is None:
+    # REQ-803: the read_mask and the filter are part of the QUERY — the native servicer's
+    # semantics, from the same functions: only the masked columns are selected, the filter is the
+    # statement's WHERE, and a mask path or filter field that is not a field this role can read is
+    # rejected by name rather than dropped.
+    try:
+        read_mask = resolve_read_mask(ctx, type_name, _read_mask_paths(body))
+        semantic = grpc_table_to_semantic_sql(
+            ctx, type_name, limit, _filter_object(body), read_mask
+        )
+    except ReadMaskError as exc:
+        raise ApiError(
+            400, "data.invalid_read_mask_path", str(exc), path=exc.path, type_name=type_name
+        ) from exc
+    except FilterError as exc:
+        raise ApiError(
+            400, "data.invalid_filter_field", str(exc), field=exc.field, type_name=type_name
+        ) from exc
+    if semantic is None:
         raise ApiError(
             404,
             "data.no_query_field_for_proto_type",
@@ -427,10 +438,20 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
             type_name=type_name,
             role_id=role_id,
         )
+    # The statement is the request's shape; the filter values and the limit travel bound
+    # (REQ-1877).
+    semantic_sql, bound_params = semantic
 
     try:
         plan = await _govern_and_route_compiled(
-            semantic_sql, role_id, state=state, cache_hint=cache_hint
+            semantic_sql,
+            role_id,
+            exec_params=bound_params or None,
+            state=state,
+            cache_hint=cache_hint,
+            # REQ-1897: an opted-in request whose entry exists is answered before routing; the
+            # chokepoint below (_execute_plan) serves that Route.CACHE plan.
+            serve_cached=True,
         )
         result = await _execute_plan(plan, state)
     except PermissionError as exc:
@@ -438,18 +459,22 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    # Key each row by the proto field name (the physical column → proto name authority), then apply
-    # the read-mask field restriction.
+    # Key each row by the proto field name (the physical column → proto name authority). The query
+    # already selected only the masked columns; a JSON sub-path selection is applied to its value.
     proto_cols = [_to_proto_field_name(c) for c in result.column_names]
+    selections = (
+        read_mask.restrictions(result.column_names)
+        if read_mask is not None
+        else [None] * len(proto_cols)
+    )
     proto_rows = [
         {
-            proto_cols[i]: row[i]
+            proto_cols[i]: restrict_json(row[i], selections[i])
             for i in range(len(proto_cols))
             if i < len(row) and row[i] is not None
         }
         for row in result.rows
     ]
-    proto_rows = _apply_read_mask(proto_rows, mask_map)
     # Coerce driver-native scalars (PG Decimal, date/datetime) the JSON encoder can't emit directly.
     from fastapi.encoders import jsonable_encoder
 

@@ -543,3 +543,205 @@ class TestMaskedColumnInPredicate:
         violations = validate_sql(sql, ctx, gov_ctx, role, raw_tables)
         v005 = [v for v in violations if v.code == "V005"]
         assert not v005, f"Expected no V005 with no masking rules, got: {v005}"
+
+
+# -- the role a request names in its body (REQ-273, amended 2026-10-01) ---------------------------
+#
+# Observed on an unsecured deployment with the default row limit at 1: POST /data/sql with
+# {"role": "analyst"} in the body returned every row, while the same statement with the role in
+# the X-Provisa-Role header (and over pgwire, Flight, GraphQL) returned one. The unsecured auth
+# middleware names org_admin as the acting role when the request carries no role HEADER, and the
+# endpoint preferred that to the body's role — so the request ran as org_admin, which holds
+# full_results and has no row ceiling. The cap was never skipped; the role was not the one asked.
+# The header (or the authenticated identity) is the one role carrier; a body role that differs
+# from it is refused.
+
+
+@pytest.fixture
+def two_roles(sql_client, monkeypatch):
+    """`sql_client` with an `analyst` role (no full_results) beside org_admin, the default row
+    limit at 1, and the plan the pipeline hands its terminal recorded instead of executed."""
+    import provisa.api.app as app_mod
+    from provisa.pgwire import _pipeline, governed_plan
+    from provisa.transpiler.router import Route, RouteDecision
+
+    monkeypatch.setenv("PROVISA_DEFAULT_ROW_LIMIT", "1")
+    monkeypatch.setattr(governed_plan, "_rebuild_in_progress", lambda: False)
+    state = app_mod.state
+    state.schemas["analyst"] = MagicMock()
+    state.contexts["analyst"] = state.contexts["org_admin"]
+    state.rls_contexts["analyst"] = RLSContext.empty()
+    state.roles["analyst"] = {
+        "id": "analyst",
+        "capabilities": ["query_development"],
+        "domain_access": ["*"],
+    }
+    state.roles["org_admin"]["domain_access"] = ["*"]
+    plans: list = []
+
+    async def _route(exec_sql, governed_sql, gov_ctx, ctx, st, **kwargs):
+        decision = RouteDecision(route=Route.DIRECT, source_id="pg", dialect="postgres", reason="t")
+        return exec_sql, decision, "pg", False, {"pg"}, ()
+
+    async def _execute(plan, st=None):
+        plans.append(plan)
+        return _make_query_result(rows=[(1,)], column_names=["id"])
+
+    monkeypatch.setattr(_pipeline, "_optimize_and_route", _route)
+    monkeypatch.setattr(_pipeline, "_execute_plan", _execute)
+    return sql_client, plans
+
+
+@pytest.mark.asyncio
+class TestRoleNamedByTheRequest:
+    _SQL = "SELECT id FROM orders"
+
+    async def test_a_body_role_that_is_not_the_acting_role_is_refused(self, two_roles):
+        client, plans = two_roles
+        resp = await client.post("/data/sql", json={"sql": self._SQL, "role": "analyst"})
+        assert resp.status_code == 400, resp.text
+        detail = resp.json()["detail"]
+        assert "'analyst'" in detail and "'org_admin'" in detail, detail
+        assert plans == [], "the statement ran as a role the request did not ask for"
+
+    async def test_the_header_names_the_role_the_statement_runs_as(self, two_roles):
+        client, plans = two_roles
+        resp = await client.post(
+            "/data/sql", json={"sql": self._SQL}, headers={"X-Provisa-Role": "analyst"}
+        )
+        assert resp.status_code == 200, resp.text
+        (plan,) = plans
+        assert plan.role_id == "analyst" and plan.sql.rstrip().endswith("LIMIT 1"), plan.sql
+
+    async def test_a_body_role_equal_to_the_acting_role_is_accepted(self, two_roles):
+        client, plans = two_roles
+        resp = await client.post(
+            "/data/sql",
+            json={"sql": self._SQL, "role": "analyst"},
+            headers={"X-Provisa-Role": "analyst"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert plans[0].role_id == "analyst" and plans[0].sql.rstrip().endswith("LIMIT 1")
+        resp = await client.post("/data/sql", json={"sql": self._SQL, "role": "org_admin"})
+        assert resp.status_code == 200, resp.text
+        assert plans[1].role_id == "org_admin"
+
+    async def test_a_body_role_cannot_override_the_header(self, two_roles):
+        client, plans = two_roles
+        resp = await client.post(
+            "/data/sql",
+            json={"sql": self._SQL, "role": "org_admin"},
+            headers={"X-Provisa-Role": "analyst"},
+        )
+        assert resp.status_code == 400 and plans == []
+
+    async def test_no_role_named_anywhere_is_the_data_plane_admin(self, two_roles):
+        client, plans = two_roles
+        await client.post("/data/sql", json={"sql": self._SQL})
+        assert plans[0].role_id == "org_admin" and "LIMIT" not in plans[0].sql
+
+    async def test_graphql_refuses_a_body_role_that_is_not_the_acting_role(self, two_roles):
+        client, _plans = two_roles
+        resp = await client.post(
+            "/data/graphql", json={"query": "{ __typename }", "role": "analyst"}
+        )
+        assert resp.status_code == 400, resp.text
+        assert "'analyst'" in resp.json()["detail"] and "'org_admin'" in resp.json()["detail"]
+
+    async def test_nl_refuses_a_body_role_and_runs_the_job_as_the_acting_role(
+        self, two_roles, monkeypatch
+    ):
+        from provisa.api.rest import nl_router
+
+        client, _plans = two_roles
+        ran: list[str] = []
+
+        async def _run_job(job_id, nl_query, role, app_state, llm, strict=False):
+            ran.append(role)
+
+        async def _llm(state):
+            return object()
+
+        class _Jobs:  # the job store, in memory
+            def __init__(self):
+                self.jobs = {}
+
+            async def put(self, job):
+                self.jobs[job.job_id] = job
+
+            async def get(self, job_id):
+                return self.jobs.get(job_id)
+
+        monkeypatch.setattr(nl_router, "_job_store", _Jobs())
+        monkeypatch.setattr(nl_router, "_run_job", _run_job)
+        monkeypatch.setattr(nl_router, "_get_llm", _llm)
+        resp = await client.post("/query/nl", json={"q": "count orders", "role": "analyst"})
+        assert resp.status_code == 400, resp.text
+        assert ran == [], "the NL job ran as a role the request body picked"
+        resp = await client.post(
+            "/query/nl", json={"q": "count orders"}, headers={"X-Provisa-Role": "analyst"}
+        )
+        assert resp.status_code == 202, resp.text
+        job = await nl_router._job_store.get(resp.json()["job_id"])
+        assert job.role == "analyst"
+
+
+def test_an_authenticated_role_is_never_replaced_by_the_body():
+    """REQ-273: with an auth provider, the acting role is the validated identity's; a role named
+    in a request body is not a way to pick another."""
+    from types import SimpleNamespace
+
+    from provisa.api.acting_role import acting_role
+    from provisa.api.errors import ApiError
+
+    secured = SimpleNamespace(state=SimpleNamespace(role="analyst"))
+    assert acting_role(secured, None, None, "org_admin") == "analyst"
+    assert acting_role(secured, None, "analyst", "org_admin") == "analyst"
+    with pytest.raises(ApiError) as refused:
+        acting_role(secured, None, "org_admin", "org_admin")
+    assert refused.value.status_code == 400 and refused.value.code == "data.role_mismatch"
+    # no auth layer at all (a bare router): the body's role, else its default
+    bare = SimpleNamespace(state=SimpleNamespace())
+    assert acting_role(bare, None, "analyst", "org_admin") == "analyst"
+    assert acting_role(bare, None, None, "org_admin") == "org_admin"
+    assert acting_role(bare, "analyst", None, "org_admin") == "analyst"
+
+
+@pytest.mark.asyncio
+async def test_a_statement_that_outruns_its_deadline_is_a_504_naming_the_setting(
+    two_roles, monkeypatch
+):
+    """REQ-1905: /data/sql binds no deadline of its own; the pipeline gives the statement its
+    transport's budget and the endpoint reports the expiry as a gateway timeout."""
+    from provisa.pgwire import _pipeline
+
+    client, _plans = two_roles
+
+    from provisa.core.request_deadline import RequestTimedOut
+
+    async def _never(plan, st=None):
+        raise RequestTimedOut("http", 60.0, "limits.request_timeouts.http")
+
+    monkeypatch.setattr(_pipeline, "_execute_plan", _never)
+    resp = await client.post("/data/sql", json={"sql": "SELECT id FROM orders"})
+    assert resp.status_code == 504, resp.text
+    body = resp.json()
+    assert body["detail"] == (
+        "http request exceeded its 60s request timeout (limits.request_timeouts.http)"
+    )
+    # the params the catalog's `Query timed out after {{timeout_s}}s` renders
+    assert body["code"] == "data.query_timeout"
+    assert body["params"] == {
+        "timeout_s": "60",
+        "transport": "http",
+        "setting": "limits.request_timeouts.http",
+    }
+
+    async def _stopping(plan, st=None):
+        raise TimeoutError("the server is stopping")  # no budget to name: its own code
+
+    monkeypatch.setattr(_pipeline, "_execute_plan", _stopping)
+    resp = await client.post("/data/sql", json={"sql": "SELECT id FROM orders"})
+    assert resp.status_code == 504, resp.text
+    assert resp.json()["code"] == "data.request_interrupted"
+    assert resp.json()["params"] == {"error": "the server is stopping"}

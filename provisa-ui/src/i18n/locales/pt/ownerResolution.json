@@ -1,0 +1,8 @@
+{
+  "ownerResolution": {
+    "iconLabel": "Mostrar a quem isto se resolve",
+    "loading": "Resolvendo…",
+    "empty": "Nenhuma pessoa detém isto atualmente",
+    "columnIconLabel": "Mostrar quem pode acessar esta coluna"
+  }
+}

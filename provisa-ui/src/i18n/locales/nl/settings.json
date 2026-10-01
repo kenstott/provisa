@@ -1,0 +1,624 @@
+{
+  "settings": {
+    "limits": {
+      "default_row_limit": {
+        "label": "Standaard rijlimiet",
+        "help": "Het maximale aantal rijen dat een query teruggeeft wanneer de aanroeper zelf geen limiet instelt."
+      },
+      "engine_query_timeout": {
+        "label": "Query-timeout van de engine",
+        "help": "Hoelang de federatie-engine één query mag uitvoeren voordat deze wordt geannuleerd."
+      },
+      "retry_budget_secs": {
+        "label": "Budget voor nieuwe pogingen",
+        "help": "Hoelang een mislukte query opnieuw wordt geprobeerd voordat de fout wordt geretourneerd; 0 schakelt nieuwe pogingen uit."
+      },
+      "request_timeout": {
+        "label": "Standaard request-timeout",
+        "help": "Hoelang een request mag duren voordat het wordt geannuleerd, voor elk transport zonder eigen waarde."
+      },
+      "request_timeouts": {
+        "label": "Request-timeout per transport",
+        "help": "De tijdslimiet voor requests van elk transport afzonderlijk; een leeg gelaten transport gebruikt de standaardwaarde. Flight staat standaard op 3600 seconden en pgwire op 300.",
+        "keys": {
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "jsonapi": "JSON:API",
+          "sql_http": "SQL via HTTP",
+          "cypher_http": "Cypher via HTTP",
+          "pgwire": "PostgreSQL wire",
+          "flight": "Arrow Flight",
+          "bolt": "Bolt",
+          "grpc": "gRPC",
+          "mcp": "MCP"
+        }
+      }
+    },
+    "sampling": {
+      "default_sample_size": {
+        "label": "Standaard steekproefgrootte",
+        "help": "Hoeveel rijen een query met steekproef leest wanneer de aanroeper dit niet opgeeft."
+      }
+    },
+    "relationships": {
+      "auto_track_fk": {
+        "label": "Refererende sleutels automatisch volgen",
+        "help": "Of bij het registreren van een tabel ook de refererende sleutels ervan als relaties worden geregistreerd."
+      }
+    },
+    "grpc": {
+      "max_message_bytes": {
+        "label": "Maximale gRPC-berichtgrootte",
+        "help": "Het grootste afzonderlijke gRPC-bericht dat de server verstuurt of accepteert; opnieuw opstarten vereist omdat dit een serveroptie is die wordt ingesteld wanneer de gRPC-server wordt gebouwd."
+      },
+      "allow_unsecured_reflection": {
+        "label": "Onbeveiligde gRPC-reflectie toestaan",
+        "help": "Laat gRPC-clients de services opvragen van een deployment zonder authenticatie. Opnieuw opstarten vereist; met bevestiging omdat dit het servicevlak blootstelt."
+      }
+    },
+    "bolt": {
+      "recv_timeout": {
+        "label": "Ontvangst-timeout van Bolt",
+        "help": "De hint die een Bolt-client (Neo4j) krijgt over hoelang op een antwoord moet worden gewacht."
+      },
+      "allowed_origins": {
+        "label": "Toegestane origins voor Bolt",
+        "help": "De websites die vanuit een browser een Bolt-verbinding mogen openen; er zijn er geen toegestaan totdat ze worden vermeld. Met bevestiging omdat elke vermelding die site toegang tot de poort geeft."
+      }
+    },
+    "engine": {
+      "ready_timeout": {
+        "label": "Gereedheids-timeout van de engine",
+        "help": "Hoelang het opstarten wacht tot de federatie-engine gereed is voordat het mislukt."
+      },
+      "jvm_heap_gb": {
+        "label": "JVM-heap van de engine (GB)",
+        "help": "Het geheugen dat aan het Java-proces van de federatie-engine wordt toegewezen. Wordt van kracht wanneer de engine opnieuw start."
+      },
+      "query_max_memory": {
+        "label": "Geheugenlimiet per query",
+        "help": "Het maximale geheugen dat één query mag gebruiken in het engine-cluster. Wordt van kracht wanneer de engine opnieuw start."
+      },
+      "query_max_memory_per_node": {
+        "label": "Geheugenlimiet per query per node",
+        "help": "Het maximale geheugen dat één query mag gebruiken op één engine-node. Wordt van kracht wanneer de engine opnieuw start."
+      },
+      "query_max_total_memory": {
+        "label": "Totale geheugenlimiet per query",
+        "help": "Het maximale geheugen dat één query in totaal mag gebruiken, inclusief systeemgeheugen. Wordt van kracht wanneer de engine opnieuw start."
+      },
+      "fault_tolerant_execution": {
+        "label": "Fouttolerante uitvoering",
+        "help": "Of de engine mislukte onderdelen van een query opnieuw probeert in plaats van de hele query te laten mislukken. Wordt van kracht wanneer de engine opnieuw start."
+      },
+      "fault_tolerant_task_memory": {
+        "label": "Taakgeheugen bij fouttolerante uitvoering",
+        "help": "Het geheugen dat per taak wordt gereserveerd wanneer fouttolerante uitvoering is ingeschakeld. Wordt van kracht wanneer de engine opnieuw start."
+      },
+      "exchange_spool_dir": {
+        "label": "Spoolmap voor uitwisseling",
+        "help": "Waar de engine tussenliggende gegevens bewaart voor fouttolerante uitvoering. Wordt van kracht wanneer de engine opnieuw start."
+      }
+    },
+    "ui": {
+      "proxy_timeout": {
+        "label": "Proxy-timeout van de UI",
+        "help": "Hoelang de UI-server wacht tot de API een via de proxy doorgestuurd request beantwoordt voordat een timeout wordt gemeld; moet langer duren dan het ontwaken van een engine."
+      }
+    },
+    "concurrency": {
+      "background_workers": {
+        "label": "Achtergrondworkers",
+        "help": "Het aantal threads dat elk workerproces gebruikt voor achtergrondwerk; opnieuw opstarten vereist omdat de pool eenmalig bij het starten wordt gedimensioneerd."
+      },
+      "grpc_max_concurrent_rpcs": {
+        "label": "Gelijktijdige gRPC-aanroepen",
+        "help": "Het maximale aantal gRPC-aanroepen dat één workerproces tegelijk afhandelt; overige worden geweigerd. Opnieuw opstarten vereist omdat dit de threadpool van de gRPC-server dimensioneert."
+      },
+      "flight_max_concurrent_streams": {
+        "label": "Gelijktijdige Arrow Flight-streams",
+        "help": "Het maximale aantal Arrow Flight-streams dat één workerproces tegelijk uitvoert; overige wachten op een vrij slot. Opnieuw opstarten vereist omdat de slots bij het starten worden aangemaakt."
+      },
+      "request_threads": {
+        "label": "Request-threads per worker",
+        "help": "Het maximale aantal requests dat één workerproces tegelijk uitvoert; overige wachten op een vrije thread. Opnieuw opstarten vereist omdat de limiet wordt vastgelegd wanneer de worker start."
+      },
+      "workers": {
+        "label": "Workerprocessen",
+        "help": "Hoeveel workerprocessen de server draait. Opnieuw opstarten vereist omdat de processen door de launcher worden gestart."
+      }
+    },
+    "security": {
+      "mode": {
+        "label": "Beveiligingsmodus",
+        "help": "Standaard, of hoge beveiliging, waarbij data-endpoints elke client weigeren die resultaten niet zelf kan ontsleutelen en de pgwire-, Bolt- en MCP-listeners niet worden gestart. Opnieuw opstarten vereist omdat dit bepaalt welke listeners starten; met bevestiging omdat gewone clients worden buitengesloten."
+      },
+      "multitenancy": {
+        "label": "Multitenancy",
+        "help": "Of de deployment meerdere organisaties bedient, die elk alleen hun eigen gegevens beheren. Opnieuw opstarten vereist omdat rolmachtigingen bij het starten worden vastgelegd; met bevestiging omdat dit wijzigt wie de deployment mag beheren."
+      },
+      "superuser": {
+        "username": {
+          "label": "Naam van noodtoegangsaccount",
+          "help": "De naam van het noodtoegangsaccount waarmee altijd kan worden ingelogd. Opnieuw opstarten vereist; met bevestiging."
+        },
+        "password": {
+          "label": "Wachtwoord van noodtoegangsaccount",
+          "help": "Het wachtwoord van het noodtoegangsaccount. Geheim; opnieuw opstarten vereist; met bevestiging."
+        }
+      }
+    },
+    "redis": {
+      "require_tls": {
+        "label": "TLS vereisen voor Redis",
+        "help": "Weigert te starten met een Redis-adres dat geen TLS gebruikt. Opnieuw opstarten vereist omdat dit wordt gecontroleerd wanneer de cache verbinding maakt."
+      }
+    },
+    "auth": {
+      "login_throttle": {
+        "max_attempts": {
+          "label": "Inlogpogingen vóór vergrendeling",
+          "help": "Hoeveel mislukte inlogpogingen binnen het venster een account vergrendelen. Met bevestiging omdat een hogere waarde de rem op het raden van wachtwoorden verzwakt."
+        },
+        "window_seconds": {
+          "label": "Venster voor inlogpogingen",
+          "help": "Hoe ver terug mislukte inlogpogingen worden geteld. Met bevestiging omdat een korter venster de rem op het raden van wachtwoorden verzwakt."
+        },
+        "lockout_seconds": {
+          "label": "Duur van vergrendeling",
+          "help": "Hoelang een vergrendeld account wordt geweigerd. Met bevestiging omdat een kortere duur de rem op het raden van wachtwoorden verzwakt."
+        }
+      }
+    },
+    "server": {
+      "hostname": {
+        "label": "Hostnaam",
+        "help": "De hostnaam die de deployment aan clients doorgeeft in de adressen die hij uitgeeft. Opnieuw opstarten vereist omdat servers die bij het opstarten zijn gestart deze meedragen."
+      },
+      "grpc_port": {
+        "label": "gRPC-poort",
+        "help": "De poort waarop de gRPC-server luistert. Opnieuw opstarten vereist; met bevestiging omdat clients en firewalls een wijziging moeten volgen."
+      },
+      "flight_port": {
+        "label": "Arrow Flight-poort",
+        "help": "De poort waarop de Arrow Flight-server luistert. Opnieuw opstarten vereist; met bevestiging omdat clients en firewalls een wijziging moeten volgen."
+      },
+      "pgwire_port": {
+        "label": "PostgreSQL wire-poort",
+        "help": "De poort waarop de server voor het PostgreSQL-protocol luistert; 0 laat hem uit. Opnieuw opstarten vereist; met bevestiging omdat een listener wordt geopend of gesloten."
+      },
+      "bolt_port": {
+        "label": "Bolt-poort",
+        "help": "De poort waarop de Bolt-server (Neo4j) luistert; 0 laat hem uit. Opnieuw opstarten vereist; met bevestiging omdat een listener wordt geopend of gesloten."
+      },
+      "airport_port": {
+        "label": "Airport-poort",
+        "help": "De poort waarop de Airport Flight-service luistert; 0 laat hem uit. Opnieuw opstarten vereist; met bevestiging omdat een listener wordt geopend of gesloten."
+      },
+      "port": {
+        "label": "HTTP API-poort",
+        "help": "De poort waarop de HTTP API luistert. Opnieuw opstarten vereist; met bevestiging omdat de UI en elke client een wijziging moeten volgen."
+      }
+    },
+    "tls": {
+      "cert": {
+        "label": "TLS-certificaat",
+        "help": "Het pad van het certificaatbestand dat elke protocollistener presenteert, tenzij een protocol een eigen certificaat opgeeft. Opnieuw opstarten vereist; met bevestiging omdat een onjuist bestand verhindert dat TLS-listeners starten."
+      },
+      "key": {
+        "label": "Privésleutel voor TLS",
+        "help": "Het pad van de privésleutel die bij het certificaat hoort. Opnieuw opstarten vereist; met bevestiging omdat een onjuist bestand verhindert dat TLS-listeners starten."
+      },
+      "grpc_cert": {
+        "label": "TLS-certificaat voor gRPC",
+        "help": "Een certificaatbestand uitsluitend voor de gRPC-listener, in plaats van het gedeelde certificaat. Opnieuw opstarten vereist; met bevestiging."
+      },
+      "grpc_key": {
+        "label": "TLS-privésleutel voor gRPC",
+        "help": "De privésleutel voor het eigen certificaat van de gRPC-listener. Opnieuw opstarten vereist; met bevestiging."
+      },
+      "flight_cert": {
+        "label": "TLS-certificaat voor Arrow Flight",
+        "help": "Een certificaatbestand uitsluitend voor de Arrow Flight-listener, in plaats van het gedeelde certificaat. Opnieuw opstarten vereist; met bevestiging."
+      },
+      "flight_key": {
+        "label": "TLS-privésleutel voor Arrow Flight",
+        "help": "De privésleutel voor het eigen certificaat van de Arrow Flight-listener. Opnieuw opstarten vereist; met bevestiging."
+      },
+      "pgwire_cert": {
+        "label": "TLS-certificaat voor PostgreSQL wire",
+        "help": "Een certificaatbestand uitsluitend voor de listener van het PostgreSQL-protocol, in plaats van het gedeelde certificaat. Opnieuw opstarten vereist; met bevestiging."
+      },
+      "pgwire_key": {
+        "label": "TLS-privésleutel voor PostgreSQL wire",
+        "help": "De privésleutel voor het eigen certificaat van de listener van het PostgreSQL-protocol. Opnieuw opstarten vereist; met bevestiging."
+      },
+      "bolt_cert": {
+        "label": "TLS-certificaat voor Bolt",
+        "help": "Een certificaatbestand uitsluitend voor de Bolt-listener, in plaats van het gedeelde certificaat. Opnieuw opstarten vereist; met bevestiging."
+      },
+      "bolt_key": {
+        "label": "TLS-privésleutel voor Bolt",
+        "help": "De privésleutel voor het eigen certificaat van de Bolt-listener. Opnieuw opstarten vereist; met bevestiging."
+      },
+      "http_cert": {
+        "label": "TLS-certificaat voor HTTP API",
+        "help": "Het certificaatbestand dat de HTTP API presenteert. Opnieuw opstarten vereist; met bevestiging."
+      },
+      "http_key": {
+        "label": "TLS-privésleutel voor HTTP API",
+        "help": "De privésleutel voor het certificaat van de HTTP API. Opnieuw opstarten vereist; met bevestiging."
+      }
+    },
+    "cache": {
+      "enabled": {
+        "label": "Resultaatcache ingeschakeld",
+        "help": "Of queryresultaten in de cache mogen worden opgeslagen. Opnieuw opstarten vereist omdat de cachestore bij het starten wordt opgebouwd."
+      },
+      "default_ttl": {
+        "label": "Standaard cachelevensduur",
+        "help": "Hoelang een resultaat in de cache blijft wanneer niets specifiekers is opgegeven; een organisatie kan een eigen waarde instellen. Opnieuw opstarten vereist voor de standaardwaarde van de deployment."
+      },
+      "redis_url": {
+        "label": "Redis-adres",
+        "help": "Het adres van de Redis-server die wordt gebruikt voor caching en rate limiting; indien niet ingesteld wordt de ingebouwde gebruikt. Geheim omdat het een wachtwoord kan bevatten; opnieuw opstarten vereist omdat verbindingen bij het starten worden geopend; met bevestiging."
+      },
+      "redis_org_password": {
+        "label": "Redis-wachtwoord van organisatie",
+        "help": "Het wachtwoord dat aan het eigen Redis-account van elke organisatie wordt gegeven wanneer dit wordt aangemaakt. Geheim; met bevestiging."
+      },
+      "redis_embedded": {
+        "label": "Ingebouwde Redis",
+        "help": "Of dit een desktopstart is die op de ingebouwde Redis draait. Ingesteld door de launcher; niet bewerkbaar."
+      }
+    },
+    "apq": {
+      "ttl": {
+        "label": "Levensduur van persisted queries",
+        "help": "Hoelang een persisted query geregistreerd blijft. Opnieuw opstarten vereist omdat dit aan de cache wordt doorgegeven wanneer deze wordt opgebouwd."
+      }
+    },
+    "compiler": {
+      "compiled_query_cache_ttl": {
+        "label": "Levensduur van gecompileerd queryplan",
+        "help": "Hoelang een gecompileerd queryplan wordt hergebruikt voordat het opnieuw wordt opgebouwd. Opnieuw opstarten vereist omdat elke worker dit leest wanneer hij zijn cache opbouwt."
+      }
+    },
+    "redirect": {
+      "enabled": {
+        "label": "Omleiding ingeschakeld",
+        "help": "De standaardwaarde van de deployment voor of grote resultaten naar objectopslag worden geschreven en als link worden teruggegeven; een organisatie kan een eigen waarde instellen."
+      },
+      "threshold": {
+        "label": "Drempel voor omleiding",
+        "help": "Het standaardaantal rijen van de deployment waarboven een resultaat naar objectopslag wordt omgeleid; een organisatie kan een eigen waarde instellen."
+      },
+      "ttl": {
+        "label": "Levensduur van omleidingslink",
+        "help": "De standaardwaarde van de deployment voor hoelang een omleidingslink geldig blijft; een organisatie kan een eigen waarde instellen."
+      },
+      "default_format": {
+        "label": "Bestandsformaat voor omleiding",
+        "help": "Het standaardbestandsformaat van de deployment voor omgeleide resultaten; een organisatie kan een eigen waarde instellen."
+      },
+      "bucket": {
+        "label": "Bucket voor omleiding",
+        "help": "De objectopslag-bucket waarnaar omgeleide resultaten worden geschreven. Met bevestiging omdat een wijziging resultaten ergens anders naartoe stuurt."
+      },
+      "endpoint": {
+        "label": "Adres van objectopslag voor omleiding",
+        "help": "Het adres van de objectopslag waarnaar omgeleide resultaten worden geschreven. Met bevestiging omdat een wijziging resultaten ergens anders naartoe stuurt."
+      },
+      "region": {
+        "label": "Regio van objectopslag voor omleiding",
+        "help": "De regio van de objectopslag."
+      },
+      "encrypt": {
+        "label": "Omgeleide resultaten versleutelen",
+        "help": "Of omgeleide resultaten worden versleuteld voordat ze worden geüpload."
+      },
+      "local_dir": {
+        "label": "Lokale map voor omleiding",
+        "help": "De map waarnaar omgeleide resultaten worden geschreven wanneer geen objectopslag bereikbaar is."
+      },
+      "access_key": {
+        "label": "Toegangssleutel voor omleiding",
+        "help": "De toegangssleutel van de objectopslag. Geheim; met bevestiging."
+      },
+      "secret_key": {
+        "label": "Geheime sleutel voor omleiding",
+        "help": "De geheime sleutel van de objectopslag. Geheim; met bevestiging."
+      }
+    },
+    "otel": {
+      "trace_detail": {
+        "label": "Tracedetail",
+        "help": "Hoeveel detail de trace van elk request standaard bevat: normal of debug. Opnieuw opstarten vereist omdat dit wordt ingesteld wanneer tracing wordt geconfigureerd."
+      },
+      "trace_sql": {
+        "label": "SQL in traces",
+        "help": "Of traces de SQL van elke fase bevatten: off, redacted (waarden gewist) of full. Met bevestiging omdat full waarden uit queries in traces schrijft."
+      },
+      "trace_ast": {
+        "label": "Geparseerde statements in traces",
+        "help": "Of traces ook de geparseerde vorm van elk statement bevatten, met gewiste waarden."
+      },
+      "metric_export_interval": {
+        "label": "Exportinterval van metrics",
+        "help": "Hoe vaak metrics worden geëxporteerd. Opnieuw opstarten vereist omdat dit aan de exporter wordt doorgegeven wanneer deze wordt opgebouwd."
+      },
+      "endpoint": {
+        "label": "Telemetrie-endpoint",
+        "help": "Waarnaar traces en metrics worden verzonden."
+      },
+      "protocol": {
+        "label": "Telemetrieprotocol",
+        "help": "Het transport dat het telemetrie-endpoint spreekt: gRPC of HTTP."
+      },
+      "service_name": {
+        "label": "Servicenaam voor telemetrie",
+        "help": "De naam waaronder de telemetrie van deze deployment wordt gerapporteerd."
+      },
+      "sample_rate": {
+        "label": "Steekproefpercentage voor traces",
+        "help": "Het aandeel requests dat wordt getraceerd, van 0 tot 1."
+      },
+      "log_level": {
+        "label": "Logniveau voor telemetrie",
+        "help": "De laagste ernst van logrecords die met telemetrie wordt geëxporteerd."
+      },
+      "subsystem_traces": {
+        "label": "Subsysteemtraces",
+        "help": "Welke interne subsystemen hun eigen traces schrijven."
+      },
+      "compact_cron": {
+        "label": "Compactieschema",
+        "help": "Wanneer opgeslagen telemetriebestanden worden samengevoegd tot grotere bestanden."
+      },
+      "compact_batch_size": {
+        "label": "Batchgrootte voor compactie",
+        "help": "Hoeveel rijen elke samenvoeging van opgeslagen telemetrie per keer schrijft."
+      },
+      "compact_file_chunk": {
+        "label": "Bestandsblok voor compactie",
+        "help": "Hoeveel kleine telemetriebestanden in één samenvoegstap samen worden gelezen."
+      },
+      "compact_max_files_per_run": {
+        "label": "Bestanden per compactierun",
+        "help": "Het maximale aantal telemetriebestanden dat één samenvoegrun verwerkt."
+      },
+      "ops_snapshot_retention_hours": {
+        "label": "Bewaartermijn operationele snapshots (uren)",
+        "help": "Hoelang operationele snapshots worden bewaard."
+      },
+      "span_export_delay_millis": {
+        "label": "Exportvertraging van spans (milliseconden)",
+        "help": "Hoelang spans worden gebatcht voordat ze worden geëxporteerd."
+      },
+      "otlp2parquet_max_age_secs": {
+        "label": "Maximale leeftijd van Parquet-writer (seconden)",
+        "help": "Hoelang de telemetrie-writer rijen vasthoudt voordat een bestand wordt geschreven."
+      },
+      "collector_batch_timeout_ms": {
+        "label": "Batch-timeout van collector (milliseconden)",
+        "help": "Hoelang de collector telemetrie batcht voordat deze wordt doorgestuurd."
+      },
+      "s3_endpoint": {
+        "label": "Adres van telemetriestore",
+        "help": "De objectopslag waarnaar opgeslagen telemetrie wordt geschreven."
+      },
+      "s3_bucket": {
+        "label": "Bucket van telemetriestore",
+        "help": "De bucket waarnaar opgeslagen telemetrie wordt geschreven."
+      },
+      "s3_region": {
+        "label": "Regio van telemetriestore",
+        "help": "De regio van de objectopslag voor telemetrie."
+      },
+      "s3_access_key": {
+        "label": "Toegangssleutel van telemetriestore",
+        "help": "De toegangssleutel van de objectopslag voor telemetrie. Geheim."
+      },
+      "s3_secret_key": {
+        "label": "Geheime sleutel van telemetriestore",
+        "help": "De geheime sleutel van de objectopslag voor telemetrie. Geheim."
+      },
+      "support_endpoint": {
+        "label": "Telemetrie-endpoint voor support",
+        "help": "Waarnaar een kopie van de telemetrie wordt verzonden voor leverancierssupport, indien ingesteld."
+      },
+      "support_redact_sql_literals": {
+        "label": "SQL-waarden wissen voor support",
+        "help": "Of waarden in SQL worden gewist in de kopie die voor support wordt verzonden."
+      },
+      "support_redact_attributes": {
+        "label": "Gewiste attributen voor support",
+        "help": "Traceattributen die uit de kopie voor support worden verwijderd."
+      }
+    },
+    "control_plane": {
+      "tenant_url": {
+        "label": "Databaseadres van organisatie",
+        "help": "De database die de configuratie van elke organisatie bevat. Niet bewerkbaar: de deployment heeft dit nodig om zijn opgeslagen instellingen te vinden."
+      },
+      "platform_url": {
+        "label": "Databaseadres van platform",
+        "help": "De database die accounts, organisaties en deze instellingen bevat. Niet bewerkbaar: de deployment heeft dit nodig om zijn opgeslagen instellingen te vinden."
+      },
+      "org_id": {
+        "label": "Startorganisatie",
+        "help": "De organisatie waarmee deze deployment start. Niet bewerkbaar: dit wordt gelezen voordat opgeslagen instellingen kunnen worden gelezen."
+      },
+      "pool_min": {
+        "label": "Minimum aantal databaseverbindingen",
+        "help": "Het kleinste aantal controlplane-databaseverbindingen dat elke worker aanhoudt. Niet bewerkbaar: de pool wordt geopend voordat opgeslagen instellingen kunnen worden gelezen."
+      },
+      "pool_max": {
+        "label": "Maximum aantal databaseverbindingen",
+        "help": "Het grootste aantal controlplane-databaseverbindingen dat elke worker opent. Niet bewerkbaar: de pool wordt geopend voordat opgeslagen instellingen kunnen worden gelezen."
+      }
+    },
+    "bootstrap": {
+      "config_path": {
+        "label": "Configuratiebestand",
+        "help": "Het configuratiebestand waarmee deze deployment is gestart. Niet bewerkbaar: dit wordt gelezen voordat opgeslagen instellingen kunnen worden gelezen."
+      },
+      "data_dir": {
+        "label": "Gegevensmap",
+        "help": "De map waarin de deployment zijn bestanden bewaart. Niet bewerkbaar: dit wordt gelezen voordat opgeslagen instellingen kunnen worden gelezen."
+      },
+      "home": {
+        "label": "Homemap",
+        "help": "De homemap van de deployment voor certificaten en lokale stores. Niet bewerkbaar: dit wordt gelezen voordat opgeslagen instellingen kunnen worden gelezen."
+      },
+      "repo_dir": {
+        "label": "Map voor configuratiegeschiedenis",
+        "help": "De map die de configuratiegeschiedenis van elke organisatie bevat. Niet bewerkbaar: dit wordt gelezen voordat opgeslagen instellingen kunnen worden gelezen."
+      },
+      "demo": {
+        "label": "Demomodus",
+        "help": "Of de deployment in demomodus is gestart. Ingesteld door de launcher; niet bewerkbaar."
+      }
+    },
+    "mcp": {
+      "max_rows": {
+        "label": "Rijlimiet voor MCP",
+        "help": "Het maximale aantal rijen dat één MCP-toolaanroep aan een AI-client teruggeeft."
+      },
+      "port": {
+        "label": "MCP-poort",
+        "help": "De poort waarop de MCP-server luistert; 0 laat hem uit. Opnieuw opstarten vereist; met bevestiging omdat een listener wordt geopend of gesloten."
+      },
+      "host": {
+        "label": "MCP-host",
+        "help": "Het netwerkadres waaraan de MCP-server zich bindt; 127.0.0.1 beperkt hem tot deze machine. Opnieuw opstarten vereist; met bevestiging omdat dit bepaalt wie de poort kan bereiken."
+      },
+      "tls": {
+        "label": "MCP TLS",
+        "help": "Of de MCP-server HTTPS aanbiedt. Opnieuw opstarten vereist; met bevestiging."
+      },
+      "role": {
+        "label": "Lokale rol voor MCP",
+        "help": "De rol waaronder lokale (stdio) MCP-aanroepen worden uitgevoerd; zolang deze niet is ingesteld worden die aanroepen geweigerd. Met bevestiging omdat dit de toegang van die rol verleent aan iedereen die de lokale client kan starten."
+      },
+      "external_url": {
+        "label": "Extern MCP-adres",
+        "help": "Het MCP-adres dat aan gebruikers wordt getoond wanneer de deployment achter een proxy staat."
+      },
+      "chat_model": {
+        "label": "Chatmodel",
+        "help": "Het model dat de ingebouwde chat gebruikt, ter vervanging van de eigen keuze van elke organisatie."
+      }
+    },
+    "udf": {
+      "egress_allowlist": {
+        "label": "Egress-allowlist voor gehoste functies",
+        "help": "De hosts die een gehoste functie mag aanroepen; al het andere wordt geweigerd. Met bevestiging omdat elke vermelding een uitgaand pad opent."
+      }
+    },
+    "cdc": {
+      "consumer_group_id": {
+        "label": "CDC-consumergroep",
+        "help": "De naam die deze deployment gebruikt wanneer hij wijzigingsevents leest van een message broker."
+      }
+    },
+    "graphql_remote": {
+      "max_object_depth": {
+        "label": "Objectdiepte van externe GraphQL",
+        "help": "Hoe diep geneste objecten van een externe GraphQL-bron worden gevolgd."
+      },
+      "max_list_depth": {
+        "label": "Lijstdiepte van externe GraphQL",
+        "help": "Hoe diep geneste lijsten van een externe GraphQL-bron worden gevolgd."
+      },
+      "max_list_items": {
+        "label": "Lijstitems van externe GraphQL",
+        "help": "Het maximale aantal items dat uit één lijst van een externe GraphQL-bron wordt gelezen."
+      }
+    },
+    "provisioning": {
+      "engine_namespace": {
+        "label": "Namespace van engine",
+        "help": "De Kubernetes-namespace waarin engine-clusters worden aangemaakt."
+      },
+      "engine_cluster_mode": {
+        "label": "Clustermodus van engine",
+        "help": "Het soort Kubernetes-cluster waarop engines worden ingericht."
+      },
+      "engine_cpu": {
+        "label": "CPU van engine",
+        "help": "De CPU die aan elke ingerichte engine wordt toegewezen."
+      },
+      "engine_shard": {
+        "label": "Shard van engine",
+        "help": "De engine-shard waartoe deze node behoort."
+      },
+      "engine_otlp_endpoint": {
+        "label": "Telemetrie-endpoint van engine",
+        "help": "Waarnaar ingerichte engines hun eigen telemetrie verzenden."
+      },
+      "engine_control_plane_host": {
+        "label": "Controlplane-host van engine",
+        "help": "Het adres waarmee engines de controlplane-database bereiken, wanneer dit afwijkt van het adres dat deze server gebruikt."
+      },
+      "engine_control_plane_port": {
+        "label": "Controlplane-poort van engine",
+        "help": "De poort waarmee engines de controlplane-database bereiken."
+      },
+      "engine_lakehouse_metastore_host": {
+        "label": "Host van lakehouse-metastore",
+        "help": "Het adres van de lakehouse-metastore die engines gebruiken."
+      },
+      "engine_lakehouse_metastore_port": {
+        "label": "Poort van lakehouse-metastore",
+        "help": "De poort van de lakehouse-metastore die engines gebruiken."
+      },
+      "engine_otel_s3_endpoint": {
+        "label": "Adres van telemetriestore voor engine",
+        "help": "Het adres van de objectopslag voor telemetrie zoals engines het bereiken."
+      },
+      "isolated_engine_image": {
+        "label": "Image van dedicated engine",
+        "help": "De containerimage die voor de dedicated engine van een organisatie wordt gebruikt."
+      },
+      "isolated_engine_network": {
+        "label": "Netwerk van dedicated engine",
+        "help": "Het containernetwerk waaraan een dedicated engine wordt gekoppeld."
+      },
+      "isolated_engine_memory": {
+        "label": "Geheugen van dedicated engine",
+        "help": "Het geheugen dat aan een dedicated engine wordt toegewezen."
+      },
+      "isolated_engine_host_template": {
+        "label": "Hostpatroon van dedicated engine",
+        "help": "Het patroon waaruit de hostnaam van een dedicated engine wordt opgebouwd."
+      },
+      "isolated_engine_port": {
+        "label": "Poort van dedicated engine",
+        "help": "De poort waarop een dedicated engine luistert."
+      },
+      "isolated_engine_ready_timeout": {
+        "label": "Gereedheids-timeout van dedicated engine",
+        "help": "Hoelang wordt gewacht tot een dedicated engine gereed is."
+      },
+      "isolated_engine_docker_socket": {
+        "label": "Docker-socket van dedicated engine",
+        "help": "De Docker-socket waarmee dedicated engines worden gestart."
+      },
+      "zaychik_cpu": {
+        "label": "CPU van querygateway",
+        "help": "De CPU die aan de querygateway van de engine wordt toegewezen."
+      },
+      "zaychik_memory": {
+        "label": "Geheugen van querygateway",
+        "help": "Het geheugen dat aan de querygateway van de engine wordt toegewezen."
+      }
+    },
+    "readonlyReasons": {
+      "locates_control_plane": "Deze instelling vertelt de server waar zijn control plane zich bevindt en kan daarom niet vanuit het control plane worden gewijzigd.",
+      "read_before_control_plane": "Deze instelling wordt gelezen voordat het control plane beschikbaar is en wordt daarom buiten de UI ingesteld.",
+      "set_by_launcher": "De launcher die deze deployment heeft gestart, stelt deze waarde in.",
+      "set_by_desktop_launcher": "De desktoplauncher stelt deze waarde in voor deze installatie."
+    }
+  }
+}

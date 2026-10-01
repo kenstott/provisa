@@ -54,7 +54,11 @@ class License:  # REQ-1138
 
 
 def default_license_path() -> Path:
-    return Path.home() / ".provisa" / "license.json"
+    """``~/.provisa/license.json`` — or the licensing sandbox's own license file (a sandboxed
+    process never writes, and so never reads, the user's)."""
+    from provisa.licensing.home import sandbox_dir, user_home
+
+    return (sandbox_dir() or user_home()) / "license.json"
 
 
 def _canonical_payload(payload: dict) -> bytes:

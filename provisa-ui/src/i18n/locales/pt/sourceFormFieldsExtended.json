@@ -11,6 +11,7 @@
     "metadataSheetId": "ID da planilha de metadados",
     "metadataSheetIdPlaceholder": "ID da planilha com as definições de tabelas",
     "endpointUrl": "URL do endpoint",
+    "defaultGraphUri": "URI do grafo padrão",
     "namespace": "Namespace",
     "cacheTtlSeconds": "TTL do cache (segundos)",
     "protoPathOrUrl": "Caminho ou URL do proto",
@@ -78,6 +79,12 @@
     "topicPrefixPlaceholder": "dbserver1 (tópicos: {prefix}.{schema}.{table})",
     "schemaRegistryUrlCdcPlaceholder": "em branco = JSON; defina para Avro",
     "consumerGroupId": "ID do grupo de consumidores (opcional)",
-    "consumerGroupIdPlaceholder": "herdar global (provisa-debezium)"
+    "consumerGroupIdPlaceholder": "herdar global (provisa-debezium)",
+    "useSsl": "Usar SSL/TLS",
+    "eventPath": "Caminho do evento (opcional)",
+    "reconnectIntervalSeconds": "Intervalo de reconexão (segundos)",
+    "subscribePayload": "Payload de assinatura (JSON, opcional)",
+    "feedUrlOverride": "URL do feed (substituição opcional)",
+    "pollIntervalSeconds": "Intervalo de polling (segundos)"
   }
 }

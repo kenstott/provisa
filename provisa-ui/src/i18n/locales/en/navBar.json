@@ -34,6 +34,7 @@
     "itemFederation": "Federation",
     "itemEmail": "Email",
     "itemMaintenance": "Maintenance",
+    "itemDeploymentSettings": "Deployment settings",
     "itemBilling": "Billing",
     "itemExplore": "MCP",
     "itemEncryption": "Encryption",

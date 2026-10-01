@@ -15,6 +15,7 @@
     },
     "auth": {
       "authentication_required": "נדרש אימות",
+      "auto_join_not_offered": "הארגון הזה אינו מציע לקבל אתכם",
       "bootstrap_claiming_disabled": "תביעת bootstrap אינה מופעלת",
       "delete_account_confirm_required": "מחיקת החשבון שלך היא בלתי הפיכה: הפרופיל שלך וכל חברות בארגון יימחקו ולא ניתן יהיה לשחזרם. חזרו על מזהה המשתמש שלכם בפרמטר 'confirm' כדי להמשיך.",
       "email_not_permitted": "כתובת הדוא\"ל שלך אינה מורשית להצטרף לארגון זה",
@@ -51,6 +52,10 @@
       "engine_not_connected": "המנוע אינו מחובר",
       "grpc_source_not_registered": "מקור gRPC מרוחק '{{source_id}}' אינו רשום",
       "invalid_as_of": "X-Provisa-As-Of לא תקין: {{error}}",
+      "invalid_filter": "filter חייב להיות אובייקט הממפה שמות שדות לערכים",
+      "invalid_filter_field": "שדה filter לא תקין '{{field}}' עבור {{type_name}}",
+      "invalid_read_mask": "read_mask חייב להיות אובייקט עם רשימת 'paths' של נתיבי שדות",
+      "invalid_read_mask_path": "נתיב read_mask לא תקין '{{path}}' עבור {{type_name}}",
       "missing_command_name": "חסר שם פקודה",
       "missing_role_id": "חסר role_id",
       "missing_x_provisa_role_header": "חסרה כותרת X-Provisa-Role",
@@ -155,7 +160,10 @@
       "auth_required_create": "נדרש אימות כדי ליצור ארגון",
       "auth_required_leave": "נדרש אימות כדי לעזוב ארגון",
       "auto_join_public_domain": "auto_join מחייב כלל דוא\"ל המוגבל לדומיין שבבעלותכם — כלל זה תואם ל־{{domain}}.",
+      "auto_join_breadth_unacknowledged": "סקרו את כלל ההצטרפות האוטומטית הזה בקפידה, אחרת תוכלו לקבל אנשים מחוץ לארגון שלכם: מלבד {{domains}}, הוא מקבל גם כתובות כגון {{admits}}. כל אדם בדומיין שאינכם שולטים בו יוכל אז להצטרף לארגון שלכם אוטומטית. אשרו שאתם מקבלים את הסיכון הזה כדי לשמור.",
       "auto_join_requires_role": "auto_join דורש auto_join_role",
+      "auto_join_rule_taken": "ארגון אחר כבר מקבל אוטומטית את כל מי שמתאים לכלל זה. שני ארגונים אינם יכולים לתבוע את אותן כתובות — בקשו מהם הזמנה, או צמצמו את הכלל לדומיין שרק הארגון שלכם משתמש בו.",
+      "auto_join_rule_unbounded": "לכלל ההצטרפות האוטומטית הזה אין גבול: הוא היה מקבל כתובות בדומיינים שאינכם שולטים בהם. עגנו אותו לדומיין שבבעלותכם, לדוגמה \"@acme\\\\.com$\".",
       "cannot_delete_root": "לא ניתן למחוק את ארגון ה-root",
       "delete_confirm_required": "מחיקת '{{org}}' משמידה את כל הנתונים שלו לצמיתות — איש, כולל מנהל פלטפורמה, לא יוכל לשחזרם. חזרו על מזהה הארגון בפרמטר 'confirm' כדי להמשיך.",
       "invalid_email_rule": "כלל דוא\"ל לא תקין: {{error}}",
@@ -173,7 +181,8 @@
     },
     "platform": {
       "right_required": "נדרשת יכולת {{right}}",
-      "settings_capability_required": "נדרשת יכולת platform_settings"
+      "settings_capability_required": "נדרשת יכולת platform_settings",
+      "control_plane_role_required": "נדרש מנהל פלטפורמה."
     },
     "profile": {
       "database_unavailable": "מסד הנתונים אינו זמין",
@@ -249,7 +258,7 @@
       "source_connection_failed": "המקור '{{source}}': אימות החיבור נכשל: {{error}}",
       "source_created": "המקור '{{source}}' נוצר",
       "source_deleted": "המקור '{{source}}' נמחק",
-      "source_limit_reached": "לארגון זה יש {{held}} מתוך {{limit}} מקורות הנתונים שתוכנית {{plan}} מתירה. שנו את התוכנית בעמוד החיוב, או הסירו מקור.",
+      "source_limit_reached": "הארגון הזה מחזיק ב-{{held}} מתוך {{limit}} מקורות הנתונים שתוכנית {{plan}} שלו מאפשרת. שנו את התוכנית בדף החיוב, או הסירו מקור.",
       "source_load_protection_set": "הגנת עומס הוגדרה עבור המקור '{{source}}'",
       "source_naming_updated": "מוסכמת השמות עודכנה עבור המקור '{{source}}'",
       "source_no_connection": "למקור '{{source}}' אין חיבור פעיל",
@@ -297,7 +306,10 @@
       "unknown_auth_provider": "ספק אימות לא מוכר '{{provider}}'; תקפים: {{valid}}",
       "unknown_encryption_provider": "ספק הצפנה לא מוכר '{{provider}}'",
       "unknown_engine": "מנוע לא מוכר '{{engine}}'; תקפים: {{valid}}",
-      "use_domains_invalid": "use_domains חייב להיות true, false או null"
+      "use_domains_invalid": "use_domains חייב להיות true, false או null",
+      "invalid_value": "הערך של {{field}} נדחה.",
+      "invalid_body": "בקשת ההגדרות אינה תקינה.",
+      "auth_required": "לא ניתן לשנות את {{field}} עד שהאימות יוגדר."
     },
     "setup": {
       "admin_credentials_required": "admin_username ו-admin_password נדרשים",

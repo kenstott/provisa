@@ -24,6 +24,18 @@
     "materializeLabel": "מטריאליזציה (יצירה אוטומטית של MV עבור joins בין מקורות)",
     "disableCypherLabel": "החרגה מגרף Cypher",
     "refreshIntervalLabel": "מרווח רענון (שניות)",
-    "save": "שמירה"
+    "save": "שמירה",
+    "junctionTitle": "טבלת צומת (מתקדם)",
+    "junctionHelp": "הגדרת קשת זו כעוברת דרך טבלה אסוציאטיבית. שאר עמודות טבלת הצומת הופכות למאפייני הקשר.",
+    "viaTableLabel": "טבלת צומת",
+    "viaSourceColumnLabel": "עמודת צומת ← מקור",
+    "viaTargetColumnLabel": "עמודת צומת ← יעד",
+    "viaTypeColumnLabel": "עמודת מבחין",
+    "viaTypeValueLabel": "ערך מבחין",
+    "viaTypeValuePlaceholder": "לדוגמה: KIND_OF",
+    "viaLabelSourceLabel": "מתן שם לקשת לפי",
+    "viaLabelSourceColumn": "ערך מבחין",
+    "viaLabelSourceTable": "שם טבלת הצומת",
+    "viaLabelSourceFixed": "כינוי Cypher"
   }
 }

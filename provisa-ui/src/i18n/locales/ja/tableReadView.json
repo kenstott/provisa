@@ -35,6 +35,8 @@
     "deployToDbTitle": "この仮想ビューを実際のデータベースビューに昇格します",
     "profileButton": "プロファイル",
     "profilingButton": "プロファイル中…",
+    "previewButton": "プレビュー",
+    "previewTitle": "このテーブルの行をプレビュー (ガバナンス管理された SELECT *)",
     "profileTitle": "このテーブルのカラムをサンプリングしてプロファイルします",
     "policiesButton": "ポリシー",
     "policiesTitle": "このテーブルの行レベルセキュリティポリシーを表示します",
@@ -53,7 +55,6 @@
     "colTopValues": "上位の値",
     "editDefinitionButton": "定義を編集",
     "editDefinitionTitle": "ビュー定義を編集します（SQLまたはメトリクス/ディメンション選択）",
-    "previewButton": "プレビュー",
-    "previewTitle": "このテーブルの行をプレビュー (ガバナンス管理された SELECT *)"
+    "queryTemplate": "Cypher:"
   }
 }

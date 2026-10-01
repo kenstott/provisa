@@ -19,9 +19,10 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
 from provisa.api.admin._platform_guard import (
+    has_deployment_settings,
     has_platform_settings,
+    require_deployment_settings,
     require_org_settings,
-    require_platform_settings,
 )
 from provisa.api.admin._config_io import config_path, read_config, write_config
 from provisa.api.admin.secret_redaction import (  # REQ-1575
@@ -31,6 +32,9 @@ from provisa.api.admin.secret_redaction import (  # REQ-1575
     restore_url_password,
 )
 from provisa.api.errors import ApiError
+from provisa.compiler.sampling import get_sample_size as _get_sample_size
+from provisa.core import deployment_settings as _deployment_settings
+from provisa.core import settings_registry as _settings_registry
 
 router = APIRouter()
 
@@ -39,7 +43,7 @@ router = APIRouter()
 async def download_config(request: Request):  # REQ-164
     """Download the ORIGINAL config YAML (the on-disk boot seed). The live-state view is
     ``/admin/config/live``; the UI diffs the two."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     path = config_path()
     if not path.exists():
         raise ApiError(404, "settings.config_file_not_found", "Config file not found")
@@ -68,7 +72,7 @@ def _require_live_export() -> None:
 async def download_live_config(request: Request):  # REQ-164
     """The CURRENT config generated from live state (admin-created views/MVs, relationships, roles,
     rls, domains overlaid on the file base)."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     _require_live_export()
     from provisa.api.admin.config_export import build_live_config_yaml
 
@@ -83,7 +87,7 @@ async def download_live_config(request: Request):  # REQ-164
 async def config_diff(request: Request):  # REQ-164
     """Both sides of the config diff — ``original`` (startup baseline) and ``current`` (live state) —
     NORMALIZED identically so the side-by-side view shows only genuine changes, not reordering."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     _require_live_export()
     from provisa.api.admin.config_export import config_diff as _diff
 
@@ -94,7 +98,7 @@ async def config_diff(request: Request):  # REQ-164
 async def config_patch(request: Request):  # REQ-164
     """A unified-diff patch from the baseline to the posted (curated) config — git-apply / ``patch``
     compatible, for committing config changes made in the UI through CI/CD."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     _require_live_export()
     from provisa.api.admin.config_export import make_config_patch
 
@@ -115,7 +119,7 @@ async def upload_config(request: Request):  # REQ-164
     NORMALIZED on consume and the normalized form is persisted — so the on-disk file stays byte-faithful
     to the diff/patch baseline and a downloaded patch applies cleanly via ``git apply``. With the flag
     off the file is written verbatim (a hand-authored config keeps its comments/ordering)."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     from provisa.api.app import _load_and_build, state  # lazy to avoid circular import
 
     body = await request.body()
@@ -177,9 +181,7 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
 
     from provisa.core.models import (
         GraphQLRemoteConfig,
-        OtelConfig,
         ProvisaConfig,
-        SubsystemTracesConfig,
     )
 
     from provisa.core import domain_policy
@@ -187,14 +189,16 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
     rc = RedirectConfig.from_env()
     cfg = read_config()
     naming_cfg = cfg.get("naming", {})
-    otel_cfg = cfg.get("observability", {})
     gqr_cfg = cfg.get("graphql_remote", {}) or {}
 
     def _eng(key: str):
         # Default lives in one place — the ProvisaConfig field default.
         return cfg.get(key, ProvisaConfig.model_fields[key].default)
 
-    is_platform = has_platform_settings(request)
+    # REQ-1913: the deployment-wide blocks are the platform administrator's in every deployment —
+    # the same rule as the settings catalog, which reads and writes the same stored values. A
+    # single-tenant org administrator holds `platform_settings` and still does not get them.
+    is_platform = has_deployment_settings(request)
     # The org's LIVE domain mode — its own override where it set one, the deployment's otherwise.
     # Read off the policy rather than the config file, which only ever states the deployment's.
     policy_use_domains, policy_default_domain = domain_policy.snapshot()
@@ -205,17 +209,13 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
             "live_config_export": bool(getattr(state, "config_live_export", False)),
             # Lets the UI place a control under the right tab without a second round trip, and
             # tells it which blocks below were omitted rather than being empty.
-            "platform_settings": is_platform,
+            # `platform_settings` is the RIGHT (it opens the other platform surfaces: engine,
+            # cache storage, encryption, auth, the config file). `deployment_settings` says
+            # whether the deployment-wide blocks below are present.
+            "platform_settings": has_platform_settings(request),
+            "deployment_settings": is_platform,
         },
-        "engine": {
-            "jvm_heap_gb": int(_eng("jvm_heap_gb")),
-            "query_max_memory": _eng("query_max_memory"),
-            "query_max_memory_per_node": _eng("query_max_memory_per_node"),
-            "query_max_total_memory": _eng("query_max_total_memory"),
-            "fault_tolerant_execution": bool(_eng("fault_tolerant_execution")),
-            "fault_tolerant_task_memory": _eng("fault_tolerant_task_memory"),
-            "exchange_spool_dir": _eng("exchange_spool_dir"),
-        },
+        "engine": _engine_block(cfg),
         "redirect": {
             "enabled": rc.enabled,
             "threshold": rc.threshold,
@@ -224,6 +224,10 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
         },
         "limits": {
             "default_row_limit": _get_default_row_limit(),
+            # REQ-1905: the default request timeout, and each transport's own value (null: the
+            # transport uses the default). Always all ten transports.
+            "request_timeout": _settings_registry.value("limits.request_timeout"),
+            "request_timeouts": _settings_registry.value("limits.request_timeouts"),
         },
         "cache": {
             "default_ttl": state.response_cache_default_ttl,
@@ -236,8 +240,7 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
             "default_domain": policy_default_domain,
         },
         "relationships": {
-            "auto_track_fk": os.environ.get("PROVISA_AUTO_TRACK_FK", "true").lower()
-            not in ("0", "false", "no"),
+            "auto_track_fk": _deployment_settings.auto_track_fk(),
         },
         "cdc": {  # REQ-931: Provisa-level inbound-CDC consumer group (receiver identity)
             "consumer_group_id": _eng("cdc_consumer_group_id"),
@@ -246,74 +249,9 @@ async def get_settings(request: Request):  # REQ-165, REQ-302, REQ-303, REQ-416,
         # availability for materialized views. Canonical write path is /admin/cache-storage.
         "materialize": {"store_url": cfg.get("materialize_store_url") or ""},
         "sampling": {
-            "default_sample_size": int(os.environ.get("PROVISA_SAMPLE_SIZE", "10000")),
+            "default_sample_size": _get_sample_size(),
         },
-        "otel": {
-            "endpoint": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
-            or otel_cfg.get("endpoint", ""),
-            # REQ-549: the transport that endpoint speaks, declared — the scheme cannot say it.
-            "protocol": os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL")
-            or otel_cfg.get("protocol", OtelConfig.model_fields["protocol"].default),
-            "service_name": os.environ.get("OTEL_SERVICE_NAME")
-            or otel_cfg.get("service_name", "provisa"),
-            "sample_rate": float(otel_cfg.get("sample_rate", 1.0)),
-            # REQ-1432: per-subsystem trace switches; the model states the defaults.
-            "subsystem_traces": SubsystemTracesConfig(
-                **(otel_cfg.get("subsystem_traces") or {})
-            ).model_dump(),
-            # REQ-545: tracing pipeline tuning. Defaults mirror OtelConfig field defaults.
-            "log_level": os.environ.get("OTEL_LOG_LEVEL")
-            or otel_cfg.get("log_level", OtelConfig.model_fields["log_level"].default),
-            "compact_cron": otel_cfg.get(
-                "compact_cron", OtelConfig.model_fields["compact_cron"].default
-            ),
-            "compact_batch_size": int(
-                otel_cfg.get(
-                    "compact_batch_size", OtelConfig.model_fields["compact_batch_size"].default
-                )
-            ),
-            "compact_file_chunk": int(
-                otel_cfg.get(
-                    "compact_file_chunk", OtelConfig.model_fields["compact_file_chunk"].default
-                )
-            ),
-            "compact_max_files_per_run": int(
-                otel_cfg.get(
-                    "compact_max_files_per_run",
-                    OtelConfig.model_fields["compact_max_files_per_run"].default,
-                )
-            ),
-            "ops_snapshot_retention_hours": otel_cfg.get("ops_snapshot_retention_hours"),
-            "span_export_delay_millis": int(
-                otel_cfg.get(
-                    "span_export_delay_millis",
-                    OtelConfig.model_fields["span_export_delay_millis"].default,
-                )
-            ),
-            "otlp2parquet_max_age_secs": int(
-                otel_cfg.get(
-                    "otlp2parquet_max_age_secs",
-                    OtelConfig.model_fields["otlp2parquet_max_age_secs"].default,
-                )
-            ),
-            "collector_batch_timeout_ms": int(
-                otel_cfg.get(
-                    "collector_batch_timeout_ms",
-                    OtelConfig.model_fields["collector_batch_timeout_ms"].default,
-                )
-            ),
-            "s3_endpoint": otel_cfg.get(
-                "s3_endpoint", OtelConfig.model_fields["s3_endpoint"].default
-            ),
-            "support_endpoint": os.environ.get("PROVISA_SUPPORT_OTLP_ENDPOINT")
-            or otel_cfg.get("support_endpoint", ""),
-            "support_redact_sql_literals": bool(
-                otel_cfg.get("support_telemetry_filter", {}).get("redact_sql_literals", True)
-            ),
-            "support_redact_attributes": list(
-                otel_cfg.get("support_telemetry_filter", {}).get("redact_attributes", [])
-            ),
-        },
+        "otel": _otel_block(),
         "graphql_remote": {  # remote-GraphQL source traversal limits
             "max_object_depth": gqr_cfg.get(
                 "max_object_depth", GraphQLRemoteConfig.model_fields["max_object_depth"].default
@@ -400,86 +338,84 @@ async def _apply_org_blocks(request, body: dict, updated: list) -> None:
     state.settings_overrides = await read_org_overrides(state.tenant_db)
 
 
-def _apply_otel(o: dict, updated: list) -> None:
-    """Apply the `otel` observability block (config file + env + live exporters)."""
-    path = config_path()
+# The `otel` block's fields, by the operator setting each one is (REQ-1913). A field left out of
+# a save is not touched.
+_OTEL_FIELDS = (
+    "endpoint",
+    "protocol",
+    "service_name",
+    "sample_rate",
+    "log_level",
+    "compact_cron",
+    "compact_batch_size",
+    "compact_file_chunk",
+    "compact_max_files_per_run",
+    "ops_snapshot_retention_hours",
+    "span_export_delay_millis",
+    "otlp2parquet_max_age_secs",
+    "collector_batch_timeout_ms",
+    "s3_endpoint",
+    "support_endpoint",
+    "support_redact_sql_literals",
+    "support_redact_attributes",
+)
+# Fields that may be unset: the block states "unset" as an empty value.
+_OTEL_UNSETTABLE = ("endpoint", "support_endpoint", "ops_snapshot_retention_hours")
+
+
+def _otel_block() -> dict:
+    """The `otel` block of GET /admin/settings: the telemetry settings as resolved now."""
+    from provisa.core import settings_registry
+    from provisa.core.models import SubsystemTracesConfig
+
+    value = settings_registry.value
+    block = {field: value(f"otel.{field}") for field in _OTEL_FIELDS}
+    # The page edits these two as text; "no endpoint" is the empty string there.
+    for field in ("endpoint", "support_endpoint"):
+        if block[field] is None:
+            block[field] = ""
+    block["subsystem_traces"] = {  # REQ-1432: per-subsystem trace switches
+        name: value(f"otel.subsystem_traces.{name}") for name in SubsystemTracesConfig.model_fields
+    }
+    return block
+
+
+def _apply_otel(o: dict, updated: list, *, updated_by: str = "anonymous") -> None:
+    """Store the `otel` observability block and apply it in this worker (REQ-1913).
+
+    The fields are operator settings: validated together, stored in the control plane (where every
+    worker and instance reads them), and refused with the field named when one cannot be used.
+    They used to be written to this node's config file and this one worker's environment.
+    """
+    from provisa.api import otel_setup
+    from provisa.api.admin.settings_catalog_router import _invalid, _refused
+    from provisa.api.app import state
+    from provisa.core import settings_registry
+    from provisa.core.settings_registry import SettingInvalid, UnknownSetting
+
+    values: dict = {}
+    for field in _OTEL_FIELDS:
+        if field not in o:
+            continue
+        raw = o[field]
+        if field in _OTEL_UNSETTABLE and raw in (None, ""):
+            raw = None  # clears the stored value
+        values[f"otel.{field}"] = raw
+        updated.append(f"otel.{field}")
+    if "subsystem_traces" in o:
+        for name, on in (o["subsystem_traces"] or {}).items():
+            values[f"otel.subsystem_traces.{name}"] = on
+        updated.append("otel.subsystem_traces")
+    if not values:
+        return
+    assert state.admin_db is not None, "telemetry settings need the platform control plane"
     try:
-        cfg = read_config()
-        cfg.setdefault("observability", {})
-        if "endpoint" in o:
-            cfg["observability"]["endpoint"] = o["endpoint"]
-            os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = o["endpoint"]
-            updated.append("otel.endpoint")
-        if "protocol" in o:
-            cfg["observability"]["protocol"] = o["protocol"]
-            os.environ["OTEL_EXPORTER_OTLP_PROTOCOL"] = o["protocol"]
-            updated.append("otel.protocol")
-        if "service_name" in o:
-            cfg["observability"]["service_name"] = o["service_name"]
-            os.environ["OTEL_SERVICE_NAME"] = o["service_name"]
-            updated.append("otel.service_name")
-        if "sample_rate" in o:
-            cfg["observability"]["sample_rate"] = float(o["sample_rate"])
-            updated.append("otel.sample_rate")
-        # REQ-1432: per-subsystem trace switches. Validated through the model so an unknown
-        # subsystem name is rejected rather than written into the file and silently ignored.
-        if "subsystem_traces" in o:
-            from provisa.core.models import SubsystemTracesConfig
-
-            cfg["observability"]["subsystem_traces"] = SubsystemTracesConfig(
-                **o["subsystem_traces"]
-            ).model_dump()
-            updated.append("otel.subsystem_traces")
-        # REQ-545: tracing pipeline tuning (applied on restart).
-        if "log_level" in o:
-            cfg["observability"]["log_level"] = o["log_level"]
-            os.environ["OTEL_LOG_LEVEL"] = str(o["log_level"])
-            updated.append("otel.log_level")
-        for _k in ("compact_cron", "s3_endpoint"):
-            if _k in o:
-                cfg["observability"][_k] = o[_k]
-                updated.append(f"otel.{_k}")
-        for _k in (
-            "compact_batch_size",
-            "compact_file_chunk",
-            "compact_max_files_per_run",
-            "span_export_delay_millis",
-            "otlp2parquet_max_age_secs",
-            "collector_batch_timeout_ms",
-        ):
-            if _k in o:
-                cfg["observability"][_k] = int(o[_k])
-                updated.append(f"otel.{_k}")
-        if "ops_snapshot_retention_hours" in o:
-            v = o["ops_snapshot_retention_hours"]
-            cfg["observability"]["ops_snapshot_retention_hours"] = (
-                int(v) if v not in (None, "") else None
-            )
-            updated.append("otel.ops_snapshot_retention_hours")
-        if "support_endpoint" in o:
-            cfg["observability"]["support_endpoint"] = o["support_endpoint"]
-            os.environ["PROVISA_SUPPORT_OTLP_ENDPOINT"] = o["support_endpoint"]
-            updated.append("otel.support_endpoint")
-        if "support_redact_sql_literals" in o:
-            cfg["observability"].setdefault("support_telemetry_filter", {})[
-                "redact_sql_literals"
-            ] = bool(o["support_redact_sql_literals"])
-            updated.append("otel.support_redact_sql_literals")
-        if "support_redact_attributes" in o:
-            cfg["observability"].setdefault("support_telemetry_filter", {})["redact_attributes"] = (
-                list(o["support_redact_attributes"])
-            )
-            updated.append("otel.support_redact_attributes")
-        write_config(path, cfg)
-        if "endpoint" in o and o["endpoint"]:
-            from provisa.api.otel_setup import attach_otlp_exporters
-
-            service = cfg["observability"].get("service_name", "provisa")
-            attach_otlp_exporters(
-                o["endpoint"], service, str(cfg["observability"].get("protocol", ""))
-            )
-    except Exception:
-        pass
+        settings_registry.store(state.admin_db, values, updated_by=updated_by)
+    except SettingInvalid as err:
+        raise _invalid(err) from None
+    except UnknownSetting as err:
+        raise _refused(err.key, "unknown_setting") from None
+    otel_setup.apply_exporter_settings()
 
 
 _ENGINE_KEYS = (
@@ -493,24 +429,51 @@ _ENGINE_KEYS = (
 )
 
 
-def _apply_engine(e: dict, state, updated: list) -> bool:
+def _engine_setting(cfg: dict, key: str):
+    """One of the engine's sizing keys as saved: the stored value, else the config file's, else
+    the ProvisaConfig default (the one place the default lives)."""
+    from provisa.api.trino_setup import _cfg
+
+    return _cfg(cfg, key)
+
+
+def _engine_block(cfg: dict) -> dict:
+    """The `engine` block of GET /admin/settings: the sizing the engine will start on next."""
+    return {key: _engine_setting(cfg, key) for key in _ENGINE_KEYS}
+
+
+def _store_engine_sizing(values: dict, *, updated_by: str) -> None:
+    """Store engine sizing keys (``{field: value | None}``; None clears) and regenerate the
+    engine's own config files from them. They take effect when the engine restarts."""
+    from provisa.api.admin.settings_catalog_router import _invalid
+    from provisa.api.app import state
+    from provisa.core import settings_registry
+    from provisa.core.settings_registry import SettingInvalid
+
+    assert state.admin_db is not None, "engine settings need the platform control plane"
+    try:
+        settings_registry.store(
+            state.admin_db,
+            {f"engine.{field}": value for field, value in values.items()},
+            updated_by=updated_by,
+        )
+    except SettingInvalid as err:
+        raise _invalid(err) from None
+
+
+def _apply_engine(e: dict, state, updated: list, *, updated_by: str = "anonymous") -> bool:
     """Apply execution-engine (federation) sizing keys. Returns True if a restart is needed.
 
-    Written to config + regenerated into the engine's config.properties, but only take effect
-    on an engine restart.
+    REQ-1913: stored in the control plane (they used to be written to this node's config file),
+    then regenerated into the engine's config.properties; they take effect on an engine restart.
     """
-    path = config_path()
-    cfg = read_config()
-    changed = False
-    for k in _ENGINE_KEYS:
-        if k in e:
-            cfg[k] = int(e[k]) if k == "jvm_heap_gb" else e[k]
-            updated.append(f"engine.{k}")
-            changed = True
-    if changed:
-        write_config(path, cfg)
-        state.federation_engine.write_config(str(path))
-    return changed
+    values = {k: e[k] for k in _ENGINE_KEYS if k in e}
+    if not values:
+        return False
+    _store_engine_sizing(values, updated_by=updated_by)
+    updated.extend(f"engine.{k}" for k in values)
+    state.federation_engine.write_config(str(config_path()))
+    return True
 
 
 def _apply_graphql_remote(g: dict, updated: list) -> None:
@@ -563,23 +526,50 @@ async def _apply_naming(n: dict, updated: list) -> str | None:
     return None
 
 
-def _apply_scalars(body: dict, state, updated: list) -> None:
+def _apply_scalars(body: dict, state, updated: list, updated_by: str = "anonymous") -> None:
     """Apply the deployment-wide env-backed scalar blocks (limits/sampling/relationships).
 
     `cache.default_ttl` is NOT here — it governs the org's own results and is written as an org
     override by _apply_org_blocks.
     """
+    # REQ-1900: stored in the platform control plane, where every worker process and every
+    # instance reads them (provisa/core/deployment_settings.py) — these used to be written to
+    # the environment of the one process serving this request.
+    values: dict = {}
     if "limits" in body and "default_row_limit" in body["limits"]:
-        os.environ["PROVISA_DEFAULT_ROW_LIMIT"] = str(body["limits"]["default_row_limit"])
-        updated.append("limits.default_row_limit")
+        values["limits.default_row_limit"] = int(body["limits"]["default_row_limit"])
     if "sampling" in body and "default_sample_size" in body["sampling"]:
-        os.environ["PROVISA_SAMPLE_SIZE"] = str(int(body["sampling"]["default_sample_size"]))
-        updated.append("sampling.default_sample_size")
+        values["sampling.default_sample_size"] = int(body["sampling"]["default_sample_size"])
     if "relationships" in body and "auto_track_fk" in body["relationships"]:
-        os.environ["PROVISA_AUTO_TRACK_FK"] = (
-            "true" if body["relationships"]["auto_track_fk"] else "false"
-        )
-        updated.append("relationships.auto_track_fk")
+        values["relationships.auto_track_fk"] = bool(body["relationships"]["auto_track_fk"])
+    # REQ-1905: the request timeout, default and per transport. Stored through the settings
+    # registry, which validates them (a positive number; a known transport) and stores the map
+    # key by key: the transports given are set, a null clears one back to the default, the
+    # others keep what they have.
+    timeouts: dict = {}
+    if "limits" in body and "request_timeout" in body["limits"]:
+        timeouts["limits.request_timeout"] = body["limits"]["request_timeout"]
+    if "limits" in body and "request_timeouts" in body["limits"]:
+        timeouts["limits.request_timeouts"] = body["limits"]["request_timeouts"]
+    if not values and not timeouts:
+        return
+    assert state.admin_db is not None, "deployment settings need the platform control plane"
+    if timeouts:
+        try:
+            _settings_registry.validate(timeouts)  # before anything in this request is stored
+        except (_settings_registry.SettingInvalid, _settings_registry.UnknownSetting) as err:
+            raise ApiError(
+                400,
+                "settings.invalid_value",
+                f"setting {err.key} refused: {getattr(err, 'reason', 'unknown_setting')}",
+                field=err.key,
+                reason=getattr(err, "reason", "unknown_setting"),
+            ) from err
+    if values:
+        _deployment_settings.write(state.admin_db, values, updated_by=updated_by)
+    if timeouts:
+        _settings_registry.store(state.admin_db, timeouts, updated_by=updated_by)
+    updated.extend([*values, *timeouts])
 
 
 @router.put("/admin/settings")
@@ -596,13 +586,28 @@ async def update_settings(request: Request):  # REQ-165, REQ-253, REQ-303, REQ-4
     updated: list = []
     restart_required = False
 
-    await _apply_org_blocks(request, body, updated)
+    # Every right the body needs is checked before any of it is written: the org blocks used to
+    # be stored first, so a body refused for its deployment blocks was left half applied.
+    if set(body) & set(_ORG_BLOCKS):
+        require_org_settings(request)  # REQ-1349
     if set(body) - set(_ORG_BLOCKS):
-        require_platform_settings(request)  # REQ-1337
+        require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
+    await _apply_org_blocks(request, body, updated)
 
     if "engine" in body:
-        restart_required = _apply_engine(body["engine"], state, updated) or restart_required
-    _apply_scalars(body, state, updated)
+        restart_required = (
+            _apply_engine(
+                body["engine"],
+                state,
+                updated,
+                updated_by=getattr(
+                    getattr(request.state, "identity", None), "user_id", "anonymous"
+                ),
+            )
+            or restart_required
+        )
+    _identity = getattr(request.state, "identity", None)
+    _apply_scalars(body, state, updated, getattr(_identity, "user_id", "anonymous"))
     if "graphql_remote" in body:
         _apply_graphql_remote(body["graphql_remote"], updated)
     if "naming" in body:
@@ -610,7 +615,7 @@ async def update_settings(request: Request):  # REQ-165, REQ-253, REQ-303, REQ-4
         if err is not None:
             return {"success": False, "message": err}
     if "otel" in body:
-        _apply_otel(body["otel"], updated)
+        _apply_otel(body["otel"], updated, updated_by=getattr(_identity, "user_id", "anonymous"))
 
     if "cdc" in body:  # REQ-931: Provisa-level inbound-CDC consumer group; applied on restart
         c = body["cdc"]
@@ -738,6 +743,8 @@ async def get_federation_engine():  # REQ-916
     cfg = read_config()
 
     def _eng(key: str):
+        if key in _ENGINE_KEYS:
+            return _engine_setting(cfg, key)  # REQ-1913: stored in the control plane
         return cfg.get(key, ProvisaConfig.model_fields[key].default)
 
     # `current` names the engine the process actually booted — build_engine records which key won its
@@ -774,7 +781,7 @@ async def get_federation_engine():  # REQ-916
 @router.put("/admin/federation-engine")
 async def set_federation_engine(request: Request):  # REQ-916
     """Persist the federation-engine selection + connection config. Applied on service restart."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     from provisa.federation.engine import engine_registry
 
     from provisa.api.app import state
@@ -808,9 +815,16 @@ async def set_federation_engine(request: Request):  # REQ-916
     selected_fields = {
         f["config_key"]: f for e in registry if e["key"] == engine for f in e["config_fields"]
     }
+    # REQ-1913: the sizing keys are operator settings — stored in the control plane, where the
+    # settings page stores them too, not in this node's config file.
+    sizing: dict = {}
     for ck, field in selected_fields.items():
         if ck in body:
             coerced = _coerce(field, body[ck])
+            if ck in _ENGINE_KEYS:
+                sizing[ck] = coerced  # None clears the stored value
+                updated.append(ck)
+                continue
             if ck.endswith("_url") and isinstance(coerced, str):
                 # REQ-1575: the form was handed this URL without its password; posting the page back
                 # unchanged must not be what deletes the credential.
@@ -829,7 +843,12 @@ async def set_federation_engine(request: Request):  # REQ-916
     for ck in other_keys:
         if cfg.pop(ck, None) is not None:
             updated.append(f"-{ck}")
+        if ck in _ENGINE_KEYS:
+            sizing[ck] = None
 
+    if sizing:
+        _identity = getattr(request.state, "identity", None)
+        _store_engine_sizing(sizing, updated_by=getattr(_identity, "user_id", "anonymous"))
     write_config(path, cfg)
     # Regenerate the engine's derived config (e.g. Trino jvm.config/config.properties) so sizing
     # changes are written out; a native engine's write_config is a no-op. Applies on restart.
@@ -837,55 +856,68 @@ async def set_federation_engine(request: Request):  # REQ-916
     return {"success": True, "updated": updated, "restart_required": True}
 
 
+# The blocks of /admin/cache-storage that are operator settings (REQ-1913), by block and field.
+_CACHE_STORAGE_SETTINGS = {
+    "cache": ("enabled", "redis_url", "default_ttl"),
+    "hot_tables": ("auto_threshold", "max_rows", "max_bytes", "refresh_interval"),
+    "warm_tables": (
+        "query_threshold",
+        "max_rows",
+        "refresh_interval",
+        "fs_cache_enabled",
+        "fs_cache_directories",
+        "fs_cache_max_sizes",
+    ),
+    "materialized_views": ("default_ttl",),
+}
+
+
 @router.get("/admin/cache-storage")
 async def get_cache_storage(request: Request):  # REQ-917
     """Hot-cache (Redis) + materialize-store settings for the admin UI."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     from provisa.api.app import state
 
-    from provisa.core.models import HotTablesConfig, MaterializedViewsConfig, WarmTablesConfig
+    from provisa.api.admin.secret_redaction import redact_url_password
+    from provisa.core import settings_registry
 
     cfg = read_config()
-    cache = cfg.get("cache", {}) or {}
-    hot = cfg.get("hot_tables", {}) or {}
-    warm = cfg.get("warm_tables", {}) or {}
-    mv = cfg.get("materialized_views", {}) or {}
     # The DSN the active engine offers itself as its materialize target absent explicit config
     # (engine.py:_*_materialize_default). Reported so the UI shows the real "empty →" fallback
     # for THIS engine rather than a hardcoded string — None when the engine declares no default.
     default_store = state.federation_engine.engine.default_materialize_store()
-    hf = HotTablesConfig.model_fields
-    wf = WarmTablesConfig.model_fields
-    # Defaults mirror the single source of truth — the model field defaults / reads in hot_tables.py.
+    # REQ-1913: the cache and tier settings are operator settings — what is reported is what is
+    # saved (stored, then environment, then config, then the declared default).
+    saved = settings_registry.resolve
+
+    def _tier(block: str, *fields: str) -> dict:
+        return {field: saved(f"{block}.{field}").value for field in fields}
+
+    hot = _tier("hot_tables", "auto_threshold", "max_bytes", "refresh_interval")
+    # REQ-230: with no ceiling of its own the hot tier's row ceiling is its auto threshold.
+    own_max_rows = saved("hot_tables.max_rows").value
+    hot["max_rows"] = own_max_rows if own_max_rows is not None else hot["auto_threshold"]
+    redis_url = saved("cache.redis_url").value
     return {
         "cache": {
-            "enabled": bool(cache.get("enabled", False)),
-            "redis_url": cache.get("redis_url", ""),  # empty → embedded fakeredis
-            "default_ttl": cache.get("default_ttl"),
+            "enabled": saved("cache.enabled").value,
+            # empty → embedded fakeredis. The address is returned WITHOUT its password; a save
+            # that posts it back unchanged keeps the stored one (restore_url_password).
+            "redis_url": redact_url_password(redis_url) if redis_url is not None else "",
+            "default_ttl": saved("cache.default_ttl").value,
         },
-        "hot_tables": {
-            "auto_threshold": hot.get("auto_threshold", hf["auto_threshold"].default),
-            "max_rows": hot.get(
-                "max_rows", hot.get("auto_threshold", hf["auto_threshold"].default)
-            ),
-            "max_bytes": hot.get("max_bytes", hf["max_bytes"].default),
-            "refresh_interval": hot.get("refresh_interval"),
-        },
-        "warm_tables": {  # REQ-240: tier-promotion thresholds + engine filesystem read-cache
-            "query_threshold": warm.get("query_threshold", wf["query_threshold"].default),
-            "max_rows": warm.get("max_rows", wf["max_rows"].default),
-            "refresh_interval": warm.get("refresh_interval", wf["refresh_interval"].default),
-            "fs_cache_enabled": bool(warm.get("fs_cache_enabled", wf["fs_cache_enabled"].default)),
-            "fs_cache_directories": warm.get(
-                "fs_cache_directories", wf["fs_cache_directories"].default
-            ),
-            "fs_cache_max_sizes": warm.get("fs_cache_max_sizes", wf["fs_cache_max_sizes"].default),
-        },
-        "materialized_views": {  # REQ-543: default MV refresh TTL for MVs without their own
-            "default_ttl": mv.get(
-                "default_ttl", MaterializedViewsConfig.model_fields["default_ttl"].default
-            ),
-        },
+        "hot_tables": hot,
+        "warm_tables": _tier(  # REQ-240: tier-promotion thresholds + engine filesystem read-cache
+            "warm_tables",
+            "query_threshold",
+            "max_rows",
+            "refresh_interval",
+            "fs_cache_enabled",
+            "fs_cache_directories",
+            "fs_cache_max_sizes",
+        ),
+        # REQ-543: default MV refresh TTL for MVs without their own
+        "materialized_views": _tier("materialized_views", "default_ttl"),
         "materialize": {
             "store_url": cfg.get("materialize_store_url") or "",
             "default_store_url": default_store or "",
@@ -901,47 +933,42 @@ async def get_cache_storage(request: Request):  # REQ-917
 @router.put("/admin/cache-storage")
 async def set_cache_storage(request: Request):  # REQ-917
     """Persist hot-cache (Redis) + materialize-store settings. Applied on service restart."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     body = await request.json()
     path = config_path()
     cfg = read_config()
     updated: list[str] = []
 
-    if "cache" in body:
-        cache = dict(cfg.get("cache", {}) or {})
-        for k in ("enabled", "redis_url", "default_ttl"):
-            if k in body["cache"]:
-                cache[k] = body["cache"][k]
-                updated.append(f"cache.{k}")
-        cfg["cache"] = cache
-    if "hot_tables" in body:
-        hot = dict(cfg.get("hot_tables", {}) or {})
-        for k in ("auto_threshold", "max_rows", "max_bytes", "refresh_interval"):
-            if k in body["hot_tables"]:
-                v = body["hot_tables"][k]
-                hot[k] = int(v) if v not in (None, "") else None
-                updated.append(f"hot_tables.{k}")
-        cfg["hot_tables"] = hot
-    if "warm_tables" in body:  # REQ-240
-        warm = dict(cfg.get("warm_tables", {}) or {})
-        for k in ("query_threshold", "max_rows", "refresh_interval"):
-            if k in body["warm_tables"]:
-                v = body["warm_tables"][k]
-                warm[k] = int(v) if v not in (None, "") else None
-                updated.append(f"warm_tables.{k}")
-        if "fs_cache_enabled" in body["warm_tables"]:
-            warm["fs_cache_enabled"] = bool(body["warm_tables"]["fs_cache_enabled"])
-            updated.append("warm_tables.fs_cache_enabled")
-        for k in ("fs_cache_directories", "fs_cache_max_sizes"):
-            if k in body["warm_tables"]:
-                warm[k] = body["warm_tables"][k]
-                updated.append(f"warm_tables.{k}")
-        cfg["warm_tables"] = warm
-    if "materialized_views" in body and "default_ttl" in body["materialized_views"]:  # REQ-543
-        v = body["materialized_views"]["default_ttl"]
-        cfg["materialized_views"] = dict(cfg.get("materialized_views", {}) or {})
-        cfg["materialized_views"]["default_ttl"] = int(v) if v not in (None, "") else None
-        updated.append("materialized_views.default_ttl")
+    # REQ-1913: the cache and tier settings are operator settings, stored in the control plane
+    # (they used to be written to this node's config file). A blank value clears the stored one.
+    from provisa.api.admin.secret_redaction import restore_url_password
+    from provisa.api.admin.settings_catalog_router import _invalid
+    from provisa.api.app import state
+    from provisa.core import settings_registry
+    from provisa.core.settings_registry import SettingInvalid
+
+    values: dict = {}
+    for block, fields in _CACHE_STORAGE_SETTINGS.items():
+        for field in fields:
+            if field in (body.get(block) or {}):
+                raw = body[block][field]
+                values[f"{block}.{field}"] = None if raw in (None, "") else raw
+                updated.append(f"{block}.{field}")
+    if values.get("cache.redis_url") is not None:
+        # REQ-1575: the page was handed this address without its password; posting it back
+        # unchanged must not be what deletes the credential.
+        values["cache.redis_url"] = restore_url_password(
+            values["cache.redis_url"], settings_registry.resolve("cache.redis_url").value
+        )
+    if values:
+        assert state.admin_db is not None, "cache settings need the platform control plane"
+        identity = getattr(request.state, "identity", None)
+        try:
+            settings_registry.store(
+                state.admin_db, values, updated_by=getattr(identity, "user_id", "anonymous")
+            )
+        except SettingInvalid as err:
+            raise _invalid(err) from None
     if "materialize" in body and "store_url" in body["materialize"]:
         cfg["materialize_store_url"] = body["materialize"]["store_url"] or None
         updated.append("materialize_store_url")
@@ -979,7 +1006,7 @@ def _encryption_providers() -> list[dict]:
 @router.get("/admin/encryption")
 async def get_encryption(request: Request):  # REQ-918
     """Encryption provider + master-key status for the admin UI."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     from provisa.encryption.providers import master_key_present
 
     cfg = read_config()
@@ -1007,7 +1034,7 @@ async def get_encryption(request: Request):  # REQ-918
 @router.put("/admin/encryption")
 async def set_encryption(request: Request):  # REQ-918
     """Persist the encryption provider + key id. Applied on service restart."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     from provisa.encryption.registry import get_provider_spec
 
     body = await request.json()
@@ -1079,7 +1106,7 @@ async def get_secrets_service(request: Request):  # REQ-1557, REQ-1558
     The SERVICE is the deployment's, so this is platform_settings — distinct from an org's secret
     NAMES, which are org_settings and live under /admin/orgs/{org_id}/secrets.
     """
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     cfg = read_config()
     sec = cfg.get("secrets", {}) or {}
     providers = _secrets_providers()
@@ -1100,7 +1127,7 @@ async def get_secrets_service(request: Request):  # REQ-1557, REQ-1558
 @router.put("/admin/secrets-service")
 async def set_secrets_service(request: Request):  # REQ-1557, REQ-1558
     """Select the secrets backend. Persisted to provisa.yaml AND applied to this process."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     from provisa.core.secrets_registry import get_secrets_provider_spec
     from provisa.core.secrets_runtime import configure_secrets
 
@@ -1162,7 +1189,7 @@ async def generate_encryption_key(request: Request):  # REQ-918, REQ-1574, REQ-1
     provider/config is exactly the idempotent re-provision it's documented to support, not a
     provider swap (which is what still legitimately needs the PUT /admin/encryption restart note).
     """
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     from provisa.encryption import configure_encryption
     from provisa.encryption.providers import generate_master_key_b64, store_master_key
 
@@ -1274,7 +1301,7 @@ _AUTH_PROVIDERS = [
 @router.get("/admin/auth")
 async def get_auth(request: Request):  # REQ-919
     """Auth provider selection + per-provider config + role settings for the admin UI."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     from provisa.core.models import AuthConfig
 
     cfg = read_config()
@@ -1313,7 +1340,7 @@ async def get_auth(request: Request):  # REQ-919
 @router.put("/admin/auth")
 async def set_auth(request: Request):  # REQ-919
     """Persist the auth provider + its config + role settings. Applied on service restart."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     body = await request.json()
     provider = body.get("provider")
     valid = {p["key"] for p in _AUTH_PROVIDERS}
@@ -1362,7 +1389,7 @@ async def reload_query_engine_catalog(request: Request, catalog: str = "otel"):
     REST API so all workers pick up the change via discovery; a native engine has no reloadable
     catalog.
     """
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     from provisa.api.app import state
     from provisa.api.startup_seed import _OPS_VIEWS
 
@@ -1407,7 +1434,7 @@ async def restart_query_engine(request: Request, container: str | None = None): 
     — shelling out to one failed with "docker not found on PATH" on every deployment that mounts
     the socket, which is all of them.
     """
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     import httpx
 
     from provisa.api.app import state

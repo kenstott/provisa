@@ -37,6 +37,9 @@ class _FakeEngine:
         self._rows = rows
         self._cols = column_names or []
 
+    def engine_physical(self, pg_sql):
+        return pg_sql  # an engine that addresses catalog.schema.table as written
+
     async def execute_engine(self, sql, *args, **kwargs):
         return QueryResult(rows=self._rows, column_names=self._cols)
 
@@ -46,6 +49,9 @@ class _CountEngine:
 
     def __init__(self, counts):
         self._counts = counts
+
+    def engine_physical(self, pg_sql):
+        return pg_sql  # an engine that addresses catalog.schema.table as written
 
     async def execute_engine(self, sql, *args, **kwargs):
         for t, c in self._counts.items():
@@ -536,8 +542,81 @@ class TestDetectHotTablesByCount:
         from provisa.cache.hot_tables import detect_hot_tables_by_count
 
         class _BoomEngine:
+            def engine_physical(self, pg_sql):
+                return pg_sql
+
             async def execute_engine(self, sql, *a, **k):
                 raise RuntimeError("connector has no COUNT")
 
         result = await detect_hot_tables_by_count(_BoomEngine(), [("t", "public", "pg")], 1_000, {})
         assert result == []
+
+
+# --- The engine's own table addressing (per engine) ---
+
+
+def _recording_runtime(engine_key: str, rows=((1, "a"),), columns=("id", "name")):
+    """The real engine runtime for ``engine_key`` with its terminal replaced by a recorder."""
+    from types import SimpleNamespace
+
+    from provisa.federation.engine import build_engine
+    from provisa.federation.runtime import EngineRuntime
+
+    runtime = EngineRuntime(build_engine(engine_key), SimpleNamespace())
+    sent: list[str] = []
+
+    async def _execute_engine(sql, *_a, **_k):
+        sent.append(sql)
+        if "COUNT(*)" in sql:
+            return QueryResult(rows=[(len(rows),)], column_names=["_c"])
+        return QueryResult(rows=list(rows), column_names=list(columns))
+
+    runtime.execute_engine = _execute_engine  # type: ignore[method-assign]
+    return runtime, sent
+
+
+# A source table is registered as catalog.schema.table. An engine with a catalog level takes that
+# name; Postgres has none (no cross-database references), so the catalog folds into the schema.
+_HOT_ADDRESSING = {
+    "trino": '"bench_postgresql"."public"."regions"',
+    "duckdb": '"bench_postgresql"."public"."regions"',
+    "pg": '"bench_postgresql_public"."regions"',
+}
+
+
+class TestEngineAddressing:
+    @pytest.mark.parametrize("engine_key", sorted(_HOT_ADDRESSING))
+    @pytest.mark.asyncio
+    async def test_sizing_addresses_the_table_in_the_engines_own_naming(self, engine_key):
+        from provisa.cache.hot_tables import count_table_rows
+
+        runtime, sent = _recording_runtime(engine_key)
+        assert await count_table_rows(runtime, "regions", "public", "bench_postgresql") == 1
+        assert sent == [f"SELECT COUNT(*) FROM {_HOT_ADDRESSING[engine_key]}"]
+
+    @pytest.mark.parametrize("engine_key", sorted(_HOT_ADDRESSING))
+    @pytest.mark.asyncio
+    async def test_loading_addresses_the_table_in_the_engines_own_naming(self, engine_key):
+        from unittest.mock import AsyncMock
+
+        runtime, sent = _recording_runtime(engine_key)
+        mgr = HotTableManager(None, auto_threshold=100, max_rows=100)
+        mgr._store_rows = AsyncMock(return_value=1)  # type: ignore[method-assign]
+        assert await mgr.load_table(runtime, "regions", "public", "bench_postgresql", "id") == 1
+        assert sent == [f"SELECT * FROM {_HOT_ADDRESSING[engine_key]}"]
+        # The cache entry is still filed under the registered catalog and schema.
+        mgr._store_rows.assert_awaited_once_with(
+            "regions", [{"id": 1, "name": "a"}], "id", "bench_postgresql", "public"
+        )
+
+    @pytest.mark.parametrize("engine_key", sorted(_HOT_ADDRESSING))
+    @pytest.mark.asyncio
+    async def test_detection_by_count_sizes_through_the_engines_own_naming(self, engine_key):
+        from provisa.cache.hot_tables import detect_hot_tables_by_count
+
+        runtime, sent = _recording_runtime(engine_key)
+        hot = await detect_hot_tables_by_count(
+            runtime, [("regions", "public", "bench_postgresql")], 1_000, {}
+        )
+        assert hot == ["regions"]
+        assert sent == [f"SELECT COUNT(*) FROM {_HOT_ADDRESSING[engine_key]}"]

@@ -13,6 +13,10 @@
     "roleIdPlaceholder": "analyst",
     "capabilities": "能力",
     "domainAccess": "域访问权限",
+    "parentRole": "继承自",
+    "parentRoleNone": "无父角色",
+    "parentRoleHelp": "角色的授权、列可见性和 RLS 规则会被继承；此角色针对某个表自有的 RLS 规则会替换父角色的规则。",
+    "labelParentRole": "继承自：",
     "allDomains": "所有域",
     "save": "保存",
     "cancel": "取消",
@@ -51,6 +55,11 @@
     "rolePurposeTitle": "角色的用途",
     "rolePurposeBody": "角色是其他所有权限所针对的单位。它的能力决定它可以执行哪些操作，域访问决定它究竟能触及模型的哪些部分。行级规则以及各接口上的访问检查针对的都是角色而非个人——因此要改变某人能看到、能做什么，就改变他所持有的角色。",
     "rolePurposeAdd": "角色还带有自己的上限：每秒请求数，以及查询深度、节点数和执行时间的限制。这样既可以给角色以覆盖面，又不至于给出无上限的开销——昂贵的查询由发出它的角色拒绝，而不是由它本会打到的数据源拒绝。",
-    "rolePurposeAria": "关于角色"
+    "rolePurposeAria": "关于角色",
+    "applyToAction": "操作（函数或 webhook）",
+    "action": "操作",
+    "actionPrefix": "操作：",
+    "loadActionsFailed": "无法加载操作：{{message}}",
+    "labelAction": "操作："
   }
 }

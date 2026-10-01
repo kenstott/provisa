@@ -30,7 +30,12 @@ async def client():
     app = create_app()
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
+        async with AsyncClient(
+            # REQ-273: the header carries the role; a body role must match it.
+            transport=transport,
+            base_url="http://test",
+            headers={"X-Provisa-Role": "org_admin"},
+        ) as c:
             yield c
 
 
@@ -68,7 +73,7 @@ async def test_select_from_provisa_view_routes_through_engine(client):
 
     resp = await client.post(
         "/data/sql",
-        json={"sql": 'SELECT * FROM "vq"."vq_view"', "role": "admin"},
+        json={"sql": 'SELECT * FROM "vq"."vq_view"', "role": "org_admin"},
     )
     # The regression: this used to be a 400 {"detail": "'<source-id>'"} (KeyError in the driver pool).
     assert resp.status_code == 200, resp.text

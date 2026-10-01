@@ -13,6 +13,10 @@
     "roleIdPlaceholder": "analyst",
     "capabilities": "Mogelijkheden",
     "domainAccess": "Domeintoegang",
+    "parentRole": "Erft van",
+    "parentRoleNone": "Geen bovenliggende rol",
+    "parentRoleHelp": "De grants, kolomzichtbaarheid en RLS-regels van de rol worden geërfd; de eigen RLS-regel van deze rol voor een tabel vervangt die van de bovenliggende rol.",
+    "labelParentRole": "Erft van:",
     "allDomains": "Alle domeinen",
     "save": "Opslaan",
     "cancel": "Annuleren",
@@ -51,6 +55,11 @@
     "rolePurposeTitle": "Waar rollen voor zijn",
     "rolePurposeBody": "De rol is de eenheid waartegen elke andere rechten worden geschreven. De capabilities bepalen welke operaties ze mag uitvoeren, de domeintoegang bepaalt welke delen van het model ze überhaupt bereikt. Rijregels, en de toegangscontroles op elke surface, benoemen een rol en niet een persoon: wat iemand kan zien en doen verander je door de rol te veranderen die hij heeft.",
     "rolePurposeAdd": "Een rol draagt ook eigen plafonds: verzoeken per seconde, en limieten op querydiepte, aantal nodes en uitvoeringstijd. Zo krijgt een rol bereik zonder onbegrensde kosten — een dure query wordt geweigerd door de rol die hem uitgaf, niet door de bron die hij zou hebben geraakt.",
-    "rolePurposeAria": "Over rollen"
+    "rolePurposeAria": "Over rollen",
+    "applyToAction": "Actie (functie of webhook)",
+    "action": "Actie",
+    "actionPrefix": "actie:",
+    "loadActionsFailed": "Acties laden mislukt: {{message}}",
+    "labelAction": "Actie:"
   }
 }

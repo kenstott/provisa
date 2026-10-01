@@ -8,8 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1197 e2e: JSON:API ``meta.total`` is computed by a COUNT(*) aggregate pushed
-down to the engine, never by materializing the full matching set in Python.
+"""REQ-1197 e2e: JSON:API ``meta.total`` — counted only for a request that asks for it
+(``page[total]=true``) — is computed by a COUNT(*) aggregate pushed down to the engine, never
+by materializing the full matching set in Python.
 
 Live round trip: HTTP request → JSON:API router → the single governed pipeline
 (_govern_and_route_compiled + _execute_plan) → the e2e stack's Postgres. Push-down is
@@ -134,7 +135,7 @@ class TestMetaTotalCountPushdown:
 
         resp = await client.get(
             "/data/jsonapi/sales-analytics/orders",
-            params={"page[number]": "1", "page[size]": "2"},
+            params={"page[number]": "1", "page[size]": "2", "page[total]": "true"},
             headers={"Accept": _JSONAPI_ACCEPT, "X-Provisa-Role": "org_admin"},
         )
         assert resp.status_code == 200, resp.text
@@ -163,10 +164,43 @@ class TestMetaTotalCountPushdown:
 
         resp = await client.get(
             "/data/jsonapi/sales-analytics/orders",
-            params={"page[number]": "1", "page[size]": "1", "filter[region]": "us-east"},
+            params={
+                "page[number]": "1",
+                "page[size]": "1",
+                "filter[region]": "us-east",
+                "page[total]": "true",
+            },
             headers={"Accept": _JSONAPI_ACCEPT, "X-Provisa-Role": "org_admin"},
         )
         assert resp.status_code == 200, resp.text
         doc = resp.json()
         assert doc["meta"]["total"] == expected_filtered
         assert len(doc["data"]) == 1
+
+    async def test_no_count_reaches_the_database_unless_the_request_asks(
+        self, client, statement_logging
+    ):
+        """A list request without ``page[total]=true`` sends the database no count: the page's
+        ``next`` link comes from the page's own rows, and neither ``meta.total`` nor
+        ``links.last`` is reported."""
+        assert _pg_scalar("SELECT COUNT(*) FROM public.orders") > 2
+
+        container = _postgres_container_id()
+        since = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+        resp = await client.get(
+            "/data/jsonapi/sales-analytics/orders",
+            params={"page[number]": "1", "page[size]": "2"},
+            headers={"Accept": _JSONAPI_ACCEPT, "X-Provisa-Role": "org_admin"},
+        )
+        assert resp.status_code == 200, resp.text
+        doc = resp.json()
+        assert len(doc["data"]) == 2
+        assert "total" not in doc.get("meta", {})
+        assert "last" not in doc["links"]
+        assert doc["links"]["next"] is not None
+        assert doc["links"]["prev"] is None
+
+        log = _pg_log_since(container, since)
+        assert "orders" in log, "the page query itself never reached the database log"
+        assert "_provisa_count" not in log

@@ -236,6 +236,12 @@ class _FakeBackend:
     async def materialize_pending(self, state, **kw):
         return await self._impl(self, state, **kw)  # type: ignore[arg-type]
 
+    def pending_lands(self, sources, **kw):
+        # the base decision materialize_pending acts on
+        from provisa.federation.backend import EngineBackend
+
+        return EngineBackend.pending_lands(self, sources, **kw)  # type: ignore[arg-type]
+
 
 @pytest.mark.asyncio
 def _registry_is_config(monkeypatch):

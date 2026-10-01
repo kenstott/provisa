@@ -1,0 +1,15 @@
+{
+  "kaggleFormSection": {
+    "tokenLabel": "Kaggle API トークン",
+    "tokenDescription": "データセットピッカーのロックが解除される前に、Kaggle API に対してリアルタイムで検証されます",
+    "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
+    "validateButton": "トークンを検証",
+    "tokenValid": "トークンは有効です",
+    "tokenInvalid": "Kaggle API トークンが無効です",
+    "datasetSearchLabel": "Kaggle データセットを検索",
+    "datasetSearchPlaceholder": "名前で検索...",
+    "noDatasetsFound": "データセットが見つかりません",
+    "selectedDataset": "選択済み: {{ref}}",
+    "registerButton": "データセットを追加"
+  }
+}

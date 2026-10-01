@@ -11,6 +11,8 @@
     "addViewTitle": "Neue Sicht im SQL-Explorer erstellen",
     "model": "+ Modell",
     "modelTitle": "Entität oder Fakt modellieren (Sternschema / Data Vault)",
+    "reportXlsx": "Arbeitsmappe",
+    "reportXlsxTitle": "Das Modell zur Prüfung als Tabellenkalkulation herunterladen – Quellen, Tabellen, Spalten, Beziehungen, Sichten, Metriken, materialisierte Sichten und Glossarbegriffe, je ein Blatt",
     "viewErd": "ERD anzeigen",
     "colSource": "Quelle",
     "colDomain": "Domäne",
@@ -56,6 +58,11 @@
       "impliedDimensionTitle": "Implizite Dimension — „Group By aktivieren“ ist für diese Tabelle aktiviert"
     },
     "derived": "abgeleitet",
+    "checker": {
+      "soda": "Soda",
+      "great_expectations": "Great Expectations",
+      "title": "Datenqualitätsprüfer – die Zeilen dieser Tabelle sind die Ergebnisse der Ausführung ihres Vertrags"
+    },
     "dataProduct": "Produkt",
     "dataProductTitle": "Datenprodukt — enthalten in provisa metadata export",
     "purposeTitle": "Was die Registrierung einer Tabelle bewirkt",

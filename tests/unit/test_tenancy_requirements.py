@@ -119,6 +119,10 @@ class TestAuthMiddlewareSkipPaths:
             # exists. Both return only what the addressed org chose to show every visitor.
             "/orgs/branding",
             "/orgs/branding/logo",
+            # REQ-1913: the UI server is its own process with no identity and no control plane; it
+            # asks here for the operator settings it runs on. The answer is its proxy timeout and
+            # the source it resolved from — a number, no data and no secret.
+            "/internal/ui-server-settings",
         }
         assert _SKIP_PATHS == expected
 

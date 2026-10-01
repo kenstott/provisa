@@ -1,0 +1,8 @@
+{
+  "ownerResolution": {
+    "iconLabel": "顯示此項解析為誰",
+    "loading": "解析中…",
+    "empty": "目前沒有任何個人持有此項",
+    "columnIconLabel": "顯示誰可以存取此欄位"
+  }
+}

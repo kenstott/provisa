@@ -445,8 +445,6 @@ class BoltTransport(Transport):
         self._driver = None
         self._session = None
         try:
-            from neo4j import GraphDatabase
-
             # provisa/bolt/session.py's no-auth branch (_resolve_user) offers EVERY compiled
             # role as selectable and takes role_id = roles[0] — with auth=None (no principal at
             # all) that's the first key of app_state.contexts in dict insertion order, NOT
@@ -471,7 +469,7 @@ class BoltTransport(Transport):
             # mirrored server-side for Bolt) is unconditional and unrelated to
             # IGNORE_RELATIONSHIPS. So org_admin_unguarded changes nothing measurable for this
             # transport — role is still threaded through for consistency/RLS/visibility parity.
-            from neo4j import basic_auth
+            from neo4j import GraphDatabase, basic_auth
 
             self._driver = GraphDatabase.driver(f"bolt://{host}:{port}", auth=basic_auth(role, ""))
             self._driver.verify_connectivity()
@@ -787,7 +785,14 @@ class GrpcTransport(Transport):
 
     name = "grpc"
 
-    def __init__(self, host: str, port: int, http_base_url: str, role: str = "org_admin"):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        http_base_url: str,
+        role: str = "org_admin",
+        auth_headers: dict[str, str] | None = None,
+    ):
         self._role = role
         self._channel = None
         self._pool = None
@@ -796,7 +801,7 @@ class GrpcTransport(Transport):
             import grpc as _grpc
 
             self._grpc = _grpc
-            self._pool = self._compile_role_proto(http_base_url, role)
+            self._pool = self._compile_role_proto(http_base_url, role, auth_headers or {})
             # REQ-1899: matches the server's own raised max message size (provisa/grpc/server.py's
             # start_grpc_server) — a client-chosen batch_rows large enough to exceed the previous
             # 4MB default (e.g. large_scan's 65,536-row batches) needs the client side raised too,
@@ -816,7 +821,7 @@ class GrpcTransport(Transport):
         return self._channel is not None
 
     @staticmethod
-    def _compile_role_proto(http_base_url: str, role: str):
+    def _compile_role_proto(http_base_url: str, role: str, auth_headers: dict[str, str]):
         """Fetch the role's published .proto and compile it (with the well-known imports shipped
         in grpc_tools) into a fresh DescriptorPool."""
         import tempfile
@@ -827,7 +832,9 @@ class GrpcTransport(Transport):
         from grpc_tools import protoc
 
         resp = httpx.get(
-            f"{http_base_url}/data/proto/{role}", headers={"X-Provisa-Role": role}, timeout=30
+            f"{http_base_url}/data/proto/{role}",
+            headers={"X-Provisa-Role": role, **auth_headers},
+            timeout=30,
         )
         resp.raise_for_status()
         well_known = str(resources.files("grpc_tools") / "_proto")
@@ -1310,7 +1317,7 @@ def main() -> int:
         action="store_true",
         help="Run ONLY the most-optimistic request (queries.OPTIMISTIC: one row, one column, no "
         "predicate, cached where the transport has an opt-in) as a closed-loop ramp on every "
-        "transport, from several client processes — see optimistic_load.py. Results land in "
+        "transport, from several client processes — see optimistic_load.py; needs --setup (REQ-1911). Results land in "
         "<output-dir>/optimistic/<transport>.json; the query matrix is not run.",
     )
     import optimistic_load
@@ -1320,19 +1327,12 @@ def main() -> int:
     if args.start_at and args.query_ids:
         parser.error("--start-at and --query-id are mutually exclusive")
     if args.optimistic:
-        endpoints = optimistic_load.Endpoints(
-            http_base_url=args.http_base_url,
-            pgwire_host=args.pgwire_host,
-            pgwire_port=args.pgwire_port,
-            bolt_host=args.bolt_host,
-            bolt_port=args.bolt_port,
-            flight_host=args.flight_host,
-            flight_port=args.flight_port,
-            grpc_host=args.grpc_host,
-            grpc_port=args.grpc_port,
-            role="org_admin_unguarded" if args.bypass_relationship_guard else "org_admin",
-        )
-        optimistic_load.run_from_args(args, endpoints, Path(args.output_dir) / "optimistic")
+        import setup_contract
+
+        try:
+            optimistic_load.run_from_args(args, Path(args.output_dir) / "optimistic")
+        except setup_contract.SetupError as exc:
+            parser.error(f"setup contract: {exc}")
         return 0
     query_ids = set(args.query_ids) if args.query_ids else None
     if args.start_at:

@@ -49,9 +49,12 @@ class SQLRequest(BaseModel):
     role: str = "org_admin"  # REQ-1327: dev default is the DATA-plane admin; "admin"≡platform_admin is control-plane
 
 
-def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, request_role: str) -> str:
-    auth_role = getattr(raw_request.state, "role", None)
-    return auth_role or x_provisa_role or request_role
+def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, body: BaseModel) -> str:
+    """The role the request runs as (REQ-273): the acting role the auth layer established; a
+    body ``role`` that differs from it is refused (``api.acting_role``)."""
+    from provisa.api.acting_role import acting_role, sent_role
+
+    return acting_role(raw_request, x_provisa_role, sent_role(body), "org_admin")
 
 
 @router.get("/proto/{role_id}")
@@ -202,6 +205,19 @@ async def _execute_govdata(source_id: str, sql: str, state) -> "QueryResult":
     return QueryResult(rows=rows, column_names=column_names)
 
 
+def _with_cache_headers(payload, cache_headers: dict[str, str]):  # REQ-536
+    """``payload`` as a response carrying the X-Provisa-Cache headers. A payload that is already
+    a response gets them added; a plain body is encoded as the app's default response class
+    encodes a returned body (jsonable_encoder, then ORJSONResponse)."""
+    from fastapi.encoders import jsonable_encoder
+    from fastapi.responses import ORJSONResponse, Response
+
+    if isinstance(payload, Response):
+        payload.headers.update(cache_headers)
+        return payload
+    return ORJSONResponse(jsonable_encoder(payload), headers=cache_headers)
+
+
 @router.post("/sql")
 async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     raw_request: Request,
@@ -223,7 +239,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     from provisa.api.app import state
     from provisa.api.data.endpoint_helpers import _parse_accept, _format_response
 
-    role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
+    role_id = _resolve_role_id(raw_request, x_provisa_role, request)
     output_format = _parse_accept(accept)
     stats_enabled = (x_provisa_stats or "").lower() == "true"
 
@@ -249,6 +265,11 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     _t0 = _time.perf_counter()
 
     def _finalize(result):
+        # REQ-536: HIT (with the entry's age) when the pipeline served this result from the
+        # response cache, else MISS — reported on every response shape below.
+        from provisa.cache.middleware import build_cache_headers
+
+        cache_headers = build_cache_headers(result.cache_entry)
         rows_as_dicts = [dict(zip(result.column_names, row)) for row in result.rows]
         if stats_enabled:
             # REQ-1517: the entries and the execution DAG are recorded by the pipeline terminal
@@ -273,7 +294,8 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                             "columns": list(result.column_names),
                             "provisa_stats": qs.to_dict(),
                         }
-                    )
+                    ),
+                    headers=cache_headers,
                 )
             # non-json formats fall through to standard response (no stats injection)
 
@@ -282,14 +304,19 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
             # column names off the first row has none when the result is empty, so a filter that
             # matches nothing collapsed the grid to bare text — taking the header row, and with it
             # the filter inputs, away. There was then no control left to clear the filter with.
-            return {"data": {"sql": rows_as_dicts}, "columns": list(result.column_names)}
+            return _with_cache_headers(
+                {"data": {"sql": rows_as_dicts}, "columns": list(result.column_names)},
+                cache_headers,
+            )
         from provisa.compiler.sql_gen import ColumnRef
 
         columns = [
             ColumnRef(alias=None, column=c, field_name=c, nested_in=None)
             for c in result.column_names
         ]
-        return _format_response(result.rows, columns, "sql", output_format)
+        return _with_cache_headers(
+            _format_response(result.rows, columns, "sql", output_format), cache_headers
+        )
 
     # ONE pipeline: /data/sql runs through the single governed chokepoint. execute_sql_batch splits a
     # multi-statement batch statement-aware and governs+executes EACH (last result returned) — so the
@@ -314,6 +341,12 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         result = await execute_sql_batch(request.sql, role_id, state, as_of=_as_of)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
+    except TimeoutError as exc:
+        # REQ-1905: the statement outran its request deadline (the message names the transport
+        # and the setting), or the server is stopping — not a client error.
+        from provisa.api.errors import timeout_error
+
+        raise timeout_error(exc) from exc
     except HTTPException:
         raise
     except Exception as exc:  # allow-ble: request boundary — an arbitrary user query can raise ANY engine/driver exception type
@@ -347,7 +380,7 @@ async def sql_explain_endpoint(  # REQ-1519
     from provisa.api.app import state
     from provisa.executor.explain import ExplainUnsupported, analyze_sql
 
-    role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
+    role_id = _resolve_role_id(raw_request, x_provisa_role, request)
     if role_id not in state.schemas:
         raise ApiError(
             400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
@@ -806,7 +839,7 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     from provisa.core.org_secrets import read_org_api_keys
     from provisa.core.org_settings import resolve_org_config
 
-    role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
+    role_id = _resolve_role_id(raw_request, x_provisa_role, request)
     if role_id not in state.contexts:
         raise ApiError(
             400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
@@ -963,7 +996,7 @@ async def unified_query_endpoint(  # REQ-001, REQ-267, REQ-345
     not a string, which is what produced the 410 on Cypher and the 500 on SQL (issue #104).
     """
 
-    role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
+    role_id = _resolve_role_id(raw_request, x_provisa_role, request)
 
     target = detect_target(request.query)
 

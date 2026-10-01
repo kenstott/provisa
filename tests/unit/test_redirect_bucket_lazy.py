@@ -177,7 +177,34 @@ async def test_boot_does_not_touch_the_results_store():
     assert "ensure_results_bucket_sync(" not in boot_source
 
 
-def test_a_trino_ctas_redirect_ensures_its_bucket_first():
+# --- nothing about a redirect is swallowed (REQ-171) -------------------------------------------
+
+
+def test_the_results_schema_statement_failing_raises():
+    from provisa.executor import trino_write
+
+    cursor = MagicMock()
+    cursor.execute.side_effect = RuntimeError("location s3a://provisa-results/ does not exist")
+    conn = MagicMock()
+    conn.cursor.return_value = cursor
+    with patch.object(trino_write, "_results_schema_ensured", False):
+        with pytest.raises(RuntimeError, match="does not exist"):
+            trino_write.ensure_results_schema(conn)
+        assert trino_write._results_schema_ensured is False
+
+
+def test_the_results_schema_is_ensured_once_per_process():
+    from provisa.executor import trino_write
+
+    conn = MagicMock()
+    with patch.object(trino_write, "_results_schema_ensured", False):
+        trino_write.ensure_results_schema(conn)
+        trino_write.ensure_results_schema(conn)
+    assert conn.cursor.return_value.execute.call_count == 1
+    assert "CREATE SCHEMA IF NOT EXISTS" in conn.cursor.return_value.execute.call_args.args[0]
+
+
+def test_a_trino_ctas_redirect_ensures_bucket_then_schema_then_writes():
     from provisa.federation.backend import TrinoBackend
 
     order: list[str] = []
@@ -188,10 +215,112 @@ def test_a_trino_ctas_redirect_ensures_its_bucket_first():
             side_effect=lambda _cfg: order.append("bucket"),
         ),
         patch(
+            "provisa.executor.trino_write.ensure_results_schema",
+            side_effect=lambda _conn: order.append("schema"),
+        ),
+        patch(
             "provisa.executor.trino_write.execute_ctas_redirect",
             side_effect=lambda *_a: order.append("ctas") or {"ok": True},
         ),
     ):
-        out = TrinoBackend.ctas_redirect(MagicMock(), state, "SELECT 1", "parquet")
-    assert order == ["bucket", "ctas"]
-    assert out == {"ok": True}
+        TrinoBackend.ctas_redirect(MagicMock(), state, "SELECT 1", "parquet", None)
+    assert order == ["bucket", "schema", "ctas"]
+
+
+def test_a_results_schema_that_cannot_be_created_fails_the_ctas_redirect():
+    from provisa.federation.backend import TrinoBackend
+
+    state = SimpleNamespace(engine_conn="conn")
+    with (
+        patch("provisa.executor.redirect.ensure_results_bucket_sync"),
+        patch(
+            "provisa.executor.trino_write.ensure_results_schema",
+            side_effect=RuntimeError("no schema"),
+        ),
+        patch("provisa.executor.trino_write.execute_ctas_redirect") as ctas,
+        pytest.raises(RuntimeError, match="no schema"),
+    ):
+        TrinoBackend.ctas_redirect(MagicMock(), state, "SELECT 1", "parquet", None)
+    ctas.assert_not_called()
+
+
+def test_trino_boot_creates_no_results_schema():
+    import inspect
+
+    from provisa.federation import trino_lifecycle
+
+    assert "ensure_results_schema" not in inspect.getsource(trino_lifecycle.connect_infra)
+
+
+def test_a_failed_redirect_fails_the_request_on_both_endpoint_paths():
+    """The probe-redirect path used to log the failure and fall through to inline rows; it now
+    raises the same 502 the forced-redirect path raises."""
+    import inspect
+
+    from provisa.api.data import endpoint
+
+    # The module's source, not the function object's: other tests replace the function.
+    src = inspect.getsource(endpoint)
+    assert "returning inline" not in src
+    assert src.count('"data.redirect_upload_failed"') == 2
+
+
+# --- the telemetry bucket at Trino boot ---------------------------------------------------------
+
+
+def _otel_store() -> dict:
+    return {
+        "bucket": "otel",
+        "endpoint": "http://127.0.0.1:9",
+        "access_key": "k",
+        "secret_key": "s",
+        "region": "us-east-1",
+    }
+
+
+def _connect_infra(s3) -> None:
+    import asyncio
+
+    from provisa.federation import trino_lifecycle
+
+    with (
+        patch("provisa.executor.trino_flight.create_flight_connection", return_value="flight"),
+        patch("provisa.federation.k8s_provisioner.provisioning_available", return_value=False),
+        patch("provisa.core.trino_system_catalogs.otel_object_store", return_value=_otel_store()),
+        patch("boto3.client", return_value=s3) as client,
+    ):
+        asyncio.run(trino_lifecycle.connect_infra(SimpleNamespace(engine_conn=MagicMock())))
+    boto_config = client.call_args.kwargs["config"]
+    assert boto_config.retries == {"total_max_attempts": 1}
+
+
+def test_trino_boot_creates_a_missing_telemetry_bucket():
+    s3 = MagicMock()
+    s3.list_buckets.return_value = {"Buckets": [{"Name": "other"}]}
+    _connect_infra(s3)
+    s3.create_bucket.assert_called_once_with(Bucket="otel")
+
+
+def test_trino_boot_reports_an_unreachable_telemetry_store_and_continues(caplog):
+    """REQ-1423: telemetry being down must not stop the data plane. The failure is an ERROR that
+    names the endpoint and the bucket — not a warning, and not a failed boot."""
+    from botocore.exceptions import EndpointConnectionError
+
+    s3 = MagicMock()
+    s3.list_buckets.side_effect = EndpointConnectionError(endpoint_url="http://127.0.0.1:9")
+    with caplog.at_level("ERROR", logger="provisa.federation.trino_lifecycle"):
+        _connect_infra(s3)  # does not raise
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1
+    reported = errors[0].getMessage() + str(errors[0].exc_info[1])
+    assert "telemetry is NOT being stored" in reported
+    assert "http://127.0.0.1:9" in reported and "'otel'" in reported
+
+
+def test_a_telemetry_bucket_another_worker_just_created_exists():
+    s3 = MagicMock()
+    s3.list_buckets.return_value = {"Buckets": []}
+    s3.create_bucket.side_effect = ClientError(
+        {"Error": {"Code": "BucketAlreadyOwnedByYou"}}, "CreateBucket"
+    )
+    _connect_infra(s3)

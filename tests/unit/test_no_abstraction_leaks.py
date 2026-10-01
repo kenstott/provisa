@@ -74,7 +74,11 @@ OWNERS: dict[str, set[str]] = {
         "provisa/api/metadata_export/snowflake_horizon.py",
     },
     "snowflake.sqlalchemy": set(),
-    "databricks.sql": set(),
+    "databricks.sql": {
+        # The direct driver owns its connector, as the ClickHouse and Snowflake drivers do: it maps
+        # the connector's own connection-level error classes to decide a pooled connection is dead.
+        "provisa/executor/drivers/databricks.py",
+    },
     "google.cloud.bigquery": set(),
     "asyncpg": {
         "provisa/federation/connector_postgres.py",

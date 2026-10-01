@@ -126,7 +126,7 @@ class TestTranslation:
     def _patches(*, result=None, govern_side_effect=None):
         semantic = patch(
             "provisa.api.data.endpoint_grpc_proxy.grpc_table_to_semantic_sql",
-            return_value="SELECT id, name FROM pets",
+            return_value=("SELECT id, name FROM pets", []),
         )
         govern_kwargs = (
             {"side_effect": govern_side_effect}

@@ -77,7 +77,8 @@ class TestIntrospectColumnTypes:
     def test_raises_when_still_starting_up_at_deadline(self, monkeypatch):
         """A coordinator that never finishes booting propagates at the deadline (REQ-880)."""
         monkeypatch.setattr(_introspect, "_STARTUP_BACKOFF_SECS", 0.0)
-        monkeypatch.setattr(_introspect, "_STARTUP_TIMEOUT_SECS", 0.0)
+        # REQ-1913: the wait is the operator setting `engine.ready_timeout`, read when it starts.
+        monkeypatch.setattr(_introspect, "_startup_timeout_secs", lambda: 0.0)
         exc = trino.exceptions.TrinoQueryError(
             {"errorName": "SERVER_STARTING_UP", "errorType": "INTERNAL_ERROR", "message": "init"},
             query_id="q3",

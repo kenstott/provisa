@@ -158,4 +158,5 @@ class OtlpReceiver:
                 seen, last_change = now, time.monotonic()
             elif time.monotonic() - last_change >= quiet:
                 return self.snapshot()
-        raise TimeoutError(f"spans were still arriving after {timeout}s")
+        latest = [f"{s.name} [{s.scope}]" for s in self.snapshot()[-8:]]
+        raise TimeoutError(f"spans were still arriving after {timeout}s; the latest were {latest}")

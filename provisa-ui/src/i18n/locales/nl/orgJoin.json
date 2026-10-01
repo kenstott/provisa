@@ -1,0 +1,15 @@
+{
+  "orgJoin": {
+    "heading": "Wie kan deelnemen",
+    "help": "Welke e-mailadressen zich bij deze organisatie mogen aansluiten. Een uitnodiging wordt aan deze regel getoetst; bij ingeschakelde automatische deelname wordt iedereen die zich aanmeldt met een passend adres lid zonder uitnodiging.",
+    "emailRuleLabel": "E-mailregel",
+    "emailRuleDesc": "Een reguliere expressie waartegen het adres wordt vergeleken. Laat leeg om elk adres via uitnodiging te accepteren.",
+    "autoJoinLabel": "Automatisch deelnemen",
+    "autoJoinDesc": "Een passend adres wordt bij de eerste aanmelding lid, zonder uitnodiging. Alleen voor een domein dat je organisatie beheert.",
+    "autoJoinRoleLabel": "Rol bij automatische deelname",
+    "autoJoinRoleDesc": "De rol die iedereen krijgt die door de regel wordt toegelaten.",
+    "acceptRisk": "Ik accepteer dat deze regel mensen van buiten mijn organisatie kan toelaten",
+    "save": "Opslaan",
+    "saved": "Deelnameregel opgeslagen."
+  }
+}

@@ -24,6 +24,18 @@
     "materializeLabel": "मटीरियलाइज़ करें (क्रॉस-स्रोत जॉइन के लिए MV स्वतः बनाएँ)",
     "disableCypherLabel": "Cypher ग्राफ़ से बाहर रखें",
     "refreshIntervalLabel": "रिफ़्रेश अंतराल (से.)",
-    "save": "सहेजें"
+    "save": "सहेजें",
+    "junctionTitle": "जंक्शन टेबल (उन्नत)",
+    "junctionHelp": "इस एज को एक एसोसिएटिव टेबल से गुज़रने वाले के रूप में घोषित करें। जंक्शन के शेष कॉलम संबंध के एट्रिब्यूट बन जाते हैं।",
+    "viaTableLabel": "जंक्शन टेबल",
+    "viaSourceColumnLabel": "जंक्शन कॉलम → स्रोत",
+    "viaTargetColumnLabel": "जंक्शन कॉलम → लक्ष्य",
+    "viaTypeColumnLabel": "डिस्क्रिमिनेटर कॉलम",
+    "viaTypeValueLabel": "डिस्क्रिमिनेटर मान",
+    "viaTypeValuePlaceholder": "जैसे KIND_OF",
+    "viaLabelSourceLabel": "एज का नाम इससे रखें",
+    "viaLabelSourceColumn": "डिस्क्रिमिनेटर मान",
+    "viaLabelSourceTable": "जंक्शन टेबल का नाम",
+    "viaLabelSourceFixed": "Cypher उपनाम"
   }
 }

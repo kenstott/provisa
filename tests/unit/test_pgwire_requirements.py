@@ -52,14 +52,18 @@ class TestReq527PgwireDisabledByDefault:
         import inspect
         from provisa.api import app_startup as app_mod
 
+        # REQ-1913: the port is the operator setting `server.pgwire_port`, which
+        # PROVISA_PGWIRE_PORT sets; app_startup.py reads it through the settings registry.
+        from provisa.core import settings_registry
+
         monkeypatch.setenv("PROVISA_PGWIRE_PORT", "0")
-        port = int(os.environ.get("PROVISA_PGWIRE_PORT", "0"))
+        port = settings_registry.resolve("server.pgwire_port").value
         assert port == 0, "Port 0 must be treated as disabled"
 
         # Verify the startup code in app_startup.py uses the correct gating pattern.
         src = inspect.getsource(app_mod)
-        assert 'PROVISA_PGWIRE_PORT", "0"' in src, (
-            "app_startup.py must read PROVISA_PGWIRE_PORT with default '0'"
+        assert 'pgwire_port = settings_registry.value("server.pgwire_port")' in src, (
+            "app_startup.py must read the pgwire port from the operator setting"
         )
         assert "if pgwire_port:" in src, (
             "app_startup.py must gate pgwire startup on `if pgwire_port:` so zero disables it"
@@ -70,14 +74,17 @@ class TestReq527PgwireDisabledByDefault:
         import inspect
         from provisa.api import app_startup as app_mod
 
-        monkeypatch.delenv("PROVISA_PGWIRE_PORT", raising=False)
-        port = int(os.environ.get("PROVISA_PGWIRE_PORT", "0"))
-        assert port == 0
+        from provisa.core import settings_registry
 
-        # Confirm the default value used in the source is "0" (falsy).
+        monkeypatch.delenv("PROVISA_PGWIRE_PORT", raising=False)
+        monkeypatch.setattr(settings_registry, "_config", {})
+        # The declared default is 0 (falsy), so an absent env var disables pgwire.
+        assert settings_registry.resolve("server.pgwire_port") == (0, "default")
+        assert settings_registry.setting("server.pgwire_port").env == "PROVISA_PGWIRE_PORT"
+
         src = inspect.getsource(app_mod)
-        assert 'os.environ.get("PROVISA_PGWIRE_PORT", "0")' in src, (
-            "app_startup.py must default PROVISA_PGWIRE_PORT to '0' so absent env var disables pgwire"
+        assert 'pgwire_port = settings_registry.value("server.pgwire_port")' in src, (
+            "app_startup.py must read the pgwire port from the operator setting"
         )
 
     def test_nonzero_port_enables_server(self, monkeypatch):
@@ -469,7 +476,12 @@ class TestReq530TLS:
         src = inspect.getsource(app_mod)
         assert "PROVISA_PGWIRE_CERT" in src, "app_startup.py must read PROVISA_PGWIRE_CERT"
         assert "PROVISA_PGWIRE_KEY" in src, "app_startup.py must read PROVISA_PGWIRE_KEY"
-        assert "if cert and key:" in src, (
+        # The pair is gated on BOTH being set: asserted on what _resolve_tls returns.
+        for env in ("PROVISA_TLS_CERT", "PROVISA_TLS_KEY"):
+            monkeypatch.delenv(env, raising=False)
+        assert app_mod._resolve_tls("PROVISA_PGWIRE_CERT", "PROVISA_PGWIRE_KEY") is None
+        monkeypatch.setenv("PROVISA_PGWIRE_CERT", "/only/cert.pem")
+        assert app_mod._resolve_tls("PROVISA_PGWIRE_CERT", "PROVISA_PGWIRE_KEY") is None, (
             "_resolve_tls must gate the (cert, key) pair on both being set"
         )
         assert "if _pgwire_tls is not None:" in src, (
@@ -1168,7 +1180,8 @@ class TestReq589BinaryParameters:
 
 
 class TestReq590Timeouts:
-    """REQ-590: DDL ops time out after 60s; query ops time out after 120s."""
+    """REQ-590: DDL ops time out after 60s. Query ops run under pgwire's own request timeout
+    (REQ-1905: limits.request_timeouts.pgwire, shipped at 300s) — no longer a hard-coded 120s."""
 
     def test_ddl_timeout_is_60_seconds(self):
         # REQ-590: Future.result(timeout=60) in DDL handler
@@ -1179,13 +1192,18 @@ class TestReq590Timeouts:
         # The timeout value 60 must appear in future.result calls
         assert "timeout=60" in source, "DDL handler must use timeout=60"
 
-    def test_query_timeout_is_120_seconds(self):
-        # REQ-590: Future.result(timeout=120) in session execute_sql
+    def test_query_timeout_is_pgwires_request_timeout(self):
+        # REQ-590 (amended) / REQ-1905: every statement run asks the one resolver for pgwire's
+        # timeout; nothing is hard-coded at 120 any more.
         import inspect
-        from provisa.pgwire import server
+        from provisa.core.limits import request_timeout_for
+        from provisa.pgwire import copy_handler, server
 
-        source = inspect.getsource(server)
-        assert "timeout=120" in source, "Query handler must use timeout=120"
+        for module in (server, copy_handler):
+            source = inspect.getsource(module)
+            assert 'timeout=request_timeout_for("pgwire")' in source
+            assert "timeout=120" not in source
+        assert request_timeout_for("pgwire") == 300.0  # what ships
 
 
 # ---------------------------------------------------------------------------

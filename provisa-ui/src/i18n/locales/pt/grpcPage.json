@@ -20,6 +20,7 @@
     "includeNodes": "Incluir nós",
     "includeFields": "Incluir campos (relação, relação.coluna ou coluna)",
     "aggregateFunctions": "Funções de agregação",
-    "selectAtLeastOneFunc": "Selecione pelo menos uma função de agregação"
+    "selectAtLeastOneFunc": "Selecione pelo menos uma função de agregação",
+    "aggregateColumns": "Colunas de agregação (vazio = toda coluna elegível)"
   }
 }

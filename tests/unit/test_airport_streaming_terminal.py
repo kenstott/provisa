@@ -90,6 +90,8 @@ def _plan(route, **kwargs):
         pk_bounds=(),  # REQ-1865: row-materialize residency reads this on every plan
         audit=None,
         audit_written=False,
+        row_count=None,  # the terminal's delivered rows; unset on a streamed scan until its drain
+        audit_deferred=None,
         writes_tables=False,  # REQ-1897: finalize_audit invalidates a write's tables
         **kwargs,
     )

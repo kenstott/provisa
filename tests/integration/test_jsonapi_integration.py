@@ -612,7 +612,9 @@ class TestJSONAPIPaginationHTTP:
 
         # integration: mock-justified — pipeline execution is an external boundary;
         # real generator+serializer run against the stub rows below.
-        async def _fake_govern(sql, role_id, exec_params, state, deliver=None, buffered=False):
+        async def _fake_govern(
+            sql, role_id, exec_params, state, deliver=None, buffered=False, cache_hint=None
+        ):
             # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
             # fake terminal returns a scalar count row rather than the full data rows.
             plan = MagicMock()
@@ -667,7 +669,9 @@ class TestJSONAPIPaginationHTTP:
             {"id": 2, "region": "EU", "amount": 20.0, "created_at": "2026-01-02"},
         ]
 
-        async def _fake_govern(sql, role_id, exec_params, state, deliver=None, buffered=False):
+        async def _fake_govern(
+            sql, role_id, exec_params, state, deliver=None, buffered=False, cache_hint=None
+        ):
             # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
             # fake terminal returns a scalar count row rather than the full data rows.
             plan = MagicMock()
@@ -727,7 +731,9 @@ class TestJSONAPIPaginationHTTP:
         # REQ-257: response Content-Type is application/vnd.api+json
         stub_rows = [{"id": 1, "region": "US", "amount": 10.0, "created_at": "2026-01-01"}]
 
-        async def _fake_govern(sql, role_id, exec_params, state, deliver=None, buffered=False):
+        async def _fake_govern(
+            sql, role_id, exec_params, state, deliver=None, buffered=False, cache_hint=None
+        ):
             # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
             # fake terminal returns a scalar count row rather than the full data rows.
             plan = MagicMock()
@@ -806,13 +812,15 @@ class TestJSONAPIPaginationHTTP:
 
     @pytest.mark.anyio
     async def test_meta_contains_total(self, monkeypatch):
-        # REQ-257: response meta.total reflects row count
+        # REQ-257/REQ-1197: response meta.total reflects row count when the request asks for it
         stub_rows = [
             {"id": 1, "region": "US", "amount": 10.0, "created_at": "2026-01-01"},
             {"id": 2, "region": "EU", "amount": 20.0, "created_at": "2026-01-02"},
         ]
 
-        async def _fake_govern(sql, role_id, exec_params, state, deliver=None, buffered=False):
+        async def _fake_govern(
+            sql, role_id, exec_params, state, deliver=None, buffered=False, cache_hint=None
+        ):
             # The count query wraps the compiled SELECT in COUNT(*); tag the plan so the
             # fake terminal returns a scalar count row rather than the full data rows.
             plan = MagicMock()
@@ -856,10 +864,19 @@ class TestJSONAPIPaginationHTTP:
         ) as client:
             response = await client.get(
                 "/data/jsonapi/default/orders",
+                # REQ-1197: the total is counted for a request that asks for it.
+                params={"page[total]": "true"},
                 # REQ-1297: this state registers the role "admin"; name it so the request resolves
                 # to a role that has a schema instead of the unsecured-server default.
+                headers={"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
+            )
+            unasked = await client.get(
+                "/data/jsonapi/default/orders",
                 headers={"accept": "application/vnd.api+json", "X-Provisa-Role": "admin"},
             )
 
         body = response.json()
         assert body["meta"]["total"] == 2
+        # Not asked for: no total is reported, and no page length in its place.
+        assert unasked.status_code == 200
+        assert "total" not in unasked.json().get("meta", {})

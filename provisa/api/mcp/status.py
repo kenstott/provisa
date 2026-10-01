@@ -72,9 +72,11 @@ def _resolve_mcp_url(request: Request | None, port: int) -> str | None:
     """
     if not port:
         return None
-    override = os.environ.get("PROVISA_MCP_EXTERNAL_URL")
-    if override and override.strip():
-        return override.strip()
+    from provisa.core import settings_registry  # REQ-1913: `mcp.external_url`
+
+    override = settings_registry.value("mcp.external_url")
+    if override is not None:
+        return override
     # Scheme: the MCP server's ACTUAL transport wins. start_mcp_server publishes PROVISA_MCP_ACTIVE_
     # SCHEME (https when TLS is on, http on the fallback), and the MCP port's scheme is independent
     # of the UI request. Fall back to the request's forwarded scheme for a proxied/remote deployment
@@ -97,15 +99,14 @@ def _resolve_mcp_url(request: Request | None, port: int) -> str | None:
 
 def mcp_status(request: Request | None = None) -> dict:
     """The MCP server's effective config, read from the same env the start hook uses."""
-    port_raw = os.environ.get("PROVISA_MCP_PORT", "0")
-    port = int(port_raw) if port_raw.strip() else 0
+    from provisa.core import settings_registry
+
+    port = settings_registry.value("mcp.port")  # REQ-1913; 0 = not started
     enabled = bool(port)
 
-    role_raw = os.environ.get("PROVISA_MCP_ROLE")
-    role = role_raw.strip() if role_raw and role_raw.strip() else None
+    role = settings_registry.value("mcp.role")
 
-    max_rows_raw = os.environ.get("PROVISA_MCP_MAX_ROWS")
-    max_rows = int(max_rows_raw) if max_rows_raw and max_rows_raw.strip() else 1000
+    max_rows = settings_registry.value("mcp.max_rows")  # REQ-1913
 
     url = _resolve_mcp_url(request, port)
     # TLS (REQ-1106): when the MCP server serves https, the UI's primary path is Claude Desktop's

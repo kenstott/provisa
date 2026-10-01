@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 from provisa.federation.execution_auth import SystemAuth, mint_system_token
@@ -913,6 +914,7 @@ async def reclamation_loop(  # REQ-234
     registry: MVRegistry,
     check_interval: int = 30,
     config_mv_ids: set[str] | None = None,
+    should_run: Callable[[], bool] | None = None,
 ) -> None:
     """Background STORAGE-RECLAMATION loop (REQ-234): drop MV tables removed from config and
     reap orphaned MV tables past their grace period. It NO LONGER refreshes MVs — the event loop
@@ -926,11 +928,17 @@ async def reclamation_loop(  # REQ-234
         registry: MV registry (source of enabled MVs + target schemas).
         check_interval: Seconds between reclamation sweeps.
         config_mv_ids: Set of MV IDs from current config (for removed-MV reclamation).
+        should_run: Asked before each sweep (REQ-1900). The sweep drops tables in the SHARED
+            materialization store, so of N worker processes one runs it: the server passes its
+            scheduler holder's ``holds``. ``None`` sweeps every time.
     """
     orphan_tracker: dict[str, float] = {}
 
     while True:
         try:
+            if should_run is not None and not should_run():
+                await asyncio.sleep(check_interval)
+                continue
             # Reclaim removed MVs if config IDs provided
             if config_mv_ids is not None:
                 await reclaim_removed_mvs(engine, registry, config_mv_ids)

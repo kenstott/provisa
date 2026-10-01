@@ -15,6 +15,7 @@
     },
     "auth": {
       "authentication_required": "प्रमाणीकरण आवश्यक है",
+      "auto_join_not_offered": "वह संगठन आपको प्रवेश देने की पेशकश नहीं कर रहा है",
       "bootstrap_claiming_disabled": "बूटस्ट्रैप क्लेमिंग सक्षम नहीं है",
       "delete_account_confirm_required": "आपका खाता हटाना अपरिवर्तनीय है: आपकी प्रोफ़ाइल और सभी संगठन सदस्यताएँ हटा दी जाएँगी और उन्हें पुनर्स्थापित नहीं किया जा सकता। आगे बढ़ने के लिए 'confirm' पैरामीटर में अपनी यूज़र id दोहराएँ।",
       "email_not_permitted": "आपके ईमेल पते को इस संगठन में शामिल होने की अनुमति नहीं है",
@@ -51,6 +52,10 @@
       "engine_not_connected": "इंजन कनेक्ट नहीं है",
       "grpc_source_not_registered": "gRPC रिमोट स्रोत '{{source_id}}' पंजीकृत नहीं है",
       "invalid_as_of": "अमान्य X-Provisa-As-Of: {{error}}",
+      "invalid_filter": "filter एक ऐसा ऑब्जेक्ट होना चाहिए जो फ़ील्ड नामों को मानों से मैप करे",
+      "invalid_filter_field": "{{type_name}} के लिए अमान्य filter फ़ील्ड '{{field}}'",
+      "invalid_read_mask": "read_mask एक ऐसा ऑब्जेक्ट होना चाहिए जिसमें फ़ील्ड पथों की 'paths' सूची हो",
+      "invalid_read_mask_path": "{{type_name}} के लिए अमान्य read_mask पथ '{{path}}'",
       "missing_command_name": "कमांड नाम गायब है",
       "missing_role_id": "role_id गायब है",
       "missing_x_provisa_role_header": "X-Provisa-Role हेडर गायब है",
@@ -155,7 +160,10 @@
       "auth_required_create": "संगठन बनाने के लिए प्रमाणीकरण आवश्यक है",
       "auth_required_leave": "संगठन छोड़ने के लिए प्रमाणीकरण आवश्यक है",
       "auto_join_public_domain": "auto_join के लिए ऐसा ईमेल नियम चाहिए जो आपके स्वामित्व वाले डोमेन तक सीमित हो — यह नियम {{domain}} से मेल खाता है।",
+      "auto_join_breadth_unacknowledged": "इस ऑटो-जॉइन नियम की सावधानी से समीक्षा करें, अन्यथा आप अपने संगठन के बाहर के लोगों को प्रवेश दे सकते हैं: {{domains}} के अलावा यह {{admits}} जैसे पते भी स्वीकार करता है। जिस डोमेन पर आपका नियंत्रण नहीं है, वहाँ का कोई भी व्यक्ति तब आपके संगठन से अपने-आप जुड़ सकता है। सहेजने के लिए पुष्टि करें कि आप यह जोखिम स्वीकार करते हैं।",
       "auto_join_requires_role": "auto_join के लिए auto_join_role आवश्यक है",
+      "auto_join_rule_taken": "कोई अन्य संगठन पहले से इस नियम से मेल खाने वाले सभी को ऑटो-जॉइन कराता है। दो संगठन एक ही पतों पर दावा नहीं कर सकते — उनसे आमंत्रण माँगें, या अपने नियम को ऐसे डोमेन तक सीमित करें जिसे केवल आपका संगठन उपयोग करता है।",
+      "auto_join_rule_unbounded": "इस ऑटो-जॉइन नियम की कोई सीमा नहीं है: यह उन डोमेन के पतों को प्रवेश देगा जिन पर आपका नियंत्रण नहीं है। इसे अपने स्वामित्व वाले डोमेन से जोड़ें, जैसे \"@acme\\\\.com$\"।",
       "cannot_delete_root": "रूट संगठन को हटाया नहीं जा सकता",
       "delete_confirm_required": "'{{org}}' को हटाने से उसका सारा डेटा स्थायी रूप से नष्ट हो जाएगा — कोई भी, प्लेटफ़ॉर्म प्रशासक सहित, उसे पुनर्प्राप्त नहीं कर सकता। आगे बढ़ने के लिए 'confirm' पैरामीटर में संगठन id दोहराएँ।",
       "invalid_email_rule": "अमान्य ईमेल नियम: {{error}}",
@@ -173,7 +181,8 @@
     },
     "platform": {
       "right_required": "{{right}} क्षमता आवश्यक है",
-      "settings_capability_required": "platform_settings क्षमता आवश्यक है"
+      "settings_capability_required": "platform_settings क्षमता आवश्यक है",
+      "control_plane_role_required": "प्लेटफ़ॉर्म एडमिनिस्ट्रेटर आवश्यक है।"
     },
     "profile": {
       "database_unavailable": "डेटाबेस अनुपलब्ध है",
@@ -249,7 +258,7 @@
       "source_connection_failed": "स्रोत '{{source}}': कनेक्शन सत्यापन विफल हुआ: {{error}}",
       "source_created": "स्रोत '{{source}}' बनाया गया",
       "source_deleted": "स्रोत '{{source}}' हटाया गया",
-      "source_limit_reached": "इस संगठन के पास {{limit}} में से {{held}} डेटा स्रोत हैं, जितने उसकी {{plan}} योजना में अनुमत हैं। बिलिंग पृष्ठ पर योजना बदलें, या कोई स्रोत हटाएँ।",
+      "source_limit_reached": "इस संगठन के पास अपने {{plan}} प्लान द्वारा अनुमत {{limit}} डेटा स्रोतों में से {{held}} हैं। बिलिंग पेज पर प्लान बदलें, या कोई स्रोत हटाएँ।",
       "source_load_protection_set": "स्रोत '{{source}}' के लिए लोड सुरक्षा सेट की गई",
       "source_naming_updated": "स्रोत '{{source}}' के लिए नामकरण परंपरा अपडेट की गई",
       "source_no_connection": "स्रोत '{{source}}' का कोई सक्रिय कनेक्शन नहीं है",
@@ -297,7 +306,10 @@
       "unknown_auth_provider": "अज्ञात ऑथ प्रोवाइडर '{{provider}}'; मान्य: {{valid}}",
       "unknown_encryption_provider": "अज्ञात एन्क्रिप्शन प्रोवाइडर '{{provider}}'",
       "unknown_engine": "अज्ञात इंजन '{{engine}}'; मान्य: {{valid}}",
-      "use_domains_invalid": "use_domains true, false या null होना चाहिए"
+      "use_domains_invalid": "use_domains true, false या null होना चाहिए",
+      "invalid_value": "{{field}} का मान अस्वीकार किया गया।",
+      "invalid_body": "सेटिंग अनुरोध मान्य नहीं है।",
+      "auth_required": "प्रमाणीकरण कॉन्फ़िगर होने तक {{field}} बदला नहीं जा सकता।"
     },
     "setup": {
       "admin_credentials_required": "admin_username और admin_password आवश्यक हैं",

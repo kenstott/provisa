@@ -11,6 +11,7 @@
     "metadataSheetId": "元数据表格 ID",
     "metadataSheetIdPlaceholder": "用于表定义的表格 ID",
     "endpointUrl": "终结点 URL",
+    "defaultGraphUri": "默认图 URI",
     "namespace": "命名空间",
     "cacheTtlSeconds": "缓存 TTL（秒）",
     "protoPathOrUrl": "Proto 路径或 URL",
@@ -78,6 +79,12 @@
     "topicPrefixPlaceholder": "dbserver1（主题：{prefix}.{schema}.{table}）",
     "schemaRegistryUrlCdcPlaceholder": "留空 = JSON；使用 Avro 时填写",
     "consumerGroupId": "消费者组 ID（可选）",
-    "consumerGroupIdPlaceholder": "继承全局设置（provisa-debezium）"
+    "consumerGroupIdPlaceholder": "继承全局设置（provisa-debezium）",
+    "useSsl": "使用 SSL/TLS",
+    "eventPath": "事件路径（可选）",
+    "reconnectIntervalSeconds": "重连间隔（秒）",
+    "subscribePayload": "订阅负载（JSON，可选）",
+    "feedUrlOverride": "订阅源 URL（可选覆盖）",
+    "pollIntervalSeconds": "轮询间隔（秒）"
   }
 }

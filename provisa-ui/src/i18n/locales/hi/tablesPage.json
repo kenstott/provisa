@@ -11,6 +11,8 @@
     "addViewTitle": "SQL एक्सप्लोरर में नया व्यू बनाएँ",
     "model": "+ मॉडल",
     "modelTitle": "एंटिटी या फ़ैक्ट मॉडल करें (स्टार स्कीमा / Data Vault)",
+    "reportXlsx": "वर्कबुक",
+    "reportXlsxTitle": "समीक्षा के लिए मॉडल को स्प्रेडशीट के रूप में डाउनलोड करें — स्रोत, टेबल, कॉलम, संबंध, व्यू, मेट्रिक्स, मटीरियलाइज़्ड व्यू और ग्लॉसरी शब्द, हर एक के लिए एक शीट",
     "viewErd": "ERD देखें",
     "colSource": "स्रोत",
     "colDomain": "डोमेन",
@@ -56,6 +58,11 @@
       "impliedDimensionTitle": "अंतर्निहित डाइमेंशन — इस टेबल के लिए 'Group By सक्षम करें' चालू है"
     },
     "derived": "व्युत्पन्न",
+    "checker": {
+      "soda": "Soda",
+      "great_expectations": "Great Expectations",
+      "title": "डेटा-क्वालिटी चेकर — इस टेबल की पंक्तियाँ इसके कॉन्ट्रैक्ट को चलाने के परिणाम हैं"
+    },
     "dataProduct": "प्रोडक्ट",
     "dataProductTitle": "डेटा प्रोडक्ट — provisa metadata export में शामिल",
     "purposeTitle": "तालिका पंजीकृत करने से क्या होता है",

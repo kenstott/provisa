@@ -24,6 +24,18 @@
     "materializeLabel": "マテリアライズ（クロスソース結合用にMVを自動作成）",
     "disableCypherLabel": "Cypherグラフから除外",
     "refreshIntervalLabel": "リフレッシュ間隔（秒）",
-    "save": "保存"
+    "save": "保存",
+    "junctionTitle": "ジャンクションテーブル(詳細設定)",
+    "junctionHelp": "このエッジが関連テーブルを経由することを宣言します。ジャンクションの残りのカラムが、リレーションシップの属性になります。",
+    "viaTableLabel": "ジャンクションテーブル",
+    "viaSourceColumnLabel": "ジャンクションのカラム → ソース",
+    "viaTargetColumnLabel": "ジャンクションのカラム → ターゲット",
+    "viaTypeColumnLabel": "識別子カラム",
+    "viaTypeValueLabel": "識別子の値",
+    "viaTypeValuePlaceholder": "例: KIND_OF",
+    "viaLabelSourceLabel": "エッジの名前の取得元",
+    "viaLabelSourceColumn": "識別子の値",
+    "viaLabelSourceTable": "ジャンクションテーブル名",
+    "viaLabelSourceFixed": "Cypher エイリアス"
   }
 }

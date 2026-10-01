@@ -24,6 +24,10 @@
     "navigateTitle": "पंजीकृत टेबलें देखें",
     "deleteTitle": "स्रोत \"{{id}}\" हटाएँ?",
     "deleteTitleShort": "हटाएँ",
-    "deleteConsequence": "इससे डेटा स्रोत \"{{id}}\" हट जाएगा और इसे संदर्भित करने वाली टेबलें टूट सकती हैं।"
+    "deleteConsequence": "इससे डेटा स्रोत \"{{id}}\" हट जाएगा और इसे संदर्भित करने वाली टेबलें टूट सकती हैं।",
+    "refreshKaggleTitle": "Kaggle से रीफ़्रेश करें",
+    "refreshKaggleHint": "{{owner}}/{{ref}} को Kaggle से दोबारा डाउनलोड करें, स्टेज की गई फ़ाइलों को उसी जगह ओवरराइट करते हुए। आपका Kaggle टोकन सहेजा नहीं जाता — इस रीफ़्रेश के लिए उसे फिर दर्ज करें।",
+    "kaggleTokenLabel": "Kaggle API टोकन",
+    "refreshKaggleSubmit": "रीफ़्रेश करें"
   }
 }

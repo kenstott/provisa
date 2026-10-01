@@ -582,6 +582,9 @@ export function JsonApiPage() {
       params.set("sort", sortDir === "desc" ? `-${sortField}` : sortField);
     }
     if (pageSize) params.set("page[size]", pageSize);
+    // REQ-1197: the server counts the total only when asked; the result count ("N of TOTAL") and
+    // the last-page link shown here depend on it.
+    params.set("page[total]", "true");
     if (sparseFieldsParam) params.set(`fields[${selectedTableName}]`, sparseFieldsParam);
     if (includeParam) params.set("include", includeParam);
     const qs = params.toString();

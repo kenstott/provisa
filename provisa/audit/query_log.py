@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS query_audit_log (
     source TEXT NOT NULL,
     status_code INT NOT NULL,
     duration_ms INT NOT NULL,
+    route TEXT,
+    row_count INT,
     trace_id TEXT,
     logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

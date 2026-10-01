@@ -119,8 +119,11 @@ class ProvisaAirportServer(
         host: str,
         port: int,
     ) -> None:
+        # REQ-1900: listens on a loopback port the kernel picks; the advertised ``port`` is bound
+        # by the relay start_airport_server puts in front (pyarrow's Flight server cannot share a
+        # port between worker processes — see provisa/api/flight/relay.py).
         super().__init__(
-            f"grpc://0.0.0.0:{port}",
+            "grpc://127.0.0.1:0",
             middleware={"headers": _HeaderMiddlewareFactory()},
         )
         self._state = state

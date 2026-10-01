@@ -141,9 +141,9 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
             ).fetchall()
         ]
         # REQ-199: MVs without an explicit interval fall back to the configured default TTL.
-        _mv_default_ttl = int(
-            (raw_config or {}).get("materialized_views", {}).get("default_ttl", 300)
-        )
+        from provisa.core import settings_registry  # REQ-1913: an operator setting
+
+        _mv_default_ttl = settings_registry.value("materialized_views.default_ttl")
         for _vr in _view_rows:
             # Store the *semantic* view SQL; _compile_view_sqls rewrites it to a physical plan.
             # EVERY user view (materialized or not) goes into view_sql_map so the query path can

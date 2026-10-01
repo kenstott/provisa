@@ -97,6 +97,20 @@ services:
       - effective_io_concurrency=200
       - -c
       - jit=off
+      # Stock max_connections is 100, and a 16-worker Provisa sat at 81 IDLE (16 x 4 pooled + 16
+      # postgres_fdw + 1), so load took it over: "FATAL: sorry, too many clients already" (the
+      # REST / JSON:API 500s). Sized from what ONE worker can open against this server at its
+      # pools' maxima when it is both a source and the pg engine:
+      #   source pool (bench-postgresql, pool_max)            5
+      #   pg engine read pool (_POOL_MAXCONN)                10
+      #   pg engine ADBC/Arrow pool (_POOL_MAXCONN)          10
+      #   pg engine's own connection                          1
+      #   postgres_fdw, one loopback per engine session   <= 21
+      #                                                   = 47 per worker
+      # 16 workers x 47 = 752, plus the seeder, the load client's direct connections and the
+      # reserved superuser slots: 1000. Raise it with PROVISA_WORKERS above 20.
+      - -c
+      - max_connections=1000
       # pg_duckdb must be preloaded; set here (reproducible) rather than by ALTER SYSTEM.
       - -c
       - shared_preload_libraries=pg_duckdb

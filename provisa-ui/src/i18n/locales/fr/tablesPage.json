@@ -11,6 +11,8 @@
     "addViewTitle": "Créer une nouvelle vue dans l'explorateur SQL",
     "model": "+ Modèle",
     "modelTitle": "Modéliser une entité ou un fait (schéma en étoile / Data Vault)",
+    "reportXlsx": "Classeur",
+    "reportXlsxTitle": "Télécharger le modèle sous forme de feuille de calcul pour revue : sources, tables, colonnes, relations, vues, métriques, vues matérialisées et termes du glossaire, une feuille chacun",
     "viewErd": "Afficher l'ERD",
     "colSource": "Source",
     "colDomain": "Domaine",
@@ -56,6 +58,11 @@
       "impliedDimensionTitle": "Dimension implicite — « Activer le Group By » est activé pour cette table"
     },
     "derived": "dérivée",
+    "checker": {
+      "soda": "Soda",
+      "great_expectations": "Great Expectations",
+      "title": "Vérificateur de qualité des données : les lignes de cette table sont les résultats de l'exécution de son contrat"
+    },
     "dataProduct": "produit",
     "dataProductTitle": "Produit de données — inclus dans provisa metadata export",
     "purposeTitle": "Ce que fait l'enregistrement d'une table",

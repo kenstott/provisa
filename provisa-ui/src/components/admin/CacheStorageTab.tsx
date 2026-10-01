@@ -39,6 +39,8 @@ import { fetchCacheStorage, setCacheStorage, type CacheStorageState } from "../.
 import { SaveRow } from "./settingsCards";
 import { useSettingsBlocks } from "./useSettingsBlocks";
 import { usePanelState } from "../../hooks/usePanelState";
+import { PlatformRequired } from "./PlatformRequired";
+import { isForbidden } from "./isForbidden";
 
 type StorageBlock = "cache" | "hot_tables" | "warm_tables" | "materialized_views" | "materialize";
 
@@ -49,13 +51,14 @@ function useCacheStorage(blocks: StorageBlock[]) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [forbidden, setForbidden] = useState(false);
   // The block list is a literal at every call site, so the joined form is what `save` depends on.
   const blockKey = blocks.join(",");
 
   useEffect(() => {
     fetchCacheStorage()
       .then(setS)
-      .catch((e) => setError(String(e)));
+      .catch((e) => (isForbidden(e) ? setForbidden(true) : setError(String(e))));
   }, []);
 
   const save = useCallback(async () => {
@@ -79,7 +82,7 @@ function useCacheStorage(blocks: StorageBlock[]) {
     }
   }, [s, blockKey, t]);
 
-  return { s, setS, save, saving, msg, error };
+  return { s, setS, save, saving, msg, error, forbidden };
 }
 
 function SettingsPanel({ testId, children }: { testId: string; children: React.ReactNode }) {
@@ -219,8 +222,12 @@ export function ResponseCacheSettingsPanel({ platform }: { platform: boolean }) 
 /** Hot Tables → Settings: the promotion thresholds for the hot tier and the warm tier below it. */
 export function HotTablesSettingsPanel() {
   const { t } = useTranslation();
-  const { s, setS, save, saving, msg, error } = useCacheStorage(["hot_tables", "warm_tables"]);
-  if (!s) return null;
+  const { s, setS, save, saving, msg, error, forbidden } = useCacheStorage([
+    "hot_tables",
+    "warm_tables",
+  ]);
+  if (forbidden) return <PlatformRequired />;
+  if (!s) return error ? <Alert color="red">{error}</Alert> : null;
 
   return (
     <SettingsPanel testId="hot-tables-settings">
@@ -318,11 +325,12 @@ export function HotTablesSettingsPanel() {
 /** Materialized Store → Settings: the default MV refresh TTL and the store the results land in. */
 export function MaterializedSettingsPanel() {
   const { t } = useTranslation();
-  const { s, setS, save, saving, msg, error } = useCacheStorage([
+  const { s, setS, save, saving, msg, error, forbidden } = useCacheStorage([
     "materialized_views",
     "materialize",
   ]);
-  if (!s) return null;
+  if (forbidden) return <PlatformRequired />;
+  if (!s) return error ? <Alert color="red">{error}</Alert> : null;
 
   return (
     <SettingsPanel testId="materialized-settings">

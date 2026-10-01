@@ -244,6 +244,7 @@ _REPORT_VIEW_NAMES = {
     "stale_metadata",
     "join_hotspots",
     "tag_usage",
+    "queries",
 }
 
 
@@ -456,6 +457,18 @@ async def test_report_views_functional(uri):
             denials = await rows("SELECT user_id, user_name, status_code FROM policy_denials")
             assert denials == [("bob", None, 403)]
 
+            # REQ-1910: one row per statement; a statement over several tables names its first
+            # registered table and counts them; a statement's own outcome and duration.
+            queries = await rows(
+                "SELECT user_id, role_id, source, status_code, duration_ms, table_name, "
+                "domain_id, table_count, route, row_count FROM queries ORDER BY duration_ms DESC"
+            )
+            assert [tuple(r) for r in queries] == [
+                ("alice", "analyst", "graphql", 200, 40, "orders", "shelter", 2, None, None),
+                ("alice", "analyst", "graphql", 200, 10, "orders", "shelter", 1, None, None),
+                ("bob", "analyst", "graphql", 403, 5, "customers", "shelter", 1, None, None),
+            ]
+
             mix = await rows("SELECT source, query_count FROM surface_mix")
             assert mix == [("graphql", 3)]
 
@@ -519,3 +532,124 @@ class TestViewDdlIsReseedableAfterNarrowing:
         # SQLite/MySQL have no CASCADE keyword for DROP VIEW.
         assert "CASCADE" not in _adapt_view_ddl(ddl, "sqlite")
         assert "CASCADE" not in _adapt_view_ddl(ddl, "mysql")
+
+
+async def test_the_queries_report_from_the_audit_log_matches_the_report_from_query_spans(tmp_path):
+    """REQ-1910: the `queries` report moved from the trace table's ``provisa.query.*`` spans to
+    ``query_audit_log``. On a fixed mix — three requests, one of them two statements — the old
+    report (every span stored, the span-name predicate) and the audit-backed report list the same
+    statements: same table, domain, role and outcome, one row per statement."""
+    import sqlalchemy as sa
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+    from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
+    from opentelemetry.proto.trace.v1.trace_pb2 import ResourceSpans, ScopeSpans, Span, Status
+    from sqlalchemy import insert, text
+
+    from provisa.api.startup_seed import _adapt_view_ddl
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.db import _init_schema_portable
+    from provisa.core.schema_org import query_audit_log, registered_tables, sources
+    from provisa.observability import otlp2sql
+    from provisa.observability.ops_schema import ensure_tables
+
+    # (trace, table id, table, role, failed) — the second request is two statements.
+    mix = [
+        ("a1", 1, "orders", "analyst", False),
+        ("a2", 2, "customers", "org_admin", False),
+        ("a2", 1, "orders", "org_admin", True),
+        ("a3", 2, "customers", "analyst", False),
+    ]
+
+    # Old report: every span a traces row; the view selected the provisa.query.* spans.
+    def _span(trace, span_id, name, parent="", attrs=None, failed=False):
+        return Span(
+            trace_id=bytes.fromhex(trace * 16),
+            span_id=bytes.fromhex(f"{span_id:016x}"),
+            parent_span_id=bytes.fromhex(parent) if parent else b"",
+            name=name,
+            start_time_unix_nano=1_720_000_000_000_000_000,
+            end_time_unix_nano=1_720_000_000_050_000_000,
+            status=Status(code=Status.STATUS_CODE_ERROR if failed else Status.STATUS_CODE_OK),
+            attributes=[
+                KeyValue(key=k, value=AnyValue(string_value=v)) for k, v in (attrs or {}).items()
+            ],
+        )
+
+    spans = []
+    for n, (trace, _tid, table, role, failed) in enumerate(mix):
+        root = f"{n + 1:016x}"
+        spans += [
+            _span(trace, n + 1, "POST /data/graphql"),
+            _span(trace, n + 101, "GET GET", parent=root),
+            _span(
+                trace,
+                n + 201,
+                "provisa.query.duckdb",
+                parent=root,
+                attrs={"provisa.table": table, "provisa.domain": "shelter", "provisa.role": role},
+                failed=failed,
+            ),
+        ]
+    otel = sa.create_engine(f"sqlite:///{tmp_path / 'otel.sqlite'}")
+    traces = ensure_tables(otel)["traces"]
+    req = ExportTraceServiceRequest(
+        resource_spans=[ResourceSpans(scope_spans=[ScopeSpans(spans=spans)])]
+    )
+    with otel.begin() as cx:
+        cx.execute(sa.insert(traces), otlp2sql._trace_rows(req))
+        old = sorted(
+            (r[0], r[1], r[2], r[3], r[4] == Status.STATUS_CODE_ERROR)
+            for r in cx.execute(
+                sa.text(
+                    "SELECT trace_id, table_name, domain_id, role_id, status_code FROM traces "
+                    "WHERE span_name LIKE 'provisa.query%'"
+                )
+            )
+        )
+
+    # New report: the audit rows the same statements wrote, read through the seeded view.
+    db = Database(
+        create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'cp.sqlite'}"), name="queries"
+    )
+    await _init_schema_portable(db)
+    async with db.acquire() as conn:
+        await conn.execute_core(insert(sources).values(id="s1", type="postgres"))
+        for tid, name in ((1, "orders"), (2, "customers")):
+            await conn.execute_core(
+                insert(registered_tables).values(
+                    id=tid,
+                    source_id="s1",
+                    domain_id="shelter",
+                    schema_name="public",
+                    table_name=name,
+                )
+            )
+        for trace, tid, _table, role, failed in mix:
+            await conn.execute_core(
+                insert(query_audit_log).values(
+                    user_id="u",
+                    role_id=role,
+                    query_hash="h",
+                    table_ids=[tid],
+                    source="graphql",
+                    status_code=500 if failed else 200,
+                    duration_ms=50,
+                    trace_id=trace * 16,
+                )
+            )
+        dialect = conn.capabilities.dialect
+        await conn.execute(_adapt_view_ddl(_ops_table_usage_ddl(dialect), dialect))
+        await conn.execute(_adapt_view_ddl(_OPS_REPORT_VIEWS["queries"], dialect))
+        new = sorted(
+            (r[0], r[1], r[2], r[3], r[4] >= 400)
+            for r in (
+                await conn.execute_core(
+                    text(
+                        "SELECT trace_id, table_name, domain_id, role_id, status_code FROM queries"
+                    )
+                )
+            ).fetchall()
+        )
+
+    assert len(new) == len(mix)  # one row per statement, the two-statement request included
+    assert new == old

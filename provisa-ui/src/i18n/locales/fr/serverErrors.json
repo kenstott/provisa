@@ -15,6 +15,7 @@
     },
     "auth": {
       "authentication_required": "Authentification requise",
+      "auto_join_not_offered": "Cette organisation ne propose pas de vous admettre",
       "bootstrap_claiming_disabled": "La revendication d'amorçage n'est pas activée",
       "delete_account_confirm_required": "La suppression de votre compte est irréversible : votre profil et toutes vos adhésions aux organisations sont supprimés et ne peuvent pas être restaurés. Répétez votre identifiant utilisateur dans le paramètre « confirm » pour continuer.",
       "email_not_permitted": "Votre adresse e-mail n'est pas autorisée à rejoindre cette organisation",
@@ -51,6 +52,10 @@
       "engine_not_connected": "le moteur n'est pas connecté",
       "grpc_source_not_registered": "Source distante gRPC « {{source_id}} » non enregistrée",
       "invalid_as_of": "X-Provisa-As-Of invalide : {{error}}",
+      "invalid_filter": "filter doit être un objet associant des noms de champ à des valeurs",
+      "invalid_filter_field": "Champ de filter invalide « {{field}} » pour {{type_name}}",
+      "invalid_read_mask": "read_mask doit être un objet avec une liste « paths » de chemins de champ",
+      "invalid_read_mask_path": "Chemin read_mask invalide « {{path}} » pour {{type_name}}",
       "missing_command_name": "Nom de commande manquant",
       "missing_role_id": "role_id manquant",
       "missing_x_provisa_role_header": "En-tête X-Provisa-Role manquant",
@@ -155,7 +160,10 @@
       "auth_required_create": "Authentification requise pour créer une organisation",
       "auth_required_leave": "Authentification requise pour quitter une organisation",
       "auto_join_public_domain": "auto_join exige une règle d'e-mail limitée à un domaine que vous contrôlez — celle-ci correspond à {{domain}}.",
+      "auto_join_breadth_unacknowledged": "Examinez attentivement cette règle d'adhésion automatique, faute de quoi vous pourriez admettre des personnes extérieures à votre organisation : outre {{domains}}, elle accepte aussi des adresses comme {{admits}}. Toute personne d'un domaine que vous ne contrôlez pas pourrait alors rejoindre automatiquement votre organisation. Confirmez que vous acceptez ce risque pour l'enregistrer.",
       "auto_join_requires_role": "auto_join requiert auto_join_role",
+      "auto_join_rule_taken": "Une autre organisation admet déjà automatiquement toutes les personnes correspondant à cette règle. Deux organisations ne peuvent pas revendiquer les mêmes adresses : demandez-leur une invitation, ou restreignez votre règle à un domaine que seule votre organisation utilise.",
+      "auto_join_rule_unbounded": "Cette règle d\\'adhésion automatique n\\'a pas de limite : elle admettrait des adresses de domaines que vous ne contrôlez pas. Ancrez-la à un domaine que vous possédez, p. ex. \"@acme\\\\.com$\".",
       "cannot_delete_root": "Impossible de supprimer l'organisation racine",
       "delete_confirm_required": "La suppression de « {{org}} » détruit définitivement toutes ses données — personne, pas même un administrateur de plateforme, ne peut les récupérer. Répétez l'identifiant de l'organisation dans le paramètre « confirm » pour continuer.",
       "invalid_email_rule": "Règle d'e-mail invalide : {{error}}",
@@ -173,7 +181,8 @@
     },
     "platform": {
       "right_required": "Capacité {{right}} requise",
-      "settings_capability_required": "Capacité platform_settings requise"
+      "settings_capability_required": "Capacité platform_settings requise",
+      "control_plane_role_required": "Un administrateur de la plateforme est requis."
     },
     "profile": {
       "database_unavailable": "Base de données indisponible",
@@ -249,7 +258,7 @@
       "source_connection_failed": "Source « {{source}} » : échec de la validation de connexion : {{error}}",
       "source_created": "Source « {{source}} » créée",
       "source_deleted": "Source « {{source}} » supprimée",
-      "source_limit_reached": "Cette organisation utilise {{held}} des {{limit}} sources de données autorisées par son forfait {{plan}}. Changez de forfait sur la page Facturation ou supprimez une source.",
+      "source_limit_reached": "Cette organisation détient {{held}} des {{limit}} sources de données admises par son offre {{plan}}. Changez d'offre dans la page Facturation, ou supprimez une source.",
       "source_load_protection_set": "protection de charge définie pour la source « {{source}} »",
       "source_naming_updated": "Convention de nommage mise à jour pour la source « {{source}} »",
       "source_no_connection": "la source « {{source}} » n'a pas de connexion active",
@@ -297,7 +306,10 @@
       "unknown_auth_provider": "fournisseur d'authentification « {{provider}} » inconnu ; valides : {{valid}}",
       "unknown_encryption_provider": "fournisseur de chiffrement « {{provider}} » inconnu",
       "unknown_engine": "moteur « {{engine}} » inconnu ; valides : {{valid}}",
-      "use_domains_invalid": "use_domains doit être true, false ou null"
+      "use_domains_invalid": "use_domains doit être true, false ou null",
+      "invalid_value": "La valeur de {{field}} a été refusée.",
+      "invalid_body": "La requête de paramètres n'est pas valide.",
+      "auth_required": "{{field}} ne peut pas être modifié tant que l'authentification n'est pas configurée."
     },
     "setup": {
       "admin_credentials_required": "admin_username et admin_password requis",

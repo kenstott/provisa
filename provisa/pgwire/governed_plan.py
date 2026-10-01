@@ -11,24 +11,36 @@
 """Keeping a statement's governed plan so a repeat does not rebuild it (REQ-1877).
 
 Parsing, validating and governing a statement is a pure function of the statement, the role, the
-acting person, the session variables RLS resolves against and the role's governance objects. Every
+session variables RLS resolves against, the role's governance objects and two settings. Every
 surface therefore keeps the result the same way, in the org's one ``compiled_query_cache``
-(per-org, in-memory, TTL-evicted, bounded):
+(per-org, in-memory, bounded by size with least-recently-used eviction, no time expiry):
 
 - the raw-SQL stage (``_pipeline.govern_statement``): pgwire, Flight SQL, /data/sql, MCP;
 - the compiled stage (``_pipeline._govern_and_route_compiled_planned``): Cypher over HTTP,
   Bolt and Flight, gRPC, REST, JSON:API, GraphQL over Flight, NL;
 - the GraphQL endpoint (``api.data.graphql_plan``), which also keeps the parse and compile.
+- the generated-GraphQL stage (``api.generated_plan``): the parse and compile of the GraphQL text
+  REST and JSON:API synthesize from a request, one plan per request shape with values bound.
 
 One :class:`PlanSlot` per request holds the rules they share:
 
 - the key carries the stage, ``schema_boot_id`` + ``schema_version`` (bumped by every schema,
-  masking, RLS, relationship and role change), the role, the acting person and a digest of the
-  stage's own inputs (statement text, session variables, ...). The store is per org.
+  masking, RLS, relationship and role change), the role and a digest of the stage's own inputs
+  (statement text, session variables, ...), plus the set of roles the caller is acting as when
+  there is more than one (REQ-1620: domain access is their union). The store is per org. The acting person is NOT in the
+  key: governance reads nothing from the person — what differs per person reaches it as a
+  session variable, which is — so one role's users share a plan instead of multiplying the
+  entries by their number.
 - a kept plan answers only while every governance object it was built from is still the SAME
   object (identity, not equality): a rebuild swaps those objects before it bumps
   ``schema_version``, so the generation alone would let a plan built from the old objects answer
-  under the new number.
+  under the new number. The objects: the role's compilation context, RLS context and role
+  record, the masking rules, the registered tables, the relationships, the metrics, the source
+  types and the bound engine.
+- and only while the settings governance reads have the SAME VALUE (:func:`governance_settings`):
+  the default row limit and the security mode. Neither moves the schema generation when it
+  changes, so a plan built under the old value would otherwise answer until evicted.
+- there is no time expiry: the rules above are the invalidation.
 - nothing is kept while a schema rebuild is in progress, or when the generation moved between the
   lookup and the keep: the state the plan read was changing.
 
@@ -44,8 +56,6 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from provisa.audit.context import current_audit_identity
-
 
 def _rebuild_in_progress() -> bool:
     from provisa.api.app import _rebuild_schemas_lock
@@ -54,14 +64,30 @@ def _rebuild_in_progress() -> bool:
 
 
 def governance_anchors(state: Any, role_id: str) -> tuple[Any, ...]:
-    """The objects governance reads for a role."""
+    """The objects governance reads for a role — compared by identity."""
     return (
         state.contexts[role_id],
         state.rls_contexts.get(role_id),
         state.roles.get(role_id),
         state.masking_rules,
         state.tables,
+        # Read by the govern stages beside the role's own objects (_pipeline.govern_statement,
+        # _govern_compiled): relationship guard and validation, metric expansion, and the
+        # governance context's source types and engine.
+        getattr(state, "relationships", None),
+        getattr(state, "metrics", None),
+        getattr(state, "source_types", None),
+        getattr(state, "federation_engine", None),
     )
+
+
+def governance_settings(state: Any) -> tuple[int, bool]:
+    """The settings governance reads that live outside the schema generation — compared by value:
+    the default row limit (``stage2.resolve_row_cap``; the GraphQL compiler's default LIMIT) and
+    the security mode (the relationship guard cannot be bypassed in high security)."""
+    from provisa.core.limits import default_row_limit
+
+    return (default_row_limit(), bool(getattr(state, "security_high", False)))
 
 
 def acting_role_set() -> tuple[str, ...]:
@@ -75,11 +101,10 @@ def acting_role_set() -> tuple[str, ...]:
 
 
 def plan_key(state: Any, stage: str, role_id: str, *body: Any) -> str:
-    """``stage`` + generation + role + acting-role set + person verbatim; ``body`` (unbounded,
+    """``stage`` + generation + role + acting-role set verbatim; ``body`` (unbounded,
     caller-authored) hashed. Two stages never share a key, so neither can read the other's value.
     The acting-role set is in the key because a statement admitted under a wider set's domain
     access must never be served to a narrower one."""
-    identity = current_audit_identity()
     digest = hashlib.sha256(
         json.dumps(body, sort_keys=True, default=str, separators=(",", ":")).encode()
     ).hexdigest()
@@ -90,7 +115,6 @@ def plan_key(state: Any, stage: str, role_id: str, *body: Any) -> str:
             str(state.schema_version),
             role_id,
             ",".join(acting_role_set()),
-            identity.user_id if identity is not None else "",
             digest,
         ]
     )
@@ -100,6 +124,7 @@ def plan_key(state: Any, stage: str, role_id: str, *body: Any) -> str:
 class _Kept:
     value: Any
     anchors: tuple[Any, ...]
+    settings: tuple[int, bool]
 
 
 class PlanSlot:
@@ -116,6 +141,7 @@ class PlanSlot:
         self._state = state
         self._key = plan_key(state, stage, role_id, *body)
         self._anchors = (*governance_anchors(state, role_id), *extra_anchors)
+        self._settings = governance_settings(state)
         self._generation = (state.schema_boot_id, state.schema_version)
         self._rebuilding_at_start = _rebuild_in_progress()
 
@@ -126,6 +152,8 @@ class PlanSlot:
             return None
         if not all(a is b for a, b in zip(kept.anchors, self._anchors)):
             return None
+        if kept.settings != self._settings:
+            return None
         return kept.value
 
     def keep(self, value: Any) -> None:
@@ -134,4 +162,4 @@ class PlanSlot:
             return
         if (state.schema_boot_id, state.schema_version) != self._generation:
             return
-        state.compiled_query_cache.put(self._key, _Kept(value, self._anchors))
+        state.compiled_query_cache.put(self._key, _Kept(value, self._anchors, self._settings))

@@ -165,7 +165,9 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
     ) -> int:
         """Load an engine-backed table into Redis vithe engine terminal. Returns row count."""
         fqn = f'"{catalog}"."{schema}"."{table_name}"'
-        res = await engine.execute_engine(f"SELECT * FROM {fqn}")
+        # The registered catalog.schema.table name, in the bound engine's own table addressing
+        # and dialect (REQ-1730: an engine with no catalog level folds it into the schema).
+        res = await engine.execute_engine(engine.engine_physical(f"SELECT * FROM {fqn}"))
         rows_raw = res.rows
         columns = res.column_names
 
@@ -515,7 +517,8 @@ async def _openapi_list_rows(
 async def count_table_rows(engine, table_name: str, schema: str, catalog: str) -> int:  # REQ-544
     """SELECT COUNT(*) for auto-detection sizing, through the engine terminal."""
     fqn = f'"{catalog}"."{schema}"."{table_name}"'
-    res = await engine.execute_engine(f"SELECT COUNT(*) FROM {fqn}")
+    # In the bound engine's own table addressing and dialect — see HotTableManager.load_table.
+    res = await engine.execute_engine(engine.engine_physical(f"SELECT COUNT(*) FROM {fqn}"))
     return res.rows[0][0] if res.rows else 0
 
 
@@ -546,32 +549,41 @@ async def detect_hot_tables_by_count(  # REQ-236
     return result
 
 
+def refresh_interval() -> int:
+    """How often the hot tier refreshes (REQ-231): its own interval when one is set, else the
+    materialized-view default TTL. Both are operator settings (REQ-1913)."""
+    from provisa.core import settings_registry
+
+    own = settings_registry.value("hot_tables.refresh_interval")
+    return own if own is not None else settings_registry.value("materialized_views.default_ttl")
+
+
+def max_rows() -> int:
+    """The hot tier's row ceiling (REQ-230): its own when one is set, else its auto threshold."""
+    from provisa.core import settings_registry
+
+    own = settings_registry.value("hot_tables.max_rows")
+    return own if own is not None else settings_registry.value("hot_tables.auto_threshold")
+
+
 async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
     raw_config: dict,
     engine,
 ) -> HotTableManager | None:
     """Initialize hot table manager from raw config. Returns manager or None."""
 
-    hot_config = raw_config.get("hot_tables", {})
-    cache_config = raw_config.get("cache", {})
-    redis_url = cache_config.get("redis_url", "")
-    if redis_url:
-        from provisa.core.secrets import resolve_secrets
+    # REQ-1913: the tier's settings are operator settings, resolved by the settings registry.
+    from provisa.core import settings_registry
+    from provisa.core.redis_location import redis_url as _redis_url
 
-        redis_url = resolve_secrets(redis_url)
     # REQ-829: with cache enabled but no Redis URL, run hot tables on embedded
     # fakeredis (redis_url=None) so desktop exercises the same hot-cache path.
-    if not cache_config.get("enabled", True):  # default on; set enabled: false to opt out
+    if not settings_registry.value("cache.enabled"):  # default on; set enabled: false to opt out
         return None
-    redis_url = redis_url or None
+    redis_url = _redis_url()
 
-    auto_threshold = hot_config.get("auto_threshold", 1_000)
-    # REQ-231: hot TTL defaults to the materialized-views default TTL when not set explicitly.
-    mv_default_ttl = raw_config.get("materialized_views", {}).get("default_ttl", 300)
-    refresh_interval = hot_config.get("refresh_interval", mv_default_ttl)
-    # REQ-230: max_rows has its own default (falls back to auto_threshold) and a byte ceiling.
-    max_rows = hot_config.get("max_rows", auto_threshold)
-    max_bytes = hot_config.get("max_bytes", 10 * 1024 * 1024)
+    auto_threshold = settings_registry.value("hot_tables.auto_threshold")
+    max_bytes = settings_registry.value("hot_tables.max_bytes")
     # REQ-688/684: build the configured EncryptionService (encryption.provider/key_id);
     # unset provider → NullEncryption passthrough (platform default).
     from provisa.encryption import build_encryption_service  # noqa: PLC0415
@@ -586,8 +598,8 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
     hot_mgr = HotTableManager(
         redis_url=redis_url,
         auto_threshold=auto_threshold,
-        max_rows=max_rows,
-        ttl=refresh_interval,
+        max_rows=max_rows(),
+        ttl=refresh_interval(),
         max_bytes=max_bytes,
         encryption=encryption,
     )

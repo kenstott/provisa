@@ -551,6 +551,20 @@ debug_trace_windows = Table(
 )
 
 
+# REQ-165, REQ-1900: deployment-wide settings changed at runtime (`PUT /admin/settings`). A row is
+# one setting's current value, as JSON. Registry-resident so every worker process and every
+# instance resolves the same value and a restart keeps it — the endpoint used to write the
+# environment of the one process that served the request (provisa/core/deployment_settings.py).
+deployment_settings = Table(
+    "deployment_settings",
+    metadata,
+    Column("key", Text, primary_key=True),
+    Column("value", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_by", Text, nullable=True),
+)
+
+
 # REQ-1910: the roles the operator permits the per-request debug-trace hint. A row is the
 # permission; no row means a request from that role carrying the hint is rejected (REQ-030).
 debug_trace_hint_roles = Table(
@@ -669,6 +683,7 @@ REGISTRY_TABLES = [
     mail_events,
     debug_trace_windows,
     debug_trace_hint_roles,
+    deployment_settings,
 ]
 
 

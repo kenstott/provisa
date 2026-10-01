@@ -97,9 +97,13 @@ class TestLoweringRejectsAHiddenColumn:
         assert len(messages) == 1
 
     def test_filter_on_readable_columns_still_lowers(self):
-        sql = grpc_table_to_semantic_sql(_ctx(), "Orders", 10, _filter(region="east", order_id=3))
-        assert sql is not None
-        assert 'WHERE "order_id" = 3 AND "region" = \'east\'' in sql
+        lowered = grpc_table_to_semantic_sql(
+            _ctx(), "Orders", 10, _filter(region="east", order_id=3)
+        )
+        assert lowered is not None
+        sql, params = lowered  # the values are bound, never text in the statement (REQ-1877)
+        assert 'WHERE "order_id" = $1 AND "region" = $2' in sql
+        assert params[:2] == [3, "east"]
 
         text = grpc_table_to_group_by_graphql_text(
             _ctx(), "Orders", ["region"], funcs=["count"], filter_msg=_filter(status="open")
@@ -142,7 +146,10 @@ class TestServicerRejectsBeforeAnyStatement:
     async def test_query_aborts_invalid_argument(self):
         context = _context()
         request = SimpleNamespace(
-            limit=10, filter=_filter(amount=10.5), HasField=lambda name: name == "filter"
+            limit=10,
+            filter=_filter(amount=10.5),
+            read_mask=SimpleNamespace(paths=[]),
+            HasField=lambda name: name == "filter",
         )
         with patch(
             "provisa.pgwire._pipeline._govern_and_route_compiled", new_callable=AsyncMock

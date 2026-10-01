@@ -20,6 +20,7 @@
     "includeNodes": "כלול צמתים",
     "includeFields": "כלול שדות (קשר, קשר.עמודה או עמודה)",
     "aggregateFunctions": "פונקציות צבירה",
-    "selectAtLeastOneFunc": "יש לבחור לפחות פונקציית צבירה אחת"
+    "selectAtLeastOneFunc": "יש לבחור לפחות פונקציית צבירה אחת",
+    "aggregateColumns": "עמודות צבירה (ריק = כל עמודה כשירה)"
   }
 }

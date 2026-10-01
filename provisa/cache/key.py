@@ -107,7 +107,12 @@ def cache_key(  # REQ-544, REQ-864, REQ-866
 
 
 def raw_sql_cache_key(  # REQ-1897
-    sql: str, params: list, role_id: str, *, wire_formats: list[int] | None
+    sql: str,
+    params: list,
+    role_id: str,
+    *,
+    wire_formats: list[int] | None,
+    as_of: str | None = None,
 ) -> str:
     """The key of a raw-SQL plan's cached result — a namespace disjoint from GraphQL's.
 
@@ -120,7 +125,10 @@ def raw_sql_cache_key(  # REQ-1897
     SQL text, params and role, so neither reader can ever meet the other's payload. The governed
     ``sql`` already carries the resolved RLS predicates and session values (raw-SQL surfaces have
     no separate rules dict); the bound ``params`` and the ``role_id`` partition it further, and the
-    store prefixes the org (REQ-595). Callers MUST gate on ``is_cacheable`` first (REQ-866)."""
+    store prefixes the org (REQ-595). ``as_of`` is the request-level as-of time (REQ-1163): it
+    is not in the governed text, yet a statement over a bitemporal view reads different rows at
+    each one, so a read at one as-of (or at none) never shares an entry with another. Callers
+    MUST gate on ``is_cacheable`` first (REQ-866)."""
     return _digest(
         {
             "namespace": "raw_sql_rows",
@@ -128,6 +136,7 @@ def raw_sql_cache_key(  # REQ-1897
             "params": params,
             "role_id": role_id,
             "wire_formats": wire_formats,
+            "as_of": as_of,
         }
     )
 

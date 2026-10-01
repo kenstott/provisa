@@ -11,9 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "转换并预览",
     "domainMap": "域映射",
-    "domainMapHelp": "上传文件中找到的每个 schema（v2）或子图（DDN），以及其表所归属的 Provisa 域。修改名称后可重新转换。",
+    "domainMapHelp": "上传内容中发现的每个架构（v2）、子图（DDN）或远程架构，以及其表所归入的 Provisa 域。请选择现有域或输入新名称，然后重新转换。",
     "domainTo": "{{from}} 的域",
-    "remap": "使用这些域重新转换",
+    "remap": "使用这些设置重新转换",
     "summaryHeading": "本次导入将生成的内容",
     "count_sources": "数据源",
     "count_domains": "域",
@@ -34,6 +34,14 @@
     "replace": "替换现有语义层",
     "replaceHelp": "删除此配置中不存在的每个数据源、表、角色和规则。保持关闭可将导入内容合并到组织已有的配置中。",
     "apply": "应用到本组织",
-    "applied": "已应用：{{sources}} 个数据源、{{tables}} 张表、{{roles}} 个角色。"
+    "applied": "已应用：{{sources}} 个数据源、{{tables}} 张表、{{roles}} 个角色。",
+    "domainNew": "新域",
+    "sourceConnections": "数据源连接",
+    "sourceConnectionsHelp": "导出内容通过环境变量命名其数据库，因此连接需由您提供。若连接可达，预览会从数据源读取每个表的列类型；否则列将保持无类型，直到您在下方完成设置。",
+    "host": "主机",
+    "port": "端口",
+    "database": "数据库",
+    "username": "用户名",
+    "password": "密码"
   }
 }

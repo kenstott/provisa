@@ -13,6 +13,10 @@
     "roleIdPlaceholder": "analyst",
     "capabilities": "Capacità",
     "domainAccess": "Accesso ai domini",
+    "parentRole": "Eredita da",
+    "parentRoleNone": "Nessun genitore",
+    "parentRoleHelp": "Le concessioni, la visibilità delle colonne e le regole RLS del ruolo vengono ereditate; la regola RLS propria di questo ruolo per una tabella sostituisce quella del genitore.",
+    "labelParentRole": "Eredita da:",
     "allDomains": "Tutti i domini",
     "save": "Salva",
     "cancel": "Annulla",
@@ -51,6 +55,11 @@
     "rolePurposeTitle": "A cosa servono i ruoli",
     "rolePurposeBody": "Il ruolo è l'unità contro cui viene scritto ogni altro permesso. Le sue capability decidono quali operazioni può eseguire e il suo accesso ai domini decide quali parti del modello riesce a raggiungere. Le regole di riga, e i controlli di accesso di ogni superficie, nominano un ruolo e non una persona: ciò che qualcuno può vedere e fare si cambia cambiando il ruolo che possiede.",
     "rolePurposeAdd": "Un ruolo porta anche i propri tetti: richieste al secondo e limiti di profondità, numero di nodi e tempo di esecuzione della query. È così che a un ruolo si dà portata senza dargli costo illimitato: una query costosa viene rifiutata dal ruolo che l'ha emessa, non dalla sorgente che avrebbe colpito.",
-    "rolePurposeAria": "Informazioni sui ruoli"
+    "rolePurposeAria": "Informazioni sui ruoli",
+    "applyToAction": "Azione (funzione o webhook)",
+    "action": "Azione",
+    "actionPrefix": "azione:",
+    "loadActionsFailed": "Impossibile caricare le azioni: {{message}}",
+    "labelAction": "Azione:"
   }
 }

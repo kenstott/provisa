@@ -306,6 +306,7 @@ async def test_run_sql_routes_through_govern_and_route(state, monkeypatch):
         as_of=None,
         deliver=None,
         buffered=False,
+        serve_cached=True,  # REQ-1897: the batch executes at the chokepoint, which serves a hit
     )
     assert result["columns"] == ["id", "name"]
     assert result["rows"] == [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
@@ -368,6 +369,7 @@ async def test_run_sql_composed_command_routes_to_pipeline(state, monkeypatch):
         as_of=None,
         deliver=None,
         buffered=False,
+        serve_cached=True,  # REQ-1897: the batch executes at the chokepoint, which serves a hit
     )
 
 

@@ -732,12 +732,17 @@ class TestNonEngineTerminalsAreReported:
         # plan-building stage is route_governed (REQ-589: _govern_and_route_planned is govern, then
         # route); the compiled planner's is _route_compiled (REQ-1877: the governed half is kept,
         # the routing half runs per call).
-        for fn in (
-            _pipeline.route_governed,
-            _pipeline._route_compiled,
+        # route_governed also mints the plan of a request answered from the response cache before
+        # routing (REQ-1897); the compiled stage mints that one in its planner, before _route_compiled.
+        for fn, plans in (
+            (_pipeline.route_governed, 3),
+            (_pipeline._route_compiled, 2),
+            (_pipeline._govern_and_route_compiled_planned, 1),
         ):
             src = inspect.getsource(fn)
-            assert src.count("span_attrs=_plan_span_attrs(") == 2, fn.__name__
+            # _kept_span_attrs is _plan_span_attrs with the parse kept on the governed statement.
+            assert src.count("span_attrs=_kept_span_attrs(") == plans, fn.__name__
+        assert "_plan_span_attrs(" in inspect.getsource(_pipeline._kept_span_attrs)
 
     async def test_admin_terminal_emits_an_attributed_query_span(self, otel_spans):
         from contextlib import asynccontextmanager

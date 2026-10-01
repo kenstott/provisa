@@ -75,56 +75,11 @@ _SEED_DOMAIN_ADVISORY_LOCK_KEY = 0x50524F5649534131
 # Views registered in the ops domain alongside the raw Iceberg tables.
 # Each entry: (view_name, [(col_name, data_type, is_pk)], ddl_sql)
 #
-# REQ-1910: `traces` holds one row per request — the request span — in either trace detail, and
-# request_facts.observe_plan puts the statement's provisa.table/domain/role on that span. So
-# `queries` is the request records that read a registered table. A request of several statements
-# is one row: table_name is its first statement's, the span's provisa.tables attribute lists them
-# all and provisa.statements counts them; the per-statement record is query_audit_log.
-_OPS_VIEWS: list[tuple[str, list[tuple[str, str, bool]], str]] = [
-    (
-        "queries",
-        [
-            ("trace_id", "text", True),
-            ("span_id", "text", False),
-            ("parent_span_id", "text", False),
-            ("span_name", "text", False),
-            ("service_name", "text", False),
-            # The compactor maps both instant columns to TIMESTAMP(6) (see jobs._PA_TO_PHYSICAL
-            # and jobs._instants_from_epoch_nanos); registering either as bigint leaves the view
-            # stale — Trino refuses to project a timestamp(6) column through a view definition
-            # that stores bigint.
-            ("timestamp", "timestamp", False),
-            ("end_timestamp", "timestamp", False),
-            ("duration", "bigint", False),
-            ("status_code", "integer", False),
-            ("table_name", "text", False),
-            ("domain_id", "text", False),
-            ("role_id", "text", False),
-            ("query_text", "text", False),
-            ("_date", "date", False),
-        ],
-        """\
-CREATE OR REPLACE VIEW otel.signals.queries AS
-SELECT
-    trace_id,
-    span_id,
-    parent_span_id,
-    span_name,
-    service_name,
-    "timestamp",
-    end_timestamp,
-    duration,
-    status_code,
-    table_name,
-    domain_id,
-    role_id,
-    query_text,
-    _date
-FROM otel.signals.traces
-WHERE table_name IS NOT NULL
-""",
-    ),
-]
+# REQ-1910: none today. The `queries` report used to be a view here, over the trace table's
+# provisa.query.* spans; it now reads query_audit_log (``_meta_views._OPS_REPORT_VIEWS``), the one
+# home of a statement's table, role, transport, status, duration and text, and `traces` holds one
+# row per request with what only the span has (stage timings, route, engine, cache result, rows).
+_OPS_VIEWS: list[tuple[str, list[tuple[str, str, bool]], str]] = []
 
 
 _CREATE_OR_REPLACE_VIEW_RE = re.compile(r"CREATE\s+OR\s+REPLACE\s+VIEW\s+(\w+)\s+AS", re.IGNORECASE)
@@ -759,6 +714,11 @@ async def _init_control_planes(
         org_id=org_id,
         initialise=initialise,
     )
+    # REQ-1900: settings changed through the admin API are rows in this control plane; every
+    # reader in this process resolves them from it (provisa/core/deployment_settings.py).
+    from provisa.core import deployment_settings
+
+    deployment_settings.bind(state.admin_db)
 
     # schema.sql ships in the wheel (pyproject package-data). It is REQUIRED: the PG path runs it
     # verbatim, and on SQLite its presence gates the portable create_all bootstrap. A missing file

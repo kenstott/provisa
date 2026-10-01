@@ -78,14 +78,12 @@ class TestREQ595CacheKeyPrefixing:
     # REQ-595
     def test_apq_ttl_configurable_via_env(self, monkeypatch):
         """APQ TTL is configurable via PROVISA_APQ_TTL environment variable."""
-        monkeypatch.setenv("PROVISA_APQ_TTL", "3600")
-        import importlib
-        import provisa.apq.cache as apq_module
+        # REQ-1913: the variable sets the operator setting `apq.ttl`, which a cache built without
+        # an explicit TTL runs on.
+        from provisa.apq.cache import RedisAPQCache
 
-        importlib.reload(apq_module)
-        assert apq_module._DEFAULT_TTL == 3600
-        # Restore
-        importlib.reload(apq_module)
+        monkeypatch.setenv("PROVISA_APQ_TTL", "3600")
+        assert RedisAPQCache()._ttl == 3600
 
     # REQ-595
     def test_different_tenants_produce_different_cache_keys(self):

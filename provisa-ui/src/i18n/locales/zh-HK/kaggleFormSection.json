@@ -1,0 +1,15 @@
+{
+  "kaggleFormSection": {
+    "tokenLabel": "Kaggle API 權杖",
+    "tokenDescription": "在數據集選取器解鎖前，會先對 Kaggle API 即時驗證",
+    "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
+    "validateButton": "驗證權杖",
+    "tokenValid": "權杖有效",
+    "tokenInvalid": "Kaggle API 權杖無效",
+    "datasetSearchLabel": "搜尋 Kaggle 數據集",
+    "datasetSearchPlaceholder": "按名稱搜尋...",
+    "noDatasetsFound": "找不到數據集",
+    "selectedDataset": "已選取：{{ref}}",
+    "registerButton": "新增數據集"
+  }
+}

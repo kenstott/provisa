@@ -24,6 +24,10 @@
     "navigateTitle": "הצגת טבלאות רשומות",
     "deleteTitle": "למחוק את המקור \"{{id}}\"?",
     "deleteTitleShort": "מחיקה",
-    "deleteConsequence": "פעולה זו תסיר את מקור הנתונים \"{{id}}\" ועלולה לשבור טבלאות המפנות אליו."
+    "deleteConsequence": "פעולה זו תסיר את מקור הנתונים \"{{id}}\" ועלולה לשבור טבלאות המפנות אליו.",
+    "refreshKaggleTitle": "רענון מ-Kaggle",
+    "refreshKaggleHint": "הורדה מחדש של {{owner}}/{{ref}} מ-Kaggle, תוך דריסת הקבצים שהוכנו במקומם. אסימון Kaggle שלכם אינו נשמר — הזינו אותו שוב עבור רענון זה.",
+    "kaggleTokenLabel": "אסימון API של Kaggle",
+    "refreshKaggleSubmit": "רענון"
   }
 }

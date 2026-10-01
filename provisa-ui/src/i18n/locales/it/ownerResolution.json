@@ -1,0 +1,8 @@
+{
+  "ownerResolution": {
+    "iconLabel": "Mostra a chi corrisponde",
+    "loading": "Risoluzione in corso…",
+    "empty": "Nessun individuo lo detiene al momento",
+    "columnIconLabel": "Mostra chi può accedere a questa colonna"
+  }
+}

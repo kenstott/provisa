@@ -18,7 +18,12 @@ Covers:
 - field selection building for scalars and nested types
 """
 
+from types import SimpleNamespace
+
+import pytest
+
 from provisa.grpc.proto_gen import _to_proto_type_name, _to_proto_field_name
+from provisa.grpc.query_ir import ReadMaskError, resolve_read_mask, restrict_json
 
 
 # ---------------------------------------------------------------------------
@@ -49,46 +54,36 @@ def test_to_proto_field_name_no_double_underscore():
 
 
 # ---------------------------------------------------------------------------
-# read_mask projection logic. The proxy applies the mask to proto-keyed output
-# rows (mask paths are proto field names, and output is re-keyed to proto names),
-# so this replicates that projection over row dicts.
+# read_mask projection logic. The proxy and the native servicer share one read_mask
+# (provisa.grpc.query_ir): the mask is resolved against the table's readable columns,
+# the query selects only the masked ones, and a dotted sub-path into a JSON-valued
+# column restricts that column's value. This runs those functions over row dicts.
 # ---------------------------------------------------------------------------
 
 
 def _apply_read_mask(rows: list[dict], mask_paths: list[str]) -> list[dict]:
-    """Replicate the read_mask projection block from endpoint_grpc_proxy.grpc_proxy."""
-    mask_map: dict[str, set[str] | None] = {}
-    for p in mask_paths:
-        parts = p.split(".", 1)
-        top = parts[0]
-        sub = parts[1] if len(parts) > 1 else None
-        if top not in mask_map:
-            mask_map[top] = set() if sub else None
-        if sub and mask_map[top] is not None:
-            mask_map[top].add(sub)  # type: ignore[union-attr]
-        elif not sub:
-            mask_map[top] = None
-
-    if not mask_map:
-        return rows
-
-    def _restrict(v: object, subs: set[str]) -> object:
-        if isinstance(v, dict):
-            return {sk: sv for sk, sv in v.items() if sk in subs}
-        if isinstance(v, list):
-            return [_restrict(item, subs) for item in v]
-        return v
-
-    out: list[dict] = []
+    """Project ``rows`` as the proxy does, with the shared read_mask functions. The table's
+    columns are the rows' keys; a column holding an object or a list is JSON-valued."""
+    columns: dict[str, str] = {}
     for row in rows:
-        kept: dict = {}
-        for k, v in row.items():
-            if k not in mask_map:
-                continue
-            subs = mask_map[k]
-            kept[k] = v if subs is None else _restrict(v, subs)
-        out.append(kept)
-    return out
+        for name, value in row.items():
+            columns.setdefault(name, "jsonb" if isinstance(value, (dict, list)) else "varchar")
+    ctx = SimpleNamespace(
+        tables={"pets": SimpleNamespace(type_name="Pets", table_id=1)},
+        aggregate_columns={1: list(columns.items())},
+    )
+    mask = resolve_read_mask(ctx, "Pets", mask_paths)
+    if mask is None:
+        return rows
+    selections = dict(zip(mask.columns, mask.restrictions(mask.columns)))
+    return [
+        {
+            c: row[c] if selections[c] is None else restrict_json(row[c], selections[c])
+            for c in mask.columns
+            if c in row
+        }
+        for row in rows
+    ]
 
 
 def test_read_mask_top_level_scalar():
@@ -143,10 +138,12 @@ def test_read_mask_top_level_then_nested_dot_overrides_to_all():
     assert result == [{"_meta": {"source_id": "s", "created_at": "c"}}]
 
 
-def test_read_mask_unknown_field_excluded():
+def test_read_mask_unknown_field_is_rejected_naming_the_path():
+    """A path that is not a readable field is an error (HTTP 400), never silently dropped."""
     rows = [{"id": 1, "name": "Fido"}]
-    result = _apply_read_mask(rows, ["nonexistent"])
-    assert result == [{}]
+    with pytest.raises(ReadMaskError, match="nonexistent") as failure:
+        _apply_read_mask(rows, ["nonexistent"])
+    assert failure.value.path == "nonexistent"
 
 
 # ---------------------------------------------------------------------------

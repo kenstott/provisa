@@ -15,6 +15,7 @@
     },
     "auth": {
       "authentication_required": "Autenticação necessária",
+      "auto_join_not_offered": "Essa organização não está se oferecendo para admitir você",
       "bootstrap_claiming_disabled": "A reivindicação de bootstrap não está habilitada",
       "delete_account_confirm_required": "Excluir a conta é irreversível: o perfil e todas as associações a organizações são removidos e não podem ser restaurados. Repita o id de usuário no parâmetro 'confirm' para prosseguir.",
       "email_not_permitted": "Este endereço de e-mail não tem permissão para entrar nesta organização",
@@ -51,6 +52,10 @@
       "engine_not_connected": "o mecanismo não está conectado",
       "grpc_source_not_registered": "Fonte remota gRPC '{{source_id}}' não registrada",
       "invalid_as_of": "X-Provisa-As-Of inválido: {{error}}",
+      "invalid_filter": "filter deve ser um objeto que mapeia nomes de campo para valores",
+      "invalid_filter_field": "Campo de filter inválido '{{field}}' para {{type_name}}",
+      "invalid_read_mask": "read_mask deve ser um objeto com uma lista 'paths' de caminhos de campo",
+      "invalid_read_mask_path": "Caminho de read_mask inválido '{{path}}' para {{type_name}}",
       "missing_command_name": "Nome do comando ausente",
       "missing_role_id": "role_id ausente",
       "missing_x_provisa_role_header": "Cabeçalho X-Provisa-Role ausente",
@@ -155,7 +160,10 @@
       "auth_required_create": "Autenticação necessária para criar uma organização",
       "auth_required_leave": "Autenticação necessária para sair de uma organização",
       "auto_join_public_domain": "auto_join exige uma regra de e-mail limitada a um domínio que você controla — esta corresponde a {{domain}}.",
+      "auto_join_breadth_unacknowledged": "Revise esta regra de entrada automática com cuidado, ou você poderá admitir pessoas de fora da sua organização: além de {{domains}}, ela também aceita endereços como {{admits}}. Qualquer pessoa em um domínio que você não controla poderia então entrar na sua organização automaticamente. Confirme que você aceita esse risco para salvá-la.",
       "auto_join_requires_role": "auto_join requer auto_join_role",
+      "auto_join_rule_taken": "Outra organização já admite automaticamente todos que correspondem a esta regra. Duas organizações não podem reivindicar os mesmos endereços — peça um convite a elas ou restrinja sua regra a um domínio que somente sua organização usa.",
+      "auto_join_rule_unbounded": "Esta regra de entrada automática não tem limite: ela admitiria endereços de domínios que você não controla. Ancore-a a um domínio seu, ex.: \"@acme\\\\.com$\".",
       "cannot_delete_root": "Não é possível excluir a organização raiz",
       "delete_confirm_required": "Excluir '{{org}}' destrói todos os seus dados permanentemente — ninguém, nem mesmo um administrador da plataforma, pode recuperá-los. Repita o id da organização no parâmetro 'confirm' para prosseguir.",
       "invalid_email_rule": "Regra de e-mail inválida: {{error}}",
@@ -173,7 +181,8 @@
     },
     "platform": {
       "right_required": "Capacidade {{right}} necessária",
-      "settings_capability_required": "Capacidade platform_settings necessária"
+      "settings_capability_required": "Capacidade platform_settings necessária",
+      "control_plane_role_required": "É necessário um administrador da plataforma."
     },
     "profile": {
       "database_unavailable": "Banco de dados indisponível",
@@ -249,7 +258,7 @@
       "source_connection_failed": "Fonte '{{source}}': falha na validação da conexão: {{error}}",
       "source_created": "Fonte '{{source}}' criada",
       "source_deleted": "Fonte '{{source}}' excluída",
-      "source_limit_reached": "Esta organização tem {{held}} das {{limit}} fontes de dados que o plano {{plan}} permite. Altere o plano na página de faturação ou remova uma fonte.",
+      "source_limit_reached": "Esta organização possui {{held}} das {{limit}} fontes de dados que o plano {{plan}} admite. Mude o plano na página de Faturamento ou remova uma fonte.",
       "source_load_protection_set": "proteção de carga definida para a fonte '{{source}}'",
       "source_naming_updated": "Convenção de nomenclatura atualizada para a fonte '{{source}}'",
       "source_no_connection": "a fonte '{{source}}' não tem conexão ativa",
@@ -297,7 +306,10 @@
       "unknown_auth_provider": "provedor de autenticação desconhecido '{{provider}}'; válidos: {{valid}}",
       "unknown_encryption_provider": "provedor de criptografia desconhecido '{{provider}}'",
       "unknown_engine": "mecanismo desconhecido '{{engine}}'; válidos: {{valid}}",
-      "use_domains_invalid": "use_domains deve ser true, false ou null"
+      "use_domains_invalid": "use_domains deve ser true, false ou null",
+      "invalid_value": "O valor de {{field}} foi recusado.",
+      "invalid_body": "A solicitação de configurações não é válida.",
+      "auth_required": "{{field}} não pode ser alterado até que a autenticação seja configurada."
     },
     "setup": {
       "admin_credentials_required": "admin_username e admin_password obrigatórios",

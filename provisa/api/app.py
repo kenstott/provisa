@@ -98,7 +98,6 @@ from provisa.core.schema_org import (
     roles as _roles_t,
     sources as _sources_t,
 )
-from provisa.core.secrets import resolve_secrets
 from provisa.executor.pool import SourcePool
 from provisa.api.org_runtime import (
     ActiveOrgPool,
@@ -193,6 +192,8 @@ class AppState:
     ] = {}  # role_id → {gql_field_name → {schema_name, table_name, domain_id}}
     _grpc_server: Any | None = None
     _flight_server: Any | None = None  # ProvisaFlightServer
+    _flight_relay: Any | None = None  # FlightRelay: the advertised Flight port (REQ-1900)
+    _http_listener: Any | None = None  # WorkerHttpListener: this worker's own HTTP socket
     kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
     kafka_table_configs: dict[str, KafkaTableConfig] = {}  # table_name → KafkaTableConfig
     view_sql_map: dict[str, str] = {}  # view_table_name → SQL (for inline expansion)
@@ -263,6 +264,7 @@ class AppState:
     pg_notify_tables: set[str] = set()  # table_names with pg_notify triggers installed
     table_watermarks: dict[str, str] = {}  # table_name → watermark_column (for polling fallback)
     _scheduler: Any | None = None  # APScheduler instance for scheduled queries
+    _scheduler_holder: Any | None = None  # SchedulerHolder: one worker runs the jobs (REQ-1900)
     global_gql_naming_convention: str = (
         "apollo_graphql"  # runtime override; set via updateNamingConvention
     )
@@ -612,6 +614,12 @@ class AppState:
         return self._active_runtime().routing_cache
 
     @property
+    def cypher_label_maps(self) -> dict:
+        # REQ-1877: per-org, current-generation Cypher label maps — see
+        # provisa/api/rest/cypher_plan.py.
+        return self._active_runtime().cypher_label_maps
+
+    @property
     def masking_rules(self) -> MaskingRules:
         return self._active_runtime().masking_rules
 
@@ -663,12 +671,28 @@ class AppState:
 
     @property
     def settings_overrides(self) -> dict:
-        """The active org's ``org_settings`` rows (REQ-1349). Empty when it has overridden nothing."""
-        return self._active_runtime().settings_overrides
+        """The active org's ``org_settings`` rows (REQ-1349). Empty when it has overridden nothing.
+
+        REQ-1900: the runtime's copy is re-read from the org's control plane when it is older
+        than the snapshot TTL, so a setting the org changed through ANOTHER worker process is in
+        force here within that many seconds. The worker that made the change sets the copy
+        itself (below) and sees it at once."""
+        from provisa.core.org_settings import SNAPSHOT_TTL_SECONDS, read_org_overrides_sync
+
+        rt = self._active_runtime()
+        now = time.monotonic()
+        if rt.tenant_db is not None and now - rt.settings_overrides_read_at >= SNAPSHOT_TTL_SECONDS:
+            # Claimed first: the other request threads keep the copy they have rather than each
+            # reading the control plane.
+            rt.settings_overrides_read_at = now
+            rt.settings_overrides = read_org_overrides_sync(rt.tenant_db)
+        return rt.settings_overrides
 
     @settings_overrides.setter
     def settings_overrides(self, value: dict) -> None:
-        self._active_runtime().settings_overrides = value
+        rt = self._active_runtime()
+        rt.settings_overrides = value
+        rt.settings_overrides_read_at = time.monotonic()
 
     @property
     def response_cache_default_ttl(self) -> int:
@@ -678,7 +702,7 @@ class AppState:
         shard a process-global scalar hands whichever org saved last a TTL every other org's
         queries then cache under.
         """
-        override = self._active_runtime().settings_overrides.get("cache") or {}
+        override = self.settings_overrides.get("cache") or {}
         ttl = override.get("default_ttl")
         return int(ttl) if ttl is not None else self.deployment_cache_default_ttl
 
@@ -697,10 +721,25 @@ from provisa.core.request_context import (  # noqa: E402
 )
 
 
-def _read_platform_config() -> dict:
-    from provisa.api.admin._config_io import read_config
+# The platform config as last read, with the config generation it was read under. Asked on request
+# paths (engine selection, the materialize-store URL), so it is answered from memory and replaced
+# only when the config file is loaded or written (provisa.core.config_location) — never by
+# asking the filesystem per request.
+_platform_config_held: tuple[int, dict] | None = None
 
-    return read_config() or {}
+
+def _read_platform_config() -> dict:
+    global _platform_config_held
+    from provisa.api.admin import _config_io
+    from provisa.core.config_location import config_generation
+
+    generation = config_generation()
+    held = _platform_config_held
+    if held is not None and held[0] == generation:
+        return held[1]
+    config = _config_io.read_config() or {}
+    _platform_config_held = (generation, config)
+    return config
 
 
 register_active_engine_url_provider(lambda: state.active_engine_url)
@@ -922,14 +961,10 @@ async def _load_and_build(
             async with tenant_db.acquire() as _rls_conn:
                 await _init_meta_rls(_rls_conn)
 
-    # Apply observability config to state
-    if config.observability:
-        state.otel_compact_cron = config.observability.compact_cron
-        state.otel_compact_batch_size = config.observability.compact_batch_size
-        state.otel_compact_file_chunk = config.observability.compact_file_chunk
-        state.otel_compact_max_files_per_run = config.observability.compact_max_files_per_run
-        state.otel_snapshot_retention_hours = config.observability.ops_snapshot_retention_hours
-        state.otel_s3_endpoint = config.observability.s3_endpoint
+    # Apply the telemetry compaction settings to state (REQ-1913: operator settings).
+    from provisa.api.app_loaders import apply_telemetry_settings
+
+    apply_telemetry_settings(state)
 
     # Initialize cache store — REDIS_URL env var overrides config
     # Live config export/diff/patch (REQ-1096) is coherent only when the generated/normalized config is
@@ -946,36 +981,30 @@ async def _load_and_build(
 
     # REQ-885: hosted-UDF egress allow-list (deny-by-default). Source: server.udf_egress_allowlist
     # in provisa.yaml, augmented by PROVISA_UDF_EGRESS_ALLOWLIST (comma-separated host[:port]).
-    _egress = list(raw_config.get("server", {}).get("udf_egress_allowlist", []) or [])
-    _egress_env = os.environ.get("PROVISA_UDF_EGRESS_ALLOWLIST", "")
-    _egress += [h.strip() for h in _egress_env.split(",") if h.strip()]
-    state.udf_egress_allowlist = _egress
+    # REQ-1913: an operator setting — a value stored through the settings page replaces that union.
+    from provisa.core import settings_registry
 
-    cache_config = raw_config.get("cache", {})
+    state.udf_egress_allowlist = settings_registry.value("udf.egress_allowlist")
+
     # Resolve Redis URL regardless of response-cache enablement so rate limiting
     # (REQ-371) can use it even when the response cache is off. PROVISA_REDIS_EMBEDDED
     # forces the in-process fakeredis path (REQ-829) for the native desktop tier — an
     # explicit selection that ignores any configured URL, so no Redis server is needed.
-    if os.environ.get("PROVISA_REDIS_EMBEDDED", "").lower() in ("1", "true", "yes"):
-        state.redis_url = None
-    else:
-        state.redis_url = (
-            os.environ.get("REDIS_URL")
-            or resolve_secrets(cache_config.get("redis_url", ""))
-            or None
-        )
-    # REQ-289: APQ TTL from the apq.ttl config key (PROVISA_APQ_TTL env overrides, like redis_url).
-    state.apq_ttl = int(
-        os.environ.get("PROVISA_APQ_TTL") or raw_config.get("apq", {}).get("ttl") or 86400
-    )
+    # REQ-1913: operator settings, resolved by the settings registry (stored, then environment,
+    # then this config file, then the declared default).
+    from provisa.api.app_loaders import apply_redis_settings
+    from provisa.core import settings_registry
+
+    apply_redis_settings(state)
+    state.apq_ttl = settings_registry.value("apq.ttl")  # REQ-289
     # Default enabled=True: a store always exists — RedisCacheStore(None) falls back to
     # embedded fakeredis when no Redis URL is set, so there is never a "no cache" state.
     # Set cache.enabled: false explicitly to opt into the NoopCacheStore.
-    if cache_config.get("enabled", True):
+    if settings_registry.value("cache.enabled"):
         # REQ-829: RedisCacheStore(None) transparently uses embedded fakeredis, so
         # desktop exercises the same result-cache code path as production.
         state.response_cache_store = RedisCacheStore(state.redis_url)
-        state.response_cache_default_ttl = cache_config.get("default_ttl", 300)
+        state.response_cache_default_ttl = settings_registry.value("cache.default_ttl")
 
     tenant_db = state.tenant_db
     assert tenant_db is not None
@@ -1629,28 +1658,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
     kafka_physical = getattr(state, "kafka_table_physical", {})
     domain_prefix, raw_config = _resolve_naming_config(raw_config)
 
-    # REQ-684/686: install the process-wide EncryptionService from config before any
-    # encrypt/decrypt (API auth column, hot cache, audit) runs. Unset provider = passthrough.
-    from provisa.encryption import configure_encryption
+    # REQ-684/686, REQ-1557: install the process-wide EncryptionService and select the secrets
+    # service from config before any encrypt/decrypt (API auth column, hot cache, audit) runs.
+    from provisa.api.app_loaders import configure_encryption_and_secrets
 
-    _enc_cfg = (raw_config or {}).get("encryption", {}) or {}
-    _enc_provider = _enc_cfg.get("provider")
-    configure_encryption(
-        _enc_provider,
-        key_id=_enc_cfg.get("key_id"),
-        config=_enc_cfg.get(_enc_provider, {}) if _enc_provider else {},
-    )
-
-    # REQ-1557: and the secrets service the same way. Unset is not unconfigured -- it selects
-    # Provisa's own encrypted per-org store, which is what a deployment with no central secrets
-    # service uses. The backend itself is built on first use, so this is only the selection.
-    from provisa.core.secrets_runtime import configure_secrets
-
-    _sec_cfg = (raw_config or {}).get("secrets", {}) or {}
-    _sec_provider = _sec_cfg.get("provider")
-    configure_secrets(
-        _sec_provider, config=_sec_cfg.get(_sec_provider, {}) if _sec_provider else {}
-    )
+    configure_encryption_and_secrets(raw_config or {})
 
     # Clear mutable state before rebuild
     state.masking_rules = {}
@@ -1789,6 +1801,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
         # for every one of them until this mirrored that step here too.
         from provisa.api.app_loaders import catalog_name_for_source
 
+        # The rows as registered, kept for the engine's attach (published below as
+        # ``runtime_sources``): the patch that follows replaces a postgresql row's ``database``
+        # with its catalog name, and an attach handed that dials a database named after the
+        # source id.
+        _connection_rows = {_sid: dict(_row) for _sid, _row in sources.items()}
         for _sid, _src_dict in list(sources.items()):
             if _sid not in state.source_types and _src_dict.get("type"):
                 state.source_types[_sid] = _src_dict["type"]
@@ -1812,18 +1829,19 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None) -> None:
         # somewhere the environment owns alone, so retiring it may remove what is there.
         from provisa.core.secrets import expand_scope
 
-        for _sid, _src_dict in sources.items():
-            sources[_sid] = {
-                k: expand_scope(v) if isinstance(v, str) and "${scope:" in v else v
-                for k, v in _src_dict.items()
-            }
+        for _rows in (sources, _connection_rows):
+            for _sid, _src_dict in _rows.items():
+                _rows[_sid] = {
+                    k: expand_scope(v) if isinstance(v, str) and "${scope:" in v else v
+                    for k, v in _src_dict.items()
+                }
         if _env != PROD:
             state.source_binding_env = {
                 sid: _env for sid, row in sources.items() if row.get("bound")
             }
         # Publish the full DB source map so NativeEngineBackend._attach_registered can attach
         # dynamically registered sources that are not in state.config (YAML-loaded only).
-        state.runtime_sources = sources
+        state.runtime_sources = _connection_rows
         roles = [
             dict(r._mapping)
             for r in (
@@ -2150,6 +2168,11 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
     logging.getLogger().addHandler(buffer_handler)
+    # WARNING and above from every provisa.* module, printed on the server's own log: without
+    # this they reach only the root handlers (the buffer above, the OTLP export), never stderr.
+    from provisa.core.server_log import send_module_logs_to_server_log
+
+    send_module_logs_to_server_log()
     state.schema_boot_id = uuid.uuid4().hex
     # REQ-074: the audit writer lives as long as the application — started here, before anything
     # serves a request, and stopped in the shutdown below. A request only enqueues to it.
@@ -2234,6 +2257,13 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     _prewarm_govdata_jvm(_log)
 
+    # REQ-1913: the live operator settings this worker holds as state (its request-thread bounds)
+    # are applied now, from the stored values, and again whenever its settings snapshot changes.
+    from provisa.core import settings_registry
+
+    settings_registry.apply_changes()
+    settings_registry.start_applier()
+
     await _start_background_tasks(_log)
 
     await _start_servers(_log)
@@ -2253,6 +2283,16 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     # diff falls back to the on-disk file).
     await _capture_config_boot_snapshot(_log)
 
+    # REQ-1900: when the launcher names the public HTTP address, this worker listens on it with a
+    # socket of its own (SO_REUSEPORT) and serves this same app there, so the kernel spreads
+    # connections over the workers instead of a few of them taking most (see http_listener.py).
+    from provisa.api.http_listener import WorkerHttpListener, configured_address
+
+    _http_address = configured_address()
+    if _http_address is not None:
+        state._http_listener = WorkerHttpListener(_app, *_http_address)
+        state._http_listener.start()
+
     # One line per worker process when it starts serving (REQ-1900): `--workers N` boots N of
     # these, and the launch is ready when all N have logged it.
     _log.warning("startup phase %-20s ready pid=%d", "worker", os.getpid())
@@ -2264,7 +2304,18 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
         await register_ready_worker(state.admin_db, _launch)
 
-    yield
+    # REQ-1882/REQ-1905: while serving, a stop signal ends in-flight requests (their statements
+    # are cancelled through the driver) before the server's own shutdown waits for them.
+    from provisa.core.request_deadline import expire_on_stop_signals
+
+    with expire_on_stop_signals():
+        yield
+
+    # REQ-1900: stop accepting on this worker's own HTTP socket and let its in-flight requests
+    # finish, before anything they use below is closed.
+    if state._http_listener is not None:
+        await state._http_listener.stop()
+        state._http_listener = None
 
     if _launch is not None and state.admin_db is not None:
         from provisa.core.boot_lock import unregister_worker
@@ -2279,6 +2330,8 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     await stop_provisioned_shards(state)
 
     # Stop Arrow Flight server
+    if state._flight_relay:
+        state._flight_relay.close()
     if state._flight_server:
         state._flight_server.shutdown()
 
@@ -2342,6 +2395,11 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     if state._scheduler is not None:
         with tolerate_shutdown_failure("scheduler shutdown"):
             state._scheduler.shutdown(wait=False)
+    # REQ-1900: end the holder's control-plane session, so a worker that held the scheduler lock
+    # hands it on at shutdown rather than when its process is finally reaped.
+    if state._scheduler_holder is not None:
+        state._scheduler_holder.close()
+        state._scheduler_holder = None
 
     # REQ-1882: stop the background worker pool, its timer and long-lived threads before the
     # databases and engines they use close below. Blocking (bounded) — run off the process loop.
@@ -2469,29 +2527,17 @@ def create_app() -> FastAPI:
     # ABAC approval hook (REQ-247): build from auth.approval_hook config and scope flags.
     _setup_approval_hook(state)
 
-    # Rate limiting (REQ-369-371): Redis-backed limiter + per-role request middleware.
-    # Added BEFORE wire_auth so the auth middleware (added later) runs first and
-    # populates request.state.role before the rate-limit check sees it.
-    from provisa.api.rate_limit import build_rate_limiter
+    # Rate limiting (REQ-369-371): the per-role request middleware. Added BEFORE wire_auth so
+    # the auth middleware (added later) runs first and populates request.state.role before the
+    # rate-limit check sees it. The limiter itself is built when the config is applied
+    # (app_loaders.apply_redis_settings) — here the Redis it counts in is not known yet.
 
-    state.rate_limiter = build_rate_limiter(getattr(state, "redis_url", None))
-
-    # REQ-1905: server-wide Flight concurrency ceiling, same env-var-over-server_cfg-default
-    # pattern as GRPC_MAX_CONCURRENT_RPCS (provisa/grpc/server.py). Default reserves at most a
-    # third of the shared asyncio default executor (min(32, cpu_count()+4), the same pool
-    # pg_runtime.run() dispatches onto) for Flight, guaranteeing the rest as a floor for
-    # pgwire/Bolt/gRPC/GraphQL even under a sustained Flight burst.
-    _flight_pool_size = min(32, (os.cpu_count() or 1) + 4)
-    state.flight_global_cap = int(
-        os.environ.get(
-            "FLIGHT_MAX_CONCURRENT_STREAMS",
-            str(
-                state.server_cfg.get(
-                    "flight_max_concurrent_streams", max(2, _flight_pool_size // 3)
-                )
-            ),
-        )
-    )
+    # REQ-1905: server-wide Flight stream limit, PER WORKER PROCESS, same env-var-over-server_cfg
+    # pattern as GRPC_MAX_CONCURRENT_RPCS (provisa/grpc/server.py). The default is the host's
+    # Flight budget (a third of min(32, cpu_count()+4)) divided among the launch's workers, floor
+    # 2 — see provisa/api/flight/stream_slots.py. A stream over the limit waits for a slot.
+    # REQ-1913: resolved by the settings registry and set on state when the server config is
+    # applied (app_loaders._apply_server_and_engine_config) — here the config is not loaded yet.
     from provisa.api.middleware.rate_limit_middleware import RateLimitMiddleware
 
     app.add_middleware(RateLimitMiddleware)
@@ -2755,26 +2801,12 @@ def create_app() -> FastAPI:
     admin_router = GraphQLRouter(admin_schema, context_getter=_admin_graphql_context)
     app.include_router(admin_router, prefix="/admin/graphql")
 
-    @app.middleware("http")
-    async def _admin_graphql_schema_version_header(request: Request, call_next):  # pyright: ignore[reportUnusedFunction]
-        from starlette.requests import ClientDisconnect
-        from starlette.responses import Response as StarletteResponse
+    # X-Schema-Version on /admin/graphql, the post-trial license notice header (REQ-1137) and the
+    # 499 for a client gone before any response — plain ASGI, so the data path pays no
+    # BaseHTTPMiddleware machinery (child task, anyio streams, its own receive()) per request.
+    from provisa.api.middleware.response_headers import ResponseHeadersMiddleware
 
-        try:
-            response = await call_next(request)
-        except ClientDisconnect:
-            return StarletteResponse(status_code=499)
-        if request.url.path.startswith("/admin/graphql"):
-            response.headers["X-Schema-Version"] = str(state.schema_version)
-        # REQ-1137: post-trial license nag on the REST surface via an out-of-band header — never
-        # touches the response body or any schema-typed field, never gates the request.
-        from provisa.licensing import emit as _lic_emit
-
-        if _lic_emit.should_nag():
-            st = _lic_emit.current_state()
-            if st is not None:
-                response.headers["X-Provisa-License-Notice"] = st.nag_text.replace("\n", " ")
-        return response
+    app.add_middleware(ResponseHeadersMiddleware, state=state)
 
     from provisa.api.admin.discovery import router as discovery_router
 
@@ -2812,6 +2844,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.settings_router import router as settings_router
 
     app.include_router(settings_router)
+    from provisa.api.admin.settings_catalog_router import (  # REQ-1913
+        router as settings_catalog_router,
+    )
+
+    app.include_router(settings_catalog_router)
     from provisa.api.admin.org_storage_router import (  # REQ-1046, REQ-1048, REQ-1049
         router as org_storage_router,
     )
@@ -2878,6 +2915,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.debug_trace_router import router as debug_trace_router  # REQ-1910
 
     app.include_router(debug_trace_router)
+    from provisa.api.admin.audit_query_text_router import router as audit_text_router  # REQ-1910
+
+    app.include_router(audit_text_router)
     from provisa.api.admin.invites_router import router as invites_router
 
     app.include_router(invites_router)
@@ -3014,6 +3054,24 @@ def create_app() -> FastAPI:
     # is the outermost user middleware: auth, org routing, rate limiting, egress metering,
     # governance, execution and response streaming all run on the request thread; the front
     # (uvicorn) loop only accepts, parses and relays receive/send.
+    # REQ-1905: name the transport an HTTP request is on (its data route: graphql, sql_http,
+    # cypher_http, rest, jsonapi) for whatever binds its request deadline further in. Registered
+    # just before RequestThreadMiddleware, so it runs on the request's own thread and context.
+    from provisa.core.limits import bound_request_transport, http_transport_for_path
+
+    class _RequestTransportMiddleware:
+        def __init__(self, inner: Any) -> None:
+            self._inner = inner
+
+        async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+            if scope["type"] != "http":
+                await self._inner(scope, receive, send)
+                return
+            with bound_request_transport(http_transport_for_path(scope.get("path", ""))):
+                await self._inner(scope, receive, send)
+
+    app.add_middleware(_RequestTransportMiddleware)
+
     from provisa.core.request_thread import RequestThreadMiddleware
 
     app.add_middleware(RequestThreadMiddleware)

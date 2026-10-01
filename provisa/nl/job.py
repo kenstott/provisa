@@ -175,11 +175,11 @@ def make_job_store(redis_url: str | None = None) -> InMemoryJobStore | RedisJobS
     REQ-829: ``PROVISA_REDIS_EMBEDDED`` forces the embedded fakeredis path (native/desktop tier),
     ignoring any configured ``REDIS_URL`` — mirrors the app-state resolution in ``app.py`` so a
     Redis server is never dialed when none is running."""
-    import os
+    from provisa.core import redis_location  # REQ-1913: one answer for which Redis
 
-    if os.environ.get("PROVISA_REDIS_EMBEDDED", "").lower() in ("1", "true", "yes"):
+    if redis_location.embedded():
         return RedisJobStore(None)
-    url = redis_url or os.environ.get("REDIS_URL", "")
+    url = redis_url if redis_url else redis_location.redis_url()
     if url:
         return RedisJobStore(url)
     return InMemoryJobStore()

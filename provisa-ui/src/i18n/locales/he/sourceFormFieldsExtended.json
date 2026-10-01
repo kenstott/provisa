@@ -11,6 +11,7 @@
     "metadataSheetId": "מזהה גיליון מטא-נתונים",
     "metadataSheetIdPlaceholder": "מזהה גיליון להגדרות טבלאות",
     "endpointUrl": "כתובת URL של נקודת הקצה",
+    "defaultGraphUri": "Default Graph URI",
     "namespace": "מרחב שמות",
     "cacheTtlSeconds": "TTL של המטמון (שניות)",
     "protoPathOrUrl": "נתיב Proto או URL",
@@ -78,6 +79,12 @@
     "topicPrefixPlaceholder": "dbserver1 (topics: {prefix}.{schema}.{table})",
     "schemaRegistryUrlCdcPlaceholder": "ריק = JSON; יש להגדיר עבור Avro",
     "consumerGroupId": "Consumer Group ID (אופציונלי)",
-    "consumerGroupIdPlaceholder": "ירושה מהגדרה גלובלית (provisa-debezium)"
+    "consumerGroupIdPlaceholder": "ירושה מהגדרה גלובלית (provisa-debezium)",
+    "useSsl": "שימוש ב-SSL/TLS",
+    "eventPath": "נתיב אירועים (אופציונלי)",
+    "reconnectIntervalSeconds": "מרווח התחברות מחדש (שניות)",
+    "subscribePayload": "מטען הרשמה (JSON, אופציונלי)",
+    "feedUrlOverride": "כתובת Feed (עקיפה אופציונלית)",
+    "pollIntervalSeconds": "מרווח דגימה (שניות)"
   }
 }

@@ -1,0 +1,15 @@
+{
+  "kaggleFormSection": {
+    "tokenLabel": "Kaggle API टोकन",
+    "tokenDescription": "डेटासेट पिकर खुलने से पहले Kaggle API के विरुद्ध लाइव सत्यापित किया जाता है",
+    "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
+    "validateButton": "टोकन सत्यापित करें",
+    "tokenValid": "टोकन मान्य है",
+    "tokenInvalid": "अमान्य Kaggle API टोकन",
+    "datasetSearchLabel": "Kaggle डेटासेट खोजें",
+    "datasetSearchPlaceholder": "नाम से खोजें...",
+    "noDatasetsFound": "कोई डेटासेट नहीं मिला",
+    "selectedDataset": "चयनित: {{ref}}",
+    "registerButton": "डेटासेट जोड़ें"
+  }
+}

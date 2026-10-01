@@ -1,0 +1,186 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# Benchmark setup contract (REQ-1911) for the perf stack (demo/named/perf: fragment.yaml,
+# docker-compose.yml). Schema and validation: setup_contract.py. Every knob is zero, which makes
+# the run the optimistic test: one row, one column, no filter, cached, the Postgres orders table.
+# Request text is built from the names below; table, column and join names are what the
+# deployment registers (fragment.yaml, role org_admin).
+version: 1
+
+deployment:
+  name: perf-stack
+  endpoints:
+    # An {env: NAME} value is read from that environment variable (orchestrate.sh sets it from
+    # PROVISA_API_PORT, the same variable its Artillery phases read).
+    http: {base_url: {env: PROVISA_HTTP_BASE_URL}}
+    pgwire: {host: localhost, port: 5439}
+    bolt: {host: localhost, port: 17687}
+    flight: {host: localhost, port: 8815}
+    grpc: {host: localhost, port: 50051}
+  # --demo perf runs with auth.provider: none. A deployment with auth names the environment
+  # variable that holds the credential: {mode: env, env: NAME}. A secret never appears here.
+  credentials: {mode: none}
+  roles:
+    - {role: org_admin, weight: 1.0}
+
+# The contract names a table once, by its registered identity (source id, schema, table: what
+# fragment.yaml registers) and its columns by registered column name. What each transport calls
+# them (SQL name, Cypher label and properties, GraphQL fields, REST and JSON:API paths, gRPC
+# types) is resolved from the deployment when the run starts (lookup.py) and written to
+# resolved-names.json; a table a transport does not expose is a fact from that lookup.
+#
+# A column with a `domain` can be filtered on: where an equality filter's value is drawn from.
+# generate_postgres.py: order_id 1..PROVISA_BENCH_ORDERS (20,000,000 by default; the shared join-key
+# domain), customer_id 1..orders/8, region/status from its fixed lists. A uniform real (amount) has
+# no domain: an equality on it matches nothing.
+sources:
+  bench-postgresql:
+    # What the run is measured under: live reads (attached directly by the pg engine) or reads
+    # from a replica refreshed every ttl_seconds. An operator setting no request can choose; the
+    # run checks the deployment has it (or sets it with --apply-replication).
+    replication: {setting: live, ttl_seconds: 0}
+    # The container whose CPU a step samples (`docker stats`); compose project `perf`.
+    monitor: {container: perf-postgresql-1}
+    tables:
+      - schema: public
+        table: orders
+        weight: 1.0
+        base_column: order_id
+        columns:
+          - {name: order_id, domain: {kind: int_range, min: 1, max: 20000000}}
+          - {name: customer_id, domain: {kind: int_range, min: 1, max: 2500000}}
+          - {name: region, domain: {kind: set, values: [NA, EMEA, APAC, LATAM]}}
+          - {name: status, domain: {kind: set, values: [open, shipped, delivered, cancelled, returned]}}
+          - {name: amount}
+      # Not drawn as a request's own table (weight 0): reached only through the join below.
+      - schema: public
+        table: order_items
+        weight: 0.0
+        base_column: item_id
+        columns:
+          - {name: item_id}
+          - {name: order_id, domain: {kind: int_range, min: 1, max: 20000000}}
+          - {name: sku}
+          - {name: quantity}
+    # A join pair: registered tables and columns. The deployment must have the relationship
+    # registered (HAS_ITEM in fragment.yaml); the nested GraphQL field and the Cypher relationship
+    # type come from the deployment.
+    joins:
+      - {left: "orders.order_id", right: "order_items.order_id"}
+  bench-clickhouse:
+    replication: {setting: replica, ttl_seconds: 300}   # row_materialize, cache_ttl 300 (fragment.yaml)
+    monitor: {container: perf-clickhouse-1}
+    tables:
+      - schema: default
+        table: order_events
+        weight: 1.0
+        base_column: event_id
+        columns:
+          - {name: event_id}
+          - {name: order_id, domain: {kind: int_range, min: 1, max: 20000000}}
+          - {name: customer_id, domain: {kind: int_range, min: 1, max: 2500000}}
+          - {name: event_type}
+          - {name: channel}
+          - {name: device}
+    joins: []
+  bench-mongodb:
+    replication: {setting: replica, ttl_seconds: 300}   # row_materialize, cache_ttl 300 (fragment.yaml)
+    monitor: {container: perf-mongodb-1}
+    tables:
+      - schema: provisa_bench
+        table: order_docs
+        weight: 1.0
+        base_column: order_id
+        columns:
+          - {name: order_id, domain: {kind: int_range, min: 1, max: 20000000}}
+          - {name: customer_id, domain: {kind: int_range, min: 1, max: 2500000}}
+          - {name: status}
+          - {name: shipping_carrier}
+    joins: []
+  bench-neo4j:
+    replication: {setting: replica, ttl_seconds: 300}   # row_materialize, cache_ttl 300 (fragment.yaml)
+    monitor: {container: perf-neo4j-1}
+    tables:
+      - schema: neo4j
+        table: bench_order_node   # registered with alias Order
+        weight: 1.0
+        base_column: order_id
+        columns:
+          - {name: order_id, domain: {kind: int_range, min: 1, max: 2000000}}
+          - {name: customer_id, domain: {kind: int_range, min: 1, max: 250000}}
+          - {name: region}
+          - {name: status}
+    joins: []
+
+# Joins across sources (HAS_EVENT one-to-many, HAS_DOC one-to-one in fragment.yaml).
+cross_source_joins:
+  - {left: "bench-postgresql:orders.order_id", right: "bench-clickhouse:order_events.order_id"}
+  - {left: "bench-postgresql:orders.order_id", right: "bench-mongodb:order_docs.order_id"}
+
+# What a request is when no request knob applies: the optimistic request (one column, no filter,
+# no join) and its row count.
+base: {rows: 1}
+
+# A knob is a probability that it applies to a request, and the distribution its value is drawn
+# from when it does. Probability 0 is off.
+knobs:
+  fields: &off {probability: 0, distribution: {kind: constant, value: 0}}
+  filters: *off
+  rows: *off
+  joins_same_source: *off
+  joins_cross_source: *off
+  cache_repetition: *off
+  # Probability that a request opts into the response cache (@cached, the SQL/Cypher comment
+  # hint, x-provisa-cache metadata). 1 is the optimistic test; 0 sends every request uncached.
+  # REST and JSON:API have no opt-in: they are uncached whatever this says.
+  cache: {probability: 1.0}
+  source_weights:
+    bench-postgresql: 1.0
+    bench-clickhouse: 0.0
+    bench-mongodb: 0.0
+    bench-neo4j: 0.0
+  # The route a request asks for, per source (for a request whose own table is in that source):
+  # auto: no hint, the deployment decides (the optimistic test); direct: `route=direct`, straight
+  # to the source; federated: `route=federated`, through the engine; mixed: either, with
+  # federated_probability the share through the engine. Not the live/replica choice: that is the
+  # operator's replication setting (`replication` above). Transports with no route hint (gRPC,
+  # REST, JSON:API) can only read sources left on auto.
+  route:
+    bench-postgresql: {mode: auto, federated_probability: 0}
+    bench-clickhouse: {mode: auto, federated_probability: 0}
+    bench-mongodb: {mode: auto, federated_probability: 0}
+    bench-neo4j: {mode: auto, federated_probability: 0}
+
+# Transports run, in this order. A transport's value overrides knobs for that transport only
+# (any of the knobs above, including cache and route); {} means no override.
+transports:
+  graphql: {}
+  data_sql: {}
+  cypher_http: {}
+  pgwire: {}
+  flight_sql: {}
+  bolt: {}
+  grpc: {}
+  rest: {}
+  jsonapi: {}
+
+load:
+  mode: closed_loop
+  steps: [1, 16, 64, 256]
+  window_s: 20
+  processes: half_cores   # or an integer; half_cores = ceil(cpu_count / 2)
+  # Requests per HTTP transport sent one at a time with `X-Provisa-Stats: true` for the per-request
+  # time split (Provisa / engine / source). 0 skips it.
+  profile_requests: 0
+  # Seconds of no load after the ramp: the deployment's idle CPU (the refresh cost of landed
+  # sources, for the break-even). 0 skips it; needs --server-pid.
+  idle_window_s: 0
+
+seed: 0

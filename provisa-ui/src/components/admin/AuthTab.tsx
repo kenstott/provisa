@@ -25,6 +25,8 @@ import {
 } from "@mantine/core";
 import { Check } from "lucide-react";
 import { fetchAuthConfig, setAuthConfig, type AuthConfigState } from "../../api/admin";
+import { PlatformRequired } from "./PlatformRequired";
+import { isForbidden } from "./isForbidden";
 
 // REQ-919: configure the authentication provider (firebase/keycloak/oauth/simple) + role settings.
 // The provider binds at startup, so changes take effect on restart.
@@ -37,6 +39,7 @@ export function AuthTab() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [forbidden, setForbidden] = useState(false);
 
   useEffect(() => {
     fetchAuthConfig()
@@ -51,7 +54,7 @@ export function AuthTab() {
         }
         setConfig(cfg);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => (isForbidden(e) ? setForbidden(true) : setError(String(e))));
   }, []);
 
   const current = useMemo(() => s?.providers.find((p) => p.key === provider), [s, provider]);
@@ -84,6 +87,7 @@ export function AuthTab() {
     }
   };
 
+  if (forbidden) return <PlatformRequired />;
   if (error && !s) return <Alert color="red">{error}</Alert>;
   if (!s || !common) return <Text>{t("authTab.loading")}</Text>;
 

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 
 
 from provisa.api.startup_resilience import tolerate_startup_failure
@@ -69,6 +68,63 @@ _META_TABLE_ALIAS: dict[str, str] = {
 }
 
 
+def configure_encryption_and_secrets(raw_config: dict) -> None:
+    """Install the process-wide EncryptionService and select the secrets service, from config.
+
+    REQ-684/686: before any encrypt/decrypt (API auth column, hot cache, audit) runs. An unset
+    provider is the passthrough one. REQ-1557: an unset secrets provider is not "unconfigured" —
+    it selects Provisa's own encrypted per-org store; the backend is built on first use, so this
+    is only the selection.
+
+    Called when the server config is applied (REQ-1913: a stored secret setting is sealed by this
+    provider and is read as soon as the restart settings are fixed) and again by every schema
+    rebuild, where a changed ``encryption``/``secrets`` block takes effect. Idempotent.
+    """
+    from provisa.core.secrets_runtime import configure_secrets
+    from provisa.encryption import configure_encryption
+
+    enc_cfg = raw_config.get("encryption", {}) or {}
+    enc_provider = enc_cfg.get("provider")
+    configure_encryption(
+        enc_provider,
+        key_id=enc_cfg.get("key_id"),
+        config=enc_cfg.get(enc_provider, {}) if enc_provider else {},
+    )
+    sec_cfg = raw_config.get("secrets", {}) or {}
+    sec_provider = sec_cfg.get("provider")
+    configure_secrets(sec_provider, config=sec_cfg.get(sec_provider, {}) if sec_provider else {})
+
+
+def apply_telemetry_settings(state: "AppState") -> None:
+    """Publish the telemetry compaction settings the scheduler and the compaction job read off
+    state (REQ-545). Operator settings (REQ-1913), fixed at start."""
+    from provisa.core import settings_registry
+
+    value = settings_registry.value
+    state.otel_compact_cron = value("otel.compact_cron")
+    state.otel_compact_batch_size = value("otel.compact_batch_size")
+    state.otel_compact_file_chunk = value("otel.compact_file_chunk")
+    state.otel_compact_max_files_per_run = value("otel.compact_max_files_per_run")
+    state.otel_snapshot_retention_hours = value("otel.ops_snapshot_retention_hours")
+    state.otel_s3_endpoint = value("otel.s3_endpoint")
+
+
+def apply_redis_settings(state: "AppState") -> None:
+    """Resolve which Redis the deployment uses and build the rate limiter on it.
+
+    The URL is resolved whether or not the response cache is enabled, because rate limiting
+    (REQ-371) needs it either way. The limiter is built here, once per process — where the config
+    is loaded and the control plane bound — and not while the app object is created, when neither
+    is: built there it always counted in its own process's embedded Redis.
+    """
+    from provisa.api import rate_limit
+    from provisa.core.redis_location import redis_url
+
+    state.redis_url = redis_url()
+    if state.rate_limiter is None:
+        state.rate_limiter = rate_limit.build_rate_limiter(state.redis_url)
+
+
 def _apply_server_and_engine_config(
     raw_config: dict, connect_engine: bool = True, provision_engine: bool = True
 ) -> None:
@@ -85,47 +141,42 @@ def _apply_server_and_engine_config(
     from provisa.api.app import state
 
     state.server_cfg = raw_config.get("server", {}) if isinstance(raw_config, dict) else {}
+    # REQ-1913: the operator settings resolve their config-file values from this config. A config
+    # that is not a mapping (an empty file) states none.
+    from provisa.core import settings_registry
+
+    _config = raw_config if isinstance(raw_config, dict) else {}
+    settings_registry.bind_config(_config)
+    # A stored secret setting is sealed by the deployment's encryption provider, and may be a
+    # reference into its secrets service: both are configured before the first one is read.
+    configure_encryption_and_secrets(_config)
+    # The restart settings are fixed here, once: the control plane is bound (_init_control_planes
+    # runs first) and the config is named, and nothing has read one yet.
+    settings_registry.freeze_at_boot()
     # REQ-1882: size the background worker pool from config before anything is submitted to it
     # (the first boot step that has the config). A value different from a pool already running
     # raises in configure_background_workers — a running pool is never silently left mis-sized.
-    from provisa.core.connection_loop import (
-        DEFAULT_BACKGROUND_WORKERS,
-        configure_background_workers,
-    )
+    from provisa.core.connection_loop import configure_background_workers
 
-    configure_background_workers(
-        int(state.server_cfg.get("background_workers", DEFAULT_BACKGROUND_WORKERS))
-    )
+    configure_background_workers(settings_registry.value("concurrency.background_workers"))
+    # REQ-1905: the server-wide Flight stream limit, per worker process. A stream over the limit
+    # waits for a slot (provisa/api/flight/stream_slots.py).
+    state.flight_global_cap = settings_registry.value("concurrency.flight_max_concurrent_streams")
     # REQ-693: high-security mode (env override wins so airgapped deploys can force it).
-    _sec_cfg = raw_config.get("security", {}) if isinstance(raw_config, dict) else {}
-    _sec_mode = os.environ.get("PROVISA_SECURITY_MODE") or _sec_cfg.get("mode", "standard")
-    state.security_high = str(_sec_mode).lower() == "high"
-    state.hostname = str(
-        os.environ.get("PROVISA_HOSTNAME") or state.server_cfg.get("hostname", "localhost")
-    )
+    state.security_high = settings_registry.value("security.mode") == "high"
+    state.hostname = settings_registry.value("server.hostname")
 
-    _limits_cfg = state.server_cfg.get("limits", {})
     from provisa.core.limits import set_server_limits
 
     state.server_limits = {
-        "default_row_limit": int(
-            os.environ.get(
-                "PROVISA_DEFAULT_ROW_LIMIT", str(_limits_cfg.get("default_row_limit", 100))
-            )
-        ),
-        "engine_query_timeout": int(
-            os.environ.get(
-                "PROVISA_ENGINE_QUERY_TIMEOUT", str(_limits_cfg.get("engine_query_timeout", 120))
-            )
-        ),
-        "request_timeout": float(
-            os.environ.get("PROVISA_REQUEST_TIMEOUT", str(_limits_cfg.get("request_timeout", 60)))
-        ),
-        "retry_budget_secs": float(
-            os.environ.get(
-                "PROVISA_RETRY_BUDGET_SECS", str(_limits_cfg.get("retry_budget_secs", 30))
-            )
-        ),
+        # REQ-1913: declared in provisa/core/settings_catalog.py and resolved by the registry;
+        # their readers ask the registry on every use, so a stored change needs no reload.
+        "default_row_limit": settings_registry.value("limits.default_row_limit"),
+        "engine_query_timeout": settings_registry.value("limits.engine_query_timeout"),
+        # REQ-1905: the DEFAULT request timeout; a transport's own is asked of
+        # provisa.core.limits.request_timeout_for where its deadline is bound.
+        "request_timeout": settings_registry.value("limits.request_timeout"),
+        "retry_budget_secs": settings_registry.value("limits.retry_budget_secs"),
     }
     set_server_limits(state.server_limits)  # REQ-1678: the compiler reads the cap from core
 

@@ -11,6 +11,8 @@
     "addViewTitle": "SQLエクスプローラーで新しいビューを作成",
     "model": "+ モデル",
     "modelTitle": "エンティティまたはファクトをモデリング（スタースキーマ / Data Vault）",
+    "reportXlsx": "ワークブック",
+    "reportXlsxTitle": "レビュー用に、モデルをスプレッドシートとしてダウンロードします。ソース、テーブル、カラム、リレーションシップ、ビュー、メトリクス、マテリアライズドビュー、用語集の用語を、それぞれ 1 シートで収録します",
     "viewErd": "ERDを表示",
     "colSource": "ソース",
     "colDomain": "ドメイン",
@@ -56,6 +58,11 @@
       "impliedDimensionTitle": "暗黙のディメンション — このテーブルで「Group Byを有効化」がオンです"
     },
     "derived": "派生",
+    "checker": {
+      "soda": "Soda",
+      "great_expectations": "Great Expectations",
+      "title": "データ品質チェッカー — このテーブルの行は、そのコントラクトを実行した結果です"
+    },
     "dataProduct": "プロダクト",
     "dataProductTitle": "データプロダクト — provisa metadata export に含まれます",
     "purposeTitle": "テーブル登録で何が起きるか",

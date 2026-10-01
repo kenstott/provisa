@@ -117,7 +117,7 @@ export function CacheManager() {
   const [tab, setTab] = useState<TabKey>("response");
   const [platform, setPlatform] = useState(false);
   useEffect(() => {
-    fetchSettings().then((s) => setPlatform(Boolean(s.features?.platform_settings)));
+    fetchSettings().then((s) => setPlatform(Boolean(s.features?.deployment_settings)));
   }, []);
   return (
     <div>

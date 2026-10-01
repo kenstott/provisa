@@ -123,7 +123,9 @@ class TestGetSettingsScope:
     async def test_platform_caller_sees_every_block(self, caller, app_state):
         from provisa.api.admin.settings_router import _PLATFORM_BLOCKS, get_settings
 
-        body = await get_settings(caller("platform_settings"))
+        # REQ-1913: the platform administrator — `platform_settings` alone is what a single-tenant
+        # org administrator holds, and no longer reads the deployment blocks.
+        body = await get_settings(caller("platform_settings", "cross_org"))
         for block in _PLATFORM_BLOCKS:
             assert block in body
         assert body["features"]["platform_settings"] is True
@@ -183,6 +185,126 @@ class TestPutSettingsScope:
         with pytest.raises(ApiError) as exc:
             await router.update_settings(request)
         assert exc.value.status_code == 403
+
+    async def test_a_refused_body_writes_none_of_it(self, caller, app_state, monkeypatch):
+        """A body carrying an org block and a deployment block from a caller holding only the org
+        right is refused WHOLE. The org block used to be written before the platform right was
+        checked, so the 403 left half the body applied."""
+        import provisa.api.admin.settings_router as router
+
+        written: dict = {}
+
+        async def _read(_db):
+            return {}
+
+        async def _write(_db, updates, *, updated_by):
+            written.update(updates)
+            return list(updates)
+
+        monkeypatch.setattr("provisa.core.org_settings.read_org_overrides", _read)
+        monkeypatch.setattr("provisa.core.org_settings.write_org_overrides", _write)
+
+        request = caller("org_settings")
+        request.json = lambda: _coro(
+            {"cache": {"default_ttl": 60}, "sampling": {"default_sample_size": 5}}
+        )
+        with pytest.raises(ApiError) as exc:
+            await router.update_settings(request)
+        assert exc.value.status_code == 403
+        assert written == {}
+
+
+# The rights each administrator holds. A single-tenant deployment grants org_admin
+# ``platform_settings`` (apply_tenancy_role_grants); ``cross_org`` is platform_admin's alone.
+PLATFORM_ADMIN = ("platform_settings", "cross_org")
+SINGLE_TENANT_ORG_ADMIN = ("platform_settings", "org_settings")
+
+
+class TestDeploymentSettingsArePlatformAdminsEverywhere:
+    """REQ-1913: the deployment-wide blocks of ``/admin/settings`` are the platform
+    administrator's in every deployment — the same rule as the settings catalog, which writes the
+    same stored keys. A single-tenant org administrator keeps the org's own blocks."""
+
+    async def test_single_tenant_org_admin_does_not_read_the_deployment_blocks(
+        self, caller, app_state
+    ):
+        from provisa.api.admin.settings_router import _PLATFORM_BLOCKS, get_settings
+
+        body = await get_settings(caller(*SINGLE_TENANT_ORG_ADMIN))
+        for block in _PLATFORM_BLOCKS:
+            assert block not in body
+        assert body["features"]["deployment_settings"] is False
+        # The right itself is unchanged: it still opens the other platform surfaces.
+        assert body["features"]["platform_settings"] is True
+        assert set(body["naming"]) == {"use_domains", "default_domain"}
+        assert "redirect" in body and "cache" in body
+
+    async def test_platform_admin_reads_every_block(self, caller, app_state):
+        from provisa.api.admin.settings_router import _PLATFORM_BLOCKS, get_settings
+
+        body = await get_settings(caller(*PLATFORM_ADMIN))
+        for block in _PLATFORM_BLOCKS:
+            assert block in body
+        assert body["features"]["deployment_settings"] is True
+
+    async def test_single_tenant_org_admin_cannot_write_a_deployment_block(self, caller, app_state):
+        import provisa.api.admin.settings_router as router
+
+        request = caller(*SINGLE_TENANT_ORG_ADMIN)
+        request.json = lambda: _coro({"limits": {"default_row_limit": 5}})
+        with pytest.raises(ApiError) as exc:
+            await router.update_settings(request)
+        assert (exc.value.status_code, exc.value.code) == (
+            403,
+            "platform.control_plane_role_required",
+        )
+
+    async def test_single_tenant_org_admin_still_writes_the_orgs_own_blocks(
+        self, caller, app_state, monkeypatch
+    ):
+        import provisa.api.admin.settings_router as router
+
+        written: dict = {}
+
+        async def _read(_db):
+            return dict(app_state.settings_overrides)
+
+        async def _write(_db, updates, *, updated_by):
+            written.update(updates)
+            return list(updates)
+
+        monkeypatch.setattr("provisa.core.org_settings.read_org_overrides", _read)
+        monkeypatch.setattr("provisa.core.org_settings.write_org_overrides", _write)
+        request = caller(*SINGLE_TENANT_ORG_ADMIN)
+        request.json = lambda: _coro({"cache": {"default_ttl": 60}, "redirect": {"threshold": 5}})
+        body = await router.update_settings(request)
+        assert body["success"] is True
+        assert written == {"cache": {"default_ttl": 60}, "redirect": {"threshold": 5}}
+
+    async def test_a_mixed_body_from_a_single_tenant_org_admin_stores_nothing(
+        self, caller, app_state, monkeypatch
+    ):
+        import provisa.api.admin.settings_router as router
+
+        written: dict = {}
+
+        async def _read(_db):
+            return {}
+
+        async def _write(_db, updates, *, updated_by):
+            written.update(updates)
+            return list(updates)
+
+        monkeypatch.setattr("provisa.core.org_settings.read_org_overrides", _read)
+        monkeypatch.setattr("provisa.core.org_settings.write_org_overrides", _write)
+        request = caller(*SINGLE_TENANT_ORG_ADMIN)
+        request.json = lambda: _coro(
+            {"cache": {"default_ttl": 60}, "sampling": {"default_sample_size": 5}}
+        )
+        with pytest.raises(ApiError) as exc:
+            await router.update_settings(request)
+        assert exc.value.status_code == 403
+        assert written == {}
 
 
 async def _coro(value):

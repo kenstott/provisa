@@ -56,6 +56,11 @@ def detect_sql_function_call(sql: str, state) -> tuple[str, list] | None:
     # Webhooks are governed commands too (REQ-872) and route through the same shared executor, so a
     # webhook call is a standalone-function-call SELECT exactly like a function call.
     callables = {**fns, **(getattr(state, "tracked_webhooks", None) or {})}
+    # A statement that names no registered command cannot be a call of one: the match below is on
+    # the function name as written, and that name is in the text. Asked on every execution, so
+    # the common statement — an ordinary read — is answered without a parse.
+    if not any(name in sql for name in callables):
+        return None
     import sqlglot
     import sqlglot.expressions as exp
     from sqlglot.errors import SqlglotError

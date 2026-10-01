@@ -16,9 +16,11 @@ header (org_admin when the request names none). The middleware binds the role cl
 variables and the audit identity for THAT role, so it is the only role the request can be
 governed as.
 
-The body of ``POST /query/nl`` also carries a ``role`` field. It is not a second way to pick a
-role. A body role equal to the acting role is accepted; one that differs is refused, naming both
-— a request never runs as a different role than the one it asked for. Before this rule
+Some request bodies also carry a ``role`` field (``/data/sql``, ``/data/graphql``,
+``/query/nl``). It is not a second way to pick a role. A body role equal to the acting role is
+accepted; one that differs is refused, naming both — a request never runs as a different role
+than the one it asked for. Before this rule a body role was silently ignored on ``/data/sql`` and
+``/data/graphql`` (a request naming ``analyst`` ran as org_admin, uncapped and unmasked), and
 ``/query/nl`` ran its job as the body's role whatever the acting role was.
 """
 

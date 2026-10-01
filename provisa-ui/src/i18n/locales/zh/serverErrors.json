@@ -15,6 +15,7 @@
     },
     "auth": {
       "authentication_required": "需要身份验证",
+      "auto_join_not_offered": "该组织不提供准入您的服务",
       "bootstrap_claiming_disabled": "引导认领功能未启用",
       "delete_account_confirm_required": "删除账户不可逆：您的个人资料和所有组织成员资格都将被移除且无法恢复。请在 'confirm' 参数中重复输入您的用户 ID 以继续。",
       "email_not_permitted": "您的电子邮件地址不被允许加入此组织",
@@ -51,6 +52,10 @@
       "engine_not_connected": "引擎未连接",
       "grpc_source_not_registered": "gRPC 远程数据源 '{{source_id}}' 未注册",
       "invalid_as_of": "无效的 X-Provisa-As-Of：{{error}}",
+      "invalid_filter": "filter 必须是将字段名映射到值的对象",
+      "invalid_filter_field": "{{type_name}} 的 filter 字段 '{{field}}' 无效",
+      "invalid_read_mask": "read_mask 必须是包含字段路径列表 'paths' 的对象",
+      "invalid_read_mask_path": "{{type_name}} 的 read_mask 路径 '{{path}}' 无效",
       "missing_command_name": "缺少命令名称",
       "missing_role_id": "缺少 role_id",
       "missing_x_provisa_role_header": "缺少 X-Provisa-Role 请求头",
@@ -155,7 +160,10 @@
       "auth_required_create": "创建组织需要身份验证",
       "auth_required_leave": "退出组织需要身份验证",
       "auto_join_public_domain": "auto_join 需要一条限定在您所控制域名上的邮箱规则——当前这条匹配的是 {{domain}}。",
+      "auto_join_breadth_unacknowledged": "请仔细审阅此自动加入规则，否则可能会允许组织外部人员加入：除 {{domains}} 外，它还接受诸如 {{admits}} 的地址。这样，您不控制的域中的任何人都可能自动加入您的组织。请确认您接受该风险后再保存。",
       "auto_join_requires_role": "auto_join 需要 auto_join_role",
+      "auto_join_rule_taken": "另一个组织已对所有匹配此规则的人员启用自动加入。两个组织不能声明相同的地址——请向其索取邀请，或将您的规则收窄到仅您的组织使用的域。",
+      "auto_join_rule_unbounded": "此自动加入规则没有边界：它会准入您不控制的域中的地址。请将其锚定到您拥有的域，例如 \"@acme\\\\.com$\"。",
       "cannot_delete_root": "无法删除根组织",
       "delete_confirm_required": "删除 '{{org}}' 将永久销毁其全部数据——任何人（包括平台管理员）都无法恢复。请在 'confirm' 参数中重复输入组织 ID 以继续。",
       "invalid_email_rule": "无效的电子邮件规则：{{error}}",
@@ -173,7 +181,8 @@
     },
     "platform": {
       "right_required": "需要 {{right}} 能力",
-      "settings_capability_required": "需要 platform_settings 能力"
+      "settings_capability_required": "需要 platform_settings 能力",
+      "control_plane_role_required": "需要平台管理员。"
     },
     "profile": {
       "database_unavailable": "数据库不可用",
@@ -249,7 +258,7 @@
       "source_connection_failed": "数据源 '{{source}}'：连接验证失败：{{error}}",
       "source_created": "数据源 '{{source}}' 已创建",
       "source_deleted": "数据源 '{{source}}' 已删除",
-      "source_limit_reached": "该组织已使用 {{plan}} 套餐允许的 {{limit}} 个数据源中的 {{held}} 个。请在账单页面更改套餐，或移除一个数据源。",
+      "source_limit_reached": "此组织持有 {{held}} 个数据源，其 {{plan}} 套餐上限为 {{limit}} 个。请在“计费”页面更改套餐，或移除一个数据源。",
       "source_load_protection_set": "已为数据源 '{{source}}' 设置负载保护",
       "source_naming_updated": "已更新数据源 '{{source}}' 的命名约定",
       "source_no_connection": "数据源 '{{source}}' 没有活跃连接",
@@ -297,7 +306,10 @@
       "unknown_auth_provider": "未知的身份验证提供程序 '{{provider}}'；有效值：{{valid}}",
       "unknown_encryption_provider": "未知的加密提供程序 '{{provider}}'",
       "unknown_engine": "未知引擎 '{{engine}}'；有效值：{{valid}}",
-      "use_domains_invalid": "use_domains 必须为 true、false 或 null"
+      "use_domains_invalid": "use_domains 必须为 true、false 或 null",
+      "invalid_value": "{{field}} 的值被拒绝。",
+      "invalid_body": "设置请求无效。",
+      "auth_required": "在配置身份验证之前，无法更改 {{field}}。"
     },
     "setup": {
       "admin_credentials_required": "需要 admin_username 和 admin_password",

@@ -11,6 +11,8 @@
     "addViewTitle": "在 SQL Explorer 中建立新檢視",
     "model": "+ 模型",
     "modelTitle": "建構實體或事實的模型（星型結構描述 / Data Vault）",
+    "reportXlsx": "活頁簿",
+    "reportXlsxTitle": "將模型下載為試算表以供審閱 — 數據來源、數據表、欄位、關係、檢視、指標、具體化檢視和詞彙表術語，每項各佔一張工作表",
     "viewErd": "檢視 ERD",
     "colSource": "數據來源",
     "colDomain": "網域",
@@ -56,6 +58,11 @@
       "impliedDimensionTitle": "隱含維度 — 此表已開啟「啟用分組」"
     },
     "derived": "衍生",
+    "checker": {
+      "soda": "Soda",
+      "great_expectations": "Great Expectations",
+      "title": "數據質素檢查器 — 此數據表的行是執行其合約所得的結果"
+    },
     "dataProduct": "產品",
     "dataProductTitle": "數據產品 — 包含在 provisa metadata export 中",
     "purposeTitle": "註冊資料表代表甚麼",

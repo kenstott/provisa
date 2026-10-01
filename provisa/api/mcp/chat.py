@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -902,9 +901,11 @@ async def _resolve_model(state: Any) -> str | None:
     (REQ-1349, via mcp_tools.effective_config — see _resolve_vendor) → Claude Opus 4.8 IF the
     vendor is (implicitly or explicitly) anthropic, else None (REQ-1797: no fallback guess for a
     vendor we don't know a safe default model for — the admin names one explicitly)."""
-    env = os.environ.get("PROVISA_MCP_CHAT_MODEL")
-    if env and env.strip():
-        return env.strip()
+    from provisa.core import settings_registry  # REQ-1913: the operator setting `mcp.chat_model`
+
+    override = settings_registry.value("mcp.chat_model")
+    if override is not None:
+        return override
     cfg = (await _effective_config(state)).get("ai_models", {}) or {}
     op_cfg = cfg.get("mcp_chat")
     if isinstance(op_cfg, str) and op_cfg.strip():

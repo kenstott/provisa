@@ -13,6 +13,10 @@
     "roleIdPlaceholder": "analyst",
     "capabilities": "功能",
     "domainAccess": "網域存取",
+    "parentRole": "繼承自",
+    "parentRoleNone": "無父角色",
+    "parentRoleHelp": "會繼承此角色的授權、欄位可見性和 RLS 規則；此角色針對某個數據表自有的 RLS 規則會取代父角色的規則。",
+    "labelParentRole": "繼承自：",
     "allDomains": "所有網域",
     "save": "儲存",
     "cancel": "取消",
@@ -51,6 +55,11 @@
     "rolePurposeTitle": "角色的用途",
     "rolePurposeBody": "角色是其他所有權限所針對的單位。它的能力決定它可以執行哪些操作，網域存取決定它究竟能觸及模型的哪些部分。列級規則以及各介面上的存取檢查所針對的都是角色而非個人——因此要改變某人能看到、能做什麼，就改變他所持有的角色。",
     "rolePurposeAdd": "角色還帶有自己的上限：每秒請求數，以及查詢深度、節點數和執行時間的限制。這樣既可以給角色覆蓋面，又不會給出無上限的開銷——昂貴的查詢由發出它的角色拒絕，而不是由它本會打到的資料來源拒絕。",
-    "rolePurposeAria": "關於角色"
+    "rolePurposeAria": "關於角色",
+    "applyToAction": "動作（函式或 webhook）",
+    "action": "動作",
+    "actionPrefix": "動作：",
+    "loadActionsFailed": "無法載入動作：{{message}}",
+    "labelAction": "動作："
   }
 }

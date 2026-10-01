@@ -11,6 +11,7 @@
     "metadataSheetId": "メタデータシートID",
     "metadataSheetIdPlaceholder": "テーブル定義用のシートID",
     "endpointUrl": "エンドポイントURL",
+    "defaultGraphUri": "デフォルトグラフ URI",
     "namespace": "名前空間",
     "cacheTtlSeconds": "キャッシュTTL（秒）",
     "protoPathOrUrl": "ProtoパスまたはURL",
@@ -78,6 +79,12 @@
     "topicPrefixPlaceholder": "dbserver1（トピック: {prefix}.{schema}.{table}）",
     "schemaRegistryUrlCdcPlaceholder": "空欄 = JSON、Avroの場合は設定",
     "consumerGroupId": "コンシューマーグループID（任意）",
-    "consumerGroupIdPlaceholder": "グローバル設定を継承（provisa-debezium）"
+    "consumerGroupIdPlaceholder": "グローバル設定を継承（provisa-debezium）",
+    "useSsl": "SSL/TLS を使用",
+    "eventPath": "イベントパス(任意)",
+    "reconnectIntervalSeconds": "再接続間隔(秒)",
+    "subscribePayload": "サブスクライブペイロード(JSON、任意)",
+    "feedUrlOverride": "フィード URL(任意の上書き)",
+    "pollIntervalSeconds": "ポーリング間隔(秒)"
   }
 }

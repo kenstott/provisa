@@ -144,6 +144,15 @@ def generate_jsonapi_openapi_spec(
                 "description": "Page number",
             },
             {
+                "name": "page[total]",
+                "in": "query",
+                "schema": {"type": "boolean", "default": False},
+                "description": (
+                    "true counts the rows the filter matches and returns meta.total and "
+                    "links.last; without it neither is returned and no count is run"
+                ),
+            },
+            {
                 "name": f"fields[{table_name}]",
                 "in": "query",
                 "schema": {"type": "string"},
@@ -225,6 +234,15 @@ def generate_jsonapi_openapi_spec(
                                                 "last": {"type": "string"},
                                                 "prev": {"type": "string"},
                                                 "next": {"type": "string"},
+                                            },
+                                        },
+                                        "meta": {
+                                            "type": "object",
+                                            "properties": {
+                                                "total": {
+                                                    "type": "integer",
+                                                    "description": "Present with page[total]=true",
+                                                },
                                             },
                                         },
                                     },

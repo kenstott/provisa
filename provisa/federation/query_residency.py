@@ -38,6 +38,8 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from provisa.federation.replica_build import ReplicaBuilding
+
 log = logging.getLogger(__name__)
 
 
@@ -113,35 +115,17 @@ def is_stale_of(
     return is_stale
 
 
-async def ensure_resident(
-    state: Any,
-    source_ids: Iterable[str],
-    *,
-    pk_bounds: Iterable[Any] = (),
-    pushed_down: Iterable[str] = (),
-    unbound_targets: Iterable[str] = (),
-) -> list[tuple[str, str]]:
+async def ensure_resident(state: Any, source_ids: Iterable[str]) -> list[tuple[str, str]]:
     """Land what a query reads and is not resident (REQ-1661). Returns the (source_id, table_name)
     pairs landed. A no-op without an engine, config or tenant store, or when nothing is stale.
 
-    ``pk_bounds`` is the current query's resolved PK bound set (REQ-1865, ``_resolve_pk_bounds`` /
-    ``extract_pk_bounds`` — each entry has a ``.table_name``). A row_materialize table is excluded
-    from this whole-table sweep ONLY when the current query actually resolved a bound against that
-    table's own declared PK; per REQ-1865's own spec ("a query whose predicate does not resolve to
-    a bounded PK set falls back to the table's ordinary whole-table materialize/live resolution
-    unchanged"), a row_materialize table with NO bound for this query still needs the same whole-
-    table land any other table would get -- a query with no filter on that table is, by
-    definition, asking for the whole table.
-
-    ``unbound_targets`` (REQ-1865) is the set of physical table names the CURRENT query's own SQL
-    text names directly (its base FROM/JOIN tables, e.g. ``_table_names_in_sql``) -- NOT every
-    table that merely shares a source with one the query reads. Without this, a row_materialize
-    table's own whole-table fallback (above) cannot be told apart from an unrelated row_materialize
-    table that just happens to be registered under the same ``source_ids`` the query touches for a
-    different table entirely -- landing the latter is pure collateral cost row_materialize exists
-    to avoid (confirmed live: a row_materialize table swept into a whole-source land triggered by
-    an unrelated sibling table going stale paid the same full-table cost a keyed lookup exists to
-    avoid). The fallback below only ever fires for a table both stale AND named in this set."""
+    A table replicated ROW BY ROW (``_row_level``: the row_materialize flag on an engine that
+    cannot attach its source) is never landed here. Its rows are fetched by key —
+    ``ensure_rows_resident`` for a key the statement binds, ``pushdown_row_materialize`` for a key
+    a join supplies — and a statement that binds neither is refused at planning (REQ-1915,
+    ``pgwire._pipeline._pk_bounds``), so no read reaches this function needing the whole table.
+    The whole-table path that used to live here (load the entire source table into the worker,
+    upsert it one row at a time) is gone with that rule."""
     wanted = {s for s in source_ids if s}
     engine = getattr(state, "federation_engine", None)  # the EngineRuntime (write face + engine)
     backend = getattr(getattr(engine, "engine", None), "backend", None)
@@ -150,6 +134,7 @@ async def ensure_resident(
     if not wanted or engine is None or backend is None or config is None or db is None:
         return []
     from provisa.federation.registry_view import registered_sources, registered_tables
+    from provisa.federation.source_vault import org_vault
 
     # REQ-1674: the registry, not the config file — see registry_view.
     _all_sources = await registered_sources(state)
@@ -159,159 +144,206 @@ async def ensure_resident(
     # REQ-826: a replicated table whose replica could not be reconciled is not read at all. An
     # in-memory lookup: this is on every read's path and issues no control-plane statement.
     backend.require_reconciled(s.id for s in sources)
-    _bound_tables = {getattr(b, "table_name", None) for b in pk_bounds} | set(pushed_down)
-    _unbound_targets = set(unbound_targets)
+    from provisa.federation.strategy import engine_attaches
+
+    _attached_types = {s.id: engine_attaches(engine, s.type.value) for s in sources}
+
+    def _row_level(t: Any) -> bool:
+        """Whether row_materialize APPLIES to ``t`` on this engine (REQ-1865, settled): the flag
+        is set AND the engine cannot attach the table's source. An engine that reads the source
+        in place ignores the flag — the table is read through the attach, never landed into a
+        row cache — the same rule ``active_row_materialize_tables`` applies for every other
+        row-level consumer."""
+        return bool(getattr(t, "row_materialize", False)) and not _attached_types[t.source_id]
+
     tables_by_source: dict[str, list[Any]] = {}
     for t in await registered_tables(state):
-        if t.source_id in wanted and not (
-            getattr(t, "row_materialize", False) and t.table_name in _bound_tables
-        ):
+        if t.source_id in wanted and not _row_level(t):
             tables_by_source.setdefault(t.source_id, []).append(t)
 
     from provisa.events import queue
-    from provisa.events.app_wiring import build_adapter_loaders, build_keyed_adapter_loaders
-    from provisa.events.source_loader import SourceRowLoader
     from provisa.freshness.source_gate import source_subject
 
     by_id = {s.id: s for s in sources}
-    loader = SourceRowLoader(
-        engine,
-        adapter_loaders=build_adapter_loaders(state, engine),
-        keyed_adapter_loaders=build_keyed_adapter_loaders(state, engine),
-    )
-
     landed: list[tuple[str, str]] = []
     from contextlib import AsyncExitStack
 
-    from provisa.federation.backend import _env_store_schema
+    from provisa.federation.node_freshness_view import generation_of, view_for
 
-    store_schema = _env_store_schema(engine.engine.materialize_store())
+    view = view_for(state)
+    generation = generation_of(state)
+    loader: Any = None
+    _materialization_backend = getattr(getattr(engine, "engine", engine), "native_store", None)
+
+    def _pending(source: Any, states: dict[str, dict | None] | None, now: float) -> bool:
+        """Whether a read of ``source`` must land something first, given its tables' freshness
+        ``states`` — None asks the question for the worst case (everything stale, nothing
+        resident), where False means this engine never lands the source at all. The same decision
+        the land below acts on (``EngineBackend.pending_lands``), taken without a lock or a store
+        read."""
+        tables = tables_by_source.get(source.id, [])
+        if states is None:
+            is_stale = lambda sid: True  # noqa: E731
+            stamps: dict[str, float | None] = {}
+            oks: dict[str, bool] = {}
+        else:
+            stamps, oks = stale_sources([source], {source.id: tables}, states)
+            clock_stale = is_stale_of([source], stamps, oks, now)
+            is_stale = lambda sid: clock_stale(sid) or backend.is_first_touch(sid)  # noqa: E731
+        return bool(
+            backend.pending_lands(
+                [source],
+                is_stale=is_stale,
+                prefer_materialized_of=lambda sid: bool(
+                    getattr(by_id[sid], "prefer_materialized", False)
+                ),
+                load_protected_of=lambda sid: bool(getattr(by_id[sid], "load_protected", False)),
+                resident_of=(None if states is None else lambda sid: stamps.get(sid) is not None),
+                materialization_backend=_materialization_backend,
+                freshness_subject_of=(
+                    None
+                    if states is None
+                    else lambda sid: source_subject(stamps.get(sid), ok=oks.get(sid, True))
+                ),
+                now=now,
+            )
+        )
 
     for source in sources:
-        # The same per-node locks the event loop's land takes, so the boot land and a first query
-        # never interleave on one replica; every node of the source is held for the source's land.
-        async with AsyncExitStack() as held:
-            for t in tables_by_source.get(source.id, []):
-                await _hold_land_lock(held, _physical_node(backend, engine, source, t))
-            # Staleness is judged with the locks held: a request that waited here for another
-            # request's land of the same table reads the stamp that land wrote and finds the table
-            # fresh, so one stale table is landed once, not once per waiting reader (REQ-1882).
-            source_tables = {source.id: tables_by_source.get(source.id, [])}
-            async with db.acquire() as conn:
-                states = {
-                    _node(t.schema_name, t.table_name): await queue.get_node_state(
-                        conn, _node(t.schema_name, t.table_name)
-                    )
-                    for t in source_tables[source.id]
-                }
-            now = time.time()
-            stamps, oks = stale_sources([source], source_tables, states)
-            try:
-                clock_stale = is_stale_of([source], stamps, oks, now)
-                # REQ-1730: OR in this backend INSTANCE's own first-touch signal — see
-                # EngineBackend._landed_this_process's own doc for why the persisted, per-NODE
-                # freshness clock alone under-reports staleness for an engine with no live reach for
-                # this source type (a genuine reboot onto an engine that has never held this row
-                # reads as "fresh" purely because a DIFFERENT engine landed it recently).
-                is_stale = lambda sid: clock_stale(sid) or backend.is_first_touch(sid)  # noqa: E731
-                landed += await backend.materialize_pending(
-                    state,
-                    loader=loader,
-                    source_ids={source.id},
-                    is_stale=is_stale,
-                    prefer_materialized_of=lambda sid: bool(
-                        getattr(by_id[sid], "prefer_materialized", False)
-                    ),
-                    load_protected_of=lambda sid: bool(
-                        getattr(by_id[sid], "load_protected", False)
-                    ),
-                    resident_of=lambda sid: stamps.get(sid) is not None,
-                    # the engine's own store is what a prefer_materialized source lands into
-                    materialization_backend=getattr(
-                        getattr(engine, "engine", engine), "native_store", None
-                    ),
-                    freshness_subject_of=lambda sid: source_subject(
-                        stamps.get(sid), ok=oks.get(sid, True)
-                    ),
-                    now=now,
-                )
-                # REQ-1865 gap: materialize_pending's own registered_tables() sweep (backend.py)
-                # unconditionally excludes row_materialize tables ("governed EXCLUSIVELY by the
-                # row-level cache") — but a row_materialize table with NO bound for THIS query
-                # (the only reason it survived the `tables_by_source` filter above) still needs a
-                # whole-table land, per this module's own documented fallback. Neither path
-                # actually performed that land: confirmed live (neo4j_materialize_cold's unfiltered
-                # `SELECT count(*)` against a row_materialize table hit "relation does not exist"
-                # on a fresh boot — materialize_pending silently skipped it, and nothing else ever
-                # created/populated its row-cache table). Land it here via the same row-cache infra
-                # the keyed paths use, fetching every row instead of a key subset.
+        # REQ-1661 (amended 2026-10-01): the staleness decision is made in memory first. A source
+        # this engine reads in place never lands, whatever its state — no lock, no control-plane
+        # read. A landed source whose tables' freshness state is held in memory and says FRESH is
+        # left alone the same way. Only a STALE (or unknown) answer goes on to take the land locks
+        # and read the persisted state, which is the truth the land is decided on.
+        if not tables_by_source.get(source.id):
+            continue  # every table of the source is replicated row by row: nothing lands whole
+        if not _pending(source, None, time.time()):
+            continue
+        _nodes = [_node(t.schema_name, t.table_name) for t in tables_by_source.get(source.id, [])]
+        _held = view.states(generation, _nodes)
+        if _held is not None and not _pending(source, _held, time.time()):
+            continue
+        if loader is None:
+            # Built for the first source that may land — not for a read that lands nothing.
+            from provisa.events.app_wiring import (
+                build_adapter_loaders,
+                build_keyed_adapter_loaders,
+            )
+            from provisa.events.source_loader import SourceRowLoader
+
+            loader = SourceRowLoader(
+                engine,
+                adapter_loaders=build_adapter_loaders(state, engine),
+                keyed_adapter_loaders=build_keyed_adapter_loaders(state, engine),
+            )
+        # REQ-1695: the land dials sources — this one through its loader, and every registered
+        # one if the engine's attach walk runs — so the vault of the org they are registered in
+        # is bound here, where the refresh runs, not left to whichever path reached it.
+        async with org_vault(state, _all_sources):
+            # The same per-node locks the event loop's land takes, so the boot land and a first query
+            # never interleave on one replica; every node of the source is held for the source's land.
+            async with AsyncExitStack() as held:
                 for t in tables_by_source.get(source.id, []):
-                    if (
-                        not getattr(t, "row_materialize", False)
-                        or t.table_name not in _unbound_targets
-                        or not is_stale(source.id)
-                    ):
-                        continue
-                    pk_columns = [c.name for c in t.columns if c.is_primary_key]
-                    if len(pk_columns) != 1:
-                        continue
-                    args = resolve_landing_args_for(source, t, backend.dialect)
-                    resolved_ttl = t.cache_ttl if t.cache_ttl is not None else source.cache_ttl
-                    if resolved_ttl is None:
-                        raise ValueError(
-                            f"row-materialize table {t.table_name!r}: no resolved cache_ttl at "
-                            "fetch time (registration should have rejected this — REQ-1865)"
+                    await _hold_land_lock(held, _physical_node(backend, engine, source, t))
+                # Staleness is judged with the locks held: a request that waited here for another
+                # request's land of the same table reads the stamp that land wrote and finds the table
+                # fresh, so one stale table is landed once, not once per waiting reader (REQ-1882).
+                source_tables = {source.id: tables_by_source.get(source.id, [])}
+                async with db.acquire() as conn:
+                    states = {
+                        _node(t.schema_name, t.table_name): await queue.get_node_state(
+                            conn, _node(t.schema_name, t.table_name)
                         )
-                    rm_schema, rm_name = backend.landing_target(
-                        store_schema=store_schema,
-                        source_id=source.id,
-                        source_type=source.type,
-                        schema_name=t.schema_name,
-                        table_name=t.table_name,
-                    )
-                    cache_table = await _ensure_row_cache_table(
-                        engine, backend, state, rm_schema, rm_name, args.columns
-                    )
-                    rows = await loader.load(source, t)
-                    await _land_row_cache(
-                        engine,
-                        backend,
+                        for t in source_tables[source.id]
+                    }
+                view.read(generation, states)
+                now = time.time()
+                stamps, oks = stale_sources([source], source_tables, states)
+                try:
+                    clock_stale = is_stale_of([source], stamps, oks, now)
+                    # REQ-1730: OR in this backend INSTANCE's own first-touch signal — see
+                    # EngineBackend._landed_this_process's own doc for why the persisted, per-NODE
+                    # freshness clock alone under-reports staleness for an engine with no live reach for
+                    # this source type (a genuine reboot onto an engine that has never held this row
+                    # reads as "fresh" purely because a DIFFERENT engine landed it recently).
+                    is_stale = lambda sid: clock_stale(sid) or backend.is_first_touch(sid)  # noqa: E731
+                    landed += await backend.materialize_pending(
                         state,
-                        rm_schema,
-                        rm_name,
-                        cache_table,
-                        pk_columns,
-                        args.columns,
-                        rows,
-                        resolved_ttl,
+                        loader=loader,
+                        source_ids={source.id},
+                        is_stale=is_stale,
+                        prefer_materialized_of=lambda sid: bool(
+                            getattr(by_id[sid], "prefer_materialized", False)
+                        ),
+                        load_protected_of=lambda sid: bool(
+                            getattr(by_id[sid], "load_protected", False)
+                        ),
+                        resident_of=lambda sid: stamps.get(sid) is not None,
+                        # the engine's own store is what a prefer_materialized source lands into
+                        materialization_backend=_materialization_backend,
+                        freshness_subject_of=lambda sid: source_subject(
+                            stamps.get(sid), ok=oks.get(sid, True)
+                        ),
+                        now=now,
+                        coordination=_BuildCoordination(db, queue, view, generation),
                     )
-                    landed.append((source.id, t.table_name))
-                backend.mark_landed(source.id)
-            except Exception:  # noqa: BLE001 - the adapter's error type is its own; re-raised
-                # REQ-1661 (amended 2026-09-30): a failed land fails the query -- it never reads
-                # the stale replica. Stamp the nodes not ok first, so the next query retries.
+                    backend.mark_landed(source.id)
+                except ReplicaBuilding:
+                    # Not a failed land: the build is still running and will stamp the node itself.
+                    # Stamping it failed here would make the next read start over.
+                    raise
+                except Exception:  # noqa: BLE001 - the adapter's error type is its own; re-raised
+                    # REQ-1661 (amended 2026-09-30): a failed land fails the query -- it never reads
+                    # the stale replica. Stamp the nodes not ok first, so the next query retries.
+                    await _record_refresh(
+                        db,
+                        queue,
+                        [(source.id, t) for t in tables_by_source.get(source.id, [])],
+                        ok=False,
+                        seen=(view, generation),
+                    )
+                    raise
                 await _record_refresh(
                     db,
                     queue,
-                    [(source.id, t) for t in tables_by_source.get(source.id, [])],
-                    ok=False,
+                    [
+                        (sid, t)
+                        for sid, name in landed
+                        if sid == source.id
+                        for t in tables_by_source[sid]
+                        if t.table_name == name
+                    ],
+                    ok=True,
+                    seen=(view, generation),
                 )
-                raise
-            await _record_refresh(
-                db,
-                queue,
-                [
-                    (sid, t)
-                    for sid, name in landed
-                    if sid == source.id
-                    for t in tables_by_source[sid]
-                    if t.table_name == name
-                ],
-                ok=True,
-            )
     if landed:
         log.info("query residency: landed %s before the read", landed)
     return landed
+
+
+class _BuildCoordination:
+    """What a replica build that outlives its request (``federation.replica_build``) needs from
+    the freshness state: whether another worker built the replica while this one waited for the
+    store's lock, and the stamp it writes itself when it finishes."""
+
+    def __init__(self, db: Any, queue: Any, view: Any, generation: Any) -> None:
+        self._db = db
+        self._queue = queue
+        self._seen = (view, generation)
+
+    async def built_since(self, source: Any, table: Any, since: float) -> bool:
+        del source
+        async with self._db.acquire() as conn:
+            state = await self._queue.get_node_state(
+                conn, _node(table.schema_name, table.table_name)
+            )
+        if state is None or not state.get("last_refresh_ok", True):
+            return False
+        at = state.get("last_refresh_at")
+        return at is not None and float(at) >= since
+
+    async def built(self, source: Any, table: Any) -> None:
+        await _record_refresh(self._db, self._queue, [(source.id, table)], ok=True, seen=self._seen)
 
 
 async def _hold_land_lock(held: Any, node: str) -> None:
@@ -330,17 +362,21 @@ async def _hold_land_lock(held: Any, node: str) -> None:
         ) from exc
 
 
-async def _record_refresh(db: Any, queue: Any, tables: list[tuple[str, Any]], *, ok: bool) -> None:
+async def _record_refresh(
+    db: Any, queue: Any, tables: list[tuple[str, Any]], *, ok: bool, seen: tuple[Any, Any]
+) -> None:
     """Stamp each (source_id, table) node's refresh outcome in the freshness state the event loop
-    reads (REQ-1661)."""
+    reads (REQ-1661), and in this process's in-memory view of it (``seen``: the view and the
+    generation it is keyed by) — so the next read decides on the outcome just written."""
     if not tables:
         return
     at = datetime.now(UTC)
+    nodes = [_node(table.schema_name, table.table_name) for _sid, table in tables]
     async with db.acquire() as conn:
-        for _sid, table in tables:
-            await queue.record_refresh(
-                conn, _node(table.schema_name, table.table_name), at=at, ok=ok
-            )
+        for node in nodes:
+            await queue.record_refresh(conn, node, at=at, ok=ok)
+    view, generation = seen
+    view.stamped(generation, nodes, at=at.timestamp(), ok=ok)
 
 
 async def active_row_materialize_tables(state: Any) -> list[Any]:
@@ -445,8 +481,8 @@ async def _tombstone_keys(
 def _join_key_column(join: Any, target_alias: str) -> tuple[str, Any] | None:
     """For a ``JOIN ... ON target.col = other_expr`` (or reversed) equality, return
     ``(target_col_name, other_side_expr)`` -- ``None`` for anything else (composite ON, a
-    non-equality, an OR, a literal on either side): never guessed, this table's pushdown is simply
-    skipped and it falls back to ``ensure_resident``'s whole-table land instead."""
+    non-equality, an OR, a literal on either side): never guessed. Such a join does not bind the
+    table (REQ-1915): planning refuses the statement unless a key predicate binds it."""
     import sqlglot.expressions as exp
 
     on = join.args.get("on")
@@ -466,23 +502,6 @@ def resolve_landing_args_for(source: Any, table: Any, dialect: str | None) -> An
     from provisa.federation.residency import resolve_landing_args
 
     return resolve_landing_args(source, table, platform=dialect)
-
-
-def table_names_in_sql(physical_sql: str, dialect: str) -> set[str]:
-    """Every physical table name this statement's FROM/JOIN clauses name directly (REQ-1865) --
-    the ``unbound_targets`` ``ensure_resident`` needs to tell "this query's own row_materialize
-    table, no bound resolved" apart from an unrelated row_materialize table that merely shares a
-    source with one the query reads (see that function's docstring). Parse-error or non-SELECT
-    statements yield an empty set -- the caller's fallback then simply does not fire, same as any
-    other row_materialize table this pass found nothing to do for."""
-    import sqlglot
-    import sqlglot.expressions as exp
-
-    try:
-        tree = sqlglot.parse_one(physical_sql, read=dialect)
-    except Exception:
-        return set()
-    return {t.name for t in tree.find_all(exp.Table) if t.name}
 
 
 async def pushdown_row_materialize(
@@ -514,8 +533,10 @@ async def pushdown_row_materialize(
     still warm.
 
     Never guesses: a table whose join key can't be read from a single column-to-column ON
-    equality (``_join_key_column`` returns None) is simply left off this pass and falls back to
-    ``ensure_resident``'s whole-table land instead, same as before this mechanism existed.
+    equality (``_join_key_column`` returns None) is left off this pass. REQ-1915: planning
+    (``pgwire._pipeline._pk_bounds_inputs``) counts a table as bound by pushdown only under the
+    conditions this function acts on, and refuses a statement that binds it no other way, so a
+    table left off here is one a key predicate bound and ``ensure_rows_resident`` fetched.
 
     ``params`` is the statement's own bind-parameter values, in bind order -- REQUIRED whenever
     ``physical_sql`` still carries a literal ``$N`` placeholder (Bolt/Cypher-transport: the
@@ -582,7 +603,7 @@ async def pushdown_row_materialize(
             # always alias-qualified, never re-qualified back to the physical table name.
             kc = _join_key_column(joins_by_name[name], joins_by_name[name].this.alias_or_name)
             if kc is None:
-                skip.add(name)  # never guessed -- falls back to whole-table land
+                skip.add(name)  # never guessed -- bound by a key predicate (REQ-1915)
                 continue
             key_cols[name] = kc
             joins_by_name[name].set("kind", "LEFT")
@@ -690,8 +711,13 @@ async def pushdown_row_materialize(
     return landed_this_call
 
 
-def _is_duckdb_store(backend: Any) -> bool:
-    return getattr(backend, "dialect", None) == "duckdb"
+def _is_duckdb_store(backend: Any, state: Any) -> bool:
+    """True when the replica STORE is an embedded DuckDB file, reached through the store broker.
+    The engine's dialect does not say so: a DuckDB engine may keep its replicas in Postgres, and
+    then the row cache goes through the store write face like any other engine's."""
+    if getattr(backend, "dialect", None) != "duckdb":
+        return False
+    return _duckdb_runtime(backend, state)._store_is_duckdb()
 
 
 def _duckdb_runtime(backend: Any, state: Any) -> Any:
@@ -716,7 +742,7 @@ async def _ensure_row_cache_table(
         build_row_cache_table,
     )
 
-    if _is_duckdb_store(backend):
+    if _is_duckdb_store(backend, state):
         runtime = _duckdb_runtime(backend, state)
         runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
         full_columns = list(columns) + [
@@ -772,7 +798,7 @@ async def _ensure_and_read_row_cache(
     fixed and now finds broken again -- confirmed live under a real 8-worker benchmark run. The
     generic (non-DuckDB) path has no single-writer lock to hold across two round trips, so it
     simply sequences the existing two steps."""
-    if _is_duckdb_store(backend):
+    if _is_duckdb_store(backend, state):
         from provisa.federation.materialize_exec import _ROW_CACHED_AT, _ROW_EXPIRES_AT
 
         runtime = _duckdb_runtime(backend, state)
@@ -802,7 +828,7 @@ async def _read_row_cache(
     pk_columns: list[str],
     keys: list[tuple[Any, ...]],
 ) -> dict[tuple[Any, ...], Any]:
-    if _is_duckdb_store(backend):
+    if _is_duckdb_store(backend, state):
         runtime = _duckdb_runtime(backend, state)
         runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
         return runtime._store_broker.read_row_cache(schema, name, pk_columns, keys)
@@ -845,7 +871,7 @@ async def _land_row_cache_arrow(
     ]
     full_columns = list(columns) + [(_ROW_CACHED_AT, "timestamp"), (_ROW_EXPIRES_AT, "timestamp")]
     stamped = pa.Table.from_arrays(arrays, names=[c for c, _ in full_columns])
-    if _is_duckdb_store(backend):
+    if _is_duckdb_store(backend, state):
         runtime = _duckdb_runtime(backend, state)
         runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
         runtime._store_broker.upsert_arrow(schema, name, full_columns, pk_columns, stamped)
@@ -878,7 +904,7 @@ async def _land_row_cache(
 ) -> None:
     if not rows:
         return
-    if _is_duckdb_store(backend):
+    if _is_duckdb_store(backend, state):
         from provisa.federation.materialize_exec import (
             _ROW_CACHED_AT,
             _ROW_EXPIRES_AT,
@@ -921,7 +947,7 @@ async def _tombstone_row_cache(
 ) -> None:
     if not keys:
         return
-    if _is_duckdb_store(backend):
+    if _is_duckdb_store(backend, state):
         runtime = _duckdb_runtime(backend, state)
         runtime.ensure_materialize_attached()  # REQ-1901: resolves runtime._store_broker
         runtime._store_broker.tombstone_row_cache(schema, name, pk_columns, keys)
@@ -1083,7 +1109,7 @@ async def prepare_engine_residency(state: Any, plan: Any) -> None:
     would create a mutual package dependency import-linter has no contract for today but the
     layering does not want)."""
     await ensure_rows_resident(state, plan.pk_bounds)
-    pushed_down = await pushdown_row_materialize(
+    await pushdown_row_materialize(
         state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
     )
-    await ensure_resident(state, plan.sources, pushed_down=pushed_down)
+    await ensure_resident(state, plan.sources)

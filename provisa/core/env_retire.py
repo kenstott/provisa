@@ -30,7 +30,6 @@ kept one -- retiring is tidying, not destruction.
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 from provisa.core.env_repo import delete_branch
@@ -66,7 +65,9 @@ async def retire_environment(
         )
     from provisa.core.org_provisioning import deprovision_org
 
-    await deprovision_org(pool, org_id, redis_url=os.environ.get("REDIS_URL"), env=name)
+    from provisa.core.redis_location import redis_url
+
+    await deprovision_org(pool, org_id, redis_url=redis_url(), env=name)
     # REQ-1620: the schemas are not everything the environment owned. An environment created with
     # its bindings carried was given its own copies of every file-backed source, and those live on
     # disk rather than in a schema -- so this is the door that removes them, before the registry row

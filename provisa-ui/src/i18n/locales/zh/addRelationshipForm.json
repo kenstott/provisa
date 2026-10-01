@@ -24,6 +24,18 @@
     "materializeLabel": "物化（为跨源联接自动创建物化视图）",
     "disableCypherLabel": "从 Cypher 图中排除",
     "refreshIntervalLabel": "刷新间隔（秒）",
-    "save": "保存"
+    "save": "保存",
+    "junctionTitle": "联接表（高级）",
+    "junctionHelp": "声明此边经由一个关联表遍历。联接表的其余列将成为该关系的属性。",
+    "viaTableLabel": "联接表",
+    "viaSourceColumnLabel": "联接表列 → 源",
+    "viaTargetColumnLabel": "联接表列 → 目标",
+    "viaTypeColumnLabel": "区分列",
+    "viaTypeValueLabel": "区分值",
+    "viaTypeValuePlaceholder": "例如 KIND_OF",
+    "viaLabelSourceLabel": "边的命名来源",
+    "viaLabelSourceColumn": "区分值",
+    "viaLabelSourceTable": "联接表名称",
+    "viaLabelSourceFixed": "Cypher 别名"
   }
 }

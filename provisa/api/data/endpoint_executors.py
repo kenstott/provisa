@@ -149,12 +149,10 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
 
         _pk_bounds = await _resolve_pk_bounds(compiled.sql, state, compiled.params)
         await ensure_rows_resident(state, _pk_bounds)
-        _pushed_down = await pushdown_row_materialize(
+        await pushdown_row_materialize(
             state, physical_sql, state.federation_engine.dialect, _exec_params
         )
-        await ensure_resident(
-            state, compiled.sources, pk_bounds=_pk_bounds, pushed_down=_pushed_down
-        )
+        await ensure_resident(state, compiled.sources)
         _loop = asyncio.get_running_loop()
         _t0 = _time.perf_counter()
         engine_result = await _loop.run_in_executor(
@@ -262,10 +260,10 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
 
     _pk_bounds = await _resolve_pk_bounds(compiled.sql, state, compiled.params)
     await ensure_rows_resident(state, _pk_bounds)
-    _pushed_down = await pushdown_row_materialize(
+    await pushdown_row_materialize(
         state, physical_sql, state.federation_engine.dialect, exec_params
     )
-    await ensure_resident(state, compiled.sources, pk_bounds=_pk_bounds, pushed_down=_pushed_down)
+    await ensure_resident(state, compiled.sources)
     _t_phase2 = _time.perf_counter()
     engine_result = await _loop.run_in_executor(
         None, lambda: _engine.execute_engine_sync(physical_sql, exec_params)
@@ -438,10 +436,10 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
 
     _pk_bounds = await _resolve_pk_bounds(compiled.sql, state, compiled.params)
     await ensure_rows_resident(state, _pk_bounds)
-    _pushed_down = await pushdown_row_materialize(
+    await pushdown_row_materialize(
         state, physical_sql, state.federation_engine.dialect, exec_params
     )
-    await ensure_resident(state, compiled.sources, pk_bounds=_pk_bounds, pushed_down=_pushed_down)
+    await ensure_resident(state, compiled.sources)
     _loop = asyncio.get_running_loop()
     _t2 = _time.perf_counter()
     engine_result = await _loop.run_in_executor(
@@ -574,10 +572,10 @@ async def _execute_engine_standard(
 
     _pk_bounds = await _resolve_pk_bounds(compiled.sql, state, compiled.params)
     await ensure_rows_resident(state, _pk_bounds)
-    _pushed_down = await pushdown_row_materialize(
+    await pushdown_row_materialize(
         state, physical_sql, state.federation_engine.dialect, exec_params
     )
-    await ensure_resident(state, compiled.sources, pk_bounds=_pk_bounds, pushed_down=_pushed_down)
+    await ensure_resident(state, compiled.sources)
 
     result = await state.federation_engine.execute_engine(
         physical_sql,
@@ -908,6 +906,7 @@ async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redi
         state,
         physical_sql,
         Delivery(output_format=effective_redirect_format, config=redirect_config),
+        compiled.params or None,  # the compiled statement's bound values
     )
 
 

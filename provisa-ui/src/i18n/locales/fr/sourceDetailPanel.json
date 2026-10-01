@@ -24,6 +24,10 @@
     "navigateTitle": "Voir les tables enregistrées",
     "deleteTitle": "Supprimer la source « {{id}} » ?",
     "deleteTitleShort": "Supprimer",
-    "deleteConsequence": "Cela supprimera la source de données « {{id}} » et peut casser les tables qui y font référence."
+    "deleteConsequence": "Cela supprimera la source de données « {{id}} » et peut casser les tables qui y font référence.",
+    "refreshKaggleTitle": "Actualiser depuis Kaggle",
+    "refreshKaggleHint": "Retélécharger {{owner}}/{{ref}} depuis Kaggle, en écrasant sur place le ou les fichiers intermédiaires. Votre jeton Kaggle n'est pas stocké : saisissez-le à nouveau pour cette actualisation.",
+    "kaggleTokenLabel": "Jeton d'API Kaggle",
+    "refreshKaggleSubmit": "Actualiser"
   }
 }

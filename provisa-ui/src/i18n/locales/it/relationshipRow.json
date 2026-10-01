@@ -40,6 +40,8 @@
     "cardinalityWarning": "Attenzione: se questo join restituisce più di una riga per elemento padre, verrà usato solo il primo valore.",
     "cancel": "Annulla",
     "save": "Salva",
-    "toggleDetails": "Mostra/nascondi dettagli della relazione"
+    "toggleDetails": "Mostra/nascondi dettagli della relazione",
+    "junctionBadge": "tramite",
+    "junctionBadgeTitle": "Relazione basata su giunzione tramite {{table}}"
   }
 }

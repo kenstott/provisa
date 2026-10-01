@@ -1,0 +1,624 @@
+{
+  "settings": {
+    "limits": {
+      "default_row_limit": {
+        "label": "Standardzeilenlimit",
+        "help": "Die maximale Zeilenanzahl, die eine Abfrage zurückgibt, wenn der Aufrufer kein eigenes Limit festlegt."
+      },
+      "engine_query_timeout": {
+        "label": "Zeitlimit für Engine-Abfragen",
+        "help": "Wie lange die Föderations-Engine eine Abfrage ausführen darf, bevor sie abgebrochen wird."
+      },
+      "retry_budget_secs": {
+        "label": "Wiederholungsbudget",
+        "help": "Wie lange eine fehlgeschlagene Abfrage wiederholt wird, bevor der Fehler zurückgegeben wird; 0 deaktiviert Wiederholungen."
+      },
+      "request_timeout": {
+        "label": "Standard-Anforderungszeitlimit",
+        "help": "Wie lange eine Anforderung laufen darf, bevor sie abgebrochen wird, für jeden Transport ohne eigenen Wert."
+      },
+      "request_timeouts": {
+        "label": "Anforderungszeitlimit pro Transport",
+        "help": "Das Zeitlimit für Anforderungen je Transport; ein leer gelassener Transport verwendet den Standardwert. Flight ist auf 3600 Sekunden und pgwire auf 300 voreingestellt.",
+        "keys": {
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "jsonapi": "JSON:API",
+          "sql_http": "SQL über HTTP",
+          "cypher_http": "Cypher über HTTP",
+          "pgwire": "PostgreSQL Wire",
+          "flight": "Arrow Flight",
+          "bolt": "Bolt",
+          "grpc": "gRPC",
+          "mcp": "MCP"
+        }
+      }
+    },
+    "sampling": {
+      "default_sample_size": {
+        "label": "Standard-Stichprobengröße",
+        "help": "Wie viele Zeilen eine Stichprobenabfrage liest, wenn der Aufrufer nichts angibt."
+      }
+    },
+    "relationships": {
+      "auto_track_fk": {
+        "label": "Fremdschlüssel automatisch verfolgen",
+        "help": "Ob beim Registrieren einer Tabelle auch deren Fremdschlüssel als Beziehungen registriert werden."
+      }
+    },
+    "grpc": {
+      "max_message_bytes": {
+        "label": "Maximale gRPC-Nachrichtengröße",
+        "help": "Die größte einzelne gRPC-Nachricht, die der Server sendet oder akzeptiert; Neustart erforderlich, da dies eine Serveroption ist, die beim Aufbau des gRPC-Servers gesetzt wird."
+      },
+      "allow_unsecured_reflection": {
+        "label": "Ungesicherte gRPC-Reflection zulassen",
+        "help": "Erlaubt gRPC-Clients, die Dienste eines Deployments ohne Authentifizierung aufzulisten. Neustart erforderlich; bestätigungspflichtig, weil dies die Dienstoberfläche offenlegt."
+      }
+    },
+    "bolt": {
+      "recv_timeout": {
+        "label": "Bolt-Empfangszeitlimit",
+        "help": "Der Hinweis, den ein Bolt-Client (Neo4j) erhält, wie lange er auf eine Antwort warten soll."
+      },
+      "allowed_origins": {
+        "label": "Zulässige Bolt-Ursprünge",
+        "help": "Die Websites, die aus einem Browser eine Bolt-Verbindung öffnen dürfen; solange nichts aufgeführt ist, ist keine erlaubt. Bestätigungspflichtig, weil jeder Eintrag dieser Website erlaubt, den Port zu steuern."
+      }
+    },
+    "engine": {
+      "ready_timeout": {
+        "label": "Zeitlimit für Engine-Bereitschaft",
+        "help": "Wie lange der Start wartet, bis die Föderations-Engine bereit ist, bevor er fehlschlägt."
+      },
+      "jvm_heap_gb": {
+        "label": "JVM-Heap der Engine (GB)",
+        "help": "Der Speicher, der dem Java-Prozess der Föderations-Engine zugewiesen wird. Wird wirksam, wenn die Engine neu startet."
+      },
+      "query_max_memory": {
+        "label": "Speicherlimit pro Abfrage",
+        "help": "Der maximale Speicher, den eine Abfrage im gesamten Engine-Cluster verwenden darf. Wird wirksam, wenn die Engine neu startet."
+      },
+      "query_max_memory_per_node": {
+        "label": "Speicherlimit pro Abfrage und Knoten",
+        "help": "Der maximale Speicher, den eine Abfrage auf einem einzelnen Engine-Knoten verwenden darf. Wird wirksam, wenn die Engine neu startet."
+      },
+      "query_max_total_memory": {
+        "label": "Gesamtspeicherlimit pro Abfrage",
+        "help": "Der maximale Speicher, den eine Abfrage insgesamt verwenden darf, einschließlich Systemspeicher. Wird wirksam, wenn die Engine neu startet."
+      },
+      "fault_tolerant_execution": {
+        "label": "Fehlertolerante Ausführung",
+        "help": "Ob die Engine fehlgeschlagene Teile einer Abfrage wiederholt, statt die gesamte Abfrage fehlschlagen zu lassen. Wird wirksam, wenn die Engine neu startet."
+      },
+      "fault_tolerant_task_memory": {
+        "label": "Task-Speicher bei fehlertoleranter Ausführung",
+        "help": "Der pro Task reservierte Speicher, wenn die fehlertolerante Ausführung aktiv ist. Wird wirksam, wenn die Engine neu startet."
+      },
+      "exchange_spool_dir": {
+        "label": "Exchange-Spool-Ordner",
+        "help": "Wo die Engine Zwischendaten für die fehlertolerante Ausführung ablegt. Wird wirksam, wenn die Engine neu startet."
+      }
+    },
+    "ui": {
+      "proxy_timeout": {
+        "label": "Proxy-Zeitlimit der UI",
+        "help": "Wie lange der UI-Server auf die Antwort der API auf eine weitergeleitete Anforderung wartet, bevor er ein Zeitlimit meldet; es muss länger sein als das Aufwecken der Engine."
+      }
+    },
+    "concurrency": {
+      "background_workers": {
+        "label": "Hintergrund-Worker",
+        "help": "Die Anzahl der Threads, die jeder Worker-Prozess für Hintergrundarbeit verwendet; Neustart erforderlich, da der Pool einmalig beim Start dimensioniert wird."
+      },
+      "grpc_max_concurrent_rpcs": {
+        "label": "Gleichzeitige gRPC-Aufrufe",
+        "help": "Die maximale Anzahl gRPC-Aufrufe, die ein Worker-Prozess gleichzeitig bedient; weitere werden abgelehnt. Neustart erforderlich, da dies den Thread-Pool des gRPC-Servers dimensioniert."
+      },
+      "flight_max_concurrent_streams": {
+        "label": "Gleichzeitige Arrow-Flight-Streams",
+        "help": "Die maximale Anzahl Arrow-Flight-Streams, die ein Worker-Prozess gleichzeitig ausführt; weitere warten auf einen freien Platz. Neustart erforderlich, da die Plätze beim Start angelegt werden."
+      },
+      "request_threads": {
+        "label": "Anforderungs-Threads pro Worker",
+        "help": "Die maximale Anzahl Anforderungen, die ein Worker-Prozess gleichzeitig ausführt; weitere warten auf einen freien Thread. Neustart erforderlich, da das Limit beim Start des Workers festgelegt wird."
+      },
+      "workers": {
+        "label": "Worker-Prozesse",
+        "help": "Wie viele Worker-Prozesse der Server ausführt. Neustart erforderlich, da die Prozesse vom Launcher gestartet werden."
+      }
+    },
+    "security": {
+      "mode": {
+        "label": "Sicherheitsmodus",
+        "help": "Standard oder hohe Sicherheit, bei der Datenendpunkte jeden Client abweisen, der Ergebnisse nicht selbst entschlüsseln kann, und die Listener für pgwire, Bolt und MCP nicht gestartet werden. Neustart erforderlich, da dies bestimmt, welche Listener starten; bestätigungspflichtig, da gewöhnliche Clients ausgeschlossen werden."
+      },
+      "multitenancy": {
+        "label": "Mandantenfähigkeit",
+        "help": "Ob das Deployment mehrere Organisationen bedient, die jeweils nur ihre eigenen Daten verwalten. Neustart erforderlich, da Rollenzuweisungen beim Start festgelegt werden; bestätigungspflichtig, da sich ändert, wer das Deployment verwalten darf."
+      },
+      "superuser": {
+        "username": {
+          "label": "Name des Break-Glass-Kontos",
+          "help": "Der Name des Break-Glass-Kontos, das sich immer anmelden kann. Neustart erforderlich; bestätigungspflichtig."
+        },
+        "password": {
+          "label": "Passwort des Break-Glass-Kontos",
+          "help": "Das Passwort des Break-Glass-Kontos. Secret; Neustart erforderlich; bestätigungspflichtig."
+        }
+      }
+    },
+    "redis": {
+      "require_tls": {
+        "label": "TLS für Redis erforderlich",
+        "help": "Verweigert den Start bei einer Redis-Adresse, die kein TLS verwendet. Neustart erforderlich, da dies beim Verbinden des Caches geprüft wird."
+      }
+    },
+    "auth": {
+      "login_throttle": {
+        "max_attempts": {
+          "label": "Anmeldeversuche bis zur Sperre",
+          "help": "Wie viele fehlgeschlagene Anmeldungen innerhalb des Zeitfensters ein Konto sperren. Bestätigungspflichtig, da eine Erhöhung die Bremse gegen Passwort-Raten schwächt."
+        },
+        "window_seconds": {
+          "label": "Zeitfenster für Anmeldeversuche",
+          "help": "Wie weit zurück fehlgeschlagene Anmeldungen gezählt werden. Bestätigungspflichtig, da eine Verkürzung die Bremse gegen Passwort-Raten schwächt."
+        },
+        "lockout_seconds": {
+          "label": "Sperrdauer",
+          "help": "Wie lange ein gesperrtes Konto abgewiesen wird. Bestätigungspflichtig, da eine Verkürzung die Bremse gegen Passwort-Raten schwächt."
+        }
+      }
+    },
+    "server": {
+      "hostname": {
+        "label": "Hostname",
+        "help": "Der Hostname, den das Deployment Clients in den ausgegebenen Adressen mitteilt. Neustart erforderlich, da beim Booten gestartete Server ihn übernehmen."
+      },
+      "grpc_port": {
+        "label": "gRPC-Port",
+        "help": "Der Port, auf dem der gRPC-Server lauscht. Neustart erforderlich; bestätigungspflichtig, da Clients und Firewalls einer Änderung folgen müssen."
+      },
+      "flight_port": {
+        "label": "Arrow-Flight-Port",
+        "help": "Der Port, auf dem der Arrow-Flight-Server lauscht. Neustart erforderlich; bestätigungspflichtig, da Clients und Firewalls einer Änderung folgen müssen."
+      },
+      "pgwire_port": {
+        "label": "PostgreSQL-Wire-Port",
+        "help": "Der Port, auf dem der Server für das PostgreSQL-Protokoll lauscht; 0 lässt ihn aus. Neustart erforderlich; bestätigungspflichtig, da ein Listener geöffnet oder geschlossen wird."
+      },
+      "bolt_port": {
+        "label": "Bolt-Port",
+        "help": "Der Port, auf dem der Bolt-Server (Neo4j) lauscht; 0 lässt ihn aus. Neustart erforderlich; bestätigungspflichtig, da ein Listener geöffnet oder geschlossen wird."
+      },
+      "airport_port": {
+        "label": "Airport-Port",
+        "help": "Der Port, auf dem der Airport-Flight-Dienst lauscht; 0 lässt ihn aus. Neustart erforderlich; bestätigungspflichtig, da ein Listener geöffnet oder geschlossen wird."
+      },
+      "port": {
+        "label": "HTTP-API-Port",
+        "help": "Der Port, auf dem die HTTP-API lauscht. Neustart erforderlich; bestätigungspflichtig, da die UI und alle Clients einer Änderung folgen müssen."
+      }
+    },
+    "tls": {
+      "cert": {
+        "label": "TLS-Zertifikat",
+        "help": "Der Pfad der Zertifikatsdatei, die jeder Protokoll-Listener präsentiert, sofern ein Protokoll nicht eine eigene benennt. Neustart erforderlich; bestätigungspflichtig, da eine falsche Datei den Start der TLS-Listener verhindert."
+      },
+      "key": {
+        "label": "privater TLS-Schlüssel",
+        "help": "Der Pfad des privaten Schlüssels, der zum Zertifikat gehört. Neustart erforderlich; bestätigungspflichtig, da eine falsche Datei den Start der TLS-Listener verhindert."
+      },
+      "grpc_cert": {
+        "label": "gRPC-TLS-Zertifikat",
+        "help": "Eine Zertifikatsdatei nur für den gRPC-Listener anstelle der gemeinsamen. Neustart erforderlich; bestätigungspflichtig."
+      },
+      "grpc_key": {
+        "label": "Privater gRPC-TLS-Schlüssel",
+        "help": "Der private Schlüssel für das eigene Zertifikat des gRPC-Listeners. Neustart erforderlich; bestätigungspflichtig."
+      },
+      "flight_cert": {
+        "label": "Arrow-Flight-TLS-Zertifikat",
+        "help": "Eine Zertifikatsdatei nur für den Arrow-Flight-Listener anstelle der gemeinsamen. Neustart erforderlich; bestätigungspflichtig."
+      },
+      "flight_key": {
+        "label": "Privater Arrow-Flight-TLS-Schlüssel",
+        "help": "Der private Schlüssel für das eigene Zertifikat des Arrow-Flight-Listeners. Neustart erforderlich; bestätigungspflichtig."
+      },
+      "pgwire_cert": {
+        "label": "PostgreSQL-Wire-TLS-Zertifikat",
+        "help": "Eine Zertifikatsdatei nur für den Listener des PostgreSQL-Protokolls anstelle der gemeinsamen. Neustart erforderlich; bestätigungspflichtig."
+      },
+      "pgwire_key": {
+        "label": "Privater PostgreSQL-Wire-TLS-Schlüssel",
+        "help": "Der private Schlüssel für das eigene Zertifikat des Listeners des PostgreSQL-Protokolls. Neustart erforderlich; bestätigungspflichtig."
+      },
+      "bolt_cert": {
+        "label": "Bolt-TLS-Zertifikat",
+        "help": "Eine Zertifikatsdatei nur für den Bolt-Listener anstelle der gemeinsamen. Neustart erforderlich; bestätigungspflichtig."
+      },
+      "bolt_key": {
+        "label": "Privater Bolt-TLS-Schlüssel",
+        "help": "Der private Schlüssel für das eigene Zertifikat des Bolt-Listeners. Neustart erforderlich; bestätigungspflichtig."
+      },
+      "http_cert": {
+        "label": "HTTP-API-TLS-Zertifikat",
+        "help": "Die Zertifikatsdatei, die die HTTP-API präsentiert. Neustart erforderlich; bestätigungspflichtig."
+      },
+      "http_key": {
+        "label": "Privater HTTP-API-TLS-Schlüssel",
+        "help": "Der private Schlüssel für das Zertifikat der HTTP-API. Neustart erforderlich; bestätigungspflichtig."
+      }
+    },
+    "cache": {
+      "enabled": {
+        "label": "Ergebnis-Cache aktiviert",
+        "help": "Ob Abfrageergebnisse überhaupt gecacht werden dürfen. Neustart erforderlich, da der Cache-Speicher beim Start aufgebaut wird."
+      },
+      "default_ttl": {
+        "label": "Standard-Cache-Lebensdauer",
+        "help": "Wie lange ein gecachtes Ergebnis aufbewahrt wird, wenn nichts Spezifischeres angegeben ist; eine Organisation kann eine eigene festlegen. Neustart erforderlich für den Deployment-Standard."
+      },
+      "redis_url": {
+        "label": "Redis-Adresse",
+        "help": "Die Adresse des Redis-Servers für Caching und Ratenbegrenzung; ohne Angabe wird der integrierte verwendet. Secret, da sie ein Passwort enthalten kann; Neustart erforderlich, da Verbindungen beim Start geöffnet werden; bestätigungspflichtig."
+      },
+      "redis_org_password": {
+        "label": "Redis-Passwort der Organisation",
+        "help": "Das Passwort, das dem eigenen Redis-Konto jeder Organisation bei dessen Erstellung zugewiesen wird. Secret; bestätigungspflichtig."
+      },
+      "redis_embedded": {
+        "label": "Integriertes Redis",
+        "help": "Ob dies ein Desktop-Start auf dem integrierten Redis ist. Wird vom Launcher gesetzt; nicht bearbeitbar."
+      }
+    },
+    "apq": {
+      "ttl": {
+        "label": "Lebensdauer persistierter Abfragen",
+        "help": "Wie lange eine persistierte Abfrage registriert bleibt. Neustart erforderlich, da der Wert beim Aufbau des Caches an ihn übergeben wird."
+      }
+    },
+    "compiler": {
+      "compiled_query_cache_ttl": {
+        "label": "Lebensdauer kompilierter Abfragepläne",
+        "help": "Wie lange ein kompilierter Abfrageplan wiederverwendet wird, bevor er neu erstellt wird. Neustart erforderlich, da jeder Worker den Wert beim Aufbau seines Caches liest."
+      }
+    },
+    "redirect": {
+      "enabled": {
+        "label": "Weiterleitung aktiviert",
+        "help": "Der Deployment-Standard dafür, ob große Ergebnisse in den Objektspeicher geschrieben und als Link zurückgegeben werden; eine Organisation kann einen eigenen festlegen."
+      },
+      "threshold": {
+        "label": "Weiterleitungsschwelle",
+        "help": "Der Deployment-Standard für die Zeilenanzahl, ab der ein Ergebnis in den Objektspeicher umgeleitet wird; eine Organisation kann eine eigene festlegen."
+      },
+      "ttl": {
+        "label": "Lebensdauer des Weiterleitungslinks",
+        "help": "Der Deployment-Standard dafür, wie lange ein Weiterleitungslink gültig bleibt; eine Organisation kann einen eigenen festlegen."
+      },
+      "default_format": {
+        "label": "Dateiformat der Weiterleitung",
+        "help": "Der Deployment-Standard für das Dateiformat umgeleiteter Ergebnisse; eine Organisation kann einen eigenen festlegen."
+      },
+      "bucket": {
+        "label": "Weiterleitungs-Bucket",
+        "help": "Der Objektspeicher-Bucket, in den umgeleitete Ergebnisse geschrieben werden. Bestätigungspflichtig, da eine Änderung Ergebnisse an einen anderen Ort sendet."
+      },
+      "endpoint": {
+        "label": "Adresse des Weiterleitungs-Objektspeichers",
+        "help": "Die Adresse des Objektspeichers, in den umgeleitete Ergebnisse geschrieben werden. Bestätigungspflichtig, da eine Änderung Ergebnisse an einen anderen Ort sendet."
+      },
+      "region": {
+        "label": "Region des Weiterleitungs-Objektspeichers",
+        "help": "Die Region des Objektspeichers."
+      },
+      "encrypt": {
+        "label": "Umgeleitete Ergebnisse verschlüsseln",
+        "help": "Ob umgeleitete Ergebnisse vor dem Hochladen verschlüsselt werden."
+      },
+      "local_dir": {
+        "label": "Lokaler Ordner der Weiterleitung",
+        "help": "Der Ordner, in den umgeleitete Ergebnisse geschrieben werden, wenn kein Objektspeicher erreichbar ist."
+      },
+      "access_key": {
+        "label": "Zugriffsschlüssel der Weiterleitung",
+        "help": "Der Zugriffsschlüssel des Objektspeichers. Secret; bestätigungspflichtig."
+      },
+      "secret_key": {
+        "label": "Geheimer Schlüssel der Weiterleitung",
+        "help": "Der geheime Schlüssel des Objektspeichers. Secret; bestätigungspflichtig."
+      }
+    },
+    "otel": {
+      "trace_detail": {
+        "label": "Trace-Detailgrad",
+        "help": "Wie viele Details der Trace jeder Anforderung standardmäßig enthält: normal oder debug. Neustart erforderlich, da dies bei der Konfiguration des Tracings gesetzt wird."
+      },
+      "trace_sql": {
+        "label": "SQL in Traces",
+        "help": "Ob Traces das SQL jeder Phase enthalten: off, redacted (Werte geschwärzt) oder full. Bestätigungspflichtig, da full Abfragewerte in Traces schreibt."
+      },
+      "trace_ast": {
+        "label": "Geparste Anweisungen in Traces",
+        "help": "Ob Traces zusätzlich die geparste Form jeder Anweisung enthalten, mit geschwärzten Werten."
+      },
+      "metric_export_interval": {
+        "label": "Metrik-Exportintervall",
+        "help": "Wie oft Metriken exportiert werden. Neustart erforderlich, da der Wert beim Aufbau des Exporters an ihn übergeben wird."
+      },
+      "endpoint": {
+        "label": "Telemetrie-Endpunkt",
+        "help": "Wohin Traces und Metriken gesendet werden."
+      },
+      "protocol": {
+        "label": "Telemetrie-Protokoll",
+        "help": "Der Transport, den der Telemetrie-Endpunkt spricht: gRPC oder HTTP."
+      },
+      "service_name": {
+        "label": "Telemetrie-Dienstname",
+        "help": "Der Name, unter dem die Telemetrie dieses Deployments gemeldet wird."
+      },
+      "sample_rate": {
+        "label": "Trace-Stichprobenrate",
+        "help": "Der Anteil der Anforderungen, die getraced werden, von 0 bis 1."
+      },
+      "log_level": {
+        "label": "Telemetrie-Protokollstufe",
+        "help": "Der niedrigste Schweregrad von Protokolleinträgen, die mit der Telemetrie exportiert werden."
+      },
+      "subsystem_traces": {
+        "label": "Subsystem-Traces",
+        "help": "Welche internen Subsysteme eigene Traces schreiben."
+      },
+      "compact_cron": {
+        "label": "Kompaktierungszeitplan",
+        "help": "Wann gespeicherte Telemetriedateien zu größeren zusammengeführt werden."
+      },
+      "compact_batch_size": {
+        "label": "Kompaktierungs-Batchgröße",
+        "help": "Wie viele Zeilen jede Zusammenführung gespeicherter Telemetrie auf einmal schreibt."
+      },
+      "compact_file_chunk": {
+        "label": "Kompaktierungs-Dateigruppe",
+        "help": "Wie viele kleine Telemetriedateien in einem Zusammenführungsschritt gemeinsam gelesen werden."
+      },
+      "compact_max_files_per_run": {
+        "label": "Kompaktierungsdateien pro Lauf",
+        "help": "Die maximale Anzahl Telemetriedateien, die ein Zusammenführungslauf verarbeitet."
+      },
+      "ops_snapshot_retention_hours": {
+        "label": "Aufbewahrung operativer Snapshots (Stunden)",
+        "help": "Wie lange operative Snapshots aufbewahrt werden."
+      },
+      "span_export_delay_millis": {
+        "label": "Span-Exportverzögerung (Millisekunden)",
+        "help": "Wie lange Spans gebündelt werden, bevor sie exportiert werden."
+      },
+      "otlp2parquet_max_age_secs": {
+        "label": "Maximales Alter des Parquet-Writers (Sekunden)",
+        "help": "Wie lange der Telemetrie-Writer Zeilen vorhält, bevor er eine Datei schreibt."
+      },
+      "collector_batch_timeout_ms": {
+        "label": "Batch-Zeitlimit des Collectors (Millisekunden)",
+        "help": "Wie lange der Collector Telemetrie bündelt, bevor er sie weiterleitet."
+      },
+      "s3_endpoint": {
+        "label": "Adresse des Telemetriespeichers",
+        "help": "Der Objektspeicher, in den gespeicherte Telemetrie geschrieben wird."
+      },
+      "s3_bucket": {
+        "label": "Bucket des Telemetriespeichers",
+        "help": "Der Bucket, in den gespeicherte Telemetrie geschrieben wird."
+      },
+      "s3_region": {
+        "label": "Region des Telemetriespeichers",
+        "help": "Die Region des Telemetrie-Objektspeichers."
+      },
+      "s3_access_key": {
+        "label": "Zugriffsschlüssel des Telemetriespeichers",
+        "help": "Der Zugriffsschlüssel des Telemetrie-Objektspeichers. Secret."
+      },
+      "s3_secret_key": {
+        "label": "Geheimer Schlüssel des Telemetriespeichers",
+        "help": "Der geheime Schlüssel des Telemetrie-Objektspeichers. Secret."
+      },
+      "support_endpoint": {
+        "label": "Support-Telemetrie-Endpunkt",
+        "help": "Wohin eine Kopie der Telemetrie für den Herstellersupport gesendet wird, sofern gesetzt."
+      },
+      "support_redact_sql_literals": {
+        "label": "SQL-Werte für den Support schwärzen",
+        "help": "Ob Werte in SQL in der für den Support gesendeten Kopie geschwärzt werden."
+      },
+      "support_redact_attributes": {
+        "label": "Geschwärzte Attribute für den Support",
+        "help": "Trace-Attribute, die aus der für den Support gesendeten Kopie entfernt werden."
+      }
+    },
+    "control_plane": {
+      "tenant_url": {
+        "label": "Adresse der Organisationsdatenbank",
+        "help": "Die Datenbank, die die Konfiguration jeder Organisation enthält. Nicht bearbeitbar: Das Deployment braucht sie, um seine gespeicherten Einstellungen zu finden."
+      },
+      "platform_url": {
+        "label": "Adresse der Plattformdatenbank",
+        "help": "Die Datenbank, die Konten, Organisationen und diese Einstellungen enthält. Nicht bearbeitbar: Das Deployment braucht sie, um seine gespeicherten Einstellungen zu finden."
+      },
+      "org_id": {
+        "label": "Start-Organisation",
+        "help": "Die Organisation, als die dieses Deployment startet. Nicht bearbeitbar: Sie wird gelesen, bevor gespeicherte Einstellungen gelesen werden können."
+      },
+      "pool_min": {
+        "label": "Minimale Datenbankverbindungen",
+        "help": "Die kleinste Anzahl an Control-Plane-Datenbankverbindungen, die jeder Worker vorhält. Nicht bearbeitbar: Der Pool wird geöffnet, bevor gespeicherte Einstellungen gelesen werden können."
+      },
+      "pool_max": {
+        "label": "Maximale Datenbankverbindungen",
+        "help": "Die größte Anzahl an Control-Plane-Datenbankverbindungen, die jeder Worker öffnet. Nicht bearbeitbar: Der Pool wird geöffnet, bevor gespeicherte Einstellungen gelesen werden können."
+      }
+    },
+    "bootstrap": {
+      "config_path": {
+        "label": "Konfigurationsdatei",
+        "help": "Die Konfigurationsdatei, mit der dieses Deployment gestartet wurde. Nicht bearbeitbar: Sie wird gelesen, bevor gespeicherte Einstellungen gelesen werden können."
+      },
+      "data_dir": {
+        "label": "Datenordner",
+        "help": "Der Ordner, in dem das Deployment seine Dateien ablegt. Nicht bearbeitbar: Er wird gelesen, bevor gespeicherte Einstellungen gelesen werden können."
+      },
+      "home": {
+        "label": "Home-Ordner",
+        "help": "Der Home-Ordner des Deployments für Zertifikate und lokale Speicher. Nicht bearbeitbar: Er wird gelesen, bevor gespeicherte Einstellungen gelesen werden können."
+      },
+      "repo_dir": {
+        "label": "Ordner für den Konfigurationsverlauf",
+        "help": "Der Ordner, der den Konfigurationsverlauf jeder Organisation enthält. Nicht bearbeitbar: Er wird gelesen, bevor gespeicherte Einstellungen gelesen werden können."
+      },
+      "demo": {
+        "label": "Demomodus",
+        "help": "Ob das Deployment im Demomodus gestartet wurde. Wird vom Launcher gesetzt; nicht bearbeitbar."
+      }
+    },
+    "mcp": {
+      "max_rows": {
+        "label": "MCP-Zeilenlimit",
+        "help": "Die maximale Zeilenanzahl, die ein MCP-Tool-Aufruf an einen KI-Client zurückgibt."
+      },
+      "port": {
+        "label": "MCP-Port",
+        "help": "Der Port, auf dem der MCP-Server lauscht; 0 lässt ihn aus. Neustart erforderlich; bestätigungspflichtig, da ein Listener geöffnet oder geschlossen wird."
+      },
+      "host": {
+        "label": "MCP-Host",
+        "help": "Die Netzwerkadresse, an die der MCP-Server gebunden ist; 127.0.0.1 beschränkt ihn auf diesen Rechner. Neustart erforderlich; bestätigungspflichtig, da dies bestimmt, wer den Port erreichen kann."
+      },
+      "tls": {
+        "label": "MCP-TLS",
+        "help": "Ob der MCP-Server HTTPS bereitstellt. Neustart erforderlich; bestätigungspflichtig."
+      },
+      "role": {
+        "label": "Lokale MCP-Rolle",
+        "help": "Die Rolle, als die lokale (stdio) MCP-Aufrufe ausgeführt werden; solange sie nicht gesetzt ist, werden diese Aufrufe abgelehnt. Bestätigungspflichtig, da sie jedem, der den lokalen Client starten kann, den Zugriff dieser Rolle gewährt."
+      },
+      "external_url": {
+        "label": "Externe MCP-Adresse",
+        "help": "Die MCP-Adresse, die Benutzern angezeigt wird, wenn das Deployment hinter einem Proxy steht."
+      },
+      "chat_model": {
+        "label": "Chat-Modell",
+        "help": "Das Modell, das der integrierte Chat verwendet; es überschreibt die eigene Wahl jeder Organisation."
+      }
+    },
+    "udf": {
+      "egress_allowlist": {
+        "label": "Egress-Allowlist für gehostete Funktionen",
+        "help": "Die Hosts, die eine gehostete Funktion aufrufen darf; alles andere wird abgelehnt. Bestätigungspflichtig, da jeder Eintrag einen ausgehenden Pfad öffnet."
+      }
+    },
+    "cdc": {
+      "consumer_group_id": {
+        "label": "CDC-Consumer-Group",
+        "help": "Der Name, den dieses Deployment verwendet, wenn es Änderungsereignisse von einem Message Broker liest."
+      }
+    },
+    "graphql_remote": {
+      "max_object_depth": {
+        "label": "Objekttiefe bei Remote-GraphQL",
+        "help": "Wie tief verschachtelte Objekte aus einer Remote-GraphQL-Quelle verfolgt werden."
+      },
+      "max_list_depth": {
+        "label": "Listentiefe bei Remote-GraphQL",
+        "help": "Wie tief verschachtelte Listen aus einer Remote-GraphQL-Quelle verfolgt werden."
+      },
+      "max_list_items": {
+        "label": "Listenelemente bei Remote-GraphQL",
+        "help": "Die maximale Anzahl Elemente, die aus einer Liste einer Remote-GraphQL-Quelle gelesen werden."
+      }
+    },
+    "provisioning": {
+      "engine_namespace": {
+        "label": "Engine-Namespace",
+        "help": "Der Kubernetes-Namespace, in dem Engine-Cluster erstellt werden."
+      },
+      "engine_cluster_mode": {
+        "label": "Engine-Clustermodus",
+        "help": "Die Art des Kubernetes-Clusters, auf dem Engines bereitgestellt werden."
+      },
+      "engine_cpu": {
+        "label": "Engine-CPU",
+        "help": "Die CPU, die jeder bereitgestellten Engine zugewiesen wird."
+      },
+      "engine_shard": {
+        "label": "Engine-Shard",
+        "help": "Der Engine-Shard, zu dem dieser Knoten gehört."
+      },
+      "engine_otlp_endpoint": {
+        "label": "Engine-Telemetrie-Endpunkt",
+        "help": "Wohin bereitgestellte Engines ihre eigene Telemetrie senden."
+      },
+      "engine_control_plane_host": {
+        "label": "Engine-Control-Plane-Host",
+        "help": "Die Adresse, über die Engines die Control-Plane-Datenbank erreichen, wenn sie sich von der unterscheidet, die dieser Server verwendet."
+      },
+      "engine_control_plane_port": {
+        "label": "Engine-Control-Plane-Port",
+        "help": "Der Port, über den Engines die Control-Plane-Datenbank erreichen."
+      },
+      "engine_lakehouse_metastore_host": {
+        "label": "Lakehouse-Metastore-Host",
+        "help": "Die Adresse des Lakehouse-Metastores, den Engines verwenden."
+      },
+      "engine_lakehouse_metastore_port": {
+        "label": "Lakehouse-Metastore-Port",
+        "help": "Der Port des Lakehouse-Metastores, den Engines verwenden."
+      },
+      "engine_otel_s3_endpoint": {
+        "label": "Adresse des Engine-Telemetriespeichers",
+        "help": "Die Adresse des Telemetrie-Objektspeichers, wie Engines sie erreichen."
+      },
+      "isolated_engine_image": {
+        "label": "Image der dedizierten Engine",
+        "help": "Das Container-Image, das für die dedizierte Engine einer Organisation verwendet wird."
+      },
+      "isolated_engine_network": {
+        "label": "Netzwerk der dedizierten Engine",
+        "help": "Das Container-Netzwerk, an das eine dedizierte Engine angebunden wird."
+      },
+      "isolated_engine_memory": {
+        "label": "Speicher der dedizierten Engine",
+        "help": "Der Speicher, der einer dedizierten Engine zugewiesen wird."
+      },
+      "isolated_engine_host_template": {
+        "label": "Hostmuster der dedizierten Engine",
+        "help": "Das Muster, aus dem der Hostname einer dedizierten Engine gebildet wird."
+      },
+      "isolated_engine_port": {
+        "label": "Port der dedizierten Engine",
+        "help": "Der Port, auf dem eine dedizierte Engine lauscht."
+      },
+      "isolated_engine_ready_timeout": {
+        "label": "Bereitschaftszeitlimit der dedizierten Engine",
+        "help": "Wie lange darauf gewartet wird, dass eine dedizierte Engine bereit ist."
+      },
+      "isolated_engine_docker_socket": {
+        "label": "Docker-Socket der dedizierten Engine",
+        "help": "Der Docker-Socket, der zum Starten dedizierter Engines verwendet wird."
+      },
+      "zaychik_cpu": {
+        "label": "CPU des Abfrage-Gateways",
+        "help": "Die CPU, die dem Abfrage-Gateway der Engine zugewiesen wird."
+      },
+      "zaychik_memory": {
+        "label": "Speicher des Abfrage-Gateways",
+        "help": "Der Speicher, der dem Abfrage-Gateway der Engine zugewiesen wird."
+      }
+    },
+    "readonlyReasons": {
+      "locates_control_plane": "Diese Einstellung teilt dem Server mit, wo sich seine Control Plane befindet, und kann daher nicht über die Control Plane geändert werden.",
+      "read_before_control_plane": "Diese Einstellung wird gelesen, bevor die Control Plane verfügbar ist, und wird daher außerhalb der UI festgelegt.",
+      "set_by_launcher": "Der Launcher, der dieses Deployment gestartet hat, setzt diesen Wert.",
+      "set_by_desktop_launcher": "Der Desktop-Launcher setzt diesen Wert für diese Installation."
+    }
+  }
+}

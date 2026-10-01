@@ -30,14 +30,15 @@ the authorization, granted when the org minted the link.
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from provisa.core import settings_registry
 from provisa.core.env_copy import REPLACE, CopyReport, adopt_role_definition, copy_model
 from provisa.core.env_source_files import fork_file_sources
 from provisa.core.env_store import forget_env, reserve_env
+from provisa.core.redis_location import redis_url
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
@@ -106,8 +107,8 @@ async def create_environment(
             tenant_pool,
             _schema_sql(),
             org_id=org_id,
-            redis_url=os.environ.get("REDIS_URL"),
-            redis_password=os.environ.get("PROVISA_REDIS_ORG_PASSWORD"),
+            redis_url=redis_url(),
+            redis_password=settings_registry.value("cache.redis_org_password"),
             env=name,
         )
         report = await copy_model(

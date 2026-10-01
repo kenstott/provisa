@@ -15,6 +15,7 @@
     },
     "auth": {
       "authentication_required": "Authentifizierung erforderlich",
+      "auto_join_not_offered": "Diese Organisation bietet Ihnen keine Aufnahme an",
       "bootstrap_claiming_disabled": "Bootstrap-Übernahme ist nicht aktiviert",
       "delete_account_confirm_required": "Das Löschen Ihres Kontos ist unwiderruflich: Ihr Profil und alle Organisationsmitgliedschaften werden entfernt und können nicht wiederhergestellt werden. Wiederholen Sie Ihre Benutzer-ID im Parameter 'confirm', um fortzufahren.",
       "email_not_permitted": "Ihre E-Mail-Adresse ist für den Beitritt zu dieser Organisation nicht zugelassen",
@@ -51,6 +52,10 @@
       "engine_not_connected": "Engine nicht verbunden",
       "grpc_source_not_registered": "gRPC-Remotequelle '{{source_id}}' nicht registriert",
       "invalid_as_of": "ungültiges X-Provisa-As-Of: {{error}}",
+      "invalid_filter": "filter muss ein Objekt sein, das Feldnamen auf Werte abbildet",
+      "invalid_filter_field": "Ungültiges filter-Feld '{{field}}' für {{type_name}}",
+      "invalid_read_mask": "read_mask muss ein Objekt mit einer 'paths'-Liste von Feldpfaden sein",
+      "invalid_read_mask_path": "Ungültiger read_mask-Pfad '{{path}}' für {{type_name}}",
       "missing_command_name": "Befehlsname fehlt",
       "missing_role_id": "role_id fehlt",
       "missing_x_provisa_role_header": "Header X-Provisa-Role fehlt",
@@ -155,7 +160,10 @@
       "auth_required_create": "Zum Erstellen einer Organisation ist eine Authentifizierung erforderlich",
       "auth_required_leave": "Zum Verlassen einer Organisation ist eine Authentifizierung erforderlich",
       "auto_join_public_domain": "auto_join benötigt eine E-Mail-Regel, die auf eine von Ihnen kontrollierte Domain beschränkt ist — diese trifft auf {{domain}} zu.",
+      "auto_join_breadth_unacknowledged": "Prüfen Sie diese Regel für den automatischen Beitritt sorgfältig, sonst lassen Sie möglicherweise Personen von außerhalb Ihrer Organisation zu: Neben {{domains}} akzeptiert sie auch Adressen wie {{admits}}. Jede Person bei einer Domäne, die Sie nicht kontrollieren, könnte Ihrer Organisation dann automatisch beitreten. Bestätigen Sie, dass Sie dieses Risiko akzeptieren, um sie zu speichern.",
       "auto_join_requires_role": "auto_join erfordert auto_join_role",
+      "auto_join_rule_taken": "Eine andere Organisation nimmt bereits automatisch alle auf, die dieser Regel entsprechen. Zwei Organisationen können nicht dieselben Adressen beanspruchen – bitten Sie sie um eine Einladung oder grenzen Sie Ihre Regel auf eine Domäne ein, die nur Ihre Organisation nutzt.",
+      "auto_join_rule_unbounded": "Diese Regel für den automatischen Beitritt hat keine Begrenzung: Sie würde Adressen bei Domänen zulassen, die Sie nicht kontrollieren. Verankern Sie sie an einer Domäne, die Ihnen gehört, z. B. \"@acme\\\\.com$\".",
       "cannot_delete_root": "Die Root-Organisation kann nicht gelöscht werden",
       "delete_confirm_required": "Das Löschen von '{{org}}' zerstört alle zugehörigen Daten dauerhaft — niemand, auch kein Plattformadministrator, kann sie wiederherstellen. Wiederholen Sie die Organisations-ID im Parameter 'confirm', um fortzufahren.",
       "invalid_email_rule": "Ungültige E-Mail-Regel: {{error}}",
@@ -173,7 +181,8 @@
     },
     "platform": {
       "right_required": "Fähigkeit {{right}} erforderlich",
-      "settings_capability_required": "Fähigkeit platform_settings erforderlich"
+      "settings_capability_required": "Fähigkeit platform_settings erforderlich",
+      "control_plane_role_required": "Ein Plattformadministrator ist erforderlich."
     },
     "profile": {
       "database_unavailable": "Datenbank nicht verfügbar",
@@ -249,7 +258,7 @@
       "source_connection_failed": "Quelle '{{source}}': Verbindungsprüfung fehlgeschlagen: {{error}}",
       "source_created": "Quelle '{{source}}' erstellt",
       "source_deleted": "Quelle '{{source}}' gelöscht",
-      "source_limit_reached": "Diese Organisation nutzt {{held}} der {{limit}} Datenquellen, die ihr {{plan}}-Tarif zulässt. Ändern Sie den Tarif auf der Seite „Abrechnung“ oder entfernen Sie eine Datenquelle.",
+      "source_limit_reached": "Diese Organisation hält {{held}} der {{limit}} Datenquellen, die ihr Tarif {{plan}} zulässt. Ändern Sie den Tarif auf der Seite Abrechnung oder entfernen Sie eine Quelle.",
       "source_load_protection_set": "Lastschutz für Quelle '{{source}}' gesetzt",
       "source_naming_updated": "Namenskonvention für Quelle '{{source}}' aktualisiert",
       "source_no_connection": "Quelle '{{source}}' hat keine aktive Verbindung",
@@ -297,7 +306,10 @@
       "unknown_auth_provider": "unbekannter Auth-Anbieter '{{provider}}'; gültig: {{valid}}",
       "unknown_encryption_provider": "unbekannter Verschlüsselungsanbieter '{{provider}}'",
       "unknown_engine": "unbekannte Engine '{{engine}}'; gültig: {{valid}}",
-      "use_domains_invalid": "use_domains muss true, false oder null sein"
+      "use_domains_invalid": "use_domains muss true, false oder null sein",
+      "invalid_value": "Der Wert für {{field}} wurde abgelehnt.",
+      "invalid_body": "Die Einstellungsanfrage ist ungültig.",
+      "auth_required": "{{field}} kann erst geändert werden, wenn die Authentifizierung konfiguriert ist."
     },
     "setup": {
       "admin_credentials_required": "admin_username und admin_password erforderlich",

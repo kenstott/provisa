@@ -51,6 +51,7 @@
     "revokeButton": "Widerrufen",
     "revokeInvite": "Einladung für {{org}} widerrufen",
     "invitePagination": "Seitennavigation Einladungslinks",
-    "orgIdDesc": "2–40 Zeichen, Kleinbuchstaben und Ziffern, beginnend mit einem Buchstaben. Wird zum Schemanamen und zur Subdomain und kann später nicht geändert werden."
+    "orgIdDesc": "2–40 Zeichen, Kleinbuchstaben und Ziffern, beginnend mit einem Buchstaben. Wird zum Schemanamen und zur Subdomain und kann später nicht geändert werden.",
+    "spentStatus": "Vollständig eingelöst"
   }
 }

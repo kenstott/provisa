@@ -573,6 +573,7 @@ function App() {
                                     ["/admin/security", "platform_settings"],
                                     ["/admin/email", "platform_settings"], // REQ-1576
                                     ["/admin/maintenance", "platform_settings"], // REQ-1466
+                                    ["/admin/deployment-settings", "platform_settings"], // REQ-1913
                                     ["/admin/billing", "org_settings"], // REQ-1469
                                   ] as const
                                 ).map(([path, capability]) => (

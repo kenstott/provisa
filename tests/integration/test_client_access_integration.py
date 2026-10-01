@@ -229,7 +229,9 @@ class TestGraphQLEndpoint:
             app = FastAPI()
             app.include_router(data_router)
             transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(  # REQ-273: the header carries the role
+                transport=transport, base_url="http://test", headers={"X-Provisa-Role": "admin"}
+            ) as client:
                 with patch("provisa.pgwire._pipeline.execute_pgwire_sql", _stub):
                     resp = await client.post(
                         "/data/graphql",
@@ -250,7 +252,9 @@ class TestGraphQLEndpoint:
             app = FastAPI()
             app.include_router(data_router)
             transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(  # REQ-273: the header carries the role
+                transport=transport, base_url="http://test", headers={"X-Provisa-Role": "admin"}
+            ) as client:
                 resp = await client.post(
                     "/data/graphql",
                     json={
@@ -274,7 +278,9 @@ class TestGraphQLEndpoint:
             app = FastAPI()
             app.include_router(data_router)
             transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(  # REQ-273: the header carries the role
+                transport=transport, base_url="http://test", headers={"X-Provisa-Role": "admin"}
+            ) as client:
                 resp = await client.post(
                     "/data/graphql",
                     json={"query": "{ __typename }", "role": "admin"},

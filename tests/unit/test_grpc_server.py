@@ -84,6 +84,7 @@ def _make_pb2_module(type_name: str = "Orders", fields: list[str] | None = None)
 
 def _make_state(role_id: str = "admin", schema=None, ctx=None):
     """Build a minimal mock state for servicer tests."""
+    from provisa.cache.store import NoopCacheStore
     from provisa.compiler.rls import RLSContext
 
     state = SimpleNamespace(
@@ -98,6 +99,7 @@ def _make_state(role_id: str = "admin", schema=None, ctx=None):
         mv_registry=SimpleNamespace(get_fresh=lambda: []),
         trino_conn=MagicMock(),
         flight_client=None,
+        response_cache_store=NoopCacheStore(),  # AppState always holds a store (app.py)
     )
     # Mandatory terminal-execution binding (REQ-825): bind the reference engine to the stub state.
     from provisa.federation.engine import build_trino_engine
@@ -144,13 +146,14 @@ class TestHandleQuery:
 
         # New pipeline seam: _handle_query lowers the request to a semantic SELECT, then
         # governs/routes/executes via provisa.pgwire._pipeline. Mock at that boundary.
-        fake_plan = SimpleNamespace(route=Route.CACHE, source_id=None)
+        # cache_hit=None: routed to the API cache, not answered from the response cache.
+        fake_plan = SimpleNamespace(route=Route.CACHE, source_id=None, cache_hit=None)
         fake_result = SimpleNamespace(column_names=["id", "amount"], rows=[[1, 100.0], [2, 200.0]])
 
         with (
             patch(
                 "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value="SELECT id, amount FROM orders",
+                return_value=("SELECT id, amount FROM orders", []),
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",
@@ -195,7 +198,8 @@ class TestHandleQuery:
 
         from provisa.transpiler.router import Route
 
-        fake_plan = SimpleNamespace(route=Route.CACHE, source_id=None)
+        # cache_hit=None: routed to the API cache, not answered from the response cache.
+        fake_plan = SimpleNamespace(route=Route.CACHE, source_id=None, cache_hit=None)
         # One more row than _GRPC_BATCH_ROWS so two batch messages are emitted: a full one, then
         # a one-row remainder — proves both the full-batch flush and the trailing partial flush.
         n_rows = _GRPC_BATCH_ROWS + 1
@@ -205,7 +209,7 @@ class TestHandleQuery:
         with (
             patch(
                 "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value="SELECT id, amount FROM orders",
+                return_value=("SELECT id, amount FROM orders", []),
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",
@@ -248,14 +252,15 @@ class TestHandleQuery:
 
         from provisa.transpiler.router import Route
 
-        fake_plan = SimpleNamespace(route=Route.CACHE, source_id=None)
+        # cache_hit=None: routed to the API cache, not answered from the response cache.
+        fake_plan = SimpleNamespace(route=Route.CACHE, source_id=None, cache_hit=None)
         fake_rows = [[i, float(i)] for i in range(7)]
         fake_result = SimpleNamespace(column_names=["id", "amount"], rows=fake_rows)
 
         with (
             patch(
                 "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value="SELECT id, amount FROM orders",
+                return_value=("SELECT id, amount FROM orders", []),
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",
@@ -305,13 +310,21 @@ class TestHandleQuery:
             exec_params=None,
             audit_written=False,
             audit=MagicMock(),
+            # The DIRECT terminal consults the response cache (REQ-544): an un-hinted plan.
+            cache_opt_in=False,
+            cache_hit=None,  # as _Plan: not answered before routing
+            cache_missed=(),
+            cache_ttl=None,
+            response_cacheable=True,
+            role_id="admin",
+            table_ids=(),
         )
         fake_result = SimpleNamespace(column_names=["id", "amount"], rows=[[1, 100.0], [2, 200.0]])
 
         with (
             patch(
                 "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value="SELECT id, amount FROM orders",
+                return_value=("SELECT id, amount FROM orders", []),
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",
@@ -390,12 +403,20 @@ class TestHandleQuery:
             exec_params=None,
             audit_written=False,
             audit=MagicMock(),
+            # The DIRECT terminal consults the response cache (REQ-544): an un-hinted plan.
+            cache_opt_in=False,
+            cache_hit=None,  # as _Plan: not answered before routing
+            cache_missed=(),
+            cache_ttl=None,
+            response_cacheable=True,
+            role_id="admin",
+            table_ids=(),
         )
 
         with (
             patch(
                 "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value="SELECT id, amount FROM orders",
+                return_value=("SELECT id, amount FROM orders", []),
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",

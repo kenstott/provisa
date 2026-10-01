@@ -21,6 +21,7 @@
     "graphStats": "Estatísticas do grafo",
     "properties": "Propriedades",
     "copyValue": "Copiar valor",
-    "resizePanel": "Redimensionar painel do inspetor"
+    "resizePanel": "Redimensionar painel do inspetor",
+    "junctionTable": "via {{table}}"
   }
 }

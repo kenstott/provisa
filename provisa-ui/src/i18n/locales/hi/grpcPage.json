@@ -20,6 +20,7 @@
     "includeNodes": "नोड शामिल करें",
     "includeFields": "फ़ील्ड शामिल करें (संबंध, संबंध.कॉलम या कॉलम)",
     "aggregateFunctions": "एग्रीगेट फ़ंक्शन",
-    "selectAtLeastOneFunc": "कम से कम एक एग्रीगेट फ़ंक्शन चुनें"
+    "selectAtLeastOneFunc": "कम से कम एक एग्रीगेट फ़ंक्शन चुनें",
+    "aggregateColumns": "एग्रीगेट कॉलम (खाली = हर पात्र कॉलम)"
   }
 }

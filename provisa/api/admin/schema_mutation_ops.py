@@ -328,9 +328,9 @@ async def register_table(
                     update_columns=[],
                 )
 
-        import os as _os
+        from provisa.core import deployment_settings as _deployment_settings
 
-        if _os.environ.get("PROVISA_AUTO_TRACK_FK", "true").lower() not in ("0", "false", "no"):
+        if _deployment_settings.auto_track_fk():
             from provisa.discovery.fk_introspect import auto_register_fk_relationships
             from provisa.api.app import state as _state
 

@@ -22,16 +22,17 @@ imports lazily so this module loads even where impyla is not installed.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
-from provisa.executor.drivers.base import DirectDriver
+from provisa.executor.drivers.pooled import SingleStatementConnectionDriver, run_dbapi
 from provisa.executor.result import QueryResult
 
 
-class HiveDriver(DirectDriver):
+class HiveDriver(SingleStatementConnectionDriver):
+    """impyla is DB-API ``threadsafety = 1``: a connection per statement, from the pool (see
+    ``pooled``)."""
+
     def __init__(self) -> None:
-        self._conn: Any = None
         self._extra: dict[str, str] = {}
 
     def configure(self, extra: dict[str, str]) -> None:
@@ -44,6 +45,7 @@ class HiveDriver(DirectDriver):
         with no password, not just when one is set."""
         self._extra = dict(extra)
 
+    # Async only for the DirectDriver awaitable contract; connects synchronously in-thread.
     async def connect(
         self,
         host: str,
@@ -51,8 +53,8 @@ class HiveDriver(DirectDriver):
         database: str,
         user: str,
         password: str,
-        min_pool: int = 1,  # pyright: ignore[reportUnusedParameter]  # impyla has no pool
-        max_pool: int = 5,  # pyright: ignore[reportUnusedParameter]
+        min_pool: int = 1,
+        max_pool: int = 5,
     ) -> None:
         from impala.dbapi import connect as hs2_connect  # pyright: ignore[reportMissingImports]
 
@@ -68,26 +70,26 @@ class HiveDriver(DirectDriver):
                 auth_mechanism=auth_mechanism,
             )
 
-        self._conn = await asyncio.to_thread(_open)
+        self._open_pool(
+            _open, min_pool=min_pool, max_pool=max_pool, name=f"hive:{host}:{port}/{database}"
+        )
 
-    async def execute(self, sql: str, params: list | None = None) -> QueryResult:
-        def _run() -> QueryResult:
-            cur = self._conn.cursor()
-            try:
-                cur.execute(sql, params or None)
-                cols = [d[0] for d in cur.description] if cur.description else []
-                rows = cur.fetchall() if cur.description else []
-                return QueryResult(rows=[tuple(r) for r in rows], column_names=cols)
-            finally:
-                cur.close()
+    def _run(self, conn: Any, sql: str, params: list | None) -> QueryResult:
+        return run_dbapi(conn, sql, params, lambda cur: cur.cancel_operation)
 
-        return await asyncio.to_thread(_run)
+    def _is_broken(self, exc: BaseException) -> bool:
+        # The Thrift transport or the HTTP transport failed, or the session is gone. A statement
+        # HiveServer2 rejected is HiveServer2Error, which leaves the connection usable.
+        from impala.error import (  # pyright: ignore[reportMissingImports]
+            DisconnectedError,
+            HttpError,
+            InterfaceError,
+        )
+        from thrift.transport.TTransport import (  # pyright: ignore[reportMissingImports]
+            TTransportException,
+        )
 
-    async def close(self) -> None:
-        if self._conn is not None:
-            await asyncio.to_thread(self._conn.close)
-            self._conn = None
-
-    @property
-    def is_connected(self) -> bool:
-        return self._conn is not None
+        return isinstance(
+            exc,
+            (TTransportException, HttpError, DisconnectedError, InterfaceError, ConnectionError),
+        )

@@ -435,6 +435,11 @@ def _generate_grpc_query(
     return f"Query{_to_proto_type_name(nm.type_name)}", None
 
 
+# REQ-1197: JSON:API counts a list's total only for a request that asks (``page[total]=true``). A
+# row request written on a visitor's behalf always asks, so the answer says how many rows match.
+_JSONAPI_ROW_PAGE = "page[size]=20&page[total]=true"
+
+
 def _generate_jsonapi_query(
     plan: AggregationPlan | None,
     selected_type_names: set[str],
@@ -446,7 +451,7 @@ def _generate_jsonapi_query(
         if plan.is_aggregate_only:
             return f"{base}?aggregate={aggregate_param}", None
         if not plan.group_cols:
-            return f"{base}?page[size]=20", None
+            return f"{base}?{_JSONAPI_ROW_PAGE}", None
         # REQ-1408: JSON:API's group-by handler honours includeNodes only as true/1 and takes the
         # relationship projection through its own ?include= list, whose entries are relationship
         # names or "rel.col" dot-paths (generator.py::_build_group_by_node_selection). Naming the
@@ -464,7 +469,7 @@ def _generate_jsonapi_query(
     nm = user_nodes.get(type_name)
     if nm is None or nm.domain_id is None:
         return None, "NOT_APPLICABLE"
-    return f"/data/jsonapi/{nm.domain_id}/{nm.table_name}?page[size]=20", None
+    return f"/data/jsonapi/{nm.domain_id}/{nm.table_name}?{_JSONAPI_ROW_PAGE}", None
 
 
 def _generate_openapi_query(

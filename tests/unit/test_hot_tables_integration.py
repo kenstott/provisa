@@ -58,6 +58,9 @@ def _make_trino_conn_mock(rows: list[tuple], columns: list[str]):
     from provisa.executor.result import QueryResult
 
     class _FakeEngine:
+        def engine_physical(self, pg_sql):
+            return pg_sql  # an engine that addresses catalog.schema.table as written
+
         async def execute_engine(self, sql, *a, **k):
             return QueryResult(rows=rows, column_names=columns)
 

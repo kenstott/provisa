@@ -21,6 +21,7 @@
     "graphStats": "Graphstatistiken",
     "properties": "Eigenschaften",
     "copyValue": "Wert kopieren",
-    "resizePanel": "Inspektor-Panel skalieren"
+    "resizePanel": "Inspektor-Panel skalieren",
+    "junctionTable": "über {{table}}"
   }
 }

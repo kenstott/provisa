@@ -32,6 +32,7 @@ once at the entrypoint (never silently here).
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -156,12 +157,16 @@ class OrgRuntime:
     # REQ-1677: role id → [role, parent, grandparent, …], the chain folded into the build.
     role_chains: dict[str, list[str]] = field(default_factory=dict)
 
-    # REQ-1877: in-memory, TTL-evicted cache of compiled query outcomes (physical SQL + routing
-    # decision) for the raw-SQL pipeline — see provisa/compiler/compiled_query_cache.py. Scoped
-    # per org, same as `contexts`/`rls_contexts`, so one org's cached plans never leak into
-    # another's. Not reset by a schema rebuild: its key already carries schema_boot_id/
-    # schema_version, so a stale generation's entries simply stop matching (see that module).
-    compiled_query_cache: CompiledQueryCache = field(default_factory=CompiledQueryCache)
+    # REQ-1877: the org's kept governed plans (pgwire/governed_plan.py) and validate outcomes —
+    # see provisa/compiler/compiled_query_cache.py. Scoped per org, same as
+    # `contexts`/`rls_contexts`, so one org's plans never leak into another's. Not reset by a
+    # schema rebuild: its key already carries schema_boot_id/schema_version, so a stale
+    # generation's entries simply stop matching. No time expiry (amended 2026-10-01): a plan is
+    # invalidated by its generation and anchors, and the store is bounded by size, dropping the
+    # least recently used.
+    compiled_query_cache: CompiledQueryCache = field(
+        default_factory=lambda: CompiledQueryCache(expires=False)
+    )
 
     # REQ-1877 (routing addendum, 2026-09-29): sibling cache of `RoutingOutcome` — the structural
     # routing decision (`_optimize_and_route`'s route/source/dialect/source-set) for a query shape
@@ -171,6 +176,12 @@ class OrgRuntime:
     # because `routing_cache_key` builds an unrelated key shape (no person_id/bypass flag) — see
     # that module's `CompiledQueryCache` docstring.
     routing_cache: CompiledQueryCache = field(default_factory=CompiledQueryCache)
+
+    # REQ-1877: the org's Cypher label maps for the CURRENT schema generation, one per role and
+    # domain-access scope (provisa/api/rest/cypher_plan.py). Not the bounded plan store: a map is
+    # a pure function of the registry and as large as it, so it stays exactly until the generation
+    # changes, and a new generation's first map drops the previous generation's.
+    cypher_label_maps: dict[Any, Any] = field(default_factory=dict)
 
     # Governance / masking. (table_id, role_id) → {col: (rule, dtype)}.
     masking_rules: dict[Any, Any] = field(default_factory=dict)
@@ -204,6 +215,11 @@ class OrgRuntime:
     # control-plane round trip per query is not a cost those readers can carry. Empty for an org
     # that has overridden nothing — every read then resolves the deployment value.
     settings_overrides: dict[str, Any] = field(default_factory=dict)
+    # When that copy was read (time.monotonic). REQ-1900: another worker process may have changed
+    # the rows since, so a copy older than org_settings.SNAPSHOT_TTL_SECONDS is re-read before it
+    # is used (AppState.settings_overrides) — a control-plane read every few seconds per org, not
+    # one per query.
+    settings_overrides_read_at: float = field(default_factory=time.monotonic)
 
 
 class OrgRegistry:

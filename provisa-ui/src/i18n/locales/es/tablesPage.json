@@ -11,6 +11,8 @@
     "addViewTitle": "Crear una nueva vista en el Explorador SQL",
     "model": "+ Modelo",
     "modelTitle": "Modelar una entidad o un hecho (esquema en estrella / Data Vault)",
+    "reportXlsx": "Libro de Excel",
+    "reportXlsxTitle": "Descargar el modelo como hoja de cálculo para su revisión: orígenes, tablas, columnas, relaciones, vistas, métricas, vistas materializadas y términos del glosario, una hoja por cada uno",
     "viewErd": "Ver ERD",
     "colSource": "Origen",
     "colDomain": "Dominio",
@@ -56,6 +58,11 @@
       "impliedDimensionTitle": "Dimensión implícita — «Habilitar Group By» está activado para esta tabla"
     },
     "derived": "derivada",
+    "checker": {
+      "soda": "Soda",
+      "great_expectations": "Great Expectations",
+      "title": "Verificador de calidad de datos: las filas de esta tabla son los resultados de ejecutar su contrato"
+    },
     "dataProduct": "producto",
     "dataProductTitle": "Producto de datos — incluido en provisa metadata export",
     "purposeTitle": "Qué hace registrar una tabla",

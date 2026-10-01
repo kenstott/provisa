@@ -153,10 +153,13 @@ def resolve_token_role(token: str, state: Any) -> str:
 def _pinned_stdio_role() -> str:
     """The role for local stdio calls. Must be explicitly configured via
     PROVISA_MCP_ROLE — there is no admin default."""
-    role = os.environ.get("PROVISA_MCP_ROLE")
-    if not role or not role.strip():
+    from provisa.core import settings_registry  # REQ-1913: the operator setting `mcp.role`
+
+    role = settings_registry.value("mcp.role")
+    if role is None:
         raise ValueError(
-            "PROVISA_MCP_ROLE must be set to a provisa role for the local stdio MCP transport"
+            "mcp.role (PROVISA_MCP_ROLE) must be set to a provisa role for the local stdio MCP "
+            "transport"
         )
     return role.strip()
 
@@ -684,8 +687,9 @@ def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | No
     from provisa.security.high_security import mcp_start_allowed
 
     _log = log_ or log
-    port_raw = os.environ.get("PROVISA_MCP_PORT", "0")
-    port = int(port_raw)
+    from provisa.core import settings_registry
+
+    port = settings_registry.value("mcp.port")  # REQ-1913; 0 = not started
     if not port:
         return None
     if not mcp_start_allowed(state, port):
@@ -703,7 +707,7 @@ def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | No
     # off-box; documented per REQ-1101). The native/desktop tier turns MCP on by default and sets
     # PROVISA_MCP_HOST=127.0.0.1, so its always-on server is loopback-only (same-machine Claude
     # Desktop connector, no LAN exposure) — the safe posture for a default-on data gateway.
-    host = os.environ.get("PROVISA_MCP_HOST", "0.0.0.0") or "0.0.0.0"  # nosec B104
+    host = settings_registry.value("mcp.host")
 
     # Optional TLS (REQ-1106): the native tier sets PROVISA_MCP_TLS=1 so Claude Desktop's "Add custom
     # connector" (which only accepts an https:// URL) can hit https://localhost:<port>/mcp directly -
@@ -715,7 +719,7 @@ def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | No
     # signature no matter which keys it actually carries.
     ssl_kwargs: dict[str, Any] = {}
     scheme = "http"
-    if os.environ.get("PROVISA_MCP_TLS", "").strip().lower() in ("1", "true", "yes"):
+    if settings_registry.value("mcp.tls"):
         from provisa.api.mcp.tls import ensure_cert, trust_cert
 
         pair = ensure_cert()

@@ -21,6 +21,7 @@
     "graphStats": "图统计",
     "properties": "属性",
     "copyValue": "复制值",
-    "resizePanel": "调整检查器面板大小"
+    "resizePanel": "调整检查器面板大小",
+    "junctionTable": "经由 {{table}}"
   }
 }

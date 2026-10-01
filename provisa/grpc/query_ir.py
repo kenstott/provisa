@@ -17,12 +17,17 @@ through GraphQL.
 
 from __future__ import annotations
 
-from typing import Any
+import json
+import re
+from dataclasses import dataclass
+from typing import Any, Mapping, Sequence
 
 from provisa.compiler.aggregate_gen import _is_comparable, _is_numeric
 from provisa.compiler.naming import active_gql_convention, apply_gql_name
+from provisa.compiler.params import ParamCollector
 from provisa.compiler.sql_gen import _q
 from provisa.compiler.sql_rewrite import _semantic_table_ref
+from provisa.grpc.proto_gen import _physical_to_proto
 
 
 def _find_table_meta(ctx: Any, type_name: str) -> Any | None:
@@ -57,8 +62,18 @@ def _find_table_meta(ctx: Any, type_name: str) -> Any | None:
     return next(iter(suffix_matches.values())) if len(suffix_matches) == 1 else None
 
 
+class FilterError(ValueError):
+    """A ``filter`` entry the request may not send; ``field`` is the offending field name."""
+
+    def __init__(self, field: str, type_name: str, reason: str) -> None:
+        super().__init__(f"Invalid filter field {field!r} for {type_name}: {reason}")
+        self.field = field
+
+
 def _filter_set_fields(filter_msg: Any | None) -> list[tuple[str, Any]]:
-    """``(column, value)`` pairs for a ``{Type}Filter`` message's explicitly-set fields.
+    """``(column, value)`` pairs for a request's filter: a ``{Type}Filter`` message's
+    explicitly-set fields (the native servicer), or the entries of the JSON object the HTTP gRPC
+    proxy received as ``body["filter"]`` (REQ-803) — in JSON a field is set by being present.
 
     Every ``{Type}Filter`` field is declared ``optional`` (proto_gen.py), so ``HasField`` reliably
     distinguishes "client filtered this column to its zero value" from "client didn't set this
@@ -66,6 +81,8 @@ def _filter_set_fields(filter_msg: Any | None) -> list[tuple[str, Any]]:
     (REQ-1860)."""
     if filter_msg is None:
         return []
+    if isinstance(filter_msg, Mapping):
+        return list(filter_msg.items())
     return [
         (f.name, getattr(filter_msg, f.name))
         for f in filter_msg.DESCRIPTOR.fields
@@ -73,55 +90,266 @@ def _filter_set_fields(filter_msg: Any | None) -> list[tuple[str, Any]]:
     ]
 
 
-class FilterError(ValueError):
-    """A ``filter`` field the request may not set; ``field`` is the offending field name."""
+# --- read_mask (REQ-803) --------------------------------------------------------------------------
+# One semantics for the native servicer and the HTTP gRPC proxy: the mask is validated against the
+# columns the role can read, lowered into the SELECT list, and a dotted sub-path into a JSON-valued
+# column restricts that column's value.
 
-    def __init__(self, field: str, type_name: str, reason: str) -> None:
-        super().__init__(f"Invalid filter field {field!r} for {type_name}: {reason}")
-        self.field = field
+# Registered column types whose value is a JSON document (proto ``string``, proto_gen._PROTO_TYPE_MAP).
+_JSON_COLUMN_TYPES = frozenset({"json", "jsonb"})
+
+# A sub-path selection inside one JSON value: key → the selection below it, None = the whole value.
+MaskTree = dict[str, "MaskTree | None"]
 
 
-def _readable_filter_fields(
+class ReadMaskError(ValueError):
+    """A ``read_mask`` path the request may not name; ``path`` is the offending path verbatim."""
+
+    def __init__(self, path: str, type_name: str, reason: str) -> None:
+        super().__init__(f"Invalid read_mask path {path!r} for {type_name}: {reason}")
+        self.path = path
+
+
+def _norm_name(name: str) -> str:
+    """Result columns and proto fields are matched separator/case-insensitively (governance may
+    re-case or alias a column; proto collapses ``__``) — the servicer's own matching rule."""
+    return name.replace("_", "").lower()
+
+
+@dataclass(frozen=True)
+class ReadMask:
+    """A validated ``read_mask``: the columns the query selects, and the JSON sub-path selections."""
+
+    columns: tuple[str, ...]  # in the table's own column order, each once
+    sub_paths: Mapping[str, MaskTree]  # normalized column name → selection inside its JSON value
+
+    def restrictions(self, column_names: Sequence[str]) -> list[MaskTree | None]:
+        """One entry per result column: its JSON selection, or None when its whole value is
+        returned. Resolved once per result set, not per row."""
+        return [self.sub_paths.get(_norm_name(c)) for c in column_names]
+
+
+def _json_valued(data_type: str) -> bool:
+    return data_type.lower().split("(")[0].strip() in _JSON_COLUMN_TYPES
+
+
+def _add_sub_path(tree: MaskTree, segments: Sequence[str]) -> None:
+    """Merge one sub-path into ``tree``. A path selecting a whole value wins over any path
+    selecting inside it, whichever came first."""
+    head, rest = segments[0], segments[1:]
+    if not rest:
+        tree[head] = None
+        return
+    if head in tree and tree[head] is None:
+        return
+    child = tree.setdefault(head, {})
+    assert child is not None
+    _add_sub_path(child, rest)
+
+
+def _readable_fields(ctx: Any, meta: Any) -> dict[str, tuple[str, str]]:
+    """Proto field name → ``(column, registered type)`` for the columns this role can read. A
+    request names proto fields; a column's proto field is its name, ``__`` collapsed to ``_``
+    (proto_gen._to_proto_field_name)."""
+    table_columns = ctx.aggregate_columns.get(meta.table_id, [])
+    by_field = {c.replace("__", "_"): (c, t) for c, t in table_columns}
+    by_field.update({c: (c, t) for c, t in table_columns})
+    return by_field
+
+
+def _json_value_matches(value: Any, data_type: str) -> str | None:
+    """None when a JSON body's filter ``value`` is the JSON type the native ``{Type}Filter``
+    field carries for a column of ``data_type`` (the proto type proto_gen declares for it), else
+    the JSON type expected. A boolean is not a number."""
+    proto_type = _physical_to_proto(data_type)
+    if proto_type == "bool":
+        return None if isinstance(value, bool) else "a boolean"
+    if proto_type in ("double", "float"):
+        is_number = isinstance(value, (int, float)) and not isinstance(value, bool)
+        return None if is_number else "a number"
+    if "int" in proto_type:
+        return None if isinstance(value, int) and not isinstance(value, bool) else "an integer"
+    return None if isinstance(value, str) else "a string"
+
+
+def _checked_filter(
     ctx: Any, meta: Any, type_name: str, filter_msg: Any | None
-) -> list[tuple[str, Any]]:
-    """``_filter_set_fields``, each field checked to be a column this role can read.
+) -> list[tuple[str, str, Any]]:
+    """The request filter's equalities as ``(column, registered type, value)``, checked. Shared
+    by every lowering of a filter (``Query{Type}`` and ``Query{Type}GroupBy``, native and proxy).
 
-    The native server serves one wire proto whose ``{Type}Filter`` message carries every column,
-    so a role can set a filter field for a column hidden from it. A predicate on that column
-    would return only the rows matching it — the row count confirming or refuting the hidden
-    value — so the field is refused by name, whatever its value, before any statement is built.
-    Raises :class:`FilterError`."""
-    readable = {c for c, _t in ctx.aggregate_columns.get(meta.table_id, [])}
-    fields = _filter_set_fields(filter_msg)
-    for field, _value in fields:
+    A filtered field must be a column this role can read: the native server serves one wire proto
+    whose ``{Type}Filter`` carries every column, and a predicate on a hidden one would return only
+    the rows matching it — the row count confirming or refuting the hidden value (GitHub issue
+    131). A ``{Type}Filter`` message's values are typed by the proto; a JSON body's value must be
+    the JSON type that message's field carries for the column, and is never bound as text for a
+    column of another type. Raises :class:`FilterError` naming the field."""
+    readable = _readable_fields(ctx, meta)
+    from_body = isinstance(filter_msg, Mapping)
+    checked = []
+    for field, value in _filter_set_fields(filter_msg):
         if field not in readable:
             raise FilterError(field, type_name, "not a readable field")
-    return fields
+        column, data_type = readable[field]
+        if from_body:
+            expected = _json_value_matches(value, data_type)
+            if expected is not None:
+                raise FilterError(field, type_name, f"value must be {expected}")
+        checked.append((column, data_type, value))
+    return checked
 
 
-def grpc_table_to_semantic_sql(
-    ctx: Any, type_name: str, limit: int, filter_msg: Any | None = None
-) -> str | None:
-    """Semantic SELECT over the table matching ``type_name``, or None if none matches. proto collapses
-    the domain separator (``PS__Inquiries`` → ``PsInquiries``), so match case/separator-insensitively.
+# Registered column types whose filter value arrives as TEXT (the proto filter field is ``string``,
+# proto_gen) but must compare as the column's own type → the SQL type its bound value is cast to.
+# A text literal coerces to these implicitly on some engines; a bound text value does not on all
+# (Trino has no varchar-to-timestamp comparison), so the cast is stated.
+_TEXT_BOUND_CASTS = {
+    "timestamp": "TIMESTAMP",
+    "datetime": "TIMESTAMP",
+    "timestamp with time zone": "TIMESTAMPTZ",
+    "timestamptz": "TIMESTAMPTZ",
+    "date": "DATE",
+    "time": "TIME",
+    "time with time zone": "TIMETZ",
+    "timetz": "TIMETZ",
+    "uuid": "UUID",
+}
+_TYPE_PRECISION_RE = re.compile(r"\s*\([^)]*\)")
+_ISO_T_SEPARATOR_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})T")
 
-    ``filter_msg`` (REQ-1860) is the request's ``{Type}Filter`` sub-message; its explicitly-set
-    fields (see ``_filter_set_fields``) become an AND-joined equality WHERE clause. A field that is
-    not a column the role can read raises :class:`FilterError` (``_readable_filter_fields``)."""
-    from provisa.compiler.params import _sql_literal
 
+def _bound_filter_value(value: Any, data_type: str, collector: ParamCollector) -> str:
+    """Bind one filter value and return the SQL it is compared as: its placeholder, cast to the
+    column's type when a typed column's value arrived as text (see ``_TEXT_BOUND_CASTS``)."""
+    cast_type = _TEXT_BOUND_CASTS.get(_TYPE_PRECISION_RE.sub("", data_type.lower()).strip())
+    if cast_type is None or not isinstance(value, str):
+        return collector.add(value)
+    if cast_type.startswith("TIMESTAMP"):
+        # ISO 8601's 'T' separator is not accepted by every engine's text-to-timestamp cast.
+        value = _ISO_T_SEPARATOR_RE.sub(r"\1 ", value)
+    return f"CAST({collector.add(value)} AS {cast_type})"
+
+
+def _filter_where(
+    ctx: Any, meta: Any, type_name: str, filter_msg: Any | None, collector: ParamCollector
+) -> list[str]:
+    """The request filter (see ``_checked_filter``; raises :class:`FilterError`) as equality
+    predicates whose values are BOUND (``$N`` placeholders, the values in ``collector``) — never
+    text in the statement, so requests that differ only in their filter values are one
+    statement."""
+    return [
+        f"{_q(column)} = {_bound_filter_value(value, data_type, collector)}"
+        for column, data_type, value in _checked_filter(ctx, meta, type_name, filter_msg)
+    ]
+
+
+def resolve_read_mask(ctx: Any, type_name: str, paths: Sequence[str]) -> ReadMask | None:
+    """Validate a request's ``read_mask`` paths against the table matching ``type_name``.
+
+    None when the mask is empty/absent (every column is selected) or no table matches (the caller's
+    own lookup reports that). A path's first segment must be a column this role can read — a
+    column it cannot read, a relation field (``Query{Type}`` reads the table's own columns and
+    never populates one) and a name that does not exist are the same error, so the mask reveals
+    nothing the role's schema does not. Further segments select inside the value and are accepted
+    only on a JSON-valued column. Raises :class:`ReadMaskError` naming the offending path."""
+    if not paths:
+        return None
     meta = _find_table_meta(ctx, type_name)
     if meta is None:
         return None
-    cols = ", ".join(_q(c) for c, _t in ctx.aggregate_columns.get(meta.table_id, [])) or "*"
+    table_columns = ctx.aggregate_columns.get(meta.table_id, [])
+    by_field = _readable_fields(ctx, meta)
+
+    whole: set[str] = set()
+    trees: dict[str, MaskTree] = {}
+    for path in paths:
+        segments = path.split(".")
+        if not all(segments):
+            raise ReadMaskError(path, type_name, "empty path segment")
+        if segments[0] not in by_field:
+            raise ReadMaskError(path, type_name, "not a readable field")
+        column, data_type = by_field[segments[0]]
+        if len(segments) == 1:
+            whole.add(column)
+            continue
+        if not _json_valued(data_type):
+            raise ReadMaskError(path, type_name, f"{segments[0]!r} is not a JSON-valued field")
+        _add_sub_path(trees.setdefault(column, {}), segments[1:])
+
+    selected = whole | trees.keys()
+    return ReadMask(
+        columns=tuple(c for c, _t in table_columns if c in selected),
+        sub_paths={_norm_name(c): tree for c, tree in trees.items() if c not in whole},
+    )
+
+
+def _restrict_decoded(value: Any, tree: MaskTree) -> Any:
+    if isinstance(value, dict):
+        kept = {}
+        for key, item in value.items():
+            if key in tree:
+                below = tree[key]
+                kept[key] = item if below is None else _restrict_decoded(item, below)
+        return kept
+    if isinstance(value, list):
+        return [_restrict_decoded(item, tree) for item in value]
+    return value
+
+
+def restrict_json(value: Any, tree: MaskTree | None) -> Any:
+    """Apply a JSON sub-path selection to one column value, keeping the value's own form: JSON
+    text (what a source driver returns for json/jsonb) stays text, a decoded object or list stays
+    decoded. An object keeps only the selected keys; a list is restricted item by item; a scalar
+    or null has no keys to select and is returned as is. ``None`` selects the whole value."""
+    if tree is None:
+        return value
+    if isinstance(value, str):
+        return json.dumps(_restrict_decoded(json.loads(value), tree))
+    return _restrict_decoded(value, tree)
+
+
+def grpc_table_to_semantic_sql(
+    ctx: Any,
+    type_name: str,
+    limit: int,
+    filter_msg: Any | None = None,
+    read_mask: ReadMask | None = None,
+) -> tuple[str, list] | None:
+    """Semantic SELECT over the table matching ``type_name`` and its bound values —
+    ``(sql, params)`` — or None if none matches. proto collapses the domain separator
+    (``PS__Inquiries`` → ``PsInquiries``), so match case/separator-insensitively.
+
+    ``filter_msg`` (REQ-1860) is the request's ``{Type}Filter`` sub-message, or the HTTP gRPC
+    proxy's ``body["filter"]`` object (REQ-803); its set fields (see ``_filter_set_fields``) become
+    an AND-joined equality WHERE clause (``_filter_where``; raises :class:`FilterError`) whose
+    values are bound: ``$N`` in the statement, the values in ``params`` (REQ-1877). A positive
+    ``limit`` is bound the same way, after them.
+
+    ``read_mask`` (REQ-803, see ``resolve_read_mask``) narrows the SELECT list to the masked
+    columns, so the source reads only those.
+
+    The statement text is the compiled stage's plan key (pgwire.governed_plan). It is the
+    request's SHAPE — table, masked columns, filtered fields, whether it is limited — so two
+    masks never share a kept plan, and requests that differ only in their bound values share
+    one."""
+    meta = _find_table_meta(ctx, type_name)
+    if meta is None:
+        return None
+    if read_mask is not None:
+        selected: Sequence[str] = read_mask.columns
+    else:
+        selected = [c for c, _t in ctx.aggregate_columns.get(meta.table_id, [])]
+    cols = ", ".join(_q(c) for c in selected) or "*"
     sql = f"SELECT {cols} FROM {_semantic_table_ref(meta)}"
-    where_parts = [
-        f"{_q(col)} = {_sql_literal(val)}"
-        for col, val in _readable_filter_fields(ctx, meta, type_name, filter_msg)
-    ]
+    collector = ParamCollector()
+    where_parts = _filter_where(ctx, meta, type_name, filter_msg, collector)
     if where_parts:
         sql = f"{sql} WHERE {' AND '.join(where_parts)}"
-    return f"{sql} LIMIT {int(limit)}" if limit and limit > 0 else sql
+    if limit and limit > 0:
+        # Bound like the filter values (the GraphQL compiler binds its LIMIT too): a request that
+        # differs only in its limit is the same statement.
+        sql = f"{sql} LIMIT {collector.add(int(limit))}"
+    return sql, collector.params
 
 
 def _aggregate_field_name(field_name: str) -> str:
@@ -341,13 +569,14 @@ def _graphql_literal(val: Any) -> str:
     return f'"{escaped}"'
 
 
-def _filter_graphql_where(fields: list[tuple[str, Any]]) -> str:
-    """``where: { col: { eq: v } ... }`` argument text for a ``{Type}Filter`` message's
-    explicitly-set fields (REQ-1860), or "" if none are set."""
+def _filter_graphql_where(fields: list[tuple[str, str, Any]]) -> str:
+    """``where: { col: { eq: v } ... }`` argument text for the request filter's checked
+    equalities (``_checked_filter``) — a ``{Type}Filter`` message's (REQ-1860) or the HTTP gRPC
+    proxy's ``body["filter"]`` object's (REQ-803) — or "" if none are set."""
     if not fields:
         return ""
     parts = " ".join(
-        f"{apply_gql_name(col)}: {{ eq: {_graphql_literal(val)} }}" for col, val in fields
+        f"{apply_gql_name(col)}: {{ eq: {_graphql_literal(val)} }}" for col, _type, val in fields
     )
     return f"where: {{ {parts} }}"
 
@@ -376,14 +605,14 @@ def grpc_table_to_group_by_graphql_text(
     scalars — mirroring JSON:API's ``?include=`` sideloading and REST's ``?includeNodes=``
     dot-path list; see ``_include_node_fields``. ``filter_msg`` (REQ-1860) is the request's
     ``{Type}Filter`` sub-message; its explicitly-set fields become a ``where: { col: { eq: v } }``
-    argument, mirroring JSON:API/REST's own equality filters. A field that is not a column the role
-    can read raises :class:`FilterError` (``_readable_filter_fields``)."""
+    argument, mirroring JSON:API/REST's own equality filters. The filter is checked exactly as
+    ``Query{Type}``'s is (``_checked_filter``; raises :class:`FilterError`)."""
     meta = _find_table_meta(ctx, type_name)
     if meta is None:
         return None
     if not by_columns:
         return None
-    filter_fields = _readable_filter_fields(ctx, meta, type_name, filter_msg)
+    filter_fields = _checked_filter(ctx, meta, type_name, filter_msg)
     gb_field = _group_by_field_name(meta.field_name)
     by_arg = "[" + ", ".join(apply_gql_name(c) for c in by_columns) + "]"
     agg_selection = _agg_fields_selection(ctx, meta.table_id, funcs, columns)

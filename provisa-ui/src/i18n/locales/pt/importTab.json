@@ -11,9 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "Converter e pré-visualizar",
     "domainMap": "Mapeamento de domínios",
-    "domainMapHelp": "Cada esquema (v2) ou subgrafo (DDN) encontrado no envio e o domínio Provisa em que suas tabelas ficam. Altere um nome e converta novamente.",
+    "domainMapHelp": "Cada esquema (v2), subgrafo (DDN) ou esquema remoto encontrado no upload, e o domínio do Provisa em que suas tabelas são gravadas. Escolha um domínio existente ou digite um novo nome e converta novamente.",
     "domainTo": "Domínio para {{from}}",
-    "remap": "Converter novamente com estes domínios",
+    "remap": "Converter novamente com estas configurações",
     "summaryHeading": "O que esta importação produz",
     "count_sources": "Fontes de dados",
     "count_domains": "Domínios",
@@ -34,6 +34,14 @@
     "replace": "Substituir a camada semântica existente",
     "replaceHelp": "Exclui toda fonte de dados, tabela, papel e regra que não esteja nesta configuração. Deixe desativado para mesclar a importação ao que a organização já tem.",
     "apply": "Aplicar a esta organização",
-    "applied": "Aplicado: {{sources}} fontes de dados, {{tables}} tabelas, {{roles}} papéis."
+    "applied": "Aplicado: {{sources}} fontes de dados, {{tables}} tabelas, {{roles}} papéis.",
+    "domainNew": "novo domínio",
+    "sourceConnections": "Conexões de fonte",
+    "sourceConnectionsHelp": "A exportação nomeia seus bancos de dados por variável de ambiente, então a conexão deve ser fornecida por você. Com uma conexão acessível, a prévia lê os tipos de coluna de cada tabela a partir da fonte; sem ela, as colunas ficam sem tipo até você concluí-las abaixo.",
+    "host": "Host",
+    "port": "Porta",
+    "database": "Banco de dados",
+    "username": "Nome de usuário",
+    "password": "Senha"
   }
 }

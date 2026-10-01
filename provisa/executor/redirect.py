@@ -26,10 +26,11 @@ import threading
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import logging
 
+from provisa.core import settings_registry
 from provisa.core.operator_floor import OperatorFloorError
 from provisa.executor.result import QueryResult
 
@@ -39,8 +40,18 @@ if TYPE_CHECKING:
     from provisa.compiler.sql_gen import ColumnRef
 
 
-DEFAULT_THRESHOLD = 1000
-DEFAULT_TTL = 3600  # seconds
+# REQ-1913: the deployment's redirect settings are declared in provisa/core/settings_catalog.py.
+# DEFAULT_THRESHOLD and DEFAULT_TTL (seconds) are their declared defaults, by the names the rest
+# of the code knows them by — looked up when asked for, so importing this module does not load
+# the settings declarations.
+_DECLARED_DEFAULTS = {"DEFAULT_THRESHOLD": "redirect.threshold", "DEFAULT_TTL": "redirect.ttl"}
+
+
+def __getattr__(name: str) -> Any:
+    if name in _DECLARED_DEFAULTS:
+        return settings_registry.setting(_DECLARED_DEFAULTS[name]).default
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # REQ-1349: the bound org's `redirect` overrides. `executor` cannot import API state, so the API
 # layer installs a resolver at startup; an installed single-tenant deployment installs none and
@@ -86,37 +97,35 @@ class RedirectConfig:  # REQ-029, REQ-137, REQ-142
 
     @staticmethod
     def from_env() -> RedirectConfig:
-        import tempfile
-
         # REQ-1349: an org may narrow WHEN its own results redirect and how long the link lives —
         # enabled, threshold, ttl, default_format. WHERE they land (bucket, endpoint, credentials,
-        # region, local_dir) is the deployment's object store and is never org-overridable, so
-        # those stay read from the platform env below.
+        # region, local_dir) is the deployment's object store and is never org-overridable.
+        # REQ-1913: the deployment's value of every field is an operator setting, resolved through
+        # the registry (stored, then environment, then the declared default).
         org = _org_redirect_overrides()
-        enabled = os.environ.get("PROVISA_REDIRECT_ENABLED", "false").lower() == "true"
-        if "enabled" in org:
-            enabled = bool(org["enabled"])
+        deployment = settings_registry.value
+
+        def _own(field: str) -> Any:
+            return org[field] if field in org else deployment(f"redirect.{field}")
+
+        def _text(key: str) -> str:
+            # An unset endpoint or credential is the empty string in RedirectConfig: "no object
+            # store configured" is a state the redirect path handles (it writes to local_dir).
+            unset_or_value = deployment(key)
+            return "" if unset_or_value is None else unset_or_value
+
         return RedirectConfig(
-            enabled=enabled,
-            threshold=int(
-                org.get(
-                    "threshold", os.environ.get("PROVISA_REDIRECT_THRESHOLD", DEFAULT_THRESHOLD)
-                )
-            ),
-            bucket=os.environ.get("PROVISA_REDIRECT_BUCKET", "provisa-results"),
-            endpoint_url=os.environ.get("PROVISA_REDIRECT_ENDPOINT", ""),
-            access_key=os.environ.get("PROVISA_REDIRECT_ACCESS_KEY", ""),
-            secret_key=os.environ.get("PROVISA_REDIRECT_SECRET_KEY", ""),
-            ttl=int(org.get("ttl", os.environ.get("PROVISA_REDIRECT_TTL", DEFAULT_TTL))),
-            region=os.environ.get("PROVISA_REDIRECT_REGION", "us-east-1"),
-            default_format=org.get(
-                "default_format", os.environ.get("PROVISA_REDIRECT_FORMAT", "parquet")
-            ),
-            encrypt=os.environ.get("PROVISA_REDIRECT_ENCRYPT", "false").lower() == "true",
-            local_dir=os.environ.get(
-                "PROVISA_REDIRECT_LOCAL_DIR",
-                os.path.join(tempfile.gettempdir(), "provisa-redirect-results"),
-            ),
+            enabled=bool(_own("enabled")),
+            threshold=int(_own("threshold")),
+            bucket=deployment("redirect.bucket"),
+            endpoint_url=_text("redirect.endpoint"),
+            access_key=_text("redirect.access_key"),
+            secret_key=_text("redirect.secret_key"),
+            ttl=int(_own("ttl")),
+            region=deployment("redirect.region"),
+            default_format=_own("default_format"),
+            encrypt=deployment("redirect.encrypt"),
+            local_dir=deployment("redirect.local_dir"),
         )
 
 
@@ -682,9 +691,12 @@ _CONTENT_TYPES = {
 
 
 async def run_materialize(
-    state, physical_sql: str, delivery: Delivery
+    state, physical_sql: str, delivery: Delivery, params: list | None
 ) -> dict:  # REQ-1194, REQ-1195
     """Materialize *physical_sql* to the selected sink and return the delivery handle.
+
+    ``params`` are the statement's bound values (None when it binds none). Required, so no caller
+    can hand the engine a statement whose placeholders have nothing bound to them.
 
     Sink-tier selection rule (REQ-1195): when the engine can write the requested format natively to a
     configured object store, the engine runs a CTAS straight to object storage (REQ-1194) and the
@@ -706,7 +718,7 @@ async def run_materialize(
 
     if object_store_available:
         # Object-store tier: the engine CTAS-writes Parquet/ORC directly to S3-compatible storage.
-        ctas_result = state.federation_engine.ctas_redirect(physical_sql, fmt)
+        ctas_result = state.federation_engine.ctas_redirect(physical_sql, fmt, params)
         url = await presign_ctas_result(ctas_result["s3_prefix"], config)
         # Do NOT drop the Iceberg table here — DROP TABLE on the JDBC catalog purges S3 data files
         # immediately, invalidating the presigned URL. The background task deletes objects after TTL.

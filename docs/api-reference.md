@@ -42,12 +42,12 @@ Execute a GraphQL query or mutation. (REQ-043) [tool-verified: `provisa/api/data
 {
   "query": "{ orders(where: {region: {eq: \"us\"}}) { id amount } }",
   "variables": {},
-  "role": "admin",
+  "role": "org_admin",
   "extensions": {}
 }
 ```
 
-The `role` field is used only in dev mode (no auth). When auth is active, the authenticated user's role is used and `role` in the body is ignored.
+The request runs as its acting role: the authenticated user's role, or in dev mode (no auth) the `X-Provisa-Role` header, `org_admin` when the header is absent. The `role` field in the body does not select a role. If it is present it must equal the acting role; a different value returns `400` with code `data.role_mismatch`, naming both roles. The same rule applies to `POST /data/sql`, `POST /data/query` and `POST /query/nl`. (REQ-273) [tool-verified: `provisa/api/acting_role.py`]
 
 The `extensions` field supports the Automatic Persisted Query (APQ) protocol: (REQ-288)
 
@@ -59,7 +59,7 @@ The `extensions` field supports the Automatic Persisted Query (APQ) protocol: (R
 
 **Headers:**
 
-- `X-Provisa-Role` — override role (dev mode)
+- `X-Provisa-Role` — the role to run as (dev mode); with auth, a role request honored only when assigned to the user
 - `Accept` — response format (see Content Negotiation)
 - `Authorization` — `Bearer <token>` when auth is enabled
 - `X-Provisa-Redirect-Format` — MIME type for S3 redirect output (REQ-137)
@@ -169,7 +169,7 @@ Execute raw SQL through the Stage 2 governance pipeline. (REQ-267) [tool-verifie
 ```json
 {
   "sql": "SELECT id, amount FROM orders WHERE region = 'us'",
-  "role": "admin"
+  "role": "org_admin"
 }
 ```
 
@@ -194,7 +194,7 @@ Cypher queries can also be submitted to the Cypher-only `POST /query/cypher` end
   "query": "{ orders { id } }",
   "params": {},
   "variables": {},
-  "role": "admin"
+  "role": "org_admin"
 }
 ```
 
@@ -213,7 +213,7 @@ The endpoint wraps the **governed** SQL — the statement that actually runs und
 ```json
 {
   "sql": "SELECT id, amount FROM orders",
-  "role": "admin",
+  "role": "org_admin",
   "analyze": false
 }
 ```
@@ -271,7 +271,7 @@ Auto-generated plain REST endpoint for every registered table. The query string 
 
 - `limit` — max rows (≥ 1)
 - `offset` — skip rows (≥ 0)
-- `fields` — comma-separated column names (defaults to all scalar fields)
+- `fields` — comma-separated field names as the GraphQL schema spells them, camelCase under the default naming convention, e.g. `?fields=orderId,amount` (defaults to all scalar fields). `filter` and `orderBy` field names follow the same spelling. JSON:API takes the physical column name instead (`fields[orders]=order_id`). [tool-verified: `provisa/api/rest/generator.py:547`]
 - `filter` — JSON array of `{"field", "comparator", "value"}` filter objects
 - `orderBy` — JSON array of `{"field", "direction"}` sort objects
 
@@ -295,10 +295,11 @@ Auto-generated [JSON:API](https://jsonapi.org)-compliant endpoint for every regi
 
 **Query parameters:**
 
-- `fields[<type>]` — sparse fieldsets, e.g. `?fields[orders]=amount`
+- `fields[<type>]` — sparse fieldsets, e.g. `?fields[orders]=amount`. Names are the physical column names, e.g. `fields[orders]=order_id`, as are `filter[...]`, `sort` and the emitted attribute keys (REQ-1417). REST takes the GraphQL spelling instead (`fields=orderId`). [tool-verified: `provisa/api/jsonapi/generator.py:674`]
 - `filter[<col>]` / `filter[<col>][<op>]` — e.g. `?filter[region]=US`, `?filter[amount][gt]=100`
 - `sort` — comma-separated, `-` prefix for descending, e.g. `?sort=-created_at,amount`
 - `page[number]` / `page[size]` — pagination
+- `page[total]` — `true` counts the rows the filter matches and returns `meta.total` and `links.last`. Without it the response carries `links.self`, `links.first`, `links.prev` and `links.next` only, and the database runs no count. Any value other than `true` or `false` returns `400`. Links in a response keep the parameter. (REQ-1197) [tool-verified: `provisa/api/jsonapi/pagination.py:58`]
 - `aggregate` — comma-separated aggregate functions to run instead of row retrieval: `count`, `sum`, `avg`, `stddev`, `variance`, `min`, `max`. Use `?aggregate=count,sum` to request a subset. Aggregate responses return `data: null` with results in `meta.aggregate`. (REQ-1359) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:238`]
 - `groupBy` — comma-separated column names; used with `?aggregate=` to group results. Only columns in the table's `DistinctOnColumn` enum are valid; the server returns `400` for any column the role cannot see. (REQ-1361) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:447`]
 - `includeNodes` — `true` to include base-table scalar columns (and joined dimension scalars named in `include=`) inside each group row's `nodes` array. Required when an NL group-by query also requests dimension details. (REQ-1405)
@@ -329,10 +330,8 @@ Submit a natural-language question. The service starts an async job and returns 
 **Request body:**
 
 ```json
-{"q": "How many orders were placed last month?"}
+{"q": "How many orders were placed last month?", "role": "org_admin"}
 ```
-
-The job runs as the request's acting role: the authenticated user's role, or in dev mode (no auth) the `X-Provisa-Role` header. A `role` field in the body does not select a role. If it is present it must equal the acting role; a different value returns `400` with code `data.role_mismatch`. (REQ-273) [tool-verified: `provisa/api/acting_role.py`]
 
 Returns `{"job_id": "<id>"}`. Exceeding the per-role NL rate limit returns `429` with a `Retry-After` header. (REQ-370)
 

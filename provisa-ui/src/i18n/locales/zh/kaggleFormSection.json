@@ -1,0 +1,15 @@
+{
+  "kaggleFormSection": {
+    "tokenLabel": "Kaggle API 令牌",
+    "tokenDescription": "在数据集选择器解锁之前，会通过 Kaggle API 实时验证",
+    "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
+    "validateButton": "验证令牌",
+    "tokenValid": "令牌有效",
+    "tokenInvalid": "Kaggle API 令牌无效",
+    "datasetSearchLabel": "搜索 Kaggle 数据集",
+    "datasetSearchPlaceholder": "按名称搜索...",
+    "noDatasetsFound": "未找到数据集",
+    "selectedDataset": "已选择：{{ref}}",
+    "registerButton": "添加数据集"
+  }
+}

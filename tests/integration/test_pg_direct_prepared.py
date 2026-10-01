@@ -155,3 +155,136 @@ def test_a_stream_is_fetched_in_bounded_batches():
         assert _run(drv.execute("SELECT 3")).rows == [(3,)]  # the stream returned its connection
     finally:
         _run(drv.close())
+
+
+# -- what a DIRECT stream sends to the source (REQ-1190, amended 2026-10-01) ----------------------
+
+
+_SESSION = (
+    "SELECT statement, prepare_time::text, generic_plans + custom_plans FROM pg_prepared_statements "
+    "WHERE statement NOT LIKE '%pg_prepared_statements%' "
+    "AND statement NOT LIKE '%FROM pg_type%' "  # the driver's own one-off type-name lookup
+    "ORDER BY prepare_time"
+)
+
+
+def _session(drv: PostgreSQLDriver) -> dict[str, tuple[str, int]]:
+    """What the source holds prepared on the driver's ONE connection — the source's own record of
+    the exchange: statement text -> (when it was parsed, how many times it has been executed).
+    Every statement this driver sends goes by the extended protocol and is prepared on first use
+    (prepare_threshold=0), so a statement absent here was never sent, an unchanged ``prepare_time``
+    means no second Parse, and the execution count rises by one per Bind/Execute."""
+    return {text: (when, int(runs)) for text, when, runs in _run(drv.execute(_SESSION)).rows}
+
+
+def _drain(drv: PostgreSQLDriver, sql: str, params: list | None = None) -> list[tuple]:
+    async def _go():
+        stream = await drv.open_stream(sql, params)
+        rows: list[tuple] = []
+        try:
+            while True:
+                batch = await stream.fetch(1000)
+                if not batch:
+                    return rows
+                rows.extend(batch)
+        finally:
+            await stream.close()
+
+    return _run(_go())
+
+
+def _kinds(sent: list[tuple[str, str]]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for kind, _ in sent:
+        out[kind] = out.get(kind, 0) + 1
+    return out
+
+
+@pytest.mark.parametrize(
+    ("sql", "params", "expected"),
+    [
+        ("SELECT g FROM generate_series(1, 50) g LIMIT 3", None, [(1,), (2,), (3,)]),
+        ("SELECT g FROM generate_series(1, 50) g LIMIT $1", [2], [(1,), (2,)]),
+        ("SELECT g FROM generate_series(1, 50) g LIMIT 2 OFFSET 1", None, [(2,), (3,)]),
+    ],
+    ids=["literal-limit", "bound-limit", "limit-offset"],
+)
+def test_a_bounded_read_is_one_prepared_execute_with_no_cursor(sql, params, expected):
+    """A statement whose own trailing LIMIT fits one stream batch gains nothing from a server-side
+    cursor: it is executed directly, as the prepared statement the connection already holds. N
+    requests after the first → 0 Parse, one Bind/Execute each, and no BEGIN / DECLARE / FETCH /
+    CLOSE / COMMIT."""
+    drv = _driver(max_pool=1)
+    try:
+        assert _drain(drv, sql, params) == expected  # first use prepares the statement
+        before = _session(drv)
+        for _ in range(5):
+            assert _drain(drv, sql, params) == expected
+        after = _session(drv)
+    finally:
+        _run(drv.close())
+    assert set(after) == set(before) == {sql}  # the one statement; nothing else ever reached it
+    assert after[sql][0] == before[sql][0]  # parsed once, before these five
+    assert after[sql][1] - before[sql][1] == 5  # one Bind/Execute per request
+
+
+def test_a_bounded_read_reports_its_columns_and_types():
+    drv = _driver(max_pool=1)
+    try:
+
+        async def _go():
+            stream = await drv.open_stream("SELECT 7::int AS n, 'x'::text AS s LIMIT 1")
+            try:
+                return stream.column_names, stream.column_types, await stream.fetch(10)
+            finally:
+                await stream.close()
+
+        names, types, rows = _run(_go())
+    finally:
+        _run(drv.close())
+    assert (names, types, rows) == (["n", "s"], ["int4", "text"], [(7, "x")])
+
+
+def test_an_unbounded_read_still_streams_through_a_cursor_whose_statements_repeat():
+    """No trailing LIMIT (or one past a stream batch): the read keeps its server-side cursor and
+    its bounded batches. The cursor has ONE name per connection, so DECLARE / FETCH / CLOSE and the
+    transaction statements are the same text every time and are prepared once — a repeated stream
+    sends no Parse."""
+    drv = _driver(max_pool=1)
+    sql = "SELECT g FROM generate_series(1, 2500) g"
+    try:
+        assert len(_drain(drv, sql)) == 2500
+        before = _session(drv)
+        for _ in range(3):
+            assert len(_drain(drv, sql)) == 2500
+        after = _session(drv)
+    finally:
+        _run(drv.close())
+    assert sorted(t.split()[0] for t in before) == ["BEGIN", "CLOSE", "COMMIT", "DECLARE", "FETCH"]
+    assert set(after) == set(before)  # the same five statement texts: no per-stream cursor name
+    assert {t: w for t, (w, _) in after.items()} == {
+        t: w for t, (w, _) in before.items()
+    }  # 0 Parse
+
+
+def test_a_limit_past_one_stream_batch_keeps_the_cursor():
+    drv = _driver(max_pool=1)
+    sql = "SELECT g FROM generate_series(1, 70000) g LIMIT 70000"
+    try:
+
+        async def _sizes():
+            stream = await drv.open_stream(sql)
+            sizes = []
+            try:
+                while True:
+                    batch = await stream.fetch(1000)
+                    if not batch:
+                        return sizes
+                    sizes.append(len(batch))
+            finally:
+                await stream.close()
+
+        sizes = _run(_sizes())
+    finally:
+        _run(drv.close())
+    assert sum(sizes) == 70000 and max(sizes) <= 1000  # still bounded batches, never one 70k list

@@ -32,11 +32,16 @@ async def client():
 
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
+        async with AsyncClient(
+            # REQ-273: the header carries the role; a body role must match it.
+            transport=transport,
+            base_url="http://test",
+            headers={"X-Provisa-Role": "org_admin"},
+        ) as c:
             yield c
 
 
-QUERY = json.dumps({"query": "{ sa__orders(limit: 3) { id amount } }", "role": "admin"})
+QUERY = json.dumps({"query": "{ sa__orders(limit: 3) { id amount } }", "role": "org_admin"})
 
 
 class TestJSONDefault:

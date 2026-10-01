@@ -13,6 +13,10 @@
     "roleIdPlaceholder": "analyst",
     "capabilities": "ケイパビリティ",
     "domainAccess": "ドメインアクセス",
+    "parentRole": "継承元",
+    "parentRoleNone": "親なし",
+    "parentRoleHelp": "ロールの権限付与、カラムの可視性、RLS ルールが継承されます。テーブルに対するこのロール自身の RLS ルールは、親のものを置き換えます。",
+    "labelParentRole": "継承元:",
     "allDomains": "すべてのドメイン",
     "save": "保存",
     "cancel": "キャンセル",
@@ -51,6 +55,11 @@
     "rolePurposeTitle": "ロールの役割",
     "rolePurposeBody": "ロールは、ほかのあらゆる権限が書かれる相手となる単位です。ケイパビリティが実行できる操作を決め、ドメインアクセスがモデルのどの部分に到達できるかを決めます。行レベルのルールも各サーフェスでのアクセス検査も、人ではなくロールを指名します。つまり、誰が何を見て何をできるかは、その人が持つロールを変えることで変わります。",
     "rolePurposeAdd": "ロールは自身の上限も持ちます。毎秒リクエスト数に加え、クエリの深さ・ノード数・実行時間の上限です。これにより、到達範囲を与えつつコストを無制限にはしません。高価なクエリは、到達したはずのソースではなく、発行したロールの側で拒否されます。",
-    "rolePurposeAria": "ロールについて"
+    "rolePurposeAria": "ロールについて",
+    "applyToAction": "アクション(関数または Webhook)",
+    "action": "アクション",
+    "actionPrefix": "アクション:",
+    "loadActionsFailed": "アクションを読み込めませんでした: {{message}}",
+    "labelAction": "アクション:"
   }
 }

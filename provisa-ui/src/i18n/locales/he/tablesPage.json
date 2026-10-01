@@ -11,6 +11,8 @@
     "addViewTitle": "יצירת view חדש ב-SQL Explorer",
     "model": "+ מודל",
     "modelTitle": "מידול ישות או עובדה (סכמת כוכב / Data Vault)",
+    "reportXlsx": "חוברת עבודה",
+    "reportXlsxTitle": "הורדת המודל כגיליון אלקטרוני לסקירה — מקורות, טבלאות, עמודות, קשרים, תצוגות, מדדים, Materialized Views ומונחי מילון, כל אחד בגיליון נפרד",
     "viewErd": "הצגת ERD",
     "colSource": "מקור",
     "colDomain": "דומיין",
@@ -56,6 +58,11 @@
       "impliedDimensionTitle": "ממד משתמע — האפשרות 'הפעלת Group By' מופעלת לטבלה זו"
     },
     "derived": "נגזר",
+    "checker": {
+      "soda": "Soda",
+      "great_expectations": "Great Expectations",
+      "title": "בודק איכות נתונים — שורות הטבלה הזו הן תוצאות הרצת החוזה שלה"
+    },
     "dataProduct": "מוצר",
     "dataProductTitle": "מוצר נתונים — נכלל בייצוא provisa metadata export",
     "purposeTitle": "מה עושה רישום טבלה",

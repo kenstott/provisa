@@ -12,7 +12,6 @@
 
 # Requirements: REQ-008, REQ-018, REQ-393, REQ-413, REQ-421
 
-import os
 import re
 import time
 from dataclasses import dataclass
@@ -26,7 +25,14 @@ _SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 # coordinator is query-ready rather than masking the transient state with {} or
 # aborting. All other Trino errors (bad catalog, syntax) propagate immediately.
 _STARTING_UP = "SERVER_STARTING_UP"
-_STARTUP_TIMEOUT_SECS = float(os.environ.get("PROVISA_TRINO_READY_TIMEOUT", "120"))
+
+
+def _startup_timeout_secs() -> float:
+    from provisa.core import settings_registry  # REQ-1913: the operator setting
+
+    return settings_registry.value("engine.ready_timeout")
+
+
 _STARTUP_BACKOFF_SECS = 2.0
 
 
@@ -194,7 +200,7 @@ def _fetch_with_startup_retry(conn: TrinoConnection, sql: str) -> list:
     REQ-923: transient boot state is retried with backoff up to the ready timeout;
     every other Trino error propagates so real failures are never masked.
     """
-    deadline = time.monotonic() + _STARTUP_TIMEOUT_SECS
+    deadline = time.monotonic() + _startup_timeout_secs()
     while True:
         cur = conn.cursor()
         try:

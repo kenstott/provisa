@@ -93,34 +93,89 @@ def _wait_s(default: float) -> float:
     return default if budget is None else min(default, budget)
 
 
+# A trailing ``LIMIT n [OFFSET m]`` — the last clause of the outermost query, so it bounds the whole
+# result (a subquery's LIMIT is followed by its closing parenthesis, never by the end of the text).
+_TRAILING_LIMIT = re.compile(
+    r"\bLIMIT\s+(?:\$(\d+)|(\d+))(?:\s+OFFSET\s+(?:\$\d+|\d+))?\s*;?\s*\Z", re.IGNORECASE
+)
+# The one server-side cursor a pooled connection holds at a time. A fixed name, so DECLARE / FETCH
+# / CLOSE are the same text for every stream on the connection and are prepared once.
+_CURSOR = '"provisa_direct"'
+
+
+def _row_bound(sql: str, params: list) -> int | None:
+    """The most rows ``sql`` can return, when its own text says so: its trailing LIMIT — a literal,
+    or a bound parameter whose value is here. None when the statement states no bound."""
+    match = _TRAILING_LIMIT.search(sql)
+    if match is None:
+        return None
+    if match.group(2) is not None:
+        return int(match.group(2))
+    index = int(match.group(1)) - 1
+    if 0 <= index < len(params) and isinstance(params[index], int):
+        return params[index]
+    return None
+
+
 class _PgDirectStream(DirectResultStream):  # REQ-1190
-    """A server-side cursor on a pooled connection, inside a transaction held for the stream's life
-    and fetched in bounded batches. Closing commits the read-only transaction and returns the
-    connection to the pool. Bounds a large DIRECT scan to one batch (streaming-uniformity Defect
-    1)."""
+    """A DIRECT read handed back in bounded batches.
+
+    A statement whose own trailing LIMIT fits one stream batch (``_STREAM_BATCH_ROWS``, the most
+    any consumer pulls at once) is BOUNDED: a cursor would only add a transaction and four more
+    statements around a result that is one batch anyway, so it is executed directly — the prepared
+    statement the pooled connection already holds, one Bind/Execute — and its connection goes
+    straight back to the pool.
+
+    Anything else keeps a server-side cursor inside a transaction held for the stream's life and
+    fetched in bounded batches, so a large DIRECT scan never materializes (streaming-uniformity
+    Defect 1). The cursor has one fixed name per connection: BEGIN / DECLARE / FETCH / CLOSE /
+    COMMIT are then the same text for every stream of the same statement, and the connection's
+    prepared-statement cache applies to them as to any other statement. Closing commits the
+    read-only transaction and returns the connection to the pool."""
 
     def __init__(self, driver: PostgreSQLDriver, sql: str, params: list) -> None:
         self._driver = driver
         self._sql = sql
         self._params = params
         self._conn: psycopg.Connection[Any] | None = None
-        self._cur: psycopg.ServerCursor[Any] | None = None
         self._first: list[tuple] | None = None
         self.column_names = []
         self.column_types = None
 
     def _open(self, first_batch: int) -> None:
+        from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+
+        bound = _row_bound(self._sql, self._params)
+        if bound is not None and bound <= _STREAM_BATCH_ROWS:
+            self._open_bounded()
+        else:
+            self._open_cursor(first_batch)
+
+    def _open_bounded(self) -> None:
+        sql, args = _exec_args(self._sql, self._params)
+        with self._driver._borrow() as conn:
+            with conn.cursor() as cur:
+                with request_deadline.cancel_on_deadline(conn.cancel):
+                    cur.execute(_q(sql), args)
+                    self._first = [tuple(r) for r in cur.fetchall()] if cur.description else []
+                desc = cur.description or []
+                self.column_names = [d.name for d in desc]
+                self.column_types = self._driver._type_names(conn, [d.type_code for d in desc])
+
+    def _open_cursor(self, first_batch: int) -> None:
         pool = self._driver._require_pool()
         conn = pool.getconn(timeout=_wait_s(self._driver._ACQUIRE_TIMEOUT))
         try:
             # A server-side cursor lives inside a transaction; the connection is autocommit, so the
             # transaction is opened explicitly and committed in close().
             conn.execute(_q("BEGIN"))
-            cur = conn.cursor(name=f"provisa_direct_{id(self):x}")
-            sql, args = _exec_args(self._sql, self._params)
+            sql, args = _exec_args(
+                f"DECLARE {_CURSOR} NO SCROLL CURSOR FOR {self._sql}", self._params
+            )
             with request_deadline.cancel_on_deadline(conn.cancel):
-                cur.execute(_q(sql), args)
-                self._first = [tuple(r) for r in cur.fetchmany(first_batch)]
+                conn.execute(_q(sql), args)
+                cur = conn.execute(_q(f"FETCH FORWARD {int(first_batch)} FROM {_CURSOR}"))
+                self._first = [tuple(r) for r in cur.fetchall()]
             desc = cur.description or []
             self.column_names = [d.name for d in desc]
             self.column_types = self._driver._type_names(conn, [d.type_code for d in desc])
@@ -128,7 +183,7 @@ class _PgDirectStream(DirectResultStream):  # REQ-1190
             # putconn rolls back an open transaction and discards a broken connection.
             pool.putconn(conn)
             raise
-        self._conn, self._cur = conn, cur
+        self._conn = conn
 
     # Async only for the DirectResultStream awaitable contract; fetches synchronously in-thread.
     async def fetch(self, size: int) -> list[tuple]:
@@ -136,20 +191,21 @@ class _PgDirectStream(DirectResultStream):  # REQ-1190
             first, self._first = self._first, None
             if first:
                 return first
-        assert self._cur is not None and self._conn is not None
+        if self._conn is None:
+            return []  # a bounded read: its one batch has been handed over
         with request_deadline.cancel_on_deadline(self._conn.cancel):
-            return [tuple(r) for r in self._cur.fetchmany(size)]
+            cur = self._conn.execute(_q(f"FETCH FORWARD {int(size)} FROM {_CURSOR}"))
+            return [tuple(r) for r in cur.fetchall()]
 
     # Async only for the DirectResultStream awaitable contract; releases synchronously in-thread.
     async def close(self) -> None:
+        self._first = None
         if self._conn is None:
             return
-        conn, cur = self._conn, self._cur
-        self._conn = self._cur = self._first = None
+        conn, self._conn = self._conn, None
         pool = self._driver._require_pool()
         try:
-            assert cur is not None
-            cur.close()
+            conn.execute(_q(f"CLOSE {_CURSOR}"))
             conn.execute(_q("COMMIT"))
         finally:
             # A failed close leaves the transaction open or the connection broken: putconn rolls it

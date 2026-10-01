@@ -1,0 +1,15 @@
+{
+  "kaggleFormSection": {
+    "tokenLabel": "Токен API Kaggle",
+    "tokenDescription": "Проверяется в реальном времени через API Kaggle, прежде чем откроется выбор набора данных",
+    "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
+    "validateButton": "Проверить токен",
+    "tokenValid": "Токен действителен",
+    "tokenInvalid": "Недействительный токен API Kaggle",
+    "datasetSearchLabel": "Поиск наборов данных Kaggle",
+    "datasetSearchPlaceholder": "Поиск по имени...",
+    "noDatasetsFound": "Наборы данных не найдены",
+    "selectedDataset": "Выбрано: {{ref}}",
+    "registerButton": "Добавить набор данных"
+  }
+}

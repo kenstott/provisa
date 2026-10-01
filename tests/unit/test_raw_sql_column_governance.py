@@ -248,6 +248,7 @@ def _fake_pipeline_state(*, tables: list[dict]) -> SimpleNamespace:
         source_pools=SimpleNamespace(source_ids={SOURCE_ID}, has=lambda _: False),
         view_sql_map={},
         tables=tables,
+        federation_engine=None,  # as AppState: always present; no row_materialize table reads it
         schema_boot_id="test-boot",
         schema_version=1,
         compiled_query_cache=CompiledQueryCache(),

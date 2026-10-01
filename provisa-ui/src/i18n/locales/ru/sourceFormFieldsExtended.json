@@ -11,6 +11,7 @@
     "metadataSheetId": "ID листа метаданных",
     "metadataSheetIdPlaceholder": "ID листа с определениями таблиц",
     "endpointUrl": "URL конечной точки",
+    "defaultGraphUri": "URI графа по умолчанию",
     "namespace": "Пространство имён",
     "cacheTtlSeconds": "TTL кеша (в секундах)",
     "protoPathOrUrl": "Путь или URL proto-файла",
@@ -78,6 +79,12 @@
     "topicPrefixPlaceholder": "dbserver1 (топики: {prefix}.{schema}.{table})",
     "schemaRegistryUrlCdcPlaceholder": "пусто = JSON; укажите для Avro",
     "consumerGroupId": "ID группы потребителей (необязательно)",
-    "consumerGroupIdPlaceholder": "наследовать глобальное значение (provisa-debezium)"
+    "consumerGroupIdPlaceholder": "наследовать глобальное значение (provisa-debezium)",
+    "useSsl": "Использовать SSL/TLS",
+    "eventPath": "Путь событий (необязательно)",
+    "reconnectIntervalSeconds": "Интервал повторного подключения (секунды)",
+    "subscribePayload": "Тело подписки (JSON, необязательно)",
+    "feedUrlOverride": "URL ленты (необязательное переопределение)",
+    "pollIntervalSeconds": "Интервал опроса (секунды)"
   }
 }

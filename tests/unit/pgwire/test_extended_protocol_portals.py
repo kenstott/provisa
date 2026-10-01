@@ -50,7 +50,7 @@ def trust_state():
 
 
 def _pipeline(calls: list[str]):
-    async def _stub(sql, role_id, params=None):
+    async def _stub(sql, role_id, params=None, wire_formats=None):
         calls.append(sql)
         if "FROM t" in sql:
             return EngineResult(rows=[(i,) for i in range(5)], column_names=["n"])
@@ -128,11 +128,11 @@ def _serving(trust_state, engine: _Engine, govern_sql: str, governed: list | Non
 
     seen = governed if governed is not None else []
 
-    async def _govern(sql, role_id, params=None):
+    async def _govern(sql, role_id, params=None, wire_formats=None):
         seen.append(("govern", sql, params))
         return _engine_plan(govern_sql)
 
-    async def _plan(held, params):
+    async def _plan(held, params, wire_formats=None):
         seen.append(("plan", held[1], params))
         plan = _engine_plan(govern_sql)
         plan.exec_params = params
@@ -166,7 +166,7 @@ def _serving(trust_state, engine: _Engine, govern_sql: str, governed: list | Non
         patch("provisa.federation.query_residency.prepare_engine_residency", _resident)
     )
     stack.enter_context(
-        patch.object(ProvisaSession, "_finalize_audit", lambda self, governed, status: None)
+        patch.object(ProvisaSession, "_finalize_audit", lambda self, governed, status, **kw: None)
     )
     return stack
 

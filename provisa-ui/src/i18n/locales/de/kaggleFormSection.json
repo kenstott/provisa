@@ -1,0 +1,15 @@
+{
+  "kaggleFormSection": {
+    "tokenLabel": "Kaggle-API-Token",
+    "tokenDescription": "Wird live gegen die Kaggle-API validiert, bevor die Dataset-Auswahl freigeschaltet wird",
+    "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
+    "validateButton": "Token validieren",
+    "tokenValid": "Token gültig",
+    "tokenInvalid": "Ungültiges Kaggle-API-Token",
+    "datasetSearchLabel": "Kaggle-Datasets durchsuchen",
+    "datasetSearchPlaceholder": "Nach Name suchen...",
+    "noDatasetsFound": "Keine Datasets gefunden",
+    "selectedDataset": "Ausgewählt: {{ref}}",
+    "registerButton": "Dataset hinzufügen"
+  }
+}

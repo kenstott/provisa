@@ -15,6 +15,7 @@
     },
     "auth": {
       "authentication_required": "需要驗證",
+      "auto_join_not_offered": "該組織並未提出接納你",
       "bootstrap_claiming_disabled": "未啟用啟動宣告（bootstrap claiming）",
       "delete_account_confirm_required": "刪除帳戶是不可逆的：你的個人檔案及所有組織成員資格都會被移除，且無法復原。請在「confirm」參數重複輸入你的使用者 ID 以繼續。",
       "email_not_permitted": "你的電郵地址不獲允許加入此組織",
@@ -51,6 +52,10 @@
       "engine_not_connected": "引擎未連線",
       "grpc_source_not_registered": "gRPC 遠端數據來源「{{source_id}}」未註冊",
       "invalid_as_of": "無效的 X-Provisa-As-Of：{{error}}",
+      "invalid_filter": "filter 必須是將欄位名稱對應到值的物件",
+      "invalid_filter_field": "{{type_name}} 的 filter 欄位「{{field}}」無效",
+      "invalid_read_mask": "read_mask 必須是包含欄位路徑清單「paths」的物件",
+      "invalid_read_mask_path": "{{type_name}} 的 read_mask 路徑「{{path}}」無效",
       "missing_command_name": "缺少命令名稱",
       "missing_role_id": "缺少 role_id",
       "missing_x_provisa_role_header": "缺少 X-Provisa-Role 標頭",
@@ -155,7 +160,10 @@
       "auth_required_create": "建立組織需要驗證",
       "auth_required_leave": "離開組織需要驗證",
       "auto_join_public_domain": "auto_join 需要一條限定於您所控制網域的電郵規則——目前這條符合的是 {{domain}}。",
+      "auto_join_breadth_unacknowledged": "請仔細審閱此自動加入規則，否則可能讓你的組織以外的人加入：除了 {{domains}}，它還會接受如 {{admits}} 的地址。你無法控制的網域中的任何人，隨後都可自動加入你的組織。請確認你接受此風險後再儲存。",
       "auto_join_requires_role": "auto_join 需要 auto_join_role",
+      "auto_join_rule_taken": "另一個組織已自動接納所有符合此規則的人。兩個組織不能聲稱擁有相同的地址 — 請向對方索取邀請，或將你的規則收窄至只有你的組織使用的網域。",
+      "auto_join_rule_unbounded": "此自動加入規則沒有邊界：它會接納你無法控制的網域中的地址。請將它限定在你擁有的網域，例如 \"@acme\\\\.com$\"。",
       "cannot_delete_root": "無法刪除根組織",
       "delete_confirm_required": "刪除「{{org}}」會永久銷毀其所有數據——沒有任何人（包括平台管理員）能夠復原。請在「confirm」參數重複輸入組織 ID 以繼續。",
       "invalid_email_rule": "電郵規則無效：{{error}}",
@@ -173,7 +181,8 @@
     },
     "platform": {
       "right_required": "需要 {{right}} 能力",
-      "settings_capability_required": "需要 platform_settings 能力"
+      "settings_capability_required": "需要 platform_settings 能力",
+      "control_plane_role_required": "需要平台管理員。"
     },
     "profile": {
       "database_unavailable": "數據庫不可用",
@@ -249,7 +258,7 @@
       "source_connection_failed": "數據來源「{{source}}」：連線驗證失敗：{{error}}",
       "source_created": "數據來源「{{source}}」已建立",
       "source_deleted": "數據來源「{{source}}」已刪除",
-      "source_limit_reached": "此機構已使用 {{plan}} 方案允許的 {{limit}} 個資料來源中的 {{held}} 個。請在帳單頁面變更方案，或移除一個資料來源。",
+      "source_limit_reached": "此組織已持有其 {{plan}} 方案所允許的 {{limit}} 個數據來源中的 {{held}} 個。請在「帳單」頁面更改方案，或移除一個數據來源。",
       "source_load_protection_set": "已為數據來源「{{source}}」設定負載保護",
       "source_naming_updated": "已更新數據來源「{{source}}」的命名慣例",
       "source_no_connection": "數據來源「{{source}}」沒有作用中的連線",
@@ -297,7 +306,10 @@
       "unknown_auth_provider": "未知的驗證提供者「{{provider}}」；有效值：{{valid}}",
       "unknown_encryption_provider": "未知的加密提供者「{{provider}}」",
       "unknown_engine": "未知引擎「{{engine}}」；有效值：{{valid}}",
-      "use_domains_invalid": "use_domains 必須為 true、false 或 null"
+      "use_domains_invalid": "use_domains 必須為 true、false 或 null",
+      "invalid_value": "{{field}} 的值被拒絕。",
+      "invalid_body": "設定請求無效。",
+      "auth_required": "在設定身份驗證之前，無法變更 {{field}}。"
     },
     "setup": {
       "admin_credentials_required": "必須提供 admin_username 及 admin_password",

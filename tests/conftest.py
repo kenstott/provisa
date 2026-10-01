@@ -38,6 +38,19 @@ from tests.port_lease import lease_port, lease_ports
 # stores (POST /admin/encryption/generate-key) could never be read back.
 os.environ["PYTHON_KEYRING_BACKEND"] = "tests._memory_keyring.MemoryKeyring"
 os.environ["PROVISA_DATA_DIR"] = __import__("tempfile").mkdtemp(prefix="provisa-test-data-")
+# The same isolation for the Provisa HOME (the ops store and the MCP certificates default to it)
+# and for licensing, which persists its trial anchors and high-water mark on every server start.
+# Without this every test server — in-process or spawned — wrote ~/.provisa and the per-user
+# anchor: the maintainer's own installation. Licensing is not moved by PROVISA_HOME (that would
+# be a way to restart a trial); it has a sandbox directory, under which it still reads the real
+# trial clock but writes only the sandbox (provisa/licensing/home.py). Forced, and inherited by
+# subprocesses, for the same reasons as PROVISA_DATA_DIR. Guarded by
+# tests/unit/test_tests_do_not_write_local_dev_home.py.
+os.environ["PROVISA_HOME"] = os.environ["PROVISA_DATA_DIR"]
+os.environ["PROVISA_LICENSING_SANDBOX_DIR"] = os.path.join(
+    os.environ["PROVISA_DATA_DIR"], "licensing"
+)
+os.makedirs(os.environ["PROVISA_LICENSING_SANDBOX_DIR"], exist_ok=True)
 
 # Before ANY test module is imported: the cloud-DW e2es gate on os.environ inside module-level
 # skipif conditions evaluated at collection time, so live .env creds must be present now or those
@@ -346,8 +359,25 @@ def _allocate_itest_ports() -> None:
 # the in-process apps capture the ephemeral ports rather than the dev defaults. The
 # stack itself is only provisioned when the run actually contains integration tests
 # (pytest_collection_finish); an external stack keeps whatever it published.
+# The itest stack's own host ports, as leased above. Empty when no stack is provisioned.
+_ITEST_PORTS: dict[str, str] = {}
 if not os.environ.get("PYTEST_NO_DOCKER") and not os.environ.get("PROVISA_E2E_EXTERNAL_STACK"):
     _allocate_itest_ports()
+    _ITEST_PORTS = {name: os.environ[name] for name in _ITEST_PORT_ENV}
+
+
+def _itest_compose_env() -> dict[str, str]:
+    """The environment every itest `docker compose` command runs with: the live one, with the
+    itest stack's own ports.
+
+    Compose interpolates ``${PG_PORT}`` and friends at `up`, and the itest stack is brought up at
+    collection finish — after every conftest has been imported. An e2e session imports
+    tests/e2e/conftest.py in between, which leases ports for ITS stack and exports them under the
+    same names (the in-process app and the e2e clients read those names). Left to inherit
+    ``os.environ``, the itest postgres then published the e2e stack's port and the e2e stack
+    could not start ("Bind for 0.0.0.0:<port> failed: port is already allocated"). Both stacks
+    are needed in such a session and each keeps the ports it leased."""
+    return {**os.environ, **_ITEST_PORTS}
 
 
 # A native engine caches/lands into a materialization store, which MUST exist (the engine invariant).
@@ -531,6 +561,7 @@ class _DockerServiceManager:
         subprocess.run(
             ["docker", "compose", *_ITEST_COMPOSE_ARGS, "down", "--volumes", "--remove-orphans"],
             cwd=_REPO_ROOT,
+            env=_itest_compose_env(),
             check=False,
         )
 
@@ -542,6 +573,7 @@ class _DockerServiceManager:
             subprocess.run(
                 ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *batch],
                 cwd=_REPO_ROOT,
+                env=_itest_compose_env(),
                 check=True,
             )
 
@@ -563,6 +595,7 @@ class _DockerServiceManager:
             subprocess.run(
                 ["docker", "compose", *_ITEST_COMPOSE_ARGS, "down", "--volumes"],
                 cwd=_REPO_ROOT,
+                env=_itest_compose_env(),
                 check=False,
             )
         finally:
@@ -596,6 +629,7 @@ def _dump_service_diagnostics(services: list[str]) -> None:
         ids = subprocess.run(
             ["docker", "compose", *_ITEST_COMPOSE_ARGS, "ps", "-aq", service],
             cwd=_REPO_ROOT,
+            env=_itest_compose_env(),
             capture_output=True,
             text=True,
             check=False,
@@ -611,6 +645,7 @@ def _dump_service_diagnostics(services: list[str]) -> None:
         logs = subprocess.run(
             ["docker", "compose", *_ITEST_COMPOSE_ARGS, "logs", "--tail=200", service],
             cwd=_REPO_ROOT,
+            env=_itest_compose_env(),
             capture_output=True,
             text=True,
             check=False,
@@ -667,7 +702,7 @@ def _heavy_db_service(request):  # pyright: ignore
         # failure.
         for _attempt in range(3):
             try:
-                subprocess.run(cmd, cwd=_REPO_ROOT, check=True)
+                subprocess.run(cmd, cwd=_REPO_ROOT, env=_itest_compose_env(), check=True)
                 last_error = None
                 break
             except subprocess.CalledProcessError as exc:
@@ -690,6 +725,7 @@ def _heavy_db_service(request):  # pyright: ignore
                             *sorted(services),
                         ],
                         cwd=_REPO_ROOT,
+                        env=_itest_compose_env(),
                         check=False,
                     )
         if last_error is not None:
@@ -707,6 +743,7 @@ def _heavy_db_service(request):  # pyright: ignore
         subprocess.run(
             ["docker", "compose", *_ITEST_COMPOSE_ARGS, "rm", "-fsv", *sorted(services)],
             cwd=_REPO_ROOT,
+            env=_itest_compose_env(),
             check=False,
         )
         # After removing heavy services, ensure core services recover from any OOM pressure
@@ -716,6 +753,7 @@ def _heavy_db_service(request):  # pyright: ignore
         subprocess.run(
             ["docker", "compose", *_ITEST_COMPOSE_ARGS, "up", "-d", "--wait", *_CORE_SERVICES],
             cwd=_REPO_ROOT,
+            env=_itest_compose_env(),
             check=False,
         )
 
@@ -799,6 +837,20 @@ def _reset_login_throttle():  # pyright: ignore
     reset_login_throttle()
     yield
     reset_login_throttle()
+
+
+@pytest.fixture(autouse=True)
+def _operator_settings_do_not_cross_tests():  # pyright: ignore
+    """REQ-1913: the settings registry's bound config and the restart settings a boot froze are
+    process-wide. A test that loads a config or boots the app in-process leaves both behind, and
+    the next test's readers would answer from them. Put back what was there before the test — not
+    cleared, so an app a module- or session-scoped fixture booted keeps its settings.
+    """
+    from provisa.core import settings_registry
+
+    config, frozen = settings_registry._config, settings_registry._frozen
+    yield
+    settings_registry._config, settings_registry._frozen = config, frozen
 
 
 def _server_reachable(url: str) -> bool:

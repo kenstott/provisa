@@ -51,3 +51,49 @@ class ApiError(HTTPException):
         super().__init__(status_code=status_code, detail=message, headers=headers)
         self.code = code
         self.params = params
+
+
+class RowLevelKeyRequired(ApiError):
+    """REQ-1915: a statement read a table replicated ROW BY ROW without binding its key.
+
+    Such a table holds only the rows keyed reads have fetched, so an unfiltered read has no
+    complete answer to give: it is refused at planning, on every surface, never answered from
+    whatever rows happen to be replicated and never the trigger of a whole-table copy. ``params``
+    carry the table and its key column(s). ``str()`` is the plain message, so the wire protocols
+    that report an error as text (pgwire, Bolt, Flight, gRPC) say the same thing HTTP does."""
+
+    def __init__(self, table: str, key_columns: tuple[str, ...]) -> None:
+        key = ", ".join(key_columns)
+        quoted = ", ".join(f'"{c}"' for c in key_columns)
+        super().__init__(
+            400,
+            "data.row_level_key_required",
+            f"Table {table!r} is replicated row by row and can only be read by its key: filter "
+            f"on {quoted} with an equality or an IN list, or join it on a single column to a "
+            "relation that is filtered. An unfiltered read is not answered from a partial "
+            "replica and does not copy the table.",
+            table=table,
+            key=key,
+        )
+
+    def __str__(self) -> str:
+        return str(self.detail)
+
+
+def timeout_error(exc: TimeoutError) -> ApiError:
+    """The 504 an HTTP surface reports for a statement that timed out (REQ-1905). One that outran
+    its request timeout is ``data.query_timeout`` with the timeout, transport and setting as
+    params; any other (the server is stopping, a driver's own timeout) has no timeout to name and
+    is ``data.request_interrupted`` carrying its message."""
+    from provisa.core.request_deadline import RequestTimedOut
+
+    if isinstance(exc, RequestTimedOut):
+        return ApiError(
+            504,
+            "data.query_timeout",
+            str(exc),
+            timeout_s=f"{exc.timeout_s:g}",
+            transport=exc.transport,
+            setting=exc.setting,
+        )
+    return ApiError(504, "data.request_interrupted", str(exc), error=str(exc))

@@ -40,6 +40,8 @@
     "cardinalityWarning": "警告：如此聯結對每個父項傳回多於一列，只會使用第一個值。",
     "cancel": "取消",
     "save": "儲存",
-    "toggleDetails": "切換關係詳細資訊"
+    "toggleDetails": "切換關係詳細資訊",
+    "junctionBadge": "經由",
+    "junctionBadgeTitle": "經由 {{table}} 的聯結資料表關係"
   }
 }

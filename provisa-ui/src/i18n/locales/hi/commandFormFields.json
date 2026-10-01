@@ -31,6 +31,8 @@
     "query": "क्वेरी",
     "domain": "डोमेन",
     "selectDomain": "डोमेन चुनें...",
+    "dataProduct": "डेटा प्रोडक्ट (वैकल्पिक)",
+    "dataProductPlaceholder": "डेटा प्रोडक्ट चुनें...",
     "description": "विवरण",
     "descriptionPlaceholder": "वैकल्पिक",
     "arguments": "आर्ग्युमेंट",
@@ -46,6 +48,18 @@
     "bindingCallable": "Python कॉलेबल (module:attr)",
     "materialize": "मटीरियलाइज़ करें (admin/definer पहचान)",
     "materializeHint": "चालू: admin के रूप में चलाएँ, आउटपुट पर गवर्नेंस लागू करें। बंद: कॉलर के रूप में चलाएँ, इनपुट पर गवर्नेंस लागू करें।",
-    "argKind": "आर्ग्युमेंट प्रकार"
+    "argKind": "आर्ग्युमेंट प्रकार",
+    "colVisibleTo": "इन्हें दिखे (भूमिकाएँ, अल्पविराम से अलग; खाली = सभी)",
+    "colVisibleToPlaceholder": "analyst, org_admin",
+    "colUnmaskedTo": "इनके लिए अनमास्क (भूमिकाएँ, अल्पविराम से अलग)",
+    "colMask": "मास्क",
+    "maskNone": "कोई नहीं",
+    "maskRegex": "रेगुलर एक्सप्रेशन",
+    "maskConstant": "स्थिरांक",
+    "maskTruncate": "छोटा करें",
+    "maskPattern": "पैटर्न",
+    "maskReplace": "बदलें",
+    "maskValue": "मान",
+    "maskPrecision": "सटीकता"
   }
 }

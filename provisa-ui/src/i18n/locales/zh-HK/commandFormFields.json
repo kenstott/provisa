@@ -31,6 +31,8 @@
     "query": "查詢",
     "domain": "領域",
     "selectDomain": "選擇領域...",
+    "dataProduct": "數據產品（選填）",
+    "dataProductPlaceholder": "選擇數據產品...",
     "description": "描述",
     "descriptionPlaceholder": "選填",
     "arguments": "引數",
@@ -46,6 +48,18 @@
     "bindingCallable": "Python 可呼叫項 (module:attr)",
     "materialize": "具體化（以管理員／定義者身分）",
     "materializeHint": "開啟：以管理員身分執行，治理輸出。關閉：以呼叫者身分執行，治理輸入。",
-    "argKind": "引數種類"
+    "argKind": "引數種類",
+    "colVisibleTo": "可見對象（角色，以逗號分隔；留空 = 所有人）",
+    "colVisibleToPlaceholder": "analyst, org_admin",
+    "colUnmaskedTo": "不遮罩對象（角色，以逗號分隔）",
+    "colMask": "遮罩",
+    "maskNone": "無",
+    "maskRegex": "正規表示式",
+    "maskConstant": "常數",
+    "maskTruncate": "截斷",
+    "maskPattern": "模式",
+    "maskReplace": "取代",
+    "maskValue": "值",
+    "maskPrecision": "精度"
   }
 }

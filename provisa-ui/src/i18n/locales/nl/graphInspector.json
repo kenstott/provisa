@@ -21,6 +21,7 @@
     "graphStats": "Graafstatistieken",
     "properties": "Eigenschappen",
     "copyValue": "Waarde kopiëren",
-    "resizePanel": "Formaat van inspectiepaneel wijzigen"
+    "resizePanel": "Formaat van inspectiepaneel wijzigen",
+    "junctionTable": "via {{table}}"
   }
 }

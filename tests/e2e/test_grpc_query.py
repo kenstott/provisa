@@ -107,7 +107,7 @@ def _pipeline_patches(result, *, govern=None):
     return (
         patch(
             "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-            return_value="SELECT id, amount FROM orders",
+            return_value=("SELECT id, amount FROM orders", []),
         ),
         govern_patch,
         patch(

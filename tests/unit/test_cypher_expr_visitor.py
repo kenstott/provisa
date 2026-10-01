@@ -27,6 +27,9 @@ class _FakeCtx:
         table = obj.this if isinstance(obj, exp.Column) else obj
         return exp.column(name, table=getattr(table, "name", None), quoted=True)
 
+    def property_is_table_column(self, obj, name):
+        return True  # every property here is a plain column of the variable's table
+
     def resolve_parameter(self, name):
         return exp.Placeholder(this=name)
 

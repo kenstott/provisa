@@ -20,6 +20,7 @@
     "includeNodes": "包含節點",
     "includeFields": "包含欄位（關聯、關聯.欄或欄）",
     "aggregateFunctions": "彙總函數",
-    "selectAtLeastOneFunc": "請至少選取一個彙總函數"
+    "selectAtLeastOneFunc": "請至少選取一個彙總函數",
+    "aggregateColumns": "彙總欄位（留空 = 所有合資格欄位）"
   }
 }

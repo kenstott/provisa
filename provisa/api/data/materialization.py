@@ -61,30 +61,55 @@ def _lookup_grpc_remote_table(state, table_name: str):
     return None, None, None
 
 
+_OPENAPI_QUERIES_ATTR = "_req_1877_openapi_queries"
+
+
+def _openapi_queries(state, source_id: str, entry: dict) -> list | None:
+    """The query operations of one registered OpenAPI source, parsed once per spec entry.
+
+    Kept on ``state`` (per instance, never module-global) and answered only while the entry, its
+    spec and its operation overrides are the SAME objects the parse read — the identity rule a
+    kept plan follows (``pgwire.governed_plan``). Registration and reload replace the entry
+    (``state.openapi_specs[source_id] = {...}``); nothing edits one in place. None when the entry
+    has no spec or the spec does not parse — that is not kept, so it is tried again."""
+    from provisa.openapi.mapper import parse_spec
+
+    spec = entry.get("spec")
+    if not spec:
+        return None
+    overrides = entry.get("operation_overrides")
+    kept_by_source = getattr(state, _OPENAPI_QUERIES_ATTR, None)
+    if kept_by_source is None:
+        kept_by_source = {}
+        setattr(state, _OPENAPI_QUERIES_ATTR, kept_by_source)
+    kept = kept_by_source.get(source_id)
+    if kept is not None and kept[0] is entry and kept[1] is spec and kept[2] is overrides:
+        return kept[3]
+    try:
+        queries, _mutations = parse_spec(spec, operation_overrides=overrides)
+    except Exception:
+        return None
+    kept_by_source[source_id] = (entry, spec, overrides, queries)
+    return queries
+
+
 def _lookup_openapi_table(state, table_name: str):
     """Find an openapi query registration by its operation_id (the SQL table name).
 
     REQ-1730: unlike graphql_remote/grpc_remote (state.graphql_remote_sources/
-    grpc_remote_sources — a pre-parsed cache), openapi never had an equivalent lookup here at
-    all. Re-parses ``state.openapi_specs[source_id]["spec"]`` (already boot-safe — populated by
-    _load_openapi_specs, which reads the sources table directly, control-plane-only sources
-    included) on every call rather than adding a third parallel cache; spec parsing is cheap and
-    only runs when a query actually references an openapi table.
+    grpc_remote_sources — a pre-parsed cache), openapi had no equivalent lookup here. The
+    operations come from ``state.openapi_specs[source_id]["spec"]`` (already boot-safe — populated
+    by _load_openapi_specs, which reads the sources table directly, control-plane-only sources
+    included), parsed once per spec entry (:func:`_openapi_queries`): this runs for every table of
+    every statement the pipeline routes.
     """
     from provisa.compiler.naming import apply_sql_name as _asn
-    from provisa.openapi.mapper import parse_spec
 
     normalised = _asn(table_name)
     specs = getattr(state, "openapi_specs", {})
     for source_id, entry in specs.items():
-        spec = entry.get("spec")
-        if not spec:
-            continue
-        try:
-            queries, _mutations = parse_spec(
-                spec, operation_overrides=entry.get("operation_overrides")
-            )
-        except Exception:
+        queries = _openapi_queries(state, source_id, entry)
+        if queries is None:
             continue
         for q in queries:
             if q.operation_id == table_name or _asn(q.operation_id) == normalised:

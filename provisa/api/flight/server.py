@@ -24,8 +24,8 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Iterable, Iterator
-from typing import TYPE_CHECKING, TypeVar, cast
+from collections.abc import Callable, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import jwt
 import pyarrow as pa
@@ -43,6 +43,7 @@ from provisa.compiler.parser import parse_query
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import compile_query
 from provisa.core.connection_loop import current_connection_loop, run_on_connection_loop
+from provisa.core.limits import request_timeout_for  # REQ-1905: Flight's own request timeout
 from provisa.core.rpc_loop import hold_loop_for_stream as _hold_loop_for_stream
 from provisa.core.rpc_loop import run_rpc as _run_rpc
 from provisa.executor.formats.arrow import rows_to_arrow_table
@@ -225,6 +226,15 @@ def _parse_where_variables(sql: str) -> dict[str, int | float | str]:
 _FLIGHT_ERROR_MAX_LEN = 8000
 
 
+def _audited_arrow(plan: Any, batch_gen: Any) -> Any:
+    """A streamed result's record batches, with the statement's audit row written when the drain
+    ends (REQ-074: ``finalize_audit(defer_to_drain=True)`` + ``audit_on_drain``) — pyarrow pulls
+    them after do_get returns, so only then is the row count known."""
+    from provisa.pgwire._pipeline import audit_on_drain
+
+    return audit_on_drain(plan, batch_gen, rows_in=lambda batch: batch.num_rows)
+
+
 def _flight_error(msg: str, cause: Exception | None = None) -> flight.FlightServerError:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Wrap *msg* as a FlightServerError, capped well under gRPC's 16KB metadata-size limit.
 
@@ -284,7 +294,7 @@ class ProvisaFlightServer(
         inner = coro if ident is None else with_audit_identity(ident.user_id, ident.surface, coro)
         return run_on_connection_loop(_run_with_org(org_id, inner), timeout=timeout)
 
-    def _finalize_audit(self, plan, status_code: int) -> None:
+    def _finalize_audit(self, plan, status_code: int, *, defer_to_drain: bool = False) -> None:
         """Write the governed plan's audit row (REQ-074/REQ-1386).
 
         Flight governs on its connection loop and then drains the engine's terminal on this handler
@@ -292,7 +302,9 @@ class ProvisaFlightServer(
         ``finalize_audit`` is idempotent per plan, so a later failure cannot double-write."""
         from provisa.pgwire._pipeline import finalize_audit
 
-        self._run_on_loop(finalize_audit(plan, status_code, self._state))
+        self._run_on_loop(
+            finalize_audit(plan, status_code, self._state, defer_to_drain=defer_to_drain)
+        )
 
     def _resolve_and_bind_org(self, request: dict[str, object], identity=None):
         """Resolve the org for this ticket and bind it on this worker thread; return the reset token.
@@ -556,13 +568,12 @@ class ProvisaFlightServer(
         # dispatched loop coroutine. reset in finally below.
         _org_token = self._resolve_and_bind_org(request, identity)
         try:
-            if identity is None:
-                # Unsecured deployment: no validated principal, so nothing to attribute the
-                # statement to. Audited surfaces are the authenticated ones (see provisa.audit.context).
-                return self._do_get_inner(request, ticket)
-            from provisa.audit.context import audit_identity_scope
+            from provisa.audit.context import ANONYMOUS_USER, audit_identity_scope
 
-            with audit_identity_scope(identity.user_id, "flight"):  # REQ-074/REQ-1386
+            # REQ-074/REQ-1386: the validated principal, or — on a deployment that authenticates
+            # nobody — the anonymous one: the request is audited either way.
+            user_id = identity.user_id if identity is not None else ANONYMOUS_USER
+            with audit_identity_scope(user_id, "flight"):
                 return self._do_get_inner(request, ticket)
         finally:
             if _org_token is not None:
@@ -606,33 +617,52 @@ class ProvisaFlightServer(
             role = self._state.roles.get(role_id) or {}
             cap = (role.get("rate_limit") or {}).get("max_flight_streams")
 
-            # REQ-1905: server-wide cap, independent of and outside the per-role one above — it
-            # protects pgwire/Bolt/gRPC/GraphQL (sharing the engine and sources with Flight) from a
-            # burst of long-running Flight scans, which max_flight_streams cannot do since
-            # it only bounds one role against other Flight callers. Checked first: the global
-            # ceiling is the harder constraint, so fail fast on it before touching role state.
-            global_cap = getattr(self._state, "flight_global_cap", None)
-            global_key = "rl:flight:global"
-            if limiter and global_cap:
-                ok = run_on_connection_loop(limiter.acquire(global_key, global_cap))
-                if not ok:
-                    raise _flight_error("max concurrent Arrow Flight streams reached (server-wide)")
+            # REQ-1905: ONE deadline covers the whole ticket — the wait for a stream slot, the
+            # execution and the stream that pyarrow pulls after this returns
+            # (provisa/api/flight/deadline.py): the server's request_timeout, as on every other
+            # transport. The server-wide stream slot itself is taken further in, where the engine
+            # or a source is actually reached (see _acquire_stream_slot): after the response-cache
+            # check, and held until the stream is drained.
+            from provisa.api.flight.deadline import FlightDeadlineExceeded, request_budget
+
             try:
-                if limiter and cap:
-                    key = f"rl:flight:{role_id}"
-                    ok = run_on_connection_loop(limiter.acquire(key, cap))
-                    if not ok:
-                        raise _flight_error("max concurrent Arrow Flight streams reached")
-                    try:
-                        return self._execute_query(request)
-                    finally:
-                        run_on_connection_loop(limiter.release(key))
-                return self._execute_query(request)
-            finally:
-                if limiter and global_cap:
-                    run_on_connection_loop(limiter.release(global_key))
+                with request_budget(request_timeout_for("flight")):
+                    return self._execute_with_role_cap(request, limiter, role_id, cap)
+            except FlightDeadlineExceeded as exc:
+                raise _flight_error(str(exc), exc) from exc
 
         return self._do_get_catalog(ticket)
+
+    def _acquire_stream_slot(self) -> Callable[[], None]:  # REQ-1905
+        """Take one of this worker's Flight stream slots, waiting for it within the request's
+        deadline, and return what gives it back. Called at every point a ticket reaches the engine
+        or a source — never for a response-cache HIT — so the server-wide limit bounds what it is
+        there to protect: the engine and sources the other transports share with Flight. Refused,
+        with an error naming the limit, only when no slot frees within the deadline."""
+        global_cap = getattr(self._state, "flight_global_cap", None)
+        if not global_cap:
+            return lambda: None
+        from provisa.api.flight.stream_slots import StreamLimitTimeout, slots_for
+
+        try:
+            return slots_for(global_cap).acquire(request_timeout_for("flight"))
+        except StreamLimitTimeout as exc:
+            raise _flight_error(str(exc), exc) from exc
+
+    def _execute_with_role_cap(  # REQ-369
+        self, request: dict[str, object], limiter: object | None, role_id: str, cap: int | None
+    ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Execute the query ticket under the role's own ``max_flight_streams`` gate, if any."""
+        if limiter and cap:
+            key = f"rl:flight:{role_id}"
+            ok = run_on_connection_loop(limiter.acquire(key, cap))  # type: ignore[attr-defined]
+            if not ok:
+                raise _flight_error("max concurrent Arrow Flight streams reached")
+            try:
+                return self._execute_query(request)
+            finally:
+                run_on_connection_loop(limiter.release(key))  # type: ignore[attr-defined]
+        return self._execute_query(request)
 
     def do_action(  # REQ-608
         self,
@@ -779,7 +809,6 @@ class ProvisaFlightServer(
         self, request: dict[str, object]
     ) -> flight.RecordBatchStream:  # REQ-345, REQ-347, REQ-352  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute a Cypher query ticket and return Arrow record batches."""
-        from provisa.cypher.assembler import assemble_rows, to_serializable
         from provisa.cypher.graph_rewriter import apply_graph_rewrites
         from provisa.cypher.label_map import CypherLabelMap
         from provisa.cypher.params import (
@@ -808,36 +837,71 @@ class ProvisaFlightServer(
 
         ctx = self._state.contexts[role_id]
 
-        try:
-            ast = parse_cypher(query_text)
-        except CypherParseError as exc:
-            raise _flight_error(f"Cypher parse error: {exc}", exc) from exc
+        # REQ-1877: a statement this role already translated under this schema generation is not
+        # parsed or translated again — only its values are bound.
+        from provisa.api.rest.cypher_plan import (
+            CypherTranslation,
+            TranslationRequest,
+            kept_label_map,
+        )
 
-        label_map = CypherLabelMap.from_schema(ctx)
+        kept = TranslationRequest(
+            self._state,
+            role_id,
+            surface="flight",
+            domain_access=None,
+            cypher=query_text,
+            params=params,
+        )
+        translation = kept.cached()
+        if translation is None:
+            try:
+                ast = parse_cypher(query_text)
+            except CypherParseError as exc:
+                raise _flight_error(f"Cypher parse error: {exc}", exc) from exc
 
-        param_names = collect_param_names(query_text)
+            label_map = kept_label_map(
+                self._state,
+                role_id,
+                domain_access=None,
+                cross_domain=False,
+                business_view=False,
+                build=lambda: CypherLabelMap.from_schema(ctx),
+            )
+
+            param_names = collect_param_names(query_text)
+            try:
+                bind_params(param_names, params)
+            except CypherParamError as exc:
+                raise _flight_error(f"Cypher param error: {exc}", exc) from exc
+
+            try:
+                sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, params)
+            except (CypherCrossSourceError, CypherTranslateError) as exc:
+                raise _flight_error(f"Cypher translate error: {exc}", exc) from exc
+
+            sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+
+            try:
+                sql_str = sql_ast.sql(dialect="postgres")
+            except Exception as exc:
+                raise _flight_error(f"Cypher SQL render failed: {exc}", exc) from exc
+
+            from provisa.compiler.sql_rewrite import make_semantic_sql
+
+            translation = CypherTranslation(
+                semantic_sql=make_semantic_sql(sql_str, ctx),
+                ordered_params=tuple(ordered_params),
+                param_names=tuple(param_names),
+                graph_vars=graph_vars,
+            )
+            kept.record(translation)
+
+        semantic_sql, graph_vars = translation.semantic_sql, translation.graph_vars
         try:
-            bind_params(param_names, params)
+            resolved_params = translation.bind(params)
         except CypherParamError as exc:
             raise _flight_error(f"Cypher param error: {exc}", exc) from exc
-
-        try:
-            sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, params)
-        except (CypherCrossSourceError, CypherTranslateError) as exc:
-            raise _flight_error(f"Cypher translate error: {exc}", exc) from exc
-
-        sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
-
-        try:
-            sql_str = sql_ast.sql(dialect="postgres")
-        except Exception as exc:
-            raise _flight_error(f"Cypher SQL render failed: {exc}", exc) from exc
-
-        from provisa.compiler.sql_rewrite import make_semantic_sql
-
-        semantic_sql = make_semantic_sql(sql_str, ctx)
-
-        resolved_params = [params.get(name) for name in ordered_params]
 
         try:
             plan = self._run_on_loop(
@@ -848,6 +912,9 @@ class ProvisaFlightServer(
                     state=self._state,
                     # REQ-544: the Cypher request's own `// @provisa cache` opt-in.
                     cache_hint=cache_hint_for("cypher", query_text),
+                    # REQ-1897: an opted-in read is looked up in the response cache before it
+                    # is routed; a Route.CACHE plan has no engine SQL and is served below.
+                    serve_cached=True,
                 )
             )
         except PermissionError as exc:
@@ -859,12 +926,29 @@ class ProvisaFlightServer(
         if engine is None:
             raise _flight_error("Federation engine not connected")
 
-        physical_sql = plan.physical_sql
-        if physical_sql is None:
-            raise _flight_error(f"Route {plan.route!r} is not supported for Cypher via Flight")
         require_governed_plan(
             plan
         )  # REQ-1176: verify at the last moment, before the engine executes
+        physical_sql = plan.physical_sql
+        if physical_sql is None:
+            # A statement the router did not send to the engine (DIRECT: one reachable source,
+            # or CACHE: answered before routing) carries no engine-physical SQL. Cypher
+            # assembles a buffered row result, so it runs through the pipeline terminal every
+            # buffered surface reaches — response cache, audit, egress cap and the source's own
+            # driver included, in one loop dispatch.
+            from provisa.pgwire._pipeline import _execute_plan
+
+            # REQ-1905: the pipeline terminal checks the response cache inside itself, so the
+            # slot is taken around the whole call here (a HIT holds one for the lookup only).
+            _release_slot = self._acquire_stream_slot()
+            try:
+                direct = self._run_on_loop(_execute_plan(plan, self._state))
+            finally:
+                _release_slot()
+            return self._cypher_stream(
+                [dict(zip(direct.column_names, row, strict=False)) for row in direct.rows],
+                graph_vars,
+            )
         # REQ-1661: this govern-then-execute terminal never reaches _execute_plan, so its own
         # ensure_resident call is the ONLY place a MATERIALIZED source this plan reads gets landed
         # before the engine executes — mirrors the identical ENGINE-route bypass fixes in
@@ -886,6 +970,8 @@ class ProvisaFlightServer(
         if cached is not None:
             raw_rows = [dict(zip(cached.column_names, row, strict=False)) for row in cached.rows]
         else:
+            # REQ-1905: a MISS reaches the engine — hold a stream slot for the read.
+            _release_slot = self._acquire_stream_slot()
             try:
                 # REQ-1882: the sync engine terminal runs on this handler thread (not a raw cursor,
                 # and not a second thread).
@@ -901,7 +987,19 @@ class ProvisaFlightServer(
             except Exception:
                 self._finalize_audit(plan, 500)  # REQ-074/REQ-1386
                 raise
+            finally:
+                _release_slot()
+            plan.row_count = len(raw_rows)
             self._finalize_audit(plan, 200)  # REQ-074/REQ-1386
+
+        return self._cypher_stream(raw_rows, graph_vars)
+
+    @staticmethod
+    def _cypher_stream(
+        raw_rows: list[dict[str, object]], graph_vars: dict[str, Any]
+    ) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Assemble a Cypher result's rows into graph values and return them as an Arrow stream."""
+        from provisa.cypher.assembler import assemble_rows, to_serializable
 
         assembled = assemble_rows(raw_rows, graph_vars)
         serialized = [to_serializable(r) for r in assembled]
@@ -970,7 +1068,10 @@ class ProvisaFlightServer(
         except Exception:
             text = None
         meta = pa.py_buffer(text.replace("\n", " ").encode("utf-8")) if text else None
-        counted = _metered_batches(batch_gen)
+        # REQ-1905: the batches are pulled after do_get returns; they stay under its deadline.
+        from provisa.api.flight.deadline import stream_within_deadline
+
+        counted = _metered_batches(stream_within_deadline(batch_gen))
 
         def _gen():
             first = True
@@ -1002,7 +1103,11 @@ class ProvisaFlightServer(
         # (govern_batch_final_plan_with_fn, matching pgwire's govern_pgwire_plan pattern), cutting
         # this from two _run_on_loop dispatches to one.
         try:
-            result = self._run_on_loop(govern_batch_final_plan_with_fn(sql, role_id, self._state))
+            # REQ-1897: this terminal serves a Route.CACHE plan (below), so an opted-in read is
+            # looked up in the response cache before it is routed.
+            result = self._run_on_loop(
+                govern_batch_final_plan_with_fn(sql, role_id, self._state, serve_cached=True)
+            )
         except PermissionError as exc:
             raise _flight_error(str(exc), exc) from exc
         except ValueError as exc:
@@ -1023,6 +1128,14 @@ class ProvisaFlightServer(
         # REQ-074/REQ-1386: this govern-then-stream terminal never reaches _execute_plan, so the
         # audit row is written here — once the terminal is established, or on the way out.
         try:
+            if plan.route == Route.CACHE:
+                # REQ-1897: answered from the response cache before routing — nothing was lowered,
+                # routed or landed. Served as the Arrow table Flight streams (an arrow_ipc entry
+                # verbatim, a rows entry converted losslessly); the hit is audited in the read.
+                from provisa.pgwire._pipeline import check_response_cache_arrow
+
+                table = self._run_on_loop(check_response_cache_arrow(plan, self._state))
+                return self._license_stream(table, role_id)  # REQ-1137
             if plan.route == Route.ENGINE:
                 assert plan.physical_sql is not None
                 # REQ-1661: this govern-then-stream terminal never reaches _execute_plan (see the
@@ -1035,7 +1148,9 @@ class ProvisaFlightServer(
                 cached_table, arrow_schema, batch_gen = self._engine_arrow_through_cache(plan, [])
                 if cached_table is not None:
                     return self._license_stream(cached_table, role_id)  # REQ-1137
-                self._finalize_audit(plan, 200)
+                # The stream is drained after do_get returns: the row is written when it ends.
+                self._finalize_audit(plan, 200, defer_to_drain=True)
+                batch_gen = _audited_arrow(plan, batch_gen)
                 return self._license_stream_gen(arrow_schema, batch_gen, role_id)  # REQ-1137
             elif plan.route == Route.DIRECT:
                 if self._state.source_pools.has(
@@ -1050,22 +1165,42 @@ class ProvisaFlightServer(
                     # REQ-1897: a decoded HIT is served through the same rows->Arrow adapter the
                     # live stream uses (same path shape); a MISS streams the source teed into
                     # the raw-SQL cache, stored on this RPC's held loop when the drain ends.
-                    stream = serve_stream_through_cache(
-                        plan,
-                        self._state,
-                        run=self._run_on_loop,
-                        check_rows=True,
-                        passthrough=None,
-                        open_rows=lambda: self._state.federation_engine.execute_native_stream(
+                    # REQ-1905: opening the source's cursor (a cache MISS) takes a stream slot,
+                    # held until the stream is drained.
+                    from provisa.api.flight.stream_slots import SlotHeldBatches
+
+                    _slot_releases: list[Callable[[], None]] = []
+
+                    def _open_rows():
+                        _slot_releases.append(self._acquire_stream_slot())
+                        return self._state.federation_engine.execute_native_stream(
                             self._state.source_pools,
                             plan.source_id,
                             plan.sql,
                             plan.exec_params or [],
                             run=current_connection_loop().run,
-                        ),
-                    )
-                    arrow_schema, batch_gen = arrow_batches_from_rows(stream)
-                    self._finalize_audit(plan, 200)
+                        )
+
+                    def _release_slot() -> None:
+                        for _release in _slot_releases:
+                            _release()
+
+                    try:
+                        stream = serve_stream_through_cache(
+                            plan,
+                            self._state,
+                            run=self._run_on_loop,
+                            check_rows=True,
+                            passthrough=None,
+                            open_rows=_open_rows,
+                        )
+                        arrow_schema, batch_gen = arrow_batches_from_rows(stream)
+                    except BaseException:
+                        _release_slot()
+                        raise
+                    batch_gen = SlotHeldBatches(_release_slot, batch_gen)
+                    self._finalize_audit(plan, 200, defer_to_drain=True)
+                    batch_gen = _audited_arrow(plan, batch_gen)
                     # REQ-1882: the cursor is pumped on this RPC's loop as pyarrow drains the
                     # stream after do_get returns, so the stream holds the loop until it ends.
                     return self._license_stream_gen(
@@ -1079,12 +1214,7 @@ class ProvisaFlightServer(
                     serve_buffered_through_cache(
                         plan,
                         self._state,
-                        lambda: self._state.federation_engine.execute_native(
-                            self._state.source_pools,
-                            plan.source_id,
-                            plan.sql,
-                            plan.exec_params or [],
-                        ),
+                        lambda: self._native_read_in_slot(plan, plan.exec_params or []),
                     )
                 )
                 columns = [
@@ -1092,6 +1222,7 @@ class ProvisaFlightServer(
                     for c in result.column_names
                 ]
                 table = rows_to_arrow_table(result.rows, columns)
+                plan.row_count = len(result.rows)
                 self._finalize_audit(plan, 200)
                 return self._license_stream(table, role_id)  # REQ-1137
             else:
@@ -1099,6 +1230,17 @@ class ProvisaFlightServer(
         except Exception:
             self._finalize_audit(plan, 500)
             raise
+
+    async def _native_read_in_slot(self, plan, params: list):  # REQ-1905
+        """A buffered read of the plan's own source, holding a stream slot for the read. Called by
+        the response cache only on a MISS, so a HIT takes no slot."""
+        release = self._acquire_stream_slot()
+        try:
+            return await self._state.federation_engine.execute_native(
+                self._state.source_pools, plan.source_id, plan.sql, params
+            )
+        finally:
+            release()
 
     def _engine_arrow_through_cache(self, plan, params: list):
         """The ENGINE route's Arrow terminal through the raw-SQL response cache (REQ-1897):
@@ -1123,12 +1265,22 @@ class ProvisaFlightServer(
         cached_table = self._run_on_loop(_hit_or_prepare())
         if cached_table is not None:
             return cached_table, None, None
+        # REQ-1905: a MISS reaches the engine — take a stream slot now, and hold it until the
+        # lazy stream below is drained (pyarrow pulls it after do_get has returned).
+        from provisa.api.flight.stream_slots import SlotHeldBatches
+
+        release = self._acquire_stream_slot()
         try:
             arrow_schema, batch_gen = self._state.federation_engine.execute_engine_stream(
                 plan.physical_sql, params
             )
         except RuntimeError as exc:
+            release()
             raise _flight_error(str(exc), exc) from exc
+        except BaseException:
+            release()
+            raise
+        batch_gen = SlotHeldBatches(release, batch_gen)
         tee = response_cache_tee(plan, self._state, run=run_on_connection_loop)
         if tee is not None:
             batch_gen = _hold_loop_for_stream(tee.arrow(arrow_schema, batch_gen))
@@ -1173,15 +1325,13 @@ class ProvisaFlightServer(
                     serve_buffered_through_cache(
                         plan,
                         self._state,
-                        lambda: self._state.federation_engine.execute_native(
-                            self._state.source_pools,
-                            plan.source_id,
-                            plan.sql,
-                            plan.exec_params or compiled.params,
+                        lambda: self._native_read_in_slot(
+                            plan, plan.exec_params or compiled.params
                         ),
                     )
                 )
                 table = rows_to_arrow_table(result.rows, compiled.columns)
+                plan.row_count = len(result.rows)
                 self._finalize_audit(plan, 200)
                 return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
@@ -1192,8 +1342,12 @@ class ProvisaFlightServer(
             )
             if cached_table is not None:
                 return flight.RecordBatchStream(cached_table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-            self._finalize_audit(plan, 200)
-            return flight.GeneratorStream(arrow_schema, batch_gen)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            self._finalize_audit(plan, 200, defer_to_drain=True)
+            batch_gen = _audited_arrow(plan, batch_gen)
+            # REQ-1905: pulled after do_get returns; the stream stays under its deadline.
+            from provisa.api.flight.deadline import stream_within_deadline
+
+            return flight.GeneratorStream(arrow_schema, stream_within_deadline(batch_gen))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         except Exception:
             self._finalize_audit(plan, 500)
             raise

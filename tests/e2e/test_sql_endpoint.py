@@ -23,7 +23,12 @@ async def client():
 
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
+        async with AsyncClient(
+            # REQ-273: the header carries the role; a body role must match it.
+            transport=transport,
+            base_url="http://test",
+            headers={"X-Provisa-Role": "org_admin"},
+        ) as c:
             yield c
 
 
@@ -31,14 +36,14 @@ class TestSQLEndpoint:
     async def test_sql_returns_200(self, client):
         resp = await client.post(
             "/data/sql",
-            json={"sql": "SELECT id, amount FROM orders", "role": "admin"},
+            json={"sql": "SELECT id, amount FROM orders", "role": "org_admin"},
         )
         assert resp.status_code == 200
 
     async def test_sql_returns_data(self, client):
         resp = await client.post(
             "/data/sql",
-            json={"sql": "SELECT id, amount FROM orders", "role": "admin"},
+            json={"sql": "SELECT id, amount FROM orders", "role": "org_admin"},
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -47,8 +52,8 @@ class TestSQLEndpoint:
     async def test_sql_invalid_role_rejected(self, client):
         # Dev mode resolves the role from the x-provisa-role header (REQ-273/535); an
         # unknown role is default-denied by the rate-limit middleware (403) before the
-        # endpoint runs (REQ-369/371). Passing the role in the body is ignored — the
-        # unsecured middleware sets state.role (default admin) which takes precedence.
+        # endpoint runs (REQ-369/371). The header is the role carrier; a body role that
+        # differs from it is refused (REQ-273).
         resp = await client.post(
             "/data/sql",
             json={"sql": "SELECT 1"},

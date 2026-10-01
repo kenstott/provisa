@@ -210,6 +210,8 @@ class TestFlightSqlDispatchHopCount:
             stamp="governed",
             response_cacheable=False,  # REQ-1897: the cache read folds into execute's dispatch
             cache_opt_in=False,
+            cache_hit=None,  # as _Plan: not answered before routing
+            cache_missed=(),
         )
         monkeypatch.setattr(
             _pipeline, "govern_batch_final_plan_with_fn", AsyncMock(return_value=plan)
@@ -246,6 +248,7 @@ class TestFlightSqlDispatchHopCount:
             pk_bounds=[],
             exec_params=None,
             stamp="governed",
+            audit_deferred=None,  # as _Plan: no audit record held back for the drain
         )
         monkeypatch.setattr(
             _pipeline, "govern_batch_final_plan_with_fn", AsyncMock(return_value=plan)

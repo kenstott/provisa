@@ -44,9 +44,9 @@ import jwt
 # typo count, and a fifteen-minute lockout costs a locked-out human one coffee break while costing
 # an online guesser three orders of magnitude in throughput. REQ-1393 requires the throttle to be
 # on by default — an opt-in brake protects only the deployments that did not need protecting.
-_DEFAULT_MAX_ATTEMPTS = 5
-_DEFAULT_WINDOW_SECONDS = 300
-_DEFAULT_LOCKOUT_SECONDS = 900
+# REQ-1913: the three are operator settings (``auth.login_throttle.*``); the defaults themselves
+# are declared once, in provisa/core/settings_catalog.py.
+_FIELDS = ("max_attempts", "window_seconds", "lockout_seconds")
 
 
 class LockedOut(PermissionError):  # REQ-1393
@@ -132,12 +132,21 @@ _throttle_lock = threading.Lock()
 
 
 def _settings_from(auth_config: dict | None) -> tuple[int, int, int]:
+    """(max_attempts, window_seconds, lockout_seconds): the value stored through the settings
+    page, else this auth config's ``login_throttle`` block, else the declared default."""
+    from provisa.core import settings_registry
+
     block = (auth_config or {}).get("login_throttle") or {}
-    return (
-        int(block.get("max_attempts", _DEFAULT_MAX_ATTEMPTS)),
-        int(block.get("window_seconds", _DEFAULT_WINDOW_SECONDS)),
-        int(block.get("lockout_seconds", _DEFAULT_LOCKOUT_SECONDS)),
-    )
+
+    def _field(name: str) -> int:
+        key = f"auth.login_throttle.{name}"
+        resolved = settings_registry.resolve(key)
+        if resolved.source == "stored" or name not in block:
+            return resolved.value
+        return settings_registry.parse(settings_registry.setting(key), block[name], "config")
+
+    max_attempts, window_seconds, lockout_seconds = (_field(name) for name in _FIELDS)
+    return (max_attempts, window_seconds, lockout_seconds)
 
 
 def configure_login_throttle(auth_config: dict | None) -> LoginThrottle:
@@ -165,10 +174,11 @@ def login_throttle() -> LoginThrottle:
     global _throttle
     with _throttle_lock:
         if _throttle is None:
+            max_attempts, window_seconds, lockout_seconds = _settings_from(None)
             _throttle = LoginThrottle(
-                max_attempts=_DEFAULT_MAX_ATTEMPTS,
-                window_seconds=_DEFAULT_WINDOW_SECONDS,
-                lockout_seconds=_DEFAULT_LOCKOUT_SECONDS,
+                max_attempts=max_attempts,
+                window_seconds=window_seconds,
+                lockout_seconds=lockout_seconds,
             )
         return _throttle
 

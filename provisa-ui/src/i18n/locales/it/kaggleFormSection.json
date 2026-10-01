@@ -1,0 +1,15 @@
+{
+  "kaggleFormSection": {
+    "tokenLabel": "Token API Kaggle",
+    "tokenDescription": "Convalidato in tempo reale con l'API Kaggle prima che si sblocchi la selezione del set di dati",
+    "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
+    "validateButton": "Convalida token",
+    "tokenValid": "Token valido",
+    "tokenInvalid": "Token API Kaggle non valido",
+    "datasetSearchLabel": "Cerca set di dati Kaggle",
+    "datasetSearchPlaceholder": "Cerca per nome...",
+    "noDatasetsFound": "Nessun set di dati trovato",
+    "selectedDataset": "Selezionato: {{ref}}",
+    "registerButton": "Aggiungi set di dati"
+  }
+}

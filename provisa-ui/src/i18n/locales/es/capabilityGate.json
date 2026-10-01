@@ -1,5 +1,16 @@
 {
   "capabilityGate": {
-    "checking": "Comprobando sus credenciales…"
+    "checking": "Comprobando sus credenciales…",
+    "demonstrated": {
+      "badge": "Función de producción",
+      "explanation": "Esto forma parte del sistema de producción. Se muestra aquí para que vea lo que hace Provisa, pero no está disponible en el entorno de pruebas.",
+      "dismiss": "Entendido",
+      "purpose": {
+        "environment_management": {
+          "title": "Los entornos son una función de producción",
+          "body": "Un entorno es una copia completa y gobernada por separado de su modelo: orígenes, tablas, políticas, reglas de enmascaramiento y concesiones. Los equipos mantienen un entorno de desarrollo para cambiar el modelo, uno de staging para revisarlo y prod para servirlo, y luego hacen avanzar el cambio fusionando un entorno en el siguiente con un diff, una aprobación y un historial reversible.\n\nSu entorno de pruebas ES uno de estos entornos, creado solo para usted. Gestionarlos (crear, fusionar, desplegar, retirar) corresponde a la organización que los posee, por lo que aquí se muestra la interfaz en lugar de entregarla: puede ver qué hace, pero no actúa sobre nada."
+        }
+      }
+    }
   }
 }

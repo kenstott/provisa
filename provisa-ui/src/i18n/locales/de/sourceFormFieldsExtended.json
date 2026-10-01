@@ -11,6 +11,7 @@
     "metadataSheetId": "Metadaten-Sheet-ID",
     "metadataSheetIdPlaceholder": "Sheet-ID für Tabellendefinitionen",
     "endpointUrl": "Endpunkt-URL",
+    "defaultGraphUri": "Standard-Graph-URI",
     "namespace": "Namespace",
     "cacheTtlSeconds": "Cache-TTL (Sekunden)",
     "protoPathOrUrl": "Proto-Pfad oder URL",
@@ -78,6 +79,12 @@
     "topicPrefixPlaceholder": "dbserver1 (Topics: {prefix}.{schema}.{table})",
     "schemaRegistryUrlCdcPlaceholder": "leer = JSON; für Avro setzen",
     "consumerGroupId": "Consumer-Group-ID (optional)",
-    "consumerGroupIdPlaceholder": "global übernehmen (provisa-debezium)"
+    "consumerGroupIdPlaceholder": "global übernehmen (provisa-debezium)",
+    "useSsl": "SSL/TLS verwenden",
+    "eventPath": "Ereignispfad (optional)",
+    "reconnectIntervalSeconds": "Wiederverbindungsintervall (Sekunden)",
+    "subscribePayload": "Subscribe-Payload (JSON, optional)",
+    "feedUrlOverride": "Feed-URL (optionale Überschreibung)",
+    "pollIntervalSeconds": "Abfrageintervall (Sekunden)"
   }
 }

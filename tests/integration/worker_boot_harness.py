@@ -52,7 +52,9 @@ _PHASE_RE = re.compile(
     r"pid=(?P<pid>\d+)"
 )
 _READY_RE = re.compile(r"startup phase worker\s+ready pid=(\d+)")
-_TRANSPORTS = ("http", "pgwire", "flight", "grpc", "bolt", "mcp")
+_TRANSPORTS = ("http", "pgwire", "flight", "grpc", "bolt", "mcp", "airport")
+# A direct do_get ticket, as Flight clients send it: the two rows create_database() seeds.
+FLIGHT_QUERY = "SELECT id, region FROM sales.orders"
 
 
 def _config(pg_host: str, pg_port: int, database: str) -> dict:
@@ -78,8 +80,16 @@ def _config(pg_host: str, pg_port: int, database: str) -> dict:
                 "schema": "public",
                 "table": "orders",
                 "columns": [
-                    {"name": "id", "data_type": "integer", "visible_to": ["org_admin"]},
-                    {"name": "region", "data_type": "varchar", "visible_to": ["org_admin"]},
+                    {
+                        "name": "id",
+                        "data_type": "integer",
+                        "visible_to": ["org_admin", "analyst"],
+                    },
+                    {
+                        "name": "region",
+                        "data_type": "varchar",
+                        "visible_to": ["org_admin", "analyst"],
+                    },
                 ],
             }
         ],
@@ -88,7 +98,9 @@ def _config(pg_host: str, pg_port: int, database: str) -> dict:
                 "id": "org_admin",
                 "capabilities": ["query_development", "full_results"],
                 "domain_access": ["*"],
-            }
+            },
+            # No full_results: the default row limit applies to this role's queries.
+            {"id": "analyst", "capabilities": ["query_development"], "domain_access": ["*"]},
         ],
     }
 
@@ -109,8 +121,17 @@ class WorkerBoot:
         redirect_endpoint: str | None = None,
         database: str | None = None,
         data_dir: str | None = None,
+        extra_config: dict | None = None,
+        env: dict[str, str] | None = None,
+        per_worker_http: bool = False,
     ) -> None:
         self.workers = workers
+        # Launch as start-ui-install.sh does for several workers on Linux: uvicorn's supervisor
+        # on a unix socket, each worker on its own SO_REUSEPORT socket on the HTTP port.
+        self._per_worker_http = per_worker_http
+        self._extra_config = extra_config or {}
+        # Extra environment for the server, applied last.
+        self._extra_env = dict(env or {})
         self._pg = (pg_host, pg_port, pg_user, pg_password)
         self._base = f"postgresql+psycopg://{pg_user}:{pg_password}@{pg_host}:{pg_port}"
         self._admin_url = f"{self._base}/{admin_database}"
@@ -121,14 +142,10 @@ class WorkerBoot:
         self._engine = engine
         self._owns_data_dir = data_dir is None
         self.data_dir = data_dir or tempfile.mkdtemp(prefix="provisa-wboot-")
-        # Flight is a POOL of ports (base, base+1, ... one per worker), so it takes the last
-        # `workers` leased ports and nothing else is given a number inside that run.
-        others = [name for name in _TRANSPORTS if name != "flight"]
-        ports = lease_ports(len(others) + 1 + workers)
-        self.ports = dict(zip(others, ports))
+        ports = lease_ports(len(_TRANSPORTS) + 1)
+        self.ports = dict(zip(_TRANSPORTS, ports))
         # Nothing listens here: the redirect endpoint a deployment configures but does not run.
-        self._dead_port = ports[len(others)]
-        self.ports["flight"] = ports[len(others) + 1]
+        self._dead_port = ports[-1]
         self._redirect_endpoint = redirect_endpoint
         self.log_path = Path(self.data_dir) / f"backend-{uuid.uuid4().hex[:6]}.log"
         self._proc: subprocess.Popen | None = None
@@ -158,7 +175,9 @@ class WorkerBoot:
     def start(self) -> None:
         host, port, user, password = self._pg
         cfg_path = Path(self.data_dir) / "provisa.yaml"
-        cfg_path.write_text(yaml.safe_dump(_config(host, port, self.database)))
+        cfg_path.write_text(
+            yaml.safe_dump({**_config(host, port, self.database), **self._extra_config})
+        )
         redirect = self._redirect_endpoint or f"http://127.0.0.1:{self._dead_port}"
         env = {
             **os.environ,
@@ -178,6 +197,9 @@ class WorkerBoot:
             "PROVISA_REDIS_EMBEDDED": "1",
             "PROVISA_DATA_DIR": self.data_dir,
             "PROVISA_HOME": self.data_dir,
+            # Licensing writes here, not to the user's ~/.provisa (provisa/licensing/home.py) —
+            # also when this harness is run as a script, outside the test session's own sandbox.
+            "PROVISA_LICENSING_SANDBOX_DIR": os.path.join(self.data_dir, "licensing"),
             "PROVISA_MATERIALIZE_URL": f"duckdb:///{self.data_dir}/store.duckdb",
             "PROVISA_REDIRECT_ENABLED": "true",
             "PROVISA_REDIRECT_ENDPOINT": redirect,
@@ -193,7 +215,14 @@ class WorkerBoot:
             "PROVISA_BOLT_PORT": str(self.ports["bolt"]),
             "PROVISA_MCP_PORT": str(self.ports["mcp"]),
             "PROVISA_MCP_HOST": "127.0.0.1",
+            "PROVISA_AIRPORT_PORT": str(self.ports["airport"]),
             "OTEL_SDK_DISABLED": "true",
+            **(
+                {"PROVISA_HTTP_LISTEN": f"127.0.0.1:{self.ports['http']}"}
+                if self._per_worker_http
+                else {}
+            ),
+            **self._extra_env,
         }
         self._log = open(self.log_path, "w")
         self._started = time.monotonic()
@@ -205,15 +234,26 @@ class WorkerBoot:
                 "main:app",
                 "--workers",
                 str(self.workers),
-                "--host",
-                "127.0.0.1",
-                f"--port={self.ports['http']}",
+                *self._bind_args(),
+                # A test pins a keep-alive connection to one worker and comes back to it later;
+                # uvicorn's default closes an idle connection after 5 s.
+                "--timeout-keep-alive",
+                "600",
+                # uvicorn's supervisor kills a worker that does not answer its ping within 5 s; on
+                # a machine other test sessions are loading, a worker's startup takes longer.
+                "--timeout-worker-healthcheck",
+                "120",
             ],
             cwd=str(_REPO_ROOT),
             env=env,
             stdout=self._log,
             stderr=subprocess.STDOUT,
         )
+
+    def _bind_args(self) -> list[str]:
+        if self._per_worker_http:
+            return ["--uds", str(Path(self.data_dir) / "sup.sock")]
+        return ["--host", "127.0.0.1", f"--port={self.ports['http']}"]
 
     def stop(self) -> None:
         if self._proc is not None:
@@ -299,6 +339,19 @@ class WorkerBoot:
         ).stdout
         return {int(line[1:]) for line in out.splitlines() if line.startswith("p")}
 
+    def wildcard_listening_ports(self, pid: int) -> set[int]:
+        """Ports ``pid`` LISTENs on for every interface (not loopback-only)."""
+        out = subprocess.run(
+            ["lsof", "-nP", "-a", "-p", str(pid), "-iTCP", "-sTCP:LISTEN", "-Fn"],
+            capture_output=True,
+            text=True,
+        ).stdout
+        return {
+            int(line.rsplit(":", 1)[1])
+            for line in out.splitlines()
+            if line.startswith("n") and line[1:].rsplit(":", 1)[0] in ("*", "[::]", "0.0.0.0")
+        }
+
     def accepting_pids(self, port: int, connections: int = 50) -> dict[int, int]:
         """Open ``connections`` concurrent TCP connections to ``port`` and hold them; return
         {server pid: connections it accepted}, read from the kernel's socket table."""
@@ -350,7 +403,17 @@ def _request(name: str, port: int) -> None:
 
         client = fl.connect(f"grpc://127.0.0.1:{port}")
         try:
-            list(client.list_flights(options=fl.FlightCallOptions(timeout=10)))
+            ticket = fl.Ticket(json.dumps({"query": FLIGHT_QUERY, "role": "org_admin"}).encode())
+            table = client.do_get(ticket, fl.FlightCallOptions(timeout=30)).read_all()
+            assert table.num_rows == 2, table
+        finally:
+            client.close()
+    elif name == "airport":
+        import pyarrow.flight as fl
+
+        client = fl.connect(f"grpc://127.0.0.1:{port}")
+        try:
+            client.wait_for_available(timeout=10)
         finally:
             client.close()
     elif name == "grpc":
@@ -389,7 +452,10 @@ def _request(name: str, port: int) -> None:
 
 
 def requests_served(name: str, port: int, n: int) -> tuple[int, str]:
-    """Send ``n`` concurrent real requests; return (how many were answered, first failure)."""
+    """Send ``n`` real requests, concurrently; return (how many were answered, first failure).
+
+    Flight runs 4 at a time: the server caps concurrent Flight streams (REQ-1905) and refuses the
+    rest, which is the cap working, not a listener failing."""
     from concurrent.futures import ThreadPoolExecutor
 
     def _one(_: int) -> str:
@@ -399,7 +465,7 @@ def requests_served(name: str, port: int, n: int) -> tuple[int, str]:
             return f"{type(exc).__name__}: {exc}"[:120]
         return ""
 
-    with ThreadPoolExecutor(max_workers=n) as pool:
+    with ThreadPoolExecutor(max_workers=4 if name == "flight" else n) as pool:
         failures = [f for f in pool.map(_one, range(n))]
     bad = [f for f in failures if f]
     return n - len(bad), (bad[0] if bad else "")
@@ -422,7 +488,6 @@ def _print_phase_table(boot: WorkerBoot) -> None:
 def _print_listener_table(boot: WorkerBoot, connections: int) -> None:
     workers = set(boot.worker_pids())
     print(f"\ntransport  port   listening-workers  accepting-workers ({connections} conns)  split")
-    flight_ports = [boot.ports["flight"] + i for i in range(boot.workers)]
     for name in _TRANSPORTS:
         port = boot.ports[name]
         listening = boot.listeners(port)
@@ -436,8 +501,6 @@ def _print_listener_table(boot: WorkerBoot, connections: int) -> None:
             f"{len(accepted):<28} {sorted(accepted.values(), reverse=True)} "
             f"requests answered {served}/{connections} {failure}"
         )
-    pool = {p: sorted(boot.listeners(p)) for p in flight_ports}
-    print(f"flight pool (base..base+{boot.workers - 1}): {pool}")
 
 
 def main() -> None:

@@ -15,6 +15,7 @@
     },
     "auth": {
       "authentication_required": "認証が必要です",
+      "auto_join_not_offered": "その組織はあなたの参加を受け入れていません",
       "bootstrap_claiming_disabled": "ブートストラップの取得は有効になっていません",
       "delete_account_confirm_required": "アカウントの削除は取り消せません。プロフィールとすべての組織メンバーシップが削除され、復元できません。続行するには「confirm」パラメータにユーザーIDを再入力してください。",
       "email_not_permitted": "このメールアドレスではこの組織に参加できません",
@@ -51,6 +52,10 @@
       "engine_not_connected": "エンジンが接続されていません",
       "grpc_source_not_registered": "gRPC リモートソース「{{source_id}}」が登録されていません",
       "invalid_as_of": "X-Provisa-As-Of が無効です：{{error}}",
+      "invalid_filter": "filter はフィールド名を値に対応付けるオブジェクトである必要があります",
+      "invalid_filter_field": "{{type_name}} の filter フィールド「{{field}}」が無効です",
+      "invalid_read_mask": "read_mask はフィールドパスのリスト「paths」を持つオブジェクトである必要があります",
+      "invalid_read_mask_path": "{{type_name}} の read_mask パス「{{path}}」が無効です",
       "missing_command_name": "コマンド名がありません",
       "missing_role_id": "role_id がありません",
       "missing_x_provisa_role_header": "X-Provisa-Role ヘッダーがありません",
@@ -155,7 +160,10 @@
       "auth_required_create": "組織を作成するには認証が必要です",
       "auth_required_leave": "組織を離れるには認証が必要です",
       "auto_join_public_domain": "auto_join には、自分が管理するドメインに限定したメール規則が必要です。この規則は {{domain}} に一致します。",
+      "auto_join_breadth_unacknowledged": "この自動参加ルールは慎重に確認してください。組織外の人が参加できる可能性があります。{{domains}} のほか、{{admits}} などのアドレスも受け入れます。管理していないドメインの誰でも、組織に自動的に参加できてしまいます。保存するには、このリスクを了承することを確認してください。",
       "auto_join_requires_role": "auto_join には auto_join_role が必要です",
+      "auto_join_rule_taken": "このルールに一致する全員を、別の組織がすでに自動参加の対象としています。2 つの組織が同じアドレスを要求することはできません。その組織に招待を依頼するか、自分の組織だけが使うドメインにルールを絞り込んでください。",
+      "auto_join_rule_unbounded": "この自動参加ルールには境界がありません。管理していないドメインのアドレスも受け入れてしまいます。「@acme\\\\.com$」のように、所有するドメインに固定してください。",
       "cannot_delete_root": "ルート組織は削除できません",
       "delete_confirm_required": "「{{org}}」を削除すると、そのすべてのデータが完全に破棄されます。プラットフォーム管理者を含め、誰も復元できません。続行するには「confirm」パラメータに組織IDを再入力してください。",
       "invalid_email_rule": "無効なメールルールです：{{error}}",
@@ -173,7 +181,8 @@
     },
     "platform": {
       "right_required": "{{right}} 機能が必要です",
-      "settings_capability_required": "platform_settings 機能が必要です"
+      "settings_capability_required": "platform_settings 機能が必要です",
+      "control_plane_role_required": "プラットフォーム管理者が必要です。"
     },
     "profile": {
       "database_unavailable": "データベースが利用できません",
@@ -249,7 +258,7 @@
       "source_connection_failed": "ソース「{{source}}」：接続検証に失敗しました：{{error}}",
       "source_created": "ソース「{{source}}」を作成しました",
       "source_deleted": "ソース「{{source}}」を削除しました",
-      "source_limit_reached": "この組織は {{plan}} プランで利用できる {{limit}} 件のうち {{held}} 件のデータソースを保持しています。請求ページでプランを変更するか、データソースを削除してください。",
+      "source_limit_reached": "この組織は、{{plan}} プランで利用可能な {{limit}} 個のデータソースのうち {{held}} 個を保持しています。課金ページでプランを変更するか、ソースを削除してください。",
       "source_load_protection_set": "ソース「{{source}}」に負荷保護を設定しました",
       "source_naming_updated": "ソース「{{source}}」の命名規則を更新しました",
       "source_no_connection": "ソース「{{source}}」にアクティブな接続がありません",
@@ -297,7 +306,10 @@
       "unknown_auth_provider": "不明な認証プロバイダー「{{provider}}」です。有効な値：{{valid}}",
       "unknown_encryption_provider": "不明な暗号化プロバイダー「{{provider}}」です",
       "unknown_engine": "不明なエンジン「{{engine}}」です。有効な値：{{valid}}",
-      "use_domains_invalid": "use_domains は true、false、または null である必要があります"
+      "use_domains_invalid": "use_domains は true、false、または null である必要があります",
+      "invalid_value": "{{field}} の値は拒否されました。",
+      "invalid_body": "設定リクエストが無効です。",
+      "auth_required": "認証が設定されるまで {{field}} は変更できません。"
     },
     "setup": {
       "admin_credentials_required": "admin_username と admin_password が必要です",

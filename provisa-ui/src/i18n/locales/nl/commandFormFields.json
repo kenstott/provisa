@@ -31,6 +31,8 @@
     "query": "Query",
     "domain": "Domein",
     "selectDomain": "Domein selecteren...",
+    "dataProduct": "Dataproduct (optioneel)",
+    "dataProductPlaceholder": "Dataproduct selecteren...",
     "description": "Beschrijving",
     "descriptionPlaceholder": "optioneel",
     "arguments": "Argumenten",
@@ -46,6 +48,18 @@
     "bindingCallable": "Python-callable (module:attr)",
     "materialize": "Materialiseren (admin-/definer-identiteit)",
     "materializeHint": "Aan: uitvoeren als admin, de uitvoer governen. Uit: uitvoeren als de aanroeper, de invoer governen.",
-    "argKind": "Argumentsoort"
+    "argKind": "Argumentsoort",
+    "colVisibleTo": "Zichtbaar voor (rollen, kommagescheiden; leeg = iedereen)",
+    "colVisibleToPlaceholder": "analyst, org_admin",
+    "colUnmaskedTo": "Ongemaskeerd voor (rollen, kommagescheiden)",
+    "colMask": "Masker",
+    "maskNone": "Geen",
+    "maskRegex": "Regex",
+    "maskConstant": "Constante",
+    "maskTruncate": "Afkappen",
+    "maskPattern": "Patroon",
+    "maskReplace": "Vervangen",
+    "maskValue": "Waarde",
+    "maskPrecision": "Precisie"
   }
 }

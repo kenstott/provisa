@@ -109,7 +109,9 @@ query_duration: Any = None
 def _metric_export_interval_millis() -> int:
     """How often metrics are exported: $OTEL_METRIC_EXPORT_INTERVAL (the SDK's own variable), else
     15 seconds."""
-    return int(os.environ.get("OTEL_METRIC_EXPORT_INTERVAL", 15000))
+    from provisa.core import settings_registry  # REQ-1913: declared in settings_catalog
+
+    return settings_registry.value("otel.metric_export_interval")
 
 
 # The transport a data route is reported under on the request span and in request metrics; any
@@ -188,10 +190,12 @@ def _trace_detail_sampler(sample_rate: float) -> Any:  # REQ-1910
 
 
 def _otlp_protocol(configured: str = "") -> str:
-    """Resolve the OTLP transport: OTEL_EXPORTER_OTLP_PROTOCOL, else the config's, else grpc."""
-    protocol = (
-        (os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL") or configured or "grpc").strip().lower()
-    )
+    """The OTLP transport: the one the caller resolved for its endpoint, else the operator
+    setting ``otel.protocol`` (REQ-1913: stored, then OTEL_EXPORTER_OTLP_PROTOCOL, then the
+    config's, then grpc)."""
+    from provisa.core import settings_registry
+
+    protocol = (configured or settings_registry.value("otel.protocol")).strip().lower()
     if protocol not in ("grpc", "http/protobuf"):
         raise ValueError(
             f"OTLP protocol {protocol!r} is not a transport; use 'grpc' or 'http/protobuf'"
@@ -256,6 +260,61 @@ def _make_log_exporter(endpoint: str, protocol: str = ""):
     return OTLPLogExporter(endpoint=endpoint, insecure=True)
 
 
+# The settings sources, highest precedence first.
+_SOURCE_ORDER = ("stored", "env", "config", "default")
+# What this process's exporters were last attached for: (endpoint, service name, protocol).
+_attached: "tuple[str, str, str] | None" = None
+
+
+def exporter_settings() -> "tuple[str | None, str, str]":
+    """(endpoint, service name, protocol) this deployment exports telemetry with (REQ-1913).
+
+    REQ-549: the transport belongs to whichever endpoint won. ``observability.protocol`` in the
+    config file describes the config file's endpoint (config/provisa.yaml names otlp2parquet,
+    HTTP-only); carried onto an endpoint from a higher source it would speak HTTP at whatever
+    receiver the deployment actually pointed at. So a protocol stated by a LOWER source than the
+    endpoint's is not that endpoint's, and the endpoint gets the declared default instead.
+    """
+    from provisa.core import settings_registry
+
+    endpoint = settings_registry.resolve("otel.endpoint")
+    protocol = settings_registry.resolve("otel.protocol")
+    transport = protocol.value
+    if protocol.source != "default" and _SOURCE_ORDER.index(protocol.source) > _SOURCE_ORDER.index(
+        endpoint.source
+    ):
+        transport = settings_registry.setting("otel.protocol").default
+    return endpoint.value, settings_registry.value("otel.service_name"), transport
+
+
+def apply_exporter_settings() -> None:
+    """Attach this process's exporters for the endpoint now in force, if it has changed.
+
+    THE apply step for the exporter settings: called by the worker that saves them and by every
+    other process when it learns the stored settings changed (the settings registry's
+    ``on_change``). With no endpoint there is nothing to export to.
+    """
+    global _attached
+    current = exporter_settings()
+    endpoint, service_name, protocol = current
+    if endpoint is None or current == _attached:
+        return
+    attach_otlp_exporters(endpoint, service_name, protocol)
+    _attached = (endpoint, service_name, protocol)
+
+
+def _register_exporter_settings() -> None:
+    from provisa.core import settings_registry
+
+    settings_registry.on_change(
+        ("otel.endpoint", "otel.protocol", "otel.service_name"),
+        lambda *_values: apply_exporter_settings(),
+    )
+
+
+_register_exporter_settings()
+
+
 def attach_otlp_exporters(
     endpoint: str, service_name: str = "provisa", otlp_protocol: str = ""
 ) -> None:  # REQ-302, REQ-303, REQ-549
@@ -281,7 +340,9 @@ def attach_otlp_exporters(
 
         provider = trace.get_tracer_provider()
         if hasattr(provider, "add_span_processor"):
-            _delay = int(os.environ.get("OTEL_SPAN_EXPORT_DELAY_MILLIS", 1000))
+            from provisa.core import settings_registry
+
+            _delay = settings_registry.value("otel.span_export_delay_millis")
             _cast(_SdkTracerProvider, provider).add_span_processor(
                 BatchSpanProcessor(
                     _make_span_exporter(endpoint, otlp_protocol), schedule_delay_millis=_delay
@@ -411,52 +472,56 @@ def setup_otel(
 
     _log = logging.getLogger(__name__)
     config_path = config_path_str()
-    _otel_cfg: dict = {}
+    _config: dict = {}
     try:
         # REQ-1669: includes-aware, so a wrapper config's fragments are seen.
         from provisa.core.config_loader import read_config_with_includes
 
-        _otel_cfg = read_config_with_includes(config_path).get("observability", {})
+        _config = read_config_with_includes(config_path)
     except Exception:
         pass
-    env_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
-    endpoint = env_endpoint or _otel_cfg.get("endpoint", "")
-    service_name = os.environ.get("OTEL_SERVICE_NAME") or _otel_cfg.get("service_name", "provisa")
-    # Which OTLP transport the endpoint speaks. Declared, never inferred from the URL — see
-    # _is_http_endpoint. The env var still outranks this; the config states it for deployments
-    # whose endpoint is the file's (config/provisa.yaml names otlp2parquet, which is HTTP-only).
-    # The transport belongs to whichever endpoint won. `observability.protocol` describes the
-    # CONFIG's endpoint (config/provisa.yaml names otlp2parquet, HTTP-only); carrying it onto an
-    # env endpoint would speak HTTP at whatever receiver the deployment actually pointed at.
-    otlp_protocol = "" if env_endpoint else str(_otel_cfg.get("protocol", ""))
-    sample_rate = float(_otel_cfg.get("sample_rate", 1.0))
+    _otel_cfg: dict = _config.get("observability", {}) if isinstance(_config, dict) else {}
+    # REQ-1913: the telemetry settings are operator settings, resolved by the settings registry.
+    # This runs while the app object is created — before the control plane is bound — so what is
+    # resolved here is environment, then this config file, then the declared defaults; a value
+    # stored through the settings page is applied when the process applies its stored settings
+    # (apply_exporter_settings), and the settings fixed at start are reported pending until the
+    # next start.
+    from provisa.core import settings_registry
+
+    if isinstance(_config, dict):
+        settings_registry.bind_config(_config)
+    _setting = settings_registry.value
+    # Which OTLP transport the endpoint speaks is declared, never inferred from the URL — see
+    # _is_http_endpoint — and belongs to whichever endpoint won (exporter_settings).
+    _endpoint, service_name, otlp_protocol = exporter_settings()
+    endpoint = _endpoint if _endpoint is not None else ""
+    sample_rate = _setting("otel.sample_rate")
     # REQ-1910: the process default trace detail; a request may bind its own (set_trace_detail).
-    configure_trace_detail(
-        os.environ.get("PROVISA_TRACE_DETAIL") or _otel_cfg.get("trace_detail", "normal")
-    )
-    log_level_name = os.environ.get("OTEL_LOG_LEVEL") or _otel_cfg.get("log_level", "WARNING")
-    span_export_delay_millis = int(
-        os.environ.get("OTEL_SPAN_EXPORT_DELAY_MILLIS")
-        or _otel_cfg.get("span_export_delay_millis", 1000)
-    )
-    otlp2parquet_max_age_secs = int(
-        os.environ.get("OTLP2PARQUET_MAX_AGE_SECS") or _otel_cfg.get("otlp2parquet_max_age_secs", 5)
-    )
+    configure_trace_detail(_setting("otel.trace_detail"))
+    log_level_name = _setting("otel.log_level")
+    span_export_delay_millis = _setting("otel.span_export_delay_millis")
+    otlp2parquet_max_age_secs = _setting("otel.otlp2parquet_max_age_secs")
     _internal_filter = _otel_cfg.get("telemetry_filter", {})
     _internal_redact_sql = bool(_internal_filter.get("redact_sql_literals", False))
     _internal_redact_attrs = list(_internal_filter.get("redact_attributes", []))
-    support_endpoint = os.environ.get("PROVISA_SUPPORT_OTLP_ENDPOINT") or _otel_cfg.get(
-        "support_endpoint", ""
-    )
-    _support_filter = _otel_cfg.get("support_telemetry_filter", {})
-    _support_redact_sql = bool(_support_filter.get("redact_sql_literals", True))
-    _support_redact_attrs = list(_support_filter.get("redact_attributes", []))
+    _support_endpoint = _setting("otel.support_endpoint")
+    support_endpoint = _support_endpoint if _support_endpoint is not None else ""
+    _support_redact_sql = _setting("otel.support_redact_sql_literals")
+    _support_redact_attrs = _setting("otel.support_redact_attributes")
     # REQ-1432: per-subsystem trace switches. SubsystemTracesConfig owns the names and the
     # defaults — catalog_database off, everything else on — so the config file only has to state
     # the departures from them.
     from provisa.core.models import SubsystemTracesConfig
 
-    _subsystems = SubsystemTracesConfig(**(_otel_cfg.get("subsystem_traces") or {}))
+    _subsystems = SubsystemTracesConfig(
+        **{
+            name: _setting(f"otel.subsystem_traces.{name}")
+            for name in SubsystemTracesConfig.model_fields
+        }
+    )
+    global _attached
+    _attached = (endpoint, service_name, otlp_protocol) if endpoint else None
     _write_otlp2parquet_toml(otlp2parquet_max_age_secs, config_path)
     try:
         from opentelemetry import trace

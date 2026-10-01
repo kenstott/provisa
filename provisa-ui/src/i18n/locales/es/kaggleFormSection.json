@@ -1,0 +1,15 @@
+{
+  "kaggleFormSection": {
+    "tokenLabel": "Token de API de Kaggle",
+    "tokenDescription": "Se valida en vivo contra la API de Kaggle antes de desbloquear el selector de conjuntos de datos",
+    "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
+    "validateButton": "Validar token",
+    "tokenValid": "Token válido",
+    "tokenInvalid": "Token de API de Kaggle no válido",
+    "datasetSearchLabel": "Buscar conjuntos de datos de Kaggle",
+    "datasetSearchPlaceholder": "Buscar por nombre...",
+    "noDatasetsFound": "No se encontraron conjuntos de datos",
+    "selectedDataset": "Seleccionado: {{ref}}",
+    "registerButton": "Agregar conjunto de datos"
+  }
+}

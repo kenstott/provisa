@@ -92,7 +92,7 @@ export async function fetchProviderType(): Promise<string | null> {
 // still-valid credential cannot take platform admin behind the user's back.
 export async function claimBootstrap(): Promise<boolean> {
   const res = await fetch("/auth/claim-bootstrap", { method: "POST" });
-  if (!res.ok) throw new Error(requestFailed("claim platform admin", res.status));
+  if (!res.ok) throw httpError("claim platform admin", res.status);
   const data = await res.json();
   return data.claimed === true;
 }
@@ -102,7 +102,7 @@ export async function claimBootstrap(): Promise<boolean> {
 // admin rather than discovering it afterwards. Unauthenticated, like /auth/provider-type.
 export async function fetchBootstrapStatus(): Promise<boolean> {
   const res = await fetch("/auth/bootstrap-status");
-  if (!res.ok) throw new Error(requestFailed("read bootstrap status", res.status));
+  if (!res.ok) throw httpError("read bootstrap status", res.status);
   const data = await res.json();
   return data.unclaimed === true;
 }
@@ -137,7 +137,7 @@ export interface Org {
 
 export async function fetchOrgs(): Promise<Org[]> {
   const res = await fetch(`${API_BASE}/admin/orgs`);
-  if (!res.ok) throw new Error(requestFailed("fetchOrgs", res.status));
+  if (!res.ok) throw httpError("fetchOrgs", res.status);
   return res.json();
 }
 
@@ -217,7 +217,7 @@ export interface OrgJoinSettings {
 
 export async function fetchOrgSettings(orgId: string): Promise<OrgJoinSettings> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/settings`);
-  if (!res.ok) throw new Error(requestFailed("fetchOrgSettings", res.status));
+  if (!res.ok) throw httpError("fetchOrgSettings", res.status);
   return res.json();
 }
 
@@ -253,7 +253,7 @@ export async function updateOrgSettings(
 
 export async function fetchOrgStatus(orgId: string): Promise<OrgProvisioning> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/status`);
-  if (!res.ok) throw new Error(requestFailed("fetchOrgStatus", res.status));
+  if (!res.ok) throw httpError("fetchOrgStatus", res.status);
   return res.json();
 }
 
@@ -398,7 +398,7 @@ export interface OrgMember {
 
 export async function fetchOrgMembers(orgId: string): Promise<OrgMember[]> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/members`);
-  if (!res.ok) throw new Error(requestFailed("fetchOrgMembers", res.status));
+  if (!res.ok) throw httpError("fetchOrgMembers", res.status);
   return res.json();
 }
 
@@ -408,21 +408,21 @@ export async function addOrgMember(orgId: string, userId: string): Promise<void>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ user_id: userId }),
   });
-  if (!res.ok) throw new Error(requestFailed("addOrgMember", res.status));
+  if (!res.ok) throw httpError("addOrgMember", res.status);
 }
 
 export async function removeOrgMember(orgId: string, userId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/members/${userId}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error(requestFailed("removeOrgMember", res.status));
+  if (!res.ok) throw httpError("removeOrgMember", res.status);
 }
 
 export async function fetchOrgRoles(orgId: string): Promise<Role[]> {
   const res = await fetch(`${API_BASE}/admin/roles`, {
     headers: { [ORG_HEADER]: orgId },
   });
-  if (!res.ok) throw new Error(requestFailed("fetchOrgRoles", res.status));
+  if (!res.ok) throw httpError("fetchOrgRoles", res.status);
   const rows: Array<{
     id: string;
     capabilities: string[];
@@ -449,7 +449,7 @@ export async function createOrgRole(
     headers: { "Content-Type": "application/json", [ORG_HEADER]: orgId },
     body: JSON.stringify({ id, capabilities, domain_access }),
   });
-  if (!res.ok) throw new Error(requestFailed("createOrgRole", res.status));
+  if (!res.ok) throw httpError("createOrgRole", res.status);
   return res.json();
 }
 
@@ -458,7 +458,7 @@ export async function deleteOrgRole(orgId: string, roleId: string): Promise<void
     method: "DELETE",
     headers: { [ORG_HEADER]: orgId },
   });
-  if (!res.ok) throw new Error(requestFailed("deleteOrgRole", res.status));
+  if (!res.ok) throw httpError("deleteOrgRole", res.status);
 }
 
 export async function profileTable(
@@ -493,7 +493,7 @@ export async function fetchSdl(roleId: string): Promise<string> {
   const resp = await fetch(`${API_BASE}/data/sdl`, {
     headers: { "X-Role": roleId },
   });
-  if (!resp.ok) throw new Error(requestFailed("SDL fetch", resp.status));
+  if (!resp.ok) throw httpError("SDL fetch", resp.status);
   return resp.text();
 }
 
@@ -515,13 +515,13 @@ export async function discoverRelationships(
       domain_id: domainId,
     }),
   });
-  if (!resp.ok) throw new Error(requestFailed("Discovery", resp.status));
+  if (!resp.ok) throw httpError("Discovery", resp.status);
   return resp.json();
 }
 
 export async function fetchCandidates(): Promise<unknown[]> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates`);
-  if (!resp.ok) throw new Error(requestFailed("Fetch candidates", resp.status));
+  if (!resp.ok) throw httpError("Fetch candidates", resp.status);
   return resp.json();
 }
 
@@ -531,13 +531,13 @@ export async function acceptCandidate(id: number, name?: string): Promise<unknow
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: name ?? null }),
   });
-  if (!resp.ok) throw new Error(requestFailed("Accept", resp.status));
+  if (!resp.ok) throw httpError("Accept", resp.status);
   return resp.json();
 }
 
 export async function fetchRejectedCount(): Promise<number> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/rejected/count`);
-  if (!resp.ok) throw new Error(requestFailed("Fetch rejected count", resp.status));
+  if (!resp.ok) throw httpError("Fetch rejected count", resp.status);
   const data = await resp.json();
   return data.count;
 }
@@ -546,7 +546,7 @@ export async function clearRejectedCandidates(): Promise<{ deleted: number }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/rejected`, {
     method: "DELETE",
   });
-  if (!resp.ok) throw new Error(requestFailed("Clear rejections", resp.status));
+  if (!resp.ok) throw httpError("Clear rejections", resp.status);
   return resp.json();
 }
 
@@ -556,7 +556,7 @@ export async function rejectCandidate(id: number, reason: string): Promise<void>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reason }),
   });
-  if (!resp.ok) throw new Error(requestFailed("Reject", resp.status));
+  if (!resp.ok) throw httpError("Reject", resp.status);
 }
 
 // --- Schema Discovery ---
@@ -628,7 +628,7 @@ export async function fetchTableUniqueConstraints(
 // physical type at landing.
 export async function fetchIrTypes(): Promise<string[]> {
   const resp = await fetch(`${API_BASE_RAW}/admin/schema-discovery/ir-types`);
-  if (!resp.ok) throw new Error(requestFailed("IR types fetch", resp.status));
+  if (!resp.ok) throw httpError("IR types fetch", resp.status);
   return resp.json();
 }
 
@@ -636,7 +636,7 @@ export async function fetchIrTypes(): Promise<string[]> {
 
 export async function downloadConfig(): Promise<string> {
   const resp = await fetch(`${API_BASE_RAW}/admin/config`);
-  if (!resp.ok) throw new Error(requestFailed("Config download", resp.status));
+  if (!resp.ok) throw httpError("Config download", resp.status);
   return resp.text();
 }
 
@@ -644,7 +644,7 @@ export async function downloadConfig(): Promise<string> {
 // identically server-side so the diff shows only genuine changes, not section/key reordering.
 export async function fetchConfigDiff(): Promise<{ original: string; current: string }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/config/diff`);
-  if (!resp.ok) throw new Error(requestFailed("Config diff", resp.status));
+  if (!resp.ok) throw httpError("Config diff", resp.status);
   return resp.json();
 }
 
@@ -656,7 +656,7 @@ export async function downloadConfigPatch(revised: string): Promise<string> {
     headers: { "Content-Type": "application/x-yaml" },
     body: revised,
   });
-  if (!resp.ok) throw new Error(requestFailed("Config patch", resp.status));
+  if (!resp.ok) throw httpError("Config patch", resp.status);
   return resp.text();
 }
 
@@ -666,8 +666,16 @@ export async function uploadConfig(yaml: string): Promise<{ success: boolean; me
     headers: { "Content-Type": "application/x-yaml" },
     body: yaml,
   });
-  if (!resp.ok) throw new Error(requestFailed("Config upload", resp.status));
+  if (!resp.ok) throw httpError("Config upload", resp.status);
   return resp.json();
+}
+
+/**
+ * A failed HTTP request as an Error carrying its `status`, so a surface can tell "platform
+ * administrator required" (403) from a failure without parsing the message.
+ */
+export function httpError(op: string, status: number | string): Error {
+  return Object.assign(new Error(requestFailed(op, status)), { status: Number(status) });
 }
 
 // --- Platform Settings ---
@@ -700,6 +708,9 @@ export interface PlatformSettings {
     // are OMITTED from the payload for a caller without it, so a surface that edits one renders
     // only when this is set rather than reading an absent block.
     platform_settings?: boolean;
+    // True only for a platform administrator: the deployment-wide platform surfaces gate on this,
+    // not on `platform_settings`, which a single-tenant org administrator also holds.
+    deployment_settings?: boolean;
   };
   // Deployment-wide (platform_settings). Optional because GET /admin/settings drops them for an
   // org administrator, whose settings are the org-scoped `redirect`, `cache` and `naming` mode.
@@ -763,6 +774,13 @@ export interface PlatformSettings {
   materialize?: {
     store_url: string;
   };
+  // REQ-1905: `request_timeouts` holds one value per transport, null where the transport uses the
+  // default `request_timeout`.
+  limits?: {
+    default_row_limit: number;
+    request_timeout: number;
+    request_timeouts: Record<string, number | null>;
+  };
 }
 
 /**
@@ -799,7 +817,12 @@ export async function fetchSettings(): Promise<PlatformSettings> {
     return warm;
   }
   const resp = await fetch(`${API_BASE_RAW}/admin/settings`);
-  if (!resp.ok) throw new Error(requestFailed("Settings fetch", resp.status));
+  if (!resp.ok) {
+    // `status` lets a surface tell "platform administrator required" (403) from a failure.
+    throw Object.assign(new Error(requestFailed("Settings fetch", resp.status)), {
+      status: resp.status,
+    });
+  }
   return resp.json();
 }
 
@@ -846,7 +869,7 @@ export interface FederationEngineState {
 
 export async function fetchFederationEngine(): Promise<FederationEngineState> {
   const resp = await fetch(`${API_BASE_RAW}/admin/federation-engine`);
-  if (!resp.ok) throw new Error(requestFailed("Federation engine fetch", resp.status));
+  if (!resp.ok) throw httpError("Federation engine fetch", resp.status);
   return resp.json();
 }
 
@@ -858,7 +881,7 @@ export async function setFederationEngine(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(requestFailed("Federation engine update", resp.status));
+  if (!resp.ok) throw httpError("Federation engine update", resp.status);
   return resp.json();
 }
 
@@ -921,7 +944,7 @@ export interface IsolatedEngineStatus {
 
 export async function fetchOrgEngine(): Promise<OrgEngineState> {
   const resp = await fetch(`${API_BASE_RAW}/admin/org-engine`);
-  if (!resp.ok) throw new Error(requestFailed("Org engine fetch", resp.status));
+  if (!resp.ok) throw httpError("Org engine fetch", resp.status);
   return resp.json();
 }
 
@@ -937,7 +960,7 @@ export async function setOrgEngine(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(requestFailed("Org engine update", resp.status));
+  if (!resp.ok) throw httpError("Org engine update", resp.status);
   return resp.json();
 }
 
@@ -958,7 +981,7 @@ export interface OrgEncryptionState {
 
 export async function fetchOrgEncryption(): Promise<OrgEncryptionState> {
   const resp = await fetch(`${API_BASE_RAW}/admin/org-encryption`);
-  if (!resp.ok) throw new Error(requestFailed("Org encryption fetch", resp.status));
+  if (!resp.ok) throw httpError("Org encryption fetch", resp.status);
   return resp.json();
 }
 
@@ -1012,7 +1035,7 @@ export interface McpServerStatus {
 
 export async function fetchMcpServer(): Promise<McpServerStatus> {
   const resp = await fetch(`${API_BASE_RAW}/admin/mcp-server`);
-  if (!resp.ok) throw new Error(requestFailed("MCP server status fetch", resp.status));
+  if (!resp.ok) throw httpError("MCP server status fetch", resp.status);
   return resp.json();
 }
 
@@ -1087,7 +1110,7 @@ export interface CacheStorageState {
 
 export async function fetchCacheStorage(): Promise<CacheStorageState> {
   const resp = await fetch(`${API_BASE_RAW}/admin/cache-storage`);
-  if (!resp.ok) throw new Error(requestFailed("Cache/storage fetch", resp.status));
+  if (!resp.ok) throw httpError("Cache/storage fetch", resp.status);
   return resp.json();
 }
 
@@ -1105,7 +1128,7 @@ export async function setCacheStorage(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(requestFailed("Cache/storage update", resp.status));
+  if (!resp.ok) throw httpError("Cache/storage update", resp.status);
   return resp.json();
 }
 
@@ -1143,7 +1166,7 @@ export interface EncryptionState {
 
 export async function fetchEncryption(): Promise<EncryptionState> {
   const resp = await fetch(`${API_BASE_RAW}/admin/encryption`);
-  if (!resp.ok) throw new Error(requestFailed("Encryption fetch", resp.status));
+  if (!resp.ok) throw httpError("Encryption fetch", resp.status);
   return resp.json();
 }
 
@@ -1157,7 +1180,7 @@ export async function setEncryption(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(requestFailed("Encryption update", resp.status));
+  if (!resp.ok) throw httpError("Encryption update", resp.status);
   return resp.json();
 }
 
@@ -1171,7 +1194,7 @@ export async function generateEncryptionKey(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(requestFailed("Key generation", resp.status));
+  if (!resp.ok) throw httpError("Key generation", resp.status);
   return resp.json();
 }
 
@@ -1211,7 +1234,7 @@ export interface AuthConfigState {
 
 export async function fetchAuthConfig(): Promise<AuthConfigState> {
   const resp = await fetch(`${API_BASE_RAW}/admin/auth`);
-  if (!resp.ok) throw new Error(requestFailed("Auth config fetch", resp.status));
+  if (!resp.ok) throw httpError("Auth config fetch", resp.status);
   return resp.json();
 }
 
@@ -1225,7 +1248,7 @@ export async function setAuthConfig(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(requestFailed("Auth config update", resp.status));
+  if (!resp.ok) throw httpError("Auth config update", resp.status);
   return resp.json();
 }
 
@@ -1237,7 +1260,15 @@ export async function updateSettings(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(settings),
   });
-  if (!resp.ok) throw new Error(requestFailed("Settings update", resp.status));
+  if (!resp.ok) {
+    // A 400 names the offending field in its error `params`; the error carries them so the surface
+    // can show the message on that field.
+    const body = await resp.json().catch(() => null);
+    throw Object.assign(
+      new Error(serverMessage(body, requestFailed("Settings update", resp.status))),
+      { code: body?.code, params: body?.params },
+    );
+  }
   const data = await resp.json();
   // A rejected value (an unknown naming convention, an engine setting that fails validation) comes
   // back 200 with success:false and a message instead of `updated`, so reading `updated.length`
@@ -1508,7 +1539,7 @@ export interface LocalUser {
 
 export async function fetchLocalUsers(): Promise<LocalUser[]> {
   const res = await fetch(`${API_BASE}/admin/users`);
-  if (!res.ok) throw new Error(requestFailed("fetch users", res.status));
+  if (!res.ok) throw httpError("fetch users", res.status);
   return res.json();
 }
 
@@ -1533,7 +1564,7 @@ export async function createLocalUser(body: {
 
 export async function deleteLocalUser(userId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/users/${userId}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(requestFailed("delete user", res.status));
+  if (!res.ok) throw httpError("delete user", res.status);
 }
 
 export interface UserAssignment {
@@ -1545,7 +1576,7 @@ export interface UserAssignment {
 
 export async function fetchUserAssignments(userId: string): Promise<UserAssignment[]> {
   const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments`);
-  if (!res.ok) throw new Error(requestFailed("fetch assignments", res.status));
+  if (!res.ok) throw httpError("fetch assignments", res.status);
   return res.json();
 }
 
@@ -1570,7 +1601,7 @@ export async function removeUserAssignment(userId: string, assignmentId: number)
   const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments/${assignmentId}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error(requestFailed("remove assignment", res.status));
+  if (!res.ok) throw httpError("remove assignment", res.status);
 }
 
 export interface OrgInvite {
@@ -1629,7 +1660,7 @@ export interface InviteInfo {
 
 export async function fetchInvites(): Promise<OrgInvite[]> {
   const res = await fetch(`${API_BASE}/admin/invites`);
-  if (!res.ok) throw new Error(requestFailed("fetchInvites", res.status));
+  if (!res.ok) throw httpError("fetchInvites", res.status);
   return res.json();
 }
 
@@ -1653,13 +1684,13 @@ export async function createInvite(
       env_name: opts.envName ?? null,
     }),
   });
-  if (!res.ok) throw new Error(requestFailed("createInvite", res.status));
+  if (!res.ok) throw httpError("createInvite", res.status);
   return res.json();
 }
 
 export async function revokeInvite(token: string): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/invites/${token}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(requestFailed("revokeInvite", res.status));
+  if (!res.ok) throw httpError("revokeInvite", res.status);
 }
 
 export async function fetchInviteInfo(token: string): Promise<InviteInfo> {
@@ -1690,7 +1721,7 @@ export interface PendingInvite {
  */
 export async function fetchMyInvites(): Promise<PendingInvite[]> {
   const res = await fetch("/auth/my-invites");
-  if (!res.ok) throw new Error(requestFailed("my-invites", res.status));
+  if (!res.ok) throw httpError("my-invites", res.status);
   const data = await res.json();
   return data.invites;
 }
@@ -1725,7 +1756,7 @@ export interface AutoJoinOffer {
  */
 export async function fetchAutoJoinOffers(): Promise<AutoJoinOffer[]> {
   const res = await fetch("/auth/auto-join-offers");
-  if (!res.ok) throw new Error(requestFailed("auto-join-offers", res.status));
+  if (!res.ok) throw httpError("auto-join-offers", res.status);
   const data = await res.json();
   return data.offers;
 }
@@ -1937,7 +1968,7 @@ export interface OssieImportProposals {
 /** GET the canonical live Ossie YAML document. */
 export async function fetchOssieYaml(): Promise<string> {
   const resp = await fetch(`${API_BASE}${OSSIE_ENDPOINT_PATH}`);
-  if (!resp.ok) throw new Error(requestFailed("Ossie export", resp.status));
+  if (!resp.ok) throw httpError("Ossie export", resp.status);
   return resp.text();
 }
 
@@ -1951,6 +1982,81 @@ export async function importOssie(body: string): Promise<OssieImportProposals> {
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error(serverMessage(data, requestFailed("Ossie import", resp.status)));
+  }
+  return resp.json();
+}
+
+// --- Settings catalog (REQ-1913) ---
+
+export type CatalogType = "int" | "float" | "bool" | "enum" | "str" | "list" | "map" | "secret";
+
+export interface CatalogSetting {
+  key: string;
+  type: CatalogType;
+  unit?: string;
+  min?: number;
+  max?: number;
+  choices?: string[];
+  /** What the process runs with. For a restart setting, `stored` is what the next start uses. */
+  value?: unknown;
+  running_value?: unknown;
+  source: "stored" | "env" | "config" | "default";
+  default: unknown;
+  stored?: unknown;
+  env?: unknown;
+  config_key: string | null;
+  restart_required: boolean;
+  pending_restart: boolean;
+  secret: boolean;
+  /** Secrets only: whether a value is stored. A secret never carries a value. */
+  set?: boolean;
+  editable: boolean;
+  guard: null | "confirm";
+  /** An i18n key naming why the setting is not editable. */
+  readonly_reason?: string;
+  /** A map with a fixed set of entries: rendered as one row per key. */
+  map_keys?: string[];
+  /** A map's per-entry source. */
+  sources?: Record<string, "stored" | "env" | "config" | "default">;
+  updated_by: string | null;
+  updated_at: string | null;
+  /** Set when the current value is unusable (`value` is then null): where it came from and why. */
+  error?: { field: string; source: string; reason: string };
+}
+
+export interface SettingsCatalog {
+  snapshot_ttl_seconds: number;
+  pending_restart: string[];
+  cards: { id: string; settings: CatalogSetting[] }[];
+}
+
+/** platform_admin only: a 403 carries `status` so the page can show that state, not an empty one. */
+export async function fetchSettingsCatalog(): Promise<SettingsCatalog> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/settings/catalog`);
+  if (!resp.ok) {
+    throw Object.assign(new Error(requestFailed("Settings catalog fetch", resp.status)), {
+      status: resp.status,
+    });
+  }
+  return resp.json();
+}
+
+/** `null` clears a stored value. A 400 names the field and a `reason` in its error `params`. */
+export async function updateSettingsCatalog(
+  values: Record<string, unknown>,
+  confirm: string[],
+): Promise<{ updated: string[]; pending_restart: string[] }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/settings/catalog`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ values, confirm }),
+  });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => null);
+    throw Object.assign(
+      new Error(serverMessage(body, requestFailed("Settings catalog update", resp.status))),
+      { status: resp.status, code: body?.code, params: body?.params },
+    );
   }
   return resp.json();
 }

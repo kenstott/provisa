@@ -1,5 +1,16 @@
 {
   "capabilityGate": {
-    "checking": "Verificando suas credenciais…"
+    "checking": "Verificando suas credenciais…",
+    "demonstrated": {
+      "badge": "Recurso de produção",
+      "explanation": "Isto faz parte do sistema de produção. É exibido aqui para que você veja o que o Provisa faz, mas não está disponível no sandbox.",
+      "dismiss": "Entendi",
+      "purpose": {
+        "environment_management": {
+          "title": "Ambientes são um recurso de produção",
+          "body": "Um ambiente é uma cópia completa e governada separadamente do seu modelo — fontes, tabelas, políticas, regras de mascaramento e concessões. As equipes mantêm um ambiente dev para alterar o modelo, um de staging para revisá-lo e o prod para servir, e então levam a alteração adiante mesclando um ambiente no seguinte, com um diff, uma aprovação e um histórico que pode ser desfeito.\n\nSeu sandbox É um desses ambientes, criado só para você. Gerenciá-los — criar, mesclar, implantar, desativar — cabe à organização que os possui, então a interface é mostrada aqui em vez de entregue: você vê o que ela faz, e ela não age sobre nada."
+        }
+      }
+    }
   }
 }

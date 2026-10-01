@@ -31,6 +31,8 @@ import {
 } from "@mantine/core";
 import { Copy, Plus } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { PlatformRequired } from "./PlatformRequired";
+import { isForbidden } from "./isForbidden";
 import { useCapability } from "../../hooks/useCapability";
 import { usePanelState } from "../../hooks/usePanelState";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -61,7 +63,7 @@ import {
  * missing is greyed out and says which one — hiding it would leave an operator unsure whether
  * Provisa speaks to their secrets manager at all, when the only thing missing is a pip install.
  */
-function SecretsServicePanel() {
+export function SecretsServicePanel() {
   const { t } = useTranslation();
   const [s, setS] = useState<SecretsServiceState | null>(null);
   const [choice, setChoice] = useState("");
@@ -69,6 +71,7 @@ function SecretsServicePanel() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [forbidden, setForbidden] = useState(false);
 
   const load = () =>
     fetchSecretsService()
@@ -83,7 +86,7 @@ function SecretsServicePanel() {
           ),
         );
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => (isForbidden(e) ? setForbidden(true) : setError(String(e))));
 
   useEffect(() => {
     load();
@@ -115,6 +118,7 @@ function SecretsServicePanel() {
     }
   };
 
+  if (forbidden) return <PlatformRequired />;
   if (error && !s) return <Alert color="red">{error}</Alert>;
   if (!s) return <Text>{t("secretsTab.loading")}</Text>;
 

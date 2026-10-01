@@ -1014,6 +1014,10 @@ query_audit_log = Table(
     Column("source", Text, nullable=False),
     Column("status_code", Integer, nullable=False),
     Column("duration_ms", Integer, nullable=False),
+    # How the statement was answered — cache | direct | engine (api for an API-source GraphQL
+    # field) — and the rows its terminal delivered. Both NULL for a refused statement.
+    Column("route", Text),
+    Column("row_count", Integer),
     # REQ-886: correlation id of the UDF invocation this row was written under, joining the
     # audit row back to the engine-side UDF trace. Null for non-UDF queries.
     Column("trace_id", Text),

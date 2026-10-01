@@ -40,6 +40,8 @@
     "cardinalityWarning": "Aviso: se este join retornar mais de uma linha por pai, apenas o primeiro valor será usado.",
     "cancel": "Cancelar",
     "save": "Salvar",
-    "toggleDetails": "Alternar detalhes do relacionamento"
+    "toggleDetails": "Alternar detalhes do relacionamento",
+    "junctionBadge": "via",
+    "junctionBadgeTitle": "Relacionamento baseado em junção por meio de {{table}}"
   }
 }

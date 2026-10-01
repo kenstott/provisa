@@ -133,6 +133,12 @@ def read_config_with_includes(
     file_path = Path(path).resolve()
     if file_path in _seen:
         raise ValueError(f"config include cycle at {file_path}")
+    if not _seen:
+        from provisa.core.config_location import note_config_changed
+
+        # A config file is being (re)loaded — startup, a rebuild: parsed copies held in memory
+        # (the request path's platform config) are replaced at their next use.
+        note_config_changed()
     with open(file_path, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
     if not isinstance(raw, dict):

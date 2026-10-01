@@ -24,6 +24,10 @@
     "navigateTitle": "Registrierte Tabellen anzeigen",
     "deleteTitle": "Quelle \"{{id}}\" löschen?",
     "deleteTitleShort": "Löschen",
-    "deleteConsequence": "Dies entfernt die Datenquelle \"{{id}}\" und kann Tabellen beschädigen, die darauf verweisen."
+    "deleteConsequence": "Dies entfernt die Datenquelle \"{{id}}\" und kann Tabellen beschädigen, die darauf verweisen.",
+    "refreshKaggleTitle": "Von Kaggle aktualisieren",
+    "refreshKaggleHint": "{{owner}}/{{ref}} erneut von Kaggle herunterladen und die bereitgestellte(n) Datei(en) an Ort und Stelle überschreiben. Ihr Kaggle-Token wird nicht gespeichert – geben Sie es für diese Aktualisierung erneut ein.",
+    "kaggleTokenLabel": "Kaggle-API-Token",
+    "refreshKaggleSubmit": "Aktualisieren"
   }
 }

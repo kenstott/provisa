@@ -36,22 +36,7 @@ from provisa.executor import stats as _qs_mod
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.transpiler.router import Route
 
-import os as _os
 import re as _re
-
-
-def _request_timeout() -> float:
-    # App state is absent when this is called before startup wiring (ImportError) or
-    # when state exists without server_limits (AttributeError); both fall back to the
-    # env-var default. Any other failure is a real bug and must propagate.
-    try:
-        from provisa.api.app import state
-
-        return state.server_limits.get(
-            "request_timeout", float(_os.environ.get("PROVISA_REQUEST_TIMEOUT", "60"))
-        )
-    except (ImportError, AttributeError):
-        return float(_os.environ.get("PROVISA_REQUEST_TIMEOUT", "60"))
 
 
 _ACCEPT_MAP = {

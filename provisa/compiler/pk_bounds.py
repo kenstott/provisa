@@ -181,6 +181,24 @@ def _collect_predicates(ast: exp.Expr) -> list[exp.Expr]:
     return predicates
 
 
+def scope_predicates(table: exp.Table) -> list[exp.Expr]:
+    """The WHERE and JOIN ... ON predicates of the SELECT that names ``table`` in its FROM or a
+    JOIN -- the only predicates that restrict which of that reference's rows are read (REQ-1915).
+    Empty when no SELECT encloses it."""
+    select = table.find_ancestor(exp.Select)
+    if select is None:
+        return []
+    predicates: list[exp.Expr] = []
+    where = select.args.get("where")
+    if where is not None:
+        predicates.append(where.this)
+    for join in select.args.get("joins") or []:
+        on = join.args.get("on")
+        if on is not None:
+            predicates.append(on)
+    return predicates
+
+
 def extract_join_edges(ast: exp.Expr) -> list[JoinEdge]:
     """Every ``JOIN ... ON left.col = right.col`` column-to-column equality in the statement
     (REQ-1865 key pushdown). Symmetric candidates aren't de-duplicated or oriented -- the caller
@@ -213,7 +231,10 @@ def extract_join_edges(ast: exp.Expr) -> list[JoinEdge]:
 
 
 def extract_pk_bounds(
-    ast: exp.Expr, row_materialized_tables: dict[str, "Table"], params: list[Any] | None = None
+    ast: exp.Expr,
+    row_materialized_tables: dict[str, "Table"],
+    params: list[Any] | None = None,
+    predicates: list[exp.Expr] | None = None,
 ) -> list[PkBound]:
     """Walk WHERE/JOIN-ON equality and IN predicates; for every row-materialized table referenced,
     resolve its PK columns' literal (or bound-PARAMETER, see ``params``) values. A table with no
@@ -227,12 +248,16 @@ def extract_pk_bounds(
     a Bolt/Cypher-transport statement's predicate is NEVER inlined as a literal (``customer_id =
     $1``, the value bound out-of-band), unlike the SQL-transport's own literal-inlined text.
     Without it, ``_literal_value`` cannot resolve a ``$N`` placeholder and every such statement
-    silently fell back to a full-table land, defeating row_materialize for that whole transport."""
+    silently fell back to a full-table land, defeating row_materialize for that whole transport.
+
+    ``predicates`` (REQ-1915) replaces the statement-wide collection with the predicates of one
+    table reference's own SELECT (``scope_predicates``); ``ast`` then names just that reference."""
     if not row_materialized_tables:
         return []
 
     alias_map = _alias_map(ast)
-    predicates = _collect_predicates(ast)
+    if predicates is None:
+        predicates = _collect_predicates(ast)
     bounds: list[PkBound] = []
 
     for table_name, table in row_materialized_tables.items():

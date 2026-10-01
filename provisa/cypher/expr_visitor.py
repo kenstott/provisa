@@ -64,6 +64,12 @@ class ExprContext(Protocol):
         """A property access ``obj.name`` lowered against the object's already-lowered expression."""
         ...
 
+    def property_is_table_column(self, obj: exp.Expression, name: str) -> bool:
+        """Whether ``obj.name`` is a registered table's own (typed) column, as opposed to a value
+        the translator builds itself — the VARCHAR identity of a node drawn from several tables,
+        or a scalar extracted from an assembled row."""
+        ...
+
     def resolve_parameter(self, name: str) -> exp.Expression:
         """A ``$param`` reference — the positional placeholder it binds to."""
         ...
@@ -164,6 +170,12 @@ class ExprLowering:
             return exp.Not(this=operand)
         return exp.Neg(this=operand)
 
+    def _is_text_identity(self, node: CypherExpr) -> bool:
+        """``x.id`` where ``x`` is not bound to one registered table — see ``_lower_Binary``."""
+        if not (isinstance(node, Property) and node.name == "id"):
+            return False
+        return not self._ctx.property_is_table_column(self.lower(node.obj), node.name)
+
     def _lower_Binary(self, node: Binary) -> exp.Expression:
         op = node.op
         left = self.lower(node.left)
@@ -171,16 +183,19 @@ class ExprLowering:
         if op in _BINARY_ARITH:
             return _BINARY_ARITH[op](this=left, expression=right)
         if op in ("=", "<>", "!="):
-            # `n.id` is the graph's synthetic identity property — always engine-typed VARCHAR
-            # (built via CAST(... AS TEXT) across heterogeneous node types in a UNION). Comparing
-            # it to a bound parameter/literal lets the engine infer the parameter's Python type
-            # (e.g. INTEGER) and coerce the VARCHAR column instead, which raises a conversion
-            # error on any non-numeric id value (blank/UUID ids from other node types in the
-            # same UNION). Casting the non-property side to VARCHAR forces string-space
+            # The `id` of a node drawn from several tables is the graph's synthetic identity —
+            # engine-typed VARCHAR (built via CAST(pk AS VARCHAR) across heterogeneous node types
+            # in a UNION). Comparing it to a bound parameter/literal lets the engine infer the
+            # parameter's Python type (e.g. INTEGER) and coerce the VARCHAR column instead, which
+            # raises a conversion error on any non-numeric id value (blank/UUID ids from other
+            # node types in the same UNION). Casting the other side to VARCHAR forces string-space
             # comparison, matching the column's actual engine type.
-            if isinstance(node.left, Property) and node.left.name == "id":
+            # A registered table's own `id` column is NOT that identity: it has the type the
+            # source gave it, and what it is compared to keeps its own type (issue #130 — a
+            # TEXT-cast literal against an integer column is refused by Postgres).
+            if self._is_text_identity(node.left):
                 right = exp.Cast(this=right, to=exp.DataType.build("text"))
-            elif isinstance(node.right, Property) and node.right.name == "id":
+            elif self._is_text_identity(node.right):
                 left = exp.Cast(this=left, to=exp.DataType.build("text"))
             return _BINARY_CMP[op](this=left, expression=right)
         if op in _BINARY_CMP:

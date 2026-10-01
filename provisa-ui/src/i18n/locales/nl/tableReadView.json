@@ -35,6 +35,8 @@
     "deployToDbTitle": "Deze virtuele view promoveren naar een echte databaseview",
     "profileButton": "Profileren",
     "profilingButton": "Profileren…",
+    "previewButton": "Voorbeeld",
+    "previewTitle": "Voorbeeld van de rijen van deze tabel (governed SELECT *)",
     "profileTitle": "De kolommen van deze tabel bemonsteren en profileren",
     "policiesButton": "Beleid",
     "policiesTitle": "RLS-beleid voor deze tabel bekijken",
@@ -53,7 +55,6 @@
     "colTopValues": "Meest voorkomende waarden",
     "editDefinitionButton": "Definitie bewerken",
     "editDefinitionTitle": "De viewdefinitie bewerken (SQL of metriek-/dimensiekiezer)",
-    "previewButton": "Voorbeeld",
-    "previewTitle": "Voorbeeld van de rijen van deze tabel (governed SELECT *)"
+    "queryTemplate": "Cypher:"
   }
 }

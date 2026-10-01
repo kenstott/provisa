@@ -100,6 +100,25 @@ from provisa.api.admin.schema_common import (  # noqa: E402
 )
 
 
+# The port pgwire is served on when nothing says otherwise: what provisa-install.yaml's own
+# dq-checker/dq-soda entries dial.
+_DQ_STANDARD_PGWIRE_PORT = 5439
+
+
+def _dq_pgwire_port() -> str:
+    """The pgwire port a data-quality check dials on ``PROVISA_DQ_HOST``.
+
+    This deployment's own pgwire listener when it runs one — the operator setting
+    ``server.pgwire_port`` (REQ-1913). When the listener is off here (port 0), the check is aimed
+    at a host that serves pgwire itself, on the standard port; the default is that design's, the
+    same one the generated dq-checker/dq-soda entries use, not a guess at a missing value.
+    """
+    from provisa.core import settings_registry
+
+    port = settings_registry.value("server.pgwire_port")
+    return str(port if port != 0 else _DQ_STANDARD_PGWIRE_PORT)
+
+
 async def _upsert_relationship_impl(
     info: StrawberryInfo, input: RelationshipInput
 ) -> MutationResult:  # REQ-019, REQ-020, REQ-366, REQ-434
@@ -452,6 +471,31 @@ def _refuse_soda_on_hosted_plane(source_type: str) -> MutationResult | None:  # 
     )
 
 
+def _refuse_config_declared(source_id: str) -> MutationResult | None:  # REQ-826, REQ-030
+    """The refusal for a replication setting on a source the configuration file declares, or None
+    when the control plane owns the source.
+
+    Routing and replication read a config-declared source FROM the configuration
+    (``federation.registry_view.registered_sources``); its control-plane row is not consulted. A
+    setter that wrote the row and answered "success" told the operator a floor was in place while
+    every read still reached the source live — so the change is refused, not stored."""
+    from provisa.api.app import state
+
+    config = state.config
+    if config is None or all(s.id != source_id for s in config.sources):
+        return None
+    return MutationResult(
+        success=False,
+        message=(
+            f"Source {source_id!r} is declared in the configuration file, and its replication "
+            "settings are read from there: this change would be stored and would not be "
+            "enforced. Set it on the source in the configuration file and restart."
+        ),
+        code="schema.source_setting_config_declared",
+        params={"source": source_id},
+    )
+
+
 @strawberry.type
 class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
@@ -686,7 +730,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 # Same env-var defaults provisa-install.yaml's own dq-checker/dq-soda entries use.
                 _mapping = {
                     "host": os.environ.get("PROVISA_DQ_HOST", "localhost"),
-                    "port": os.environ.get("PROVISA_PGWIRE_PORT", "5439"),
+                    "port": _dq_pgwire_port(),
                     "database": "provisa",
                     "user": os.environ.get("PROVISA_DQ_USER", "org_admin"),
                     "password": os.environ.get("PROVISA_DQ_PASSWORD", "provisa"),
@@ -2409,6 +2453,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, source_id: str, prefer_materialized: bool
     ) -> MutationResult:  # REQ-826
         """Force (or release) MATERIALIZED federation for a source's tables — the source-level default."""
+        refused = _refuse_config_declared(source_id)
+        if refused is not None:
+            return refused
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute_core(
@@ -2438,6 +2485,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, table_id: int, prefer_materialized: bool | None = None
     ) -> MutationResult:  # REQ-826
         """Override MATERIALIZED federation for one table; None = inherit the source-level default."""
+        from provisa.api.app import state
+
+        owner = next((t["source_id"] for t in state.tables if t["id"] == table_id), None)
+        refused = _refuse_config_declared(owner) if owner is not None else None
+        if refused is not None:
+            return refused
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute_core(

@@ -4,7 +4,8 @@
       "posture": "Beveiligingspostuur",
       "encryption": "Versleuteling",
       "authentication": "Authenticatie",
-      "localUsers": "Lokale gebruikers"
+      "localUsers": "Lokale gebruikers",
+      "secrets": "Secrets"
     }
   }
 }

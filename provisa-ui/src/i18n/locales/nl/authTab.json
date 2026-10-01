@@ -14,7 +14,7 @@
     "loading": "Laden…",
     "saved": "Opgeslagen.",
     "savedRestartRequired": "Opgeslagen. Herstart de service om toe te passen.",
-    "secretOnFile": "Opgeslagen — laat leeg om te behouden",
+    "secretOnFile": "Opgeslagen — leeg laten om te behouden",
     "secretNotSet": "Niet ingesteld"
   }
 }

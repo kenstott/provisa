@@ -685,10 +685,21 @@ start_backend() {
     # applies the config again.
     _BACKEND_ENV+=( PROVISA_WORKERS="$PROVISA_WORKERS" PROVISA_LAUNCH_ID="$(uuidgen)" )
   fi
+  # Where HTTP is accepted. One process, or macOS: uvicorn's own socket on the public port.
+  # Several workers on Linux: each worker opens its OWN SO_REUSEPORT socket on the public port
+  # (PROVISA_HTTP_LISTEN, provisa/api/http_listener.py) so the kernel spreads connections over
+  # them — on uvicorn's one shared socket a few workers take most connections and the rest idle
+  # (REQ-1900). uvicorn's supervisor still needs a socket of its own; it gets a unix socket nobody
+  # dials. Not on macOS: its kernel gives every connection on a shared port to ONE listener.
+  local _bind_args=( --host 0.0.0.0 --port "$PROVISA_API_PORT" )
+  if [ "${PROVISA_WORKERS:-1}" -gt 1 ] && [ "$(uname -s)" = "Linux" ]; then
+    _BACKEND_ENV+=( PROVISA_HTTP_LISTEN="0.0.0.0:$PROVISA_API_PORT" )
+    _bind_args=( --uds "${TMPDIR:-/tmp}/provisa-supervisor-$$.sock" )
+  fi
   env "${_BACKEND_ENV[@]}" \
     "$SCRIPT_DIR/.venv/bin/uvicorn" main:app \
       "${_serve_args[@]}" \
-      --host 0.0.0.0 --port "$PROVISA_API_PORT" \
+      "${_bind_args[@]}" \
       >> "$LOG_DIR/backend.log" 2>&1 &
   BACKEND_PID=$!
 }

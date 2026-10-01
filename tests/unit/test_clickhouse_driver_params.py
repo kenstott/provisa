@@ -37,16 +37,29 @@ class _FakeClient:
         self.last_sql: str | None = None
         self.last_parameters = None
 
-    def query(self, sql, parameters=None):
+    def query(self, sql, parameters=None, settings=None):
         self.last_sql = sql
         self.last_parameters = parameters
         return _FakeResult(self._rows, self._cols)
 
+    def close(self):
+        pass
+
 
 def _make_driver(rows=None, cols=None) -> tuple[ClickHouseDriver, _FakeClient]:
+    from provisa.core.sync_pool import BlockingPool
+
     driver = ClickHouseDriver()
     client = _FakeClient(rows=rows, cols=cols)
-    driver._client = client
+    # the driver's pool, holding this one client
+    driver._pool = BlockingPool(
+        lambda: client,
+        lambda c: c.close(),
+        minsize=1,
+        maxsize=1,
+        wait_s=5.0,
+        name="clickhouse:test",
+    )
     return driver, client
 
 
@@ -92,3 +105,77 @@ class TestClickHouseDriverParameterSubstitution:
         assert client.last_parameters is not None
         assert client.last_parameters["p1"] == 0
         assert client.last_parameters["p10"] == 9
+
+
+class TestClickHouseDriverSessions:
+    """One clickhouse-connect client is one session and a session runs one query at a time
+    (REQ-1882): each in-flight request checks out its own client, and the pool bounds them."""
+
+    @staticmethod
+    def _driver(monkeypatch, max_pool: int):
+        import threading
+
+        import clickhouse_connect
+
+        opened: list = []
+        lock = threading.Lock()
+
+        class _Session:
+            def __init__(self) -> None:
+                self.in_flight = 0
+                self.overlapped = False
+                self.closed = False
+
+            def query(self, sql, parameters=None, settings=None):
+                import time
+
+                with lock:
+                    self.in_flight += 1
+                    self.overlapped = self.overlapped or self.in_flight > 1
+                time.sleep(0.05)
+                with lock:
+                    self.in_flight -= 1
+                return _FakeResult([(1,)], ["n"])
+
+            def close(self):
+                self.closed = True
+
+        def _get_client(**kwargs):
+            session = _Session()
+            with lock:
+                opened.append(session)
+            return session
+
+        monkeypatch.setattr(clickhouse_connect, "get_client", _get_client)
+        driver = ClickHouseDriver()
+        asyncio.run(driver.connect("h", 8123, "default", "u", "p", min_pool=1, max_pool=max_pool))
+        return driver, opened
+
+    def test_concurrent_requests_never_share_a_session(self, monkeypatch):
+        import threading
+
+        driver, opened = self._driver(monkeypatch, max_pool=3)
+        start = threading.Barrier(9)
+        errors: list[BaseException] = []
+
+        def _request() -> None:
+            try:
+                start.wait(timeout=10)
+                assert asyncio.run(driver.execute("SELECT 1 AS n")).rows == [(1,)]
+            except BaseException as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=_request) for _ in range(9)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+        assert not errors, errors[:1]
+        assert not any(s.overlapped for s in opened), "two requests ran on one session at once"
+        assert 1 <= len(opened) <= 3, f"the pool opened {len(opened)} sessions for max_pool=3"
+
+    def test_close_closes_every_session(self, monkeypatch):
+        driver, opened = self._driver(monkeypatch, max_pool=2)
+        asyncio.run(driver.execute("SELECT 1 AS n"))
+        asyncio.run(driver.close())
+        assert opened and all(s.closed for s in opened) and not driver.is_connected

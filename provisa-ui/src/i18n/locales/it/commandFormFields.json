@@ -31,6 +31,8 @@
     "query": "Query",
     "domain": "Dominio",
     "selectDomain": "Seleziona dominio...",
+    "dataProduct": "Prodotto dati (facoltativo)",
+    "dataProductPlaceholder": "Seleziona prodotto dati...",
     "description": "Descrizione",
     "descriptionPlaceholder": "facoltativo",
     "arguments": "Argomenti",
@@ -46,6 +48,18 @@
     "bindingCallable": "Callable Python (module:attr)",
     "materialize": "Materializza (identità admin/definer)",
     "materializeHint": "Attivo: esecuzione come admin, governance dell'output. Disattivo: esecuzione come chiamante, governance degli input.",
-    "argKind": "Tipo di argomento"
+    "argKind": "Tipo di argomento",
+    "colVisibleTo": "Visibile a (ruoli, separati da virgola; vuoto = tutti)",
+    "colVisibleToPlaceholder": "analyst, org_admin",
+    "colUnmaskedTo": "Non mascherato per (ruoli, separati da virgola)",
+    "colMask": "Maschera",
+    "maskNone": "Nessuna",
+    "maskRegex": "Regex",
+    "maskConstant": "Costante",
+    "maskTruncate": "Tronca",
+    "maskPattern": "Pattern",
+    "maskReplace": "Sostituisci",
+    "maskValue": "Valore",
+    "maskPrecision": "Precisione"
   }
 }

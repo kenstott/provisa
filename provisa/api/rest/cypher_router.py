@@ -277,7 +277,7 @@ async def _dispatch_execution(
     execution, so a source that cannot be landed answers with the typed ``error`` field (REQ-778)
     instead of escaping as a bare 500."""
     import asyncio as _asyncio
-    from provisa.api.data.endpoint_helpers import _request_timeout
+    from provisa.core.limits import request_timeout_for, request_timeout_setting
     from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
 
     clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
@@ -301,7 +301,7 @@ async def _dispatch_execution(
         _lookup_gql_remote_table(state, tn) is not None for tn in _api_table_names
     )
 
-    _timeout = _request_timeout()
+    _timeout = request_timeout_for("cypher_http")  # REQ-1905: this transport's own
     log.info("Cypher final SQL: %s", physical_sql)
     try:
         if prepare is not None:
@@ -329,7 +329,14 @@ async def _dispatch_execution(
     except _asyncio.TimeoutError:
         return JSONResponse(
             status_code=504,
-            content={"error": f"Query timed out after {_timeout:.0f}s", "sql": physical_sql},
+            content={
+                # REQ-1905: names the transport and the setting its timeout came from.
+                "error": (
+                    f"cypher_http request timed out after {_timeout:g}s "
+                    f"({request_timeout_setting('cypher_http')})"
+                ),
+                "sql": physical_sql,
+            },
         )
     except OSError as exc:
         log.warning("Cypher execution: network error: %s", exc)
@@ -394,15 +401,22 @@ async def _dispatch_execution_direct(
         return _exec_error(500, exc, exec_sql)
 
 
-async def cached_cypher_rows(plan: Any, state: Any) -> list[dict] | None:  # REQ-1897
-    """The opted-in plan's cached rows as the dict rows the Cypher dispatchers return, or None on a
+async def cached_cypher_hit(plan: Any, state: Any) -> tuple[list[dict], Any] | None:  # REQ-1897
+    """The opted-in plan's cached rows as the dict rows the Cypher dispatchers return, with the
+    cache entry they were served from (REQ-536: its age is reported beside the HIT), or None on a
     MISS. A HIT is audited/accounted inside ``check_response_cache`` — the caller runs nothing."""
     from provisa.pgwire._pipeline import check_response_cache
 
     hit = await check_response_cache(plan, state)
     if hit is None:
         return None
-    return [dict(zip(hit.column_names, row)) for row in hit.rows]
+    return [dict(zip(hit.column_names, row)) for row in hit.rows], hit.cache_entry
+
+
+async def cached_cypher_rows(plan: Any, state: Any) -> list[dict] | None:  # REQ-1897
+    """:func:`cached_cypher_hit`'s rows alone, for a transport with no cache header to report."""
+    hit = await cached_cypher_hit(plan, state)
+    return None if hit is None else hit[0]
 
 
 async def store_cypher_rows(plan: Any, state: Any, rows: list[dict]) -> None:  # REQ-1897
@@ -635,93 +649,122 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     if state.tenant_db is not None:
         query_text = await _resolve_id_references(query_text, state.tenant_db, label_map)
 
-    # Stage 1: Parse
-    try:
-        ast = parse_cypher(query_text)
-    except CypherParseError as exc:
-        return JSONResponse(status_code=400, content={"error": str(exc)})
-
-    # REQ-603: Reject Cypher queries that reference unregistered relationship types.
-    # The SQL translator converts unknown rel types to exp.false() (best-effort, no crash),
-    # so the V002 SQL-layer guard (bypass_relationship_guard=True below) cannot catch this.
-    # We check explicitly at the AST level before SQL generation.
-    from provisa.cypher.parser import PathPattern as _PathPattern, PathFunction as _PathFunction  # noqa: PLC0415,E501
-
-    _unknown_rels: list[str] = []
-    for _mc in ast.match_clauses:
-        _pat = _mc.pattern
-        _ppath = _pat.pattern if isinstance(_pat, _PathFunction) else _pat
-        if isinstance(_ppath, _PathPattern):
-            for _rp in _ppath.rels:
-                for _rt in _rp.types:
-                    if _rt not in label_map.aliases:
-                        _unknown_rels.append(_rt)
-    if _unknown_rels:
-        _unique = sorted(set(_unknown_rels))
-        return JSONResponse(
-            status_code=403,
-            content={"error": f"Unregistered relationship type(s): {', '.join(_unique)}"},
-        )
-
-    # Validate and bind params
-    param_names = collect_param_names(query_text)
-    try:
-        bind_params(param_names, body.params)
-    except CypherParamError as exc:
-        return JSONResponse(status_code=400, content={"error": str(exc)})
-
-    # Multi-CALL pattern: independent (non-correlated) CALL blocks with no outer MATCH.
-    _non_corr_calls = [cs for cs in ast.call_subqueries if not cs.imported_vars]
-    if _non_corr_calls and not ast.match_clauses:
-        return await _execute_multi_call(
-            _non_corr_calls,
-            label_map,
-            body,
-            state,
-            role_id,
-            ctx,
-            assemble_rows,
-            to_serializable,
-        )
-
-    # Stages 1-2: Translate + graph rewrites
-    _sql_result = _build_sql_from_ast(ast, label_map, body, cypher_to_sql, apply_graph_rewrites)
-    if isinstance(_sql_result, Response):
-        return _sql_result
-    sql_str, ordered_params, graph_vars = _sql_result
-
-    # Stage 3: Semantic conversion + access validation (transport responsibility)
-    semantic_sql = make_semantic_sql(sql_str, ctx)
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())
+    # REQ-1877: a read this role already translated and was admitted for under this schema
+    # generation is not parsed, translated or validated again — only its values are bound.
+    from provisa.api.rest.cypher_plan import CypherTranslation, TranslationRequest
     from provisa.security.rights import effective_domain_access_role
 
     _role_dict = effective_domain_access_role(role_id, state.roles)
-    _gov_ctx_for_validate = build_governance_context(
+    kept = TranslationRequest(
+        state,
         role_id,
-        rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=_role_dict,
-        relationships=getattr(state, "relationships", None),
+        surface="http",
+        domain_access=_role_dict.get("domain_access"),
+        cypher=query_text,
+        params=body.params,
     )
-    _violations = _validate_sql(
-        semantic_sql,
-        ctx,
-        _gov_ctx_for_validate,
-        _role_dict,
-        getattr(state, "tables", []),
-        bypass_relationship_guard=True,
-        bypass_uncovered_relationships=True,
-    )
-    if _violations:
-        return JSONResponse(
-            status_code=403,
-            content={"violations": [{"code": v.code, "message": v.message} for v in _violations]},
-        )
+    translation = kept.cached()
+    if translation is None:
+        # Stage 1: Parse
+        try:
+            ast = parse_cypher(query_text)
+        except CypherParseError as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)})
 
-    resolved_params = [body.params.get(name) for name in ordered_params]
-    span_attrs: dict[str, str] = span_attrs_from_semantic_sql(semantic_sql, role_id, body.query)
+        # REQ-603: Reject Cypher queries that reference unregistered relationship types.
+        # The SQL translator converts unknown rel types to exp.false() (best-effort, no crash),
+        # so the V002 SQL-layer guard (bypass_relationship_guard=True below) cannot catch this.
+        # We check explicitly at the AST level before SQL generation.
+        from provisa.cypher.parser import PathPattern as _PathPattern, PathFunction as _PathFunction  # noqa: PLC0415,E501
+
+        _unknown_rels: list[str] = []
+        for _mc in ast.match_clauses:
+            _pat = _mc.pattern
+            _ppath = _pat.pattern if isinstance(_pat, _PathFunction) else _pat
+            if isinstance(_ppath, _PathPattern):
+                for _rp in _ppath.rels:
+                    for _rt in _rp.types:
+                        if _rt not in label_map.aliases:
+                            _unknown_rels.append(_rt)
+        if _unknown_rels:
+            _unique = sorted(set(_unknown_rels))
+            return JSONResponse(
+                status_code=403,
+                content={"error": f"Unregistered relationship type(s): {', '.join(_unique)}"},
+            )
+
+        # Validate and bind params
+        param_names = collect_param_names(query_text)
+        try:
+            bind_params(param_names, body.params)
+        except CypherParamError as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+
+        # Multi-CALL pattern: independent (non-correlated) CALL blocks with no outer MATCH.
+        _non_corr_calls = [cs for cs in ast.call_subqueries if not cs.imported_vars]
+        if _non_corr_calls and not ast.match_clauses:
+            return await _execute_multi_call(
+                _non_corr_calls,
+                label_map,
+                body,
+                state,
+                role_id,
+                ctx,
+                assemble_rows,
+                to_serializable,
+            )
+
+        # Stages 1-2: Translate + graph rewrites
+        _sql_result = _build_sql_from_ast(ast, label_map, body, cypher_to_sql, apply_graph_rewrites)
+        if isinstance(_sql_result, Response):
+            return _sql_result
+        sql_str, ordered_params, graph_vars = _sql_result
+
+        # Stage 3: Semantic conversion + access validation (transport responsibility)
+        semantic_sql = make_semantic_sql(sql_str, ctx)
+        rls = state.rls_contexts.get(role_id, RLSContext.empty())
+        _gov_ctx_for_validate = build_governance_context(
+            role_id,
+            rls,
+            state.masking_rules,
+            ctx,
+            getattr(state, "tables", []),
+            role=_role_dict,
+            relationships=getattr(state, "relationships", None),
+        )
+        _violations = _validate_sql(
+            semantic_sql,
+            ctx,
+            _gov_ctx_for_validate,
+            _role_dict,
+            getattr(state, "tables", []),
+            bypass_relationship_guard=True,
+            bypass_uncovered_relationships=True,
+        )
+        if _violations:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "violations": [{"code": v.code, "message": v.message} for v in _violations]
+                },
+            )
+
+        translation = CypherTranslation(
+            semantic_sql=semantic_sql,
+            ordered_params=tuple(ordered_params),
+            param_names=tuple(param_names),
+            graph_vars=graph_vars,
+            span_attrs=span_attrs_from_semantic_sql(semantic_sql, role_id),
+        )
+        kept.record(translation)
+
+    semantic_sql, graph_vars = translation.semantic_sql, translation.graph_vars
+    try:
+        resolved_params = translation.bind(body.params)
+    except CypherParamError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+    assert translation.span_attrs is not None  # every HTTP translation records them
+    span_attrs: dict[str, str] = {**translation.span_attrs, "provisa.query_text": body.query}
 
     # Stage 4: Pipeline (governance + routing)
     try:
@@ -731,6 +774,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             exec_params=resolved_params or None,
             # REQ-544: the Cypher request's own `// @provisa cache` opt-in.
             cache_hint=cache_hint_for("cypher", body.query),
+            # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
+            serve_cached=True,
         )
     except PermissionError as exc:
         return JSONResponse(status_code=403, content={"error": str(exc)})
@@ -754,8 +799,20 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     # _execute_plan, so the audit row is written here.
     from provisa.pgwire._pipeline import finalize_audit
 
-    # REQ-1897: an opted-in plan's HIT is served (and audited) without dialling anything.
-    _cached_rows = await cached_cypher_rows(plan, state)
+    # REQ-1897: an opted-in plan's HIT is served (and audited) without dialling anything. A
+    # Route.CACHE plan was answered before routing — it names no source — and the pipeline
+    # terminal serves the entry it holds.
+    if plan.route == _Route.CACHE:
+        from provisa.pgwire._pipeline import _execute_plan
+
+        _served = await _execute_plan(plan, state)
+        _hit = (
+            [dict(zip(_served.column_names, row)) for row in _served.rows],
+            _served.cache_entry,
+        )
+    else:
+        _hit = await cached_cypher_hit(plan, state)
+    _cached_rows = None if _hit is None else _hit[0]
     try:
         if _cached_rows is not None:
             _exec_result = _cached_rows
@@ -780,12 +837,10 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 
             async def _land_sources() -> None:
                 await ensure_rows_resident(state, plan.pk_bounds)
-                _pushed_down = await pushdown_row_materialize(
+                await pushdown_row_materialize(
                     state, physical_sql, state.federation_engine.dialect, resolved_params
                 )
-                await ensure_resident(
-                    state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
-                )
+                await ensure_resident(state, plan.sources)
 
             # REQ-778: landing runs inside execution's error classification — a source that
             # cannot be landed (e.g. an unreachable broker) answers with the typed `error` field.
@@ -799,6 +854,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         await finalize_audit(plan, _exec_result.status_code, state)
         return _exec_result
     if _cached_rows is None:
+        plan.row_count = len(_exec_result)
         await finalize_audit(plan, 200, state)
         await store_cypher_rows(plan, state, _exec_result)
     rows = _exec_result
@@ -817,7 +873,10 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
 
     content = _build_stats_content(columns, serializable_rows, physical_sql, stats_enabled, _t0)
     content["type"] = "cypher"
-    return JSONResponse(content=content, headers=build_cache_headers(None))  # REQ-536
+    # REQ-536: HIT (with the entry's age) when the rows came from the response cache, else MISS.
+    return JSONResponse(
+        content=content, headers=build_cache_headers(None if _hit is None else _hit[1])
+    )
 
 
 @router.get("/data/graph-schema")
@@ -986,6 +1045,8 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             except Exception:
                 await finalize_audit(plan, 500, state)  # REQ-074/REQ-1386
                 raise
+            if not isinstance(rows, Response):
+                plan.row_count = len(rows)
             await finalize_audit(plan, 200, state)  # REQ-074/REQ-1386
             if isinstance(rows, Response):
                 return None

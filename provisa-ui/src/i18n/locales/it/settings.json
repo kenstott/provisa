@@ -1,0 +1,624 @@
+{
+  "settings": {
+    "limits": {
+      "default_row_limit": {
+        "label": "Limite di righe predefinito",
+        "help": "Il numero massimo di righe restituite da una query quando il chiamante non imposta un limite proprio."
+      },
+      "engine_query_timeout": {
+        "label": "Timeout query del motore",
+        "help": "Per quanto tempo il motore di federazione può eseguire una query prima che venga annullata."
+      },
+      "retry_budget_secs": {
+        "label": "Budget dei tentativi",
+        "help": "Per quanto tempo una query non riuscita continua a essere ritentata prima che venga restituito l'errore; 0 disattiva i tentativi."
+      },
+      "request_timeout": {
+        "label": "Timeout di richiesta predefinito",
+        "help": "Per quanto tempo una richiesta può essere eseguita prima di essere annullata, per ogni trasporto senza un valore proprio."
+      },
+      "request_timeouts": {
+        "label": "Timeout di richiesta per trasporto",
+        "help": "Il limite di tempo delle richieste di ciascun trasporto singolarmente; un trasporto lasciato vuoto usa il valore predefinito. Flight è impostato di serie a 3600 secondi e pgwire a 300.",
+        "keys": {
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "jsonapi": "JSON:API",
+          "sql_http": "SQL su HTTP",
+          "cypher_http": "Cypher su HTTP",
+          "pgwire": "PostgreSQL wire",
+          "flight": "Arrow Flight",
+          "bolt": "Bolt",
+          "grpc": "gRPC",
+          "mcp": "MCP"
+        }
+      }
+    },
+    "sampling": {
+      "default_sample_size": {
+        "label": "Dimensione del campione predefinita",
+        "help": "Quante righe legge una query a campione quando il chiamante non lo specifica."
+      }
+    },
+    "relationships": {
+      "auto_track_fk": {
+        "label": "Tracciamento automatico delle chiavi esterne",
+        "help": "Indica se la registrazione di una tabella registra anche le sue chiavi esterne come relazioni."
+      }
+    },
+    "grpc": {
+      "max_message_bytes": {
+        "label": "Dimensione massima dei messaggi gRPC",
+        "help": "Il messaggio gRPC singolo più grande che il server invia o accetta; richiede un riavvio perché è un'opzione del server impostata alla creazione del server gRPC."
+      },
+      "allow_unsecured_reflection": {
+        "label": "Consenti reflection gRPC non protetta",
+        "help": "Permette ai client gRPC di elencare i servizi di una distribuzione priva di autenticazione. Richiede un riavvio; protetta da conferma perché espone la superficie dei servizi."
+      }
+    },
+    "bolt": {
+      "recv_timeout": {
+        "label": "Timeout di ricezione Bolt",
+        "help": "L'indicazione fornita a un client Bolt (Neo4j) su quanto attendere una risposta."
+      },
+      "allowed_origins": {
+        "label": "Origini consentite per Bolt",
+        "help": "I siti web autorizzati ad aprire una connessione Bolt da un browser; nessuno è autorizzato finché non viene elencato. Protetta da conferma perché ogni voce permette a quel sito di usare la porta."
+      }
+    },
+    "engine": {
+      "ready_timeout": {
+        "label": "Timeout di disponibilità del motore",
+        "help": "Per quanto tempo l'avvio attende che il motore di federazione sia pronto prima di fallire."
+      },
+      "jvm_heap_gb": {
+        "label": "Heap JVM del motore (GB)",
+        "help": "La memoria assegnata al processo Java del motore di federazione. Ha effetto al riavvio del motore."
+      },
+      "query_max_memory": {
+        "label": "Limite di memoria per query",
+        "help": "La memoria massima che una query può usare nell'intero cluster del motore. Ha effetto al riavvio del motore."
+      },
+      "query_max_memory_per_node": {
+        "label": "Limite di memoria per query per nodo",
+        "help": "La memoria massima che una query può usare su un singolo nodo del motore. Ha effetto al riavvio del motore."
+      },
+      "query_max_total_memory": {
+        "label": "Limite di memoria totale per query",
+        "help": "La memoria massima che una query può usare in totale, inclusa la memoria di sistema. Ha effetto al riavvio del motore."
+      },
+      "fault_tolerant_execution": {
+        "label": "Esecuzione tollerante ai guasti",
+        "help": "Indica se il motore ritenta le parti non riuscite di una query invece di far fallire l'intera query. Ha effetto al riavvio del motore."
+      },
+      "fault_tolerant_task_memory": {
+        "label": "Memoria per task tollerante ai guasti",
+        "help": "La memoria riservata per ogni task quando l'esecuzione tollerante ai guasti è attiva. Ha effetto al riavvio del motore."
+      },
+      "exchange_spool_dir": {
+        "label": "Cartella di spool dello scambio",
+        "help": "Dove il motore conserva i dati intermedi per l'esecuzione tollerante ai guasti. Ha effetto al riavvio del motore."
+      }
+    },
+    "ui": {
+      "proxy_timeout": {
+        "label": "Timeout del proxy dell'interfaccia",
+        "help": "Per quanto tempo il server dell'interfaccia attende la risposta dell'API a una richiesta inoltrata prima di segnalare un timeout; deve superare la durata di un risveglio del motore."
+      }
+    },
+    "concurrency": {
+      "background_workers": {
+        "label": "Worker in background",
+        "help": "Il numero di thread che ogni processo worker usa per il lavoro in background; richiede un riavvio perché il pool viene dimensionato una sola volta all'avvio."
+      },
+      "grpc_max_concurrent_rpcs": {
+        "label": "Chiamate gRPC simultanee",
+        "help": "Il numero massimo di chiamate gRPC servite contemporaneamente da un processo worker; le altre vengono rifiutate. Richiede un riavvio perché dimensiona il pool di thread del server gRPC."
+      },
+      "flight_max_concurrent_streams": {
+        "label": "Stream Arrow Flight simultanei",
+        "help": "Il numero massimo di stream Arrow Flight eseguiti contemporaneamente da un processo worker; gli altri attendono uno slot. Richiede un riavvio perché gli slot vengono creati all'avvio."
+      },
+      "request_threads": {
+        "label": "Thread di richiesta per worker",
+        "help": "Il numero massimo di richieste eseguite contemporaneamente da un processo worker; le altre attendono un thread libero. Richiede un riavvio perché il limite è fissato all'avvio del worker."
+      },
+      "workers": {
+        "label": "Processi worker",
+        "help": "Quanti processi worker esegue il server. Richiede un riavvio perché i processi vengono avviati dal launcher."
+      }
+    },
+    "security": {
+      "mode": {
+        "label": "Modalità di sicurezza",
+        "help": "Standard oppure alta sicurezza, dove gli endpoint dei dati rifiutano qualsiasi client che non sia in grado di decifrare da sé i risultati e i listener pgwire, Bolt e MCP non vengono avviati. Richiede un riavvio perché stabilisce quali listener partono; protetta da conferma perché esclude i client ordinari."
+      },
+      "multitenancy": {
+        "label": "Multitenancy",
+        "help": "Indica se la distribuzione serve più organizzazioni, ciascuna delle quali amministra solo i propri dati. Richiede un riavvio perché le concessioni dei ruoli vengono impostate all'avvio; protetta da conferma perché cambia chi può amministrare la distribuzione."
+      },
+      "superuser": {
+        "username": {
+          "label": "Nome dell'account di emergenza",
+          "help": "Il nome dell'account di emergenza (break-glass) che può sempre accedere. Richiede un riavvio; protetta da conferma."
+        },
+        "password": {
+          "label": "Password dell'account di emergenza",
+          "help": "La password dell'account di emergenza (break-glass). Segreta; richiede un riavvio; protetta da conferma."
+        }
+      }
+    },
+    "redis": {
+      "require_tls": {
+        "label": "Richiedi TLS per Redis",
+        "help": "Rifiuta l'avvio con un indirizzo Redis che non usa TLS. Richiede un riavvio perché viene verificato alla connessione della cache."
+      }
+    },
+    "auth": {
+      "login_throttle": {
+        "max_attempts": {
+          "label": "Tentativi di accesso prima del blocco",
+          "help": "Quanti accessi non riusciti entro la finestra bloccano un account. Protetta da conferma perché aumentarlo indebolisce il freno ai tentativi di indovinare la password."
+        },
+        "window_seconds": {
+          "label": "Finestra dei tentativi di accesso",
+          "help": "Fino a quanto tempo indietro vengono conteggiati gli accessi non riusciti. Protetta da conferma perché ridurla indebolisce il freno ai tentativi di indovinare la password."
+        },
+        "lockout_seconds": {
+          "label": "Durata del blocco",
+          "help": "Per quanto tempo un account bloccato viene rifiutato. Protetta da conferma perché ridurla indebolisce il freno ai tentativi di indovinare la password."
+        }
+      }
+    },
+    "server": {
+      "hostname": {
+        "label": "Nome host",
+        "help": "Il nome host che la distribuzione comunica ai client negli indirizzi che fornisce. Richiede un riavvio perché i server avviati al boot lo mantengono."
+      },
+      "grpc_port": {
+        "label": "Porta gRPC",
+        "help": "La porta su cui è in ascolto il server gRPC. Richiede un riavvio; protetta da conferma perché client e firewall devono adeguarsi a una modifica."
+      },
+      "flight_port": {
+        "label": "Porta Arrow Flight",
+        "help": "La porta su cui è in ascolto il server Arrow Flight. Richiede un riavvio; protetta da conferma perché client e firewall devono adeguarsi a una modifica."
+      },
+      "pgwire_port": {
+        "label": "Porta PostgreSQL wire",
+        "help": "La porta su cui è in ascolto il server con protocollo PostgreSQL; 0 lo lascia disattivato. Richiede un riavvio; protetta da conferma perché apre o chiude un listener."
+      },
+      "bolt_port": {
+        "label": "Porta Bolt",
+        "help": "La porta su cui è in ascolto il server Bolt (Neo4j); 0 lo lascia disattivato. Richiede un riavvio; protetta da conferma perché apre o chiude un listener."
+      },
+      "airport_port": {
+        "label": "Porta Airport",
+        "help": "La porta su cui è in ascolto il servizio Airport Flight; 0 lo lascia disattivato. Richiede un riavvio; protetta da conferma perché apre o chiude un listener."
+      },
+      "port": {
+        "label": "Porta dell'API HTTP",
+        "help": "La porta su cui è in ascolto l'API HTTP. Richiede un riavvio; protetta da conferma perché l'interfaccia e ogni client devono adeguarsi a una modifica."
+      }
+    },
+    "tls": {
+      "cert": {
+        "label": "Certificato TLS",
+        "help": "Il percorso del file del certificato presentato da ogni listener di protocollo, a meno che un protocollo ne indichi uno proprio. Richiede un riavvio; protetta da conferma perché un file errato impedisce l'avvio dei listener TLS."
+      },
+      "key": {
+        "label": "Chiave privata TLS",
+        "help": "Il percorso della chiave privata associata al certificato. Richiede un riavvio; protetta da conferma perché un file errato impedisce l'avvio dei listener TLS."
+      },
+      "grpc_cert": {
+        "label": "Certificato TLS gRPC",
+        "help": "Un file di certificato solo per il listener gRPC, al posto di quello condiviso. Richiede un riavvio; protetta da conferma."
+      },
+      "grpc_key": {
+        "label": "Chiave privata TLS gRPC",
+        "help": "La chiave privata del certificato dedicato al listener gRPC. Richiede un riavvio; protetta da conferma."
+      },
+      "flight_cert": {
+        "label": "Certificato TLS Arrow Flight",
+        "help": "Un file di certificato solo per il listener Arrow Flight, al posto di quello condiviso. Richiede un riavvio; protetta da conferma."
+      },
+      "flight_key": {
+        "label": "Chiave privata TLS Arrow Flight",
+        "help": "La chiave privata del certificato dedicato al listener Arrow Flight. Richiede un riavvio; protetta da conferma."
+      },
+      "pgwire_cert": {
+        "label": "Certificato TLS PostgreSQL wire",
+        "help": "Un file di certificato solo per il listener con protocollo PostgreSQL, al posto di quello condiviso. Richiede un riavvio; protetta da conferma."
+      },
+      "pgwire_key": {
+        "label": "Chiave privata TLS PostgreSQL wire",
+        "help": "La chiave privata del certificato dedicato al listener con protocollo PostgreSQL. Richiede un riavvio; protetta da conferma."
+      },
+      "bolt_cert": {
+        "label": "Certificato TLS Bolt",
+        "help": "Un file di certificato solo per il listener Bolt, al posto di quello condiviso. Richiede un riavvio; protetta da conferma."
+      },
+      "bolt_key": {
+        "label": "Chiave privata TLS Bolt",
+        "help": "La chiave privata del certificato dedicato al listener Bolt. Richiede un riavvio; protetta da conferma."
+      },
+      "http_cert": {
+        "label": "Certificato TLS dell'API HTTP",
+        "help": "Il file del certificato presentato dall'API HTTP. Richiede un riavvio; protetta da conferma."
+      },
+      "http_key": {
+        "label": "Chiave privata TLS dell'API HTTP",
+        "help": "La chiave privata del certificato dell'API HTTP. Richiede un riavvio; protetta da conferma."
+      }
+    },
+    "cache": {
+      "enabled": {
+        "label": "Cache dei risultati attiva",
+        "help": "Indica se i risultati delle query possono essere memorizzati nella cache. Richiede un riavvio perché l'archivio della cache viene creato all'avvio."
+      },
+      "default_ttl": {
+        "label": "Durata predefinita della cache",
+        "help": "Per quanto tempo un risultato in cache viene conservato quando nulla di più specifico lo stabilisce; un'organizzazione può impostare un valore proprio. Richiede un riavvio per il valore predefinito della distribuzione."
+      },
+      "redis_url": {
+        "label": "Indirizzo Redis",
+        "help": "L'indirizzo del server Redis usato per la cache e il rate limiting; se non impostato, viene usato quello integrato. Segreta perché può contenere una password; richiede un riavvio perché le connessioni vengono aperte all'avvio; protetta da conferma."
+      },
+      "redis_org_password": {
+        "label": "Password Redis dell'organizzazione",
+        "help": "La password assegnata all'account Redis di ciascuna organizzazione al momento della sua creazione. Segreta; protetta da conferma."
+      },
+      "redis_embedded": {
+        "label": "Redis integrato",
+        "help": "Indica se si tratta di un avvio desktop che usa il Redis integrato. Impostata dal launcher; non modificabile."
+      }
+    },
+    "apq": {
+      "ttl": {
+        "label": "Durata delle query persistenti",
+        "help": "Per quanto tempo una query persistente resta registrata. Richiede un riavvio perché viene passata alla cache al momento della sua creazione."
+      }
+    },
+    "compiler": {
+      "compiled_query_cache_ttl": {
+        "label": "Durata del piano di query compilato",
+        "help": "Per quanto tempo un piano di query compilato viene riutilizzato prima di essere ricostruito. Richiede un riavvio perché ogni worker lo legge quando crea la propria cache."
+      }
+    },
+    "redirect": {
+      "enabled": {
+        "label": "Reindirizzamento attivo",
+        "help": "Il valore predefinito della distribuzione che indica se i risultati di grandi dimensioni vengono scritti nell'archiviazione di oggetti e restituiti come collegamento; un'organizzazione può impostare un valore proprio."
+      },
+      "threshold": {
+        "label": "Soglia di reindirizzamento",
+        "help": "Il numero di righe predefinito della distribuzione oltre il quale un risultato viene reindirizzato all'archiviazione di oggetti; un'organizzazione può impostare un valore proprio."
+      },
+      "ttl": {
+        "label": "Durata del collegamento di reindirizzamento",
+        "help": "Il valore predefinito della distribuzione per la durata di validità di un collegamento di reindirizzamento; un'organizzazione può impostare un valore proprio."
+      },
+      "default_format": {
+        "label": "Formato file del reindirizzamento",
+        "help": "Il formato file predefinito della distribuzione per i risultati reindirizzati; un'organizzazione può impostare un valore proprio."
+      },
+      "bucket": {
+        "label": "Bucket di reindirizzamento",
+        "help": "Il bucket di archiviazione di oggetti in cui vengono scritti i risultati reindirizzati. Protetta da conferma perché modificarlo invia i risultati altrove."
+      },
+      "endpoint": {
+        "label": "Indirizzo dell'archivio oggetti di reindirizzamento",
+        "help": "L'indirizzo dell'archivio di oggetti in cui vengono scritti i risultati reindirizzati. Protetta da conferma perché modificarlo invia i risultati altrove."
+      },
+      "region": {
+        "label": "Regione dell'archivio oggetti di reindirizzamento",
+        "help": "La regione dell'archivio di oggetti."
+      },
+      "encrypt": {
+        "label": "Crittografa i risultati reindirizzati",
+        "help": "Indica se i risultati reindirizzati vengono crittografati prima del caricamento."
+      },
+      "local_dir": {
+        "label": "Cartella locale di reindirizzamento",
+        "help": "La cartella in cui vengono scritti i risultati reindirizzati quando nessun archivio di oggetti è raggiungibile."
+      },
+      "access_key": {
+        "label": "Chiave di accesso del reindirizzamento",
+        "help": "La chiave di accesso dell'archivio di oggetti. Segreta; protetta da conferma."
+      },
+      "secret_key": {
+        "label": "Chiave segreta del reindirizzamento",
+        "help": "La chiave segreta dell'archivio di oggetti. Segreta; protetta da conferma."
+      }
+    },
+    "otel": {
+      "trace_detail": {
+        "label": "Livello di dettaglio delle trace",
+        "help": "Quanto dettaglio contiene per impostazione predefinita la trace di ogni richiesta: normal oppure debug. Richiede un riavvio perché viene impostato alla configurazione del tracciamento."
+      },
+      "trace_sql": {
+        "label": "SQL nelle trace",
+        "help": "Indica se le trace contengono l'SQL di ogni fase: off, redacted (valori oscurati) oppure full. Protetta da conferma perché full scrive i valori delle query nelle trace."
+      },
+      "trace_ast": {
+        "label": "Istruzioni analizzate nelle trace",
+        "help": "Indica se le trace contengono anche la forma analizzata di ogni istruzione, con i valori oscurati."
+      },
+      "metric_export_interval": {
+        "label": "Intervallo di esportazione delle metriche",
+        "help": "Con quale frequenza vengono esportate le metriche. Richiede un riavvio perché viene passato all'esportatore al momento della sua creazione."
+      },
+      "endpoint": {
+        "label": "Endpoint di telemetria",
+        "help": "Dove vengono inviate trace e metriche."
+      },
+      "protocol": {
+        "label": "Protocollo di telemetria",
+        "help": "Il trasporto usato dall'endpoint di telemetria: gRPC o HTTP."
+      },
+      "service_name": {
+        "label": "Nome del servizio di telemetria",
+        "help": "Il nome con cui viene riportata la telemetria di questa distribuzione."
+      },
+      "sample_rate": {
+        "label": "Frequenza di campionamento delle trace",
+        "help": "La quota di richieste tracciate, da 0 a 1."
+      },
+      "log_level": {
+        "label": "Livello di log della telemetria",
+        "help": "La gravità minima dei record di log esportati con la telemetria."
+      },
+      "subsystem_traces": {
+        "label": "Trace dei sottosistemi",
+        "help": "Quali sottosistemi interni scrivono trace proprie."
+      },
+      "compact_cron": {
+        "label": "Pianificazione della compattazione",
+        "help": "Quando i file di telemetria archiviati vengono uniti in file più grandi."
+      },
+      "compact_batch_size": {
+        "label": "Dimensione del batch di compattazione",
+        "help": "Quante righe scrive alla volta ogni unione della telemetria archiviata."
+      },
+      "compact_file_chunk": {
+        "label": "Blocco di file della compattazione",
+        "help": "Quanti piccoli file di telemetria vengono letti insieme in un passaggio di unione."
+      },
+      "compact_max_files_per_run": {
+        "label": "File per esecuzione della compattazione",
+        "help": "Il numero massimo di file di telemetria elaborati da un'esecuzione di unione."
+      },
+      "ops_snapshot_retention_hours": {
+        "label": "Conservazione degli snapshot operativi (ore)",
+        "help": "Per quanto tempo vengono conservati gli snapshot operativi."
+      },
+      "span_export_delay_millis": {
+        "label": "Ritardo di esportazione degli span (millisecondi)",
+        "help": "Per quanto tempo gli span vengono raggruppati in batch prima dell'esportazione."
+      },
+      "otlp2parquet_max_age_secs": {
+        "label": "Età massima del writer Parquet (secondi)",
+        "help": "Per quanto tempo il writer della telemetria trattiene le righe prima di scrivere un file."
+      },
+      "collector_batch_timeout_ms": {
+        "label": "Timeout del batch del collector (millisecondi)",
+        "help": "Per quanto tempo il collector raggruppa la telemetria in batch prima di inoltrarla."
+      },
+      "s3_endpoint": {
+        "label": "Indirizzo dell'archivio di telemetria",
+        "help": "L'archivio di oggetti in cui viene scritta la telemetria archiviata."
+      },
+      "s3_bucket": {
+        "label": "Bucket dell'archivio di telemetria",
+        "help": "Il bucket in cui viene scritta la telemetria archiviata."
+      },
+      "s3_region": {
+        "label": "Regione dell'archivio di telemetria",
+        "help": "La regione dell'archivio di oggetti della telemetria."
+      },
+      "s3_access_key": {
+        "label": "Chiave di accesso dell'archivio di telemetria",
+        "help": "La chiave di accesso dell'archivio di oggetti della telemetria. Segreta."
+      },
+      "s3_secret_key": {
+        "label": "Chiave segreta dell'archivio di telemetria",
+        "help": "La chiave segreta dell'archivio di oggetti della telemetria. Segreta."
+      },
+      "support_endpoint": {
+        "label": "Endpoint di telemetria per il supporto",
+        "help": "Dove viene inviata una copia della telemetria per l'assistenza del fornitore, se impostato."
+      },
+      "support_redact_sql_literals": {
+        "label": "Oscura i valori SQL per il supporto",
+        "help": "Indica se i valori nell'SQL vengono oscurati nella copia inviata al supporto."
+      },
+      "support_redact_attributes": {
+        "label": "Attributi oscurati per il supporto",
+        "help": "Gli attributi delle trace rimossi dalla copia inviata al supporto."
+      }
+    },
+    "control_plane": {
+      "tenant_url": {
+        "label": "Indirizzo del database dell'organizzazione",
+        "help": "Il database che contiene la configurazione di ogni organizzazione. Non modificabile: la distribuzione ne ha bisogno per trovare le impostazioni archiviate."
+      },
+      "platform_url": {
+        "label": "Indirizzo del database della piattaforma",
+        "help": "Il database che contiene account, organizzazioni e queste impostazioni. Non modificabile: la distribuzione ne ha bisogno per trovare le impostazioni archiviate."
+      },
+      "org_id": {
+        "label": "Organizzazione iniziale",
+        "help": "L'organizzazione con cui questa distribuzione si avvia. Non modificabile: viene letta prima che le impostazioni archiviate possano esserlo."
+      },
+      "pool_min": {
+        "label": "Connessioni minime al database",
+        "help": "Il numero minimo di connessioni al database del piano di controllo mantenute da ogni worker. Non modificabile: il pool viene aperto prima che le impostazioni archiviate possano essere lette."
+      },
+      "pool_max": {
+        "label": "Connessioni massime al database",
+        "help": "Il numero massimo di connessioni al database del piano di controllo aperte da ogni worker. Non modificabile: il pool viene aperto prima che le impostazioni archiviate possano essere lette."
+      }
+    },
+    "bootstrap": {
+      "config_path": {
+        "label": "File di configurazione",
+        "help": "Il file di configurazione con cui è stata avviata questa distribuzione. Non modificabile: viene letto prima che le impostazioni archiviate possano esserlo."
+      },
+      "data_dir": {
+        "label": "Cartella dei dati",
+        "help": "La cartella in cui la distribuzione conserva i propri file. Non modificabile: viene letta prima che le impostazioni archiviate possano esserlo."
+      },
+      "home": {
+        "label": "Cartella home",
+        "help": "La cartella home della distribuzione per certificati e archivi locali. Non modificabile: viene letta prima che le impostazioni archiviate possano esserlo."
+      },
+      "repo_dir": {
+        "label": "Cartella della cronologia di configurazione",
+        "help": "La cartella che contiene la cronologia di configurazione di ogni organizzazione. Non modificabile: viene letta prima che le impostazioni archiviate possano esserlo."
+      },
+      "demo": {
+        "label": "Modalità demo",
+        "help": "Indica se la distribuzione è stata avviata in modalità demo. Impostata dal launcher; non modificabile."
+      }
+    },
+    "mcp": {
+      "max_rows": {
+        "label": "Limite di righe MCP",
+        "help": "Il numero massimo di righe restituite da una singola chiamata di strumento MCP a un client di intelligenza artificiale."
+      },
+      "port": {
+        "label": "Porta MCP",
+        "help": "La porta su cui è in ascolto il server MCP; 0 lo lascia disattivato. Richiede un riavvio; protetta da conferma perché apre o chiude un listener."
+      },
+      "host": {
+        "label": "Host MCP",
+        "help": "L'indirizzo di rete a cui si associa il server MCP; 127.0.0.1 lo limita a questa macchina. Richiede un riavvio; protetta da conferma perché stabilisce chi può raggiungere la porta."
+      },
+      "tls": {
+        "label": "TLS MCP",
+        "help": "Indica se il server MCP serve HTTPS. Richiede un riavvio; protetta da conferma."
+      },
+      "role": {
+        "label": "Ruolo locale MCP",
+        "help": "Il ruolo con cui vengono eseguite le chiamate MCP locali (stdio); finché non è impostato, tali chiamate vengono rifiutate. Protetta da conferma perché concede l'accesso di quel ruolo a chiunque possa avviare il client locale."
+      },
+      "external_url": {
+        "label": "Indirizzo esterno MCP",
+        "help": "L'indirizzo MCP mostrato agli utenti quando la distribuzione si trova dietro un proxy."
+      },
+      "chat_model": {
+        "label": "Modello di chat",
+        "help": "Il modello usato dalla chat integrata, che sostituisce la scelta di ciascuna organizzazione."
+      }
+    },
+    "udf": {
+      "egress_allowlist": {
+        "label": "Elenco consentiti per l'uscita delle funzioni ospitate",
+        "help": "Gli host che una funzione ospitata può chiamare; tutto il resto viene rifiutato. Protetta da conferma perché ogni voce apre un percorso in uscita."
+      }
+    },
+    "cdc": {
+      "consumer_group_id": {
+        "label": "Gruppo di consumer CDC",
+        "help": "Il nome usato da questa distribuzione quando legge eventi di modifica da un message broker."
+      }
+    },
+    "graphql_remote": {
+      "max_object_depth": {
+        "label": "Profondità degli oggetti GraphQL remoto",
+        "help": "Fino a che profondità vengono seguiti gli oggetti annidati di un'origine GraphQL remota."
+      },
+      "max_list_depth": {
+        "label": "Profondità delle liste GraphQL remoto",
+        "help": "Fino a che profondità vengono seguite le liste annidate di un'origine GraphQL remota."
+      },
+      "max_list_items": {
+        "label": "Elementi delle liste GraphQL remoto",
+        "help": "Il numero massimo di elementi letti da una singola lista di un'origine GraphQL remota."
+      }
+    },
+    "provisioning": {
+      "engine_namespace": {
+        "label": "Namespace del motore",
+        "help": "Il namespace Kubernetes in cui vengono creati i cluster del motore."
+      },
+      "engine_cluster_mode": {
+        "label": "Modalità del cluster del motore",
+        "help": "Il tipo di cluster Kubernetes su cui viene effettuato il provisioning dei motori."
+      },
+      "engine_cpu": {
+        "label": "CPU del motore",
+        "help": "La CPU assegnata a ogni motore di cui è stato effettuato il provisioning."
+      },
+      "engine_shard": {
+        "label": "Shard del motore",
+        "help": "Lo shard del motore a cui appartiene questo nodo."
+      },
+      "engine_otlp_endpoint": {
+        "label": "Endpoint di telemetria del motore",
+        "help": "Dove i motori di cui è stato effettuato il provisioning inviano la propria telemetria."
+      },
+      "engine_control_plane_host": {
+        "label": "Host del piano di controllo del motore",
+        "help": "L'indirizzo usato dai motori per raggiungere il database del piano di controllo, quando differisce da quello usato da questo server."
+      },
+      "engine_control_plane_port": {
+        "label": "Porta del piano di controllo del motore",
+        "help": "La porta usata dai motori per raggiungere il database del piano di controllo."
+      },
+      "engine_lakehouse_metastore_host": {
+        "label": "Host del metastore lakehouse",
+        "help": "L'indirizzo del metastore lakehouse usato dai motori."
+      },
+      "engine_lakehouse_metastore_port": {
+        "label": "Porta del metastore lakehouse",
+        "help": "La porta del metastore lakehouse usato dai motori."
+      },
+      "engine_otel_s3_endpoint": {
+        "label": "Indirizzo dell'archivio di telemetria del motore",
+        "help": "L'indirizzo dell'archivio di oggetti della telemetria così come lo raggiungono i motori."
+      },
+      "isolated_engine_image": {
+        "label": "Immagine del motore dedicato",
+        "help": "L'immagine del container usata per il motore dedicato di un'organizzazione."
+      },
+      "isolated_engine_network": {
+        "label": "Rete del motore dedicato",
+        "help": "La rete del container a cui è collegato un motore dedicato."
+      },
+      "isolated_engine_memory": {
+        "label": "Memoria del motore dedicato",
+        "help": "La memoria assegnata a un motore dedicato."
+      },
+      "isolated_engine_host_template": {
+        "label": "Modello dell'host del motore dedicato",
+        "help": "Il modello da cui viene costruito il nome host di un motore dedicato."
+      },
+      "isolated_engine_port": {
+        "label": "Porta del motore dedicato",
+        "help": "La porta su cui è in ascolto un motore dedicato."
+      },
+      "isolated_engine_ready_timeout": {
+        "label": "Timeout di disponibilità del motore dedicato",
+        "help": "Per quanto tempo attendere che un motore dedicato sia pronto."
+      },
+      "isolated_engine_docker_socket": {
+        "label": "Socket Docker del motore dedicato",
+        "help": "Il socket Docker usato per avviare i motori dedicati."
+      },
+      "zaychik_cpu": {
+        "label": "CPU del gateway di query",
+        "help": "La CPU assegnata al gateway di query del motore."
+      },
+      "zaychik_memory": {
+        "label": "Memoria del gateway di query",
+        "help": "La memoria assegnata al gateway di query del motore."
+      }
+    },
+    "readonlyReasons": {
+      "locates_control_plane": "Questa impostazione indica al server dove si trova il suo piano di controllo, quindi non può essere modificata dal piano di controllo.",
+      "read_before_control_plane": "Questa impostazione viene letta prima che il piano di controllo sia disponibile, quindi si imposta al di fuori dell'interfaccia.",
+      "set_by_launcher": "Questo valore è impostato dal launcher che ha avviato la distribuzione.",
+      "set_by_desktop_launcher": "Questo valore è impostato dal launcher desktop per questa installazione."
+    }
+  }
+}

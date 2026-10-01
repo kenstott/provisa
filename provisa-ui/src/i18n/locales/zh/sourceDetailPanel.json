@@ -24,6 +24,10 @@
     "navigateTitle": "查看已注册的表",
     "deleteTitle": "删除数据源“{{id}}”？",
     "deleteTitleShort": "删除",
-    "deleteConsequence": "这将移除数据源“{{id}}”，并可能破坏引用它的表。"
+    "deleteConsequence": "这将移除数据源“{{id}}”，并可能破坏引用它的表。",
+    "refreshKaggleTitle": "从 Kaggle 刷新",
+    "refreshKaggleHint": "从 Kaggle 重新下载 {{owner}}/{{ref}}，就地覆盖已暂存的文件。您的 Kaggle 令牌不会被存储——本次刷新请重新输入。",
+    "kaggleTokenLabel": "Kaggle API 令牌",
+    "refreshKaggleSubmit": "刷新"
   }
 }

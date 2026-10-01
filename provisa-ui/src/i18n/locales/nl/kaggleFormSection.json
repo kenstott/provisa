@@ -1,0 +1,15 @@
+{
+  "kaggleFormSection": {
+    "tokenLabel": "Kaggle API-token",
+    "tokenDescription": "Live gevalideerd tegen de Kaggle API voordat de datasetkiezer wordt ontgrendeld",
+    "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
+    "validateButton": "Token valideren",
+    "tokenValid": "Token geldig",
+    "tokenInvalid": "Ongeldig Kaggle API-token",
+    "datasetSearchLabel": "Kaggle-datasets zoeken",
+    "datasetSearchPlaceholder": "Zoeken op naam...",
+    "noDatasetsFound": "Geen datasets gevonden",
+    "selectedDataset": "Geselecteerd: {{ref}}",
+    "registerButton": "Dataset toevoegen"
+  }
+}

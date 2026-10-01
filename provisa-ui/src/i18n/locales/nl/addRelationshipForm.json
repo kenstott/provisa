@@ -24,6 +24,18 @@
     "materializeLabel": "Materialiseren (automatisch MV aanmaken voor joins tussen bronnen)",
     "disableCypherLabel": "Uitsluiten van Cypher-graaf",
     "refreshIntervalLabel": "Verversingsinterval (s)",
-    "save": "Opslaan"
+    "save": "Opslaan",
+    "junctionTitle": "Koppeltabel (geavanceerd)",
+    "junctionHelp": "Geef aan dat deze edge via een associatieve tabel loopt. De overige kolommen van de koppeltabel worden de attributen van de relatie.",
+    "viaTableLabel": "Koppeltabel",
+    "viaSourceColumnLabel": "Koppeltabelkolom → bron",
+    "viaTargetColumnLabel": "Koppeltabelkolom → doel",
+    "viaTypeColumnLabel": "Discriminatorkolom",
+    "viaTypeValueLabel": "Discriminatorwaarde",
+    "viaTypeValuePlaceholder": "bijv. KIND_OF",
+    "viaLabelSourceLabel": "De edge noemen naar",
+    "viaLabelSourceColumn": "Discriminatorwaarde",
+    "viaLabelSourceTable": "Naam van koppeltabel",
+    "viaLabelSourceFixed": "Cypher-alias"
   }
 }

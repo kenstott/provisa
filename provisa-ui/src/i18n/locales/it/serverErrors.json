@@ -15,6 +15,7 @@
     },
     "auth": {
       "authentication_required": "Autenticazione richiesta",
+      "auto_join_not_offered": "Quell'organizzazione non si offre di ammetterti",
       "bootstrap_claiming_disabled": "La rivendicazione bootstrap non è abilitata",
       "delete_account_confirm_required": "L'eliminazione dell'account è irreversibile: il profilo e tutte le appartenenze alle organizzazioni vengono rimossi e non possono essere ripristinati. Ripetere l'id utente nel parametro 'confirm' per procedere.",
       "email_not_permitted": "L'indirizzo email non è autorizzato a unirsi a questa organizzazione",
@@ -51,6 +52,10 @@
       "engine_not_connected": "il motore non è connesso",
       "grpc_source_not_registered": "Origine remota gRPC '{{source_id}}' non registrata",
       "invalid_as_of": "X-Provisa-As-Of non valido: {{error}}",
+      "invalid_filter": "filter deve essere un oggetto che associa nomi di campo a valori",
+      "invalid_filter_field": "Campo filter non valido '{{field}}' per {{type_name}}",
+      "invalid_read_mask": "read_mask deve essere un oggetto con un elenco 'paths' di percorsi di campo",
+      "invalid_read_mask_path": "Percorso read_mask non valido '{{path}}' per {{type_name}}",
       "missing_command_name": "Nome del comando mancante",
       "missing_role_id": "role_id mancante",
       "missing_x_provisa_role_header": "Intestazione X-Provisa-Role mancante",
@@ -155,7 +160,10 @@
       "auth_required_create": "Autenticazione richiesta per creare un'organizzazione",
       "auth_required_leave": "Autenticazione richiesta per lasciare un'organizzazione",
       "auto_join_public_domain": "auto_join richiede una regola e-mail limitata a un dominio che controlli: questa corrisponde a {{domain}}.",
+      "auto_join_breadth_unacknowledged": "Esamina con attenzione questa regola di adesione automatica o potresti ammettere persone esterne alla tua organizzazione: oltre a {{domains}}, accetta anche indirizzi come {{admits}}. Chiunque appartenga a un dominio che non controlli potrebbe quindi unirsi automaticamente alla tua organizzazione. Conferma di accettare questo rischio per salvarla.",
       "auto_join_requires_role": "auto_join richiede auto_join_role",
+      "auto_join_rule_taken": "Un'altra organizzazione ammette già automaticamente tutti gli indirizzi corrispondenti a questa regola. Due organizzazioni non possono rivendicare gli stessi indirizzi: chiedi loro un invito, oppure restringi la regola a un dominio usato solo dalla tua organizzazione.",
+      "auto_join_rule_unbounded": "Questa regola di adesione automatica non ha limiti: ammetterebbe indirizzi di domini che non controlli. Ancorala a un dominio di tua proprietà, ad es. \"@acme\\\\.com$\".",
       "cannot_delete_root": "Impossibile eliminare l'organizzazione root",
       "delete_confirm_required": "L'eliminazione di '{{org}}' distrugge definitivamente tutti i suoi dati — nessuno, nemmeno un amministratore della piattaforma, può recuperarli. Ripetere l'id dell'organizzazione nel parametro 'confirm' per procedere.",
       "invalid_email_rule": "Regola email non valida: {{error}}",
@@ -173,7 +181,8 @@
     },
     "platform": {
       "right_required": "Capacità {{right}} richiesta",
-      "settings_capability_required": "Capacità platform_settings richiesta"
+      "settings_capability_required": "Capacità platform_settings richiesta",
+      "control_plane_role_required": "È richiesto un amministratore della piattaforma."
     },
     "profile": {
       "database_unavailable": "Database non disponibile",
@@ -249,7 +258,7 @@
       "source_connection_failed": "Origine '{{source}}': convalida della connessione non riuscita: {{error}}",
       "source_created": "Origine '{{source}}' creata",
       "source_deleted": "Origine '{{source}}' eliminata",
-      "source_limit_reached": "Questa organizzazione utilizza {{held}} delle {{limit}} origini dati consentite dal suo piano {{plan}}. Cambia piano nella pagina Fatturazione oppure rimuovi un'origine.",
+      "source_limit_reached": "Questa organizzazione detiene {{held}} delle {{limit}} origini dati ammesse dal piano {{plan}}. Cambia il piano nella pagina Fatturazione oppure rimuovi un'origine.",
       "source_load_protection_set": "protezione dal carico impostata per l'origine '{{source}}'",
       "source_naming_updated": "Convenzione di denominazione aggiornata per l'origine '{{source}}'",
       "source_no_connection": "l'origine '{{source}}' non ha una connessione attiva",
@@ -297,7 +306,10 @@
       "unknown_auth_provider": "provider di autenticazione '{{provider}}' sconosciuto; validi: {{valid}}",
       "unknown_encryption_provider": "provider di crittografia '{{provider}}' sconosciuto",
       "unknown_engine": "motore '{{engine}}' sconosciuto; validi: {{valid}}",
-      "use_domains_invalid": "use_domains deve essere true, false o null"
+      "use_domains_invalid": "use_domains deve essere true, false o null",
+      "invalid_value": "Il valore di {{field}} è stato rifiutato.",
+      "invalid_body": "La richiesta delle impostazioni non è valida.",
+      "auth_required": "{{field}} non può essere modificato finché l'autenticazione non è configurata."
     },
     "setup": {
       "admin_credentials_required": "admin_username e admin_password richiesti",

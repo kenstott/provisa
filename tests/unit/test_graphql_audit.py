@@ -186,6 +186,75 @@ def test_opening_a_subscription_is_audited(audited, monkeypatch):
     ]
 
 
+def test_an_action_field_request_is_one_row_the_actions_governed_statement(audited, monkeypatch):
+    """An action's rows are governed by a statement of their own, which is audited like a table
+    read. That row IS the request's record: the request writes no second one."""
+    from provisa.api.data import endpoint
+    from provisa.audit.pipeline import PendingAudit, write_audit
+    from provisa.audit.context import note_statement_audited
+
+    async def _action_request(*args, **kwargs):
+        # What action_governance._audit does when the action's governed statement has run.
+        pending = PendingAudit("alice", "http", "analyst", "SELECT * FROM send_invoice", [], 0.0)
+        await write_audit(pending, 200, audited.harness.state, route="engine", row_count=2)
+        note_statement_audited()
+        return JSONResponse({"data": {"send_invoice": [{"ok": True}, {"ok": True}]}})
+
+    monkeypatch.setattr(endpoint, "_handle_query", _action_request)
+    audited.call("{ send_invoice(id: 1) { ok } }")
+    assert [(r["query_text_enc"].decode(), r["route"], r["row_count"]) for r in audited.rows()] == [
+        ("SELECT * FROM send_invoice", "engine", 2)
+    ]
+
+
+def test_a_query_records_the_rows_it_returned(audited):
+    audited.call(_QUERY)
+    (row,) = audited.rows()
+    assert row["row_count"] == 1  # the harness's field returns one row
+
+
+def test_a_response_cache_hit_records_the_cache_route(audited, monkeypatch):
+    from provisa.api.data import endpoint
+
+    async def _hit(compiled, *args, **kwargs):
+        entry = SimpleNamespace(age_seconds=1)  # a response-cache entry: the field was a HIT
+        return compiled.root_field, [{"orderId": 1}, {"orderId": 2}], None, "ck", entry
+
+    monkeypatch.setattr(endpoint, "_execute_one_field", _hit)
+    audited.call(_QUERY)
+    (row,) = audited.rows()
+    assert (row["route"], row["row_count"]) == ("cache", 2)
+
+
+def test_a_refused_request_records_no_route_and_no_rows(audited, monkeypatch):
+    from provisa.api.data import endpoint
+    from provisa.api.errors import ApiError
+
+    async def _refuse(*args, **kwargs):
+        raise ApiError(403, "data.forbidden", "role may not read orders")
+
+    monkeypatch.setattr(endpoint, "_handle_query", _refuse)
+    with pytest.raises(ApiError):
+        audited.call(_QUERY)
+    (row,) = audited.rows()
+    assert (row["route"], row["row_count"], row["status_code"]) == (None, None, 403)
+
+
+def test_the_route_a_field_was_answered_by_is_noted_where_it_is_decided():
+    """The executed-field path notes its route on the request's audit outcome right after the
+    route decision (the harness above stubs that function out)."""
+    import inspect
+
+    from provisa.api.data import endpoint
+
+    source = inspect.getsource(endpoint._execute_one_field)
+    decided = source.index("decision = decide_route(")
+    noted = source.index("note_request_route(")
+    assert (
+        decided < noted < source.index("if decision.route == Route.CACHE and cached is not None:")
+    )
+
+
 def test_the_response_does_not_wait_for_the_insert(audited):
     audited.gate.clear()  # the INSERT cannot complete
     response = audited.call(_QUERY)

@@ -1,5 +1,16 @@
 {
   "capabilityGate": {
-    "checking": "Vérification de vos identifiants…"
+    "checking": "Vérification de vos identifiants…",
+    "demonstrated": {
+      "badge": "Fonctionnalité de production",
+      "explanation": "Ceci fait partie du système de production. Il est présenté ici pour que vous voyiez ce que fait Provisa, mais il n'est pas disponible dans le bac à sable.",
+      "dismiss": "Compris",
+      "purpose": {
+        "environment_management": {
+          "title": "Les environnements sont une fonctionnalité de production",
+          "body": "Un environnement est une copie complète et gouvernée séparément de votre modèle : sources, tables, politiques, règles de masquage et octrois. Les équipes gardent un environnement dev pour modifier le modèle, un environnement staging pour le revoir, et prod pour servir, puis font avancer la modification en fusionnant un environnement dans le suivant, avec un diff, une approbation et un historique annulable.\n\nVotre bac à sable EST l'un de ces environnements, créé pour vous seul. Leur gestion (création, fusion, déploiement, retrait) revient à l'organisation qui les possède ; la surface est donc montrée ici plutôt que remise : vous pouvez voir ce qu'elle fait, et elle n'agit sur rien."
+        }
+      }
+    }
   }
 }

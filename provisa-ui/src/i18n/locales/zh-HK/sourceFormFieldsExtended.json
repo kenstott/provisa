@@ -11,6 +11,7 @@
     "metadataSheetId": "中繼資料試算表 ID",
     "metadataSheetIdPlaceholder": "用於資料表定義的試算表 ID",
     "endpointUrl": "端點 URL",
+    "defaultGraphUri": "預設圖 URI",
     "namespace": "命名空間",
     "cacheTtlSeconds": "快取 TTL（秒）",
     "protoPathOrUrl": "Proto 路徑或 URL",
@@ -78,6 +79,12 @@
     "topicPrefixPlaceholder": "dbserver1（主題：{prefix}.{schema}.{table}）",
     "schemaRegistryUrlCdcPlaceholder": "留空 = JSON；設定則使用 Avro",
     "consumerGroupId": "消費者群組 ID（選填）",
-    "consumerGroupIdPlaceholder": "繼承全域設定（provisa-debezium）"
+    "consumerGroupIdPlaceholder": "繼承全域設定（provisa-debezium）",
+    "useSsl": "使用 SSL/TLS",
+    "eventPath": "事件路徑（選填）",
+    "reconnectIntervalSeconds": "重新連線間隔（秒）",
+    "subscribePayload": "訂閱承載（JSON，選填）",
+    "feedUrlOverride": "摘要 URL（選填覆寫）",
+    "pollIntervalSeconds": "輪詢間隔（秒）"
   }
 }

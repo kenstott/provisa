@@ -150,6 +150,24 @@ class TranslatorExprContext:
         table = obj.name if isinstance(obj, exp.Column) else None
         return exp.column(name, table=table, quoted=True)
 
+    def property_is_table_column(self, obj: exp.Expression, name: str) -> bool:
+        """True exactly where :meth:`resolve_property` answers with a registered table's (or a
+        junction's) own column."""
+        var = obj.name if isinstance(obj, exp.Column) and not obj.table else None
+        t = self._t
+        if (
+            var is None
+            or var in t._all_rels_rel_vars
+            or var in t._all_rels_node_vars
+            or var in t._map_unwind_vars
+        ):
+            return False
+        via_bound = t._rel_var_via.get(var)
+        if via_bound is not None and via_bound[1].attributes.get(name) is not None:
+            return True
+        info = t._var_table.get(var)
+        return bool(info and info[1] is not None and info[1].properties.get(name))
+
     def resolve_parameter(self, name: str) -> exp.Expression:
         t = self._t
         if name not in t._param_seen:

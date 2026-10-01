@@ -32,7 +32,12 @@ async def client():
 
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
+        async with AsyncClient(
+            # REQ-273: the header carries the role; a body role must match it.
+            transport=transport,
+            base_url="http://test",
+            headers={"X-Provisa-Role": "org_admin"},
+        ) as c:
             yield c
 
 
@@ -42,7 +47,7 @@ class TestInsert:
             "/data/graphql",
             json={
                 "query": "mutation { sa__deleteCustomers(where: { id: { eq: 9999 } }) { affected_rows } }",
-                "role": "admin",
+                "role": "org_admin",
             },
         )
         resp = await client.post(
@@ -55,7 +60,7 @@ class TestInsert:
                         }) { affected_rows }
                     }
                 """,
-                "role": "admin",
+                "role": "org_admin",
             },
         )
         assert resp.status_code == 200, resp.json()
@@ -67,7 +72,7 @@ class TestInsert:
             "/data/graphql",
             json={
                 "query": "{ sa__customers(where: { id: { eq: 9999 } }) { id name region } }",
-                "role": "admin",
+                "role": "org_admin",
             },
         )
         assert resp2.status_code == 200
@@ -89,7 +94,7 @@ class TestUpdate:
                         ) { affected_rows }
                     }
                 """,
-                "role": "admin",
+                "role": "org_admin",
             },
         )
         assert resp.status_code == 200, resp.json()
@@ -101,7 +106,7 @@ class TestUpdate:
             "/data/graphql",
             json={
                 "query": "{ sa__customers(where: { id: { eq: 9999 } }) { name } }",
-                "role": "admin",
+                "role": "org_admin",
             },
         )
         rows = resp2.json()["data"]["sa__customers"]
@@ -118,7 +123,7 @@ class TestDelete:
                         sa__deleteCustomers(where: { id: { eq: 9999 } }) { affected_rows }
                     }
                 """,
-                "role": "admin",
+                "role": "org_admin",
             },
         )
         assert resp.status_code == 200, resp.json()
@@ -130,7 +135,7 @@ class TestDelete:
             "/data/graphql",
             json={
                 "query": "{ sa__customers(where: { id: { eq: 9999 } }) { id } }",
-                "role": "admin",
+                "role": "org_admin",
             },
         )
         rows = resp2.json()["data"]["sa__customers"]

@@ -287,7 +287,11 @@ def test_land_row_cache_arrow_stamps_and_lands_through_the_broker(tmp_path):
 
     db = str(tmp_path / "store.duckdb")
     broker = _SyncedStore(db)
-    runtime = SimpleNamespace(ensure_materialize_attached=lambda: None, _store_broker=broker)
+    runtime = SimpleNamespace(
+        ensure_materialize_attached=lambda: None,
+        _store_broker=broker,
+        _store_is_duckdb=lambda: True,  # a DuckDB engine on an embedded DuckDB store
+    )
     backend = SimpleNamespace(dialect="duckdb", _runtime_for=lambda state: runtime)
     before = datetime.now(UTC).replace(tzinfo=None)
     asyncio.run(

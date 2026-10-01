@@ -90,6 +90,8 @@ const DEPLOYMENT_WIDE = [
   // REQ-1466: the scheduled-downtime banner speaks for the whole deployment; one org's admin must
   // not be able to tell every other org's users that the platform is down.
   "/admin/maintenance",
+  // REQ-1913: the settings catalog is the deployment's own, never an org's.
+  "/admin/deployment-settings",
 ];
 
 describe("admin surface capabilities", () => {

@@ -35,6 +35,8 @@
     "deployToDbTitle": "इस वर्चुअल व्यू को वास्तविक डेटाबेस व्यू में प्रमोट करें",
     "profileButton": "प्रोफ़ाइल",
     "profilingButton": "प्रोफ़ाइलिंग…",
+    "previewButton": "पूर्वावलोकन",
+    "previewTitle": "इस तालिका की पंक्तियों का पूर्वावलोकन (शासित SELECT *)",
     "profileTitle": "इस टेबल के कॉलमों का नमूना लेकर प्रोफ़ाइल करें",
     "policiesButton": "नीतियाँ",
     "policiesTitle": "इस टेबल की RLS नीतियाँ देखें",
@@ -53,7 +55,6 @@
     "colTopValues": "शीर्ष मान",
     "editDefinitionButton": "परिभाषा संपादित करें",
     "editDefinitionTitle": "व्यू परिभाषा संपादित करें (SQL या मेट्रिक/डाइमेंशन चयनकर्ता)",
-    "previewButton": "पूर्वावलोकन",
-    "previewTitle": "इस तालिका की पंक्तियों का पूर्वावलोकन (शासित SELECT *)"
+    "queryTemplate": "Cypher:"
   }
 }

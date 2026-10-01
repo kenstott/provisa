@@ -100,15 +100,11 @@ def governed_table_scan_stream(
                     state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
                 )
 
-            _pushed_down = run_on_connection_loop(_prep_residency())
-            run_on_connection_loop(
-                ensure_resident(
-                    state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
-                )
-            )
+            run_on_connection_loop(_prep_residency())
+            run_on_connection_loop(ensure_resident(state, plan.sources))
             schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
             _finalize_scan_audit(plan, 200, state)
-            return schema, batch_gen
+            return schema, _audited(plan, batch_gen)
         if plan.route == Route.DIRECT:
             if state.source_pools.has(plan.source_id) and state.source_pools.supports_stream(
                 plan.source_id
@@ -134,7 +130,7 @@ def governed_table_scan_stream(
                 )
             typed = _direct_typed_schema(stream.column_names, stream.column_types)
             _finalize_scan_audit(plan, 200, state)
-            return typed, _typed_batches_from_rows(stream, typed)
+            return typed, _audited(plan, _typed_batches_from_rows(stream, typed))
     except Exception:
         _finalize_scan_audit(plan, 500, state)
         raise
@@ -150,7 +146,18 @@ def _finalize_scan_audit(plan, status_code: int, state: AppState) -> None:
     """
     from provisa.pgwire._pipeline import finalize_audit
 
-    run_on_connection_loop(finalize_audit(plan, status_code, state))
+    # A served scan is a stream the caller has not drained: the row is written when the drain
+    # ends (``_audited``), with the rows delivered. A failure is written at once.
+    run_on_connection_loop(
+        finalize_audit(plan, status_code, state, defer_to_drain=status_code == 200)  # noqa: PLR2004
+    )
+
+
+def _audited(plan, batches):
+    """The scan's record batches, with its audit row written when the drain ends."""
+    from provisa.pgwire._pipeline import audit_on_drain
+
+    return audit_on_drain(plan, batches, rows_in=lambda batch: batch.num_rows)
 
 
 def governed_table_scan_schema(
@@ -188,10 +195,8 @@ def governed_table_scan_schema(
                 state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
             )
 
-        _pushed_down = run_on_connection_loop(_prep_residency())
-        run_on_connection_loop(
-            ensure_resident(state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down)
-        )
+        run_on_connection_loop(_prep_residency())
+        run_on_connection_loop(ensure_resident(state, plan.sources))
         schema, batch_gen = state.federation_engine.execute_engine_stream(plan.physical_sql, [])
         close = getattr(batch_gen, "close", None)
         if close is not None:

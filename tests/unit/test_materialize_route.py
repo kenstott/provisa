@@ -46,7 +46,7 @@ class TestExecutePlanMaterializeTerminal:
 
         handle = {"sink": "object-store", "redirect_url": "http://x/f.parquet", "row_count": 42}
 
-        async def _fake_run_materialize(state, physical_sql, delivery):
+        async def _fake_run_materialize(state, physical_sql, delivery, params):
             assert physical_sql == "SELECT 1"
             assert isinstance(delivery, Delivery)
             return handle
@@ -111,7 +111,7 @@ class TestSinkTierSelection:
             "row_count": 7,
         }
         handle = await run_materialize(
-            state, "SELECT 1", Delivery(output_format="parquet", config=_cfg())
+            state, "SELECT 1", Delivery(output_format="parquet", config=_cfg()), None
         )
         assert handle["sink"] == "object-store"
         assert handle["row_count"] == 7
@@ -125,7 +125,7 @@ class TestSinkTierSelection:
         state.engine_conn = None
         with pytest.raises(NotImplementedError):
             await run_materialize(
-                state, "SELECT 1", Delivery(output_format="parquet", config=_cfg())
+                state, "SELECT 1", Delivery(output_format="parquet", config=_cfg()), None
             )
 
     @pytest.mark.asyncio
@@ -134,7 +134,9 @@ class TestSinkTierSelection:
         state = MagicMock()
         state.engine_conn = object()
         with pytest.raises(NotImplementedError):
-            await run_materialize(state, "SELECT 1", Delivery(output_format="csv", config=_cfg()))
+            await run_materialize(
+                state, "SELECT 1", Delivery(output_format="csv", config=_cfg()), None
+            )
 
 
 def _pipeline_redirect_module():
@@ -142,3 +144,75 @@ def _pipeline_redirect_module():
     import provisa.executor.redirect as rd
 
     return rd
+
+
+# -- the sink statement keeps its bound values (REQ-1194, REQ-1224) ------------------------------
+#
+# Every compiled statement binds its values ($N), and so does a pgwire client's. The sink terminal
+# handed the engine the statement text alone: `CREATE TABLE ... AS SELECT ... WHERE id = @1` with
+# no values, which the engine cannot run. Any result over the redirect threshold of a statement
+# with a filter or a limit hit it.
+
+
+class _RecordingCursor:
+    def __init__(self) -> None:
+        self.executed: list[tuple[str, list | None]] = []
+
+    def execute(self, sql, params=None):
+        self.executed.append((sql, params))
+
+    def fetchall(self):
+        return [(42,)]
+
+
+class _RecordingConn:
+    def __init__(self) -> None:
+        self.cur = _RecordingCursor()
+
+    def cursor(self):
+        return self.cur
+
+
+def test_the_ctas_statement_is_sent_with_its_bound_values():
+    from provisa.executor.trino_write import execute_ctas_redirect
+    from provisa.transpiler.transpile import transpile
+
+    select = transpile("SELECT a FROM c.s.t WHERE id = $1 OR parent = $1 LIMIT $2", "trino")
+    conn = _RecordingConn()
+    out = execute_ctas_redirect(conn, select, "parquet", [7, 500])
+    ((sql, params),) = conn.cur.executed
+    assert out["row_count"] == 42
+    assert "@" not in sql and "$" not in sql, f"an unbound placeholder reached the engine: {sql}"
+    assert sql.count("?") == 3
+    assert params == [7, 7, 500], "values are bound in placeholder order, a repeated one twice"
+
+
+def test_a_ctas_statement_with_no_values_is_sent_as_is():
+    from provisa.executor.trino_write import execute_ctas_redirect
+
+    conn = _RecordingConn()
+    execute_ctas_redirect(conn, "SELECT a FROM c.s.t", "parquet", None)
+    ((sql, params),) = conn.cur.executed
+    assert sql.endswith("AS SELECT a FROM c.s.t") and params is None
+
+
+@pytest.mark.asyncio
+async def test_run_materialize_hands_the_bound_values_to_the_engine(monkeypatch):
+    import provisa.executor.redirect as redirect
+
+    async def _presign(prefix, config):
+        return "http://signed"
+
+    monkeypatch.setattr(redirect, "presign_ctas_result", _presign)
+    monkeypatch.setattr(redirect, "schedule_s3_cleanup", lambda prefix, config: None)
+    state = MagicMock()
+    state.federation_engine.ctas_redirect.return_value = {"s3_prefix": "s3a://b/x", "row_count": 9}
+    await run_materialize(
+        state,
+        "SELECT a FROM t WHERE id = @1",
+        Delivery(output_format="parquet", config=_cfg()),
+        [7],
+    )
+    state.federation_engine.ctas_redirect.assert_called_once_with(
+        "SELECT a FROM t WHERE id = @1", "parquet", [7]
+    )

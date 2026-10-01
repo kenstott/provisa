@@ -35,6 +35,8 @@
     "deployToDbTitle": "将此虚拟视图提升为真实的数据库视图",
     "profileButton": "剖析",
     "profilingButton": "正在剖析…",
+    "previewButton": "预览",
+    "previewTitle": "预览此表的行（受治理的 SELECT *）",
     "profileTitle": "对此表的列进行采样和剖析",
     "policiesButton": "策略",
     "policiesTitle": "查看此表的 RLS 策略",
@@ -53,7 +55,6 @@
     "colTopValues": "最常见值",
     "editDefinitionButton": "编辑定义",
     "editDefinitionTitle": "编辑视图定义（SQL 或指标/维度选择器）",
-    "previewButton": "预览",
-    "previewTitle": "预览此表的行（受治理的 SELECT *）"
+    "queryTemplate": "Cypher："
   }
 }

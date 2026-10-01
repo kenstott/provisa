@@ -28,15 +28,15 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from graphql import GraphQLObjectType, GraphQLSchema
+from graphql import GraphQLError, GraphQLObjectType, GraphQLSchema
 
 from provisa.api._query_helpers import (
     build_graphql_query as _build_graphql_query_shared,
     get_scalar_fields as _get_scalar_fields_shared,
 )
+from provisa.api.generated_plan import compile_generated_graphql
 from provisa.compiler.naming import apply_gql_name
-from provisa.compiler.parser import GraphQLValidationError, parse_query
-from provisa.compiler.sql_gen import compile_query
+from provisa.compiler.parser import GraphQLValidationError
 from provisa.executor.serialize import serialize_aggregate, serialize_group_by
 
 log = logging.getLogger(__name__)
@@ -604,12 +604,12 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             )
         log.debug("REST → GraphQL: %s", gql_query)
 
+        # REQ-1877: one compiled plan is kept per request shape; values are bound into it.
         try:
-            document = parse_query(schema, gql_query)
-        except (GraphQLValidationError, Exception) as e:
+            compiled_queries = compile_generated_graphql(state, role_id, schema, ctx, gql_query)
+        except (GraphQLValidationError, GraphQLError) as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-        compiled_queries = compile_query(document, ctx)
         if not compiled_queries:
             raise HTTPException(status_code=400, detail="Compilation failed")
 
@@ -647,6 +647,12 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             raise HTTPException(status_code=403, detail=str(exc))
         except HTTPException:
             raise
+        except TimeoutError as exc:
+            # REQ-1905: the statement outran its request deadline (the message names the
+            # transport and the setting), or the server is stopping.
+            from provisa.api.errors import timeout_error
+
+            raise timeout_error(exc) from exc
         except Exception as e:
             log.exception("REST query execution failed for %s", table)
             raise HTTPException(status_code=500, detail=str(e))

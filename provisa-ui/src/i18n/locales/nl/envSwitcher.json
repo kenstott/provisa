@@ -1,0 +1,20 @@
+{
+  "envSwitcher": {
+    "env": "Omg: {{env}}",
+    "label": "Omgeving",
+    "drifted": "afgeweken",
+    "diverged": "uiteengelopen",
+    "unpushed": "niet gepusht",
+    "ahead": "{{n}} te pushen",
+    "behind": "{{n}} te pullen",
+    "undo": "Laatste wijziging aan {{env}} ongedaan maken",
+    "redo": "Opnieuw in {{env}}",
+    "undone": "{{env}} staat weer op {{sha}}.",
+    "redone": "{{env}} staat vooruit op {{sha}}.",
+    "versions": "Versie",
+    "loadingVersions": "Geschiedenis lezen…",
+    "applied": "{{env}} staat op {{sha}}.",
+    "proposed": "{{sha}} is voorgesteld voor {{env}}; die is beschermd, dus wacht op goedkeuring.",
+    "switched": "{{env}} wordt nu gelezen."
+  }
+}

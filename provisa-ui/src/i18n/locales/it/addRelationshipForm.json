@@ -24,6 +24,18 @@
     "materializeLabel": "Materializza (crea automaticamente una MV per i join tra origini)",
     "disableCypherLabel": "Escludi dal grafo Cypher",
     "refreshIntervalLabel": "Intervallo di aggiornamento (s)",
-    "save": "Salva"
+    "save": "Salva",
+    "junctionTitle": "Tabella di giunzione (avanzato)",
+    "junctionHelp": "Dichiara che questo arco attraversa una tabella associativa. Le colonne rimanenti della giunzione diventano gli attributi della relazione.",
+    "viaTableLabel": "Tabella di giunzione",
+    "viaSourceColumnLabel": "Colonna di giunzione → origine",
+    "viaTargetColumnLabel": "Colonna di giunzione → destinazione",
+    "viaTypeColumnLabel": "Colonna discriminante",
+    "viaTypeValueLabel": "Valore discriminante",
+    "viaTypeValuePlaceholder": "ad es. KIND_OF",
+    "viaLabelSourceLabel": "Assegna il nome all'arco da",
+    "viaLabelSourceColumn": "Valore discriminante",
+    "viaLabelSourceTable": "Nome della tabella di giunzione",
+    "viaLabelSourceFixed": "Alias Cypher"
   }
 }

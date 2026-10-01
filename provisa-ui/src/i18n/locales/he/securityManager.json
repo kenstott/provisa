@@ -4,7 +4,8 @@
       "posture": "מצב אבטחה",
       "encryption": "הצפנה",
       "authentication": "אימות",
-      "localUsers": "משתמשים מקומיים"
+      "localUsers": "משתמשים מקומיים",
+      "secrets": "סודות"
     }
   }
 }

@@ -4,7 +4,8 @@
       "posture": "Postura",
       "encryption": "Criptografia",
       "authentication": "Autenticação",
-      "localUsers": "Usuários locais"
+      "localUsers": "Usuários locais",
+      "secrets": "Segredos"
     }
   }
 }

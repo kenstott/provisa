@@ -93,6 +93,13 @@ def test_upstream_timeout_returns_504_naming_the_path(tmp_path, monkeypatch, cap
 
     monkeypatch.setattr(httpx.AsyncClient, "request", _timeout)
 
+    # REQ-1913: the proxy's read budget is the operator setting the UI server asks the API for.
+    # The API has answered that already; the slow call here is the proxied one.
+    async def _budget() -> float:
+        return 480.0
+
+    monkeypatch.setattr(ui_server, "proxy_timeout_s", _budget)
+
     with TestClient(ui_server.app) as client:
         resp = client.get("/admin/discovery/run", headers={"sec-fetch-dest": "empty"})
 

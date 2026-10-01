@@ -114,6 +114,12 @@ class TestParameters:
     def test_page_number_present(self):
         assert "page[number]" in self._params()
 
+    def test_page_total_param(self):
+        # REQ-1197: the total is counted only for a request that asks for it
+        param = self._params()["page[total]"]
+        assert param["schema"] == {"type": "boolean", "default": False}
+        assert param.get("required", False) is False
+
     def test_fields_sparse_fieldset_present(self):
         assert "fields[Pets]" in self._params()
 

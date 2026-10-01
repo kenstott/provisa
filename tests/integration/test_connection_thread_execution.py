@@ -114,7 +114,7 @@ def test_flight_governance_runs_on_the_handler_thread_in_parallel(flight_server)
         handler_idents.add(threading.get_ident())
         return real_on_loop(self, request, ticket)
 
-    async def _blocking_govern(sql, role_id, state):
+    async def _blocking_govern(sql, role_id, state, serve_cached=False):
         del sql, state
         govern_idents.append(threading.get_ident())
         both_governing.wait(timeout=10)  # blocks this RPC's thread AND its loop
@@ -209,12 +209,12 @@ def test_flight_direct_stream_is_pumped_on_the_handler_thread_and_returns_its_lo
         stamp=_mint_stamp(),
     )
 
-    async def _govern(sql, role_id, state):
+    async def _govern(sql, role_id, state, serve_cached=False):
         del sql, role_id, state
         return plan
 
-    async def _finalize(plan_, status_code, state=None):
-        del plan_, status_code, state
+    async def _finalize(plan_, status_code, state=None, *, cache_hit=False, defer_to_drain=False):
+        del plan_, status_code, state, cache_hit, defer_to_drain
 
     real_on_loop = ProvisaFlightServer._do_get_on_loop
 

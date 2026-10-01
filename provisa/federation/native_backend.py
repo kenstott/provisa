@@ -30,6 +30,7 @@ small protocol:
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -60,6 +61,11 @@ _log = logging.getLogger(__name__)
 #   (api/startup_seed.py). Its rows are compiler-emitted views, never a remote database.
 _NO_REMOTE_SOURCE_IDS = frozenset({"provisa-admin", "__derived__"})
 
+# Attach refusals that are the declared state of an (engine, source type) pair — the connector
+# details carry no attach entry (KeyError), or the engine has no connector for the type
+# (UnreachableSource, REQ-841). They cannot change until the registry does.
+_DECLARED_REFUSALS: tuple[type[BaseException], ...] = (KeyError, UnreachableSource)
+
 
 def libpq_dsn(url: "URL") -> str:
     """A SQLAlchemy PostgreSQL URL as the libpq keyword DSN DuckDB's postgres extension takes.
@@ -88,6 +94,12 @@ def libpq_dsn(url: "URL") -> str:
     return " ".join(parts)
 
 
+def _same_registry(
+    walked: tuple[Any, Any, Any, Any] | None, registry: tuple[Any, Any, Any, Any]
+) -> bool:
+    return walked is not None and all(a is b for a, b in zip(walked, registry, strict=True))
+
+
 class NativeEngineBackend(EngineBackend):
     """In-process execution terminal shared by all native engines. ``is_connected`` is inherited True
     — a native engine is live once built. Subclasses supply ``_new_runtime`` and, if the runtime
@@ -108,6 +120,17 @@ class NativeEngineBackend(EngineBackend):
         super().__init__(engine)
         self._runtime: Any = None
         self._attached: set[str] = set()
+        # The registry state the last complete walk covered: the identities of (config,
+        # runtime_sources, tables, tenant_db). A schema rebuild REPLACES those objects (app.py
+        # publishes a new source map and a new table list; nothing mutates them in place), so an
+        # unchanged identity means there is nothing new to attach and the walk is skipped.
+        self._walked: tuple[Any, Any, Any, Any] | None = None
+        # Tables whose attach was refused for a DECLARED reason in the walked registry state (a
+        # source type this engine lands instead of attaching, REQ-841). Not retried until the
+        # registry changes. A driver error is not remembered: an offline source is retried.
+        self._refused: set[str] = set()
+        self._refused_in: tuple[Any, Any, Any, Any] | None = None
+        self._walk_lock = threading.Lock()
 
     # -- runtime (subclass hook) ----------------------------------------------
 
@@ -121,16 +144,16 @@ class NativeEngineBackend(EngineBackend):
     def _runtime_for(self, state: Any) -> Any:
         """The persistent runtime with every registered table attached (idempotent, lazy)."""
         if self._runtime is None:
-            self._runtime = self._new_runtime()
+            with self._walk_lock:
+                if self._runtime is None:
+                    self._runtime = self._new_runtime()
         self._attach_registered(state)
         return self._runtime
 
     def _attach_registered(self, state: Any) -> None:
-        """ATTACH every registered table into the runtime once. A table whose source cannot be
-        attached (offline, or a LAND source not yet materialized) is logged and skipped."""
-        from provisa.core.operator_floor import floor_setting
-        from provisa.core.secrets import resolve_secrets
-
+        """ATTACH every registered table into the runtime: one walk per registry state, not one per
+        query. A table whose source cannot be attached (offline, or a LAND source not yet
+        materialized) is logged and skipped."""
         config = getattr(state, "config", None)
         if config is None or self._runtime is None:
             return
@@ -159,6 +182,76 @@ class NativeEngineBackend(EngineBackend):
                 f"{_active_org!r} requires the Trino tier for per-org catalog isolation (REQ-1266)"
             )
 
+        self._refresh_control_plane_snapshot(state)
+        registry = self._registry_of(state)
+        if self._covers(registry):
+            return
+        with self._walk_lock:
+            if self._covers(registry):
+                return  # a concurrent query walked this registry state while this one waited
+            if not _same_registry(self._refused_in, registry):
+                self._refused.clear()  # a new registry state: each refused attach gets one retry
+                self._refused_in = registry
+            self._walked = registry if self._walk_registry(state, config) else None
+
+    def _covers(self, registry: tuple[Any, Any, Any, Any]) -> bool:
+        return _same_registry(self._walked, registry)
+
+    @staticmethod
+    def _registry_of(state: Any) -> tuple[Any, Any, Any, Any]:
+        """The registry state one walk covers: replaced as a whole by a schema rebuild."""
+        return (
+            getattr(state, "config", None),
+            getattr(state, "runtime_sources", None),
+            getattr(state, "tables", None),
+            getattr(state, "tenant_db", None),
+        )
+
+    async def _attached_runtime(self, state: Any) -> Any:
+        """``_runtime_for`` off the event loop (its walk runs blocking attach DDL, REQ-1882).
+
+        REQ-1695: a pending walk dials every registered source, resolving each one's
+        ``${secret:...}``. It runs here whichever surface sent the statement — the GraphQL engine
+        route reaches this without having bound a vault — so the vault of the org the sources are
+        registered in is bound for the walk. No walk pending: nothing is resolved, nothing bound.
+        """
+        import asyncio
+
+        if self._runtime is not None and self._covers(self._registry_of(state)):
+            return await asyncio.get_running_loop().run_in_executor(None, self._runtime_for, state)
+        from provisa.federation.registry_view import registered_sources
+        from provisa.federation.source_vault import org_vault
+
+        async with org_vault(state, await registered_sources(state)):
+            # to_thread, not run_in_executor: the walk's thread must see the binding.
+            return await asyncio.to_thread(self._runtime_for, state)
+
+    def _refresh_control_plane_snapshot(self, state: Any) -> None:
+        """A SQLite control plane is read through a snapshot the runtime re-takes when something
+        was committed since the last one (``attach_control_plane``: a table registered after
+        startup is visible to the very next query). That check is per query by design and is not
+        part of the registry walk; a PostgreSQL control plane is attached live, once, by the walk."""
+        tdb = getattr(state, "tenant_db", None)
+        if (
+            tdb is not None
+            and getattr(tdb, "dialect", None) == "sqlite"
+            and hasattr(self._runtime, "attach_control_plane")
+        ):
+            _org_id = getattr(state, "org_id", "default")
+            self._runtime.attach_control_plane(
+                str(tdb.engine.url.database or ""), f"org_{_org_id}", dialect="sqlite"
+            )
+
+    def _walk_registry(self, state: Any, config: Any) -> bool:
+        """Attach every registered table not yet attached. True when the walk is complete for this
+        registry state — every table attached, skipped by design, or refused for a declared reason;
+        False when a driver error left a table to retry on the next query. Caller holds
+        ``_walk_lock``."""
+        from provisa.core.operator_floor import floor_setting
+        from provisa.core.secrets import resolve_secrets
+
+        complete = True
+        tried: set[str] = set()  # a table listed by both the config and the registry: one attempt
         sources = {s.id: s for s in config.sources}
 
         # Merge in dynamically created sources that exist in the DB but not in the YAML config.
@@ -197,9 +290,11 @@ class NativeEngineBackend(EngineBackend):
 
         def _attach_tbl(src: Any, schema_name: str, table_name: str) -> None:
             """Attach one table into the runtime; skip if already attached or attach fails."""
+            nonlocal complete
             key = f"{schema_name}.{table_name}"
-            if key in self._attached:
+            if key in self._attached or key in self._refused or key in tried:
                 return
+            tried.add(key)
             if getattr(src, "id", None) in _NO_REMOTE_SOURCE_IDS:
                 return
             if floor_setting(src) is not None:
@@ -242,6 +337,10 @@ class NativeEngineBackend(EngineBackend):
                 self._runtime.attach_source(merged)
                 self._attached.add(key)
             except self._attach_errors as _ae:
+                if isinstance(_ae, _DECLARED_REFUSALS):
+                    self._refused.add(key)
+                else:
+                    complete = False
                 _log.warning(
                     "%s attach of %s failed; table not queryable: %s", self.engine.name, key, _ae
                 )
@@ -260,24 +359,21 @@ class NativeEngineBackend(EngineBackend):
             if src is not None:
                 _attach_tbl(src, tbl_dict.get("schema_name", ""), tbl_dict.get("table_name", ""))
 
-        # Native DuckDB path: attach the control-plane DB as the provisa_admin catalog so
-        # meta/ops entities resolve (parity with Trino, where provisa_admin is a real catalog).
-        # Supports both SQLite (file path) and Postgres (libpq DSN) tenant DBs. Idempotent — the
-        # runtime guards with a flag.
+        # Native DuckDB path: attach a PostgreSQL control-plane DB as the provisa_admin catalog so
+        # meta/ops entities resolve (parity with Trino, where provisa_admin is a real catalog). The
+        # attach is live, so once is enough; the SQLite control plane is a snapshot and is handled
+        # per query by _refresh_control_plane_snapshot.
         tdb = getattr(state, "tenant_db", None)
-        _dialect = getattr(tdb, "dialect", None)
         if (
             tdb is not None
-            and _dialect in ("sqlite", "postgresql")
+            and getattr(tdb, "dialect", None) == "postgresql"
             and hasattr(self._runtime, "attach_control_plane")
         ):
-            _db_url = tdb.engine.url
             _org_id = getattr(state, "org_id", "default")
-            if _dialect == "postgresql":
-                _db_path = libpq_dsn(_db_url)
-            else:
-                _db_path = str(_db_url.database or "")
-            self._runtime.attach_control_plane(_db_path, f"org_{_org_id}", dialect=_dialect)
+            self._runtime.attach_control_plane(
+                libpq_dsn(tdb.engine.url), f"org_{_org_id}", dialect="postgresql"
+            )
+        return complete
 
     # -- residency prep (REQ-825 stage-4b / REQ-932) ---------------------------
 
@@ -577,11 +673,7 @@ class NativeEngineBackend(EngineBackend):
             # every other concurrent request for the whole attach+ANALYZE duration and surfacing
             # as an empty-message ~120s timeout with zero server-side trace. Off-loaded via the
             # default executor, matching every other REQ-1882 fix site.
-            import asyncio
-
-            runtime = await asyncio.get_running_loop().run_in_executor(
-                None, self._runtime_for, state
-            )
+            runtime = await self._attached_runtime(state)
             return await runtime.run(sql, params)
 
     def describe_sync(

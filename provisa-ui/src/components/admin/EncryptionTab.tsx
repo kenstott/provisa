@@ -13,6 +13,8 @@ import { useTranslation } from "react-i18next";
 import { Alert, Badge, Button, Group, Select, Stack, Text, TextInput } from "@mantine/core";
 import { Check } from "lucide-react";
 import { missingRequired, secretPlaceholder, seedFields } from "./secretFields";
+import { PlatformRequired } from "./PlatformRequired";
+import { isForbidden } from "./isForbidden";
 import {
   fetchEncryption,
   setEncryption,
@@ -35,6 +37,7 @@ export function EncryptionTab() {
   const [generating, setGenerating] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [forbidden, setForbidden] = useState(false);
 
   const load = () =>
     fetchEncryption()
@@ -51,7 +54,7 @@ export function EncryptionTab() {
         }
         setConfig(seeded);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => (isForbidden(e) ? setForbidden(true) : setError(String(e))));
 
   useEffect(() => {
     load();
@@ -107,6 +110,7 @@ export function EncryptionTab() {
     }
   };
 
+  if (forbidden) return <PlatformRequired />;
   if (error && !s) return <Alert color="red">{error}</Alert>;
   if (!s) return <Text>{t("encryptionTab.loading")}</Text>;
 

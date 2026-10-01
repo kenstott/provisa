@@ -33,6 +33,7 @@ from provisa.core.trino_system_catalogs import OTEL_CATALOG
 from provisa.observability.ops_schema import REQUEST_SPAN_ATTR
 
 if TYPE_CHECKING:
+    from provisa.scheduler.holder import SchedulerHolder
     from provisa.core.models import ScheduledTrigger
 
 logger = logging.getLogger(__name__)
@@ -123,7 +124,7 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
         )
         return
 
-    s3_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT") or state.otel_s3_endpoint
+    s3_endpoint = state.otel_s3_endpoint  # REQ-1913: the resolved setting `otel.s3_endpoint`
     otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
     file_chunk = state.otel_compact_file_chunk
     max_files = state.otel_compact_max_files_per_run
@@ -866,8 +867,11 @@ async def _audit_reaped(org_id: str, name: str, outcome: dict) -> None:
     )
 
 
-def new_scheduler() -> AsyncIOScheduler:
+def new_scheduler(holder: "SchedulerHolder | None" = None) -> AsyncIOScheduler:
     """An AsyncIOScheduler whose wakeup chain never inherits a request's trace context.
+
+    ``holder`` (REQ-1900): the server's scheduler passes its ``SchedulerHolder``, so the
+    deployment's jobs run in one worker process only.
 
     ``add_job`` on a running scheduler calls ``wakeup`` synchronously, and ``wakeup`` re-arms the
     timer with ``call_later`` -- which copies the CALLER's contextvars. A job registered from inside
@@ -881,7 +885,7 @@ def new_scheduler() -> AsyncIOScheduler:
     from provisa.scheduler.executor import background_scheduler
 
     # REQ-1882: jobs run on background worker threads, never on the process (front) loop.
-    scheduler = background_scheduler()
+    scheduler = background_scheduler(holder)
     inner = scheduler.wakeup
 
     def wakeup() -> None:

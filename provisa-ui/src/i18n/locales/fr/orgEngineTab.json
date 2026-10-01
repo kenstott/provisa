@@ -24,18 +24,18 @@
     "saveButton": "Enregistrer le moteur",
     "saved": "Moteur mis à jour.",
     "currentSuffix": " (actuel)",
-    "hostedIntro": "Le moteur de requêtes de cette organisation découle de son forfait. Le forfait détermine quel moteur exécute les requêtes de l'organisation et sa taille.",
+    "hostedIntro": "Le moteur de requêtes de cette organisation provient de son offre. L'offre détermine quel moteur exécute les requêtes de l'organisation et sa taille.",
     "hostedLane": "Moteur",
-    "hostedLaneShared": "Partagé — le moteur mutualisé exploité par Provisa",
-    "hostedLaneIsolated": "Dédié — un moteur que Provisa exploite pour cette seule organisation",
+    "hostedLaneShared": "Partagé : le moteur mutualisé exploité par Provisa",
+    "hostedLaneIsolated": "Dédié : un moteur exploité par Provisa pour cette seule organisation",
     "hostedLaneExternal": "Un moteur exploité par cette organisation",
-    "hostedPlan": "Forfait : {{plan}}",
-    "hostedSize": "Machine : {{machine}} — {{vcpu}} vCPU, {{memory}} Gio",
-    "hostedStateReady": "Ce moteur fonctionne.",
-    "hostedStateStarting": "Ce moteur démarre.",
-    "hostedStateStopped": "Ce moteur est en veille. Il démarre à la prochaine requête.",
+    "hostedPlan": "Offre : {{plan}}",
+    "hostedSize": "Machine : {{machine}} : {{vcpu}} vCPU, {{memory}} Gio",
+    "hostedStateReady": "Ce moteur est en cours d'exécution.",
+    "hostedStateStarting": "Ce moteur est en cours de démarrage.",
+    "hostedStateStopped": "Ce moteur est inactif. Il démarre à la prochaine requête.",
     "hostedStateAbsent": "Ce moteur n'a pas encore été créé. Il démarre à la prochaine requête.",
-    "hostedStateOther": "État du moteur : {{state}}",
-    "hostedChange": "Pour changer de moteur, changez de forfait sur la page Facturation."
+    "hostedStateOther": "État du moteur : {{state}}",
+    "hostedChange": "Pour changer de moteur, changez l'offre dans la page Facturation."
   }
 }

@@ -125,13 +125,13 @@ async def fetch_through_pgwire(
     state.multitenancy = False
     state.federation_engine = engine
 
-    async def _govern(text, role_id, params=None):
+    async def _govern(text, role_id, params=None, wire_formats=None):
         return _engine_plan(sql)
 
     async def _describe(text, role_id):
         return _Described(registered_shape(text, registry), cast(Any, "governed"))
 
-    async def _plan(held, params):
+    async def _plan(held, params, wire_formats=None):
         return _engine_plan(sql)
 
     async def _no_cache(plan, st):
@@ -148,7 +148,7 @@ async def fetch_through_pgwire(
         patch("provisa.pgwire._pipeline.governed_statement_is_current", lambda held, st: True),
         patch("provisa.pgwire._pipeline.prepare_residency_and_check_cache", _no_cache),
         patch("provisa.federation.query_residency.prepare_engine_residency", _resident),
-        patch.object(ProvisaSession, "_finalize_audit", lambda self, governed, status: None),
+        patch.object(ProvisaSession, "_finalize_audit", lambda self, governed, status, **kw: None),
     ):
         conn = await asyncpg.connect(
             host="127.0.0.1",

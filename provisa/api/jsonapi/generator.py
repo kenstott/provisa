@@ -26,6 +26,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from graphql import (
+    GraphQLError,
     GraphQLList,
     GraphQLNonNull,
     GraphQLObjectType,
@@ -34,9 +35,11 @@ from graphql import (
 
 from provisa.api.jsonapi.errors import error_response, jsonapi_error
 from provisa.api.jsonapi.pagination import (
+    PAGE_TOTAL_PARAM,
     build_pagination_links,
     page_to_limit_offset,
     parse_page_params,
+    parse_page_total,
 )
 from provisa.api.jsonapi.naming import (
     physical_rel_name,
@@ -50,9 +53,9 @@ from provisa.api._query_helpers import (
     build_graphql_query as _build_graphql_query_shared,
     get_scalar_fields as _get_scalar_fields_shared,
 )
+from provisa.api.generated_plan import compile_generated_graphql
 from provisa.compiler.naming import apply_gql_name
-from provisa.compiler.parser import GraphQLValidationError, parse_query
-from provisa.compiler.sql_gen import compile_query
+from provisa.compiler.parser import GraphQLValidationError
 
 log = logging.getLogger(__name__)
 
@@ -529,6 +532,18 @@ def _build_group_by_graphql_query(  # REQ-1359
     )
 
 
+def _next_page_probe_rows(page_size: int, role_id: str) -> int:  # REQ-257, REQ-1224
+    """How many rows past the page a request with no total fetches to learn whether a next page
+    exists: one — unless that row would itself carry the result over the buffered-transport
+    redirect threshold (REQ-1224) and turn a page that is served inline into a redirect."""
+    from provisa.executor.redirect import auto_delivery_for_buffered
+
+    auto = auto_delivery_for_buffered(role_id)
+    if auto is not None and page_size <= auto.config.threshold < page_size + 1:
+        return 0
+    return 1
+
+
 def _jsonapi_error_response(status: int, title: str, detail: str | None = None, **kwargs):
     """Return a JSONResponse with JSON:API error format."""
     body = error_response([jsonapi_error(status, title, detail, **kwargs)])
@@ -674,6 +689,13 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         page = parse_page_params(raw_params)
         page_number, page_size = page["number"], page["size"]
         limit, pg_offset = page_to_limit_offset(page)
+        # REQ-1197: the total is counted only for a request that asks for it.
+        try:
+            want_total = parse_page_total(raw_params)
+        except ValueError as e:
+            return _jsonapi_error_response(
+                400, "Invalid Page", str(e), source_parameter=PAGE_TOTAL_PARAM
+            )
 
         # Validate + translate filter columns
         for col in physical_filters:
@@ -794,11 +816,12 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             log.debug("JSON:API aggregate -> GraphQL: %s", gql_query)
 
             try:
-                agg_document = parse_query(schema, gql_query)
-            except (GraphQLValidationError, Exception) as e:
+                agg_compiled_queries = compile_generated_graphql(
+                    state, role_id, schema, ctx, gql_query
+                )
+            except (GraphQLValidationError, GraphQLError) as e:
                 return _jsonapi_error_response(400, "Bad Request", str(e))
 
-            agg_compiled_queries = compile_query(agg_document, ctx)
             if not agg_compiled_queries:
                 return _jsonapi_error_response(400, "Bad Request", "Compilation failed")
             agg_compiled = agg_compiled_queries[0]
@@ -832,6 +855,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 if e.status_code == 503:
                     return _jsonapi_error_response(503, "Service Unavailable", e.detail)
                 raise
+            except TimeoutError as e:
+                # REQ-1905: the statement outran its request deadline, or the server is stopping.
+                return _jsonapi_error_response(504, "Gateway Timeout", str(e))
             except Exception as e:
                 log.exception("JSON:API aggregate query execution failed for %s", gql_table)
                 return _jsonapi_error_response(500, "Internal Server Error", str(e))
@@ -919,22 +945,25 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             if fk and fk not in query_fields:
                 query_fields.append(fk)
 
+        # Without a total, whether another page follows is read from the page itself: one row past
+        # it is fetched and dropped below.
+        probe_rows = 0 if want_total else _next_page_probe_rows(page_size, role_id)
         gql_query = _build_graphql_query(
             gql_table,
             query_fields,
             filters,
             sort,
-            limit,
+            limit + probe_rows,
             pg_offset,
         )
         log.debug("JSON:API -> GraphQL: %s", gql_query)
 
+        # REQ-1877: one compiled plan is kept per request shape; values are bound into it.
         try:
-            document = parse_query(schema, gql_query)
-        except (GraphQLValidationError, Exception) as e:
+            compiled_queries = compile_generated_graphql(state, role_id, schema, ctx, gql_query)
+        except (GraphQLValidationError, GraphQLError) as e:
             return _jsonapi_error_response(400, "Bad Request", str(e))
 
-        compiled_queries = compile_query(document, ctx)
         if not compiled_queries:
             return _jsonapi_error_response(400, "Bad Request", "Compilation failed")
 
@@ -978,6 +1007,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             if e.status_code == 503:
                 return _jsonapi_error_response(503, "Service Unavailable", e.detail)
             raise
+        except TimeoutError as e:
+            # REQ-1905: the statement outran its request deadline, or the server is stopping.
+            return _jsonapi_error_response(504, "Gateway Timeout", str(e))
         except Exception as e:
             log.exception("JSON:API query execution failed for %s", gql_table)
             return _jsonapi_error_response(500, "Internal Server Error", str(e))
@@ -989,47 +1021,57 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 media_type=JSONAPI_CONTENT_TYPE,
             )
 
-        # Count query — same filters, no pagination — for accurate total. The compiled inner
-        # SELECT is wrapped in COUNT(*) so the engine computes the cardinality and only a single
-        # scalar row crosses the wire; the full matching set is never materialized in this process
-        # to be counted (REQ-028: no transport buffers a whole result set to page it). RLS/masking
-        # still bind to the inner base tables — apply_governance rewrites nested table refs.
-        count_field = "id" if "id" in all_scalars else all_scalars[0]
-        count_gql = _build_graphql_query(gql_table, [count_field], filters, [], None, None)
-        try:
-            count_doc = parse_query(schema, count_gql)
-            count_compiled = compile_query(count_doc, ctx)
-        except (GraphQLValidationError, Exception) as e:
-            return _jsonapi_error_response(400, "Bad Request", str(e))
-        if not count_compiled:
-            return _jsonapi_error_response(400, "Bad Request", "Count compilation failed")
-        count_sql = f"SELECT COUNT(*) AS total FROM ({count_compiled[0].sql}) AS _provisa_count"
-        try:
-            count_plan = await _govern_and_route_compiled(
-                count_sql,
-                role_id,
-                exec_params=count_compiled[0].params or None,
-                state=state,
-                cache_hint=NO_CACHE_HINT,
-            )
-            count_result = await _execute_plan(count_plan, state)
-        except PermissionError as e:
-            return _jsonapi_error_response(403, "Forbidden", str(e))
-        except HTTPException as e:
-            if e.status_code == 503:
-                return _jsonapi_error_response(503, "Service Unavailable", e.detail)
-            raise
-        except Exception as e:
-            log.exception("JSON:API count query failed for %s", gql_table)
-            return _jsonapi_error_response(500, "Internal Server Error", str(e))
-        # COUNT(*) yields exactly one scalar row by SQL semantics — no empty-result fallback.
-        total_count = int(next(iter(count_result.rows))[0])
+        # REQ-1197: the total, for a request that asked for it (``page[total]=true``) — same
+        # filters, no pagination. The compiled inner SELECT is wrapped in COUNT(*) so the engine
+        # computes the cardinality and only a single scalar row crosses the wire; the full matching
+        # set is never materialized in this process to be counted (REQ-028: no transport buffers a
+        # whole result set to page it). RLS/masking still bind to the inner base tables —
+        # apply_governance rewrites nested table refs. A request that did not ask sends the source
+        # no count at all: a count is a scan of everything the filter matches, on every page.
+        total_count: int | None = None
+        if want_total:
+            count_field = "id" if "id" in all_scalars else all_scalars[0]
+            count_gql = _build_graphql_query(gql_table, [count_field], filters, [], None, None)
+            try:
+                count_compiled = compile_generated_graphql(state, role_id, schema, ctx, count_gql)
+            except (GraphQLValidationError, GraphQLError) as e:
+                return _jsonapi_error_response(400, "Bad Request", str(e))
+            if not count_compiled:
+                return _jsonapi_error_response(400, "Bad Request", "Count compilation failed")
+            count_sql = f"SELECT COUNT(*) AS total FROM ({count_compiled[0].sql}) AS _provisa_count"
+            try:
+                count_plan = await _govern_and_route_compiled(
+                    count_sql,
+                    role_id,
+                    exec_params=count_compiled[0].params or None,
+                    state=state,
+                    cache_hint=NO_CACHE_HINT,
+                )
+                count_result = await _execute_plan(count_plan, state)
+            except PermissionError as e:
+                return _jsonapi_error_response(403, "Forbidden", str(e))
+            except HTTPException as e:
+                if e.status_code == 503:
+                    return _jsonapi_error_response(503, "Service Unavailable", e.detail)
+                raise
+            except TimeoutError as e:
+                # REQ-1905: the statement outran its request deadline, or the server is stopping.
+                return _jsonapi_error_response(504, "Gateway Timeout", str(e))
+            except Exception as e:
+                log.exception("JSON:API count query failed for %s", gql_table)
+                return _jsonapi_error_response(500, "Internal Server Error", str(e))
+            # COUNT(*) yields exactly one scalar row by SQL semantics — no empty-result fallback.
+            total_count = int(next(iter(count_result.rows))[0])
 
         # Serialize to flat rows first
         from provisa.executor.serialize import serialize_rows
 
         response_data = serialize_rows(result.rows, compiled.columns, gql_table)
         rows = response_data.get("data", {}).get(gql_table, [])
+        # With no total, a full page is followed by another when the probe row came back; where no
+        # probe row could be asked for, a full page is all that is known.
+        has_next = len(rows) > page_size if probe_rows else len(rows) == page_size
+        rows = rows[:page_size]
 
         # REQ-1417: back to physical names before anything downstream keys off them, so the
         # relationship map, the included buckets, and the emitted attributes all speak one
@@ -1051,7 +1093,14 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             relationship_fields=physical_rel_fields,
             included_rows=included_rows or None,
         )
-        doc.setdefault("meta", {})["total"] = total_count
+        # The serializer's own ``meta.total`` is the length of the rows it was handed — a page, here.
+        # It is replaced by the counted total or removed: a page length is never reported as one.
+        if total_count is not None:
+            doc["meta"]["total"] = total_count
+        else:
+            del doc["meta"]["total"]
+            if not doc["meta"]:
+                del doc["meta"]
 
         # Pagination links — preserve role, sort, sparse fieldset, filters, and include
         base_path = f"/data/jsonapi/{domain_id}/{table_name}"
@@ -1064,6 +1113,8 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         for k, v in raw_params.items():
             if k.startswith("filter["):
                 extra[k] = v
+        if want_total:
+            extra[PAGE_TOTAL_PARAM] = "true"  # following a link counts again, as the request did
 
         doc["links"] = build_pagination_links(
             base_url=base_path,
@@ -1071,6 +1122,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             page_size=page_size,
             total=total_count,
             query_params=extra or None,
+            has_next=has_next,
         )
 
         return JSONResponse(content=doc, media_type=JSONAPI_CONTENT_TYPE)

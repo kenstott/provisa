@@ -24,6 +24,10 @@
     "navigateTitle": "檢視已註冊的數據表",
     "deleteTitle": "刪除數據來源「{{id}}」？",
     "deleteTitleShort": "刪除",
-    "deleteConsequence": "此操作會移除數據來源「{{id}}」，並可能令參照它的數據表失效。"
+    "deleteConsequence": "此操作會移除數據來源「{{id}}」，並可能令參照它的數據表失效。",
+    "refreshKaggleTitle": "從 Kaggle 重新整理",
+    "refreshKaggleHint": "從 Kaggle 重新下載 {{owner}}/{{ref}}，並就地覆寫暫存檔案。你的 Kaggle 權杖不會被儲存 — 請為此次重新整理再次輸入。",
+    "kaggleTokenLabel": "Kaggle API 權杖",
+    "refreshKaggleSubmit": "重新整理"
   }
 }

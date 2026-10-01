@@ -11,9 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "Umwandeln und Vorschau anzeigen",
     "domainMap": "Domänenzuordnung",
-    "domainMapHelp": "Jedes im Upload gefundene Schema (v2) bzw. jeder Subgraph (DDN) und die Provisa-Domäne, in der die zugehörigen Tabellen landen. Ändern Sie einen Namen und konvertieren Sie erneut.",
+    "domainMapHelp": "Jedes im Upload gefundene Schema (v2), jeder Subgraph (DDN) oder jedes Remote-Schema und die Provisa-Domäne, in der seine Tabellen landen. Wählen Sie eine vorhandene Domäne oder geben Sie einen neuen Namen ein und konvertieren Sie dann erneut.",
     "domainTo": "Domäne für {{from}}",
-    "remap": "Mit diesen Domänen erneut konvertieren",
+    "remap": "Mit diesen Einstellungen erneut konvertieren",
     "summaryHeading": "Was dieser Import erzeugt",
     "count_sources": "Datenquellen",
     "count_domains": "Domänen",
@@ -34,6 +34,14 @@
     "replace": "Bestehende semantische Schicht ersetzen",
     "replaceHelp": "Löscht jede Datenquelle, Tabelle, Rolle und Regel, die in dieser Konfiguration nicht vorkommt. Ausgeschaltet lassen, um den Import in den bestehenden Bestand der Organisation einzufügen.",
     "apply": "Auf diese Organisation anwenden",
-    "applied": "Übernommen: {{sources}} Datenquellen, {{tables}} Tabellen, {{roles}} Rollen."
+    "applied": "Übernommen: {{sources}} Datenquellen, {{tables}} Tabellen, {{roles}} Rollen.",
+    "domainNew": "neue Domäne",
+    "sourceConnections": "Quellverbindungen",
+    "sourceConnectionsHelp": "Der Export benennt seine Datenbanken über Umgebungsvariablen, die Verbindung müssen daher Sie angeben. Mit einer erreichbaren Verbindung liest die Vorschau die Spaltentypen jeder Tabelle aus der Quelle; ohne sie bleiben die Spalten untypisiert, bis Sie sie unten fertigstellen.",
+    "host": "Host",
+    "port": "Port",
+    "database": "Datenbank",
+    "username": "Benutzername",
+    "password": "Passwort"
   }
 }

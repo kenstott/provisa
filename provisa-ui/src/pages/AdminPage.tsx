@@ -62,6 +62,7 @@ import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
 import { SecretsTab, MySecretsTab } from "../components/admin/SecretsTab";
 import { MailTab } from "../components/admin/MailTab";
+import { SettingsCatalogPanel } from "../components/admin/SettingField";
 import { DomainModeCard, NamingConventionsCard } from "../components/admin/settingsCards";
 import { PageLoading } from "../components/PageLoading";
 import { usePanelState } from "../hooks/usePanelState";
@@ -77,6 +78,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/org-engine": "Org Engine", // REQ-1412: this org's engine lane
   "/admin/email": "Email", // REQ-1576: the mail transport platform messages go out through
   "/admin/maintenance": "Maintenance", // REQ-1466: the scheduled-downtime banner
+  "/admin/deployment-settings": "Deployment settings", // REQ-1913: every operator setting
   "/admin/billing": "Billing", // REQ-1469: plan, current bill, next charge
   "/admin/system-health": "Dashboard",
   // REQ-1008: MCP status is read-only deployment health, so it sits on the dashboard rather than
@@ -427,6 +429,7 @@ export function AdminPage() {
         {activeTab === "Org Engine" && <OrgEngineTab />}
         {activeTab === "Email" && <MailTab />}
         {activeTab === "Maintenance" && <MaintenanceTab />}
+        {activeTab === "Deployment settings" && <SettingsCatalogPanel />}
         {activeTab === "Billing" && <BillingTab />}
         {activeTab === "Security" && (
           <SecurityManager

@@ -20,6 +20,7 @@
     "includeNodes": "Knooppunten opnemen",
     "includeFields": "Velden opnemen (relatie, relatie.kolom of kolom)",
     "aggregateFunctions": "Aggregatiefuncties",
-    "selectAtLeastOneFunc": "Selecteer minstens één aggregatiefunctie"
+    "selectAtLeastOneFunc": "Selecteer minstens één aggregatiefunctie",
+    "aggregateColumns": "Aggregatiekolommen (leeg = elke geschikte kolom)"
   }
 }

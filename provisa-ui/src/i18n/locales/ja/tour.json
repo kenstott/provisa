@@ -19,7 +19,7 @@
     "steps": {
       "step0": {
         "title": "ようこそ、ツアーを始めましょう",
-        "description": "🧭 このコンパスからいつでもツアーを再開できます。いつでも離脱可能 — アプリをクリックするか <kbd>Esc</kbd> を押してください。<p><strong>Provisa</strong> は、データパスに関与しない、フェデレーテッドデータ向けのガバナンス済みクエリコンパイラです。</p><p>🎯 <strong>コアはたった一つの短い演習です：</strong>いくつかのデータベースを接続し、それらを<strong>7つの方法</strong>でクエリします — あるいは構文をスキップして、普通の英語で質問するだけでも構いません。所要時間は約5分、<strong>お使いのデスクトップから直接</strong>：サーバーもインフラ構築も不要です（それらは後で、準備ができたときに）。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>それ<em>以降</em>のこと — 追加のソース、フェデレーション、ファイル、リレーションシップ、ビュー、スケジュール実行のパイプライン — は、プラットフォームとともに<strong>成長</strong>していく方法であり、初日に必要なものではありません。コアがどこで終わるかは、その都度お知らせします。</p><p>準備はいいですか？まずソースを接続しましょう。→</p>"
+        "description": "🧭 このコンパスで、いつでもツアーを再開できます。いつでも終了できます。アプリをクリックするか <kbd>Esc</kbd> を押してください。<p><strong>Provisa</strong> は、データパスには関与しない、データのためのアクティブなセマンティックレイヤーです。</p><p>🎯 <strong>コア全体が 1 つの短い演習です。</strong>いくつかのデータベースを接続し、<strong>7 通りの方法</strong>でクエリを実行します。構文を使わず、普通の言葉で質問することもできます。所要時間は約 5 分で、<strong>デスクトップ上で完結</strong>します。サーバーも、構築するインフラも不要です(それは準備ができてからで構いません)。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>その<em>後</em>のすべて、つまりソースの追加、フェデレーション、ファイル、リレーションシップ、ビュー、スケジュールされたパイプラインは、プラットフォームとともに<strong>成長する</strong>ためのものであり、初日に必要なものではありません。コアの終わりの位置はお知らせします。</p><p>準備はいいですか？ ソースを接続しましょう。 →</p>"
       },
       "step1": {
         "title": "まずはソースから",
@@ -136,6 +136,10 @@
       "stepGlossary": {
         "title": "生きたビジネス用語集",
         "description": "📖 各用語はそれを保持する列にリンクしています。名前、定義、型付き関係(の一種、の一部、の同義語)を手動でキュレーションするか、AIにギャップを埋めさせましょう。<strong>✨ 定義</strong>はまだ定義のない用語だけを下書きし、<strong>✨ リレーションシップ</strong>は用語集全体でリンクを提案します。用語を<strong>エクスポートから除外</strong>としてマークすると、公開されるメタデータから除外できます。"
+      },
+      "stepDataProducts": {
+        "title": "データプロダクトを、利用者がすでに見ている場所で公開",
+        "description": "📦 ここにあるすべてのプロダクトは <strong>ODPS</strong>(Open Data Product Standard)に対応しています。オーナー、チーム、目的、制限事項、使用方法、SLA、サポート、カスタムプロパティを備え、Provisa が <strong>Snowflake Horizon</strong> と <strong>BigQuery Dataplex</strong> に直接自動公開するため、利用者がすでに使っているカタログにネイティブのプロダクトとして表示されます。<p>🔁 忘れてしまいがちな別のエクスポート手順はありません。仕様は毎回、テーブル、リネージ、タグ、用語集の用語を含む<strong>ライブモデルから導出</strong>されるため、手作業で管理する ODPS ファイルのように、公開内容が古くなることはありません。</p>"
       }
     },
     "status": {

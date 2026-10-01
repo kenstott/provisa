@@ -1,22 +1,22 @@
 {
   "orgEncryptionTab": {
     "loading": "加载中…",
-    "intro": "本组织数据所使用的加密密钥。可在此设置、更换和轮换；它从不显示，本部署中没有任何途径能把它展示给你或其他任何人。",
+    "intro": "用于包装此组织数据的加密密钥。可在此处设置、替换和轮换；密钥永不显示，此部署上的任何内容都无法向您或任何其他人展示它。",
     "fingerprintLabel": "指纹",
-    "supplied": "自带",
-    "generated": "此处生成",
+    "supplied": "自行提供",
+    "generated": "在此生成",
     "setOn": "由 {{actor}} 于 {{when}} 设置",
-    "retired": "{{count}} 个已退役密钥仍可解密",
-    "unset": "本组织尚未设置自己的密钥，其数据由部署密钥加密。",
-    "modeLabel": "设置方式",
-    "modeGenerate": "生成一个 —— 它只存在于密钥环中，不向任何人显示",
+    "retired": "{{count}} 个已停用密钥仍可读取",
+    "unset": "此组织尚未设置自己的密钥。其数据由部署的密钥包装。",
+    "modeLabel": "设置密钥的方式",
+    "modeGenerate": "生成一个——它只存在于密钥环中，不向任何人显示",
     "modeSupply": "提供我自己的（base64，32 字节）",
     "keyLabel": "密钥",
-    "keyHelp": "32 个随机字节的 base64，例如 openssl rand -base64 32。写入一次，永不回读。",
-    "rotationNote": "轮换只改变新数据使用的密钥。旧密钥退役进入密钥环，继续解密它此前写下的数据，因此不会有任何内容变得不可读 —— 也因此轮换并不等于吊销。",
+    "keyHelp": "32 个随机字节的 Base64，例如 openssl rand -base64 32。仅写入一次，之后不会读回。",
+    "rotationNote": "轮换会更改包装新数据所用的密钥。旧密钥会被停用到密钥环中，并继续解密它已写入的内容，因此不会有任何内容变得不可读——这也意味着轮换不等于吊销。",
     "set": "设置密钥",
     "rotate": "轮换密钥",
-    "applied": "密钥 {{keyId}} 已生效 —— 指纹 {{fingerprint}}",
+    "applied": "密钥 {{keyId}} 已启用——指纹 {{fingerprint}}",
     "panelTitle": "组织密钥"
   }
 }

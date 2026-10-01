@@ -242,14 +242,16 @@ async def govern_action_rows(
     out = [
         {name: _convert_value(v) for name, v in zip(result.column_names, r)} for r in result.rows
     ]
-    await _audit(sql, role_id, state, started)
+    await _audit(sql, role_id, state, started, len(out))
     return out, enforcement
 
 
-async def _audit(sql: str, role_id: str, state: Any, started: float) -> None:
+async def _audit(sql: str, role_id: str, state: Any, started: float, rows: int) -> None:
     """The governed statement lands in the query audit log like a table read. No registered table
-    is involved, so the usage list is empty; the statement text carries the relation name."""
-    from provisa.audit.context import current_audit_identity
+    is involved, so the usage list is empty; the statement text carries the relation name. It ran
+    on the federation engine. This row is also the record of the request that invoked the action
+    (``note_statement_audited``): the request writes no second one."""
+    from provisa.audit.context import current_audit_identity, note_statement_audited
     from provisa.audit.pipeline import PendingAudit, write_audit
 
     identity = current_audit_identity()
@@ -263,4 +265,5 @@ async def _audit(sql: str, role_id: str, state: Any, started: float) -> None:
         table_ids=[],
         started=started,
     )
-    await write_audit(pending, 200, state)
+    await write_audit(pending, 200, state, route="engine", row_count=rows)
+    note_statement_audited()

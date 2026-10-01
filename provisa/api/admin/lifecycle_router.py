@@ -22,7 +22,6 @@ shard rather than a lone desktop instance.
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 from pathlib import Path
 
@@ -42,7 +41,9 @@ _STOP_SCRIPT = _REPO_ROOT / "scripts" / "stop-all-services.sh"
 
 def _is_desktop_runtime() -> bool:
     """True only for a --demo/--native launch (desktop_profile.py's own no-Docker signal)."""
-    return os.environ.get("PROVISA_REDIS_EMBEDDED", "") == "1"
+    from provisa.core import redis_location
+
+    return redis_location.embedded()
 
 
 @router.post("/shutdown")

@@ -211,14 +211,19 @@ async def connect_infra(state: Any) -> None:  # REQ-143, REQ-171
         )
 
     async def _setup_object_store() -> None:
-        # The results bucket (REQ-171) is not ensured here: the first redirect that needs it
-        # does that (redirect.ensure_results_bucket_sync, called from TrinoBackend.ctas_redirect
-        # and upload_and_presign).
+        # Neither the results bucket nor the results schema (REQ-171) is set up here: the first
+        # redirect that needs them does it and fails loudly if it cannot (see
+        # TrinoBackend.ctas_redirect and redirect.upload_and_presign).
 
-        # MinIO OTEL bucket for otlp2parquet (blocking boto3 → thread).
+        # The telemetry bucket the `otel` Iceberg catalog points at (REQ-1332). It is ensured HERE,
+        # at boot: unlike the results bucket there is no request of Provisa's to ensure it on —
+        # the first writer is the external collector (otlp2parquet), which starts writing as soon
+        # as the stack is up. One attempt with a short connect timeout: this is in every worker's
+        # boot.
         def _ensure_otel_bucket() -> None:
             import boto3
             from botocore.config import Config as BotoConfig
+            from botocore.exceptions import BotoCoreError, ClientError
 
             from provisa.core.trino_system_catalogs import otel_object_store
 
@@ -232,29 +237,44 @@ async def connect_infra(state: Any) -> None:  # REQ-143, REQ-171
                 aws_access_key_id=_store["access_key"],
                 aws_secret_access_key=_store["secret_key"],
                 region_name=_store["region"],
-                config=BotoConfig(signature_version="s3v4"),
+                config=BotoConfig(
+                    signature_version="s3v4",
+                    retries={"total_max_attempts": 1},
+                    connect_timeout=3,
+                ),
             )
-            existing = [b["Name"] for b in _s3.list_buckets().get("Buckets", [])]
-            if _otel_bucket not in existing:
-                _s3.create_bucket(Bucket=_otel_bucket)
-                log.info("Created MinIO bucket: %s", _otel_bucket)
+            try:
+                existing = [b["Name"] for b in _s3.list_buckets().get("Buckets", [])]
+                if _otel_bucket not in existing:
+                    try:
+                        _s3.create_bucket(Bucket=_otel_bucket)
+                        log.info("Created MinIO bucket: %s", _otel_bucket)
+                    except ClientError as exc:
+                        # Another worker of this launch created it between the list and the
+                        # create: the bucket exists, which is the outcome asked for.
+                        if exc.response["Error"]["Code"] not in (
+                            "BucketAlreadyOwnedByYou",
+                            "BucketAlreadyExists",
+                        ):
+                            raise
+            except (BotoCoreError, ClientError) as exc:
+                raise RuntimeError(
+                    f"telemetry object store {_store['endpoint']} cannot provide bucket "
+                    f"{_otel_bucket!r} for the otel catalog: {type(exc).__name__}: {exc}"
+                ) from exc
 
+        # REQ-1423 (amended 2026-10-01): TELEMETRY BEING DOWN MUST NOT STOP THE DATA PLANE. A
+        # telemetry store that cannot provide its bucket is reported at ERROR, naming the endpoint
+        # and the bucket (the RuntimeError above carries both), and the boot continues — queries
+        # are served and only telemetry is lost until the store is back. This continue is the
+        # requirement's, not a convenience: it is a visible error on every boot, never a swallowed
+        # warning.
         try:
             await asyncio.to_thread(_ensure_otel_bucket)
-        except Exception:
-            log.warning(
-                "Could not ensure OTEL bucket — otlp2parquet storage may fail", exc_info=True
-            )
-
-        # Results schema for CTAS redirects (blocking Trino → thread).
-        try:
-            from provisa.executor.trino_write import ensure_results_schema
-
-            assert state.engine_conn is not None
-            await asyncio.to_thread(ensure_results_schema, state.engine_conn)
-        except Exception:
-            log.warning(
-                "Could not create results schema — CTAS redirect unavailable", exc_info=True
+        except RuntimeError:
+            log.exception(
+                "telemetry is NOT being stored: the otel bucket could not be ensured; the data "
+                "plane starts without it"
             )
 
     await asyncio.gather(_connect_flight(), _setup_object_store())

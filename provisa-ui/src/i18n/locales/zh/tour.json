@@ -19,7 +19,7 @@
     "steps": {
       "step0": {
         "title": "欢迎，来看看导览",
-        "description": "🧭 这个指南针随时可以重新打开导览。想离开随时可以——点击应用或按 <kbd>Esc</kbd>。<p><strong>Provisa</strong> 是一个不介入数据路径的联邦数据治理查询编译器。</p><p>🎯 <strong>核心内容其实就是一个简短练习：</strong>连接几个数据库，然后用<strong>七种方式</strong>查询它们——或者跳过语法，直接用大白话提问。大约五分钟，<strong>就在你的桌面上完成</strong>：不用服务器，不用搭建基础设施（那是以后准备好了再做的事）。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>此<em>之后</em>的一切——更多数据源、联邦、文件、关系、视图、定时管道——都是你和平台一起<strong>成长</strong>的方式，不是第一天就要掌握的内容。我们会标出核心内容到哪里结束。</p><p>准备好了吗？我们先连接一个数据源。→</p>"
+        "description": "🧭 此指南针可随时重新打开导览。可随时离开——点击应用或按 <kbd>Esc</kbd>。<p><strong>Provisa</strong> 是为您的数据打造的主动语义层，且不介入数据路径。</p><p>🎯 <strong>整个核心只是一个简短的练习：</strong>连接几个数据库，然后以<strong>七种方式</strong>查询它们——或者跳过语法，直接用自然语言提问。大约五分钟，<strong>直接在您的桌面上完成</strong>：无需服务器，无需搭建基础设施（等您准备好后再说）。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>此后的一切——更多数据源、联邦、文件、关系、视图、定时管道——是您随平台<strong>成长</strong>的方式，而不是第一天所必需的。我们会标出核心在哪里结束。</p><p>准备好了吗？让我们连接一个数据源。→</p>"
       },
       "step1": {
         "title": "从数据源开始",
@@ -136,6 +136,10 @@
       "stepGlossary": {
         "title": "一部鲜活的业务术语表",
         "description": "📖 每个术语都会关联回携带它的列——手动维护名称、定义和类型化关系(是一种、是其一部分、同义词),或者让 AI 来补全空白:<strong>✨ 定义</strong>只为尚无定义的术语起草内容,<strong>✨ 关系</strong>在整个术语表范围内提出关联建议。将某个术语标记为<strong>从导出中排除</strong>,即可使其不出现在已发布的元数据中。"
+      },
+      "stepDataProducts": {
+        "title": "数据产品，发布在消费者已经在看的地方",
+        "description": "📦 这里的每个产品都遵循 <strong>ODPS</strong>（Open Data Product Standard）——所有者、团队、用途、限制、使用方式、SLA、支持、自定义属性——Provisa 会将其自动发布到 <strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong>，使其在您的消费者已在使用的目录中显示为原生产品。<p>🔁 没有需要您记得去做的单独导出步骤：规范每次都<strong>由实时模型派生</strong>——表、血缘、标签、术语表条目——因此发布的内容不会像手工维护的 ODPS 文件那样过时。</p>"
       }
     },
     "status": {

@@ -382,6 +382,24 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         WHERE q.status_code IN (401, 403)
     """,
     # Daily traffic per protocol surface (the audit log's ``source`` column).
+    # REQ-1910: one row per statement Provisa executed — the audit row, which is the one home of
+    # a statement's user, role, transport (``source``), route, rows, outcome and duration. A statement over
+    # several tables names its first registered table (lowest id) and counts them; the full set is
+    # ops_table_usage. ``trace_id`` joins to ops ``traces`` (the request's record: stage timings,
+    # route, engine, cache result, rows). The statement text is encrypted (REQ-689) and is not a
+    # column: it is read per statement through GET /admin/audit/queries/{id}/text.
+    "queries": """
+        CREATE OR REPLACE VIEW queries AS
+        SELECT q.id AS id, q.trace_id, q.logged_at, q.duration_ms, q.status_code,
+               q.user_id, q.role_id, q.source, q.route, q.row_count, q.query_hash,
+               t.table_id, rt.table_name, rt.domain_id, t.table_count
+        FROM query_audit_log q
+        LEFT JOIN (SELECT u.id AS audit_id, MIN(u.table_id) AS table_id,
+                          COUNT(*) AS table_count
+                   FROM ops_table_usage u
+                   GROUP BY u.id) t ON t.audit_id = q.id
+        LEFT JOIN registered_tables rt ON rt.id = t.table_id
+    """,
     "surface_mix": """
         CREATE OR REPLACE VIEW surface_mix AS
         SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS id,

@@ -48,10 +48,11 @@ from buenavista.postgres import (
 )
 
 from provisa.core.egress import CountingWriter
+from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
 from provisa.otel_compat import annotate_request as _annotate_request
 from provisa.otel_compat import get_tracer as _get_tracer
-from provisa.otel_compat import record_stage as _record_stage
-from provisa.otel_compat import request_span as _request_span
+from provisa.otel_compat import stage as _stage
+from provisa.otel_compat import HeldRequestSpan
 from provisa.executor.result import ResultStream
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
@@ -390,6 +391,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         engine_result: ResultStream,
         original_sql: str = "",
         shape: list[Tuple[str, str]] | None = None,
+        plan: Any = None,
     ):
         super().__init__()
         # Held so close() can release it (server-side cursor / pooled source connection): when a
@@ -399,6 +401,11 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         self._cols = engine_result.column_names
         self._status = _tag_from_sql(original_sql)
         self._batch_iter: Iterator[list] = engine_result.batches()  # type: ignore[assignment]
+        if plan is not None:
+            # REQ-074: the statement's audit row is written when this drain ends (audit_on_drain).
+            from provisa.pgwire._pipeline import audit_on_drain
+
+            self._batch_iter = audit_on_drain(plan, self._batch_iter)
         self._head: list | None = None
         # REQ-1863 large-result fix: a batch pulled from self._batch_iter but only PARTIALLY
         # forwarded when send_data_rows (vendor/buenavista) stops early at the client's own
@@ -516,6 +523,10 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         closer = getattr(self._engine_result, "close", None)
         if closer is not None:
             closer()
+        # REQ-074: a result released before its drain ended is recorded with what it delivered.
+        finish = getattr(self._batch_iter, "finish", None)
+        if finish is not None:
+            finish()
 
 
 class _CursorRowsResult(BVQueryResult):  # REQ-1862
@@ -813,7 +824,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                         self.user_id, "pgwire", describe_pgwire_statement(stripped, self.role_id)
                     ),
                 ),
-                timeout=120,
+                timeout=request_timeout_for("pgwire"),
             )
         except PermissionError as exc:
             raise PermissionError(str(exc)) from exc
@@ -886,10 +897,15 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-589: a statement its Describe already governed is only ROUTED here, with the Bind's
         # values — governance does not run a second time. A held statement governed under a schema
         # generation that has since been rebuilt is stale and is governed again.
+        # REQ-1897: the Bind's result format codes go to the planner, which looks an opted-in
+        # read up in the response cache BEFORE routing; a hit comes back as a Route.CACHE plan and
+        # is served by the _execute_plan branch below (decoded rows, or the raw DataRow replay
+        # written for these codes).
+        _formats = list(result_fmt) if result_fmt else None
         if prepared is not None and governed_statement_is_current(prepared, state):
-            to_plan = plan_pgwire_statement(prepared, bound)
+            to_plan = plan_pgwire_statement(prepared, bound, _formats)
         else:
-            to_plan = govern_pgwire_plan(stripped, self.role_id, bound)
+            to_plan = govern_pgwire_plan(stripped, self.role_id, bound, _formats)
 
         # Govern on this connection's loop, then — for the ENGINE route — drain the engine's SYNC
         # streaming terminal on this same thread (REQ-028). Mirrors Flight SQL's govern-then-stream
@@ -897,24 +913,25 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # buenavista emits DataRow. DIRECT/admin/govdata routes are async-native and materialize
         # via the connection loop — all on this one thread (REQ-1882).
         _t_govern0 = time.perf_counter()
-        try:
-            # REQ-074/REQ-1386: the acting principal is bound inside the coroutine, so the
-            # governor's audit/denial write records who ran the statement and that it arrived over
-            # pgwire.
-            from provisa.audit.context import with_audit_identity
+        with _stage(_tracer, "pgwire.govern", name="govern"):  # REQ-1910
+            try:
+                # REQ-074/REQ-1386: the acting principal is bound inside the coroutine, so the
+                # governor's audit/denial write records who ran the statement and that it arrived over
+                # pgwire.
+                from provisa.audit.context import with_audit_identity
 
-            governed = cl.run(
-                _run_with_org(
-                    self.org_id,
-                    with_audit_identity(self.user_id, "pgwire", to_plan),
-                ),
-                timeout=120,
-            )
-        except PermissionError as exc:
-            raise PermissionError(str(exc)) from exc
-        except Exception as exc:
-            log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
-            raise RuntimeError(str(exc)) from exc
+                governed = cl.run(
+                    _run_with_org(
+                        self.org_id,
+                        with_audit_identity(self.user_id, "pgwire", to_plan),
+                    ),
+                    timeout=request_timeout_for("pgwire"),
+                )
+            except PermissionError as exc:
+                raise PermissionError(str(exc)) from exc
+            except Exception as exc:
+                log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
+                raise RuntimeError(str(exc)) from exc
         # Parse/govern/route timing, isolated from physical execution below, so the pure-Python
         # compile-path cost (parse → govern_pgwire_plan → routing decision) can be measured
         # separately from engine/source execution time — logged at DEBUG so it's zero-cost in
@@ -938,165 +955,173 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         def cache_run(coro):  # REQ-1897: cache reads/writes on this connection's loop and org
             return cl.run(_run_with_org(self.org_id, coro), timeout=30)
 
-        try:
-            if isinstance(governed, _Plan) and governed.route == Route.ENGINE:
-                # REQ-1176: this streaming sink runs physical_sql on the engine directly (like
-                # Flight SQL), so it MUST verify the governed-provenance stamp before the engine
-                # executes — the single-chokepoint guarantee is not satisfied by _execute_plan alone.
-                require_governed_plan(governed)
-                if governed.physical_sql is None:
-                    raise RuntimeError("ENGINE plan missing physical_sql")
-                # REQ-1661: this streaming sink bypasses _execute_plan_in_org entirely (that's the
-                # whole point — the pgwire worker thread drains the engine terminal itself so a
-                # large result never materializes on the loop), so its own ensure_resident call is
-                # the ONLY place a MATERIALIZED source this plan reads gets landed before the
-                # engine executes. Confirmed live: a cross-engine federated_join touching a never-
-                # yet-landed ClickHouse table failed "Binder Error: Catalog ... does not exist" on
-                # its first run of a fresh boot — _attach_registered's own attach attempt for a LAND
-                # source is caught and logged, never raised, so nothing else would have surfaced it.
-                #
-                # REQ-1865: this streaming sink also never called ensure_rows_resident (it bypasses
-                # _execute_plan_in_org entirely, same reason ensure_resident is duplicated above) --
-                # a row_materialize table this plan's predicate DIRECTLY binds (e.g.
-                # bench_customer_node's own customer_id) was never keyed-fetched for this transport
-                # at all. Must run BEFORE the key-pushdown probe below: a join where every table is
-                # row_materialize needs the directly-bound ones populated first, or the probe's
-                # LEFT-preserved "known" side is itself still empty and resolves zero keys.
-                # REQ-1865 key pushdown: same reason this streaming sink needs its own
-                # ensure_resident call applies to pushdown_row_materialize -- it must run here too,
-                # not just in _execute_plan_in_org, or a JOIN-reached row_materialize table (e.g.
-                # cypher_cross_engine's bench_contains_edge) never gets landed for this transport at
-                # all (confirmed live: 0 rows, no [DIAG] trace, for every SQL-transport query here).
-                # REQ-1887: folded into one connection-loop run — see
-                # prepare_residency_and_check_cache (provisa/pgwire/_pipeline.py), shared with
-                # Flight SQL's identical ENGINE-route fold.
-                # REQ-1897: this streaming sink bypasses _execute_plan_in_org entirely, so it needs
-                # its own cache-HIT check too — folded into this SAME dispatch (not a second hop)
-                # via prepare_residency_and_check_cache, which checks the cache FIRST and skips
-                # residency prep entirely on a HIT (nothing to land if the engine is never dialled).
-                # A HIT is served as ordinary decoded rows -- the COPY-binary encoder downstream
-                # consumes any QueryResult-shaped `result` identically whether it came from the
-                # engine or the cache -- skipping BOTH the raw-wire-forwarding passthrough below
-                # and execute_engine_sync. check_response_cache itself audits/egress-accounts a HIT.
-                from provisa.pgwire._pipeline import prepare_residency_and_check_cache
+        with _stage(_tracer, "pgwire.execute", name="execute"):  # REQ-1910
+            try:
+                if isinstance(governed, _Plan) and governed.route == Route.ENGINE:
+                    # REQ-1176: this streaming sink runs physical_sql on the engine directly (like
+                    # Flight SQL), so it MUST verify the governed-provenance stamp before the engine
+                    # executes — the single-chokepoint guarantee is not satisfied by _execute_plan alone.
+                    require_governed_plan(governed)
+                    if governed.physical_sql is None:
+                        raise RuntimeError("ENGINE plan missing physical_sql")
+                    # REQ-1661: this streaming sink bypasses _execute_plan_in_org entirely (that's the
+                    # whole point — the pgwire worker thread drains the engine terminal itself so a
+                    # large result never materializes on the loop), so its own ensure_resident call is
+                    # the ONLY place a MATERIALIZED source this plan reads gets landed before the
+                    # engine executes. Confirmed live: a cross-engine federated_join touching a never-
+                    # yet-landed ClickHouse table failed "Binder Error: Catalog ... does not exist" on
+                    # its first run of a fresh boot — _attach_registered's own attach attempt for a LAND
+                    # source is caught and logged, never raised, so nothing else would have surfaced it.
+                    #
+                    # REQ-1865: this streaming sink also never called ensure_rows_resident (it bypasses
+                    # _execute_plan_in_org entirely, same reason ensure_resident is duplicated above) --
+                    # a row_materialize table this plan's predicate DIRECTLY binds (e.g.
+                    # bench_customer_node's own customer_id) was never keyed-fetched for this transport
+                    # at all. Must run BEFORE the key-pushdown probe below: a join where every table is
+                    # row_materialize needs the directly-bound ones populated first, or the probe's
+                    # LEFT-preserved "known" side is itself still empty and resolves zero keys.
+                    # REQ-1865 key pushdown: same reason this streaming sink needs its own
+                    # ensure_resident call applies to pushdown_row_materialize -- it must run here too,
+                    # not just in _execute_plan_in_org, or a JOIN-reached row_materialize table (e.g.
+                    # cypher_cross_engine's bench_contains_edge) never gets landed for this transport at
+                    # all (confirmed live: 0 rows, no [DIAG] trace, for every SQL-transport query here).
+                    # REQ-1887: folded into one connection-loop run — see
+                    # prepare_residency_and_check_cache (provisa/pgwire/_pipeline.py), shared with
+                    # Flight SQL's identical ENGINE-route fold.
+                    # REQ-1897: this streaming sink bypasses _execute_plan_in_org entirely, so it needs
+                    # its own cache-HIT check too — folded into this SAME dispatch (not a second hop)
+                    # via prepare_residency_and_check_cache, which checks the cache FIRST and skips
+                    # residency prep entirely on a HIT (nothing to land if the engine is never dialled).
+                    # A HIT is served as ordinary decoded rows -- the COPY-binary encoder downstream
+                    # consumes any QueryResult-shaped `result` identically whether it came from the
+                    # engine or the cache -- skipping BOTH the raw-wire-forwarding passthrough below
+                    # and execute_engine_sync. check_response_cache itself audits/egress-accounts a HIT.
+                    from provisa.pgwire._pipeline import prepare_residency_and_check_cache
 
-                result = cl.run(prepare_residency_and_check_cache(governed, state), timeout=120)
-                if result is None:
-                    engine_plan = governed
-                    # REQ-1897: the one read/write-through for this streaming sink — a raw
-                    # DataRow (pg_datarows) HIT when the passthrough applies, else the decoded
-                    # stream teed into the raw-SQL cache (the decoded HIT was checked above).
+                    result = cl.run(
+                        prepare_residency_and_check_cache(governed, state),
+                        timeout=request_timeout_for("pgwire"),
+                    )
+                    if result is None:
+                        engine_plan = governed
+                        # REQ-1897: the one read/write-through for this streaming sink — a raw
+                        # DataRow (pg_datarows) HIT when the passthrough applies, else the decoded
+                        # stream teed into the raw-SQL cache (the decoded HIT was checked above).
+                        result = serve_stream_through_cache(
+                            engine_plan,
+                            state,
+                            run=cache_run,
+                            check_rows=False,
+                            # REQ-1863 counterpart: when the bound federation ENGINE is itself
+                            # Postgres (PROVISA_ENGINE=pg), pgwire and the engine both speak real
+                            # Postgres wire protocol end to end — raw DataRows are forwarded; a
+                            # PassthroughError falls through to execute_engine_sync below.
+                            passthrough=(
+                                (
+                                    result_fmt,
+                                    lambda: state.federation_engine.execute_pg_engine_passthrough(
+                                        engine_plan.physical_sql,
+                                        engine_plan.exec_params,
+                                        result_fmt,
+                                        described_oids=described_oids,
+                                    ),
+                                )
+                                if result_fmt
+                                and state.federation_engine.dialect in ("postgres", "postgresql")
+                                else None
+                            ),
+                            open_rows=lambda: state.federation_engine.execute_engine_sync(
+                                engine_plan.physical_sql,
+                                engine_plan.exec_params,
+                                session_hints=engine_plan.session_hints,
+                            ),
+                        )
+                elif (
+                    isinstance(governed, _Plan)
+                    and governed.route == Route.DIRECT
+                    and governed.source_id
+                    and state.source_pools.has(governed.source_id)
+                    and state.source_pools.supports_stream(governed.source_id)
+                    and result_fmt
+                    and state.source_pools.dialect_for(governed.source_id)
+                    in ("postgres", "postgresql")
+                ):
+                    # REQ-1863: the DIRECT source is itself Postgres and the downstream client's own
+                    # requested result_format is known (result_fmt is only populated for an
+                    # Execute/Bind dispatch, never a bare Describe) — forward its DataRow bytes
+                    # unmodified rather than decoding into asyncpg.Record and re-encoding. Masking/RLS
+                    # need no separate check here: already baked into governed.sql's text regardless
+                    # of route. Falls back to the decode/re-encode path below on ANY PassthroughError
+                    # (never a correctness risk, purely a fast path).
+                    require_governed_plan(governed)
+                    direct_plan = governed
+                    # REQ-1897: pg_datarows HIT replayed undecoded, else the passthrough teed; a
+                    # PassthroughError falls back to the decoded DIRECT stream (rows HIT / teed).
                     result = serve_stream_through_cache(
-                        engine_plan,
+                        direct_plan,
                         state,
                         run=cache_run,
-                        check_rows=False,
-                        # REQ-1863 counterpart: when the bound federation ENGINE is itself
-                        # Postgres (PROVISA_ENGINE=pg), pgwire and the engine both speak real
-                        # Postgres wire protocol end to end — raw DataRows are forwarded; a
-                        # PassthroughError falls through to execute_engine_sync below.
+                        check_rows=True,
                         passthrough=(
-                            (
+                            result_fmt,
+                            lambda: state.federation_engine.execute_pg_passthrough(
+                                state.source_pools,
+                                direct_plan.source_id,
+                                direct_plan.sql,
+                                direct_plan.exec_params,
                                 result_fmt,
-                                lambda: state.federation_engine.execute_pg_engine_passthrough(
-                                    engine_plan.physical_sql,
-                                    engine_plan.exec_params,
-                                    result_fmt,
-                                    described_oids=described_oids,
-                                ),
-                            )
-                            if result_fmt
-                            and state.federation_engine.dialect in ("postgres", "postgresql")
-                            else None
+                                described_oids=described_oids,
+                            ),
                         ),
-                        open_rows=lambda: state.federation_engine.execute_engine_sync(
-                            engine_plan.physical_sql,
-                            engine_plan.exec_params,
-                            session_hints=engine_plan.session_hints,
-                        ),
-                    )
-            elif (
-                isinstance(governed, _Plan)
-                and governed.route == Route.DIRECT
-                and governed.source_id
-                and state.source_pools.has(governed.source_id)
-                and state.source_pools.supports_stream(governed.source_id)
-                and result_fmt
-                and state.source_pools.dialect_for(governed.source_id) in ("postgres", "postgresql")
-            ):
-                # REQ-1863: the DIRECT source is itself Postgres and the downstream client's own
-                # requested result_format is known (result_fmt is only populated for an
-                # Execute/Bind dispatch, never a bare Describe) — forward its DataRow bytes
-                # unmodified rather than decoding into asyncpg.Record and re-encoding. Masking/RLS
-                # need no separate check here: already baked into governed.sql's text regardless
-                # of route. Falls back to the decode/re-encode path below on ANY PassthroughError
-                # (never a correctness risk, purely a fast path).
-                require_governed_plan(governed)
-                direct_plan = governed
-                # REQ-1897: pg_datarows HIT replayed undecoded, else the passthrough teed; a
-                # PassthroughError falls back to the decoded DIRECT stream (rows HIT / teed).
-                result = serve_stream_through_cache(
-                    direct_plan,
-                    state,
-                    run=cache_run,
-                    check_rows=True,
-                    passthrough=(
-                        result_fmt,
-                        lambda: state.federation_engine.execute_pg_passthrough(
+                        open_rows=lambda: state.federation_engine.execute_native_stream(
                             state.source_pools,
                             direct_plan.source_id,
                             direct_plan.sql,
                             direct_plan.exec_params,
-                            result_fmt,
-                            described_oids=described_oids,
+                            run=cl.run,
                         ),
-                    ),
-                    open_rows=lambda: state.federation_engine.execute_native_stream(
-                        state.source_pools,
-                        direct_plan.source_id,
-                        direct_plan.sql,
-                        direct_plan.exec_params,
-                        run=cl.run,
-                    ),
-                )
-            elif (
-                isinstance(governed, _Plan)
-                and governed.route == Route.DIRECT
-                and governed.source_id
-                and state.source_pools.has(governed.source_id)
-                and state.source_pools.supports_stream(governed.source_id)
-            ):
-                # REQ-1190: a single-reachable-source scan STREAMS via the source's server-side cursor,
-                # drained on this worker thread just like the ENGINE terminal — never materialized on the
-                # loop (streaming-uniformity Defect 1). REQ-1176: verify the stamp before the source runs.
-                require_governed_plan(governed)
-                direct_plan = governed
-                # REQ-1897: a decoded HIT served, else the source's stream teed into the cache.
-                result = serve_stream_through_cache(
-                    direct_plan,
-                    state,
-                    run=cache_run,
-                    check_rows=True,
-                    passthrough=None,
-                    open_rows=lambda: state.federation_engine.execute_native_stream(
-                        state.source_pools,
-                        direct_plan.source_id,
-                        direct_plan.sql,
-                        direct_plan.exec_params,
-                        run=cl.run,
-                    ),
-                )
-            elif isinstance(governed, _Plan):
-                result = cl.run(_run_with_org(self.org_id, _execute_plan(governed)), timeout=120)
-            else:
-                result = governed  # registered-function call: bounded, already materialized
-        except PermissionError as exc:
-            self._finalize_audit(governed, 500)
-            raise PermissionError(str(exc)) from exc
-        except Exception as exc:
-            self._finalize_audit(governed, 500)
-            log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
-            raise RuntimeError(str(exc)) from exc
+                    )
+                elif (
+                    isinstance(governed, _Plan)
+                    and governed.route == Route.DIRECT
+                    and governed.source_id
+                    and state.source_pools.has(governed.source_id)
+                    and state.source_pools.supports_stream(governed.source_id)
+                ):
+                    # REQ-1190: a single-reachable-source scan STREAMS via the source's server-side cursor,
+                    # drained on this worker thread just like the ENGINE terminal — never materialized on the
+                    # loop (streaming-uniformity Defect 1). REQ-1176: verify the stamp before the source runs.
+                    require_governed_plan(governed)
+                    direct_plan = governed
+                    # REQ-1897: a decoded HIT served, else the source's stream teed into the cache.
+                    result = serve_stream_through_cache(
+                        direct_plan,
+                        state,
+                        run=cache_run,
+                        check_rows=True,
+                        passthrough=None,
+                        open_rows=lambda: state.federation_engine.execute_native_stream(
+                            state.source_pools,
+                            direct_plan.source_id,
+                            direct_plan.sql,
+                            direct_plan.exec_params,
+                            run=cl.run,
+                        ),
+                    )
+                elif isinstance(governed, _Plan):
+                    result = cl.run(
+                        _run_with_org(self.org_id, _execute_plan(governed)),
+                        timeout=request_timeout_for("pgwire"),
+                    )
+                else:
+                    result = governed  # registered-function call: bounded, already materialized
+            except PermissionError as exc:
+                self._finalize_audit(governed, 500)
+                raise PermissionError(str(exc)) from exc
+            except Exception as exc:
+                self._finalize_audit(governed, 500)
+                log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
+                raise RuntimeError(str(exc)) from exc
         _t_execute1 = time.perf_counter()
         log.debug(
             "[PGWIRE TIMING] govern=%.1fms execute=%.1fms sql=%r",
@@ -1104,28 +1129,36 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             (_t_execute1 - _t_govern1) * 1000,
             stripped[:80],
         )
-        _record_stage("govern", _t_govern0, _t_govern1)  # REQ-1910
-        _record_stage("execute", _t_govern1, _t_execute1)
         _annotate_request(db__statement=stripped[:1000])  # recorded in debug detail only
 
         # REQ-074/REQ-1386: the ENGINE/DIRECT streaming terminals above never reach _execute_plan,
         # so the audit row is written here. Idempotent — the _execute_plan branch already wrote it.
-        self._finalize_audit(governed, 200)
+        # The row itself is written when the client has drained the result (or stops reading it),
+        # so it carries the rows delivered; a plan already recorded (cache hit, buffered chokepoint)
+        # is not recorded again.
+        self._finalize_audit(governed, 200, defer_to_drain=True)
         try:
-            return ProvisaQueryResult(result, stripped, shape)
+            return ProvisaQueryResult(
+                result, stripped, shape, plan=governed if isinstance(governed, _Plan) else None
+            )
         except Exception:
             log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
             raise
 
-    def _finalize_audit(self, governed, status_code: int) -> None:
-        """Write the governed plan's audit row on this connection's loop, under the session's org."""
+    def _finalize_audit(self, governed, status_code: int, *, defer_to_drain: bool = False) -> None:
+        """Write the governed plan's audit row on this connection's loop, under the session's org.
+        ``defer_to_drain``: the result is a stream the client has not read yet — the row is
+        written when its drain ends (see ``ProvisaQueryResult``), with the rows delivered."""
         from provisa.core.connection_loop import run_on_connection_loop
         from provisa.pgwire._pipeline import _Plan, finalize_audit
 
         if not isinstance(governed, _Plan):
             return  # a registered-function call carries no plan
         run_on_connection_loop(
-            _run_with_org(self.org_id, finalize_audit(governed, status_code)), timeout=30
+            _run_with_org(
+                self.org_id, finalize_audit(governed, status_code, defer_to_drain=defer_to_drain)
+            ),
+            timeout=30,
         )
 
 
@@ -1176,25 +1209,16 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     _session: "ProvisaSession | None" = None
     # REQ-1910: the request span of the statement cycle in flight — one simple Query, or one
     # extended-protocol cycle from its first Parse/Bind/Describe/Execute to the Sync that ends it.
-    _request_scope: Any = None
-
-    def _begin_request_span(self) -> None:
-        if self._request_scope is None:
-            scope = _request_span(_tracer, "pgwire.query", transport="pgwire")
-            scope.__enter__()
-            self._request_scope = scope
-
-    def _end_request_span(self) -> None:
-        scope, self._request_scope = self._request_scope, None
-        if scope is not None:
-            scope.__exit__(None, None, None)
+    # Held, not a block: the cycle's messages are dispatched one by one by the vendor's loop.
+    # Opened by each message handler below, closed at ReadyForQuery (and when the connection ends).
+    _request: HeldRequestSpan
 
     def handle_parse(self, ctx: BVContext, payload: bytes) -> None:
-        self._begin_request_span()
+        self._request.open()
         super().handle_parse(ctx, payload)
 
     def handle_bind(self, ctx: BVContext, payload: bytes) -> None:
-        self._begin_request_span()
+        self._request.open()
         super().handle_bind(ctx, payload)
 
     def send_ready_for_query(self, ctx: Optional[BVContext]) -> None:
@@ -1202,15 +1226,14 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         try:
             super().send_ready_for_query(ctx)
         finally:
-            self._end_request_span()
+            self._request.close()
 
     def send_data_rows(self, query_result: BVQueryResult, limit: int = 0) -> int:
         # REQ-1910: rows are pulled from the result and encoded onto the socket here.
-        started = time.perf_counter()
-        sent = super().send_data_rows(query_result, limit)
-        _record_stage("encode", started)
-        _annotate_request(db__row_count=sent)
-        return sent
+        with _stage(_tracer, "pgwire.encode", name="encode"):
+            sent = super().send_data_rows(query_result, limit)
+            _annotate_request(db__row_count=sent)
+            return sent
 
     def handle(self) -> None:
         """Serve the connection with a ConnectionLoop bound to this thread for its whole life.
@@ -1223,7 +1246,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             try:
                 super().handle()
             finally:
-                self._end_request_span()  # a connection that died mid-cycle still ends its span
+                self._request.close()  # a connection that died mid-cycle still ends its span
                 # A CancelRequest from another connection may have asked this session to close;
                 # its cursors are released here, on the thread that owns their loop.
                 session = self._session
@@ -1237,6 +1260,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         # byte total. Starts unattributed and is bound to an org once auth resolves one; the bytes
         # of the startup and auth exchange belong to no org and are dropped rather than guessed.
         super().setup()
+        self._request = HeldRequestSpan(_tracer, "pgwire.query", transport="pgwire")  # REQ-1910
         self._meter = CountingWriter(self.wfile, None)
         self.wfile = self._meter
 
@@ -1688,7 +1712,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self.handle_post_auth(ctx)
 
     def handle_describe(self, ctx: BVContext, payload: bytes) -> None:
-        self._begin_request_span()
+        self._request.open()
         ba = bytearray(payload)
         if ba[0] == ord("P"):
             portal = ba[1 : len(ba) - 1].decode("utf-8")
@@ -1759,7 +1783,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         super().handle_describe(ctx, payload)
 
     def handle_execute(self, ctx: BVContext, payload: bytes) -> None:
-        self._begin_request_span()
+        self._request.open()
         ba = bytearray(payload)
         portal_idx = ba.index(0)
         portal = ba[:portal_idx].decode("utf-8")
@@ -1770,7 +1794,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         super().handle_execute(ctx, payload)
 
     def handle_query(self, ctx: BVContext, payload: bytes) -> None:
-        self._begin_request_span()
+        self._request.open()
         from provisa.compiler.sql_rewrite import split_sql_statements
 
         decoded = payload.decode("utf-8").rstrip("\x00")
@@ -1933,7 +1957,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                             # bind its principal inside the coroutine so the row is attributed.
                             with_audit_identity(user, "pgwire", run_ctas(stmt, role)),
                         ),
-                        timeout=120,
+                        timeout=request_timeout_for("pgwire"),
                     )
                     self.send_command_complete(f"{tag}\x00")
                 except PermissionError as exc:

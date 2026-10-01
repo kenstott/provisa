@@ -15,6 +15,7 @@
     },
     "auth": {
       "authentication_required": "Требуется аутентификация",
+      "auto_join_not_offered": "Эта организация не предлагает принять вас",
       "bootstrap_claiming_disabled": "Bootstrap-заявка не включена",
       "delete_account_confirm_required": "Удаление учетной записи необратимо: ваш профиль и все членства в организациях будут удалены без возможности восстановления. Повторите ваш идентификатор пользователя в параметре 'confirm', чтобы продолжить.",
       "email_not_permitted": "Ваш адрес электронной почты не допущен к присоединению к этой организации",
@@ -51,6 +52,10 @@
       "engine_not_connected": "движок не подключен",
       "grpc_source_not_registered": "Удаленный источник gRPC '{{source_id}}' не зарегистрирован",
       "invalid_as_of": "недействительный X-Provisa-As-Of: {{error}}",
+      "invalid_filter": "filter должен быть объектом, сопоставляющим имена полей со значениями",
+      "invalid_filter_field": "Недопустимое поле filter '{{field}}' для {{type_name}}",
+      "invalid_read_mask": "read_mask должен быть объектом со списком 'paths' путей к полям",
+      "invalid_read_mask_path": "Недопустимый путь read_mask '{{path}}' для {{type_name}}",
       "missing_command_name": "Отсутствует имя команды",
       "missing_role_id": "Отсутствует role_id",
       "missing_x_provisa_role_header": "Отсутствует заголовок X-Provisa-Role",
@@ -155,7 +160,10 @@
       "auth_required_create": "Для создания организации требуется аутентификация",
       "auth_required_leave": "Для выхода из организации требуется аутентификация",
       "auto_join_public_domain": "Для auto_join нужно правило электронной почты, ограниченное доменом, которым вы владеете, — это правило соответствует {{domain}}.",
+      "auto_join_breadth_unacknowledged": "Внимательно проверьте это правило автоприсоединения, иначе вы можете допустить людей извне вашей организации: помимо {{domains}}, оно также принимает адреса вроде {{admits}}. Любой человек из домена, которым вы не управляете, мог бы автоматически присоединиться к вашей организации. Подтвердите, что принимаете этот риск, чтобы сохранить правило.",
       "auto_join_requires_role": "auto_join требует auto_join_role",
+      "auto_join_rule_taken": "Другая организация уже автоматически принимает всех, кто подходит под это правило. Две организации не могут претендовать на одни и те же адреса — попросите у них приглашение или сузьте своё правило до домена, которым пользуется только ваша организация.",
+      "auto_join_rule_unbounded": "У этого правила автоприсоединения нет границ: оно допустило бы адреса из доменов, которыми вы не управляете. Привяжите его к вашему домену, например \"@acme\\\\.com$\".",
       "cannot_delete_root": "Нельзя удалить корневую организацию",
       "delete_confirm_required": "Удаление '{{org}}' безвозвратно уничтожит все ее данные — никто, включая администратора платформы, не сможет их восстановить. Повторите идентификатор организации в параметре 'confirm', чтобы продолжить.",
       "invalid_email_rule": "Недействительное правило электронной почты: {{error}}",
@@ -173,7 +181,8 @@
     },
     "platform": {
       "right_required": "требуется право {{right}}",
-      "settings_capability_required": "требуется право platform_settings"
+      "settings_capability_required": "требуется право platform_settings",
+      "control_plane_role_required": "Требуется администратор платформы."
     },
     "profile": {
       "database_unavailable": "База данных недоступна",
@@ -249,7 +258,7 @@
       "source_connection_failed": "Источник '{{source}}': сбой проверки подключения: {{error}}",
       "source_created": "Источник '{{source}}' создан",
       "source_deleted": "Источник '{{source}}' удален",
-      "source_limit_reached": "Эта организация использует {{held}} из {{limit}} источников данных, допускаемых тарифом {{plan}}. Измените тариф на странице оплаты или удалите источник.",
+      "source_limit_reached": "Эта организация использует {{held}} из {{limit}} источников данных, допустимых тарифом {{plan}}. Смените тариф на странице «Оплата» или удалите источник.",
       "source_load_protection_set": "защита от нагрузки задана для источника '{{source}}'",
       "source_naming_updated": "Соглашение об именовании обновлено для источника '{{source}}'",
       "source_no_connection": "источник '{{source}}' не имеет активного подключения",
@@ -297,7 +306,10 @@
       "unknown_auth_provider": "неизвестный провайдер аутентификации '{{provider}}'; допустимые: {{valid}}",
       "unknown_encryption_provider": "неизвестный провайдер шифрования '{{provider}}'",
       "unknown_engine": "неизвестный движок '{{engine}}'; допустимые: {{valid}}",
-      "use_domains_invalid": "use_domains должен быть true, false или null"
+      "use_domains_invalid": "use_domains должен быть true, false или null",
+      "invalid_value": "Значение {{field}} отклонено.",
+      "invalid_body": "Запрос настроек недопустим.",
+      "auth_required": "{{field}} нельзя изменить, пока не настроена аутентификация."
     },
     "setup": {
       "admin_credentials_required": "требуются admin_username и admin_password",

@@ -11,6 +11,7 @@
     "metadataSheetId": "Metadata-sheet-ID",
     "metadataSheetIdPlaceholder": "Sheet-ID voor tabeldefinities",
     "endpointUrl": "Endpoint-URL",
+    "defaultGraphUri": "Standaard graaf-URI",
     "namespace": "Naamruimte",
     "cacheTtlSeconds": "Cache-TTL (seconden)",
     "protoPathOrUrl": "Proto-pad of URL",
@@ -78,6 +79,12 @@
     "topicPrefixPlaceholder": "dbserver1 (topics: {prefix}.{schema}.{table})",
     "schemaRegistryUrlCdcPlaceholder": "leeg = JSON; instellen voor Avro",
     "consumerGroupId": "Consumergroep-ID (optioneel)",
-    "consumerGroupIdPlaceholder": "globaal overnemen (provisa-debezium)"
+    "consumerGroupIdPlaceholder": "globaal overnemen (provisa-debezium)",
+    "useSsl": "SSL/TLS gebruiken",
+    "eventPath": "Eventpad (optioneel)",
+    "reconnectIntervalSeconds": "Herverbindingsinterval (seconden)",
+    "subscribePayload": "Subscribe-payload (JSON, optioneel)",
+    "feedUrlOverride": "Feed-URL (optionele overschrijving)",
+    "pollIntervalSeconds": "Pollinginterval (seconden)"
   }
 }

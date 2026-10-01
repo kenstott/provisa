@@ -357,9 +357,24 @@ class _FakeLimiter:
 
 
 class TestGlobalFlightConcurrencyCap:
-    """The global cap (rl:flight:global) is independent of, and checked before, the
-    per-role cap (REQ-369's max_flight_streams) — either one alone must be able to
-    reject a request regardless of the other's state."""
+    """The server-wide limit (REQ-1905) is this worker's own stream slots — independent of the
+    per-role cap (REQ-369's max_flight_streams, a rate-limiter gauge). Either one alone must be
+    able to refuse a request regardless of the other's state. The role's quota is checked at the
+    top of do_get and rejects at once; the server-wide slot is taken where execution reaches the
+    engine or a source, and is waited for (tests/unit/test_flight_stream_wait.py)."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_slots(self, monkeypatch):
+        from provisa.api.flight import stream_slots
+        from provisa.core import settings_registry
+
+        monkeypatch.setattr(stream_slots, "_slots", None)
+        # Flight's own request timeout (REQ-1905), short: one test waits a slot out.
+        monkeypatch.setattr(
+            settings_registry,
+            "_config",
+            {"server": {"limits": {"request_timeouts": {"flight": 0.3}}}},
+        )
 
     def _server(self, state, monkeypatch):
         server = ProvisaFlightServer.__new__(ProvisaFlightServer)
@@ -367,25 +382,47 @@ class TestGlobalFlightConcurrencyCap:
         monkeypatch.setattr(server, "_execute_query", lambda request: "ok")
         return server
 
-    def test_global_cap_rejects_even_with_no_role_cap_configured(self, monkeypatch):
-        """A role with no per-role rate_limit configured is still gated by the global cap."""
+    def test_global_cap_refuses_even_with_no_role_cap_configured(self, monkeypatch):
+        """A role with no per-role rate_limit configured is still gated by the global limit."""
+        import threading
+
         state = FakeState()
         state.roles = {"analyst": {}}  # no rate_limit at all
-        state.rate_limiter = _FakeLimiter(reject_keys={"rl:flight:global"})
-        state.flight_global_cap = 4
+        state.rate_limiter = _FakeLimiter()
+        state.flight_global_cap = 1
 
         server = self._server(state, monkeypatch)
-        ticket = flight.Ticket(json.dumps({"query": "SELECT 1", "role": "analyst"}).encode())
+        release = threading.Event()
 
-        with pytest.raises(flight.FlightServerError, match="server-wide"):
-            server.do_get(None, ticket)
+        def _execute(_request):
+            # What every execution path does on a cache miss: wait for a stream slot, then run.
+            release_slot = server._acquire_stream_slot()
+            try:
+                release.wait(10)
+                return "ok"
+            finally:
+                release_slot()
+
+        monkeypatch.setattr(server, "_execute_query", _execute)
+        ticket = flight.Ticket(json.dumps({"query": "SELECT 1", "role": "analyst"}).encode())
+        holder = threading.Thread(target=lambda: server.do_get(None, ticket))
+        holder.start()
+        try:
+            import time
+
+            time.sleep(0.1)  # the holder has the only slot; this request waits out its budget
+            with pytest.raises(flight.FlightServerError, match="server-wide"):
+                server.do_get(None, ticket)
+        finally:
+            release.set()
+            holder.join(timeout=10)
 
     def test_global_cap_has_room_role_cap_still_enforced(self, monkeypatch):
         """The global gate admitting a request does not bypass the existing per-role gate."""
         state = FakeState()
         state.roles = {"analyst": {"rate_limit": {"max_flight_streams": 1}}}
         state.rate_limiter = _FakeLimiter(reject_keys={"rl:flight:analyst"})
-        state.flight_global_cap = 4
+        state.flight_global_cap = 1
 
         server = self._server(state, monkeypatch)
         ticket = flight.Ticket(json.dumps({"query": "SELECT 1", "role": "analyst"}).encode())
@@ -395,24 +432,27 @@ class TestGlobalFlightConcurrencyCap:
         ):
             server.do_get(None, ticket)
 
-        # Global slot was acquired then released even though the per-role check failed after it.
-        assert state.rate_limiter.acquired == ["rl:flight:global"]
-        assert state.rate_limiter.released == ["rl:flight:global"]
+        # The one global slot was given back even though the per-role check failed after it: a
+        # role with no cap is admitted at once rather than waiting out its budget.
+        state.roles = {"analyst": {}}
+        assert server.do_get(None, ticket) == "ok"
+        assert state.rate_limiter.acquired == []
 
     def test_both_caps_have_room_query_executes_and_both_slots_released(self, monkeypatch):
         state = FakeState()
         state.roles = {"analyst": {"rate_limit": {"max_flight_streams": 4}}}
         state.rate_limiter = _FakeLimiter()
-        state.flight_global_cap = 4
+        state.flight_global_cap = 1
 
         server = self._server(state, monkeypatch)
         ticket = flight.Ticket(json.dumps({"query": "SELECT 1", "role": "analyst"}).encode())
 
-        result = server.do_get(None, ticket)
+        assert server.do_get(None, ticket) == "ok"
+        assert server.do_get(None, ticket) == "ok"  # the single global slot was released
 
-        assert result == "ok"
-        assert state.rate_limiter.acquired == ["rl:flight:global", "rl:flight:analyst"]
-        assert set(state.rate_limiter.released) == {"rl:flight:global", "rl:flight:analyst"}
+        # The server-wide limit is not a rate-limiter gauge any more: only the role's key is.
+        assert state.rate_limiter.acquired == ["rl:flight:analyst", "rl:flight:analyst"]
+        assert state.rate_limiter.released == ["rl:flight:analyst", "rl:flight:analyst"]
 
     def test_no_global_cap_configured_skips_the_gate(self, monkeypatch):
         """flight_global_cap unset/0 (e.g. NoopRateLimiter deployments) never calls acquire."""

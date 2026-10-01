@@ -11,7 +11,7 @@
 """A repeated GraphQL query reuses its governed plan (REQ-1877, amended 2026-09-30).
 
 The cached-hit path is: role -> plan lookup -> response-cache key -> Redis GET -> respond. Parsing,
-validation, compilation and governance run once per (schema generation, role, person, query,
+validation, compilation and governance run once per (schema generation, role, query,
 variables, session variables, as-of) and are reused until the schema generation moves."""
 
 # Requirements: REQ-1877

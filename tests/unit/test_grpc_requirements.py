@@ -339,6 +339,9 @@ class TestREQ617RoleSelectionViaMetadata:
         request = MagicMock()
         request.limit = 0
 
+        from provisa.cache.store import NoopCacheStore
+
+        state.response_cache_store = NoopCacheStore()  # AppState always holds a store (app.py)
         # New pipeline seam: govern/route/execute via provisa.pgwire._pipeline. Three rows in.
         # REQ-1891: DIRECT route now fast-paths through execute_native, not _execute_plan.
         state.source_pools.has.return_value = True
@@ -352,6 +355,14 @@ class TestREQ617RoleSelectionViaMetadata:
             exec_params=None,
             audit_written=False,
             audit=MagicMock(),
+            # The DIRECT terminal consults the response cache (REQ-544): an un-hinted plan.
+            cache_opt_in=False,
+            cache_hit=None,  # as _Plan: not answered before routing
+            cache_missed=(),
+            cache_ttl=None,
+            response_cacheable=True,
+            role_id="admin",
+            table_ids=(),
         )
         fake_result = SimpleNamespace(
             column_names=["id", "amount"], rows=[[1, 10.0], [2, 20.0], [3, 30.0]]
@@ -360,7 +371,7 @@ class TestREQ617RoleSelectionViaMetadata:
         with (
             patch(
                 "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value="SELECT id, amount FROM orders",
+                return_value=("SELECT id, amount FROM orders", []),
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",

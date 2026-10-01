@@ -24,6 +24,18 @@
     "materializeLabel": "Materialisieren (MV für quellübergreifende Joins automatisch erstellen)",
     "disableCypherLabel": "Aus dem Cypher-Graphen ausschließen",
     "refreshIntervalLabel": "Aktualisierungsintervall (s)",
-    "save": "Speichern"
+    "save": "Speichern",
+    "junctionTitle": "Junction-Tabelle (erweitert)",
+    "junctionHelp": "Deklariert diese Kante als Durchlauf über eine Assoziationstabelle. Die übrigen Spalten der Junction-Tabelle werden zu den Attributen der Beziehung.",
+    "viaTableLabel": "Junction-Tabelle",
+    "viaSourceColumnLabel": "Junction-Spalte → Quelle",
+    "viaTargetColumnLabel": "Junction-Spalte → Ziel",
+    "viaTypeColumnLabel": "Diskriminatorspalte",
+    "viaTypeValueLabel": "Diskriminatorwert",
+    "viaTypeValuePlaceholder": "z. B. KIND_OF",
+    "viaLabelSourceLabel": "Kante benennen nach",
+    "viaLabelSourceColumn": "Diskriminatorwert",
+    "viaLabelSourceTable": "Name der Junction-Tabelle",
+    "viaLabelSourceFixed": "Cypher-Alias"
   }
 }

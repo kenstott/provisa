@@ -28,9 +28,9 @@ import re
 import secrets as _secrets
 import threading
 import time as _time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from provisa.audit.pipeline import PendingAudit
 from provisa.executor.result import QueryResult
@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from provisa.compiler.directives import CacheHint
     from provisa.compiler.pk_bounds import PkBound
     from provisa.executor.redirect import Delivery
+    from provisa.transpiler.router import Route
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -96,6 +97,30 @@ class _Plan:
     # body below the config row threshold, land an engine-native CTAS above it — with no caller
     # side-channel. None for streaming transports and when redirect is disabled in system config.
     auto_deliver: Delivery | None = field(default=None)
+    # REQ-1224 (amended 2026-10-01): set with ``auto_deliver`` when the router sent the buffered
+    # read DIRECT. ``sql`` is then bounded at threshold+1 rows — the probe — and this derives the
+    # statement's engine-physical form, which only a result that does not fit needs (the engine
+    # lands it), so it is not derived for one that does. None on the ENGINE route, where the
+    # terminal drains the engine's stream instead.
+    engine_landing: Callable[[], Awaitable[str]] | None = field(default=None, repr=False)
+    # REQ-1897 (amended 2026-10-01): the response-cache identity of this statement — its governed
+    # text and bound values as they stood BEFORE routing. The entry's key is built from these and
+    # never from ``sql``/``exec_params``, which are what the chosen route executes (physical text
+    # on DIRECT, a probe bound on a buffered read); a key built from them could not be computed
+    # before the route is known. None on a plan the planner did not build.
+    cache_sql: str | None = field(default=None)
+    cache_params: list | None = field(default=None)
+    # REQ-1163: the request-level as-of this plan was built for — part of the entry's identity
+    # (a statement over a bitemporal view reads different rows at each as-of).
+    cache_as_of: str | None = field(default=None)
+    # The entry the planner read before routing, on a Route.CACHE plan: the client's pgwire
+    # result format codes for a ``pg_datarows`` entry (None for a decoded one) and the store's
+    # record. The terminal serves it; nothing was lowered, optimized or routed.
+    cache_hit: tuple[list[int] | None, Any] | None = field(default=None, repr=False)
+    # The entry kinds the planner already looked for before routing and did not find (None for a
+    # decoded entry, the format-code tuple for ``pg_datarows``): the terminal does not read the
+    # store for them a second time.
+    cache_missed: tuple[tuple[int, ...] | None, ...] = field(default=())
     # REQ-074/REQ-1386: the audit record opened for this statement (acting principal, surface,
     # resolved registered_tables ids, start time). Minted alongside the stamp at the top of the
     # pipeline and finalized with the real status/duration at the terminal — so every surface is
@@ -105,6 +130,12 @@ class _Plan:
     # Guards against a second finalize for one statement: the streaming surfaces finalize at their
     # own terminal, and a plan that also passes through _execute_plan must still write one row.
     audit_written: bool = field(default=False)
+    # Rows the terminal delivered for this statement, set by the terminal before it finalizes
+    # (query_audit_log.row_count). None: not reported — a refused or failed statement.
+    row_count: int | None = field(default=None)
+    # A streamed result's audit record, built when the stream was opened and written when its
+    # drain ends (see finalize_audit's ``defer_to_drain`` and audit_on_drain).
+    audit_deferred: Any = field(default=None, repr=False)
     # REQ-074/REQ-1386 (ops `queries` report): the OTel span attributes for this statement —
     # provisa.table / provisa.domain / provisa.role / provisa.query_text, the attributes
     # TRACE_ATTR_COLS lifts into the trace table the report reads. Minted at the top of the
@@ -344,6 +375,91 @@ async def _kept_lowering(memo: dict[str, Any], lower: Callable[[], str]) -> str:
         lowered = await _off_loop(lower)
         memo["catalog_physical"] = lowered
     return lowered
+
+
+async def _kept_engine_form(
+    memo: dict[str, Any], exec_sql: str, state: Any, derive: Callable[[], Awaitable[Any]]
+) -> Any:
+    """What the ENGINE branch derives from the routed statement text — the unknown-catalog check,
+    the literal-predicate carry (REQ-1880), the catalog fold (REQ-1730) and the engine transpile —
+    is a function of that text, the registry and the bound engine. The registry is fixed for a
+    kept statement (it answers only within one schema generation), so the product is kept in the
+    statement's ``memo`` and answers only for the exact text it was derived from and the engine it
+    was derived for: an optimization that rewrites the text (a hot-table inline follows the data)
+    or a swapped engine derives it again. A refusal raises and is never kept."""
+    engine = state.federation_engine
+    kept = memo.get("engine_form")
+    if kept is not None and kept[0] == exec_sql and kept[1] is engine:
+        return kept[2]
+    form = await derive()
+    memo["engine_form"] = (exec_sql, engine, form)
+    return form
+
+
+def _kept_span_attrs(
+    memo: dict[str, Any],
+    semantic_sql: str,
+    role_id: str,
+    query_text: str,
+    audit: PendingAudit | None,
+) -> dict[str, str] | None:
+    """``_plan_span_attrs`` for a governed statement: its inputs are the statement's own governed
+    text, role and request text, so the table/domain attributes are parsed out once and kept in
+    its ``memo``. Each plan gets its own dict."""
+    if audit is None:
+        return None
+    attrs = memo.get("span_attrs")
+    if attrs is None:
+        attrs = _plan_span_attrs(semantic_sql, role_id, query_text, audit)
+        memo["span_attrs"] = attrs
+    return dict(attrs) if attrs is not None else None
+
+
+def _kept_refs_view(memo: dict[str, Any], governed_sql: str, view_map: dict) -> bool:
+    """Whether the governed statement names a ``__derived__`` view of this view map."""
+    kept = memo.get("refs_view")
+    if kept is not None and kept[0] is view_map:
+        return kept[1]
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    refs = any(
+        t.name in view_map
+        for t in sqlglot.parse_one(governed_sql, read="postgres").find_all(exp.Table)
+    )
+    memo["refs_view"] = (view_map, refs)
+    return refs
+
+
+def _kept_probe_bounds(memo: dict[str, Any], governed_sql: str) -> bool:
+    """Whether a buffered DIRECT read of this statement can be bounded at threshold+1 rows
+    (REQ-1224): a query. Anything else keeps the engine route the threshold has always used."""
+    bounds = memo.get("probe_bounds")
+    if bounds is None:
+        import sqlglot
+        import sqlglot.expressions as exp
+
+        bounds = isinstance(
+            sqlglot.parse_one(governed_sql, read="postgres"), (exp.Select, exp.Union)
+        )
+        memo["probe_bounds"] = bounds
+    return bounds
+
+
+def _direct_terminal_serves(decision: Any, default_source: str, state: Any) -> bool:
+    """Whether the router's decision lands on the DIRECT terminal proper — one source on its own
+    pooled driver (``_run_plan_terminal``'s last branch), which is the read the threshold probe
+    bounds. The admin store and the GovData bridge are not that terminal."""
+    from provisa.transpiler.router import Route
+
+    if decision.route != Route.DIRECT:
+        return False
+    source_id = decision.source_id or default_source
+    return (
+        source_id != "provisa-admin"
+        and state.source_types.get(source_id) != "govdata"
+        and state.source_pools.has(source_id)
+    )
 
 
 async def _optimize_and_route_cached(
@@ -747,8 +863,12 @@ async def _govern_and_route(
     buffered: bool = False,
     explain: bool | None = None,
     params: list | None = None,
+    serve_cached: bool = False,
+    wire_formats: list[int] | None = None,
 ) -> _Plan:
-    """The top of the ONE pipeline: govern, route, then bind the org's tier ceilings (REQ-1044)."""
+    """The top of the ONE pipeline: govern, route, then bind the org's tier ceilings (REQ-1044).
+
+    ``serve_cached`` / ``wire_formats``: see :func:`route_governed`."""
     from provisa.api.app import state
 
     await _wake_before_governing(state)
@@ -761,6 +881,8 @@ async def _govern_and_route(
         buffered=buffered,
         explain=explain,
         params=params,
+        serve_cached=serve_cached,
+        wire_formats=wire_formats,
     )
     return await _attach_tier_caps(plan, state)
 
@@ -783,6 +905,8 @@ async def _govern_and_route_planned(
     # provisa-params comment's values (they become the same embedded_params) — never spliced into
     # the SQL, so a value can neither change the governed shape nor defeat SQL-text-keyed caches.
     params: list | None = None,
+    serve_cached: bool = False,
+    wire_formats: list[int] | None = None,
 ) -> _Plan:  # REQ-262, REQ-263, REQ-264, REQ-266, REQ-267, REQ-272, REQ-1120, REQ-1159, REQ-1163
     """Govern, then route: the two stages of the one pipeline, run back to back."""
     governed = await govern_statement(sql, role_id, session_vars=session_vars)
@@ -793,6 +917,8 @@ async def _govern_and_route_planned(
         deliver=deliver,
         buffered=buffered,
         explain=explain,
+        serve_cached=serve_cached,
+        wire_formats=wire_formats,
     )
 
 
@@ -1068,11 +1194,20 @@ async def route_governed(
     deliver: Delivery | None = None,
     buffered: bool = False,
     explain: bool | None = None,
+    serve_cached: bool = False,
+    wire_formats: list[int] | None = None,
 ) -> _Plan:
     """Stage two of the one pipeline: bind the statement's parameter values, optimize, route and
     build the executable plan. Runs against live state, so it runs once per execution; it accepts
-    only a statement ``govern_statement`` produced."""
-    import sqlglot
+    only a statement ``govern_statement`` produced.
+
+    ``serve_cached`` (REQ-1897, amended 2026-10-01): the caller's terminal serves a Route.CACHE
+    plan (``cached_result`` / ``_execute_plan``). The response cache is then read HERE, before any
+    lowering or routing, and an opted-in read that hits comes back as that plan. A caller that
+    does not say so always gets a routed plan and its terminal reads the cache as before.
+    ``wire_formats`` — pgwire's result format codes for this execution — also looks for the
+    passthrough entry written for those codes. EXPLAIN, a sink delivery and a write are never
+    answered from the cache."""
     import sqlglot.expressions as exp
 
     from provisa.api.app import state
@@ -1136,6 +1271,41 @@ async def route_governed(
     # statement is governed once and executed many times, across windows opening and closing.
     await resolve_trace_scope(state, role_id, hint=_cache_hint.debug_trace)
 
+    # REQ-1897 (amended 2026-10-01): the cache before the route. Its key is the governed
+    # statement, its bound values and the role, all known now.
+    _cache_params = list(embedded_params or [])
+    # REQ-1915: the key bounds — and the refusal of a read of a row-level table that binds no
+    # key — before the cache and the route, so no surface answers such a read from anywhere.
+    # ``embedded_params`` are the values the governed statement's own placeholders number.
+    _pk_bounds_now = _kept_pk_bounds(
+        governed.memo, governed_semantic, state, embedded_params or None
+    )
+    _cache_missed: tuple[tuple[int, ...] | None, ...] = ()
+    if serve_cached and _raw_cacheable:
+        _hit, _cache_missed = await _cached_before_routing(
+            state,
+            sql=governed_semantic,
+            params=_cache_params,
+            role_id=role_id,
+            cache_hint=_cache_hint,
+            wire_formats=wire_formats,
+            as_of=as_of,
+        )
+        if _hit is not None:
+            return _cached_plan(
+                governed_sql=governed_semantic,
+                params=embedded_params or None,
+                role_id=role_id,
+                table_ids=_table_ids,
+                cache_hint=_cache_hint,
+                hit=_hit,
+                audit=_audit,
+                span_attrs=_kept_span_attrs(governed.memo, governed_semantic, role_id, sql, _audit),
+                sources=governed.memo.get("sources", frozenset()),
+                semantic_sql=_metric_semantic_sql,
+                as_of=as_of,
+            )
+
     if explain is not None:
         # REQ-1519: describing a statement and delivering its rows to a sink are different
         # terminals; an EXPLAIN has no result set to land, so the combination is refused rather
@@ -1187,6 +1357,7 @@ async def route_governed(
     )
     # REQ-1910: the sources are known now — a window opened on one of them covers this request.
     await extend_trace_scope_to_sources(state, role_id, frozenset(_sources))
+    governed.memo["sources"] = frozenset(_sources)  # what a later cache hit reports it read
 
     exec_params = exec_params or None
 
@@ -1196,11 +1367,7 @@ async def route_governed(
     # un-expanded view ref to a native pool. Force ENGINE so the ENGINE branch expands it.
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map and decision.route != Route.ENGINE:
-        _refs_view = any(
-            t.name in _view_map
-            for t in sqlglot.parse_one(governed_semantic, read="postgres").find_all(exp.Table)
-        )
-        if _refs_view:
+        if _kept_refs_view(governed.memo, governed_semantic, _view_map):
             from provisa.transpiler.router import RouteDecision
 
             decision = RouteDecision(
@@ -1224,7 +1391,16 @@ async def route_governed(
     from provisa.executor.redirect import auto_delivery_for_buffered
 
     auto_deliver = auto_delivery_for_buffered(role_id) if buffered and deliver is None else None
-    if auto_deliver is not None and decision.route != Route.ENGINE:
+    # REQ-1224 (amended 2026-10-01): the threshold does not choose the route. A read the router
+    # sends to one source's own driver stays there and is bounded by a threshold+1 probe at the
+    # terminal; the engine-physical form is derived only if the result does not fit.
+    _probe_direct = (
+        auto_deliver is not None
+        and not _is_mutation
+        and _direct_terminal_serves(decision, _default_source, state)
+        and _kept_probe_bounds(governed.memo, governed_semantic)
+    )
+    if auto_deliver is not None and decision.route != Route.ENGINE and not _probe_direct:
         from provisa.transpiler.router import RouteDecision
 
         decision = RouteDecision(
@@ -1251,28 +1427,9 @@ async def route_governed(
     # narrower mechanism for neo4j read performance: it caches individual rows by a trusted,
     # declared PK, never reconstructs a join. A single-source neo4j query now always falls through
     # to Route.ENGINE (materialize-then-join), unconditionally.
-    if decision.route == Route.ENGINE:
-        # REQ-135/REQ-1163: inline-expand any __derived__ view ref BEFORE the unknown-catalog check and
-        # transpile — a request-level as-of overlays each bitemporal view's entry with an as-of
-        # reconstruction over its append log (else views read current state). Same lowering the GQL/
-        # Cypher path uses (_govern_and_route_compiled). _qualified is catalog-physical; a view ref is
-        # source-less so it survives the rewrites unchanged and still matches a view_sql_map leaf key.
-        if _view_map:
-            from provisa.compiler.view_expand import expand_view_refs
-
-            _vmap = _view_map
-            if as_of and getattr(state, "bitemporal_view_reads", None):
-                from provisa.mv.bitemporal import as_of_view_map
-
-                _vmap = as_of_view_map(_view_map, state.bitemporal_view_reads, as_of)
-            _qualified = expand_view_refs(_qualified, _vmap)
-            # View bodies are stored in semantic form; after expansion, lower any
-            # newly-introduced semantic refs to catalog-physical (same pass the outer SQL
-            # went through at line 456 before routing).
-            _qualified = rewrite_semantic_to_catalog_physical(
-                normalize_table_refs(_qualified, ctx), ctx
-            )
-
+    async def _engine_physical(_qualified: str) -> str:
+        """The routed catalog-physical statement in the engine's own SQL (see
+        :func:`_kept_engine_form`, which keeps it with the governed statement)."""
         _known_cats_pgwire = (
             set(getattr(state, "source_catalogs", {}).values())
             | {
@@ -1327,7 +1484,10 @@ async def route_governed(
             }
             if _referenced_phys_ch:
                 from provisa.compiler.sql_rewrite import is_clickhouse_lowcardinality_string
-                from provisa.federation.registry_view import registered_sources, registered_tables
+                from provisa.federation.registry_view import (
+                    registered_sources,
+                    registered_tables,
+                )
 
                 _sources_by_id_ch = {s.id: s for s in await registered_sources(state)}
                 _affected_lowcard_cols: dict[tuple[str, str], set[str]] = {}
@@ -1361,7 +1521,34 @@ async def route_governed(
             from provisa.compiler.sql_rewrite import fold_catalog_into_schema
 
             _qualified = fold_catalog_into_schema(_qualified)
-        physical_sql = state.federation_engine.transpile_physical(_qualified)
+        return state.federation_engine.transpile_physical(_qualified)
+
+    if decision.route == Route.ENGINE:
+        # REQ-135/REQ-1163: inline-expand any __derived__ view ref BEFORE the unknown-catalog check and
+        # transpile — a request-level as-of overlays each bitemporal view's entry with an as-of
+        # reconstruction over its append log (else views read current state). Same lowering the GQL/
+        # Cypher path uses (_govern_and_route_compiled). _qualified is catalog-physical; a view ref is
+        # source-less so it survives the rewrites unchanged and still matches a view_sql_map leaf key.
+        if _view_map:
+            from provisa.compiler.view_expand import expand_view_refs
+
+            _vmap = _view_map
+            if as_of and getattr(state, "bitemporal_view_reads", None):
+                from provisa.mv.bitemporal import as_of_view_map
+
+                _vmap = as_of_view_map(_view_map, state.bitemporal_view_reads, as_of)
+            _qualified = expand_view_refs(_qualified, _vmap)
+            # View bodies are stored in semantic form; after expansion, lower any
+            # newly-introduced semantic refs to catalog-physical (same pass the outer SQL
+            # went through at line 456 before routing).
+            _qualified = rewrite_semantic_to_catalog_physical(
+                normalize_table_refs(_qualified, ctx), ctx
+            )
+
+        _routed_sql = _qualified
+        physical_sql = await _kept_engine_form(
+            governed.memo, _routed_sql, state, lambda: _engine_physical(_routed_sql)
+        )
         if explain is not None:
             # REQ-1519: the ONE pipeline's own EXPLAIN — the engine describes the federated
             # statement it would have run, wrapped after transpile so nothing else changes.
@@ -1380,15 +1567,19 @@ async def route_governed(
             semantic_sql=_metric_semantic_sql,  # REQ-1322
             materialize=deliver,  # REQ-1194/REQ-1195: sink delivery inherited by every transport
             auto_deliver=auto_deliver,  # REQ-1224: buffered-transport auto threshold (terminal decides)
-            span_attrs=_plan_span_attrs(governed_semantic, role_id, sql, _audit),
+            span_attrs=_kept_span_attrs(governed.memo, governed_semantic, role_id, sql, _audit),
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
             # REQ-1517: the plan reports how it was built (sources, route reason, optimizations).
             sources=frozenset(_sources),
             route_reason=decision.reason,
             optimizations=_opts,
-            pk_bounds=await _resolve_pk_bounds(governed_semantic, state, exec_params),  # REQ-1865
+            pk_bounds=_pk_bounds_now,  # REQ-1865
             response_cacheable=_raw_cacheable,  # REQ-1897
+            cache_sql=governed_semantic,
+            cache_params=_cache_params,
+            cache_as_of=as_of,
+            cache_missed=_cache_missed,
             writes_tables=_is_mutation,  # REQ-1897
             role_id=role_id,  # REQ-1897
             table_ids=_table_ids,  # REQ-1897
@@ -1403,26 +1594,43 @@ async def route_governed(
 
         _direct_sid = decision.source_id or _default_source
         _flat = state.source_types.get(_direct_sid) in FLAT_NAMESPACE_SOURCES
-        if _optimized:
-            from provisa.compiler.sql_rewrite import strip_catalog
+        # REQ-1224: a buffered read is bounded at threshold+1 rows for the probe — the same
+        # bound governance applies for a role's row ceiling (stage2.apply_row_cap).
+        _cap = auto_deliver.config.threshold + 1 if _probe_direct and auto_deliver else None
+        # Lower the semantic model to physical schema.table for the native driver — same as
+        # _govern_and_route_compiled's DIRECT branch. Passing governed_semantic verbatim sent an
+        # unresolved semantic ref (e.g. "pet_store"."inquiries") to the source.
+        # The unoptimized lowering is a function of the governed text, the role's compilation
+        # context and the destination — not of the bound values — so it is kept with the governed
+        # statement like its catalog-physical form (see _kept_lowering).
+        _direct_key = f"direct_sql\x00{_direct_sid}\x00{dialect}\x00{_flat}\x00{_cap}"
+        _direct = None if _optimized else governed.memo.get(_direct_key)
+        if _direct is None:
+            if _optimized:
+                from provisa.compiler.sql_rewrite import strip_catalog
 
-            _physical = strip_catalog(_qualified)
-            sql_to_run = transpile(strip_schema(_physical) if _flat else _physical, dialect)
-        else:
-            # Lower the semantic model to physical schema.table for the native driver — same as
-            # _govern_and_route_compiled's DIRECT branch. Passing governed_semantic verbatim sent
-            # an unresolved semantic ref (e.g. "pet_store"."inquiries") to the source.
-            # The unoptimized lowering is a function of the governed text, the role's compilation
-            # context and the destination — not of the bound values — so it is kept with the
-            # governed statement like its catalog-physical form (see _kept_lowering).
-            _direct_key = f"direct_sql\x00{_direct_sid}\x00{dialect}\x00{_flat}"
-            sql_to_run = governed.memo.get(_direct_key)
-            if sql_to_run is None:
+                _physical = strip_catalog(_qualified)
+            else:
                 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
 
                 _physical = rewrite_semantic_to_physical(governed_semantic, ctx)
-                sql_to_run = transpile(strip_schema(_physical) if _flat else _physical, dialect)
-                governed.memo[_direct_key] = sql_to_run
+            if _flat:
+                _physical = strip_schema(_physical)
+            if _cap is not None:
+                from provisa.compiler.stage2 import apply_row_cap
+
+                _physical = apply_row_cap(_physical, _cap)
+            _direct = transpile(_physical, dialect)
+            if not _optimized:
+                governed.memo[_direct_key] = _direct
+        sql_to_run = _direct
+        _routed_sql = _qualified
+
+        async def _engine_landing() -> str:
+            return await _kept_engine_form(
+                governed.memo, _routed_sql, state, lambda: _engine_physical(_routed_sql)
+            )
+
         if explain is not None:
             # REQ-1519: the source describes the pushed-down statement in its own dialect.
             from provisa.executor.explain import wrap_explain
@@ -1435,17 +1643,23 @@ async def route_governed(
             dialect=dialect,
             exec_params=exec_params,
             semantic_sql=_metric_semantic_sql,  # REQ-1322
+            auto_deliver=auto_deliver,  # REQ-1224: probed at the terminal
+            engine_landing=_engine_landing if _probe_direct else None,
             # REQ-1425: every route carries the plan's span attributes, so the ops queries report
             # covers pushed-down single-source statements identically to federated ones.
-            span_attrs=_plan_span_attrs(governed_semantic, role_id, sql, _audit),
+            span_attrs=_kept_span_attrs(governed.memo, governed_semantic, role_id, sql, _audit),
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
             # REQ-1517: the plan reports how it was built (sources, route reason, optimizations).
             sources=frozenset(_sources),
             route_reason=decision.reason,
             optimizations=_opts,
-            pk_bounds=await _resolve_pk_bounds(governed_semantic, state, exec_params),  # REQ-1865
+            pk_bounds=_pk_bounds_now,  # REQ-1865
             response_cacheable=_raw_cacheable,  # REQ-1897
+            cache_sql=governed_semantic,
+            cache_params=_cache_params,
+            cache_as_of=as_of,
+            cache_missed=_cache_missed,
             writes_tables=_is_mutation,  # REQ-1897
             role_id=role_id,  # REQ-1897
             table_ids=_table_ids,  # REQ-1897
@@ -1457,29 +1671,116 @@ async def route_governed(
 async def _resolve_pk_bounds(
     semantic_sql: str, state: Any, params: list[Any] | None = None
 ) -> tuple[Any, ...]:
-    """REQ-1865: the concrete PK bound(s) this statement resolves against every row_materialize
-    table it references — populated at the same construction point ``sources`` itself is
-    populated (design doc section 3b). Empty (never an error) when the statement touches no
-    row_materialize table, or none of its predicates resolve to a bounded PK set — the compiler's
-    job here is only to recognize the accelerable shape, not to force it.
+    """REQ-1865 / REQ-1915: the concrete PK bound(s) this statement resolves against the
+    row-level tables it reads — and the refusal of a statement that reads one without binding its
+    key (``_pk_bounds``). Empty when the statement reads no row-level table, or reaches each one
+    through a join that pushes its key down.
 
-    ``params`` (REQ-1865 amendment) is the statement's own bind-parameter values, in bind order --
-    without it, a Bolt/Cypher-transport statement (predicate values NEVER inlined as literals,
-    always bound separately, unlike the SQL-transport's own literal-inlined text) resolves zero
-    bounds for every row_materialize table it touches and silently falls back to a full-table
-    land on every single call. Confirmed live: a bolt query for a trivial, unbound `LIMIT 1` (which
-    SHOULD fall back) and a bolt query with a real `WHERE pk = $1` (which should NOT have)
-    were indistinguishable before this — both always fell back."""
+    ``params`` is the statement's own bind-parameter values, in bind order: a Bolt/Cypher
+    statement's predicate values are never inlined as literals, so without them ``WHERE pk = $1``
+    resolves no bound."""
+    return _pk_bounds(_pk_bounds_inputs(semantic_sql, state), params)
+
+
+def _pk_bounds_inputs(semantic_sql: str, state: Any) -> tuple[tuple[Any, ...], ...]:
+    """What ``_pk_bounds`` derives from the statement and the registry, before any bound value is
+    looked at: one entry per reference the statement makes to a row-level table
+    (``_row_materialize_tables_in_memory``) that a key must bind — ``(table, name as written, the
+    reference alone, the predicates of the SELECT that names it)``. Omitted, because no key need
+    bind them: the target of an INSERT/UPDATE/DELETE/MERGE (written at the source, not read from
+    the replica) and a reference bound by key pushdown.
+
+    Key pushdown (REQ-1865, ``query_residency.pushdown_row_materialize``) binds a reference when
+    all of these hold, which are exactly the conditions under which that mechanism fetches its
+    rows: the statement is a SELECT; the reference is the target of a JOIN; that JOIN is the only
+    one naming the table; its ON is a single column-to-column equality between one column of the
+    table and a column of another relation (``_join_key_column``); and the table's primary key is
+    a single column."""
     row_tables = _row_materialize_tables_in_memory(state)
     if not row_tables:
         return ()
     import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.compiler.pk_bounds import scope_predicates
+    from provisa.federation.query_residency import _join_key_column
+
+    ast = sqlglot.parse_one(semantic_sql, read="postgres")
+    written = None
+    if isinstance(ast, (exp.Insert, exp.Update, exp.Delete, exp.Merge)):
+        written = ast.this.this if isinstance(ast.this, exp.Schema) else ast.this
+    joined: dict[str, int] = {}
+    for join in ast.find_all(exp.Join):
+        if isinstance(join.this, exp.Table) and join.this.name in row_tables:
+            name = row_tables[join.this.name].table_name
+            joined[name] = joined.get(name, 0) + 1
+    reads: list[tuple[Any, ...]] = []
+    for ref in ast.find_all(exp.Table):
+        if ref.name not in row_tables or ref is written:
+            continue
+        table = row_tables[ref.name]
+        join = ref.parent if isinstance(ref.parent, exp.Join) and ref.parent.this is ref else None
+        if (
+            join is not None
+            and isinstance(ast, exp.Select)
+            and joined[table.table_name] == 1
+            and sum(1 for c in table.columns if c.is_primary_key) == 1
+            and _join_key_column(join, ref.alias_or_name) is not None
+        ):
+            continue  # bound by key pushdown
+        reads.append((table, ref.name, exp.select("1").from_(ref.copy()), scope_predicates(ref)))
+    return tuple(reads)
+
+
+def _pk_bounds(inputs: tuple[tuple[Any, ...], ...], params: list[Any] | None) -> tuple[Any, ...]:
+    """The statement's key bounds — and THE decision point of REQ-1915. Every surface resolves
+    its bounds through here (the raw stage, the compiled stage, and the GraphQL executors via
+    ``_resolve_pk_bounds``), so every surface refuses the same statements.
+
+    A reference to a row-level table is BOUND when the SELECT that names it carries, as a
+    top-level AND term of its own WHERE or of one of its JOIN ... ON conditions, a predicate that
+    resolves concrete values for the table's primary key: ``key = value``, ``key IN (values)``, or
+    an OR made only of such equalities on the one key column — each value a literal or a bound
+    parameter; a composite key needs exactly one value per column. Or when a join pushes its key
+    down (``_pk_bounds_inputs``). Anything else — no predicate, a predicate on another column, a
+    range, a key predicate in an enclosing or nested query — reads rows no key names, and is
+    refused: ``RowLevelKeyRequired`` names the table and its key."""
+    if not inputs:
+        return ()
+    from dataclasses import replace
 
     from provisa.compiler.pk_bounds import extract_pk_bounds
 
-    ast = sqlglot.parse_one(semantic_sql, read="postgres")
-    result = tuple(extract_pk_bounds(ast, row_tables, params))
-    return result
+    bounds: dict[str, Any] = {}
+    for table, name, reference, predicates in inputs:
+        found = extract_pk_bounds(reference, {name: table}, params, predicates)
+        if not found or not found[0].values:
+            from provisa.api.errors import RowLevelKeyRequired
+
+            raise RowLevelKeyRequired(
+                table.table_name, tuple(c.name for c in table.columns if c.is_primary_key)
+            )
+        seen = bounds.get(table.table_name)
+        bounds[table.table_name] = (
+            found[0]
+            if seen is None
+            else replace(seen, values=tuple(dict.fromkeys(seen.values + found[0].values)))
+        )
+    return tuple(bounds.values())
+
+
+def _kept_pk_bounds(
+    memo: dict[str, Any], semantic_sql: str, state: Any, params: list[Any] | None
+) -> tuple[Any, ...]:
+    """``_resolve_pk_bounds`` for a governed statement. The row_materialize tables are a function
+    of the registry and the bound engine and the parsed statement of its text, so both are kept in
+    the statement's ``memo``; only the bound values differ between executions. extract_pk_bounds
+    reads the tree and never rewrites it."""
+    kept = memo.get("pk_bounds_inputs")
+    if kept is None or kept[0] is not state.tables or kept[1] is not state.federation_engine:
+        kept = (state.tables, state.federation_engine, _pk_bounds_inputs(semantic_sql, state))
+        memo["pk_bounds_inputs"] = kept
+    return _pk_bounds(kept[2], params)
 
 
 def _row_materialize_tables_in_memory(state: Any) -> dict[str, Any]:
@@ -1527,10 +1828,80 @@ def _row_materialize_tables_in_memory(state: Any) -> dict[str, Any]:
     return out
 
 
+class _AuditedDrain:
+    """A result's batches, with the statement's deferred audit record written when the drain
+    ends — however it ends: exhausted (200), failed part-way (500), closed by a client that
+    stopped reading, or dropped without ever being read (200, with the rows delivered so far)."""
+
+    def __init__(self, plan: _Plan, batches: Any, rows_in: Callable[[Any], int]) -> None:
+        self._batches = iter(batches)
+        self._rows_in = rows_in
+        self._record, plan.audit_deferred = plan.audit_deferred, None
+        self._started = plan.audit.started if plan.audit is not None else 0.0
+        self._rows = 0
+
+    def __iter__(self) -> "_AuditedDrain":
+        return self
+
+    def __next__(self) -> Any:
+        try:
+            batch = next(self._batches)
+        except StopIteration:
+            self._complete(200)
+            raise
+        except BaseException:
+            self._complete(500)
+            raise
+        self._rows += self._rows_in(batch)
+        return batch
+
+    def _complete(self, status_code: int) -> None:
+        record, self._record = self._record, None
+        if record is not None:
+            from provisa.audit.pipeline import complete_audit_record
+
+            complete_audit_record(record, self._started, status_code, self._rows)
+
+    def finish(self) -> None:
+        """The result is being released without being drained further: record what it delivered."""
+        self._complete(200)
+
+    def close(self) -> None:
+        close = getattr(self._batches, "close", None)
+        if close is not None:
+            close()
+        self._complete(200)
+
+    def __del__(self) -> None:
+        if self._record is not None:
+            self._complete(200)
+
+
+def audit_on_drain(plan: _Plan, batches: Any, rows_in: Callable[[Any], int] = len) -> Any:
+    """Wrap a streamed result's batches so the audit record ``finalize_audit(...,
+    defer_to_drain=True)`` held back is written when the drain ends, with the rows delivered.
+    ``rows_in`` counts one batch (``len`` for row lists; ``lambda b: b.num_rows`` for Arrow).
+    A plan with no deferred record (already recorded, or no acting principal) is passed through."""
+    if plan.audit_deferred is None:
+        return batches
+    return _AuditedDrain(plan, batches, rows_in)
+
+
 async def finalize_audit(
-    plan: _Plan, status_code: int, state: Any | None = None, *, cache_hit: bool = False
+    plan: _Plan,
+    status_code: int,
+    state: Any | None = None,
+    *,
+    cache_hit: bool = False,
+    defer_to_drain: bool = False,
 ) -> None:
     """Write ``plan``'s audit row (REQ-074/REQ-1386). Idempotent per plan.
+
+    The row records the route the statement was answered by (``cache`` for a response-cache hit,
+    else the plan's) and ``plan.row_count``, which a terminal sets before it finalizes.
+    ``defer_to_drain``: the terminal is handing back a STREAM it has not drained — the record is
+    built now (in the request's context) and written by :func:`audit_on_drain` when the drain
+    ends, where the row count and a mid-stream failure are known.
 
     ``_execute_plan`` calls this at its terminals. The govern-then-stream surfaces (pgwire's
     socketserver worker, Flight SQL, airport) never reach ``_execute_plan`` — they drain the
@@ -1547,7 +1918,13 @@ async def finalize_audit(
     # cache, so the route it is reported under is the cache, not the route the plan would have run.
     observe_plan(plan, status_code, cache_hit=cache_hit)
 
-    await write_audit(plan.audit, status_code, state)
+    _route = "cache" if cache_hit else cast("Route", plan.route).name.lower()
+    if defer_to_drain and status_code == 200:  # noqa: PLR2004 - HTTP OK
+        from provisa.audit.pipeline import build_audit_record
+
+        plan.audit_deferred = build_audit_record(plan.audit, status_code, state, route=_route)
+    else:
+        await write_audit(plan.audit, status_code, state, route=_route, row_count=plan.row_count)
     # REQ-1897: every terminal finalizes here, so a successful write invalidates the tables it
     # wrote once, whichever surface ran it.
     if plan.writes_tables and status_code == 200:
@@ -1598,6 +1975,49 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     require_governed_plan(plan)  # SECURITY: refuse any plan the top of the pipeline did not mint
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
+    if plan.cache_hit is not None:
+        # REQ-1897: answered before routing — nothing to wake, land or execute.
+        return await cached_result(plan, state)
+    from provisa.core import request_deadline
+
+    # REQ-1905: every user-initiated statement runs inside a request deadline. The GraphQL
+    # endpoint, the Cypher HTTP router and the pgwire/Flight connection loops bind their own;
+    # /data/sql, REST, JSON:API, MCP and Bolt arrive here with none, and this is the one place
+    # they all pass through. A plan with no audit record is background work (seeding, scheduled
+    # jobs, rebuilds) and runs unbounded by a request budget, as it always has.
+    if plan.audit is None or request_deadline.current() is not None:
+        return await _execute_plan_bound(plan, state)
+    # REQ-1905: the timeout of the transport the statement arrived on — its HTTP route's, or
+    # its protocol's — and the setting that value comes from, for the error below.
+    from provisa.core.limits import statement_timeout
+
+    budget = statement_budget(plan.audit.surface)
+    _, transport, setting = statement_timeout(plan.audit.surface)
+    from provisa.compiler.limits import role_query_limits
+
+    _role_ms = role_query_limits(getattr(state, "roles", {}).get(plan.role_id))[2]
+    if _role_ms is not None and _role_ms / 1000.0 < budget:  # REQ-1174: the role's own limit
+        budget, setting = _role_ms / 1000.0, f"role {plan.role_id!r} max_query_time_ms"
+    with request_deadline.within(budget) as deadline:
+        try:
+            return await _execute_plan_bound(plan, state)
+        except TimeoutError as exc:
+            if not deadline.fired or deadline.ended_early:
+                raise  # another timeout, or the process is stopping (its own message)
+            raise request_deadline.RequestTimedOut(transport, budget, setting) from exc
+
+
+def statement_budget(surface: str) -> float:
+    """Seconds a user-initiated statement arriving under ``surface`` without a deadline may run:
+    the request timeout of the transport it is on (REQ-1905, ``limits.request_timeouts``) — its
+    HTTP route's when one is bound, else its protocol's, else the default."""
+    from provisa.core.limits import statement_timeout
+
+    return statement_timeout(surface)[0]
+
+
+async def _execute_plan_bound(plan: _Plan, state: Any) -> QueryResult:
+    """``_execute_plan`` once the request deadline is settled: the org's secrets, then the terminal."""
     if _reads_an_org_secret(plan, state):
         from provisa.core.secrets_store import bound_to_request_org
 
@@ -1622,7 +2042,6 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
         ensure_resident,
         ensure_rows_resident,
         pushdown_row_materialize,
-        table_names_in_sql,
     )
     from provisa.transpiler.router import Route
 
@@ -1637,23 +2056,15 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
     # REQ-1865 key pushdown: a row-materialize table reached only through a JOIN (no literal
     # predicate naming it directly, e.g. cypher_cross_engine's bench_contains_edge) has no PK bound
     # for ensure_rows_resident to key off -- narrow its fetch to the keys this query's OTHER,
-    # already-resolvable tables actually need instead of falling all the way back to a full land.
+    # already-resolvable tables actually need. A statement that binds a row-level table neither
+    # way was refused at planning (REQ-1915, _pk_bounds), so nothing here copies a whole table.
     # ENGINE-route only: this is a multi-table join concern, and only the ENGINE route has a
     # physical_sql to probe.
-    _pushed_down: set[str] = set()
-    _unbound_targets: set[str] = set()
     if plan.route == Route.ENGINE and plan.physical_sql is not None:
-        _pushed_down = await pushdown_row_materialize(
+        await pushdown_row_materialize(
             state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
         )
-        _unbound_targets = table_names_in_sql(plan.physical_sql, state.federation_engine.dialect)
-    await ensure_resident(
-        state,
-        plan.sources,
-        pk_bounds=plan.pk_bounds,
-        pushed_down=_pushed_down,
-        unbound_targets=_unbound_targets,
-    )
+    await ensure_resident(state, plan.sources)
     # REQ-1897: the result cache is GraphQL's Route.CACHE candidate route, extended here so every
     # other raw-SQL surface that reaches this one chokepoint (Bolt, pgwire's non-COPY path) gets
     # the same served-without-touching-the-engine hit -- with the same audit row and tier/egress
@@ -1694,6 +2105,7 @@ async def _execute_plan_in_org(plan: _Plan, state: Any) -> QueryResult:  # REQ-0
         # nothing would leave the customer's own audit log unable to explain the error they saw.
         await finalize_audit(plan, 402, state)
         raise
+    plan.row_count = len(result.rows)
     await finalize_audit(plan, 200, state)
     # REQ-1897: the buffered chokepoint writes its row result to the raw-SQL namespace.
     await store_executed_result(plan, state, result)
@@ -1750,13 +2162,112 @@ def _response_cache_key(plan: _Plan, *, wire_formats: list[int] | None) -> str |
     """
     if not (plan.cache_opt_in and plan.response_cacheable) or plan.role_id is None or not plan.sql:
         return None
+    # The planner's plans carry their route-independent identity (see ``_Plan.cache_sql``); a plan
+    # built elsewhere is identified by the statement it executes.
+    if plan.cache_sql is not None:
+        sql, params = plan.cache_sql, plan.cache_params or []
+    else:
+        sql, params = plan.sql, plan.exec_params or []
+    return _raw_cache_key(sql, params, plan.role_id, wire_formats, plan.cache_as_of)
+
+
+def _raw_cache_key(
+    sql: str,
+    params: list,
+    role_id: str,
+    wire_formats: list[int] | None,
+    as_of: str | None = None,
+) -> str | None:
+    """The raw-SQL namespace key for governed ``sql``, its bound values and the request's as-of,
+    or None when the text depends on unresolved session state (REQ-866)."""
     from provisa.cache.key import is_cacheable, raw_sql_cache_key
 
-    cacheable, _ = is_cacheable(plan.sql, {})
+    cacheable, _ = is_cacheable(sql, {})
     if not cacheable:
         return None
-    return raw_sql_cache_key(
-        plan.sql, plan.exec_params or [], plan.role_id, wire_formats=wire_formats
+    return raw_sql_cache_key(sql, params, role_id, wire_formats=wire_formats, as_of=as_of)
+
+
+def _entry_kind(wire_formats: list[int] | None) -> tuple[int, ...] | None:
+    return None if wire_formats is None else tuple(wire_formats)
+
+
+async def _cached_before_routing(
+    state: Any,
+    *,
+    sql: str,
+    params: list | None,
+    role_id: str,
+    cache_hint: CacheHint,
+    wire_formats: list[int] | None,
+    as_of: str | None,
+) -> tuple[tuple[list[int] | None, Any] | None, tuple[tuple[int, ...] | None, ...]]:
+    """The response-cache read made BEFORE routing (REQ-1897, amended 2026-10-01): the entry for
+    governed ``sql`` + ``params`` + role, and the kinds looked for and not found.
+
+    The key needs nothing routing produces, so an opted-in request is answered here and never
+    lowered, optimized, routed or prepared for residency. ``wire_formats`` — pgwire's result
+    format codes — adds the passthrough ``pg_datarows`` entry for those codes, tried first as
+    the terminal tries it first; the decoded entry any surface can serve is tried next. A request
+    that did not opt in, or a store that keeps nothing, reads nothing."""
+    store = state.response_cache_store  # always set (NoopCacheStore when caching is off)
+    if not cache_hint.opt_in or not store.stores_results:
+        return None, ()
+    from provisa.cache.middleware import check_cache
+
+    org_id = _response_cache_org_id(state)
+    missed: list[tuple[int, ...] | None] = []
+    for formats in [wire_formats, None] if wire_formats is not None else [None]:
+        key = _raw_cache_key(sql, params or [], role_id, formats, as_of)
+        if key is None:
+            return None, ()
+        cached = await check_cache(store, key, org_id)
+        if cached is not None:
+            return (formats, cached), tuple(missed)
+        missed.append(_entry_kind(formats))
+    return None, tuple(missed)
+
+
+def _cached_plan(
+    *,
+    governed_sql: str,
+    params: list | None,
+    role_id: str,
+    table_ids: tuple[int, ...],
+    cache_hint: CacheHint,
+    hit: tuple[list[int] | None, Any],
+    audit: PendingAudit | None,
+    span_attrs: dict[str, str] | None,
+    sources: frozenset[str],
+    semantic_sql: str | None,
+    as_of: str | None,
+) -> _Plan:
+    """The plan of a request answered from the response cache before routing: it names no source
+    and carries no executable statement — only what its terminal needs to serve, account and
+    audit the entry (REQ-865: the cache is a route)."""
+    from provisa.transpiler.router import Route
+
+    return _Plan(
+        route=Route.CACHE,
+        sql=governed_sql,
+        source_id="",
+        dialect="",
+        exec_params=params,
+        semantic_sql=semantic_sql,
+        span_attrs=span_attrs,
+        audit=audit,
+        stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
+        sources=sources,
+        route_reason="served from the response cache",
+        response_cacheable=True,
+        role_id=role_id,
+        table_ids=table_ids,
+        cache_opt_in=True,
+        cache_ttl=cache_hint.ttl,
+        cache_sql=governed_sql,
+        cache_params=list(params or []),
+        cache_as_of=as_of,
+        cache_hit=hit,
     )
 
 
@@ -1807,29 +2318,44 @@ def _response_cache_bound() -> int:
 
 async def _read_response_cache(
     plan: _Plan, state: Any, *, wire_formats: list[int] | None
-) -> tuple[dict, list[str] | None] | None:
-    """The raw-SQL entry for this plan — ``(entry, column_types)`` — or None on a MISS."""
+) -> tuple[dict, list[str] | None, Any] | None:
+    """The raw-SQL entry for this plan — ``(entry, column_types, stored)`` — or None on a MISS.
+    ``stored`` is the store's own record of the entry (``cache.store.CachedResult``): its age is
+    what a surface reports beside a HIT (REQ-536)."""
+    from provisa.cache.middleware import check_cache, decode_cached_result
+
+    if plan.cache_hit is not None:
+        # Read before routing (see _cached_before_routing): served as the kind it was read as.
+        held_formats, cached = plan.cache_hit
+        if held_formats != wire_formats:
+            return None
+        return (*decode_cached_result(cached), cached)
+    if _entry_kind(wire_formats) in plan.cache_missed:
+        return None  # the planner looked for this kind before routing: a MISS, not read again
     ck = _response_cache_key(plan, wire_formats=wire_formats)
     if ck is None or not state.response_cache_store.stores_results:
         return None
-    from provisa.cache.middleware import check_cache, decode_cached_result
 
     # AppState always holds a store (NoopCacheStore when caching is off, app.py).
     cached = await check_cache(state.response_cache_store, ck, _response_cache_org_id(state))
     if cached is None:
         return None
-    return decode_cached_result(cached)
+    return (*decode_cached_result(cached), cached)
 
 
-async def _account_cache_hit(plan: _Plan, state: Any, result: QueryResult) -> QueryResult:
+async def _account_cache_hit(
+    plan: _Plan, state: Any, result: QueryResult, stored: Any
+) -> QueryResult:
     """A HIT is served without touching the engine, but is NOT a skipped statement: the same
     egress-cap (REQ-1044) and audit (REQ-074/REQ-1386) accounting a live execution has, in the same
-    order."""
+    order. The result names the entry it was served from (REQ-536)."""
     try:
         result = _apply_output_cap(plan, result)
     except Exception:
         await finalize_audit(plan, 402, state, cache_hit=True)
         raise
+    result.cache_entry = stored
+    plan.row_count = len(result.rows)
     await finalize_audit(plan, 200, state, cache_hit=True)
     return result
 
@@ -1845,8 +2371,24 @@ async def check_response_cache(plan: _Plan, state: Any) -> QueryResult | None:  
         return None
     from provisa.cache.raw_sql import entry_as_result
 
-    entry, column_types = hit
-    return await _account_cache_hit(plan, state, entry_as_result(entry, column_types))
+    entry, column_types, stored = hit
+    return await _account_cache_hit(plan, state, entry_as_result(entry, column_types), stored)
+
+
+async def cached_result(plan: _Plan, state: Any) -> QueryResult:  # REQ-1897
+    """The result of a Route.CACHE plan — the entry its planner read before routing, accounted
+    and audited like any hit: decoded rows, or the raw DataRow replay when the entry is the
+    passthrough one read for the client's format codes."""
+    if plan.cache_hit is None:
+        raise RuntimeError("cached_result: the plan was not answered from the response cache")
+    formats = plan.cache_hit[0]
+    result = await (
+        check_response_cache(plan, state)
+        if formats is None
+        else check_response_cache_datarows(plan, state, formats)
+    )
+    assert result is not None  # the held entry is served as the kind it was read as
+    return result
 
 
 async def check_response_cache_arrow(plan: _Plan, state: Any) -> Any | None:  # REQ-1897
@@ -1858,8 +2400,8 @@ async def check_response_cache_arrow(plan: _Plan, state: Any) -> Any | None:  # 
         return None
     from provisa.cache.raw_sql import entry_as_arrow, entry_as_result
 
-    entry, column_types = hit
-    await _account_cache_hit(plan, state, entry_as_result(entry, column_types))
+    entry, column_types, stored = hit
+    await _account_cache_hit(plan, state, entry_as_result(entry, column_types), stored)
     return entry_as_arrow(entry, column_types)
 
 
@@ -1874,8 +2416,8 @@ async def check_response_cache_datarows(  # REQ-1897
         return None
     from provisa.cache.raw_sql import entry_as_datarows
 
-    entry, _ = hit
-    return await _account_cache_hit(plan, state, entry_as_datarows(entry, wire_formats))
+    entry, _, stored = hit
+    return await _account_cache_hit(plan, state, entry_as_datarows(entry, wire_formats), stored)
 
 
 def _cache_tee(plan: _Plan, state: Any, run: Any | None, wire_formats: list[int] | None) -> Any:
@@ -2013,7 +2555,28 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         from provisa.executor.redirect import Delivery, run_materialize
 
         assert plan.physical_sql is not None
-        handle = await run_materialize(state, plan.physical_sql, cast(Delivery, plan.materialize))
+        handle = await run_materialize(
+            state, plan.physical_sql, cast(Delivery, plan.materialize), plan.exec_params
+        )
+        return QueryResult(rows=[], column_names=[], redirect=handle)
+
+    if plan.auto_deliver is not None and plan.engine_landing is not None:
+        # AUTOMATIC threshold terminal, DIRECT route (REQ-1224 amended 2026-10-01): the router sent
+        # this buffered read to one source's own driver, and the plan's statement is bounded at
+        # threshold+1 rows. Probe the source with it and inline a result that fits. Only one that
+        # does not is landed by the engine, off Provisa's heap, from the engine-physical form
+        # derived now.
+        from typing import cast
+
+        from provisa.executor.redirect import Delivery, run_materialize
+
+        deliv = cast(Delivery, plan.auto_deliver)
+        result = await engine.execute_native(
+            state.source_pools, plan.source_id, plan.sql, plan.exec_params, plan.span_attrs
+        )
+        if len(result.rows) <= deliv.config.threshold:
+            return result
+        handle = await run_materialize(state, await plan.engine_landing(), deliv, plan.exec_params)
         return QueryResult(rows=[], column_names=[], redirect=handle)
 
     if plan.auto_deliver is not None:
@@ -2054,7 +2617,7 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         col_names, col_types, buffered_rows, over = await asyncio.to_thread(_drain)
         if not over:
             return QueryResult(rows=buffered_rows, column_names=col_names, column_types=col_types)
-        handle = await run_materialize(state, physical_sql, deliv)
+        handle = await run_materialize(state, physical_sql, deliv, plan.exec_params)
         return QueryResult(rows=[], column_names=[], redirect=handle)
 
     if plan.route == Route.ENGINE:
@@ -2146,6 +2709,7 @@ async def execute_sql_batch(
             as_of=as_of,
             deliver=_deliver,
             buffered=buffered and _i == len(statements) - 1,
+            serve_cached=True,  # REQ-1897: this function executes at the chokepoint, which serves it
         )
         result = await _execute_plan(plan, state)
     assert result is not None
@@ -2158,12 +2722,14 @@ async def govern_batch_final_plan(
     state: Any | None = None,
     *,
     session_vars: dict[str, str] | None = None,
+    serve_cached: bool = False,
 ) -> _Plan:
     """Govern+execute all but the LAST statement of a batch, and return the governed+stamped plan for
     the last statement — for Arrow/streaming surfaces (Flight SQL, airport) that render the final
     statement's rows themselves. Guarantees a multi-statement batch's leading statements still run
     (governed), rather than being silently dropped by ``parse_one``. A single statement runs nothing
-    extra and just returns its plan."""
+    extra and just returns its plan. ``serve_cached``: the caller serves a Route.CACHE final plan
+    (see :func:`route_governed`)."""
     from provisa.compiler.sql_rewrite import split_sql_statements
 
     if state is None:
@@ -2172,9 +2738,11 @@ async def govern_batch_final_plan(
     if not statements:
         raise ValueError("empty SQL batch")
     for stmt in statements[:-1]:
-        plan = await _govern_and_route(stmt, role_id, session_vars=session_vars)
+        plan = await _govern_and_route(stmt, role_id, session_vars=session_vars, serve_cached=True)
         await _execute_plan(plan, state)
-    return await _govern_and_route(statements[-1], role_id, session_vars=session_vars)
+    return await _govern_and_route(
+        statements[-1], role_id, session_vars=session_vars, serve_cached=serve_cached
+    )
 
 
 async def govern_batch_final_plan_with_fn(
@@ -2183,6 +2751,7 @@ async def govern_batch_final_plan_with_fn(
     state: Any | None = None,
     *,
     session_vars: dict[str, str] | None = None,
+    serve_cached: bool = False,
 ) -> _Plan | QueryResult:
     """``govern_batch_final_plan`` with the registered-function check folded into the SAME
     coroutine (REQ-1887).
@@ -2199,7 +2768,9 @@ async def govern_batch_final_plan_with_fn(
     fn_result = await maybe_invoke_registered_function(sql, role_id, state)
     if fn_result is not None:
         return fn_result
-    return await govern_batch_final_plan(sql, role_id, state, session_vars=session_vars)
+    return await govern_batch_final_plan(
+        sql, role_id, state, session_vars=session_vars, serve_cached=serve_cached
+    )
 
 
 async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ-1044
@@ -2212,12 +2783,15 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     deliver: Delivery | None = None,
     buffered: bool = False,
     cache_hint: CacheHint,
+    serve_cached: bool = False,
 ) -> _Plan:
     """Governance + routing for already-physical SQL, with the org's tier ceilings bound.
 
     ``cache_hint`` is the request's response-cache opt-in (REQ-544), required so every caller
     states it: ``compiler.directives.cache_hint_for(language, request_text)``, gRPC's
-    ``cache_hint_from_grpc_metadata``, or ``NO_CACHE_HINT`` for a surface with no hint syntax."""
+    ``cache_hint_from_grpc_metadata``, or ``NO_CACHE_HINT`` for a surface with no hint syntax.
+    ``serve_cached``: the caller's terminal serves a Route.CACHE plan — see
+    :func:`route_governed`."""
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
     await _wake_before_governing(state)
@@ -2230,6 +2804,7 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
         deliver=deliver,
         buffered=buffered,
         cache_hint=cache_hint,
+        serve_cached=serve_cached,
     )
     return await _attach_tier_caps(plan, state)
 
@@ -2244,6 +2819,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     deliver: Delivery | None = None,
     buffered: bool = False,
     cache_hint: CacheHint,
+    serve_cached: bool = False,
 ) -> _Plan:
     """Governance + routing for already-physical SQL.
 
@@ -2282,6 +2858,39 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     _table_ids, governed_sql = _governed.table_ids, _governed.governed_sql
     # REQ-1910: request entry on the compiled path (GraphQL over Flight, Cypher, gRPC, MCP, REST).
     await resolve_trace_scope(state, role_id, hint=cache_hint.debug_trace)
+    _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx)
+
+    # REQ-1897 (amended 2026-10-01): the cache before the route (see route_governed). A sink
+    # delivery returns a handle, not rows, and is never answered from it.
+    _cache_params = list(exec_params or [])
+    # REQ-1915: key bounds and the unbound-read refusal before the cache and the route (see
+    # route_governed).
+    _pk_bounds_now = _kept_pk_bounds(_governed.memo, governed_sql, state, exec_params)
+    _cache_missed: tuple[tuple[int, ...] | None, ...] = ()
+    if serve_cached and deliver is None:
+        _hit, _cache_missed = await _cached_before_routing(
+            state,
+            sql=governed_sql,
+            params=_cache_params,
+            role_id=role_id,
+            cache_hint=cache_hint,
+            wire_formats=None,
+            as_of=None,  # the compiled stage takes no request-level as-of
+        )
+        if _hit is not None:
+            return _cached_plan(
+                governed_sql=governed_sql,
+                params=exec_params,
+                role_id=role_id,
+                table_ids=_table_ids,
+                cache_hint=cache_hint,
+                hit=_hit,
+                audit=_audit,
+                span_attrs=_kept_span_attrs(_governed.memo, governed_sql, role_id, sql, _audit),
+                sources=_governed.memo.get("sources", frozenset()),
+                semantic_sql=None,
+                as_of=None,
+            )
 
     return await _route_compiled(
         sql,
@@ -2292,13 +2901,16 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         governed_sql=governed_sql,
         compiled_tree=_compiled_tree,
         table_ids=_table_ids,
-        audit=begin_audit(sql, role_id, _compiled_tree, gov_ctx),
+        audit=_audit,
         cache_hint=cache_hint,
         exec_params=exec_params,
         api_args=api_args,
         deliver=deliver,
         buffered=buffered,
         memo=_governed.memo,
+        cache_params=_cache_params,
+        cache_missed=_cache_missed,
+        pk_bounds=_pk_bounds_now,
     )
 
 
@@ -2408,6 +3020,9 @@ async def _route_compiled(
     deliver: Delivery | None,
     buffered: bool,
     memo: dict[str, Any],
+    cache_params: list,
+    cache_missed: tuple[tuple[int, ...] | None, ...],
+    pk_bounds: tuple[Any, ...],
 ) -> _Plan:
     """The per-call half of the compiled stage: optimization, routing and the plan. ``memo`` is
     the governed statement's own (see :func:`_kept_lowering`).
@@ -2459,6 +3074,7 @@ async def _route_compiled(
     )
     # REQ-1910: the sources are known now — a window opened on one of them covers this request.
     await extend_trace_scope_to_sources(state, role_id, frozenset(sources))
+    memo["sources"] = frozenset(sources)  # what a later cache hit reports it read
 
     # REQ-135/REQ-1163: a query referencing a __derived__ view MUST route through the engine, where
     # the view was already inline-expanded above. A view's virtual source has no native driver/
@@ -2468,14 +3084,7 @@ async def _route_compiled(
     # ENGINE branch's already-expanded ``_exec_sql`` is what actually executes. Same guard
     # ``_govern_and_route`` (the raw-SQL/pgwire path) already applies.
     if _view_map and decision.route != Route.ENGINE:
-        import sqlglot as _sg3
-        import sqlglot.expressions as _exp3
-
-        _refs_view = any(
-            t.name in _view_map
-            for t in _sg3.parse_one(governed_sql, read="postgres").find_all(_exp3.Table)
-        )
-        if _refs_view:
+        if _kept_refs_view(memo, governed_sql, _view_map):
             from provisa.transpiler.router import RouteDecision
 
             decision = RouteDecision(
@@ -2492,11 +3101,19 @@ async def _route_compiled(
         )
 
     # REQ-1224 (Defect 4): buffered-transport auto threshold — the terminal decides inline-vs-CTAS.
-    # The CTAS needs engine-physical SQL, so force ENGINE. None when redirect is disabled (opt-in).
+    # None when redirect is disabled (opt-in).
     from provisa.executor.redirect import auto_delivery_for_buffered
 
     auto_deliver = auto_delivery_for_buffered(role_id) if buffered and deliver is None else None
-    if auto_deliver is not None and decision.route != Route.ENGINE:
+    # REQ-1224 (amended 2026-10-01): the threshold does not choose the route. A read the router
+    # sends to one source's own driver stays there and is bounded by a threshold+1 probe at the
+    # terminal; the engine-physical form is derived only if the result does not fit.
+    _probe_direct = (
+        auto_deliver is not None
+        and _direct_terminal_serves(decision, _default_source, state)
+        and _kept_probe_bounds(memo, governed_sql)
+    )
+    if auto_deliver is not None and decision.route != Route.ENGINE and not _probe_direct:
         from provisa.transpiler.router import RouteDecision
 
         decision = RouteDecision(
@@ -2506,14 +3123,10 @@ async def _route_compiled(
             reason="buffered-transport auto-delivery",
         )
 
-    # (Removed 2026-09-26, REQ-1864 reversal:) a single-source neo4j pattern previously
-    # reverse-compiled governed_sql back to Cypher (best_effort_cypher_for_sql) and forced
-    # Route.DIRECT so Neo4j itself could resolve the join. Reverted: direct Cypher execution
-    # requires a general method to resolve arbitrary SQL join patterns back into correct Cypher,
-    # which the reverse compiler does not have (it mis-translated a reshaped junction table).
-    # Row-level materialization (REQ-1865) is the sanctioned mechanism for neo4j read performance
-    # instead. A single-source neo4j query now always falls through to Route.ENGINE.
-    if decision.route == Route.ENGINE:
+    async def _engine_form(_exec_sql: str) -> tuple[str, str]:
+        """The routed catalog-physical statement as the engine runs it: the literal-predicate
+        carry and catalog fold applied, and that text in the engine's own SQL (see
+        :func:`_kept_engine_form`, which keeps both with the governed statement)."""
         _known_cats = set(getattr(state, "source_catalogs", {}).values()) | {
             "iceberg",
             "otel",
@@ -2549,7 +3162,12 @@ async def _route_compiled(
             from provisa.compiler.sql_rewrite import fold_catalog_into_schema
 
             _exec_sql = fold_catalog_into_schema(_exec_sql)
-        physical_sql = state.federation_engine.transpile_physical(_exec_sql)
+        return _exec_sql, state.federation_engine.transpile_physical(_exec_sql)
+
+    async def _engine_forms(_routed_sql: str) -> tuple[str, str]:
+        _engine_sql, _physical = await _kept_engine_form(
+            memo, _routed_sql, state, lambda: _engine_form(_routed_sql)
+        )
         # REQ-041/402: RLS is added to the governed semantic SQL as a
         # current_setting('provisa.<var>') predicate; PostgreSQL resolves it
         # natively (SET LOCAL) but the federation engine has no such function.
@@ -2558,7 +3176,17 @@ async def _route_compiled(
         from provisa.core.request_context import session_vars_for
 
         _session_vars = session_vars_for(state.roles.get(role_id))  # REQ-1682
-        physical_sql = _resolve_session_settings(physical_sql, _session_vars)
+        return _engine_sql, _resolve_session_settings(_physical, _session_vars)
+
+    # (Removed 2026-09-26, REQ-1864 reversal:) a single-source neo4j pattern previously
+    # reverse-compiled governed_sql back to Cypher (best_effort_cypher_for_sql) and forced
+    # Route.DIRECT so Neo4j itself could resolve the join. Reverted: direct Cypher execution
+    # requires a general method to resolve arbitrary SQL join patterns back into correct Cypher,
+    # which the reverse compiler does not have (it mis-translated a reshaped junction table).
+    # Row-level materialization (REQ-1865) is the sanctioned mechanism for neo4j read performance
+    # instead. A single-source neo4j query now always falls through to Route.ENGINE.
+    if decision.route == Route.ENGINE:
+        _exec_sql, physical_sql = await _engine_forms(_exec_sql)
         # Bypass FTE for queries touching non-replayable connectors (kafka), whose
         # splits stall the fault-tolerant exchange (blocks forever, 0 drivers).
         _hints = (
@@ -2577,18 +3205,21 @@ async def _route_compiled(
             session_hints=_hints,
             materialize=deliver,  # REQ-1194/REQ-1195: sink delivery inherited by every transport
             auto_deliver=auto_deliver,  # REQ-1224: buffered-transport auto threshold (terminal decides)
-            span_attrs=_plan_span_attrs(governed_sql, role_id, sql, _audit),
+            span_attrs=_kept_span_attrs(memo, governed_sql, role_id, sql, _audit),
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
             # REQ-1517: the plan reports how it was built (sources, route reason, optimizations).
             sources=frozenset(sources),
             route_reason=decision.reason,
             optimizations=_opts,
-            pk_bounds=await _resolve_pk_bounds(governed_sql, state, exec_params),  # REQ-1865
+            pk_bounds=pk_bounds,  # REQ-1865
             # REQ-1897: the compiled surfaces (GraphQL-via-plan, Cypher, REST, JSON:API, gRPC)
             # hand this function a read the compiler built from a query AST; writes take the
             # mutation executor, never this path. A sink delivery returns a handle, not rows.
             response_cacheable=deliver is None,
+            cache_sql=governed_sql,
+            cache_params=cache_params,
+            cache_missed=cache_missed,
             role_id=role_id,  # REQ-1897
             table_ids=_table_ids,  # REQ-1897
             cache_opt_in=_cache_hint.opt_in,  # REQ-544 (amended)
@@ -2596,21 +3227,42 @@ async def _route_compiled(
         )
     else:
         dialect = decision.dialect or "postgres"
-        # Direct route lowers the OPTIMIZED SQL (REQ-863): when the optimization stage inlined a
-        # VALUES CTE, strip the catalog so a native driver addresses schema.table with the CTE
-        # carried onto the direct path. With no optimization, take the unchanged fast path.
-        if _optimized:
-            from provisa.compiler.sql_rewrite import strip_catalog
-
-            physical_sql = strip_catalog(_exec_sql)
-        else:
-            physical_sql = rewrite_semantic_to_physical(governed_sql, ctx)
         from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES, strip_schema
 
         _direct_sid = decision.source_id or _default_source
-        if state.source_types.get(_direct_sid) in FLAT_NAMESPACE_SOURCES:
-            physical_sql = strip_schema(physical_sql)
-        sql_to_run = transpile(physical_sql, dialect)
+        _flat = state.source_types.get(_direct_sid) in FLAT_NAMESPACE_SOURCES
+        # REQ-1224: a buffered read is bounded at threshold+1 rows for the probe — the same
+        # bound governance applies for a role's row ceiling (stage2.apply_row_cap).
+        _cap = auto_deliver.config.threshold + 1 if _probe_direct and auto_deliver else None
+        # Direct route lowers the OPTIMIZED SQL (REQ-863): when the optimization stage inlined a
+        # VALUES CTE, strip the catalog so a native driver addresses schema.table with the CTE
+        # carried onto the direct path. With no optimization the lowering is a function of the
+        # governed text, the role's compilation context and the destination — not of the bound
+        # values — so it is kept with the governed statement (as route_governed keeps its own).
+        _direct_key = f"direct_sql\x00{_direct_sid}\x00{dialect}\x00{_flat}\x00{_cap}"
+        _direct = None if _optimized else memo.get(_direct_key)
+        if _direct is None:
+            if _optimized:
+                from provisa.compiler.sql_rewrite import strip_catalog
+
+                physical_sql = strip_catalog(_exec_sql)
+            else:
+                physical_sql = rewrite_semantic_to_physical(governed_sql, ctx)
+            if _flat:
+                physical_sql = strip_schema(physical_sql)
+            if _cap is not None:
+                from provisa.compiler.stage2 import apply_row_cap
+
+                physical_sql = apply_row_cap(physical_sql, _cap)
+            _direct = (transpile(physical_sql, dialect), physical_sql)
+            if not _optimized:
+                memo[_direct_key] = _direct
+        sql_to_run, physical_sql = _direct
+        _routed_sql = _exec_sql
+
+        async def _engine_landing() -> str:
+            return (await _engine_forms(_routed_sql))[1]
+
         return _Plan(
             route=decision.route,
             sql=sql_to_run,
@@ -2618,19 +3270,24 @@ async def _route_compiled(
             source_id=_direct_sid,
             dialect=dialect,
             exec_params=exec_params,
+            auto_deliver=auto_deliver,  # REQ-1224: probed at the terminal
+            engine_landing=_engine_landing if _probe_direct else None,
             # REQ-1425: every route carries the plan's span attributes (see _govern_and_route).
-            span_attrs=_plan_span_attrs(governed_sql, role_id, sql, _audit),
+            span_attrs=_kept_span_attrs(memo, governed_sql, role_id, sql, _audit),
             audit=_audit,  # REQ-074/REQ-1386: finalized at the terminal
             stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
             # REQ-1517: the plan reports how it was built (sources, route reason, optimizations).
             sources=frozenset(sources),
             route_reason=decision.reason,
             optimizations=_opts,
-            pk_bounds=await _resolve_pk_bounds(governed_sql, state, exec_params),  # REQ-1865
+            pk_bounds=pk_bounds,  # REQ-1865
             # REQ-1897: the compiled surfaces (GraphQL-via-plan, Cypher, REST, JSON:API, gRPC)
             # hand this function a read the compiler built from a query AST; writes take the
             # mutation executor, never this path. A sink delivery returns a handle, not rows.
             response_cacheable=deliver is None,
+            cache_sql=governed_sql,
+            cache_params=cache_params,
+            cache_missed=cache_missed,
             role_id=role_id,  # REQ-1897
             table_ids=_table_ids,  # REQ-1897
             cache_opt_in=_cache_hint.opt_in,  # REQ-544 (amended)
@@ -2643,9 +3300,14 @@ async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:  # REQ-267
 
 
 async def govern_pgwire_plan(  # REQ-028, REQ-266
-    sql: str, role_id: str, params: list | None = None
+    sql: str, role_id: str, params: list | None = None, wire_formats: list[int] | None = None
 ) -> _Plan | QueryResult:
     """Govern a pgwire statement to its last-mile plan WITHOUT executing the ENGINE terminal.
+
+    ``wire_formats`` — the Bind's result format codes, when the client stated them. pgwire serves
+    a Route.CACHE plan (its last terminal branch is ``_execute_plan``), so an opted-in read is
+    looked up in the response cache before it is routed (REQ-1897) — the passthrough entry for
+    those codes first, then the decoded one.
 
     The pgwire socketserver worker thread drains the engine's SYNC streaming terminal itself —
     the same govern-then-stream split Flight SQL uses (:func:`govern_batch_final_plan`), so a
@@ -2684,7 +3346,9 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     if fn_result is not None:
         return fn_result
 
-    return await _govern_and_route(sql, role_id, params=params)
+    return await _govern_and_route(
+        sql, role_id, params=params, serve_cached=True, wire_formats=wire_formats
+    )
 
 
 @dataclass
@@ -2749,13 +3413,17 @@ async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # RE
     return _Described(shape, governed)
 
 
-async def plan_pgwire_statement(governed: _Governed, params: list | None) -> _Plan:  # REQ-589
+async def plan_pgwire_statement(  # REQ-589
+    governed: _Governed, params: list | None, wire_formats: list[int] | None = None
+) -> _Plan:
     """The executable plan for a statement :func:`describe_pgwire_statement` already governed, with
     the Bind's parameter values. Routing runs here, against live state; governance does not run
-    again."""
+    again. ``wire_formats``: see :func:`govern_pgwire_plan`."""
     from provisa.api.app import state
 
-    plan = await route_governed(governed, params=params)
+    plan = await route_governed(
+        governed, params=params, serve_cached=True, wire_formats=wire_formats
+    )
     return await _attach_tier_caps(plan, state)
 
 

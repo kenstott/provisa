@@ -19,7 +19,7 @@
     "steps": {
       "step0": {
         "title": "歡迎，一起來導覽",
-        "description": "🧭 隨時可按這個指南針重新開啟導覽。想離開就離開——按一下應用程式或按 <kbd>Esc</kbd>。<p><strong>Provisa</strong> 是一個受管治的聯邦數據查詢編譯器，本身不會經手數據路徑。</p><p>🎯 <strong>整個核心其實只是一個小練習：</strong>連接幾個數據庫，然後用<strong>七種方式</strong>查詢——或者略過語法，直接用日常英語提問。大約五分鐘，<strong>就在你的桌面上完成</strong>：毋須伺服器，毋須架設基礎設施（那是之後、當你準備好時才需要的）。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>在那之後的<em>一切</em>——更多數據來源、聯邦、檔案、關係、檢視、排程管線——都是你如何隨平台<strong>成長</strong>，而不是第一天就要用到的東西。我們會標明核心到哪裡結束。</p><p>準備好了嗎？我們先連接一個數據來源。→</p>"
+        "description": "🧭 此羅盤可隨時重新開啟導覽。隨時可離開 — 點按應用程式或按 <kbd>Esc</kbd>。<p><strong>Provisa</strong> 是為你的數據而設的主動式語意層，不會介入數據路徑。</p><p>🎯 <strong>整個核心只是一個簡短的練習：</strong>連接幾個資料庫，然後以<strong>七種方式</strong>查詢它們 — 或略過語法，直接用白話提問。大約五分鐘，<strong>直接在你的桌面上</strong>完成：無需伺服器，也無需架設任何基礎架構（待你準備好之後再做）。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>此後的一切 — 更多數據來源、聯邦、檔案、關係、檢視、排程管線 — 是你隨平台<strong>成長</strong>的方式，而不是第一天就需要的。我們會標示核心在哪裡結束。</p><p>準備好了嗎？讓我們連接數據來源。→</p>"
       },
       "step1": {
         "title": "由「數據來源」開始",
@@ -136,6 +136,10 @@
       "stepGlossary": {
         "title": "一部鮮活的業務術語表",
         "description": "📖 每個術語都會關聯回攜帶它的欄位——手動維護名稱、定義和類型化關係(是一種、是其一部分、同義詞),或者讓 AI 來補全空白:<strong>✨ 定義</strong>只為尚無定義的術語起草內容,<strong>✨ 關係</strong>在整個術語表範圍內提出關聯建議。將某個術語標記為<strong>從匯出中排除</strong>,即可使其不出現在已發佈的中繼資料中。"
+      },
+      "stepDataProducts": {
+        "title": "數據產品，發佈在消費者已在使用的地方",
+        "description": "📦 這裡的每個產品都遵循 <strong>ODPS</strong>（Open Data Product Standard）— 擁有者、團隊、用途、限制、使用方式、SLA、支援、自訂屬性 — 而 Provisa 會把它直接自動發佈到 <strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong>，讓它成為消費者已在使用的目錄中的原生產品。<p>🔁 沒有需要記得去做的獨立匯出步驟：規格每次都<strong>由即時模型衍生</strong> — 數據表、血緣、標籤、詞彙表術語 — 所以已發佈的內容不會像人手維護的 ODPS 檔案那樣過時。</p>"
       }
     },
     "status": {

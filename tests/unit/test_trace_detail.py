@@ -25,7 +25,6 @@ from provisa.api.otel_setup import _trace_detail_sampler
 from provisa.otel_compat import (
     annotate_request,
     record_query,
-    record_stage,
     register_query_instruments,
     request_span,
     reset_trace_detail,
@@ -141,20 +140,55 @@ def test_normal_stage_that_raises_names_the_error_and_reraises(traced):
     assert attrs["stage.execute.ms"] >= 0
 
 
-def test_record_stage_and_timed_stage_report_without_a_span(traced):
+def test_timed_stage_reports_the_call_as_a_stage_of_the_request(traced):
     tracer, exporter = traced
 
-    @timed_stage("route")
+    @timed_stage(tracer, "router.decide_route", name="route")
     def decide() -> str:
         return "direct"
 
     with request_span(tracer, "pgwire.query", transport="pgwire"):
         assert decide() == "direct"
-        record_stage("encode", 10.0, 10.25)
     spans = exporter.get_finished_spans()
     assert [s.name for s in spans] == ["pgwire.query"]
-    assert spans[0].attributes["stage.encode.ms"] == 250.0
     assert spans[0].attributes["stage.route.ms"] >= 0
+
+
+def test_a_request_only_stage_outside_a_request_is_not_a_span(traced):
+    """A stage that exists only to time part of a request (routing, response encoding) adds no
+    span to work that is not a request."""
+    tracer, exporter = traced
+
+    @timed_stage(tracer, "router.decide_route", name="route")
+    def decide() -> str:
+        return "direct"
+
+    assert decide() == "direct"
+    with stage(tracer, "http.encode", name="encode", request_only=True) as span:
+        span.set_attribute("db.row_count", 1)
+    assert exporter.get_finished_spans() == ()
+
+
+def test_a_held_request_span_opens_once_and_closes_once(traced):
+    """A request that spans several protocol messages (pgwire Parse..Sync) has no lexical block:
+    its connection handler holds one scope, opened by the first message, closed at the end."""
+    from provisa.otel_compat import HeldRequestSpan
+
+    tracer, exporter = traced
+    held = HeldRequestSpan(tracer, "pgwire.query", transport="pgwire")
+    held.close()  # nothing open: a no-op (ReadyForQuery after authentication)
+    for _message in ("parse", "bind", "describe", "execute"):
+        held.open()
+        with stage(tracer, "pgwire.govern", name="govern"):
+            pass
+    held.close()
+    held.close()
+    held.open()
+    held.close()
+    spans = exporter.get_finished_spans()
+    assert [s.name for s in spans] == ["pgwire.query", "pgwire.query"]
+    assert spans[0].attributes["stage.govern.count"] == 4
+    assert "stage.govern.ms" not in spans[1].attributes
 
 
 def test_annotate_request_sets_facts_and_keeps_statement_text_out_of_normal_detail(traced):
@@ -331,12 +365,13 @@ def test_observe_plan_puts_the_statements_facts_on_the_request_span(traced, inst
     attrs = exporter.get_finished_spans()[0].attributes
     assert attrs["provisa.route"] == "direct"
     assert attrs["provisa.engine"] == "postgres"
-    assert attrs["provisa.role"] == "analyst"
     assert attrs["provisa.sources"] == ("sales-pg",)
     assert attrs["provisa.status"] == 200
-    # What the ops queries report reads, minus the statement text.
-    assert attrs["provisa.table"] == "sales.orders"
-    assert "provisa.query_text" not in attrs
+    assert attrs["provisa.statements"] == 1
+    # The statement's table, domain, role and text have ONE home, the audit row; the `queries`
+    # report reads them there and joins to this record by trace_id.
+    for duplicated in ("provisa.table", "provisa.domain", "provisa.role", "provisa.query_text"):
+        assert duplicated not in attrs
     counter, duration = instruments
     labels = {"transport": "pgwire", "route": "direct", "engine": "postgres", "status": 200}
     assert counter.calls == [(1, labels)]
@@ -357,33 +392,33 @@ def test_observe_plan_names_the_federation_engine_for_the_engine_route(traced, i
     assert instruments[0].calls[0][1]["status"] == 500
 
 
-def test_observe_plan_in_debug_detail_also_records_the_statement_text(
-    traced, instruments, debug_detail
-):
+def test_a_request_of_several_statements_counts_them_on_its_one_record(traced, instruments):
     from provisa.observability.request_facts import observe_plan
 
     tracer, exporter = traced
-    with request_span(tracer, "pgwire.query", transport="pgwire"):
-        observe_plan(_plan(), 200)
-    attrs = exporter.get_finished_spans()[0].attributes
-    assert attrs["provisa.table"] == "sales.orders"
-    assert attrs["provisa.query_text"] == "SELECT * FROM sales.orders"
-    assert len(instruments[0].calls) == 1
-
-
-def test_a_request_of_several_statements_is_one_record_listing_every_table(traced, instruments):
-    from provisa.observability.request_facts import observe_plan
-
-    tracer, exporter = traced
-    second = {"provisa.table": "sales.customers", "provisa.domain": "sales", "provisa.role": "a"}
     with request_span(tracer, "POST /data/graphql", transport="graphql"):
         observe_plan(_plan(), 200)
-        observe_plan(_plan(span_attrs=second), 200)
+        observe_plan(_plan(), 200)
     attrs = exporter.get_finished_spans()[0].attributes
-    assert attrs["provisa.table"] == "sales.orders"  # the first statement's
-    assert attrs["provisa.tables"] == ("sales.orders", "sales.customers")
     assert attrs["provisa.statements"] == 2
+    assert "provisa.table" not in attrs
     assert len(instruments[0].calls) == 2  # metrics count statements
+
+
+def test_a_stage_does_not_put_the_statements_identity_on_the_request_span(traced):
+    """The execute terminals stamp provisa.table/domain/role on their span for the debug
+    waterfall; in normal detail that span is the request span, which does not carry them."""
+    tracer, exporter = traced
+    with request_span(tracer, "pgwire.query", transport="pgwire"):
+        with stage(tracer, "provisa.query.direct", name="execute") as span:
+            for key, value in _plan().span_attrs.items():
+                span.set_attribute(key, value)
+            span.set_attribute("db.row_count", 2)
+    attrs = exporter.get_finished_spans()[0].attributes
+    assert attrs["db.row_count"] == 2
+    assert not [
+        k for k in attrs if k.startswith(("provisa.table", "provisa.domain", "provisa.role"))
+    ]
 
 
 def test_a_raw_sql_response_cache_hit_is_reported_as_the_cache_route(traced, instruments):
@@ -424,7 +459,7 @@ def test_a_graphql_cache_hit_is_reported_as_the_cache_route(traced, instruments)
     tracer, exporter = traced
     with tracer.start_as_current_span("POST /data/graphql", kind=SpanKind.SERVER) as server:
         _bind_http_request_span(server, {"path": "/data/graphql"})
-        observe_cache_hit(role_id="analyst", sources={"sales-pg"}, rows=4, started=0.0)
+        observe_cache_hit(sources={"sales-pg"}, rows=4, started=0.0)
         TimedJSONResponse(content={"data": {"orders": []}})
     attrs = exporter.get_finished_spans()[0].attributes
     assert attrs["provisa.route"] == "cache"

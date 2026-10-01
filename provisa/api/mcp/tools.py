@@ -21,28 +21,21 @@ here — this module only shapes catalog metadata and paginates results.
 
 from __future__ import annotations
 
-import os
 import types
 from typing import Any
 
 from provisa.api.flight.catalog import CatalogTable, _build_catalog_tables_async
 from provisa.kaggle.downloader import KAGGLE_TOKEN_SECRET_NAME  # REQ-1798/1819: one shared name
 
+
 # Row ceiling for run_sql. An agent context must never absorb an unbounded
-# result set, so every run_sql caps rows. Configurable via env; the role's own
-# governed row-cap (resolve_row_cap inside _govern_and_route) still applies on
+# result set, so every run_sql caps rows. An operator setting (``mcp.max_rows``, REQ-1913); the
+# role's own governed row-cap (resolve_row_cap inside _govern_and_route) still applies on
 # top of this — this is an additional transport-level ceiling, not a bypass.
-_DEFAULT_MAX_ROWS = 1000
-
-
 def _max_rows() -> int:
-    raw = os.environ.get("PROVISA_MCP_MAX_ROWS")
-    if raw is None:
-        return _DEFAULT_MAX_ROWS
-    value = int(raw)
-    if value <= 0:
-        raise ValueError("PROVISA_MCP_MAX_ROWS must be a positive integer")
-    return value
+    from provisa.core import settings_registry
+
+    return settings_registry.value("mcp.max_rows")
 
 
 def require_role(role: str, state: Any) -> str:

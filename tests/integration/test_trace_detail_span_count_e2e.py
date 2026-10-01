@@ -249,7 +249,9 @@ def test_normal_cached_graphql_request_exports_one_span(normal_server):
     assert attrs["provisa.route"] == "cache", attrs
     assert attrs["cache.hit"] is True, attrs
     assert attrs["db.row_count"] == 1, attrs
-    assert attrs["provisa.role"] == _ROLE, attrs
+    # The statement's role, table and text live in its audit row (the ops `queries` report), not
+    # on the span.
+    assert not {"provisa.role", "provisa.table", "provisa.domain"} & set(attrs), attrs
     # A hit on a plan the server has already compiled and governed: the stages that run are the
     # route decision, the cache read and the response encoding.
     for stage in ("route", "cache", "encode"):
@@ -264,7 +266,9 @@ def test_normal_pgwire_point_lookup_exports_one_span(normal_server):
     assert attrs["provisa.transport"] == "pgwire", attrs
     assert attrs["provisa.route"] in ("direct", "engine"), attrs
     assert attrs["db.row_count"] == 1, attrs
-    assert attrs["provisa.role"] == _ROLE, attrs
+    # The statement's role, table and text live in its audit row (the ops `queries` report), not
+    # on the span.
+    assert not {"provisa.role", "provisa.table", "provisa.domain"} & set(attrs), attrs
     for stage in ("govern", "execute", "encode"):
         assert attrs[f"stage.{stage}.ms"] >= 0, (stage, attrs)
     assert _sql_text(spans) == []
@@ -291,6 +295,9 @@ def test_debug_pgwire_point_lookup_records_the_statement_text(debug_server):
     names = _names(spans)
     request = [s for s in spans if s.name == "pgwire.query"]
     assert len(request) == 1, names
+    # Debug detail: a span per stage of the statement, under the request span.
+    assert {"pgwire.govern", "pgwire.execute", "pgwire.encode"} <= {s.name for s in spans}, names
+    assert all(s.parent_span_id for s in spans if s is not request[0]), names
     # The statement text is recorded in debug detail (and only there).
     assert request[0].attrs["db.statement"] == _SQL, request[0].attrs
     # One trace per request: anything else recorded hangs off the request span.

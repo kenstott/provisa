@@ -24,7 +24,6 @@ import asyncio
 import logging
 import os
 
-import yaml
 
 from provisa.core.schema_org import (
     domains as _domains_t,
@@ -37,6 +36,8 @@ from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 
 if TYPE_CHECKING:
+    from provisa.scheduler.holder import SchedulerHolder
+
     pass
 
 
@@ -125,6 +126,18 @@ def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
     _threading.Thread(target=_prewarm_jvm, daemon=True, name="govdata-jvm-prewarm").start()
 
 
+def _scheduler_holder(state: Any) -> "SchedulerHolder":  # REQ-1900
+    """This process's claim on the deployment's scheduled and shared background work, created on
+    first use and closed at shutdown (app.py lifespan)."""
+    if state._scheduler_holder is None:
+        from provisa.core.config_loader import load_control_plane
+        from provisa.scheduler.holder import SchedulerHolder
+
+        cp = load_control_plane(config_path_str())
+        state._scheduler_holder = SchedulerHolder(cp.resolved_platform_url(), cp.resolved_org_id())
+    return state._scheduler_holder
+
+
 async def _start_background_tasks(_log: logging.Logger) -> None:
     """Start MV storage reclamation, warm-table, hot-table refresh, and SQLite staleness tasks."""
 
@@ -136,13 +149,23 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
     # is None for native engines (DuckDB), which still register MVs and accumulate orphan tables.
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
 
+    # REQ-1900: every worker process starts these loops. The ones that act on SHARED state run
+    # only in the worker holding the scheduler lock (provisa/scheduler/holder.py):
+    #   mv-reclamation     shared — drops tables in the shared materialization store.
+    #   hot-table-refresh  shared when a Redis is configured (it rewrites the cached rows there);
+    #                      this process's own when Redis is the embedded, in-process one.
+    #   warm-tables        shared — it sizes source tables through the engine and creates/drops
+    #                      the warm copies in the engine's store (cache/warm_tables.sweep_loop).
+    #   idle reaper        NOT gated — it measures idleness from THIS process's activity.
+    _holder = _scheduler_holder(state)
+
     if state.federation_engine.is_connected():
         from provisa.mv.refresh import reclamation_loop
 
         # REQ-1882: long-lived loops that touch the engine/control plane run on their own
         # threads (spawn_long_lived), never on the process loop that relays request I/O.
         state._mv_refresh_task = spawn_long_lived(
-            reclamation_loop(state.federation_engine, state.mv_registry),
+            reclamation_loop(state.federation_engine, state.mv_registry, should_run=_holder.holds),
             name="mv-reclamation",
         )
 
@@ -158,10 +181,12 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
             from provisa.core.config_loader import read_config_with_includes
 
             _raw = read_config_with_includes(_warm_cfg_path)
-        _wcfg = _raw.get("warm_tables", {})
-        _warm_threshold = int(_wcfg.get("query_threshold", 100))
-        _warm_max_rows = int(_wcfg.get("max_rows", 10_000_000))
-        _warm_interval = int(_wcfg.get("refresh_interval", 60))
+        # REQ-1913: the warm tier's thresholds are operator settings.
+        from provisa.core import settings_registry as _settings
+
+        _warm_threshold = _settings.value("warm_tables.query_threshold")
+        _warm_max_rows = _settings.value("warm_tables.max_rows")
+        _warm_interval = _settings.value("warm_tables.refresh_interval")
         _warm_forced: set[str] = set()
         _warm_excluded: set[str] = set()
         for _t in _raw.get("tables", []):
@@ -169,32 +194,26 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
             if _tn and "warm" in _t:
                 (_warm_forced if _t["warm"] else _warm_excluded).add(_tn)
 
-        async def _warm_loop() -> None:
-            while True:
-                try:
-                    # REQ-241: hot-over-warm precedence — exclude tables the hot tier manages.
-                    _hot_names = (
-                        state.hot_manager.managed_tables()
-                        if state.hot_manager is not None
-                        else set()
-                    )
-                    await state.warm_manager.check_promotions(
-                        _qc,
-                        state.federation_engine,
-                        threshold=_warm_threshold,
-                        max_rows=_warm_max_rows,
-                        hot_tables=_hot_names,
-                        excluded=_warm_excluded,
-                        forced=_warm_forced,
-                    )
-                    await state.warm_manager.check_demotions(
-                        _qc, state.federation_engine, threshold=_warm_threshold
-                    )
-                except Exception:
-                    _log.exception("Error in warm-table loop")
-                await asyncio.sleep(_warm_interval)
+        from provisa.cache.warm_tables import sweep_loop as _warm_sweep_loop
 
-        state._warm_task = spawn_long_lived(_warm_loop(), name="warm-tables")
+        state._warm_task = spawn_long_lived(
+            _warm_sweep_loop(
+                state.warm_manager,
+                _qc,
+                engine=lambda: state.federation_engine,
+                # REQ-241: hot-over-warm precedence — exclude tables the hot tier manages.
+                hot_tables=lambda: (
+                    state.hot_manager.managed_tables() if state.hot_manager is not None else set()
+                ),
+                should_run=_holder.holds,
+                interval=_warm_interval,
+                threshold=_warm_threshold,
+                max_rows=_warm_max_rows,
+                excluded=_warm_excluded,
+                forced=_warm_forced,
+            ),
+            name="warm-tables",
+        )
 
     if state.hot_manager is not None and state.federation_engine.is_connected():
         from provisa.cache.hot_tables import HotTableManager
@@ -202,16 +221,16 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
         hot_mgr = state.hot_manager
         assert isinstance(hot_mgr, HotTableManager)
 
-        _hot_path = config_path()
-        _hot_interval = 300
-        if _hot_path.exists():
-            with open(_hot_path) as _hf:
-                _hot_cfg = yaml.safe_load(_hf)
-            _hot_interval = _hot_cfg.get("hot_tables", {}).get("refresh_interval", 300)
+        # REQ-1913/REQ-231: the hot tier's interval, else the materialized-view default TTL.
+        from provisa.cache.hot_tables import refresh_interval as _hot_refresh_interval
+
+        _hot_interval = _hot_refresh_interval()
 
         async def _hot_refresh_loop() -> None:
             while True:
                 await asyncio.sleep(_hot_interval)
+                if state.redis_url is not None and not _holder.holds():
+                    continue
                 for entry in list(hot_mgr._hot_tables.values()):
                     if entry.is_api:
                         continue
@@ -289,9 +308,15 @@ def _resolve_tls(cert_env: str, key_env: str) -> tuple[str, str] | None:
     REQ-1226: every protocol endpoint serves TLS in a cluster deploy. Certs are provisioned once per
     node — first-launch.sh generates a self-signed pair when none is supplied — and every server
     points at the same pair unless a per-protocol override is set."""
-    cert = os.environ.get(cert_env) or os.environ.get("PROVISA_TLS_CERT")
-    key = os.environ.get(key_env) or os.environ.get("PROVISA_TLS_KEY")
-    if cert and key:
+    # REQ-1913: each of these is an operator setting, named here by its environment variable.
+    from provisa.core import settings_registry
+
+    def _path(own_env: str, node_key: str) -> str | None:
+        own = settings_registry.value(settings_registry.key_for_env(own_env))
+        return own if own is not None else settings_registry.value(node_key)
+
+    cert, key = _path(cert_env, "tls.cert"), _path(key_env, "tls.key")
+    if cert is not None and key is not None:
         return cert, key
     return None
 
@@ -337,9 +362,9 @@ async def _start_servers(_log: logging.Logger) -> None:
             # never by which fields the wire descriptor happens to declare.
             grpc_output_dir = tempfile.mkdtemp(prefix="provisa_grpc_")
             pb2_path, pb2_grpc_path = compile_proto(state.wire_proto, grpc_output_dir)
-            grpc_port = int(
-                os.environ.get("GRPC_PORT", str(state.server_cfg.get("grpc_port", 50051)))
-            )
+            from provisa.core import settings_registry
+
+            grpc_port = settings_registry.value("server.grpc_port")  # REQ-1913
             _grpc_tls = _resolve_tls("PROVISA_GRPC_CERT", "PROVISA_GRPC_KEY")
             state._grpc_server = start_grpc_server(
                 grpc_port,
@@ -360,9 +385,9 @@ async def _start_servers(_log: logging.Logger) -> None:
     try:
         from provisa.api.flight.server import ProvisaFlightServer
 
-        flight_port_base = int(
-            os.environ.get("FLIGHT_PORT", str(state.server_cfg.get("flight_port", 8815)))
-        )
+        from provisa.core import settings_registry
+
+        flight_port_base = settings_registry.value("server.flight_port")  # REQ-1913
         _flight_tls = _resolve_tls("PROVISA_FLIGHT_CERT", "PROVISA_FLIGHT_KEY")
         if _flight_tls is not None:
             _fc, _fk = _flight_tls
@@ -379,7 +404,7 @@ async def _start_servers(_log: logging.Logger) -> None:
                 # configured.
                 return ProvisaFlightServer(
                     state,
-                    location=f"grpc+tls://0.0.0.0:{port}",
+                    location=f"grpc+tls://127.0.0.1:{port}",
                     tls_certificates=[(_flight_cert_bytes, _flight_key_bytes)],
                     **flight_tls_kwargs(
                         _resolve_client_auth(
@@ -394,77 +419,19 @@ async def _start_servers(_log: logging.Logger) -> None:
             def _build_flight_server(port: int) -> "ProvisaFlightServer":
                 return ProvisaFlightServer(
                     state,
-                    location=f"grpc://0.0.0.0:{port}",
+                    location=f"grpc://127.0.0.1:{port}",
                 )
 
-        # REQ-1900: pyarrow's FlightServerBase has no SO_REUSEPORT equivalent — confirmed live
-        # that a second process binding the identical port fails with "Address already in use",
-        # unlike gRPC/Bolt/pgwire, which all support genuine multi-process port sharing. Under
-        # uvicorn `--workers N` there's no shared state between worker processes to hand out a
-        # worker index, so each worker independently scans consecutive ports starting at
-        # flight_port_base and claims the first one nobody else already has — forming a real POOL
-        # of N independent Flight servers (one genuine instance per worker) instead of only the
-        # first worker to reach this code ever serving Flight at all. A caller connecting to this
-        # pool needs to either round-robin across the known port range itself, or sit behind a
-        # TCP-level load balancer that does; this process only publishes which port IT bound, in
-        # its own log line below — no shared discovery mechanism, kept intentionally simple.
-        #
-        # Ports are probed with a plain socket bind/release BEFORE constructing the Flight server,
-        # rather than retrying on whatever exception construction raises — confirmed live that a
-        # bind conflict there surfaces as `pyarrow.lib.ArrowException("Unknown error: Server did
-        # not start properly")`, with the actual "Address already in use" detail written directly
-        # to stderr by gRPC's C-core logger and NEVER attached to the Python exception object.
-        # There is no reliable way to distinguish a port conflict from a genuine Flight startup
-        # bug (bad TLS config, etc.) from that exception's text alone — retrying blindly on ANY
-        # exception would silently misreport a real bug as "no free port in pool range". The
-        # socket probe has a small time-of-check/time-of-use race (another process could grab the
-        # port between our probe and pyarrow's own bind), which is why construction still runs
-        # inside the ordinary outer try/except below — a genuine race there fails loudly with the
-        # real (if generic) pyarrow error, exactly once, rather than being masked by a retry loop.
-        def _port_probably_free(port: int) -> bool:
-            import socket
-
-            probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                probe.bind(("0.0.0.0", port))  # nosec B104 - transient probe on the same wildcard host the real Flight listener binds; closed immediately, never accepts a connection
-                return True
-            except OSError:
-                return False
-            finally:
-                probe.close()
-
-        _FLIGHT_POOL_MAX = int(os.environ.get("FLIGHT_POOL_MAX", "16"))
-        # The workers of a launch reach this point TOGETHER (REQ-1900: the per-worker half of the
-        # boot runs in every worker at once), so "probe a port, then bind it" must be one step
-        # across them: two workers that both probed the same port free would both construct a
-        # server on it, and the loser would run with no Flight server at all. An exclusive flock
-        # on one file per pool, held from the probe until the server has bound, makes it one step;
-        # the kernel releases it if the holder dies.
-        import fcntl
-        import tempfile
-
-        _pool_lock_path = os.path.join(
-            tempfile.gettempdir(), f"provisa-flight-pool-{flight_port_base}.lock"
-        )
-        with open(_pool_lock_path, "a+") as _pool_lock:
-            fcntl.flock(_pool_lock.fileno(), fcntl.LOCK_EX)
-            try:
-                flight_port = None
-                for _offset in range(_FLIGHT_POOL_MAX):
-                    _candidate = flight_port_base + _offset
-                    if _port_probably_free(_candidate):
-                        flight_port = _candidate
-                        break
-                if flight_port is None:
-                    raise RuntimeError(
-                        f"no free Flight port in pool range [{flight_port_base}, "
-                        f"{flight_port_base + _FLIGHT_POOL_MAX})"
-                    )
-                # Construction binds the port (FlightServerBase.__init__ starts the listener).
-                flight_server = _build_flight_server(flight_port)
-            finally:
-                fcntl.flock(_pool_lock.fileno(), fcntl.LOCK_UN)
+        # REQ-1900: pyarrow's Flight server cannot share a port between processes (Arrow builds
+        # its gRPC server with SO_REUSEPORT off and offers no switch), so under `--workers N` a
+        # server per worker on the advertised port is not possible, and a port per worker leaves
+        # the advertised one reaching a single worker. Each worker therefore runs its Flight
+        # server on a loopback port the kernel picks (port 0 — nothing outside the host can dial
+        # it, and no two workers can collide on it) and binds the ADVERTISED port itself with
+        # SO_REUSEPORT, relaying each connection to its own server. See provisa/api/flight/relay.py
+        # for what the relay does and does not touch (TLS stays end to end; the request still runs
+        # on the Flight handler thread).
+        flight_server = _build_flight_server(0)
 
         import threading
 
@@ -474,10 +441,18 @@ async def _start_servers(_log: logging.Logger) -> None:
         )
         flight_thread.start()
         state._flight_server = flight_server
+
+        from provisa.api.flight.relay import FlightRelay
+
+        state._flight_relay = FlightRelay(
+            "0.0.0.0",  # nosec B104 - the Flight endpoint intentionally binds all interfaces
+            flight_port_base,
+            flight_server.port,
+        )
         _log.info(
             "Arrow Flight server listening on %s:%d (TLS=%s)",
             state.hostname,
-            flight_port,
+            flight_port_base,
             _flight_tls is not None,
         )
     except Exception:
@@ -487,7 +462,9 @@ async def _start_servers(_log: logging.Logger) -> None:
     from provisa.security.mtls import apply_to_context, resolve_client_auth
     from provisa.security.sni import install as install_sni_capture
 
-    pgwire_port = int(os.environ.get("PROVISA_PGWIRE_PORT", "0"))
+    from provisa.core import settings_registry
+
+    pgwire_port = settings_registry.value("server.pgwire_port")  # REQ-1913; 0 = not started
     if pgwire_port and not pgwire_start_allowed(state, pgwire_port):
         # REQ-693: high-security mode never starts the pgwire server — the pgwire transport
         # has no per-connection client-side-decrypt handshake, so it cannot satisfy the
@@ -536,7 +513,7 @@ async def _start_servers(_log: logging.Logger) -> None:
         except Exception:
             _log.exception("pgwire server startup failed")
 
-    bolt_port = int(os.environ.get("PROVISA_BOLT_PORT", "0"))
+    bolt_port = settings_registry.value("server.bolt_port")  # REQ-1913; 0 = not started
     if bolt_port and not bolt_start_allowed(state, bolt_port):
         # REQ-693: high-security mode never starts the Bolt server — Bolt's HELLO/LOGON exchange
         # negotiates a credential, not a decryption context, so a Cypher result would cross the
@@ -643,8 +620,11 @@ def _start_scheduler(_log: logging.Logger) -> None:
 
         from provisa.scheduler.jobs import new_scheduler
 
+        # REQ-1900: every worker process starts this scheduler, and the deployment's jobs must
+        # run once, not once per worker: the worker holding the scheduler lock on the platform
+        # control plane runs them (provisa/scheduler/holder.py).
         # new_scheduler: a wakeup chain that never inherits a request's trace context -- see there.
-        scheduler = new_scheduler()
+        scheduler = new_scheduler(_scheduler_holder(state))
         _cfg_triggers = []
         try:
             # REQ-1669: includes-aware, so a wrapper config's fragments are seen.

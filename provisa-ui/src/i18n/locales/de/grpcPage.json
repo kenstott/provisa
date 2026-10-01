@@ -20,6 +20,7 @@
     "includeNodes": "Knoten einbeziehen",
     "includeFields": "Felder einbeziehen (Beziehung, Beziehung.Spalte oder Spalte)",
     "aggregateFunctions": "Aggregatfunktionen",
-    "selectAtLeastOneFunc": "Wählen Sie mindestens eine Aggregatfunktion aus"
+    "selectAtLeastOneFunc": "Wählen Sie mindestens eine Aggregatfunktion aus",
+    "aggregateColumns": "Aggregatspalten (leer = jede infrage kommende Spalte)"
   }
 }

@@ -28,6 +28,8 @@ import {
   type FederationEngineState,
 } from "../../api/admin";
 import { FederationSettingsCards } from "./settingsCards";
+import { PlatformRequired } from "./PlatformRequired";
+import { isForbidden } from "./isForbidden";
 
 // REQ-916: select + configure the federation engine. Changes persist to the platform config and
 // take effect on the next service restart (the engine is bound once at boot).
@@ -40,6 +42,7 @@ export function FederationEngineTab() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [forbidden, setForbidden] = useState(false);
 
   useEffect(() => {
     fetchFederationEngine()
@@ -57,7 +60,7 @@ export function FederationEngineTab() {
         }
         setValues(seeded);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => (isForbidden(e) ? setForbidden(true) : setError(String(e))));
   }, []);
 
   const currentEngine = useMemo(
@@ -110,6 +113,7 @@ export function FederationEngineTab() {
     }
   };
 
+  if (forbidden) return <PlatformRequired />;
   if (error && !state) return <Alert color="red">{error}</Alert>;
   if (!state) return <Text>{t("federationEngineTab.loading")}</Text>;
 

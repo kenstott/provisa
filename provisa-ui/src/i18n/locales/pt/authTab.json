@@ -14,7 +14,7 @@
     "loading": "Carregando…",
     "saved": "Salvo.",
     "savedRestartRequired": "Salvo. Reinicie o serviço para aplicar.",
-    "secretOnFile": "Guardado — deixe em branco para manter",
+    "secretOnFile": "Armazenado — deixe em branco para mantê-lo",
     "secretNotSet": "Não definido"
   }
 }

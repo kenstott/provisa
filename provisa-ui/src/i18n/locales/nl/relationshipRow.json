@@ -40,6 +40,8 @@
     "cardinalityWarning": "Waarschuwing: als deze join meer dan één rij per bovenliggende rij retourneert, wordt alleen de eerste waarde gebruikt.",
     "cancel": "Annuleren",
     "save": "Opslaan",
-    "toggleDetails": "Relatiedetails in-/uitklappen"
+    "toggleDetails": "Relatiedetails in-/uitklappen",
+    "junctionBadge": "via",
+    "junctionBadgeTitle": "Relatie via koppeltabel {{table}}"
   }
 }

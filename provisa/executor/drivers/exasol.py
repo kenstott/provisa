@@ -20,16 +20,18 @@ installed.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
-from provisa.executor.drivers.base import DirectDriver
+from provisa.core import request_deadline
+from provisa.executor.drivers.pooled import SingleStatementConnectionDriver
 from provisa.executor.result import QueryResult
 
 
-class ExasolDriver(DirectDriver):
+class ExasolDriver(SingleStatementConnectionDriver):
+    """A pyexasol connection is one websocket carrying one request at a time: a connection per
+    statement, from the pool (see ``pooled``)."""
+
     def __init__(self) -> None:
-        self._conn: Any = None
         self._extra: dict[str, str] = {}
 
     def configure(self, extra: dict[str, str]) -> None:
@@ -44,6 +46,7 @@ class ExasolDriver(DirectDriver):
         failed PKIX validation against any self-signed Exasol server."""
         self._extra = dict(extra)
 
+    # Async only for the DirectDriver awaitable contract; connects synchronously in-thread.
     async def connect(
         self,
         host: str,
@@ -51,8 +54,8 @@ class ExasolDriver(DirectDriver):
         database: str,
         user: str,
         password: str,
-        min_pool: int = 1,  # pyright: ignore[reportUnusedParameter]  # pyexasol has no pool
-        max_pool: int = 5,  # pyright: ignore[reportUnusedParameter]
+        min_pool: int = 1,
+        max_pool: int = 5,
     ) -> None:
         import pyexasol  # pyright: ignore[reportMissingImports]
 
@@ -69,22 +72,18 @@ class ExasolDriver(DirectDriver):
                 schema=database or "",
             )
 
-        self._conn = await asyncio.to_thread(_open)
+        self._open_pool(_open, min_pool=min_pool, max_pool=max_pool, name=f"exasol:{dsn}")
 
-    async def execute(self, sql: str, params: list | None = None) -> QueryResult:  # pyright: ignore[reportUnusedParameter]
-        def _run() -> QueryResult:
-            stmt = self._conn.execute(sql)
+    def _run(self, conn: Any, sql: str, params: list | None) -> QueryResult:  # pyright: ignore[reportUnusedParameter]
+        # abort_query is pyexasol's own cross-thread cancel: it opens a second websocket and
+        # aborts the request running on this connection, which stays usable.
+        with request_deadline.cancel_on_deadline(conn.abort_query):
+            stmt = conn.execute(sql)
             cols = list(stmt.column_names())
             rows = stmt.fetchall()
-            return QueryResult(rows=[tuple(r) for r in rows], column_names=cols)
+        return QueryResult(rows=[tuple(r) for r in rows], column_names=cols)
 
-        return await asyncio.to_thread(_run)
+    def _is_broken(self, exc: BaseException) -> bool:
+        import pyexasol  # pyright: ignore[reportMissingImports]
 
-    async def close(self) -> None:
-        if self._conn is not None:
-            await asyncio.to_thread(self._conn.close)
-            self._conn = None
-
-    @property
-    def is_connected(self) -> bool:
-        return self._conn is not None
+        return isinstance(exc, (pyexasol.ExaCommunicationError, pyexasol.ExaConnectionError))

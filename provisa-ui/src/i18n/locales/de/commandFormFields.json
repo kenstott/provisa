@@ -31,6 +31,8 @@
     "query": "Abfrage",
     "domain": "Domäne",
     "selectDomain": "Domäne auswählen...",
+    "dataProduct": "Datenprodukt (optional)",
+    "dataProductPlaceholder": "Datenprodukt auswählen...",
     "description": "Beschreibung",
     "descriptionPlaceholder": "optional",
     "arguments": "Argumente",
@@ -46,6 +48,18 @@
     "bindingCallable": "Python-Callable (module:attr)",
     "materialize": "Materialisieren (Admin-/Definer-Identität)",
     "materializeHint": "Ein: als Admin ausführen, die Ausgabe governen. Aus: als Aufrufer ausführen, die Eingaben governen.",
-    "argKind": "Argumentart"
+    "argKind": "Argumentart",
+    "colVisibleTo": "Sichtbar für (Rollen, kommagetrennt; leer = alle)",
+    "colVisibleToPlaceholder": "analyst, org_admin",
+    "colUnmaskedTo": "Unmaskiert für (Rollen, kommagetrennt)",
+    "colMask": "Maske",
+    "maskNone": "Keine",
+    "maskRegex": "Regex",
+    "maskConstant": "Konstante",
+    "maskTruncate": "Kürzen",
+    "maskPattern": "Muster",
+    "maskReplace": "Ersetzen",
+    "maskValue": "Wert",
+    "maskPrecision": "Genauigkeit"
   }
 }

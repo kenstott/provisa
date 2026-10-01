@@ -24,14 +24,20 @@ handle on ``AppState``; pgwire/bolt are env-port gated.
 from __future__ import annotations
 
 import asyncio
-import os
 
 from redis.exceptions import RedisError
 
 from provisa.api.admin.types import ProtocolHealthType, SystemHealthType
 
-_GRPC_DEFAULT_PORT = 50051
-_FLIGHT_DEFAULT_PORT = 8815
+
+def _port(key: str) -> int | None:
+    """A listener's configured port (an operator setting, REQ-1913); None when it is 0 — off."""
+    from provisa.core import settings_registry
+
+    port = settings_registry.value(key)
+    return port if port != 0 else None
+
+
 _PROBE_TIMEOUT_S = 0.5
 
 
@@ -82,21 +88,15 @@ async def collect_system_health() -> SystemHealthType:
         else:
             cache_mode, cache_ok = "embedded", True
 
-    cfg = state.server_cfg
     ports = {
-        "gRPC": int(os.environ.get("GRPC_PORT") or cfg.get("grpc_port") or _GRPC_DEFAULT_PORT)
-        if state._grpc_server is not None
-        else None,
-        "Arrow Flight": int(
-            os.environ.get("FLIGHT_PORT") or cfg.get("flight_port") or _FLIGHT_DEFAULT_PORT
-        )
-        if state._flight_server is not None
-        else None,
-        "pgwire": int(os.environ.get("PROVISA_PGWIRE_PORT", "0")) or None,
-        "bolt": int(os.environ.get("PROVISA_BOLT_PORT", "0")) or None,
-        # REQ-1008: MCP server binds a port only for the streamable-http transport, gated on
-        # PROVISA_MCP_PORT (same signal provisa/api/mcp/status.py reads). None => disabled.
-        "MCP": int(os.environ.get("PROVISA_MCP_PORT", "0")) or None,
+        # REQ-1913: the listener ports are operator settings; a port of 0 is a listener that is
+        # not started, reported as None.
+        "gRPC": _port("server.grpc_port") if state._grpc_server is not None else None,
+        "Arrow Flight": _port("server.flight_port") if state._flight_server is not None else None,
+        "pgwire": _port("server.pgwire_port"),
+        "bolt": _port("server.bolt_port"),
+        # REQ-1008: MCP server binds a port only for the streamable-http transport.
+        "MCP": _port("mcp.port"),
     }
     statuses = await asyncio.gather(*(_probe_tcp(p) for p in ports.values()))
     protocols = [

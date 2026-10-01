@@ -96,6 +96,21 @@ class EngineRuntime:  # REQ-825, REQ-840
         the single seam generic callers use instead of hardcoding a specific engine's dialect."""
         return self._backend.transpile_physical(pg_sql)
 
+    def engine_physical(self, pg_sql: str) -> str:
+        """Catalog-physical (``"catalog"."schema"."table"``) PostgreSQL-dialect SQL as the bound
+        engine executes it: tables in the engine's own addressing, then its dialect.
+
+        REQ-1730: an engine whose SQL cannot express a catalog-qualified reference (``pg`` —
+        PostgreSQL has no cross-database queries, ``catalog_qualified=False``) addresses a
+        source's table with the catalog folded into the schema name; every other engine keeps
+        the three-part name. The one lowering for a caller that names registered tables itself
+        rather than through a compiled plan."""
+        if not self.engine.catalog_qualified:
+            from provisa.compiler.sql_rewrite import fold_catalog_into_schema
+
+            pg_sql = fold_catalog_into_schema(pg_sql)
+        return self._backend.transpile_physical(pg_sql)
+
     def connector_pushdown(self, source_type: str):
         """The bound engine's declared pushdown Capability for ``source_type`` — the same
         passthrough pattern as ``dialect``/``transpile_physical``, so callers reach the engine's
@@ -454,8 +469,15 @@ class EngineRuntime:  # REQ-825, REQ-840
         for every OTHER table already reconciled before it — the two are independent concerns, and
         every caller of this method already treats the whole call as best-effort (REQ-846/932's
         own callers log-and-continue on failure here, never let it abort boot or registration)."""
+        from provisa.federation.registry_view import registered_sources
+        from provisa.federation.source_vault import org_vault
+
         try:
-            reconciled = await self._backend.reconcile_landed_tables(self._state)
+            # REQ-1695: the reconcile runs the engine's attach walk, which dials every registered
+            # source; it runs at boot and after a registration, outside any statement, so the
+            # vault of the org the sources are registered in is bound here.
+            async with org_vault(self._state, await registered_sources(self._state)):
+                reconciled = await self._backend.reconcile_landed_tables(self._state)
         finally:
             await self._backend.refresh_landed_views(self._state)
         return reconciled
@@ -665,9 +687,10 @@ class EngineRuntime:  # REQ-825, REQ-840
         """Engine health for the admin system-health view: ``(connected, workers, active_workers)``."""
         return self._backend.cluster_diagnostics(self._state)
 
-    def ctas_redirect(self, physical_sql: str, output_format: str) -> dict:
-        """Execute a query as CTAS-to-object-store and return the redirect manifest (engine-specific)."""
-        return self._backend.ctas_redirect(self._state, physical_sql, output_format)
+    def ctas_redirect(self, physical_sql: str, output_format: str, params: list | None) -> dict:
+        """Execute a query as CTAS-to-object-store and return the redirect manifest
+        (engine-specific). ``params``: the statement's bound values, None when it binds none."""
+        return self._backend.ctas_redirect(self._state, physical_sql, output_format, params)
 
     # -- engine-specific transports (REQ-825): designed, capability-gated ENGINE terminals ----
 

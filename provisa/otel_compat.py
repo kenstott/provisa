@@ -123,9 +123,14 @@ _request_detail: ContextVar[TraceDetail | None] = ContextVar("provisa_trace_deta
 _request_span: ContextVar[Any] = ContextVar("provisa_request_span", default=None)
 _request_transport: ContextVar[str | None] = ContextVar("provisa_request_transport", default=None)
 
-# Attributes that carry statement text or a plan. Normal detail records none of them.
+# Attributes normal detail does not record on the request span: statement text or a plan, and the
+# statement's identity (table, domain, role) — whose one home is the statement's audit row, where
+# the ops `queries` report reads them. Debug detail records them on the statement's own span.
 DEBUG_ONLY_ATTRIBUTES = frozenset(
     {
+        "provisa.table",
+        "provisa.domain",
+        "provisa.role",
         "db.statement",
         "db.query.text",
         "flight.sql",
@@ -367,7 +372,13 @@ def in_request_span(tracer: TracerProtocol, name: str, *, transport: str) -> Any
 
 
 @contextmanager
-def stage(tracer: TracerProtocol, span_name: str, *, name: str | None = None) -> "Iterator[Any]":
+def stage(
+    tracer: TracerProtocol,
+    span_name: str,
+    *,
+    name: str | None = None,
+    request_only: bool = False,
+) -> "Iterator[Any]":
     """One pipeline stage of a request.
 
     Debug detail: a child span named ``span_name``, exactly as before, and the stage's duration
@@ -378,12 +389,17 @@ def stage(tracer: TracerProtocol, span_name: str, *, name: str | None = None) ->
 
     Outside a request (startup, scheduler, discovery, MV refresh) there is no request span to
     report into, so the stage is a span in either detail.
+    ``request_only`` is for a stage that exists only to time part of a request (routing, response
+    encoding) and was never a span of its own: outside a request it is no span at all.
 
     ``name`` is the stage the duration is reported under (``govern``, ``compile``, ``route``,
     ``execute``, ``encode``, ``cache``); it defaults to ``span_name``.
     """
     request = _live_request_span()
     if request is None:
+        if request_only:
+            yield _NoopSpan()
+            return
         with tracer.start_as_current_span(span_name) as span:
             yield span
         return
@@ -418,32 +434,49 @@ def _add_stage_time(request: Any, key: str, elapsed_ms: float) -> None:
     request.set_attribute(count_attr, recorded.get(count_attr, 1) + 1)
 
 
-def record_stage(name: str, started: float, ended: float | None = None) -> None:
-    """Report a stage that has no span of its own in either detail: add ``ended - started``
-    (``time.perf_counter()`` readings; ``ended`` defaults to now) to ``stage.<name>.ms`` on the
-    request span."""
-    request = _live_request_span()
-    if request is not None:
-        finished = time.perf_counter() if ended is None else ended
-        _add_stage_time(request, name, (finished - started) * 1000)
-
-
-def timed_stage(name: str) -> Any:
-    """Decorate a synchronous function so each call is reported as stage ``name`` (see
-    :func:`record_stage`)."""
+def timed_stage(tracer: TracerProtocol, span_name: str, *, name: str | None = None) -> Any:
+    """Decorate a synchronous function so each call inside a request is a :func:`stage` of it.
+    Outside a request the function runs with no span."""
 
     def _decorate(fn: Any) -> Any:
         @functools.wraps(fn)
         def _timed(*args: Any, **kwargs: Any) -> Any:
-            started = time.perf_counter()
-            try:
+            with stage(tracer, span_name, name=name, request_only=True):
                 return fn(*args, **kwargs)
-            finally:
-                record_stage(name, started)
 
         return _timed
 
     return _decorate
+
+
+class HeldRequestSpan:
+    """The request span of a request that is several protocol messages long, held by the
+    connection handler that serves it.
+
+    :func:`request_span` is a block, and a pgwire extended-protocol request has no block to put it
+    around: Parse, Bind, Describe, Execute and Sync arrive as separate messages, each dispatched
+    on its own. The handler holds one of these instead — ``open()`` at every message of a request
+    (the first one opens the span, the rest find it open), ``close()`` when the request ends.
+    """
+
+    __slots__ = ("_name", "_scope", "_tracer", "_transport")
+
+    def __init__(self, tracer: TracerProtocol, name: str, *, transport: str) -> None:
+        self._tracer = tracer
+        self._name = name
+        self._transport = transport
+        self._scope: Any = None
+
+    def open(self) -> None:
+        if self._scope is None:
+            scope = request_span(self._tracer, self._name, transport=self._transport)
+            scope.__enter__()
+            self._scope = scope
+
+    def close(self) -> None:
+        scope, self._scope = self._scope, None
+        if scope is not None:
+            scope.__exit__(None, None, None)
 
 
 def request_fact(attr: str) -> Any:

@@ -1,0 +1,624 @@
+{
+  "settings": {
+    "limits": {
+      "default_row_limit": {
+        "label": "Default row limit",
+        "help": "The most rows a query returns when the caller sets no limit of its own."
+      },
+      "engine_query_timeout": {
+        "label": "Engine query timeout",
+        "help": "How long the federation engine may run one query before it is cancelled."
+      },
+      "retry_budget_secs": {
+        "label": "Retry budget",
+        "help": "How long a failed query keeps being retried before the error is returned; 0 turns retries off."
+      },
+      "request_timeout": {
+        "label": "Default request timeout",
+        "help": "How long a request may run before it is cancelled, for any transport without a value of its own."
+      },
+      "request_timeouts": {
+        "label": "Request timeout per transport",
+        "help": "The request time limit for each transport on its own; a transport left empty uses the default. Flight ships at 3600 seconds and pgwire at 300.",
+        "keys": {
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "jsonapi": "JSON:API",
+          "sql_http": "SQL over HTTP",
+          "cypher_http": "Cypher over HTTP",
+          "pgwire": "PostgreSQL wire",
+          "flight": "Arrow Flight",
+          "bolt": "Bolt",
+          "grpc": "gRPC",
+          "mcp": "MCP"
+        }
+      }
+    },
+    "sampling": {
+      "default_sample_size": {
+        "label": "Default sample size",
+        "help": "How many rows a sampled query reads when the caller does not say."
+      }
+    },
+    "relationships": {
+      "auto_track_fk": {
+        "label": "Auto-track foreign keys",
+        "help": "Whether registering a table also registers its foreign keys as relationships."
+      }
+    },
+    "grpc": {
+      "max_message_bytes": {
+        "label": "gRPC maximum message size",
+        "help": "The largest single gRPC message the server sends or accepts; restart required because it is a server option set when the gRPC server is built."
+      },
+      "allow_unsecured_reflection": {
+        "label": "Allow unsecured gRPC reflection",
+        "help": "Lets gRPC clients list the services of a deployment that has no authentication. Restart required; guarded because it exposes the service surface."
+      }
+    },
+    "bolt": {
+      "recv_timeout": {
+        "label": "Bolt receive timeout",
+        "help": "The hint a Bolt (Neo4j) client is given for how long to wait for a reply."
+      },
+      "allowed_origins": {
+        "label": "Bolt allowed origins",
+        "help": "The web sites allowed to open a Bolt connection from a browser; none are allowed until listed. Guarded because each entry lets that site drive the port."
+      }
+    },
+    "engine": {
+      "ready_timeout": {
+        "label": "Engine ready timeout",
+        "help": "How long startup waits for the federation engine to become ready before failing."
+      },
+      "jvm_heap_gb": {
+        "label": "Engine JVM heap (GB)",
+        "help": "The memory given to the federation engine's Java process. Takes effect when the engine restarts."
+      },
+      "query_max_memory": {
+        "label": "Query memory limit",
+        "help": "The most memory one query may use across the engine cluster. Takes effect when the engine restarts."
+      },
+      "query_max_memory_per_node": {
+        "label": "Query memory limit per node",
+        "help": "The most memory one query may use on a single engine node. Takes effect when the engine restarts."
+      },
+      "query_max_total_memory": {
+        "label": "Query total memory limit",
+        "help": "The most memory one query may use in total, including system memory. Takes effect when the engine restarts."
+      },
+      "fault_tolerant_execution": {
+        "label": "Fault-tolerant execution",
+        "help": "Whether the engine retries failed parts of a query instead of failing the whole query. Takes effect when the engine restarts."
+      },
+      "fault_tolerant_task_memory": {
+        "label": "Fault-tolerant task memory",
+        "help": "The memory reserved per task when fault-tolerant execution is on. Takes effect when the engine restarts."
+      },
+      "exchange_spool_dir": {
+        "label": "Exchange spool folder",
+        "help": "Where the engine keeps intermediate data for fault-tolerant execution. Takes effect when the engine restarts."
+      }
+    },
+    "ui": {
+      "proxy_timeout": {
+        "label": "UI proxy timeout",
+        "help": "How long the UI server waits for the API to answer a proxied request before reporting a timeout; it must outlast an engine wake."
+      }
+    },
+    "concurrency": {
+      "background_workers": {
+        "label": "Background workers",
+        "help": "The number of threads each worker process uses for background work; restart required because the pool is sized once at start."
+      },
+      "grpc_max_concurrent_rpcs": {
+        "label": "gRPC concurrent calls",
+        "help": "The most gRPC calls one worker process serves at once; more are refused. Restart required because it sizes the gRPC server's thread pool."
+      },
+      "flight_max_concurrent_streams": {
+        "label": "Arrow Flight concurrent streams",
+        "help": "The most Arrow Flight streams one worker process runs at once; more wait for a slot. Restart required because the slots are created at start."
+      },
+      "request_threads": {
+        "label": "Request threads per worker",
+        "help": "The most requests one worker process runs at once; more wait for a free thread. Restart required because the limit is fixed when the worker starts."
+      },
+      "workers": {
+        "label": "Worker processes",
+        "help": "How many worker processes the server runs. Restart required because processes are started by the launcher."
+      }
+    },
+    "security": {
+      "mode": {
+        "label": "Security mode",
+        "help": "Standard, or high security, where data endpoints refuse any client that cannot decrypt results itself and the pgwire, Bolt and MCP listeners are not started. Restart required because it decides which listeners start; guarded because it cuts off ordinary clients."
+      },
+      "multitenancy": {
+        "label": "Multitenancy",
+        "help": "Whether the deployment serves several organizations, each administering only its own data. Restart required because role grants are set at start; guarded because it changes who may administer the deployment."
+      },
+      "superuser": {
+        "username": {
+          "label": "Break-glass account name",
+          "help": "The name of the break-glass account that can always sign in. Restart required; guarded."
+        },
+        "password": {
+          "label": "Break-glass account password",
+          "help": "The break-glass account's password. Secret; restart required; guarded."
+        }
+      }
+    },
+    "redis": {
+      "require_tls": {
+        "label": "Require TLS for Redis",
+        "help": "Refuses to start on a Redis address that does not use TLS. Restart required because it is checked when the cache connects."
+      }
+    },
+    "auth": {
+      "login_throttle": {
+        "max_attempts": {
+          "label": "Sign-in attempts before lockout",
+          "help": "How many failed sign-ins within the window lock an account out. Guarded because raising it weakens the brake on password guessing."
+        },
+        "window_seconds": {
+          "label": "Sign-in attempt window",
+          "help": "How far back failed sign-ins are counted. Guarded because shortening it weakens the brake on password guessing."
+        },
+        "lockout_seconds": {
+          "label": "Lockout duration",
+          "help": "How long a locked-out account is refused. Guarded because shortening it weakens the brake on password guessing."
+        }
+      }
+    },
+    "server": {
+      "hostname": {
+        "label": "Host name",
+        "help": "The host name the deployment advertises to clients in the addresses it hands out. Restart required because servers started at boot carry it."
+      },
+      "grpc_port": {
+        "label": "gRPC port",
+        "help": "The port the gRPC server listens on. Restart required; guarded because clients and firewalls must follow a change."
+      },
+      "flight_port": {
+        "label": "Arrow Flight port",
+        "help": "The port the Arrow Flight server listens on. Restart required; guarded because clients and firewalls must follow a change."
+      },
+      "pgwire_port": {
+        "label": "PostgreSQL wire port",
+        "help": "The port the PostgreSQL-protocol server listens on; 0 leaves it off. Restart required; guarded because it opens or closes a listener."
+      },
+      "bolt_port": {
+        "label": "Bolt port",
+        "help": "The port the Bolt (Neo4j) server listens on; 0 leaves it off. Restart required; guarded because it opens or closes a listener."
+      },
+      "airport_port": {
+        "label": "Airport port",
+        "help": "The port the Airport Flight service listens on; 0 leaves it off. Restart required; guarded because it opens or closes a listener."
+      },
+      "port": {
+        "label": "HTTP API port",
+        "help": "The port the HTTP API listens on. Restart required; guarded because the UI and every client must follow a change."
+      }
+    },
+    "tls": {
+      "cert": {
+        "label": "TLS certificate",
+        "help": "The path of the certificate file every protocol listener presents, unless a protocol names its own. Restart required; guarded because a wrong file stops TLS listeners starting."
+      },
+      "key": {
+        "label": "TLS private key",
+        "help": "The path of the private key that goes with the certificate. Restart required; guarded because a wrong file stops TLS listeners starting."
+      },
+      "grpc_cert": {
+        "label": "gRPC TLS certificate",
+        "help": "A certificate file for the gRPC listener alone, instead of the shared one. Restart required; guarded."
+      },
+      "grpc_key": {
+        "label": "gRPC TLS private key",
+        "help": "The private key for the gRPC listener's own certificate. Restart required; guarded."
+      },
+      "flight_cert": {
+        "label": "Arrow Flight TLS certificate",
+        "help": "A certificate file for the Arrow Flight listener alone, instead of the shared one. Restart required; guarded."
+      },
+      "flight_key": {
+        "label": "Arrow Flight TLS private key",
+        "help": "The private key for the Arrow Flight listener's own certificate. Restart required; guarded."
+      },
+      "pgwire_cert": {
+        "label": "PostgreSQL wire TLS certificate",
+        "help": "A certificate file for the PostgreSQL-protocol listener alone, instead of the shared one. Restart required; guarded."
+      },
+      "pgwire_key": {
+        "label": "PostgreSQL wire TLS private key",
+        "help": "The private key for the PostgreSQL-protocol listener's own certificate. Restart required; guarded."
+      },
+      "bolt_cert": {
+        "label": "Bolt TLS certificate",
+        "help": "A certificate file for the Bolt listener alone, instead of the shared one. Restart required; guarded."
+      },
+      "bolt_key": {
+        "label": "Bolt TLS private key",
+        "help": "The private key for the Bolt listener's own certificate. Restart required; guarded."
+      },
+      "http_cert": {
+        "label": "HTTP API TLS certificate",
+        "help": "The certificate file the HTTP API presents. Restart required; guarded."
+      },
+      "http_key": {
+        "label": "HTTP API TLS private key",
+        "help": "The private key for the HTTP API's certificate. Restart required; guarded."
+      }
+    },
+    "cache": {
+      "enabled": {
+        "label": "Result cache enabled",
+        "help": "Whether query results may be cached at all. Restart required because the cache store is built at start."
+      },
+      "default_ttl": {
+        "label": "Default cache lifetime",
+        "help": "How long a cached result is kept when nothing more specific says; an organization can set its own. Restart required for the deployment default."
+      },
+      "redis_url": {
+        "label": "Redis address",
+        "help": "The address of the Redis server used for caching and rate limiting; unset uses the built-in one. Secret because it can carry a password; restart required because connections are opened at start; guarded."
+      },
+      "redis_org_password": {
+        "label": "Organization Redis password",
+        "help": "The password given to each organization's own Redis account when it is created. Secret; guarded."
+      },
+      "redis_embedded": {
+        "label": "Built-in Redis",
+        "help": "Whether this is a desktop launch running on the built-in Redis. Set by the launcher; not editable."
+      }
+    },
+    "apq": {
+      "ttl": {
+        "label": "Persisted query lifetime",
+        "help": "How long a persisted query stays registered. Restart required because it is handed to the cache when it is built."
+      }
+    },
+    "compiler": {
+      "compiled_query_cache_ttl": {
+        "label": "Compiled query plan lifetime",
+        "help": "How long a compiled query plan is reused before it is rebuilt. Restart required because each worker reads it when it builds its cache."
+      }
+    },
+    "redirect": {
+      "enabled": {
+        "label": "Redirect enabled",
+        "help": "The deployment's default for whether large results are written to object storage and returned as a link; an organization can set its own."
+      },
+      "threshold": {
+        "label": "Redirect threshold",
+        "help": "The deployment's default row count above which a result is redirected to object storage; an organization can set its own."
+      },
+      "ttl": {
+        "label": "Redirect link lifetime",
+        "help": "The deployment's default for how long a redirect link stays valid; an organization can set its own."
+      },
+      "default_format": {
+        "label": "Redirect file format",
+        "help": "The deployment's default file format for redirected results; an organization can set its own."
+      },
+      "bucket": {
+        "label": "Redirect bucket",
+        "help": "The object-storage bucket redirected results are written to. Guarded because changing it sends results somewhere else."
+      },
+      "endpoint": {
+        "label": "Redirect object store address",
+        "help": "The address of the object store redirected results are written to. Guarded because changing it sends results somewhere else."
+      },
+      "region": {
+        "label": "Redirect object store region",
+        "help": "The object store's region."
+      },
+      "encrypt": {
+        "label": "Encrypt redirected results",
+        "help": "Whether redirected results are encrypted before they are uploaded."
+      },
+      "local_dir": {
+        "label": "Redirect local folder",
+        "help": "The folder redirected results are written to when no object store can be reached."
+      },
+      "access_key": {
+        "label": "Redirect access key",
+        "help": "The object store's access key. Secret; guarded."
+      },
+      "secret_key": {
+        "label": "Redirect secret key",
+        "help": "The object store's secret key. Secret; guarded."
+      }
+    },
+    "otel": {
+      "trace_detail": {
+        "label": "Trace detail",
+        "help": "How much detail every request's trace carries by default: normal, or debug. Restart required because it is set when tracing is configured."
+      },
+      "trace_sql": {
+        "label": "SQL in traces",
+        "help": "Whether traces carry the SQL of each stage: off, redacted (values blanked), or full. Guarded because full writes query values into traces."
+      },
+      "trace_ast": {
+        "label": "Parsed statements in traces",
+        "help": "Whether traces also carry the parsed form of each statement, with values blanked."
+      },
+      "metric_export_interval": {
+        "label": "Metric export interval",
+        "help": "How often metrics are exported. Restart required because it is handed to the exporter when it is built."
+      },
+      "endpoint": {
+        "label": "Telemetry endpoint",
+        "help": "Where traces and metrics are sent."
+      },
+      "protocol": {
+        "label": "Telemetry protocol",
+        "help": "The transport the telemetry endpoint speaks: gRPC or HTTP."
+      },
+      "service_name": {
+        "label": "Telemetry service name",
+        "help": "The name this deployment's telemetry is reported under."
+      },
+      "sample_rate": {
+        "label": "Trace sample rate",
+        "help": "The share of requests that are traced, from 0 to 1."
+      },
+      "log_level": {
+        "label": "Telemetry log level",
+        "help": "The lowest severity of log record exported with telemetry."
+      },
+      "subsystem_traces": {
+        "label": "Subsystem traces",
+        "help": "Which internal subsystems write their own traces."
+      },
+      "compact_cron": {
+        "label": "Compaction schedule",
+        "help": "When stored telemetry files are merged into larger ones."
+      },
+      "compact_batch_size": {
+        "label": "Compaction batch size",
+        "help": "How many rows each merge of stored telemetry writes at a time."
+      },
+      "compact_file_chunk": {
+        "label": "Compaction file chunk",
+        "help": "How many small telemetry files are read together in one merge step."
+      },
+      "compact_max_files_per_run": {
+        "label": "Compaction files per run",
+        "help": "The most telemetry files one merge run processes."
+      },
+      "ops_snapshot_retention_hours": {
+        "label": "Operational snapshot retention (hours)",
+        "help": "How long operational snapshots are kept."
+      },
+      "span_export_delay_millis": {
+        "label": "Span export delay (milliseconds)",
+        "help": "How long spans are batched before they are exported."
+      },
+      "otlp2parquet_max_age_secs": {
+        "label": "Parquet writer maximum age (seconds)",
+        "help": "How long the telemetry writer holds rows before writing a file."
+      },
+      "collector_batch_timeout_ms": {
+        "label": "Collector batch timeout (milliseconds)",
+        "help": "How long the collector batches telemetry before forwarding it."
+      },
+      "s3_endpoint": {
+        "label": "Telemetry store address",
+        "help": "The object store stored telemetry is written to."
+      },
+      "s3_bucket": {
+        "label": "Telemetry store bucket",
+        "help": "The bucket stored telemetry is written to."
+      },
+      "s3_region": {
+        "label": "Telemetry store region",
+        "help": "The region of the telemetry object store."
+      },
+      "s3_access_key": {
+        "label": "Telemetry store access key",
+        "help": "The telemetry object store's access key. Secret."
+      },
+      "s3_secret_key": {
+        "label": "Telemetry store secret key",
+        "help": "The telemetry object store's secret key. Secret."
+      },
+      "support_endpoint": {
+        "label": "Support telemetry endpoint",
+        "help": "Where a copy of telemetry is sent for vendor support, when set."
+      },
+      "support_redact_sql_literals": {
+        "label": "Redact SQL values for support",
+        "help": "Whether values in SQL are blanked in the copy sent for support."
+      },
+      "support_redact_attributes": {
+        "label": "Redacted attributes for support",
+        "help": "Trace attributes removed from the copy sent for support."
+      }
+    },
+    "control_plane": {
+      "tenant_url": {
+        "label": "Organization database address",
+        "help": "The database that holds each organization's configuration. Not editable: the deployment needs it to find its stored settings."
+      },
+      "platform_url": {
+        "label": "Platform database address",
+        "help": "The database that holds accounts, organizations and these settings. Not editable: the deployment needs it to find its stored settings."
+      },
+      "org_id": {
+        "label": "Starting organization",
+        "help": "The organization this deployment starts as. Not editable: it is read before stored settings can be."
+      },
+      "pool_min": {
+        "label": "Minimum database connections",
+        "help": "The smallest number of control-plane database connections each worker keeps. Not editable: the pool is opened before stored settings can be read."
+      },
+      "pool_max": {
+        "label": "Maximum database connections",
+        "help": "The largest number of control-plane database connections each worker opens. Not editable: the pool is opened before stored settings can be read."
+      }
+    },
+    "bootstrap": {
+      "config_path": {
+        "label": "Config file",
+        "help": "The config file this deployment was started on. Not editable: it is read before stored settings can be."
+      },
+      "data_dir": {
+        "label": "Data folder",
+        "help": "The folder the deployment keeps its files in. Not editable: it is read before stored settings can be."
+      },
+      "home": {
+        "label": "Home folder",
+        "help": "The deployment's home folder for certificates and local stores. Not editable: it is read before stored settings can be."
+      },
+      "repo_dir": {
+        "label": "Configuration history folder",
+        "help": "The folder that holds each organization's configuration history. Not editable: it is read before stored settings can be."
+      },
+      "demo": {
+        "label": "Demo mode",
+        "help": "Whether the deployment was started in demo mode. Set by the launcher; not editable."
+      }
+    },
+    "mcp": {
+      "max_rows": {
+        "label": "MCP row limit",
+        "help": "The most rows one MCP tool call returns to an AI client."
+      },
+      "port": {
+        "label": "MCP port",
+        "help": "The port the MCP server listens on; 0 leaves it off. Restart required; guarded because it opens or closes a listener."
+      },
+      "host": {
+        "label": "MCP host",
+        "help": "The network address the MCP server binds; 127.0.0.1 keeps it to this machine. Restart required; guarded because it decides who can reach the port."
+      },
+      "tls": {
+        "label": "MCP TLS",
+        "help": "Whether the MCP server serves HTTPS. Restart required; guarded."
+      },
+      "role": {
+        "label": "MCP local role",
+        "help": "The role local (stdio) MCP calls run as; until it is set those calls are refused. Guarded because it grants that role's access to anyone who can start the local client."
+      },
+      "external_url": {
+        "label": "MCP external address",
+        "help": "The MCP address shown to users when the deployment sits behind a proxy."
+      },
+      "chat_model": {
+        "label": "Chat model",
+        "help": "The model the built-in chat uses, overriding each organization's own choice."
+      }
+    },
+    "udf": {
+      "egress_allowlist": {
+        "label": "Hosted function egress allowlist",
+        "help": "The hosts a hosted function may call out to; everything else is refused. Guarded because each entry opens an outbound path."
+      }
+    },
+    "cdc": {
+      "consumer_group_id": {
+        "label": "CDC consumer group",
+        "help": "The name this deployment uses when it reads change events from a message broker."
+      }
+    },
+    "graphql_remote": {
+      "max_object_depth": {
+        "label": "Remote GraphQL object depth",
+        "help": "How deep nested objects from a remote GraphQL source are followed."
+      },
+      "max_list_depth": {
+        "label": "Remote GraphQL list depth",
+        "help": "How deep nested lists from a remote GraphQL source are followed."
+      },
+      "max_list_items": {
+        "label": "Remote GraphQL list items",
+        "help": "The most items read from one list of a remote GraphQL source."
+      }
+    },
+    "provisioning": {
+      "engine_namespace": {
+        "label": "Engine namespace",
+        "help": "The Kubernetes namespace engine clusters are created in."
+      },
+      "engine_cluster_mode": {
+        "label": "Engine cluster mode",
+        "help": "The kind of Kubernetes cluster engines are provisioned on."
+      },
+      "engine_cpu": {
+        "label": "Engine CPU",
+        "help": "The CPU given to each provisioned engine."
+      },
+      "engine_shard": {
+        "label": "Engine shard",
+        "help": "The engine shard this node belongs to."
+      },
+      "engine_otlp_endpoint": {
+        "label": "Engine telemetry endpoint",
+        "help": "Where provisioned engines send their own telemetry."
+      },
+      "engine_control_plane_host": {
+        "label": "Engine control-plane host",
+        "help": "The address engines use to reach the control-plane database, when it differs from the one this server uses."
+      },
+      "engine_control_plane_port": {
+        "label": "Engine control-plane port",
+        "help": "The port engines use to reach the control-plane database."
+      },
+      "engine_lakehouse_metastore_host": {
+        "label": "Lakehouse metastore host",
+        "help": "The address of the lakehouse metastore engines use."
+      },
+      "engine_lakehouse_metastore_port": {
+        "label": "Lakehouse metastore port",
+        "help": "The port of the lakehouse metastore engines use."
+      },
+      "engine_otel_s3_endpoint": {
+        "label": "Engine telemetry store address",
+        "help": "The telemetry object store's address as engines reach it."
+      },
+      "isolated_engine_image": {
+        "label": "Dedicated engine image",
+        "help": "The container image used for an organization's dedicated engine."
+      },
+      "isolated_engine_network": {
+        "label": "Dedicated engine network",
+        "help": "The container network a dedicated engine is attached to."
+      },
+      "isolated_engine_memory": {
+        "label": "Dedicated engine memory",
+        "help": "The memory given to a dedicated engine."
+      },
+      "isolated_engine_host_template": {
+        "label": "Dedicated engine host pattern",
+        "help": "The pattern a dedicated engine's host name is built from."
+      },
+      "isolated_engine_port": {
+        "label": "Dedicated engine port",
+        "help": "The port a dedicated engine listens on."
+      },
+      "isolated_engine_ready_timeout": {
+        "label": "Dedicated engine ready timeout",
+        "help": "How long to wait for a dedicated engine to become ready."
+      },
+      "isolated_engine_docker_socket": {
+        "label": "Dedicated engine Docker socket",
+        "help": "The Docker socket used to start dedicated engines."
+      },
+      "zaychik_cpu": {
+        "label": "Query gateway CPU",
+        "help": "The CPU given to the engine's query gateway."
+      },
+      "zaychik_memory": {
+        "label": "Query gateway memory",
+        "help": "The memory given to the engine's query gateway."
+      }
+    },
+    "readonlyReasons": {
+      "locates_control_plane": "This setting tells the server where its control plane is, so it cannot be changed from the control plane.",
+      "read_before_control_plane": "This setting is read before the control plane is available, so it is set outside the UI.",
+      "set_by_launcher": "The launcher that started this deployment sets this value.",
+      "set_by_desktop_launcher": "The desktop launcher sets this value for this installation."
+    }
+  }
+}

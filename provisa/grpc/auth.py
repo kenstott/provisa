@@ -178,7 +178,9 @@ class AuthInterceptor(grpc.ServerInterceptor):
         except RuntimeError as exc:
             return _abort_handler(grpc.StatusCode.INTERNAL, str(exc))
         if not active:
-            return continuation(handler_call_details)
+            # REQ-074/REQ-1386: the deployment authenticates nobody, but the RPC is still audited —
+            # as the anonymous principal.
+            return _with_anonymous(continuation(handler_call_details))
 
         credential = _bearer(metadata)
         if not credential:
@@ -244,6 +246,36 @@ def _with_principal(
     def unary(request, context):
         with rpc_scope() as rpc:
             _authenticate(rpc, context, state, credential, requested)
+            return behavior(request, context)  # pyright: ignore[reportGeneralTypeIssues]
+
+    return _rebuild(handler, streaming if handler.response_streaming else unary)
+
+
+def _with_anonymous(handler: grpc.RpcMethodHandler | None) -> grpc.RpcMethodHandler | None:
+    """Rebuild ``handler`` so it runs with the anonymous audit identity published in the RPC's
+    own context (an unsecured deployment) — the context every coroutine of the RPC runs in, where
+    the pipeline's audit write reads it. ``None`` — an unknown method — stays None."""
+    if handler is None:
+        return None
+    from provisa.audit.context import ANONYMOUS_USER
+    from provisa.grpc.rpc_scope import rpc_scope
+
+    behavior = (
+        handler.unary_unary or handler.unary_stream or handler.stream_unary or handler.stream_stream
+    )
+    assert behavior is not None  # a resolved handler always carries exactly one behavior
+
+    async def _publish() -> None:
+        set_audit_identity(AuditIdentity(user_id=ANONYMOUS_USER, surface="grpc"))
+
+    def streaming(request, context):
+        with rpc_scope() as rpc:
+            rpc.run(_publish())
+            yield from behavior(request, context)  # pyright: ignore[reportGeneralTypeIssues]
+
+    def unary(request, context):
+        with rpc_scope() as rpc:
+            rpc.run(_publish())
             return behavior(request, context)  # pyright: ignore[reportGeneralTypeIssues]
 
     return _rebuild(handler, streaming if handler.response_streaming else unary)

@@ -19,7 +19,7 @@
     "steps": {
       "step0": {
         "title": "ברוכים הבאים, בואו נצא לסיור",
-        "description": "🧭 המצפן הזה פותח מחדש את הסיור בכל שלב. אפשר לצאת מתי שרוצים — לחיצה על האפליקציה או הקשה על <kbd>Esc</kbd>.<p><strong>Provisa</strong> הוא מהדר שאילתות מבוקר לנתונים פדרטיביים, שנשאר מחוץ לנתיב הנתונים.</p><p>🎯 <strong>כל הליבה היא תרגיל קצר אחד:</strong> חיבור כמה מסדי נתונים, ואז שאילתה עליהם <strong>בשבע דרכים</strong> — או דילוג על התחביר ופשוט שאלה בשפה טבעית. כחמש דקות, <strong>ישירות מהמחשב שלכם</strong>: בלי שרתים, בלי תשתית להקים (זה מגיע אחר כך, כשתהיו מוכנים).</p><div class='tour-tags'><span>שפה טבעית</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>כל מה ש<em>מגיע אחרי</em> זה — עוד מקורות, פדרציה, קבצים, קשרים, Views, Pipeline מתוזמן — הוא האופן שבו <strong>גדלים</strong> עם הפלטפורמה, לא מה שצריך ביום הראשון. נסמן היכן הליבה מסתיימת.</p><p>מוכנים? בואו נחבר מקור. →</p>"
+        "description": "🧭 המצפן הזה פותח את הסיור מחדש בכל עת. אפשר לעזוב מתי שרוצים — לחצו על האפליקציה או הקישו <kbd>Esc</kbd>.<p><strong>Provisa</strong> היא שכבה סמנטית פעילה לנתונים שלכם, שנשארת מחוץ לנתיב הנתונים.</p><p>🎯 <strong>כל הליבה היא תרגיל קצר אחד:</strong> חברו כמה מסדי נתונים, ואז שאלו אותם ב<strong>שבע דרכים</strong> — או דלגו על התחביר ופשוט שאלו בשפה חופשית. כחמש דקות, <strong>ישר משולחן העבודה</strong>: בלי שרתים, בלי תשתית להקים (זה יגיע אחר כך, כשתהיו מוכנים).</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>כל מה <em>שאחרי</em> זה — עוד מקורות, פדרציה, קבצים, קשרים, תצוגות, Pipelines מתוזמנים — הוא הדרך שבה אתם <strong>גדלים</strong> עם הפלטפורמה, לא מה שצריך ביום הראשון. נסמן היכן הליבה מסתיימת.</p><p>מוכנים? בואו נחבר מקור. →</p>"
       },
       "step1": {
         "title": "מתחילים ממקורות",
@@ -136,6 +136,10 @@
       "stepGlossary": {
         "title": "מילון מונחים עסקי חי",
         "description": "📖 כל מונח מקושר בחזרה לעמודות הנושאות אותו — ניתן לערוך שמות, הגדרות וקשרים מוקלדים (סוג של, חלק מ, מילה נרדפת של) ידנית, או לתת ל-AI להשלים את הפערים: <strong>✨ הגדרות</strong> מנסחת טיוטה רק למונחים שעדיין חסרה להם הגדרה, ו-<strong>✨ קשרים</strong> מציעה קישורים על פני כל המילון. סמנו מונח כ<strong>מוחרג מייצוא</strong> כדי לשמור אותו מחוץ למטא-נתונים המתפרסמים."
+      },
+      "stepDataProducts": {
+        "title": "מוצרי נתונים, מפורסמים במקום שבו הצרכנים כבר מחפשים",
+        "description": "📦 כל מוצר כאן מדבר <strong>ODPS</strong> (Open Data Product Standard) — בעלים, צוות, מטרה, מגבלות, שימוש, SLA, תמיכה, מאפיינים מותאמים אישית — ו-Provisa מפרסמת אותו אוטומטית ישירות אל <strong>Snowflake Horizon</strong> ו-<strong>BigQuery Dataplex</strong>, כך שהוא מופיע כמוצר מקורי בקטלוג שהצרכנים שלכם כבר משתמשים בו.<p>🔁 אין שלב ייצוא נפרד שאפשר לשכוח: המפרט <strong>נגזר מהמודל החי</strong> — טבלאות, Data Lineage, תגיות, מונחי מילון — בכל פעם, ולכן מה שמפורסם אינו יכול להתיישן כפי שקובץ ODPS שמתוחזק ידנית היה מתיישן.</p>"
       }
     },
     "status": {

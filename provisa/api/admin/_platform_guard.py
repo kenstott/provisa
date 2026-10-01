@@ -116,3 +116,47 @@ def require_org_settings(request: Request) -> None:  # REQ-1349
 def require_observability(request: Request) -> None:  # REQ-1349
     """Raise 403 unless the caller holds ``observability`` (read-only performance and health)."""
     _require_right(request, Capability.OBSERVABILITY.value)
+
+
+def is_anonymous(request: Request) -> bool:  # REQ-1913
+    """Whether the caller is the anonymous identity of a deployment with no auth provider."""
+    identity = getattr(request.state, "identity", None)
+    return identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS
+
+
+def has_deployment_settings(request: Request) -> bool:  # REQ-1913
+    """Whether the caller may read and edit deployment settings — the non-raising form of
+    :func:`require_deployment_settings`, for ``GET /admin/settings``, which omits the
+    deployment-wide blocks rather than refusing the request (ordinary pages read it)."""
+    from provisa.api.admin.capabilities import _resolved_capabilities
+    from provisa.api.app import state
+
+    if is_anonymous(request):
+        return True  # dev mode — no auth configured
+    caps = _resolved_capabilities(request.state.identity, state)
+    return has_platform_bypass(caps) or (
+        Capability.PLATFORM_SETTINGS.value in caps and Capability.CROSS_ORG.value in caps
+    )
+
+
+def require_deployment_settings(request: Request) -> None:  # REQ-1913, REQ-1337
+    """Raise 403 unless the caller is a platform administrator — in EVERY deployment.
+
+    The operator settings catalog is the control plane's. ``platform_settings`` alone does not
+    reach it: a single-tenant deployment grants that right to org_admin (``apply_tenancy_role_
+    grants``), and the catalog is not the org administrator's there either. The gate still reads
+    rights, never a role name: a control-plane role is the one holding ``cross_org`` (REQ-1337 —
+    withdrawn from every role but platform_admin in both tenancy modes), so the catalog needs
+    ``platform_settings`` AND ``cross_org``, or the platform bypass.
+
+    Dev mode (no auth configured — anonymous identity) is allowed, matching every other admin
+    gate; the guarded settings are refused for that caller where they are stored.
+    """
+
+    if has_deployment_settings(request):
+        return
+    raise ApiError(
+        403,
+        "platform.control_plane_role_required",
+        "deployment settings are edited by a platform administrator",
+    )

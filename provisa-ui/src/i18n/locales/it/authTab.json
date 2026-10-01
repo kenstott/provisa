@@ -14,7 +14,7 @@
     "loading": "Caricamento in corso…",
     "saved": "Salvato.",
     "savedRestartRequired": "Salvato. Riavviare il servizio per applicare.",
-    "secretOnFile": "Salvato — lascia vuoto per mantenerlo",
+    "secretOnFile": "Memorizzato — lascia vuoto per mantenerlo",
     "secretNotSet": "Non impostato"
   }
 }

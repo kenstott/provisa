@@ -22,10 +22,11 @@
     "dryRun": "Testlauf",
     "dryRunHelp": "Führt den Vertrag gegen die Live-Tabelle aus und schreibt nichts.",
     "runNow": "Jetzt ausführen",
-    "runNowHelp": "Führt den geplanten Prüfjob sofort aus und speichert das Ergebnis.",
+    "runNowHelp": "Führt den geplanten Prüfjob sofort aus und schreibt das Ergebnis.",
     "dryRunNoResponse": "Der Testlauf lieferte keine Antwort.",
     "datasetLabel": "Dataset",
     "datasetHelp": "Die Tabelle, die der Checker beobachtet, als „<Datenquelle>/<Schema>/<Tabelle>“. Sie wird gegen den gesteuerten Katalog aufgelöst, genau wie beim Scan.",
+    "datasetTableLabel": "Tabelle",
     "argsHelp": "Jede Zeile ist eine Prüfung. Bearbeiten Sie ihre Argumente direkt — der Vertragstext des Checkers wird aus diesen Zeilen serialisiert.",
     "invalidRow": "Die Argumente dieser Zeile ließen sich nicht parsen; der vorherige Wert wurde beibehalten."
   }

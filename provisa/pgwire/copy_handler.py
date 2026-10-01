@@ -21,6 +21,7 @@ COPY FROM: receives PG COPY wire data, parses rows, inserts into writable
 from __future__ import annotations
 
 from provisa.core.connection_loop import run_on_connection_loop
+from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
 import csv
 import io
 import logging
@@ -341,6 +342,7 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         except Exception:
             self._finalize_audit(plan, 500, org_id)
             raise
+        plan.row_count = nrows
         self._finalize_audit(plan, 200, org_id)
 
         self._send_copy_out_response(fmt)
@@ -376,7 +378,9 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         # a MATERIALIZED source this plan reads gets landed before the engine executes — mirrors
         # the identical ENGINE-route bypass fixes elsewhere (pgwire/server.py, api/flight/server.py,
         # api/airport/query.py).
-        run_on_connection_loop(ensure_resident(state, plan.sources), timeout=120)
+        run_on_connection_loop(
+            ensure_resident(state, plan.sources), timeout=request_timeout_for("pgwire")
+        )
         # Arrow Flight is an advertised, engine-specific transport (REQ-825): route through the
         # bound engine, which fails closed if the engine lacks ARROW or the proxy is unconfigured.
         table = state.federation_engine.execute_engine_arrow(plan.physical_sql, plan.exec_params)
@@ -386,7 +390,7 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
     def _exec_direct_plan(self, plan: _Plan, fmt: str) -> tuple[bytes, int]:
         from provisa.pgwire._pipeline import _execute_plan
 
-        result = run_on_connection_loop(_execute_plan(plan), timeout=120)
+        result = run_on_connection_loop(_execute_plan(plan), timeout=request_timeout_for("pgwire"))
         data_bytes = _queryresult_to_copy_bytes(result, fmt)
         return data_bytes, len(result.rows)
 
@@ -469,7 +473,8 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         target_table = tm.table_name or tm.original_table_name or table
 
         return run_on_connection_loop(
-            _insert_rows(tm.source_id, target_schema, target_table, use_cols, rows), timeout=120
+            _insert_rows(tm.source_id, target_schema, target_table, use_cols, rows),
+            timeout=request_timeout_for("pgwire"),
         )
 
     def _send_copy_in_response(self, _fmt: str) -> None:  # pyright: ignore[reportUnusedParameter]

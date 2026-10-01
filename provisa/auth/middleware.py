@@ -103,6 +103,9 @@ def _requested_org_from_host(request: Request) -> str | None:
 # reachable by unauthenticated orchestrators (k8s, load balancers) — same as /health.
 _SKIP_PATHS = {
     "/health",
+    # REQ-1913: the UI server (its own process, no identity) asks for the operator settings it
+    # runs on. The answer is its proxy timeout — a number, no data.
+    "/internal/ui-server-settings",
     "/live",
     "/ready",
     "/data/openapi/docs",

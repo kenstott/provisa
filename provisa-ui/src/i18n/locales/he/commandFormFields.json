@@ -31,6 +31,8 @@
     "query": "שאילתה",
     "domain": "דומיין",
     "selectDomain": "בחירת דומיין...",
+    "dataProduct": "מוצר נתונים (אופציונלי)",
+    "dataProductPlaceholder": "בחירת מוצר נתונים...",
     "description": "תיאור",
     "descriptionPlaceholder": "אופציונלי",
     "arguments": "ארגומנטים",
@@ -46,6 +48,18 @@
     "bindingCallable": "Python callable (module:attr)",
     "materialize": "מטריאליזציה (זהות admin/definer)",
     "materializeHint": "פועל: ריצה כ-admin, ממשל על הפלט. כבוי: ריצה כזהות הקורא, ממשל על הקלטים.",
-    "argKind": "סוג ארגומנט"
+    "argKind": "סוג ארגומנט",
+    "colVisibleTo": "גלוי ל- (תפקידים, מופרדים בפסיקים; ריק = כולם)",
+    "colVisibleToPlaceholder": "analyst, org_admin",
+    "colUnmaskedTo": "ללא מיסוך עבור (תפקידים, מופרדים בפסיקים)",
+    "colMask": "מיסוך",
+    "maskNone": "ללא",
+    "maskRegex": "Regex",
+    "maskConstant": "קבוע",
+    "maskTruncate": "קיצוץ",
+    "maskPattern": "תבנית",
+    "maskReplace": "החלפה",
+    "maskValue": "ערך",
+    "maskPrecision": "דיוק"
   }
 }

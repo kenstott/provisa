@@ -31,6 +31,8 @@
     "query": "查询",
     "domain": "域",
     "selectDomain": "选择域...",
+    "dataProduct": "数据产品（可选）",
+    "dataProductPlaceholder": "选择数据产品...",
     "description": "描述",
     "descriptionPlaceholder": "可选",
     "arguments": "参数",
@@ -46,6 +48,18 @@
     "bindingCallable": "Python 可调用对象 (module:attr)",
     "materialize": "物化（以管理员/定义者身份）",
     "materializeHint": "开：以管理员身份运行，对输出进行治理。关：以调用者身份运行，对输入进行治理。",
-    "argKind": "参数类型"
+    "argKind": "参数类型",
+    "colVisibleTo": "可见角色（以逗号分隔；留空 = 所有人）",
+    "colVisibleToPlaceholder": "analyst, org_admin",
+    "colUnmaskedTo": "不脱敏角色（以逗号分隔）",
+    "colMask": "脱敏",
+    "maskNone": "无",
+    "maskRegex": "正则表达式",
+    "maskConstant": "常量",
+    "maskTruncate": "截断",
+    "maskPattern": "模式",
+    "maskReplace": "替换",
+    "maskValue": "值",
+    "maskPrecision": "精度"
   }
 }

@@ -73,5 +73,54 @@ async def test_clickhouse_named_source_reads_through_source_pool(seeded):
     await driver.close()
 
 
+def test_concurrent_requests_on_one_worker_each_get_their_own_session(seeded):
+    """REQ-1882: every request runs on its own thread and a connection is used by one request at a
+    time. The driver held ONE clickhouse-connect client — one ClickHouse session — for the whole
+    worker, so a second in-flight request failed with "Attempt to execute concurrent queries
+    within the same session". Eight requests in flight at once on one driver must all succeed."""
+    import asyncio
+    import threading
+
+    from provisa.core.connection_loop import connection_loop
+
+    pool = SourcePool()
+    asyncio.run(
+        pool.add(
+            source_id=_SID,
+            source_type="clickhouse",
+            host=_HOST or "localhost",
+            port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
+            database="default",
+            user=os.environ.get("CLICKHOUSE_USER", "default"),
+            password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
+            max_size=4,
+        )
+    )
+    n = 8
+    start = threading.Barrier(n)
+    results: list = [None] * n
+    errors: list[BaseException] = []
+
+    def _request(i: int) -> None:
+        try:
+            start.wait(timeout=30)
+            with connection_loop() as cl:
+                # sleep() keeps each statement in flight long enough to overlap the others
+                results[i] = cl.run(
+                    pool.execute(_SID, f"SELECT count() AS n, sleep(0.5) AS s FROM {seeded}")
+                )
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_request, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=120)
+    asyncio.run(pool.close_all())
+    assert not errors, errors[:2]
+    assert [r.rows[0][0] for r in results] == [3] * n
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])

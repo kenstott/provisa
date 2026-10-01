@@ -645,6 +645,19 @@ class PostgresFdwConnector(Connector):  # REQ-893
                 f'INTO "{local_schema}"',
             ],
             "local_schema": local_schema,
+            # What an engine-side copy of ONE table needs (PgFederationRuntime.copy_replica):
+            # the statements that make the server reachable, and the names to import a single
+            # foreign table by.
+            "server_ddl_for_copy": [
+                "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
+                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
+                f"OPTIONS (host '{source.host}', port '{source.port}', dbname '{source.database}')",
+                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
+                f"OPTIONS (user '{source.username}', password '{source.password}')",
+                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
+            ],
+            "server": server,
+            "remote_schema": remote_schema,
         }
 
 

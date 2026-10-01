@@ -58,7 +58,8 @@ async def test_hive_driver_execute_maps_result() -> None:
     mock_conn.cursor.return_value = mock_cursor
 
     driver = HiveDriver()
-    driver._conn = mock_conn  # bypass connect() — this test targets execute()'s own mapping
+    with patch("impala.dbapi.connect", MagicMock(return_value=mock_conn)):
+        await driver.connect(host="h", port=10000, database="default", user="hive", password="")
     result = await driver.execute("SELECT 1 AS one, 'x' AS two")
 
     assert result.column_names == ["one", "two"]
@@ -105,7 +106,8 @@ async def test_exasol_driver_execute_maps_result() -> None:
     mock_conn.execute.return_value = mock_stmt
 
     driver = ExasolDriver()
-    driver._conn = mock_conn
+    with patch("pyexasol.connect", MagicMock(return_value=mock_conn)):
+        await driver.connect(host="exa.local", port=8563, database="T", user="sys", password="x")
     result = await driver.execute("SELECT * FROM widgets")
 
     assert result.column_names == ["ID", "NAME"]

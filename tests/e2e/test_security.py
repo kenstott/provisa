@@ -31,7 +31,12 @@ async def client():
 
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
+        async with AsyncClient(
+            # REQ-273: the header carries the role; a body role must match it.
+            transport=transport,
+            base_url="http://test",
+            headers={"X-Provisa-Role": "org_admin"},
+        ) as c:
             yield c
 
 
@@ -39,7 +44,7 @@ class TestColumnVisibility:
     async def test_admin_sees_amount(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__orders { id amount } }", "role": "admin"},
+            json={"query": "{ sa__orders { id amount } }", "role": "org_admin"},
         )
         assert resp.status_code == 200
         rows = resp.json()["data"]["sa__orders"]
@@ -47,8 +52,8 @@ class TestColumnVisibility:
 
     async def test_analyst_cannot_see_amount(self, client):
         """Analyst role has no visibility to 'amount' column — query should fail validation."""
-        # Dev mode resolves the role from the x-provisa-role header (REQ-273/535); the body
-        # `role` is ignored (the unsecured middleware defaults state.role to admin).
+        # Dev mode resolves the role from the x-provisa-role header (REQ-273/535); a body
+        # `role` that differs from it is refused.
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ sa__orders { id amount } }"},
@@ -98,7 +103,7 @@ class TestRLSEnforcement:
         """Admin has no RLS rules — should see all data."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__orders { id } }", "role": "admin"},
+            json={"query": "{ sa__orders { id } }", "role": "org_admin"},
         )
         assert resp.status_code == 200
         rows = resp.json()["data"]["sa__orders"]

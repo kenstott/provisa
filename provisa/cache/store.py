@@ -19,13 +19,13 @@ NoopCacheStore: used when Redis is not configured (caching disabled).
 from __future__ import annotations
 
 import logging
-import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from redis.exceptions import RedisError
 
+from provisa.core import settings_registry
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 
@@ -132,7 +132,7 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
     TABLE_PREFIX = "provisa:table:"
 
     def __init__(self, redis_url: str | None = None):  # REQ-829
-        if redis_url and os.environ.get("PROVISA_REQUIRE_REDIS_TLS", "").lower() == "true":
+        if redis_url and settings_registry.value("redis.require_tls"):  # REQ-1913
             if not redis_url.startswith("rediss://"):
                 raise RuntimeError(
                     "PROVISA_REQUIRE_REDIS_TLS is set but REDIS_URL does not use rediss://"

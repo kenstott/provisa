@@ -13,7 +13,6 @@
 # Requirements: REQ-012, REQ-017, REQ-250, REQ-251
 
 import logging
-import os
 import re
 import time
 
@@ -32,16 +31,22 @@ log = logging.getLogger(__name__)
 # "regardless of Trino start order" (see create_kafka_catalog), so it waits for
 # the coordinator to become query-ready rather than failing boot.
 _STARTING_UP = "SERVER_STARTING_UP"
-_READY_TIMEOUT_SECS = float(os.environ.get("PROVISA_TRINO_READY_TIMEOUT", "120"))
 
 
-def wait_until_ready(conn: TrinoConnection, timeout: float = _READY_TIMEOUT_SECS) -> None:
+def _ready_timeout_secs() -> float:
+    from provisa.core import settings_registry  # REQ-1913: the operator setting
+
+    return settings_registry.value("engine.ready_timeout")
+
+
+def wait_until_ready(conn: TrinoConnection, timeout: float | None = None) -> None:
     """Block until the coordinator answers a trivial query (past SERVER_STARTING_UP).
 
     Raises the last error if the coordinator is still initializing at the deadline —
     a genuinely down engine must surface, not be swallowed.
     """
-    deadline = time.monotonic() + timeout
+    # A caller that names no timeout waits the operator setting `engine.ready_timeout`.
+    deadline = time.monotonic() + (timeout if timeout is not None else _ready_timeout_secs())
     while True:
         try:
             cur = conn.cursor()

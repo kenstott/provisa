@@ -148,26 +148,33 @@ wait_for_ready() {
   return 1
 }
 
-# /health answers as soon as ONE worker is up. The workers boot one after another (the boot
-# sequence writes the control plane and holds a lock, REQ-1900), so a load test started at the
-# first 200 runs against a single worker and overloads it before the rest arrive. Each worker logs
-# "startup phase warmup ready" when it starts serving: wait until every worker has.
+# /health answers as soon as ONE worker is up, so a load test started at the first 200 runs
+# against a single worker and overloads it before the rest arrive. /health also reports the
+# launch's roll call from the control plane — workers.ready of workers.expected (REQ-1900), the
+# same answer whichever worker takes the request: wait until every worker is serving.
 BACKEND_LOG="$REPO_ROOT/.logs/backend.log"
-backend_log_mark() {
-  if [ -f "$BACKEND_LOG" ]; then wc -l < "$BACKEND_LOG"; else echo 0; fi
-}
 wait_for_all_workers() {
-  local deadline=$(( $(date +%s) + 60 * PROVISA_WORKERS ))
-  local up=0
+  # Workers start together after the first one's once-per-launch boot work, so the rest are a few
+  # seconds behind it; 300s is a ceiling for a loaded box, not an expected wait.
+  local deadline=$(( $(date +%s) + 300 ))
+  local workers="unknown"
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    up="$(tail -n "+$(( BACKEND_LOG_MARK + 1 ))" "$BACKEND_LOG" | grep -cE 'startup phase warmup +ready' || true)"
-    if [ "$up" -ge "$PROVISA_WORKERS" ]; then
-      echo "all $PROVISA_WORKERS workers serving"
-      return 0
+    # Prints "ready expected"; a /health that fails or carries no roll call fails this command
+    # (set -o pipefail is not relied on: the python exit status is the pipeline's).
+    local seen
+    if seen="$(curl -sf "$HTTP_BASE_URL/health" | "$PYTHON_BIN" -c '
+import json, sys
+w = json.load(sys.stdin)["workers"]
+print(w["ready"], w["expected"])')"; then
+      workers="$seen"
+      if [ "${workers% *}" -ge "${workers#* }" ]; then
+        echo "all ${workers#* } workers serving"
+        return 0
+      fi
     fi
-    sleep 5
+    sleep 2
   done
-  echo "only $up of $PROVISA_WORKERS workers came up — see $BACKEND_LOG"
+  echo "workers ready/expected: $workers after 300s — see $BACKEND_LOG"
   return 1
 }
 
@@ -275,7 +282,6 @@ for engine in "${ENGINES[@]}"; do
   # `trap cleanup EXIT INT TERM` directly rather than an intermediate subshell wrapper.
   engine_env "$engine"
   start_noop_collector
-  BACKEND_LOG_MARK="$(backend_log_mark)"
   ( cd "$REPO_ROOT" && PROVISA_ENGINE="$engine" exec ./start-ui-install.sh --demo perf ) > "$start_log" 2>&1 &
   provisa_pid=$!
 
@@ -330,7 +336,6 @@ if [ "${OPTIMISTIC:-1}" = "1" ]; then
   kill_stale_instance
   engine_env pg
   start_noop_collector
-  BACKEND_LOG_MARK="$(backend_log_mark)"
   ( cd "$REPO_ROOT" && PROVISA_ENGINE=pg exec ./start-ui-install.sh --demo perf ) > "$start_log" 2>&1 &
   provisa_pid=$!
   if ! wait_for_ready; then
@@ -352,8 +357,9 @@ if [ "${OPTIMISTIC:-1}" = "1" ]; then
   # several client processes: results/optimistic/<transport>.json, one summary line per transport
   # here, and the server CPU per request at concurrency 1 — the per-transport overhead ranking.
   echo "Running per-transport optimistic ramp..."
-  ( cd "$SCRIPT_DIR" && "$PYTHON_BIN" run_benchmark.py --engine pg --optimistic \
-      --http-base-url "$HTTP_BASE_URL" --server-pid "$provisa_pid" --output-dir results )
+  ( cd "$SCRIPT_DIR" && PROVISA_HTTP_BASE_URL="$HTTP_BASE_URL" \
+      "$PYTHON_BIN" run_benchmark.py --engine pg --optimistic \
+      --setup setups/perf-stack.yaml --server-pid "$provisa_pid" --output-dir results )
   stop_steal_logging
   unpause_others
   echo "unpaused ${OPTIMISTIC_PAUSE[*]}"

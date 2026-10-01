@@ -31,7 +31,12 @@ async def client():
 
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
+        async with AsyncClient(
+            # REQ-273: the header carries the role; a body role must match it.
+            transport=transport,
+            base_url="http://test",
+            headers={"X-Provisa-Role": "org_admin"},
+        ) as c:
             yield c
 
 
@@ -41,7 +46,7 @@ class TestDirectRouting:
     async def test_simple_query_returns_data(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__orders { id amount } }", "role": "admin"},
+            json={"query": "{ sa__orders { id amount } }", "role": "org_admin"},
         )
         assert resp.status_code == 200
         rows = resp.json()["data"]["sa__orders"]
@@ -53,7 +58,7 @@ class TestDirectRouting:
             "/data/graphql",
             json={
                 "query": '{ sa__orders(where: { region: { eq: "us-east" } }) { id region } }',
-                "role": "admin",
+                "role": "org_admin",
             },
         )
         assert resp.status_code == 200
@@ -66,7 +71,7 @@ class TestDirectRouting:
             "/data/graphql",
             json={
                 "query": "{ sa__orders { id customer { name } } }",
-                "role": "admin",
+                "role": "org_admin",
             },
         )
         assert resp.status_code == 200
@@ -77,7 +82,7 @@ class TestDirectRouting:
     async def test_pagination(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__orders(limit: 2) { id } }", "role": "admin"},
+            json={"query": "{ sa__orders(limit: 2) { id } }", "role": "org_admin"},
         )
         assert resp.status_code == 200
         assert len(resp.json()["data"]["sa__orders"]) <= 2
@@ -85,7 +90,7 @@ class TestDirectRouting:
     async def test_customers_query(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sa__customers { id name email } }", "role": "admin"},
+            json={"query": "{ sa__customers { id name email } }", "role": "org_admin"},
         )
         assert resp.status_code == 200
         rows = resp.json()["data"]["sa__customers"]

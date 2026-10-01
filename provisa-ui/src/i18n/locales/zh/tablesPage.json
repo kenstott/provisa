@@ -11,6 +11,8 @@
     "addViewTitle": "在 SQL 浏览器中创建新视图",
     "model": "+ 建模",
     "modelTitle": "对实体或事实建模（星型架构 / Data Vault）",
+    "reportXlsx": "工作簿",
+    "reportXlsxTitle": "将模型下载为电子表格以供审阅——数据源、表、列、关系、视图、指标、物化视图和术语表条目，各占一个工作表",
     "viewErd": "查看 ERD",
     "colSource": "数据源",
     "colDomain": "域",
@@ -56,6 +58,11 @@
       "impliedDimensionTitle": "隐含维度 — 此表已开启“启用分组”"
     },
     "derived": "派生",
+    "checker": {
+      "soda": "Soda",
+      "great_expectations": "Great Expectations",
+      "title": "数据质量检查器——此表的行是运行其契约所得的结果"
+    },
     "dataProduct": "产品",
     "dataProductTitle": "数据产品 — 包含在 provisa metadata export 中",
     "purposeTitle": "注册表意味着什么",

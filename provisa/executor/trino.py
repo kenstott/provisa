@@ -18,7 +18,6 @@ Returns rows and column descriptions. Parameters substituted by Trino.
 from __future__ import annotations
 
 import logging
-import os
 import random
 import time
 
@@ -70,25 +69,16 @@ def _backoff_secs(attempt: int, cap: float = 30.0) -> float:
 
 
 def _trino_query_timeout() -> int:
-    try:
-        from provisa.api.app import state
+    # REQ-1913: an operator setting, resolved through the registry on every query.
+    from provisa.core import settings_registry
 
-        return state.server_limits.get(
-            "engine_query_timeout", int(os.environ.get("PROVISA_ENGINE_QUERY_TIMEOUT", "120"))
-        )
-    except Exception:
-        return int(os.environ.get("PROVISA_ENGINE_QUERY_TIMEOUT", "120"))
+    return settings_registry.value("limits.engine_query_timeout")
 
 
 def _retry_budget() -> float:
-    try:
-        from provisa.api.app import state
+    from provisa.core import settings_registry  # REQ-1913
 
-        return state.server_limits.get(
-            "retry_budget_secs", float(os.environ.get("PROVISA_RETRY_BUDGET_SECS", "30"))
-        )
-    except Exception:
-        return float(os.environ.get("PROVISA_RETRY_BUDGET_SECS", "30"))
+    return settings_registry.value("limits.retry_budget_secs")
 
 
 def _alive(conn: trino.dbapi.Connection) -> bool:

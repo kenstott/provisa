@@ -18,7 +18,6 @@ the mandatory ``airport server listening on ...`` startup-banner line.
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from typing import TYPE_CHECKING
 
@@ -28,7 +27,9 @@ if TYPE_CHECKING:
 
 def start_airport_server(state: AppState, log: logging.Logger) -> None:
     """Start the airport Flight server if PROVISA_AIRPORT_PORT is set (>0)."""
-    port = int(os.environ.get("PROVISA_AIRPORT_PORT", "0"))
+    from provisa.core import settings_registry
+
+    port = settings_registry.value("server.airport_port")  # REQ-1913; 0 = not started
     if not port:
         return
 
@@ -42,4 +43,16 @@ def start_airport_server(state: AppState, log: logging.Logger) -> None:
     thread = threading.Thread(target=server.serve, daemon=True)
     thread.start()
     state._airport_server = server  # type: ignore[attr-defined]  # keep a reference alive
+    # REQ-1900: every worker process binds the advertised port (SO_REUSEPORT) and relays to its
+    # own server. Before this, under `--workers N` every worker but the first failed to bind the
+    # port and did not start. A client's connection stays with ONE worker for its whole life, and
+    # this server's transactions live in that worker's memory: a client that spreads one
+    # transaction's RPCs over several connections is not supported.
+    from provisa.api.flight.relay import FlightRelay
+
+    state._airport_relay = FlightRelay(  # type: ignore[attr-defined]  # keep a reference alive
+        "0.0.0.0",  # nosec B104 - the airport endpoint intentionally binds all interfaces
+        port,
+        server.port,
+    )
     log.info("airport server listening on %s:%d", state.hostname, port)

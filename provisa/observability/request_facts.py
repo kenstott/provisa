@@ -30,10 +30,13 @@ from provisa.core.request_context import current_org
 from provisa.otel_compat import (
     annotate_request,
     record_query,
-    record_stage,
+    get_tracer,
     request_fact,
     request_transport,
+    stage,
 )
+
+_tracer = get_tracer(__name__)
 
 
 # Status codes from here up mark the request record as an error.
@@ -65,24 +68,12 @@ def observe_plan(plan: Any, status_code: int, *, cache_hit: bool = False) -> Non
     # route, the source's own for DIRECT.
     route = "cache" if cache_hit else plan.route.name.lower()
     engine = _NO_ENGINE if cache_hit else plan.dialect
-    if plan.span_attrs:
-        # The ops `queries` report reads provisa.table/domain/role off the request record. A
-        # request of several statements keeps its FIRST statement's in those columns, lists every
-        # statement's table in provisa.tables and counts the statements.
-        statements = (request_fact("provisa.statements") or 0) + 1
-        if statements == 1:
-            annotate_request(**{k.replace(".", "__"): v for k, v in plan.span_attrs.items()})
-        annotate_request(
-            provisa__statements=statements,
-            provisa__tables=[
-                *(request_fact("provisa.tables") or ()),
-                plan.span_attrs["provisa.table"],
-            ],
-        )
     annotate_request(
         provisa__route=route,
         provisa__engine=engine,
-        provisa__role=plan.role_id,
+        # A request's statements are counted here and recorded one by one in the audit log, which
+        # is where their table, domain, role and text live (the ops `queries` report).
+        provisa__statements=(request_fact("provisa.statements") or 0) + 1,
         provisa__sources=sorted(plan.sources) if plan.sources else None,
         db__source_id=plan.source_id,
         provisa__status=status_code,
@@ -100,13 +91,12 @@ def observe_plan(plan: Any, status_code: int, *, cache_hit: bool = False) -> Non
         )
 
 
-def observe_cache_hit(*, role_id: str, sources: Any, rows: int, started: float) -> None:
+def observe_cache_hit(*, sources: Any, rows: int, started: float) -> None:
     """Record a GraphQL response-cache hit — a request served without reaching the audit seam.
 
     ``started`` is the field's ``time.perf_counter()`` start."""
     annotate_request(
         provisa__route="cache",
-        provisa__role=role_id,
         provisa__sources=sorted(sources) if sources else None,
         db__row_count=rows,
         cache__hit=True,
@@ -128,7 +118,5 @@ class TimedJSONResponse(JSONResponse):
     """A JSONResponse whose body encoding is reported as the request's ``encode`` stage."""
 
     def render(self, content: Any) -> bytes:
-        started = time.perf_counter()
-        body = super().render(content)
-        record_stage("encode", started)
-        return body
+        with stage(_tracer, "http.encode", name="encode", request_only=True):
+            return super().render(content)

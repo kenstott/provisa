@@ -23,21 +23,22 @@ The ODBC driver is the Microsoft ``ODBC Driver 18 for SQL Server`` (name, or a f
 
 from __future__ import annotations
 
-import asyncio
 import os
 import struct
 from typing import Any
 
-from provisa.executor.drivers.base import DirectDriver
+from provisa.executor.drivers.pooled import SingleStatementConnectionDriver, run_dbapi
 from provisa.executor.result import QueryResult
 
 _SQL_COPT_SS_ACCESS_TOKEN = 1256
 _AAD_SCOPE = "https://database.windows.net/.default"
 
 
-class MssqlWarehouseDriver(DirectDriver):
+class MssqlWarehouseDriver(SingleStatementConnectionDriver):
+    """pyodbc is DB-API ``threadsafety = 1``: a connection per statement, from the pool (see
+    ``pooled``). Each connection opens with a fresh Azure AD token."""
+
     def __init__(self) -> None:
-        self._conn: Any = None
         self._extra: dict[str, str] = {}
 
     def configure(self, extra: dict[str, str]) -> None:
@@ -57,6 +58,7 @@ class MssqlWarehouseDriver(DirectDriver):
             cred = DefaultAzureCredential()
         return cred.get_token(_AAD_SCOPE).token
 
+    # Async only for the DirectDriver awaitable contract; connects synchronously in-thread.
     async def connect(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         host: str,
@@ -64,8 +66,8 @@ class MssqlWarehouseDriver(DirectDriver):
         database: str,
         user: str,  # pyright: ignore[reportUnusedParameter]
         password: str,  # pyright: ignore[reportUnusedParameter]
-        min_pool: int = 1,  # pyright: ignore[reportUnusedParameter]
-        max_pool: int = 5,  # pyright: ignore[reportUnusedParameter]
+        min_pool: int = 1,
+        max_pool: int = 5,
     ) -> None:
         if not host or not database:
             raise ValueError("fabric/synapse source requires a server host and database")
@@ -84,13 +86,12 @@ class MssqlWarehouseDriver(DirectDriver):
             # autocommit=True: Fabric/Synapse Warehouses enforce SNAPSHOT isolation
             # unconditionally (cannot be disabled), which pins a query's read view to the
             # state at its transaction's first statement. Without autocommit, the first
-            # execute() on this long-lived pooled connection (SourcePool reuses one
-            # connection per source for its whole lifetime) opens an implicit transaction
-            # that is never committed, so every later query on this connection replays that
-            # same stale snapshot forever — newly created tables/rows never become visible,
-            # no matter how long a caller polls. This driver only ever runs governed reads
-            # (see execute()'s own comment), so there is no write to lose by auto-committing
-            # each statement.
+            # statement on a long-lived pooled connection opens an implicit transaction that
+            # is never committed, so every later query on that connection replays the same
+            # stale snapshot forever — newly created tables/rows never become visible, no
+            # matter how long a caller polls. This driver only ever runs governed reads (see
+            # _run's own comment), so there is no write to lose by auto-committing each
+            # statement.
             return pyodbc.connect(
                 conn_str,
                 attrs_before={_SQL_COPT_SS_ACCESS_TOKEN: token_struct},
@@ -98,36 +99,21 @@ class MssqlWarehouseDriver(DirectDriver):
                 autocommit=True,
             )
 
-        self._conn = await asyncio.to_thread(_open)
+        self._open_pool(
+            _open, min_pool=min_pool, max_pool=max_pool, name=f"mssql_warehouse:{host}/{database}"
+        )
 
-    async def execute(self, sql: str, params: list | None = None) -> QueryResult:
+    def _run(self, conn: Any, sql: str, params: list | None) -> QueryResult:
         # Most T-SQL reads on this path arrive fully formed from the governed pipeline with no
         # `?` markers, but not all — introspect.py's fabric/synapse table listing binds
         # TABLE_SCHEMA via a `?` placeholder. Discarding params unconditionally (as this used to)
         # left that placeholder unbound: pyodbc raises "COUNT field incorrect or syntax error"
         # (07002) on a `?` with no parameter supplied, which was being swallowed upstream into a
         # silently empty table list — never a staleness or caching issue.
+        return run_dbapi(conn, sql, params, lambda cur: cur.cancel)
 
-        def _run() -> QueryResult:
-            cur = self._conn.cursor()
-            try:
-                if params:
-                    cur.execute(sql, params)
-                else:
-                    cur.execute(sql)
-                cols = [c[0] for c in cur.description] if cur.description else []
-                rows = [tuple(r) for r in cur.fetchall()] if cur.description else []
-                return QueryResult(rows=rows, column_names=cols)
-            finally:
-                cur.close()
+    def _is_broken(self, exc: BaseException) -> bool:
+        import pyodbc
 
-        return await asyncio.to_thread(_run)
-
-    async def close(self) -> None:
-        if self._conn is not None:
-            await asyncio.to_thread(self._conn.close)
-            self._conn = None
-
-    @property
-    def is_connected(self) -> bool:
-        return self._conn is not None
+        # SQLSTATE 08xxx (connection) and HYT00/HYT01 (timeouts) surface as OperationalError.
+        return isinstance(exc, (pyodbc.OperationalError, pyodbc.InterfaceError))

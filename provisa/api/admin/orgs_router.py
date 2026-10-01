@@ -25,7 +25,9 @@ from sqlalchemy import and_, delete as _delete, func, select, update
 from provisa.api.errors import ApiError
 from provisa.core.connection_loop import spawn_background
 from provisa.core.database import Database
+from provisa.core import settings_registry as _settings
 from provisa.core.org_ids import is_org_id
+from provisa.core.redis_location import redis_url as _redis_url
 from provisa.core.org_membership import (
     JOINED_VIA_ADMIN,
     JOINED_VIA_CREATED,
@@ -337,7 +339,6 @@ async def _provision_org_task(
     # + the queryable data-plane runtime), then grants the creator org_admin inside the new org's
     # schema, then flips provisioning_state. The one allowed catch: a failure is PERSISTED to
     # provisioning_error, never swallowed — the poll endpoint surfaces it.
-    import os
     from pathlib import Path
 
     from provisa.api.app import build_org_runtime, state as _app_state
@@ -371,8 +372,8 @@ async def _provision_org_task(
             _pool(),
             schema_sql,
             org_id=org_id,
-            redis_url=os.environ.get("REDIS_URL"),
-            redis_password=os.environ.get("PROVISA_REDIS_ORG_PASSWORD"),
+            redis_url=_redis_url(),
+            redis_password=_settings.value("cache.redis_org_password"),
         )
         # REQ-1487: prod exists from the organization's creation, so its registry row is written
         # here beside the schema and the role rather than by a load. Every other environment's row
@@ -881,7 +882,6 @@ async def delete_org(org_id: str, request: Request, confirm: str | None = None):
     REQ-1312: billing/usage records and audit entries are not touched. Tenant rows die with the
     schema; membership, invite and auto-join opt-out rows cascade from the registry row.
     """
-    import os
 
     from provisa.api.admin.invites_router import _require_org_admin
     from provisa.core.org_provisioning import deprovision_org
@@ -919,8 +919,7 @@ async def delete_org(org_id: str, request: Request, confirm: str | None = None):
             _delete(org_auto_join_optouts).where(org_auto_join_optouts.c.org_id == org_id)
         )
         await conn.execute_core(_delete(orgs).where(orgs.c.id == org_id))
-    redis_url = os.environ.get("REDIS_URL")
-    await deprovision_org(_pool(), org_id, redis_url=redis_url)
+    await deprovision_org(_pool(), org_id, redis_url=_redis_url())
     # Evict the cached runtime last: an in-flight request must not rebuild it from a registry row
     # that still exists.
     from provisa.api.app import state as _app_state
@@ -942,7 +941,6 @@ async def retry_provisioning(org_id: str, request: Request):  # REQ-1315
     ready one would drop a live schema, and retrying one still provisioning would race the task
     already running.
     """
-    import os
 
     from provisa.core.org_provisioning import deprovision_org
 
@@ -978,7 +976,7 @@ async def retry_provisioning(org_id: str, request: Request):  # REQ-1315
     from provisa.api.app import state as _app_state
 
     _app_state.org_registry.invalidate_org(org_id)  # REQ-1488: environments go with the org
-    await deprovision_org(_pool(), org_id, redis_url=os.environ.get("REDIS_URL"))
+    await deprovision_org(_pool(), org_id, redis_url=_redis_url())
     task = spawn_background(
         _provision_org_task(org_id, bool(seeded_demo), created_by, bool(iso_engine)),
         name=f"org-provision:{org_id}",

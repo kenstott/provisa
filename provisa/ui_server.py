@@ -69,7 +69,59 @@ _API_VERIFY = not API_BASE_URL.startswith("https://")
 # images — PROVISA_ENGINE_READY_TIMEOUT, 420s (REQ-1448, REQ-1464). A shorter budget here does not
 # shorten that wait, it only kills the request that is paying for it, so the user sees a 504 on
 # every first query and the wake they triggered completes with nobody left to serve.
-_PROXY_TIMEOUT_S = float(os.environ.get("PROVISA_UI_PROXY_TIMEOUT", "480"))
+#
+# REQ-1913: it is the operator setting `ui.proxy_timeout`. This process has no control plane, so
+# it asks the API for the setting and holds the answer for SETTINGS_TTL_SECONDS — the same few
+# seconds a worker holds its settings snapshot. The resolution order is the one every setting has:
+# the value stored through the settings page, else this process's PROVISA_UI_PROXY_TIMEOUT, else
+# what the API resolved (its declared default).
+_PROXY_TIMEOUT_ENV = "PROVISA_UI_PROXY_TIMEOUT"
+_UI_SETTINGS_PATH = "/internal/ui-server-settings"
+SETTINGS_TTL_SECONDS = 5.0
+# How long the UI server waits for the API to answer the settings question itself.
+_SETTINGS_ASK_TIMEOUT_S = 10.0
+# (when it was read, the proxy timeout in seconds).
+_settings_held: tuple[float, float] | None = None
+
+
+async def _ask_api_for_settings() -> dict:
+    async with httpx.AsyncClient(timeout=_SETTINGS_ASK_TIMEOUT_S, verify=_API_VERIFY) as client:
+        resp = await client.get(f"{API_BASE_URL}{_UI_SETTINGS_PATH}")
+        resp.raise_for_status()
+        return resp.json()
+
+
+def _resolved_proxy_timeout(answer: dict) -> float:
+    if answer["source"] == "stored":
+        return float(answer["value"])
+    own = os.environ.get(_PROXY_TIMEOUT_ENV)
+    if own:
+        try:
+            return float(own)
+        except ValueError:
+            raise ValueError(f"{_PROXY_TIMEOUT_ENV} is {own!r}: not a number of seconds") from None
+    return float(answer["value"])
+
+
+async def proxy_timeout_s() -> float:
+    """The upstream read budget in force. Raises what the API call raised when nothing is held
+    yet: with no answer there is no value, and the request being proxied cannot reach the API
+    either. A refresh the API does not answer leaves the value already held in force."""
+    global _settings_held
+    held = _settings_held
+    if held is not None and time.monotonic() - held[0] < SETTINGS_TTL_SECONDS:
+        return held[1]
+    try:
+        answer = await _ask_api_for_settings()
+    except httpx.HTTPError:
+        if held is None:
+            raise
+        _log.warning("settings refresh not answered by the API; proxy timeout stays %.0fs", held[1])
+        return held[1]
+    value = _resolved_proxy_timeout(answer["proxy_timeout"])
+    _settings_held = (time.monotonic(), value)
+    return value
+
 
 _log = logging.getLogger("provisa.ui_server")
 
@@ -204,8 +256,12 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
         k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")
     }
 
+    try:
+        proxy_timeout = await proxy_timeout_s()
+    except httpx.HTTPError:
+        return HTMLResponse("API unavailable", status_code=502)
     started = time.monotonic()
-    async with httpx.AsyncClient(timeout=_PROXY_TIMEOUT_S, verify=_API_VERIFY) as client:
+    async with httpx.AsyncClient(timeout=proxy_timeout, verify=_API_VERIFY) as client:
         try:
             upstream = await client.request(
                 method=request.method,

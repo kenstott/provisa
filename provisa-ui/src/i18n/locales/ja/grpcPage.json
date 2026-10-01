@@ -20,6 +20,7 @@
     "includeNodes": "ノードを含める",
     "includeFields": "含めるフィールド (リレーション、リレーション.列、または列)",
     "aggregateFunctions": "集計関数",
-    "selectAtLeastOneFunc": "集計関数を少なくとも1つ選択してください"
+    "selectAtLeastOneFunc": "集計関数を少なくとも1つ選択してください",
+    "aggregateColumns": "集計カラム(空欄 = 対象のすべてのカラム)"
   }
 }

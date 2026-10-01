@@ -21,6 +21,7 @@
     "graphStats": "סטטיסטיקות גרף",
     "properties": "מאפיינים",
     "copyValue": "העתקת ערך",
-    "resizePanel": "שינוי גודל חלונית הבחינה"
+    "resizePanel": "שינוי גודל חלונית הבחינה",
+    "junctionTable": "דרך {{table}}"
   }
 }

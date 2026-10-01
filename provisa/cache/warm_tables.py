@@ -18,8 +18,10 @@ WarmTableManager promotes/demotes tables based on threshold and size limits.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
+from collections.abc import Callable
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -28,6 +30,16 @@ DEFAULT_QUERY_THRESHOLD = 100
 DEFAULT_MAX_ROWS = 10_000_000
 DEFAULT_ICEBERG_CATALOG = "iceberg"
 DEFAULT_ICEBERG_SCHEMA = "warm_cache"
+
+
+class _CheckFailed(Exception):
+    """One statement of a table's warm-tier check failed on the engine."""
+
+    def __init__(self, step: str, engine_sql: str, cause: BaseException) -> None:
+        super().__init__(f"{step}: {cause}")
+        self.step = step
+        self.engine_sql = engine_sql
+        self.cause = cause
 
 
 class QueryCounter:  # REQ-239
@@ -73,6 +85,10 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
         # Row count measured at promotion time, kept so the admin cache view can report the size of
         # each warm copy without re-counting through the engine on every page load.
         self._warm_rows: dict[str, int] = {}
+        # table -> the failure its last check ended in ("<step>: <error>"); absent once a check
+        # of that table succeeds. A failure is logged when this value CHANGES, so a table that
+        # keeps failing the same way is one error, not one per sweep.
+        self._failures: dict[str, str] = {}
         self._iceberg_catalog = iceberg_catalog
         # Each tenant gets an isolated schema so warm tables never bleed across tenants.
         if tenant_id is not None:
@@ -111,9 +127,49 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
             )
         return out
 
+    def failures(self) -> dict[str, str]:
+        """Tables whose last promotion or demotion check failed, with what failed."""
+        with self._lock:
+            return dict(self._failures)
+
     def _iceberg_ref(self, table: str) -> str:
         safe = table.replace('"', '""')
         return f'"{self._iceberg_catalog}"."{self._iceberg_schema}"."{safe}"'
+
+    async def _run(self, engine: Any, step: str, table: str, catalog_sql: str) -> Any:
+        """Run one statement of ``table``'s check on the engine, in the engine's own table
+        addressing and dialect (``EngineRuntime.engine_physical``). ``table`` and the warm copy
+        are named catalog.schema.table here; an engine with no catalog level cannot take that
+        name as written. A failure raises :class:`_CheckFailed` carrying what was sent."""
+        engine_sql = engine.engine_physical(catalog_sql)
+        try:
+            return await engine.execute_engine(engine_sql)
+        except Exception as exc:  # allow-ble: an engine/driver error of any type IS this table's check outcome — reported by _failed, never dropped
+            raise _CheckFailed(step, engine_sql, exc) from exc
+
+    def _failed(self, table: str, failure: _CheckFailed) -> None:
+        """Record a table's failed check; log it when it is not the failure already recorded."""
+        state = f"{failure.step}: {type(failure.cause).__name__}: {failure.cause}"
+        with self._lock:
+            known = self._failures.get(table)
+            self._failures[table] = state
+        if known != state:
+            log.error(
+                "Warm-table %s failed for %s: %s: %s. It is retried every sweep and reported "
+                "again only when the outcome changes. Engine statement: %s",
+                failure.step,
+                table,
+                type(failure.cause).__name__,
+                failure.cause,
+                failure.engine_sql,
+                exc_info=failure.cause,
+            )
+
+    def _succeeded(self, table: str) -> None:
+        with self._lock:
+            known = self._failures.pop(table, None)
+        if known is not None:
+            log.info("Warm-table check recovered for %s (was: %s)", table, known)
 
     async def check_promotions(  # REQ-239, REQ-240, REQ-241
         self,
@@ -154,22 +210,31 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
                 if table in self._warm_tables:
                     continue
 
-            # Size check — through the engine terminal
-            _cnt = await engine.execute_engine(f"SELECT COUNT(*) FROM {table}")
-            row_count = _cnt.rows[0][0]
+            try:
+                # Size check — through the engine terminal
+                _cnt = await self._run(engine, "size check", table, f"SELECT COUNT(*) FROM {table}")
+                row_count = _cnt.rows[0][0]
 
-            if row_count > max_rows:
-                log.info(
-                    "Skipping warm promotion for %s: %d rows exceeds max %d",
-                    table,
-                    row_count,
-                    max_rows,
+                if row_count > max_rows:
+                    self._succeeded(table)
+                    log.info(
+                        "Skipping warm promotion for %s: %d rows exceeds max %d",
+                        table,
+                        row_count,
+                        max_rows,
+                    )
+                    continue
+
+                # CTAS into Iceberg via the engine
+                target = self._iceberg_ref(table)
+                await self._run(
+                    engine, "promotion", table, f"CREATE TABLE {target} AS SELECT * FROM {table}"
                 )
+            except _CheckFailed as failure:
+                # This table's outcome, not the sweep's: the other candidates are still checked.
+                self._failed(table, failure)
                 continue
-
-            # CTAS into Iceberg via the engine
-            target = self._iceberg_ref(table)
-            await engine.execute_engine(f"CREATE TABLE {target} AS SELECT * FROM {table}")
+            self._succeeded(table)
 
             with self._lock:
                 self._warm_tables.add(table)
@@ -200,7 +265,12 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
                 continue
 
             target = self._iceberg_ref(table)
-            await engine.execute_engine(f"DROP TABLE IF EXISTS {target}")
+            try:
+                await self._run(engine, "demotion", table, f"DROP TABLE IF EXISTS {target}")
+            except _CheckFailed as failure:
+                self._failed(table, failure)  # still warm: the copy was not dropped
+                continue
+            self._succeeded(table)
 
             with self._lock:
                 self._warm_tables.discard(table)
@@ -210,3 +280,48 @@ class WarmTableManager:  # REQ-238, REQ-240, REQ-241
             log.info("Demoted %s from warm Iceberg cache", table)
 
         return demoted
+
+
+async def sweep_loop(  # REQ-239, REQ-1900
+    manager: WarmTableManager,
+    counter: QueryCounter,
+    *,
+    engine: Callable[[], Any],
+    hot_tables: Callable[[], set[str]],
+    should_run: Callable[[], bool],
+    interval: float,
+    threshold: int = DEFAULT_QUERY_THRESHOLD,
+    max_rows: int = DEFAULT_MAX_ROWS,
+    excluded: set[str] | None = None,
+    forced: set[str] | None = None,
+) -> None:
+    """The warm tier's periodic sweep: promotions, then demotions, every ``interval`` seconds.
+
+    Every worker process starts this loop, but a sweep acts on state the workers SHARE — it sizes
+    a source table through the engine (a full count), and creates and drops the warm copy under
+    one name in the engine's store. Run by every worker, a sweep costs one count per busy table
+    per worker, two workers promoting the same table collide on its name, and a worker whose own
+    count fell drops a copy another still counts as warm. So a sweep runs only where
+    ``should_run()`` says so — the worker holding the deployment's scheduler lock
+    (``provisa.scheduler.holder.SchedulerHolder.holds``) — asked again every interval, because
+    the lock moves when its holder goes away.
+
+    ``engine`` and ``hot_tables`` are read per sweep (the bound engine runtime; REQ-241's
+    hot-over-warm set). A table's own failed check is reported by the manager; anything else that
+    fails a sweep is logged here and the loop goes on to the next interval."""
+    while True:
+        try:
+            if should_run():
+                await manager.check_promotions(
+                    counter,
+                    engine(),
+                    threshold=threshold,
+                    max_rows=max_rows,
+                    hot_tables=hot_tables(),
+                    excluded=excluded,
+                    forced=forced,
+                )
+                await manager.check_demotions(counter, engine(), threshold=threshold)
+        except Exception:  # allow-ble: a background loop's boundary — the sweep's failure is logged with its traceback and the next interval retries; nothing here may end the loop
+            log.exception("Error in warm-table sweep")
+        await asyncio.sleep(interval)

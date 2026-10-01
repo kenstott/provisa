@@ -321,6 +321,38 @@ class EngineBackend:
         del self, source_type
         return store_schema, f"{source_id}__{schema_name}__{table_name}"
 
+    def pending_lands(
+        self,
+        sources: list,
+        *,
+        is_stale: Any,
+        prefer_materialized_of: Any = None,
+        load_protected_of: Any = None,
+        resident_of: Any = None,
+        materialization_backend: str | None = None,
+        freshness_subject_of: Any = None,
+        now: float | None = None,
+    ) -> list:
+        """The residency prep steps a read of ``sources`` needs on this engine: one per source that
+        federates MATERIALIZED here and that its staleness oracle (or REQ-860 gate, or REQ-1141
+        first-load rule) says must land first. Pure — it reads no store. It is the decision
+        ``materialize_pending`` acts on, and the one the query path asks before it reads any
+        freshness state: with ``is_stale`` answering True for everything, an empty result means
+        the engine reads every one of these sources in place and none of them ever lands."""
+        from provisa.federation.plan import build_execution_plan
+
+        return build_execution_plan(
+            sources,
+            self.engine,
+            is_stale,
+            prefer_materialized_of=prefer_materialized_of,
+            load_protected_of=load_protected_of,
+            resident_of=resident_of,
+            materialization_backend=materialization_backend,
+            freshness_subject_of=freshness_subject_of,
+            now=now,
+        ).prep
+
     async def materialize_pending(
         self,
         state: Any,
@@ -334,6 +366,7 @@ class EngineBackend:
         materialization_backend: str | None = None,
         freshness_subject_of: Any = None,
         now: float | None = None,
+        coordination: Any = None,
     ) -> list[tuple[str, str]]:
         """Land every MATERIALIZED source table that is stale, before a read (REQ-825/932, REQ-1661).
 
@@ -344,7 +377,6 @@ class EngineBackend:
         write face -- the same address and face the event loop's source nodes use, so the two paths
         converge on one replica. ``source_ids`` restricts the plan to the sources a query reads.
         Returns the (source_id, table_name) pairs landed; a no-op when nothing is stale."""
-        from provisa.federation.plan import build_execution_plan
         from provisa.federation.residency import resolve_landing_args
 
         from provisa.federation.registry_view import registered_sources, registered_tables
@@ -368,10 +400,9 @@ class EngineBackend:
             # full-source materialize cost row_materialize exists to avoid).
             if not getattr(t, "row_materialize", False):
                 tables_by_source.setdefault(t.source_id, []).append(t)
-        plan = build_execution_plan(
+        prep = self.pending_lands(
             sources,
-            self.engine,
-            is_stale,
+            is_stale=is_stale,
             prefer_materialized_of=prefer_materialized_of,
             load_protected_of=load_protected_of,
             resident_of=resident_of,
@@ -379,16 +410,15 @@ class EngineBackend:
             freshness_subject_of=freshness_subject_of,
             now=now,
         )
-        if not plan.prep:
+        if not prep:
             return []
         sources_by_id = {s.id: s for s in sources}
         store_schema = _env_store_schema(self.engine.materialize_store())
         landed: list[tuple[str, str]] = []
-        for step in plan.prep:
+        for step in prep:
             source = sources_by_id[step.source_id]
             for table in tables_by_source.get(step.source_id, ()):
                 args = resolve_landing_args(source, table, platform=self.dialect)
-                rows = await loader.load(source, table)
                 schema, name = self.landing_target(
                     store_schema=store_schema,
                     source_id=source.id,
@@ -396,6 +426,20 @@ class EngineBackend:
                     schema_name=table.schema_name,
                     table_name=table.table_name,
                 )
+                # A build inside the engine moves no row through this process, is one build per
+                # replica across workers, and outlives a request that cannot wait for it.
+                if coordination is not None and await self.replicate_in_engine(
+                    state,
+                    source,
+                    table,
+                    schema=schema,
+                    name=name,
+                    args=args,
+                    coordination=coordination,
+                ):
+                    landed.append((source.id, table.table_name))
+                    continue
+                rows = await loader.load(source, table)
                 await self.land_source_table(
                     state,
                     schema=schema,
@@ -408,6 +452,23 @@ class EngineBackend:
                 )
                 landed.append((source.id, table.table_name))
         return landed
+
+    async def replicate_in_engine(
+        self,
+        state: Any,
+        source: Any,
+        table: Any,
+        *,
+        schema: str,
+        name: str,
+        args: Any,
+        coordination: Any,
+    ) -> bool:
+        """Build ``table``'s replica without the rows passing through this process, when this
+        engine can — True when it did (or joined a build already running). The base engine
+        cannot: the caller then loads the rows and lands them."""
+        del state, source, table, schema, name, args, coordination
+        return False
 
     async def land_source_table(
         self,
@@ -621,9 +682,11 @@ class EngineBackend:
         active_workers)``. A native in-process engine has no worker cluster."""
         return (self.is_connected(state), 0, 0)
 
-    def ctas_redirect(self, state: Any, physical_sql: str, output_format: str) -> dict:
+    def ctas_redirect(
+        self, state: Any, physical_sql: str, output_format: str, params: list | None
+    ) -> dict:
         """Execute a query as CTAS-to-object-store and return the redirect manifest. A native
-        engine has no CTAS-to-S3 redirect path."""
+        engine has no CTAS-to-S3 redirect path. ``params``: the statement's bound values."""
         raise NotImplementedError(
             f"engine {self.engine.name!r} does not implement CTAS-to-object-store redirect"
         )
@@ -1211,13 +1274,19 @@ class TrinoBackend(EngineBackend):
             raise RuntimeError(f"Trino cluster diagnostics probe failed: {exc}") from exc
         return (connected, worker_count, active_workers)
 
-    def ctas_redirect(self, state: Any, physical_sql: str, output_format: str) -> dict:
+    def ctas_redirect(
+        self, state: Any, physical_sql: str, output_format: str, params: list | None
+    ) -> dict:
         from provisa.executor import redirect, trino_write
 
-        # REQ-171: the coordinator writes the CTAS result into the results bucket, so the first
-        # CTAS redirect of this process makes sure it exists (it is no longer ensured at boot).
+        # REQ-171: the coordinator writes the CTAS result into the results schema, whose location
+        # is the results bucket, so the first CTAS redirect of this process makes sure of both, in
+        # that order (neither is done at boot). Either failing raises to this redirect.
         redirect.ensure_results_bucket_sync(redirect.RedirectConfig.from_env())
-        return trino_write.execute_ctas_redirect(state.engine_conn, physical_sql, output_format)
+        trino_write.ensure_results_schema(state.engine_conn)
+        return trino_write.execute_ctas_redirect(
+            state.engine_conn, physical_sql, output_format, params
+        )
 
     # -- source lifecycle ------------------------------------------------------
 

@@ -51,6 +51,7 @@
     "revokeButton": "Intrekken",
     "revokeInvite": "Uitnodiging voor {{org}} intrekken",
     "invitePagination": "Paginering uitnodigingslinks",
-    "orgIdDesc": "2-40 tekens, kleine letters en cijfers, beginnend met een letter. Dit wordt de schemanaam en het subdomein en kan later niet worden gewijzigd."
+    "orgIdDesc": "2-40 tekens, kleine letters en cijfers, beginnend met een letter. Dit wordt de schemanaam en het subdomein en kan later niet worden gewijzigd.",
+    "spentStatus": "Volledig ingewisseld"
   }
 }

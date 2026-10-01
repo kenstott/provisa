@@ -40,6 +40,8 @@
     "cardinalityWarning": "Attention : si cette jointure renvoie plus d'une ligne par parent, seule la première valeur sera utilisée.",
     "cancel": "Annuler",
     "save": "Enregistrer",
-    "toggleDetails": "Afficher/masquer les détails de la relation"
+    "toggleDetails": "Afficher/masquer les détails de la relation",
+    "junctionBadge": "via",
+    "junctionBadgeTitle": "Relation reposant sur une table de jonction via {{table}}"
   }
 }

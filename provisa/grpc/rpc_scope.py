@@ -29,7 +29,7 @@ from __future__ import annotations
 import contextvars
 import threading
 from collections.abc import AsyncGenerator, Coroutine, Generator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from typing import Any, TypeVar
 
 from provisa.core.connection_loop import ConnectionLoop, connection_loop
@@ -52,6 +52,17 @@ class RpcScope:
     def run(self, coro: Coroutine[Any, Any, T]) -> T:
         """Run ``coro`` to completion on the RPC's loop, on this thread, in the RPC's context."""
         return self._cl.run(coro, context=self._ctx)
+
+    @contextmanager
+    def entered(self, block: AbstractContextManager[Any]) -> Generator[None]:
+        """Hold ``block`` open for the body, entered and exited in the RPC's context rather than
+        the handler thread's — what a ``with`` written here cannot do by itself, since every
+        coroutine of the RPC runs in ``self._ctx``."""
+        self._ctx.run(block.__enter__)
+        try:
+            yield
+        finally:
+            self._ctx.run(block.__exit__, None, None, None)
 
     def iterate(self, agen: AsyncGenerator[T, None]) -> Generator[T, None, None]:
         """Drive a response-streaming handler one message at a time on the RPC's loop."""
@@ -87,9 +98,8 @@ def rpc_scope() -> Generator[RpcScope]:
         # it. The handler thread's context is passed as the parent: an instrumentor's gRPC server
         # span opened out there becomes the request span instead of a second one.
         span = request_span(_tracer, "grpc.rpc", transport="grpc", parent=current_trace_context())
-        scope._ctx.run(span.__enter__)
         try:
-            yield scope
+            with scope.entered(span):
+                yield scope
         finally:
-            scope._ctx.run(span.__exit__, None, None, None)
             _local.scope = None

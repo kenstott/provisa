@@ -268,10 +268,19 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         cur = self._con.cursor()
         if "attach_ddl" in details:  # postgres_fdw / sqlite_fdw — import a foreign schema
             remote = f'"{details["local_schema"]}"."{source.table_name}"'
-            if source.id not in self._raw_attached:
-                for ddl in details["attach_ddl"]:
-                    cur.execute(ddl)
-                self._raw_attached.add(source.id)
+            # A connector that can import ONE table (postgres_fdw) is attached per table: the
+            # foreign tables outlive this process, and a replica build imports one on its own
+            # (copy_replica), so importing the whole schema again fails on the first table already
+            # there. The others import the source's schema once.
+            per_table = "server_ddl_for_copy" in details
+            attach_key = f"{source.id}\x00{source.table_name}" if per_table else source.id
+            if attach_key not in self._raw_attached:
+                if per_table:
+                    self._ensure_foreign_table(cur, details, source.table_name)
+                else:
+                    for ddl in details["attach_ddl"]:
+                        cur.execute(ddl)
+                self._raw_attached.add(attach_key)
                 # REQ-1900: `IMPORT FOREIGN SCHEMA` creates the foreign table with NO statistics —
                 # postgres_fdw/clickhouse_fdw/mongodb_wrapper foreign tables are never touched by
                 # autovacuum, so pg_statistic stays empty until something explicitly ANALYZEs them.
@@ -284,7 +293,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 # time, gives the planner real cardinality/selectivity before any query ever runs
                 # against it.
                 #
-                # This must stay INSIDE the `source.id not in self._raw_attached` guard above (it
+                # This must stay INSIDE the `attach_key not in self._raw_attached` guard above (it
                 # previously ran unconditionally on every call): confirmed live, an un-guarded
                 # ANALYZE against a large ClickHouse-backed foreign table (order_events) took
                 # >120s EVERY SINGLE CALL, not just the first — including calls made long after
@@ -559,6 +568,94 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             f"ON CONFLICT ({conflict_cols}) {do_update}",
             values,
         )
+
+    # -- engine-side replica build -----------------------------------------------
+
+    # Advisory-lock class for replica builds; the object id is the replica's name, hashed.
+    _REPLICA_LOCK_CLASS = 0x70726F76  # "prov"
+
+    def replica_lock(self, schema: str, table: str) -> Any:
+        """A dedicated connection holding the store's advisory lock for the replica
+        ``schema.table`` — taken by one build at a time across every worker process that shares
+        this store. Blocks (polling) until the lock is free; the caller closes the connection,
+        which releases the lock, with :meth:`replica_unlock`."""
+        con = psycopg2.connect(self._engine_dsn)
+        con.autocommit = True
+        try:
+            cur = con.cursor()
+            while True:
+                cur.execute(
+                    "SELECT pg_try_advisory_lock(%s, hashtext(%s))",
+                    (self._REPLICA_LOCK_CLASS, f"{schema}.{table}"),
+                )
+                row = cur.fetchone()
+                assert row is not None  # a scalar function: always exactly one row
+                if row[0]:
+                    return con
+                time.sleep(0.25)
+        except BaseException:
+            con.close()
+            raise
+
+    @staticmethod
+    def _ensure_foreign_table(cur: Any, details: dict, table_name: str) -> None:
+        """The source's foreign server, and the foreign table for ``table_name`` in the
+        connector's own schema — each created only when it is not there, so a live attach and a
+        replica build (in any order, in any process, across restarts) converge on one object."""
+        for ddl in details["server_ddl_for_copy"]:
+            cur.execute(ddl)
+        local = details["local_schema"]
+        cur.execute("SELECT to_regclass(%s)", (f'"{local}"."{table_name}"',))
+        row = cur.fetchone()
+        assert row is not None  # a scalar function: always exactly one row
+        if row[0] is None:
+            cur.execute(
+                f'IMPORT FOREIGN SCHEMA "{details["remote_schema"]}" '
+                f'LIMIT TO ("{table_name}") FROM SERVER "{details["server"]}" '
+                f'INTO "{local}"'
+            )
+
+    def replica_unlock(self, con: Any) -> None:
+        con.close()  # a session lock: released with its session
+
+    def copy_replica(
+        self,
+        con: Any,
+        source: Any,
+        *,
+        schema: str,
+        table: str,
+        columns: list[tuple[str, str]],
+        pk_columns: list[str],
+    ) -> int:
+        """Build the replica ``schema.table`` from the source's own table, inside the engine: one
+        ``INSERT … SELECT`` from the source's postgres_fdw foreign table, in one transaction. No
+        row passes through this process, so the build costs the worker nothing as the table
+        grows; readers see the previous replica until the commit. ``con`` is the connection that
+        holds the replica's lock. Returns the rows copied.
+
+        The foreign table lives in the connector's own schema and is imported for this one table
+        when it is not there. No live view is created: a replicated table is read from its
+        replica."""
+        details = self._engine.resolve(source).details
+        local = details["local_schema"]
+        names = ", ".join(f'"{name}"' for name, _ in columns)
+        cur = con.cursor()
+        self._ensure_foreign_table(cur, details, source.table_name)
+        cur.execute("BEGIN")
+        try:
+            self._ensure_table(cur, schema, table, columns, pk_columns)
+            cur.execute(f'DELETE FROM "{schema}"."{table}"')
+            cur.execute(
+                f'INSERT INTO "{schema}"."{table}" ({names}) '
+                f'SELECT {names} FROM "{local}"."{source.table_name}"'
+            )
+            copied = cur.rowcount
+            cur.execute("COMMIT")
+        except BaseException:
+            cur.execute("ROLLBACK")
+            raise
+        return copied
 
     async def apply_cdc_events(
         self,

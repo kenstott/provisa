@@ -15,6 +15,7 @@
     },
     "auth": {
       "authentication_required": "Verificatie vereist",
+      "auto_join_not_offered": "Die organisatie biedt niet aan je toe te laten",
       "bootstrap_claiming_disabled": "Bootstrap-claimen is niet ingeschakeld",
       "delete_account_confirm_required": "Het verwijderen van dit account is onomkeerbaar: het profiel en elk organisatielidmaatschap worden verwijderd en kunnen niet worden hersteld. Herhaal de gebruikers-id in de parameter 'confirm' om door te gaan.",
       "email_not_permitted": "Dit e-mailadres mag niet lid worden van deze organisatie",
@@ -51,6 +52,10 @@
       "engine_not_connected": "de engine is niet verbonden",
       "grpc_source_not_registered": "Externe gRPC-bron '{{source_id}}' niet geregistreerd",
       "invalid_as_of": "ongeldige X-Provisa-As-Of: {{error}}",
+      "invalid_filter": "filter moet een object zijn dat veldnamen aan waarden koppelt",
+      "invalid_filter_field": "Ongeldig filter-veld '{{field}}' voor {{type_name}}",
+      "invalid_read_mask": "read_mask moet een object zijn met een 'paths'-lijst van veldpaden",
+      "invalid_read_mask_path": "Ongeldig read_mask-pad '{{path}}' voor {{type_name}}",
       "missing_command_name": "Opdrachtnaam ontbreekt",
       "missing_role_id": "role_id ontbreekt",
       "missing_x_provisa_role_header": "X-Provisa-Role-header ontbreekt",
@@ -155,7 +160,10 @@
       "auth_required_create": "Verificatie vereist om een organisatie te maken",
       "auth_required_leave": "Verificatie vereist om een organisatie te verlaten",
       "auto_join_public_domain": "auto_join vereist een e-mailregel die beperkt is tot een domein dat u beheert — deze komt overeen met {{domain}}.",
+      "auto_join_breadth_unacknowledged": "Bekijk deze regel voor automatische deelname zorgvuldig, anders laat je mogelijk mensen van buiten je organisatie toe: naast {{domains}} accepteert hij ook adressen zoals {{admits}}. Iedereen op een domein dat je niet beheert, zou dan automatisch lid van je organisatie kunnen worden. Bevestig dat je dat risico accepteert om op te slaan.",
       "auto_join_requires_role": "auto_join vereist auto_join_role",
+      "auto_join_rule_taken": "Een andere organisatie laat al iedereen automatisch deelnemen die aan deze regel voldoet. Twee organisaties kunnen niet dezelfde adressen claimen — vraag hen om een uitnodiging, of beperk je regel tot een domein dat alleen je organisatie gebruikt.",
+      "auto_join_rule_unbounded": "Deze regel voor automatische deelname heeft geen grens: hij zou adressen toelaten op domeinen die je niet beheert. Verankker hem aan een domein dat je bezit, bijv. \"@acme\\\\.com$\".",
       "cannot_delete_root": "De root-organisatie kan niet worden verwijderd",
       "delete_confirm_required": "Het verwijderen van '{{org}}' vernietigt alle bijbehorende gegevens permanent — niemand, ook geen platformbeheerder, kan ze herstellen. Herhaal de organisatie-id in de parameter 'confirm' om door te gaan.",
       "invalid_email_rule": "Ongeldige e-mailregel: {{error}}",
@@ -173,7 +181,8 @@
     },
     "platform": {
       "right_required": "Capability {{right}} vereist",
-      "settings_capability_required": "Capability platform_settings vereist"
+      "settings_capability_required": "Capability platform_settings vereist",
+      "control_plane_role_required": "Een platformbeheerder is vereist."
     },
     "profile": {
       "database_unavailable": "Database niet beschikbaar",
@@ -249,7 +258,7 @@
       "source_connection_failed": "Bron '{{source}}': verbindingsvalidatie mislukt: {{error}}",
       "source_created": "Bron '{{source}}' gemaakt",
       "source_deleted": "Bron '{{source}}' verwijderd",
-      "source_limit_reached": "Deze organisatie gebruikt {{held}} van de {{limit}} gegevensbronnen die het {{plan}}-abonnement toestaat. Wijzig het abonnement op de pagina Facturering of verwijder een bron.",
+      "source_limit_reached": "Deze organisatie heeft {{held}} van de {{limit}} databronnen die haar {{plan}}-abonnement toelaat. Wijzig het abonnement op de pagina Facturering, of verwijder een bron.",
       "source_load_protection_set": "belastingsbescherming ingesteld voor bron '{{source}}'",
       "source_naming_updated": "Naamgevingsconventie bijgewerkt voor bron '{{source}}'",
       "source_no_connection": "bron '{{source}}' heeft geen actieve verbinding",
@@ -297,7 +306,10 @@
       "unknown_auth_provider": "onbekende authenticatieprovider '{{provider}}'; geldig: {{valid}}",
       "unknown_encryption_provider": "onbekende encryptieprovider '{{provider}}'",
       "unknown_engine": "onbekende engine '{{engine}}'; geldig: {{valid}}",
-      "use_domains_invalid": "use_domains moet true, false of null zijn"
+      "use_domains_invalid": "use_domains moet true, false of null zijn",
+      "invalid_value": "De waarde voor {{field}} is geweigerd.",
+      "invalid_body": "Het instellingenverzoek is ongeldig.",
+      "auth_required": "{{field}} kan pas worden gewijzigd als verificatie is geconfigureerd."
     },
     "setup": {
       "admin_credentials_required": "admin_username en admin_password vereist",

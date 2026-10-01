@@ -19,22 +19,24 @@ comes from ``Source.federation_hints`` via ``configure``. Reads deliver Arrow na
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
-from provisa.executor.drivers.base import DirectDriver
+from provisa.executor.drivers.pooled import SingleStatementConnectionDriver, run_dbapi
 from provisa.executor.result import QueryResult
 
 
-class DatabricksDriver(DirectDriver):  # REQ-987
+class DatabricksDriver(SingleStatementConnectionDriver):  # REQ-987
+    """databricks-sql-connector is DB-API ``threadsafety = 1``: a connection per statement, from
+    the pool (see ``pooled``)."""
+
     def __init__(self) -> None:
-        self._conn: Any = None
         self._http_path: str | None = None
 
     def configure(self, extra: dict[str, str]) -> None:
         """``http_path`` is required (from the source's federation_hints); ``catalog`` is optional."""
         self._http_path = extra.get("http_path")
 
+    # Async only for the DirectDriver awaitable contract; connects synchronously in-thread.
     async def connect(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         host: str,
@@ -42,8 +44,8 @@ class DatabricksDriver(DirectDriver):  # REQ-987
         database: str,  # pyright: ignore[reportUnusedParameter]  (catalog carried in the SQL/hints)
         user: str,  # pyright: ignore[reportUnusedParameter]
         password: str,
-        min_pool: int = 1,  # pyright: ignore[reportUnusedParameter]
-        max_pool: int = 5,  # pyright: ignore[reportUnusedParameter]
+        min_pool: int = 1,
+        max_pool: int = 5,
     ) -> None:
         if not self._http_path:
             raise ValueError(
@@ -62,26 +64,16 @@ class DatabricksDriver(DirectDriver):  # REQ-987
                 **databricks_tls_kwargs(),
             )
 
-        self._conn = await asyncio.to_thread(_open)
+        self._open_pool(
+            _open, min_pool=min_pool, max_pool=max_pool, name=f"databricks:{host}{self._http_path}"
+        )
 
-    async def execute(self, sql: str, params: list | None = None) -> QueryResult:
-        def _run() -> QueryResult:
-            cur = self._conn.cursor()
-            try:
-                cur.execute(sql, params or None)
-                cols = [d[0] for d in cur.description] if cur.description else []
-                rows = cur.fetchall() if cur.description else []
-                return QueryResult(rows=[tuple(r) for r in rows], column_names=cols)
-            finally:
-                cur.close()
+    def _run(self, conn: Any, sql: str, params: list | None) -> QueryResult:
+        return run_dbapi(conn, sql, params, lambda cur: cur.cancel)
 
-        return await asyncio.to_thread(_run)
+    def _is_broken(self, exc: BaseException) -> bool:
+        # RequestError and its kin (the HTTP transport, a closed session) are OperationalError;
+        # a statement the warehouse rejected is ServerOperationError, which is not.
+        from databricks.sql.exc import InterfaceError, OperationalError
 
-    async def close(self) -> None:
-        if self._conn is not None:
-            await asyncio.to_thread(self._conn.close)
-            self._conn = None
-
-    @property
-    def is_connected(self) -> bool:
-        return self._conn is not None
+        return isinstance(exc, (OperationalError, InterfaceError))

@@ -11,6 +11,7 @@
     "metadataSheetId": "ID foglio metadati",
     "metadataSheetIdPlaceholder": "ID del foglio per le definizioni delle tabelle",
     "endpointUrl": "URL endpoint",
+    "defaultGraphUri": "URI del grafo predefinito",
     "namespace": "Namespace",
     "cacheTtlSeconds": "TTL cache (secondi)",
     "protoPathOrUrl": "Percorso proto o URL",
@@ -78,6 +79,12 @@
     "topicPrefixPlaceholder": "dbserver1 (topic: {prefix}.{schema}.{table})",
     "schemaRegistryUrlCdcPlaceholder": "vuoto = JSON; impostare per Avro",
     "consumerGroupId": "ID gruppo consumer (facoltativo)",
-    "consumerGroupIdPlaceholder": "eredita globale (provisa-debezium)"
+    "consumerGroupIdPlaceholder": "eredita globale (provisa-debezium)",
+    "useSsl": "Usa SSL/TLS",
+    "eventPath": "Percorso evento (facoltativo)",
+    "reconnectIntervalSeconds": "Intervallo di riconnessione (secondi)",
+    "subscribePayload": "Payload di sottoscrizione (JSON, facoltativo)",
+    "feedUrlOverride": "URL del feed (override facoltativo)",
+    "pollIntervalSeconds": "Intervallo di polling (secondi)"
   }
 }

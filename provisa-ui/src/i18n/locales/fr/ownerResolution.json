@@ -1,0 +1,8 @@
+{
+  "ownerResolution": {
+    "iconLabel": "Afficher à qui cela correspond",
+    "loading": "Résolution…",
+    "empty": "Aucune personne ne détient actuellement ceci",
+    "columnIconLabel": "Afficher qui peut accéder à cette colonne"
+  }
+}

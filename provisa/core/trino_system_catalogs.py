@@ -132,8 +132,11 @@ def control_plane_spec(url: URL, org_id: str) -> CatalogSpec:
 
 def otel_object_store() -> dict[str, str]:
     """The MinIO/S3 coordinates of the OTel parquet store (otlp2parquet writes, Iceberg reads)."""
+    from provisa.core import settings_registry
+
     return {
-        "endpoint": os.environ.get("PROVISA_OTEL_S3_ENDPOINT", "http://minio:9000"),
+        # REQ-1913: the operator setting `otel.s3_endpoint` (PROVISA_OTEL_S3_ENDPOINT sets it).
+        "endpoint": settings_registry.value("otel.s3_endpoint"),
         "bucket": os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel"),
         "access_key": os.environ.get("PROVISA_OTEL_S3_ACCESS_KEY", "minioadmin"),
         "secret_key": os.environ.get("PROVISA_OTEL_S3_SECRET_KEY", "minioadmin"),

@@ -11,9 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "轉換並預覽",
     "domainMap": "網域對應",
-    "domainMapHelp": "上載檔案中找到的每個 schema（v2）或子圖（DDN），以及其資料表所歸屬的 Provisa 網域。修改名稱後可重新轉換。",
+    "domainMapHelp": "上傳內容中找到的每個結構描述 (v2)、子圖 (DDN) 或遠端結構描述，以及其數據表所歸入的 Provisa 網域。請選擇現有網域或輸入新名稱，然後重新轉換。",
     "domainTo": "{{from}} 的網域",
-    "remap": "使用這些網域重新轉換",
+    "remap": "以這些設定重新轉換",
     "summaryHeading": "本次匯入將產生的內容",
     "count_sources": "數據來源",
     "count_domains": "網域",
@@ -34,6 +34,14 @@
     "replace": "取代現有的語意層",
     "replaceHelp": "刪除此組態中不存在的每個數據來源、表、角色與規則。保持關閉即可將匯入內容合併至組織現有的組態中。",
     "apply": "套用至本組織",
-    "applied": "已套用：{{sources}} 個數據來源、{{tables}} 張表、{{roles}} 個角色。"
+    "applied": "已套用：{{sources}} 個數據來源、{{tables}} 張表、{{roles}} 個角色。",
+    "domainNew": "新網域",
+    "sourceConnections": "數據來源連線",
+    "sourceConnectionsHelp": "匯出內容以環境變數命名其資料庫，因此連線須由你提供。若連線可連上，預覽會從數據來源讀取每個數據表的欄位類型；否則欄位會保持無類型，待你在下方完成設定。",
+    "host": "主機",
+    "port": "連接埠",
+    "database": "資料庫",
+    "username": "使用者名稱",
+    "password": "密碼"
   }
 }

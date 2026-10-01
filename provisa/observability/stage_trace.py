@@ -24,7 +24,6 @@ same way — every literal is blanked — so it is safe to enable independently 
 
 from __future__ import annotations
 
-import os
 
 import sqlglot
 import sqlglot.errors
@@ -34,8 +33,17 @@ from provisa.otel_compat import in_request_scope, trace_detail
 
 
 def _mode() -> str:
-    # Read per-call so it can be toggled in a dev session without a restart.
-    return os.environ.get("PROVISA_TRACE_SQL", "off").lower()
+    # Read per call: the operator setting `otel.trace_sql` is live (REQ-1913), so it is toggled
+    # from the settings page — or the environment in a dev session — without a restart.
+    from provisa.core import settings_registry
+
+    return settings_registry.value("otel.trace_sql")
+
+
+def _trace_ast() -> bool:
+    from provisa.core import settings_registry
+
+    return settings_registry.value("otel.trace_ast")
 
 
 def _redacted_tree(sql: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
@@ -96,7 +104,7 @@ def trace_stage(stage: str, sql: str) -> None:
         except sqlglot.errors.SqlglotError as e:  # surface on span; telemetry must not fail request
             attrs["sql.redact_error"] = f"{type(e).__name__}: {e}"
 
-    if os.environ.get("PROVISA_TRACE_AST") == "1":
+    if _trace_ast():
         # AST is redacted too — literals are blanked so no PII value survives the repr.
         try:
             attrs["sql.ast"] = redact_ast(sql)

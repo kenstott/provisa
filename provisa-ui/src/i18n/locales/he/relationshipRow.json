@@ -40,6 +40,8 @@
     "cardinalityWarning": "אזהרה: אם ה-JOIN הזה מחזיר יותר משורה אחת לכל הורה, רק הערך הראשון ישמש.",
     "cancel": "ביטול",
     "save": "שמירה",
-    "toggleDetails": "הצגה/הסתרה של פרטי הקשר"
+    "toggleDetails": "הצגה/הסתרה של פרטי הקשר",
+    "junctionBadge": "דרך",
+    "junctionBadgeTitle": "קשר מבוסס טבלת צומת דרך {{table}}"
   }
 }

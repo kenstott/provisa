@@ -35,6 +35,8 @@
     "deployToDbTitle": "Promuovi questa vista virtuale a vista reale del database",
     "profileButton": "Profila",
     "profilingButton": "Profilazione in corso…",
+    "previewButton": "Anteprima",
+    "previewTitle": "Anteprima delle righe di questa tabella (SELECT * governata)",
     "profileTitle": "Campiona e profila le colonne di questa tabella",
     "policiesButton": "Criteri",
     "policiesTitle": "Visualizza i criteri RLS per questa tabella",
@@ -53,7 +55,6 @@
     "colTopValues": "Valori principali",
     "editDefinitionButton": "Modifica definizione",
     "editDefinitionTitle": "Modifica la definizione della vista (SQL o selettore metrica/dimensione)",
-    "previewButton": "Anteprima",
-    "previewTitle": "Anteprima delle righe di questa tabella (SELECT * governata)"
+    "queryTemplate": "Cypher:"
   }
 }

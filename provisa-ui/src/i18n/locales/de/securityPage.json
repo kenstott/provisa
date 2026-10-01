@@ -13,6 +13,10 @@
     "roleIdPlaceholder": "analyst",
     "capabilities": "Fähigkeiten",
     "domainAccess": "Domänenzugriff",
+    "parentRole": "Erbt von",
+    "parentRoleNone": "Keine übergeordnete Rolle",
+    "parentRoleHelp": "Die Berechtigungen, Spaltensichtbarkeit und RLS-Regeln der Rolle werden geerbt; die eigene RLS-Regel dieser Rolle für eine Tabelle ersetzt die der übergeordneten Rolle.",
+    "labelParentRole": "Erbt von:",
     "allDomains": "Alle Domänen",
     "save": "Speichern",
     "cancel": "Abbrechen",
@@ -51,6 +55,11 @@
     "rolePurposeTitle": "Wozu Rollen dienen",
     "rolePurposeBody": "Eine Rolle ist die Einheit, gegen die jede andere Berechtigung geschrieben wird. Ihre Capabilities bestimmen, welche Operationen sie ausführen darf, ihr Domänenzugriff bestimmt, welche Teile des Modells sie überhaupt erreicht. Zeilenregeln und die Zugriffsprüfungen aller Schnittstellen benennen eine Rolle, nicht eine Person — was jemand sehen und tun kann, ändern Sie also über die Rolle, die er innehat.",
     "rolePurposeAdd": "Eine Rolle trägt zudem eigene Obergrenzen: Anfragen pro Sekunde sowie Grenzen für Abfragetiefe, Knotenzahl und Ausführungszeit. So erhält eine Rolle Reichweite, ohne unbegrenzte Kosten zu erhalten — eine teure Abfrage wird von der ausstellenden Rolle abgelehnt, nicht erst von der Quelle, die sie getroffen hätte.",
-    "rolePurposeAria": "Über Rollen"
+    "rolePurposeAria": "Über Rollen",
+    "applyToAction": "Aktion (Funktion oder Webhook)",
+    "action": "Aktion",
+    "actionPrefix": "Aktion:",
+    "loadActionsFailed": "Aktionen konnten nicht geladen werden: {{message}}",
+    "labelAction": "Aktion:"
   }
 }

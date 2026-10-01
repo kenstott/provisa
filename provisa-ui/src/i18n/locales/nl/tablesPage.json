@@ -11,6 +11,8 @@
     "addViewTitle": "Een nieuwe view aanmaken in de SQL Explorer",
     "model": "+ Model",
     "modelTitle": "Een entiteit of feit modelleren (sterschema / Data Vault)",
+    "reportXlsx": "Werkmap",
+    "reportXlsxTitle": "Download het model als spreadsheet voor review — bronnen, tabellen, kolommen, relaties, views, metrics, gematerialiseerde views en glossariumtermen, elk op een eigen blad",
     "viewErd": "ERD bekijken",
     "colSource": "Bron",
     "colDomain": "Domein",
@@ -56,6 +58,11 @@
       "impliedDimensionTitle": "Impliciete dimensie — 'Group by inschakelen' staat aan voor deze tabel"
     },
     "derived": "afgeleid",
+    "checker": {
+      "soda": "Soda",
+      "great_expectations": "Great Expectations",
+      "title": "Datakwaliteitscontrole — de rijen van deze tabel zijn de resultaten van het uitvoeren van het contract"
+    },
     "dataProduct": "product",
     "dataProductTitle": "Dataproduct — opgenomen in provisa metadata export",
     "purposeTitle": "Wat het registreren van een tabel doet",

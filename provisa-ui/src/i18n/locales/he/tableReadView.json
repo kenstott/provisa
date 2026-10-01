@@ -35,6 +35,8 @@
     "deployToDbTitle": "קידום ה-View הווירטואלי הזה ל-View אמיתי במסד הנתונים",
     "profileButton": "פרופיל",
     "profilingButton": "מפיק פרופיל…",
+    "previewButton": "תצוגה מקדימה",
+    "previewTitle": "תצוגה מקדימה של שורות הטבלה (SELECT * מנוהל)",
     "profileTitle": "דגימה והפקת פרופיל של עמודות הטבלה",
     "policiesButton": "מדיניויות",
     "policiesTitle": "הצגת מדיניויות RLS עבור טבלה זו",
@@ -53,7 +55,6 @@
     "colTopValues": "ערכים נפוצים",
     "editDefinitionButton": "עריכת הגדרה",
     "editDefinitionTitle": "עריכת הגדרת ה-View (SQL או בחירת מדד/ממד)",
-    "previewButton": "תצוגה מקדימה",
-    "previewTitle": "תצוגה מקדימה של שורות הטבלה (SELECT * מנוהל)"
+    "queryTemplate": "Cypher:"
   }
 }

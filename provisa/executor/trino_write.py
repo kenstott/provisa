@@ -18,6 +18,7 @@ any serialization in Provisa.
 from __future__ import annotations
 
 import logging
+import threading
 import uuid
 
 import trino
@@ -44,25 +45,40 @@ def _iceberg_format(fmt: str) -> str:
     return fmt.upper()  # PARQUET, ORC
 
 
+_results_schema_ensured = False
+_results_schema_lock = threading.Lock()
+
+
 def ensure_results_schema(conn: trino.dbapi.Connection) -> None:
-    """Create the results schema if it doesn't exist."""
+    """Create the results schema if it doesn't exist — once per process, by the first CTAS
+    redirect (REQ-171), after the bucket its location names has been ensured.
+
+    ``IF NOT EXISTS`` already makes an existing schema a success, so any error here is a real one
+    (the catalog is missing, the location is unusable) and is raised to the redirect that needed
+    the schema. It used to be logged at DEBUG at boot and the first CTAS failed later instead.
+    """
+    global _results_schema_ensured
+    if _results_schema_ensured:
+        return
     sql = (
         f"CREATE SCHEMA IF NOT EXISTS {RESULTS_CATALOG}.{RESULTS_SCHEMA} "
         f"WITH (location = 's3a://{RESULTS_BUCKET}/')"
     )
-    cur = conn.cursor()
-    try:
+    with _results_schema_lock:
+        if _results_schema_ensured:
+            return
+        cur = conn.cursor()
         cur.execute(sql)
+        cur.fetchall()  # the statement's outcome arrives with its result, not with execute()
         log.info("Ensured results schema %s.%s exists", RESULTS_CATALOG, RESULTS_SCHEMA)
-    except Exception as e:
-        # Schema may already exist
-        log.debug("Results schema creation: %s", e)
+        _results_schema_ensured = True
 
 
 def execute_ctas_redirect(  # REQ-029, REQ-044, REQ-138
     conn: trino.dbapi.Connection,
     select_sql: str,
     output_format: str = "parquet",
+    params: list | None = None,
 ) -> dict:
     """Execute a query via CTAS, writing results directly to S3.
 
@@ -72,6 +88,9 @@ def execute_ctas_redirect(  # REQ-029, REQ-044, REQ-138
         conn: Trino connection.
         select_sql: The SELECT query to execute (already transpiled to Trino SQL).
         output_format: Target format (parquet, orc).
+        params: The statement's bound values, in ``$N`` order (None: it binds none). Bound
+            exactly as the row terminal binds them (``execute_trino``): the transpiled ``@N``
+            placeholders become ``?`` in occurrence order, a repeated one repeating its value.
 
     Returns:
         {"table_name": "...", "s3_prefix": "...", "row_count": N}
@@ -91,7 +110,13 @@ def execute_ctas_redirect(  # REQ-029, REQ-044, REQ-138
     log.debug("[CTAS REDIRECT] sql=%s", ctas_sql[:300])
 
     cur = conn.cursor()
-    cur.execute(ctas_sql)
+    if params:
+        from provisa.compiler.params import bind_positionally
+
+        ctas_sql, bound = bind_positionally(ctas_sql, params, "?")
+        cur.execute(ctas_sql, bound)
+    else:
+        cur.execute(ctas_sql)
     # CTAS returns the row count
     rows = cur.fetchall()
     row_count = rows[0][0] if rows and rows[0] else 0

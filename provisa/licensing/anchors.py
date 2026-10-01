@@ -48,14 +48,22 @@ def default_anchor_paths() -> list[Path]:
 
     ``~/.provisa/anchor.json`` (primary), the OS-native per-user data dir (secondary store), and a
     dotted secondary marker. Multiple independent locations so no single deletion resets first-use."""
-    import platformdirs
+    from provisa.licensing.home import secondary_store, user_home
 
-    home = Path.home()
-    os_store = Path(platformdirs.user_data_dir("provisa", "provisa"))
+    home = user_home()
     return [
-        home / ".provisa" / "anchor.json",
-        os_store / "anchor.json",
-        home / ".provisa" / ".anchor.marker",
+        home / "anchor.json",
+        secondary_store() / "anchor.json",
+        home / ".anchor.marker",
+    ]
+
+
+def sandbox_anchor_paths(sandbox: Path) -> list[Path]:
+    """The anchors a licensing sandbox writes instead of the user's (see ``licensing.home``)."""
+    return [
+        sandbox / "anchor.json",
+        sandbox / "os-store" / "anchor.json",
+        sandbox / ".anchor.marker",
     ]
 
 
@@ -104,12 +112,22 @@ def reconcile_first_seen(
     first run. Then rewrites any location whose anchor is absent/tampered/not-earliest so all agree —
     a surviving anchor re-seeds deleted ones, so uninstalling does not reset the trial clock."""
     locations = paths if paths is not None else default_anchor_paths()
+    healed = locations
+    if paths is None:
+        from provisa.licensing.home import sandbox_dir
+
+        sandbox = sandbox_dir()
+        if sandbox is not None:
+            # Sandbox: the user's anchors are READ — the first-use date is theirs when it is
+            # earlier — and only the sandbox's own anchors are written.
+            healed = sandbox_anchor_paths(sandbox)
+            locations = [*locations, *healed]
     valid = [a for p in locations if (a := read_anchor(p, machine_id)) is not None]
 
     first_seen = min((a.first_seen for a in valid), default=today_iso)
     canonical = Anchor(first_seen=first_seen, machine_id=machine_id)
 
-    for p in locations:
+    for p in healed:
         existing = read_anchor(p, machine_id)
         if existing is None or existing.first_seen != first_seen:
             write_anchor(p, canonical)

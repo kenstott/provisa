@@ -109,15 +109,18 @@ class TestSecurityPosture:
         assert body["mode"] == "standard"
         assert {m["key"] for m in body["modes"]} == {"standard", "high"}
 
-    def test_put_high_persists(self, client, cfg_env):
+    def test_put_high_is_refused_for_the_anonymous_caller(self, client, cfg_env):
+        """REQ-1913: with no auth provider the caller is anonymous, and a guarded setting is not
+        the anonymous caller's to change. A platform administrator's save — stored in the control
+        plane, not this file — is covered in tests/unit/test_security_mode_endpoint.py."""
         r = client.put("/admin/security", json={"mode": "high"})
-        assert r.status_code == 200
-        assert r.json()["restart_required"] is True
-        assert read_config()["security"]["mode"] == "high"
-        assert client.get("/admin/security").json()["mode"] == "high"
+        assert r.status_code == 403
+        assert "security" not in read_config()
+        assert client.get("/admin/security").json()["mode"] == "standard"
 
     def test_put_unknown_mode_rejected(self, client):
-        assert client.put("/admin/security", json={"mode": "paranoid"}).status_code == 400
+        # Refused either way: the anonymous caller is turned away before the mode is read.
+        assert client.put("/admin/security", json={"mode": "paranoid"}).status_code == 403
 
 
 # --- AI models / vector models / NL rate limit (REQ-464/419/500/370) ------------
@@ -214,7 +217,7 @@ class TestAiModels:
 
 
 class TestCacheStorageWarmAndMv:
-    def test_put_warm_tables_and_mv_default_persist(self, client):
+    def test_put_warm_tables_and_mv_default_persist(self, client, settings_store):
         r = client.put(
             "/admin/cache-storage",
             json={
@@ -228,18 +231,45 @@ class TestCacheStorageWarmAndMv:
             },
         )
         assert r.status_code == 200
-        cfg = read_config()
-        assert cfg["warm_tables"]["query_threshold"] == 250
-        assert cfg["warm_tables"]["fs_cache_enabled"] is True
-        assert cfg["warm_tables"]["fs_cache_max_sizes"] == "20GB"
-        assert cfg["materialized_views"]["default_ttl"] == 900
+        # REQ-1913: stored in the control plane; the node's config file is not written.
+        stored = settings_store.resolve
+        assert stored("warm_tables.query_threshold") == (250, "stored")
+        assert stored("warm_tables.fs_cache_enabled") == (True, "stored")
+        assert stored("warm_tables.fs_cache_max_sizes") == ("20GB", "stored")
+        assert stored("materialized_views.default_ttl") == (900, "stored")
+        assert "warm_tables" not in read_config()
 
 
 # --- Extended OTel tuning via _apply_otel (REQ-545) -----------------------------
 
 
+@pytest.fixture
+def settings_store(cfg_env, tmp_path, monkeypatch):
+    """REQ-1913: the `otel` block is stored in the control plane (it used to be written to the
+    config file). A control plane for the settings, standing in for the platform database."""
+
+    from provisa.core import deployment_settings, settings_registry
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_admin import deployment_settings as settings_table
+    from provisa.core.schema_admin import metadata
+
+    engine = create_engine_from_url(f"sqlite+pysqlite:///{tmp_path / 'settings.db'}")
+    with engine.begin() as conn:
+        metadata.create_all(conn, tables=[settings_table])
+    db = Database(engine, name="platform")
+    monkeypatch.setattr(deployment_settings, "_held", None)
+    monkeypatch.setattr(deployment_settings, "_db", db)
+    monkeypatch.setattr(settings_registry, "_frozen", None)
+    import provisa.api.app as app_module
+
+    # Set on whatever app state the test already runs on (another fixture may have replaced it).
+    monkeypatch.setattr(app_module.state, "admin_db", db, raising=False)
+    yield settings_registry
+    engine.dispose()
+
+
 class TestOtelExtended:
-    def test_apply_otel_persists_pipeline_fields(self, cfg_env):
+    def test_apply_otel_persists_pipeline_fields(self, settings_store):
         from provisa.api.admin.settings_router import _apply_otel
 
         updated: list[str] = []
@@ -253,19 +283,22 @@ class TestOtelExtended:
             },
             updated,
         )
-        obs = read_config()["observability"]
-        assert obs["log_level"] == "DEBUG"
-        assert obs["compact_batch_size"] == 42
-        assert obs["s3_endpoint"] == "http://localhost:9000"
-        assert obs["ops_snapshot_retention_hours"] == 24
-        assert obs["collector_batch_timeout_ms"] == 500
+        stored = settings_store.resolve
+        assert stored("otel.log_level") == ("DEBUG", "stored")
+        assert stored("otel.compact_batch_size") == (42, "stored")
+        assert stored("otel.s3_endpoint") == ("http://localhost:9000", "stored")
+        assert stored("otel.ops_snapshot_retention_hours") == (24, "stored")
+        assert stored("otel.collector_batch_timeout_ms") == (500, "stored")
         assert "otel.log_level" in updated
+        # The node's config file is no longer where a saved setting goes.
+        assert "observability" not in read_config()
 
-    def test_apply_otel_blank_retention_is_none(self, cfg_env):
+    def test_apply_otel_blank_retention_is_none(self, settings_store):
         from provisa.api.admin.settings_router import _apply_otel
 
+        _apply_otel({"ops_snapshot_retention_hours": 24}, [])
         _apply_otel({"ops_snapshot_retention_hours": ""}, [])
-        assert read_config()["observability"]["ops_snapshot_retention_hours"] is None
+        assert settings_store.resolve("otel.ops_snapshot_retention_hours") == (None, "default")
 
 
 # --- Remote-GraphQL limits + editable sample size (REQ-165) ---------------------
@@ -282,10 +315,26 @@ class TestSettingsGraphqlRemoteAndSampling:
         assert r.status_code == 200
         assert read_config()["graphql_remote"]["max_object_depth"] == 9
 
-    def test_put_sample_size_sets_env(self, client):
-        with patch.dict(os.environ, {}, clear=False):
-            client.put("/admin/settings", json={"sampling": {"default_sample_size": 555}})
-            assert os.environ["PROVISA_SAMPLE_SIZE"] == "555"
+    def test_put_sample_size_is_stored_in_the_control_plane(self, client):
+        """REQ-1900: a deployment-wide setting is a control-plane row every worker reads, not an
+        environment write in the worker that served the request."""
+        from provisa.api.admin import settings_router
+        from provisa.api.app import state
+
+        control_plane = object()
+        with (
+            patch.dict(os.environ, {}, clear=False),
+            patch.object(state, "admin_db", control_plane),
+            patch.object(settings_router._deployment_settings, "write") as write,
+        ):
+            os.environ.pop("PROVISA_SAMPLE_SIZE", None)
+            r = client.put("/admin/settings", json={"sampling": {"default_sample_size": 555}})
+            assert r.status_code == 200
+            assert r.json()["updated"] == ["sampling.default_sample_size"]
+            assert "PROVISA_SAMPLE_SIZE" not in os.environ
+        write.assert_called_once_with(
+            control_plane, {"sampling.default_sample_size": 555}, updated_by="anonymous"
+        )
 
 
 # --- Encryption provider registry (REQ-918) -------------------------------------
@@ -551,7 +600,7 @@ class TestSecretsService:
 
             raise ApiError(403, "auth.forbidden", "platform_settings required")
 
-        monkeypatch.setattr(sr, "require_platform_settings", _deny)
+        monkeypatch.setattr(sr, "require_deployment_settings", _deny)
         assert client.get("/admin/secrets-service").status_code == 403
         assert client.put("/admin/secrets-service", json={"provider": "provisa"}).status_code == 403
 
@@ -574,7 +623,7 @@ class TestEngineSpoolFields:
         } <= keys
 
 
-def test_config_files_are_valid_yaml_after_writes(client, cfg_env, org_overrides):
+def test_config_files_are_valid_yaml_after_writes(client, cfg_env, org_overrides, settings_store):
     """Every write path leaves parseable YAML.
 
     The AI-models write is included deliberately: since REQ-1349 it lands in the org's storage, so

@@ -296,9 +296,10 @@ async def _execute_grpc(query: str, role: str, app_state: Any) -> dict:
         return {**top, **nested}
 
     type_name = query[len("Query") :] if query.startswith("Query") else query
-    sql = grpc_table_to_semantic_sql(ctx, type_name, limit=20)
-    if sql is None:
+    semantic = grpc_table_to_semantic_sql(ctx, type_name, limit=20)
+    if semantic is None:
         raise RuntimeError(f"No table matches gRPC type: {type_name}")
+    sql, _no_filter_params = semantic  # no filter is passed, so nothing is bound
     return await _execute_sql(sql, role, app_state)
 
 

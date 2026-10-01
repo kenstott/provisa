@@ -24,6 +24,18 @@
     "materializeLabel": "Materializar (crear automáticamente una MV para joins entre orígenes)",
     "disableCypherLabel": "Excluir del grafo Cypher",
     "refreshIntervalLabel": "Intervalo de actualización (s)",
-    "save": "Guardar"
+    "save": "Guardar",
+    "junctionTitle": "Tabla de unión (avanzado)",
+    "junctionHelp": "Declara esta arista como un recorrido a través de una tabla asociativa. Las demás columnas de la tabla de unión pasan a ser los atributos de la relación.",
+    "viaTableLabel": "Tabla de unión",
+    "viaSourceColumnLabel": "Columna de unión → origen",
+    "viaTargetColumnLabel": "Columna de unión → destino",
+    "viaTypeColumnLabel": "Columna discriminadora",
+    "viaTypeValueLabel": "Valor discriminador",
+    "viaTypeValuePlaceholder": "p. ej. KIND_OF",
+    "viaLabelSourceLabel": "Nombrar la arista desde",
+    "viaLabelSourceColumn": "Valor discriminador",
+    "viaLabelSourceTable": "Nombre de la tabla de unión",
+    "viaLabelSourceFixed": "Alias de Cypher"
   }
 }

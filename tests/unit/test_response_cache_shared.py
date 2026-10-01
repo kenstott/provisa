@@ -111,7 +111,7 @@ async def _seed_hit(
     await store.set(ck, encode_cache_payload(payload), ttl=60)
 
 
-async def _fake_write_audit_noop(pending, status_code, state=None) -> None:
+async def _fake_write_audit_noop(pending, status_code, state=None, **outcome) -> None:
     """A write_audit stand-in that just discards the row -- used by tests that only care about
     the returned QueryResult, not the audit call itself."""
     return None
@@ -149,7 +149,7 @@ async def test_hit_writes_audit_row_at_200(monkeypatch):
 
     calls: list[tuple[Any, int]] = []
 
-    async def _fake_write_audit(pending, status_code, state=None):
+    async def _fake_write_audit(pending, status_code, state=None, **outcome):
         calls.append((pending, status_code))
 
     monkeypatch.setattr("provisa.audit.pipeline.write_audit", _fake_write_audit)
@@ -199,7 +199,7 @@ async def test_hit_egress_rejection_audits_402_not_200(monkeypatch):
 
     calls: list[int] = []
 
-    async def _fake_write_audit(pending, status_code, state=None):
+    async def _fake_write_audit(pending, status_code, state=None, **outcome):
         calls.append(status_code)
 
     monkeypatch.setattr("provisa.audit.pipeline.write_audit", _fake_write_audit)

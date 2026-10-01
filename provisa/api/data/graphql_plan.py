@@ -17,7 +17,7 @@ those stages — the request's directives and its governed ``CompiledQuery`` lis
 (same store, same key discipline, same invalidation). A request whose plan is cached goes straight
 to execution, where the response cache is consulted.
 
-Beyond what every stage's key carries (generation, role, person), this stage's inputs are the
+Beyond what every stage's key carries (generation, role), this stage's inputs are the
 query text, its variables, the as-of time and the session variables RLS predicates resolve
 against; and beyond the role's governance objects, a plan is anchored to the GraphQL schema object
 and the fresh-MV set it was compiled against.

@@ -11,9 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "Convertir et prévisualiser",
     "domainMap": "Correspondance des domaines",
-    "domainMapHelp": "Chaque schéma (v2) ou sous-graphe (DDN) trouvé dans le fichier, et le domaine Provisa dans lequel ses tables arrivent. Modifiez un nom puis reconvertissez.",
+    "domainMapHelp": "Chaque schéma (v2), sous-graphe (DDN) ou schéma distant trouvé dans le fichier importé, et le domaine Provisa où atterrissent ses tables. Choisissez un domaine existant ou saisissez un nouveau nom, puis convertissez à nouveau.",
     "domainTo": "Domaine pour {{from}}",
-    "remap": "Reconvertir avec ces domaines",
+    "remap": "Convertir à nouveau avec ces paramètres",
     "summaryHeading": "Ce que produit cet import",
     "count_sources": "Sources de données",
     "count_domains": "Domaines",
@@ -34,6 +34,14 @@
     "replace": "Remplacer la couche sémantique existante",
     "replaceHelp": "Supprime toutes les sources de données, tables, rôles et règles absents de cette configuration. Laissez désactivé pour fusionner l'import avec ce que possède déjà l'organisation.",
     "apply": "Appliquer à cette organisation",
-    "applied": "Appliqué : {{sources}} sources de données, {{tables}} tables, {{roles}} rôles."
+    "applied": "Appliqué : {{sources}} sources de données, {{tables}} tables, {{roles}} rôles.",
+    "domainNew": "nouveau domaine",
+    "sourceConnections": "Connexions aux sources",
+    "sourceConnectionsHelp": "L'export désigne ses bases de données par variable d'environnement ; la connexion est donc à fournir par vous. Avec une connexion accessible, l'aperçu lit les types de colonnes de chaque table depuis la source ; sans elle, les colonnes restent non typées jusqu'à ce que vous les complétiez ci-dessous.",
+    "host": "Hôte",
+    "port": "Port",
+    "database": "Base de données",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe"
   }
 }

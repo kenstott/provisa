@@ -40,6 +40,8 @@
     "cardinalityWarning": "警告: このJOINが親ごとに複数行を返す場合、最初の値のみが使用されます。",
     "cancel": "キャンセル",
     "save": "保存",
-    "toggleDetails": "リレーションシップ詳細の表示切替"
+    "toggleDetails": "リレーションシップ詳細の表示切替",
+    "junctionBadge": "経由",
+    "junctionBadgeTitle": "{{table}} を経由するジャンクション型のリレーションシップ"
   }
 }

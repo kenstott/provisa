@@ -31,6 +31,8 @@
     "query": "Consulta",
     "domain": "Dominio",
     "selectDomain": "Seleccionar dominio...",
+    "dataProduct": "Producto de datos (opcional)",
+    "dataProductPlaceholder": "Seleccionar producto de datos...",
     "description": "Descripción",
     "descriptionPlaceholder": "opcional",
     "arguments": "Argumentos",
@@ -46,6 +48,18 @@
     "bindingCallable": "Invocable de Python (module:attr)",
     "materialize": "Materializar (identidad de administrador/definidor)",
     "materializeHint": "Activado: se ejecuta como administrador y se gobierna la salida. Desactivado: se ejecuta como el invocador y se gobiernan las entradas.",
-    "argKind": "Clase de argumento"
+    "argKind": "Clase de argumento",
+    "colVisibleTo": "Visible para (roles, separados por comas; vacío = todos)",
+    "colVisibleToPlaceholder": "analyst, org_admin",
+    "colUnmaskedTo": "Sin enmascarar para (roles, separados por comas)",
+    "colMask": "Máscara",
+    "maskNone": "Ninguna",
+    "maskRegex": "Regex",
+    "maskConstant": "Constante",
+    "maskTruncate": "Truncar",
+    "maskPattern": "Patrón",
+    "maskReplace": "Reemplazar",
+    "maskValue": "Valor",
+    "maskPrecision": "Precisión"
   }
 }

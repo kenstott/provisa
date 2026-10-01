@@ -47,13 +47,34 @@ log = logging.getLogger(__name__)
 # upper bound. 5,000 rows/batch is ~1.8MB at that estimate, well under 4MB even for a wider table.
 _GRPC_BATCH_ROWS = 5_000
 
+
 # REQ-1899: server-wide default for grpc.max_{send,receive}_message_length — configurable via
 # GRPC_MAX_MESSAGE_BYTES env var / server_cfg["grpc_max_message_bytes"] (start_grpc_server), NOT
 # hardcoded, since this is a channel-wide setting (gRPC has no per-RPC-call equivalent) and
 # different deployments may want a tighter or looser ceiling without a code change. 32MB comfortably
 # covers a batch_rows=65,536 caller (matching _STREAM_BATCH_ROWS' granularity) even for a wider
 # table than order_items' measured ~353 bytes/row.
-_GRPC_MAX_MESSAGE_BYTES_DEFAULT = 32 * 1024 * 1024
+def _max_message_bytes() -> int:
+    """REQ-1913: an operator setting; its default is declared in provisa/core/settings_catalog.py."""
+    from provisa.core import settings_registry
+
+    return settings_registry.value("grpc.max_message_bytes")
+
+
+def _allow_unsecured_reflection() -> bool:
+    """REQ-1904: the explicit opt-in to reflection on a deployment with no auth (REQ-1913: an
+    operator setting)."""
+    from provisa.core import settings_registry
+
+    return settings_registry.value("grpc.allow_unsecured_reflection")
+
+
+def _max_concurrent_rpcs() -> int:
+    """REQ-1904: the server-wide ceiling on in-flight RPCs, per worker process (REQ-1913: an
+    operator setting)."""
+    from provisa.core import settings_registry
+
+    return settings_registry.value("concurrency.grpc_max_concurrent_rpcs")
 
 
 def _proto_value(field, value):
@@ -526,7 +547,14 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
     async def _handle_query_bound(self, request, context, type_name: str, role_id: str):
         """The routing+execution body of _handle_query, run with the RPC's org already bound."""
-        from provisa.grpc.query_ir import FilterError, grpc_table_to_semantic_sql
+        from provisa.grpc.query_ir import (
+            FilterError,
+            MaskTree,
+            ReadMaskError,
+            grpc_table_to_semantic_sql,
+            resolve_read_mask,
+            restrict_json,
+        )
         from provisa.pgwire._pipeline import (
             _execute_plan,
             _govern_and_route_compiled,
@@ -550,46 +578,85 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # IR: lower the request straight to a semantic SELECT (shared with the HTTP gRPC proxy), then
         # govern → route → physical exactly as the SQL/Cypher transports do.
         filter_msg = request.filter if request.HasField("filter") else None
-        # A filter on a column this role cannot read is refused by name before anything is
-        # governed or run — its row count would otherwise reveal the hidden value.
+        # REQ-803: the request's read_mask is part of the QUERY — only the masked columns are
+        # selected, so the governed pipeline and the source see exactly what the client asked for
+        # (and the statement, hence the kept-plan key, differs per mask). Fields outside the mask
+        # are never set and stay at their proto defaults.
+        # A mask path or a filter field that is not a column this role can read is rejected by
+        # name before anything is governed or run.
         try:
-            semantic_sql = grpc_table_to_semantic_sql(ctx, type_name, request.limit, filter_msg)
-        except FilterError as exc:
+            read_mask = resolve_read_mask(ctx, type_name, list(request.read_mask.paths))
+            semantic = grpc_table_to_semantic_sql(
+                ctx, type_name, request.limit, filter_msg, read_mask
+            )
+        except (ReadMaskError, FilterError) as exc:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
             return
-        if semantic_sql is None:
+        if semantic is None:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
             return
+        # REQ-1877: the statement is the request's shape; the filter values and the row limit
+        # travel bound, so a request that differs only in its values reuses the kept governed plan.
+        semantic_sql, bound_params = semantic
 
         def _norm(s: str) -> str:
             return s.replace("_", "").lower()
 
         try:
             # REQ-544: the call's own `x-provisa-cache` / `x-provisa-cache-ttl` metadata opt-in.
+            # REQ-1897: serve_cached — an opted-in request whose entry exists comes back as a
+            # Route.CACHE plan read BEFORE routing, which this handler serves below.
             plan = await _govern_and_route_compiled(
                 semantic_sql,
                 role_id,
+                exec_params=bound_params or None,
                 state=state,
                 cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),
+                serve_cached=True,
             )
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
             return
 
-        def _col_fields_for(out_cols: list[str]) -> list[tuple[str, object]]:
+        def _col_fields_for(out_cols: list[str]) -> list[tuple[str, object, MaskTree | None]]:
             # REQ-1884: resolved once per query, not once per (row, column) — out_cols is fixed
             # for the life of the result set, so descriptor.fields_by_name.get(col) doesn't need
             # re-running on every row on the ENGINE-route path (millions of rows for a large scan).
-            return [(col, descriptor.fields_by_name.get(col)) for col in out_cols]
+            # REQ-803: likewise each column's read_mask JSON sub-path selection (None = whole value).
+            selections: list[MaskTree | None] = (
+                read_mask.restrictions(out_cols)
+                if read_mask is not None
+                else [None] * len(out_cols)
+            )
+            return [
+                (col, descriptor.fields_by_name.get(col), selection)
+                for col, selection in zip(out_cols, selections)
+            ]
 
-        def _kwargs_for(col_fields: list[tuple[str, object]], row) -> dict:
+        def _kwargs_for(col_fields: list[tuple[str, object, MaskTree | None]], row) -> dict:
             kwargs = {}
-            for i, (col, field) in enumerate(col_fields):
+            for i, (col, field, selection) in enumerate(col_fields):
                 if i < len(row) and row[i] is not None:
+                    value = row[i] if selection is None else restrict_json(row[i], selection)
                     # No field => let msg_cls(**kwargs) raise on the unknown name rather than
                     # dropping the column silently.
-                    kwargs[col] = _proto_value(field, row[i]) if field is not None else row[i]
+                    kwargs[col] = _proto_value(field, value) if field is not None else value
             return kwargs
+
+        # REQ-1897: answered from the response cache before routing — nothing was lowered,
+        # optimized, routed or prepared for residency, and no source is touched. cached_result
+        # egress-accounts and audits the HIT.
+        if plan.cache_hit is not None:
+            from provisa.pgwire._pipeline import cached_result
+
+            hit = await cached_result(plan, state)
+            self._emit_license_nag(context)  # REQ-1137
+            _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
+            out_cols = [_proto_by_norm.get(_norm(c), c) for c in hit.column_names]
+            col_fields = _col_fields_for(out_cols)
+            for row in hit.rows:
+                yield msg_cls(**_kwargs_for(col_fields, row))
+            return
 
         # ENGINE route streams lazily — the full user result set never materializes (REQ-1215).
         # The engine's streaming terminal is synchronous and is drained right here, on the RPC's
@@ -613,34 +680,24 @@ class ProvisaServicer:  # REQ-045, REQ-143
             )
 
             await ensure_rows_resident(state, plan.pk_bounds)
-            _pushed_down = await pushdown_row_materialize(
+            await pushdown_row_materialize(
                 state, plan.physical_sql, state.federation_engine.dialect, plan.exec_params
             )
-            await ensure_resident(
-                state, plan.sources, pk_bounds=plan.pk_bounds, pushed_down=_pushed_down
-            )
-            # REQ-1897: this streaming terminal bypasses _execute_plan_in_org entirely, so it needs
-            # its own cache-HIT check. A hit is served as a stream over the cached rows -- the same
-            # `.batches()` shape a live QueryResult exposes below -- without touching the engine;
-            # check_response_cache itself audits/egress-accounts the hit.
-            from provisa.pgwire._pipeline import (
-                check_response_cache,
-                finalize_audit,
-                response_cache_tee,
-            )
+            await ensure_resident(state, plan.sources)
+            # REQ-1897: this streaming terminal bypasses _execute_plan_in_org entirely. A HIT was
+            # served above from the plan itself; a plan that reaches here is a MISS (or did not
+            # opt in), so the engine runs and an opted-in result is written through.
+            from provisa.pgwire._pipeline import finalize_audit, response_cache_tee
 
-            stream = await check_response_cache(plan, state)
-            tee = None
-            if stream is None:
-                stream = state.federation_engine.execute_engine_sync(
-                    plan.physical_sql, [], session_hints=plan.session_hints
-                )
-                # REQ-1897: write-through to the raw-SQL response cache — batches still stream as
-                # they arrive; this RPC is already on its loop, so the entry is committed below,
-                # after a complete drain.
-                tee = response_cache_tee(plan, state, run=None)
-                if tee is not None:
-                    stream = tee.rows(stream)
+            stream = state.federation_engine.execute_engine_sync(
+                plan.physical_sql, plan.exec_params, session_hints=plan.session_hints
+            )
+            # REQ-1897: write-through to the raw-SQL response cache — batches still stream as
+            # they arrive; this RPC is already on its loop, so the entry is committed below,
+            # after a complete drain. None when the result is not cacheable.
+            tee = response_cache_tee(plan, state, run=None)
+            if tee is not None:
+                stream = tee.rows(stream)
             self._emit_license_nag(context)  # REQ-1137: trailing-metadata nag before the row stream
             _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
             out_cols = [_proto_by_norm.get(_norm(c), c) for c in stream.column_names]
@@ -648,20 +705,21 @@ class ProvisaServicer:  # REQ-045, REQ-143
             batch_iter = stream.batches()
             # REQ-074/REQ-1386: this streaming terminal never reaches _execute_plan, so the audit
             # row is written here — after the last batch, or on the way out of a failed drain.
-            # (A cache HIT above already finalized its own audit inside check_response_cache; this
-            # finalize is a no-op for that plan per finalize_audit's own idempotence guard.)
 
             try:
+                _delivered = 0  # query_audit_log.row_count
                 while True:
                     batch = next(batch_iter, None)
                     if batch is None:
                         break
+                    _delivered += len(batch)
                     for row in batch:
                         yield msg_cls(**_kwargs_for(col_fields, row))
             except Exception as exc:
                 await finalize_audit(plan, 500, state)
                 await context.abort(_status_for_exception(exc), str(exc))
                 return
+            plan.row_count = _delivered
             await finalize_audit(plan, 200, state)
             if tee is not None:
                 await tee.commit()
@@ -677,7 +735,19 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # execute_native_stream, which drives a loop from outside it by submitting to that loop and
         # blocking on the result; called from the loop's own thread it would deadlock.
         if plan.route == Route.DIRECT and state.source_pools.has(plan.source_id):
-            from provisa.pgwire._pipeline import finalize_audit
+            from provisa.executor.result import QueryResult
+            from provisa.pgwire._pipeline import (
+                finalize_audit,
+                response_cache_tee,
+                store_executed_result,
+            )
+
+            # REQ-544/REQ-1897: this terminal bypasses _execute_plan too. A HIT was served above
+            # from the plan itself; a plan that reaches here is a MISS (or did not opt in), and an
+            # opted-in result is written through the pipeline's own write after a complete drain.
+            # None when this plan's result is not cacheable (no opt-in, no store, policy TTL 0):
+            # nothing is captured.
+            tee = response_cache_tee(plan, state, run=None)
 
             # REQ-1898: execute_native (below) fully materializes every row of the DIRECT read
             # into one Python QueryResult before a single message is sent — fine for a point
@@ -702,11 +772,21 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
                 out_cols = [_proto_by_norm.get(_norm(c), c) for c in ds.column_names]
                 col_fields = _col_fields_for(out_cols)
+                _delivered = 0  # query_audit_log.row_count
+                # The copy an opted-in MISS writes back, held only within the cache's own row
+                # bound: a result past it is still streamed, and is not cached.
+                _kept: list[tuple] | None = [] if tee is not None else None
                 try:
                     while True:
                         batch = await ds.fetch(_STREAM_BATCH_ROWS)
                         if not batch:
                             break
+                        _delivered += len(batch)
+                        if _kept is not None and tee is not None:
+                            if _delivered > tee.bound:
+                                _kept = None
+                            else:
+                                _kept.extend(batch)
                         for row in batch:
                             yield msg_cls(**_kwargs_for(col_fields, row))
                 except Exception as exc:
@@ -715,7 +795,18 @@ class ProvisaServicer:  # REQ-045, REQ-143
                     return
                 finally:
                     await ds.close()
+                plan.row_count = _delivered
                 await finalize_audit(plan, 200, state)
+                if _kept is not None:
+                    await store_executed_result(
+                        plan,
+                        state,
+                        QueryResult(
+                            rows=_kept,
+                            column_names=list(ds.column_names),
+                            column_types=ds.column_types,
+                        ),
+                    )
                 return
 
             result = await state.federation_engine.execute_native(
@@ -733,7 +824,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 await finalize_audit(plan, 500, state)
                 await context.abort(_status_for_exception(exc), str(exc))
                 return
+            plan.row_count = len(result.rows)
             await finalize_audit(plan, 200, state)
+            if tee is not None:
+                await store_executed_result(plan, state, result)
             return
 
         # Bounded routes (CACHE / API) buffer via the materializing terminal — async-native, memory
@@ -1093,12 +1187,7 @@ def start_grpc_server(
     # batch_rows which genuinely is per-query. Configurable rather than hardcoded, matching the
     # grpc_port pattern above (env var overrides server_cfg, which has the default) — a deployment
     # that wants a tighter or looser ceiling doesn't need a code change to set one.
-    _default_max_message_bytes = state.server_cfg.get(
-        "grpc_max_message_bytes", _GRPC_MAX_MESSAGE_BYTES_DEFAULT
-    )
-    max_message_bytes = int(
-        os.environ.get("GRPC_MAX_MESSAGE_BYTES", str(_default_max_message_bytes))
-    )
+    max_message_bytes = _max_message_bytes()
     # REQ-1904: overload had no fast-fail path — no concurrency ceiling meant a saturated server
     # just queued RPCs indefinitely instead of returning RESOURCE_EXHAUSTED. REQ-369's
     # max_flight_streams is a per-ROLE limit enforced by the rate limiter (fair-share across
@@ -1108,12 +1197,7 @@ def start_grpc_server(
     # grpc_max_message_bytes above. Sized well above the default DB pool (pool_size=5 per worker,
     # provisa/core/database.py) since most RPCs stream rather than hold a connection for their
     # whole lifetime, but still a real ceiling rather than "unbounded".
-    max_concurrent_rpcs = int(
-        os.environ.get(
-            "GRPC_MAX_CONCURRENT_RPCS",
-            str(state.server_cfg.get("grpc_max_concurrent_rpcs", 200)),
-        )
-    )
+    max_concurrent_rpcs = _max_concurrent_rpcs()
     # REQ-1882 (amended 2026-09-29): one pool thread per in-flight RPC — each RPC runs entirely on
     # its thread (provisa.grpc.rpc_scope). The pool is sized to the concurrency ceiling, so every
     # admitted RPC has a thread and the ceiling alone decides RESOURCE_EXHAUSTED.
@@ -1194,11 +1278,7 @@ def start_grpc_server(
     from provisa.grpc.auth import auth_active
     from provisa.grpc.reflection import enable_reflection
 
-    _allow_unsecured_reflection = bool(
-        os.environ.get("GRPC_ALLOW_UNSECURED_REFLECTION")
-        or state.server_cfg.get("grpc_allow_unsecured_reflection", False)
-    )
-    if auth_active(state) or _allow_unsecured_reflection:
+    if auth_active(state) or _allow_unsecured_reflection():
         enable_reflection(server, service_names)
     else:
         log.warning(

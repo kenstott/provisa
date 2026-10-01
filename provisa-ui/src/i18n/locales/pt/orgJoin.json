@@ -1,0 +1,15 @@
+{
+  "orgJoin": {
+    "heading": "Quem pode entrar",
+    "help": "Quais endereços de e-mail podem entrar nesta organização. Um convite é verificado contra esta regra; com a entrada automática ativada, qualquer pessoa que entre com um endereço correspondente se torna membro sem convite.",
+    "emailRuleLabel": "Regra de e-mail",
+    "emailRuleDesc": "Uma expressão regular comparada com o endereço. Deixe vazio para aceitar qualquer endereço por convite.",
+    "autoJoinLabel": "Entrar automaticamente",
+    "autoJoinDesc": "Um endereço correspondente se torna membro no primeiro login, sem convite. Somente para um domínio que sua organização controla.",
+    "autoJoinRoleLabel": "Função concedida na entrada automática",
+    "autoJoinRoleDesc": "A função que todos os admitidos pela regra recebem.",
+    "acceptRisk": "Aceito que esta regra possa admitir pessoas de fora da minha organização",
+    "save": "Salvar",
+    "saved": "Regra de entrada salva."
+  }
+}

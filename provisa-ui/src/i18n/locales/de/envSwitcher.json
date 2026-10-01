@@ -1,0 +1,20 @@
+{
+  "envSwitcher": {
+    "env": "Umg.: {{env}}",
+    "label": "Umgebung",
+    "drifted": "abgewichen",
+    "diverged": "divergiert",
+    "unpushed": "nicht gepusht",
+    "ahead": "{{n}} zu pushen",
+    "behind": "{{n}} zu pullen",
+    "undo": "Letzte Änderung an {{env}} rückgängig machen",
+    "redo": "In {{env}} wiederholen",
+    "undone": "{{env}} steht wieder bei {{sha}}.",
+    "redone": "{{env}} steht vorwärts bei {{sha}}.",
+    "versions": "Version",
+    "loadingVersions": "Verlauf wird gelesen…",
+    "applied": "{{env}} steht bei {{sha}}.",
+    "proposed": "{{sha}} ist für {{env}} vorgeschlagen; die Umgebung ist geschützt, daher wartet es auf Freigabe.",
+    "switched": "Es wird jetzt {{env}} gelesen."
+  }
+}

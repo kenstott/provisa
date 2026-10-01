@@ -1,0 +1,624 @@
+{
+  "settings": {
+    "limits": {
+      "default_row_limit": {
+        "label": "默认行数上限",
+        "help": "调用方未自行设置上限时，一次查询最多返回的行数。"
+      },
+      "engine_query_timeout": {
+        "label": "引擎查询超时",
+        "help": "联邦引擎运行单个查询的最长时间，超时后将被取消。"
+      },
+      "retry_budget_secs": {
+        "label": "重试预算",
+        "help": "失败的查询在返回错误之前持续重试的时长；0 表示关闭重试。"
+      },
+      "request_timeout": {
+        "label": "默认请求超时",
+        "help": "请求运行的最长时间，超时后将被取消；适用于未单独设置时限的所有传输方式。"
+      },
+      "request_timeouts": {
+        "label": "各传输方式的请求超时",
+        "help": "为每种传输方式单独设置的请求时限；留空的传输方式使用默认值。Flight 默认为 3600 秒，pgwire 为 300 秒。",
+        "keys": {
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "jsonapi": "JSON:API",
+          "sql_http": "基于 HTTP 的 SQL",
+          "cypher_http": "基于 HTTP 的 Cypher",
+          "pgwire": "PostgreSQL wire",
+          "flight": "Arrow Flight",
+          "bolt": "Bolt",
+          "grpc": "gRPC",
+          "mcp": "MCP"
+        }
+      }
+    },
+    "sampling": {
+      "default_sample_size": {
+        "label": "默认采样大小",
+        "help": "调用方未指定时，采样查询读取的行数。"
+      }
+    },
+    "relationships": {
+      "auto_track_fk": {
+        "label": "自动跟踪外键",
+        "help": "注册表时是否同时将其外键注册为关系。"
+      }
+    },
+    "grpc": {
+      "max_message_bytes": {
+        "label": "gRPC 最大消息大小",
+        "help": "服务器发送或接受的单条 gRPC 消息的最大大小；需要重启，因为这是构建 gRPC 服务器时设置的服务器选项。"
+      },
+      "allow_unsecured_reflection": {
+        "label": "允许不安全的 gRPC 反射",
+        "help": "允许 gRPC 客户端列出未启用身份验证的部署中的服务。需要重启；因会暴露服务接口，保存前需确认。"
+      }
+    },
+    "bolt": {
+      "recv_timeout": {
+        "label": "Bolt 接收超时",
+        "help": "提供给 Bolt（Neo4j）客户端的提示，说明等待回复的时长。"
+      },
+      "allowed_origins": {
+        "label": "Bolt 允许的来源",
+        "help": "允许从浏览器发起 Bolt 连接的网站；列出之前一律不允许。因每个条目都会让该网站能够操作该端口，保存前需确认。"
+      }
+    },
+    "engine": {
+      "ready_timeout": {
+        "label": "引擎就绪超时",
+        "help": "启动时等待联邦引擎就绪的最长时间，超时则启动失败。"
+      },
+      "jvm_heap_gb": {
+        "label": "引擎 JVM 堆（GB）",
+        "help": "分配给联邦引擎 Java 进程的内存。引擎重启后生效。"
+      },
+      "query_max_memory": {
+        "label": "查询内存上限",
+        "help": "单个查询在整个引擎集群中最多可使用的内存。引擎重启后生效。"
+      },
+      "query_max_memory_per_node": {
+        "label": "每节点查询内存上限",
+        "help": "单个查询在单个引擎节点上最多可使用的内存。引擎重启后生效。"
+      },
+      "query_max_total_memory": {
+        "label": "查询总内存上限",
+        "help": "单个查询（含系统内存）最多可使用的总内存。引擎重启后生效。"
+      },
+      "fault_tolerant_execution": {
+        "label": "容错执行",
+        "help": "引擎是否重试查询中失败的部分，而不是让整个查询失败。引擎重启后生效。"
+      },
+      "fault_tolerant_task_memory": {
+        "label": "容错任务内存",
+        "help": "启用容错执行时为每个任务预留的内存。引擎重启后生效。"
+      },
+      "exchange_spool_dir": {
+        "label": "交换暂存文件夹",
+        "help": "引擎为容错执行保存中间数据的位置。引擎重启后生效。"
+      }
+    },
+    "ui": {
+      "proxy_timeout": {
+        "label": "UI 代理超时",
+        "help": "UI 服务器等待 API 响应代理请求的时长，超时后报告超时；必须长于引擎唤醒所需的时间。"
+      }
+    },
+    "concurrency": {
+      "background_workers": {
+        "label": "后台工作线程",
+        "help": "每个工作进程用于后台任务的线程数；需要重启，因为线程池在启动时一次性确定大小。"
+      },
+      "grpc_max_concurrent_rpcs": {
+        "label": "gRPC 并发调用数",
+        "help": "单个工作进程同时处理的 gRPC 调用上限；超出的调用将被拒绝。需要重启，因为它决定 gRPC 服务器线程池的大小。"
+      },
+      "flight_max_concurrent_streams": {
+        "label": "Arrow Flight 并发流数",
+        "help": "单个工作进程同时运行的 Arrow Flight 流上限；超出的流需等待空位。需要重启，因为空位在启动时创建。"
+      },
+      "request_threads": {
+        "label": "每个工作进程的请求线程数",
+        "help": "单个工作进程同时运行的请求上限；超出的请求需等待空闲线程。需要重启，因为该上限在工作进程启动时确定。"
+      },
+      "workers": {
+        "label": "工作进程数",
+        "help": "服务器运行的工作进程数量。需要重启，因为进程由启动器启动。"
+      }
+    },
+    "security": {
+      "mode": {
+        "label": "安全模式",
+        "help": "标准模式，或高安全模式：在高安全模式下，数据端点会拒绝任何无法自行解密结果的客户端，且不会启动 pgwire、Bolt 和 MCP 监听器。需要重启，因为它决定启动哪些监听器；因会切断普通客户端，保存前需确认。"
+      },
+      "multitenancy": {
+        "label": "多租户",
+        "help": "部署是否服务多个组织，每个组织只管理自己的数据。需要重启，因为角色授权在启动时设定；因会改变谁可以管理该部署，保存前需确认。"
+      },
+      "superuser": {
+        "username": {
+          "label": "应急账户名称",
+          "help": "始终可以登录的应急账户的名称。需要重启；保存前需确认。"
+        },
+        "password": {
+          "label": "应急账户密码",
+          "help": "应急账户的密码。机密；需要重启；保存前需确认。"
+        }
+      }
+    },
+    "redis": {
+      "require_tls": {
+        "label": "Redis 要求 TLS",
+        "help": "如果 Redis 地址未使用 TLS，则拒绝启动。需要重启，因为在缓存连接时检查。"
+      }
+    },
+    "auth": {
+      "login_throttle": {
+        "max_attempts": {
+          "label": "锁定前的登录尝试次数",
+          "help": "时间窗口内失败登录达到多少次会锁定账户。因调高它会削弱对密码猜测的限制，保存前需确认。"
+        },
+        "window_seconds": {
+          "label": "登录尝试时间窗口",
+          "help": "统计失败登录的回溯时长。因缩短它会削弱对密码猜测的限制，保存前需确认。"
+        },
+        "lockout_seconds": {
+          "label": "锁定时长",
+          "help": "被锁定的账户被拒绝登录的时长。因缩短它会削弱对密码猜测的限制，保存前需确认。"
+        }
+      }
+    },
+    "server": {
+      "hostname": {
+        "label": "主机名",
+        "help": "部署在其发放的地址中向客户端公布的主机名。需要重启，因为启动时已启动的服务器会携带该值。"
+      },
+      "grpc_port": {
+        "label": "gRPC 端口",
+        "help": "gRPC 服务器监听的端口。需要重启；因客户端和防火墙必须随之调整，保存前需确认。"
+      },
+      "flight_port": {
+        "label": "Arrow Flight 端口",
+        "help": "Arrow Flight 服务器监听的端口。需要重启；因客户端和防火墙必须随之调整，保存前需确认。"
+      },
+      "pgwire_port": {
+        "label": "PostgreSQL wire 端口",
+        "help": "PostgreSQL 协议服务器监听的端口；0 表示不启用。需要重启；因会打开或关闭监听器，保存前需确认。"
+      },
+      "bolt_port": {
+        "label": "Bolt 端口",
+        "help": "Bolt（Neo4j）服务器监听的端口；0 表示不启用。需要重启；因会打开或关闭监听器，保存前需确认。"
+      },
+      "airport_port": {
+        "label": "Airport 端口",
+        "help": "Airport Flight 服务监听的端口；0 表示不启用。需要重启；因会打开或关闭监听器，保存前需确认。"
+      },
+      "port": {
+        "label": "HTTP API 端口",
+        "help": "HTTP API 监听的端口。需要重启；因 UI 和所有客户端都必须随之调整，保存前需确认。"
+      }
+    },
+    "tls": {
+      "cert": {
+        "label": "TLS 证书",
+        "help": "所有协议监听器所出示的证书文件路径，除非某个协议指定了自己的证书。需要重启；因文件有误会导致 TLS 监听器无法启动，保存前需确认。"
+      },
+      "key": {
+        "label": "TLS 私钥",
+        "help": "与该证书配套的私钥路径。需要重启；因文件有误会导致 TLS 监听器无法启动，保存前需确认。"
+      },
+      "grpc_cert": {
+        "label": "gRPC TLS 证书",
+        "help": "仅用于 gRPC 监听器的证书文件，取代共用证书。需要重启；保存前需确认。"
+      },
+      "grpc_key": {
+        "label": "gRPC TLS 私钥",
+        "help": "gRPC 监听器专用证书的私钥。需要重启；保存前需确认。"
+      },
+      "flight_cert": {
+        "label": "Arrow Flight TLS 证书",
+        "help": "仅用于 Arrow Flight 监听器的证书文件，取代共用证书。需要重启；保存前需确认。"
+      },
+      "flight_key": {
+        "label": "Arrow Flight TLS 私钥",
+        "help": "Arrow Flight 监听器专用证书的私钥。需要重启；保存前需确认。"
+      },
+      "pgwire_cert": {
+        "label": "PostgreSQL wire TLS 证书",
+        "help": "仅用于 PostgreSQL 协议监听器的证书文件，取代共用证书。需要重启；保存前需确认。"
+      },
+      "pgwire_key": {
+        "label": "PostgreSQL wire TLS 私钥",
+        "help": "PostgreSQL 协议监听器专用证书的私钥。需要重启；保存前需确认。"
+      },
+      "bolt_cert": {
+        "label": "Bolt TLS 证书",
+        "help": "仅用于 Bolt 监听器的证书文件，取代共用证书。需要重启；保存前需确认。"
+      },
+      "bolt_key": {
+        "label": "Bolt TLS 私钥",
+        "help": "Bolt 监听器专用证书的私钥。需要重启；保存前需确认。"
+      },
+      "http_cert": {
+        "label": "HTTP API TLS 证书",
+        "help": "HTTP API 所出示的证书文件。需要重启；保存前需确认。"
+      },
+      "http_key": {
+        "label": "HTTP API TLS 私钥",
+        "help": "HTTP API 证书的私钥。需要重启；保存前需确认。"
+      }
+    },
+    "cache": {
+      "enabled": {
+        "label": "启用结果缓存",
+        "help": "是否允许缓存查询结果。需要重启，因为缓存存储在启动时构建。"
+      },
+      "default_ttl": {
+        "label": "默认缓存时长",
+        "help": "在没有更具体设置时，缓存结果的保留时长；组织可以设置自己的值。部署默认值需要重启。"
+      },
+      "redis_url": {
+        "label": "Redis 地址",
+        "help": "用于缓存和速率限制的 Redis 服务器地址；未设置时使用内置的 Redis。属于机密，因为其中可能包含密码；需要重启，因为连接在启动时建立；保存前需确认。"
+      },
+      "redis_org_password": {
+        "label": "组织 Redis 密码",
+        "help": "创建每个组织专属的 Redis 账户时赋予它的密码。机密；保存前需确认。"
+      },
+      "redis_embedded": {
+        "label": "内置 Redis",
+        "help": "是否为使用内置 Redis 运行的桌面启动。由启动器设置；不可编辑。"
+      }
+    },
+    "apq": {
+      "ttl": {
+        "label": "持久化查询时长",
+        "help": "持久化查询保持注册的时长。需要重启，因为该值在构建缓存时传入。"
+      }
+    },
+    "compiler": {
+      "compiled_query_cache_ttl": {
+        "label": "已编译查询计划时长",
+        "help": "已编译查询计划在重新构建之前被复用的时长。需要重启，因为每个工作进程在构建缓存时读取该值。"
+      }
+    },
+    "redirect": {
+      "enabled": {
+        "label": "启用重定向",
+        "help": "部署默认是否将大结果写入对象存储并以链接形式返回；组织可以设置自己的值。"
+      },
+      "threshold": {
+        "label": "重定向阈值",
+        "help": "部署默认的行数阈值，超过该行数的结果会被重定向到对象存储；组织可以设置自己的值。"
+      },
+      "ttl": {
+        "label": "重定向链接时长",
+        "help": "部署默认的重定向链接有效时长；组织可以设置自己的值。"
+      },
+      "default_format": {
+        "label": "重定向文件格式",
+        "help": "部署默认的重定向结果文件格式；组织可以设置自己的值。"
+      },
+      "bucket": {
+        "label": "重定向存储桶",
+        "help": "重定向结果写入的对象存储桶。因更改它会让结果发送到别处，保存前需确认。"
+      },
+      "endpoint": {
+        "label": "重定向对象存储地址",
+        "help": "重定向结果写入的对象存储的地址。因更改它会让结果发送到别处，保存前需确认。"
+      },
+      "region": {
+        "label": "重定向对象存储区域",
+        "help": "对象存储所在的区域。"
+      },
+      "encrypt": {
+        "label": "加密重定向结果",
+        "help": "重定向结果在上传之前是否加密。"
+      },
+      "local_dir": {
+        "label": "重定向本地文件夹",
+        "help": "无法连接对象存储时，重定向结果写入的文件夹。"
+      },
+      "access_key": {
+        "label": "重定向访问密钥",
+        "help": "对象存储的访问密钥。机密；保存前需确认。"
+      },
+      "secret_key": {
+        "label": "重定向机密密钥",
+        "help": "对象存储的机密密钥。机密；保存前需确认。"
+      }
+    },
+    "otel": {
+      "trace_detail": {
+        "label": "追踪详细程度",
+        "help": "每个请求的追踪默认携带的详细程度：normal 或 debug。需要重启，因为在配置追踪时设定。"
+      },
+      "trace_sql": {
+        "label": "追踪中的 SQL",
+        "help": "追踪是否携带各阶段的 SQL：off、redacted（值被隐去）或 full。因 full 会把查询值写入追踪，保存前需确认。"
+      },
+      "trace_ast": {
+        "label": "追踪中的已解析语句",
+        "help": "追踪是否同时携带每条语句的解析形式（值已隐去）。"
+      },
+      "metric_export_interval": {
+        "label": "指标导出间隔",
+        "help": "指标的导出频率。需要重启，因为该值在构建导出器时传入。"
+      },
+      "endpoint": {
+        "label": "遥测端点",
+        "help": "追踪和指标的发送目标。"
+      },
+      "protocol": {
+        "label": "遥测协议",
+        "help": "遥测端点使用的传输方式：gRPC 或 HTTP。"
+      },
+      "service_name": {
+        "label": "遥测服务名称",
+        "help": "此部署的遥测数据上报时使用的名称。"
+      },
+      "sample_rate": {
+        "label": "追踪采样率",
+        "help": "被追踪的请求所占的比例，取值 0 到 1。"
+      },
+      "log_level": {
+        "label": "遥测日志级别",
+        "help": "随遥测一起导出的日志记录的最低严重级别。"
+      },
+      "subsystem_traces": {
+        "label": "子系统追踪",
+        "help": "哪些内部子系统写入各自的追踪。"
+      },
+      "compact_cron": {
+        "label": "压缩计划",
+        "help": "已存储的遥测文件何时合并为更大的文件。"
+      },
+      "compact_batch_size": {
+        "label": "压缩批大小",
+        "help": "已存储遥测的每次合并一次写入的行数。"
+      },
+      "compact_file_chunk": {
+        "label": "压缩文件分块",
+        "help": "一次合并步骤中同时读取的小遥测文件数量。"
+      },
+      "compact_max_files_per_run": {
+        "label": "每次压缩的文件数",
+        "help": "单次合并运行最多处理的遥测文件数。"
+      },
+      "ops_snapshot_retention_hours": {
+        "label": "运维快照保留时间（小时）",
+        "help": "运维快照的保留时长。"
+      },
+      "span_export_delay_millis": {
+        "label": "跨度导出延迟（毫秒）",
+        "help": "跨度在导出之前批量缓存的时长。"
+      },
+      "otlp2parquet_max_age_secs": {
+        "label": "Parquet 写入器最长保留时间（秒）",
+        "help": "遥测写入器在写出文件之前保留行的时长。"
+      },
+      "collector_batch_timeout_ms": {
+        "label": "收集器批处理超时（毫秒）",
+        "help": "收集器在转发遥测之前批量缓存的时长。"
+      },
+      "s3_endpoint": {
+        "label": "遥测存储地址",
+        "help": "已存储遥测写入的对象存储。"
+      },
+      "s3_bucket": {
+        "label": "遥测存储桶",
+        "help": "已存储遥测写入的存储桶。"
+      },
+      "s3_region": {
+        "label": "遥测存储区域",
+        "help": "遥测对象存储所在的区域。"
+      },
+      "s3_access_key": {
+        "label": "遥测存储访问密钥",
+        "help": "遥测对象存储的访问密钥。机密。"
+      },
+      "s3_secret_key": {
+        "label": "遥测存储机密密钥",
+        "help": "遥测对象存储的机密密钥。机密。"
+      },
+      "support_endpoint": {
+        "label": "支持遥测端点",
+        "help": "设置后，遥测副本将发送到此处，供厂商提供支持。"
+      },
+      "support_redact_sql_literals": {
+        "label": "为支持隐去 SQL 值",
+        "help": "发送给支持的副本中，SQL 里的值是否被隐去。"
+      },
+      "support_redact_attributes": {
+        "label": "为支持隐去的属性",
+        "help": "从发送给支持的副本中移除的追踪属性。"
+      }
+    },
+    "control_plane": {
+      "tenant_url": {
+        "label": "组织数据库地址",
+        "help": "存放各组织配置的数据库。不可编辑：部署需要它来找到已存储的设置。"
+      },
+      "platform_url": {
+        "label": "平台数据库地址",
+        "help": "存放账户、组织和这些设置的数据库。不可编辑：部署需要它来找到已存储的设置。"
+      },
+      "org_id": {
+        "label": "启动组织",
+        "help": "此部署启动时所用的组织。不可编辑：它在读取已存储的设置之前就已被读取。"
+      },
+      "pool_min": {
+        "label": "最小数据库连接数",
+        "help": "每个工作进程保持的控制平面数据库连接的最小数量。不可编辑：连接池在读取已存储的设置之前就已打开。"
+      },
+      "pool_max": {
+        "label": "最大数据库连接数",
+        "help": "每个工作进程打开的控制平面数据库连接的最大数量。不可编辑：连接池在读取已存储的设置之前就已打开。"
+      }
+    },
+    "bootstrap": {
+      "config_path": {
+        "label": "配置文件",
+        "help": "此部署启动时使用的配置文件。不可编辑：它在读取已存储的设置之前就已被读取。"
+      },
+      "data_dir": {
+        "label": "数据文件夹",
+        "help": "部署存放其文件的文件夹。不可编辑：它在读取已存储的设置之前就已被读取。"
+      },
+      "home": {
+        "label": "主文件夹",
+        "help": "部署用于存放证书和本地存储的主文件夹。不可编辑：它在读取已存储的设置之前就已被读取。"
+      },
+      "repo_dir": {
+        "label": "配置历史文件夹",
+        "help": "存放各组织配置历史的文件夹。不可编辑：它在读取已存储的设置之前就已被读取。"
+      },
+      "demo": {
+        "label": "演示模式",
+        "help": "部署是否以演示模式启动。由启动器设置；不可编辑。"
+      }
+    },
+    "mcp": {
+      "max_rows": {
+        "label": "MCP 行数上限",
+        "help": "一次 MCP 工具调用向 AI 客户端返回的最大行数。"
+      },
+      "port": {
+        "label": "MCP 端口",
+        "help": "MCP 服务器监听的端口；0 表示不启用。需要重启；因会打开或关闭监听器，保存前需确认。"
+      },
+      "host": {
+        "label": "MCP 主机",
+        "help": "MCP 服务器绑定的网络地址；127.0.0.1 表示仅限本机访问。需要重启；因决定了谁能访问该端口，保存前需确认。"
+      },
+      "tls": {
+        "label": "MCP TLS",
+        "help": "MCP 服务器是否提供 HTTPS 服务。需要重启；保存前需确认。"
+      },
+      "role": {
+        "label": "MCP 本地角色",
+        "help": "本地（stdio）MCP 调用所使用的角色；在设置之前，这些调用会被拒绝。因会把该角色的访问权限授予任何能启动本地客户端的人，保存前需确认。"
+      },
+      "external_url": {
+        "label": "MCP 外部地址",
+        "help": "部署位于代理之后时，向用户显示的 MCP 地址。"
+      },
+      "chat_model": {
+        "label": "聊天模型",
+        "help": "内置聊天所使用的模型，会覆盖各组织自己的选择。"
+      }
+    },
+    "udf": {
+      "egress_allowlist": {
+        "label": "托管函数出口允许列表",
+        "help": "托管函数可以调用的主机；其余一律被拒绝。因每个条目都会开通一条出站路径，保存前需确认。"
+      }
+    },
+    "cdc": {
+      "consumer_group_id": {
+        "label": "CDC 消费者组",
+        "help": "此部署从消息代理读取变更事件时使用的名称。"
+      }
+    },
+    "graphql_remote": {
+      "max_object_depth": {
+        "label": "远程 GraphQL 对象深度",
+        "help": "跟进远程 GraphQL 数据源中嵌套对象的深度。"
+      },
+      "max_list_depth": {
+        "label": "远程 GraphQL 列表深度",
+        "help": "跟进远程 GraphQL 数据源中嵌套列表的深度。"
+      },
+      "max_list_items": {
+        "label": "远程 GraphQL 列表项数",
+        "help": "从远程 GraphQL 数据源的单个列表中读取的最大项数。"
+      }
+    },
+    "provisioning": {
+      "engine_namespace": {
+        "label": "引擎命名空间",
+        "help": "创建引擎集群所在的 Kubernetes 命名空间。"
+      },
+      "engine_cluster_mode": {
+        "label": "引擎集群模式",
+        "help": "预配引擎所在的 Kubernetes 集群类型。"
+      },
+      "engine_cpu": {
+        "label": "引擎 CPU",
+        "help": "分配给每个已预配引擎的 CPU。"
+      },
+      "engine_shard": {
+        "label": "引擎分片",
+        "help": "此节点所属的引擎分片。"
+      },
+      "engine_otlp_endpoint": {
+        "label": "引擎遥测端点",
+        "help": "已预配引擎发送自身遥测数据的目标。"
+      },
+      "engine_control_plane_host": {
+        "label": "引擎控制平面主机",
+        "help": "引擎访问控制平面数据库所用的地址，当它与此服务器所用的地址不同时设置。"
+      },
+      "engine_control_plane_port": {
+        "label": "引擎控制平面端口",
+        "help": "引擎访问控制平面数据库所用的端口。"
+      },
+      "engine_lakehouse_metastore_host": {
+        "label": "湖仓元存储主机",
+        "help": "引擎所用湖仓元存储的地址。"
+      },
+      "engine_lakehouse_metastore_port": {
+        "label": "湖仓元存储端口",
+        "help": "引擎所用湖仓元存储的端口。"
+      },
+      "engine_otel_s3_endpoint": {
+        "label": "引擎遥测存储地址",
+        "help": "引擎访问遥测对象存储所用的地址。"
+      },
+      "isolated_engine_image": {
+        "label": "专用引擎镜像",
+        "help": "组织专用引擎所使用的容器镜像。"
+      },
+      "isolated_engine_network": {
+        "label": "专用引擎网络",
+        "help": "专用引擎所连接的容器网络。"
+      },
+      "isolated_engine_memory": {
+        "label": "专用引擎内存",
+        "help": "分配给专用引擎的内存。"
+      },
+      "isolated_engine_host_template": {
+        "label": "专用引擎主机模式",
+        "help": "用于生成专用引擎主机名的模式。"
+      },
+      "isolated_engine_port": {
+        "label": "专用引擎端口",
+        "help": "专用引擎监听的端口。"
+      },
+      "isolated_engine_ready_timeout": {
+        "label": "专用引擎就绪超时",
+        "help": "等待专用引擎就绪的最长时间。"
+      },
+      "isolated_engine_docker_socket": {
+        "label": "专用引擎 Docker 套接字",
+        "help": "用于启动专用引擎的 Docker 套接字。"
+      },
+      "zaychik_cpu": {
+        "label": "查询网关 CPU",
+        "help": "分配给引擎查询网关的 CPU。"
+      },
+      "zaychik_memory": {
+        "label": "查询网关内存",
+        "help": "分配给引擎查询网关的内存。"
+      }
+    },
+    "readonlyReasons": {
+      "locates_control_plane": "此设置告诉服务器其控制平面的位置，因此无法从控制平面更改。",
+      "read_before_control_plane": "此设置在控制平面可用之前就已被读取，因此需在 UI 之外设置。",
+      "set_by_launcher": "此值由启动此部署的启动器设置。",
+      "set_by_desktop_launcher": "此值由桌面启动器为此安装设置。"
+    }
+  }
+}

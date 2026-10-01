@@ -24,6 +24,18 @@
     "materializeLabel": "具體化（為跨數據來源聯結自動建立具體化檢視）",
     "disableCypherLabel": "從 Cypher 圖形中排除",
     "refreshIntervalLabel": "重新整理間隔（秒）",
-    "save": "儲存"
+    "save": "儲存",
+    "junctionTitle": "聯結資料表（進階）",
+    "junctionHelp": "宣告此邊會經過一個關聯表。聯結表的其餘欄位會成為此關係的屬性。",
+    "viaTableLabel": "聯結資料表",
+    "viaSourceColumnLabel": "聯結欄位 → 來源",
+    "viaTargetColumnLabel": "聯結欄位 → 目標",
+    "viaTypeColumnLabel": "區分欄位",
+    "viaTypeValueLabel": "區分值",
+    "viaTypeValuePlaceholder": "例如 KIND_OF",
+    "viaLabelSourceLabel": "邊的命名來源",
+    "viaLabelSourceColumn": "區分值",
+    "viaLabelSourceTable": "聯結資料表名稱",
+    "viaLabelSourceFixed": "Cypher 別名"
   }
 }

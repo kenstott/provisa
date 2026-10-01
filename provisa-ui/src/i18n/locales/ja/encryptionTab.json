@@ -16,11 +16,11 @@
     "generateKey": "マスターキーの生成",
     "restartWarning": "{{note}} 暗号化データが存在する状態でマスターキーをローテーションすると、既存の行が読み取れなくなる可能性があります。機密データを保存する前にローテーションするか、再暗号化を計画してください。",
     "saveTitle": "暗号化設定を保存",
-    "keyGeneratedStored": "マスターキーを生成し、OS のキーチェーンに保存しました（キーID：{{keyId}}）。",
+    "keyGeneratedStored": "マスターキーを生成し、OS のキーチェーンに保存しました(キー ID: {{keyId}})。再起動不要で、すぐに有効になります。",
     "keyGeneratedNoKeychain": "OS のキーチェーンが利用できません。このキーをコピーして {{envVar}} として設定してください。再表示されません。",
     "savedRestartRequired": "保存しました。適用するにはサービスを再起動してください。",
     "saved": "保存しました。",
-    "secretOnFile": "保存済み — そのままにするには空欄のまま",
+    "secretOnFile": "保存済み — 変更しない場合は空欄のまま",
     "secretNotSet": "未設定"
   }
 }

@@ -82,9 +82,11 @@ class _Db:
     def __init__(self, states):
         self.states = states
         self.recorded: list[tuple[str, bool]] = []
+        self.acquires = 0  # control-plane round trips
 
     def acquire(self):
         db = self
+        db.acquires += 1
 
         class _Ctx:
             async def __aenter__(self):
@@ -97,11 +99,18 @@ class _Db:
 
 
 class _Backend:
-    def __init__(self, fail=False):
+    def __init__(self, fail=False, live=()):
         self.calls = []
         self.fail = fail
         self.dialect = "postgres"
         self._landed_this_process: set[str] = set()
+        self.live = set(live)  # sources this engine reads in place: never landed
+
+    def pending_lands(self, sources, *, is_stale, **kw):
+        """As EngineBackend.pending_lands: the sources a read must land first. A source the engine
+        reads live never is; a landed one is when its staleness oracle says so."""
+        del kw
+        return [s.id for s in sources if s.id not in self.live and is_stale(s.id)]
 
     def require_reconciled(self, source_ids) -> None:
         """As EngineBackend.require_reconciled: every replica here reconciled."""
@@ -213,34 +222,20 @@ async def test_row_materialize_table_never_swept_into_the_whole_source_land(wiri
 
 
 @pytest.mark.asyncio
-async def test_row_materialize_table_named_unbound_gets_whole_table_land(wiring, monkeypatch):
-    """REQ-1865: unlike the sibling-collateral case above, a row_materialize table THIS query's
-    own SQL names directly (``unbound_targets``, e.g. ``neo4j_materialize_cold``'s unfiltered
-    ``SELECT count(*) FROM bench_order_node``) has no PK bound for ensure_rows_resident to key
-    off and no sibling table to collaterally starve it -- it must get the whole-table fallback
-    REQ-1865 documents, or its row-cache table never gets created at all. Confirmed live: this
-    exact query hit "relation ... does not exist" on a fresh boot because neither this function
-    nor materialize_pending (REQ-1865's OWN blanket row_materialize exclusion) ever landed it."""
-    landed_calls = []
-
-    async def fake_ensure(engine, backend, state, schema, name, columns):
-        return SimpleNamespace(schema=schema, name=name)
-
-    async def fake_land(
-        engine, backend, state, schema, name, cache_table, pk_columns, columns, rows, ttl
-    ):
-        landed_calls.append((schema, name, pk_columns, rows, ttl))
+async def test_a_row_level_table_is_never_landed_whole(wiring, monkeypatch):
+    """REQ-1915: a table replicated row by row is read by key only — a statement that does not
+    bind its key is refused at planning — so ``ensure_resident`` has no whole-table path for it.
+    The one that used to be here (load the entire source table into the worker, upsert it one row
+    at a time; `neo4j_materialize_cold`'s unfiltered count) is gone: nothing is loaded, nothing is
+    landed, no lock is taken and no control-plane statement is issued for a source whose tables
+    are all row-level, and the function no longer takes the statement's table names."""
+    loaded: list = []
 
     class _Loader:
         async def load(self, source, table):
-            return [{"order_id": 1}, {"order_id": 2}]
+            loaded.append(table.table_name)
+            return [{"order_id": 1}]
 
-    monkeypatch.setattr("provisa.federation.query_residency._ensure_row_cache_table", fake_ensure)
-    monkeypatch.setattr("provisa.federation.query_residency._land_row_cache", fake_land)
-    monkeypatch.setattr(
-        "provisa.federation.query_residency.resolve_landing_args_for",
-        lambda source, table, dialect: SimpleNamespace(columns=[("order_id", "integer")]),
-    )
     monkeypatch.setattr(
         "provisa.events.source_loader.SourceRowLoader",
         lambda engine, adapter_loaders=None, keyed_adapter_loaders=None: _Loader(),
@@ -259,11 +254,11 @@ async def test_row_materialize_table_named_unbound_gets_whole_table_land(wiring,
         ],
         backend,
     )
-    landed = await ensure_resident(state, {"bench-neo4j"}, unbound_targets={"bench_order_node"})
-    assert landed == [("bench-neo4j", "bench_order_node")]
-    assert landed_calls == [
-        ("neo4j", "bench_order_node", ["order_id"], [{"order_id": 1}, {"order_id": 2}], 300)
-    ]
+    assert await ensure_resident(state, {"bench-neo4j"}) == []
+    assert loaded == [] and backend.calls == []
+    assert state.tenant_db.acquires == 0 and state.tenant_db.recorded == []
+    with pytest.raises(TypeError):
+        await ensure_resident(state, {"bench-neo4j"}, unbound_targets={"bench_order_node"})  # type: ignore[call-arg]
 
 
 @pytest.mark.asyncio
@@ -406,3 +401,191 @@ def test_two_requests_reading_different_stale_tables_land_at_the_same_time(wirin
     assert both_inside.broken is False, "the two lands did not overlap"
     assert sorted(results) == [[("pets-db", "pets")], [("vets-db", "vets")]]
     assert len({ident for _, ident in backend.landed_calls}) == 2
+
+
+# -- the staleness decision is made in memory (REQ-1661 amended 2026-10-01) ----------------------
+#
+# ensure_resident runs before every statement on every surface. It used to take a land lock and
+# read the control plane's node_freshness_state once per table of every source the plan reads —
+# for a source the engine reads in place, which never lands, and for a landed source that was
+# fresh. Measured on /data/sql: 2.9 ms of a 10.4 ms cached request.
+
+
+@pytest.mark.asyncio
+async def test_a_source_the_engine_reads_live_issues_no_control_plane_statement(wiring):
+    backend = _Backend(live={"pg"})
+    state = _state([_source("pg")], [_table("pg", "orders"), _table("pg", "customers")], backend)
+    for _ in range(3):
+        assert await ensure_resident(state, {"pg"}) == []
+    assert state.tenant_db.acquires == 0, "a read that lands nothing read the control plane"
+    assert backend.calls == []
+    from provisa.events import land_lock
+
+    assert land_lock._locks == {}, "a read that lands nothing took a land lock"
+
+
+@pytest.mark.asyncio
+async def test_a_fresh_landed_source_is_decided_from_memory(wiring, monkeypatch):
+    _stamping_refresh(monkeypatch)
+    backend = _Backend()
+    state = _state([_source("pets-db", cache_ttl=300)], [_table("pets-db", "pets")], backend)
+    assert await ensure_resident(state, {"pets-db"}) == [("pets-db", "pets")]
+    read_and_stamp = state.tenant_db.acquires
+    assert read_and_stamp >= 1
+    for _ in range(5):
+        assert await ensure_resident(state, {"pets-db"}) == []
+    assert state.tenant_db.acquires == read_and_stamp, "a fresh landed source re-read its state"
+    assert len(backend.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_source_another_process_landed_is_read_once_then_decided_from_memory(wiring):
+    backend = _Backend()
+    backend.mark_landed("pets-db")
+    state = _state([_source("pets-db")], [_table("pets-db", "pets")], backend)
+    state.tenant_db.states["pet_store.pets"] = {"last_refresh_at": 1.0, "last_refresh_ok": True}
+    assert await ensure_resident(state, {"pets-db"}) == []
+    assert state.tenant_db.acquires == 1
+    assert await ensure_resident(state, {"pets-db"}) == []
+    assert state.tenant_db.acquires == 1
+
+
+@pytest.mark.asyncio
+async def test_the_in_memory_state_is_a_bounded_snapshot(wiring, monkeypatch):
+    """Another process's land — or its failed land — changes the persisted state. The snapshot is
+    re-read once its backstop lifetime is over, so that is seen within it (as the registry
+    caches' own backstop does for the registry)."""
+    from provisa.federation import node_freshness_view as view
+
+    backend = _Backend()
+    backend.mark_landed("pets-db")
+    state = _state([_source("pets-db")], [_table("pets-db", "pets")], backend)
+    state.tenant_db.states["pet_store.pets"] = {"last_refresh_at": 1.0, "last_refresh_ok": True}
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(view.time, "monotonic", lambda: clock["now"])
+    assert await ensure_resident(state, {"pets-db"}) == []
+    clock["now"] += view.BACKSTOP_SECONDS / 2
+    assert await ensure_resident(state, {"pets-db"}) == []
+    assert state.tenant_db.acquires == 1
+    # another process's land of this table failed
+    state.tenant_db.states["pet_store.pets"] = {"last_refresh_at": 2.0, "last_refresh_ok": False}
+    clock["now"] += view.BACKSTOP_SECONDS
+    assert await ensure_resident(state, {"pets-db"}) == [("pets-db", "pets")], (
+        "the failed land was not retried once the snapshot expired"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_ttl_outrun_in_memory_goes_back_to_the_control_plane_and_lands(wiring, monkeypatch):
+    _stamping_refresh(monkeypatch)
+    backend = _Backend()
+    backend.mark_landed("pets-db")
+    state = _state([_source("pets-db", cache_ttl=60)], [_table("pets-db", "pets")], backend)
+    import time as _time
+
+    fresh_at = _time.time() - 10
+    state.tenant_db.states["pet_store.pets"] = {
+        "last_refresh_at": fresh_at,
+        "last_refresh_ok": True,
+    }
+    assert await ensure_resident(state, {"pets-db"}) == []
+    assert await ensure_resident(state, {"pets-db"}) == []
+    assert state.tenant_db.acquires == 1 and backend.calls == [({"pets-db"}, backend.calls[0][1])]
+    # the same snapshot, 100 s later: the ttl is outrun, so the truth is read and the table landed
+    real_time = _time.time
+    monkeypatch.setattr("provisa.federation.query_residency.time.time", lambda: real_time() + 100)
+    assert await ensure_resident(state, {"pets-db"}) == [("pets-db", "pets")]
+    assert state.tenant_db.recorded == [("pet_store.pets", True)]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_land_is_retried_by_the_next_read(wiring, monkeypatch):
+    """REQ-1661: the failed land is stamped not ok in the persisted state AND in memory, so the
+    next read does not take the in-memory state for a fresh replica."""
+    _stamping_refresh(monkeypatch)
+    backend = _Backend(fail=True)
+    state = _state([_source("pets-db")], [_table("pets-db", "pets")], backend)
+    with pytest.raises(RuntimeError, match="adapter down"):
+        await ensure_resident(state, {"pets-db"})
+    with pytest.raises(RuntimeError, match="adapter down"):
+        await ensure_resident(state, {"pets-db"})
+    assert len(backend.calls) == 2
+    backend.fail = False
+    assert await ensure_resident(state, {"pets-db"}) == [("pets-db", "pets")]
+
+
+@pytest.mark.asyncio
+async def test_a_new_schema_generation_drops_the_in_memory_state(wiring):
+    backend = _Backend()
+    backend.mark_landed("pets-db")
+    state = _state([_source("pets-db")], [_table("pets-db", "pets")], backend)
+    state.schema_boot_id, state.schema_version = "boot", 1
+    state.tenant_db.states["pet_store.pets"] = {"last_refresh_at": 1.0, "last_refresh_ok": True}
+    await ensure_resident(state, {"pets-db"})
+    await ensure_resident(state, {"pets-db"})
+    assert state.tenant_db.acquires == 1
+    state.schema_version = 2  # a rebuild: a landed table may have been recreated
+    await ensure_resident(state, {"pets-db"})
+    assert state.tenant_db.acquires == 2
+
+
+# -- row_materialize is ignored when the engine attaches the source (SETTLED, REQ-1865) -----------
+
+
+@pytest.mark.asyncio
+async def test_a_row_materialize_flag_is_ignored_when_the_engine_attaches_the_source(
+    wiring, monkeypatch
+):
+    """The flag is the reach for a source the engine CANNOT attach. On an engine that reads the
+    source in place, a flagged table the statement names with no key bound is read through the
+    attach: no whole-table land into a row cache, no lock, no control-plane statement — on the
+    attach: no row-level handling, no lock, no control-plane statement, on every surface."""
+    landed_calls: list = []
+
+    async def _land(*args, **kwargs):
+        landed_calls.append(args)
+
+    monkeypatch.setattr("provisa.federation.query_residency._land_row_cache", _land)
+    backend = _Backend(live={"mongo"})
+    state = _state(
+        [_source("mongo", type=SimpleNamespace(value="mongodb"))],
+        [
+            _table(
+                "mongo",
+                "order_docs",
+                schema="provisa_bench",
+                row_materialize=True,
+                columns=[SimpleNamespace(name="order_id", is_primary_key=True)],
+            )
+        ],
+        backend,
+    )
+    # the bound engine declares a connector that reads mongodb in place
+    state.federation_engine.engine.connectors = {"mongodb": SimpleNamespace(reads_in_place=True)}
+    for _ in range(2):
+        assert await ensure_resident(state, {"mongo"}) == []
+    assert landed_calls == [], "a table the engine attaches was landed into a row cache"
+    assert state.tenant_db.acquires == 0 and backend.calls == []
+
+
+@pytest.mark.asyncio
+async def test_the_flag_applies_when_the_engine_cannot_attach_the_source(wiring):
+    """The same table on an engine with no connector for its source type: the flag is its reach,
+    so it is left to the keyed paths while a sibling table of the source still lands whole."""
+    backend = _Backend()
+    state = _state(
+        [_source("mongo", type=SimpleNamespace(value="mongodb"))],
+        [
+            _table(
+                "mongo",
+                "order_docs",
+                schema="provisa_bench",
+                row_materialize=True,
+                columns=[SimpleNamespace(name="order_id", is_primary_key=True)],
+            ),
+            _table("mongo", "order_tags", schema="provisa_bench"),
+        ],
+        backend,
+    )
+    state.federation_engine.engine.connectors = {}
+    assert await ensure_resident(state, {"mongo"}) == [("mongo", "order_tags")]

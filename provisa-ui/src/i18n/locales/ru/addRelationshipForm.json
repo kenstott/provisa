@@ -24,6 +24,18 @@
     "materializeLabel": "Материализовать (автосоздание материализованного представления для межисточниковых соединений)",
     "disableCypherLabel": "Исключить из графа Cypher",
     "refreshIntervalLabel": "Интервал обновления (с)",
-    "save": "Сохранить"
+    "save": "Сохранить",
+    "junctionTitle": "Связующая таблица (расширенно)",
+    "junctionHelp": "Объявите это ребро как проходящее через ассоциативную таблицу. Остальные столбцы связующей таблицы становятся атрибутами связи.",
+    "viaTableLabel": "Связующая таблица",
+    "viaSourceColumnLabel": "Столбец связующей таблицы → источник",
+    "viaTargetColumnLabel": "Столбец связующей таблицы → цель",
+    "viaTypeColumnLabel": "Столбец-дискриминатор",
+    "viaTypeValueLabel": "Значение дискриминатора",
+    "viaTypeValuePlaceholder": "напр. KIND_OF",
+    "viaLabelSourceLabel": "Назвать ребро по",
+    "viaLabelSourceColumn": "Значение дискриминатора",
+    "viaLabelSourceTable": "Имя связующей таблицы",
+    "viaLabelSourceFixed": "Псевдоним Cypher"
   }
 }

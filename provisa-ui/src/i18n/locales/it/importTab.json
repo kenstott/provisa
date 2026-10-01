@@ -11,9 +11,9 @@
     "flavor_ddn": "Hasura DDN",
     "preview": "Converti e visualizza anteprima",
     "domainMap": "Mappatura dei domini",
-    "domainMapHelp": "Ogni schema (v2) o subgraph (DDN) trovato nel file caricato e il dominio Provisa in cui finiscono le sue tabelle. Cambia un nome e riconverti.",
+    "domainMapHelp": "Ogni schema (v2), subgraph (DDN) o schema remoto trovato nel caricamento, e il dominio Provisa in cui finiscono le sue tabelle. Scegli un dominio esistente o digita un nuovo nome, poi converti di nuovo.",
     "domainTo": "Dominio per {{from}}",
-    "remap": "Riconverti con questi domini",
+    "remap": "Converti di nuovo con queste impostazioni",
     "summaryHeading": "Cosa produce questa importazione",
     "count_sources": "Origini dati",
     "count_domains": "Domini",
@@ -34,6 +34,14 @@
     "replace": "Sostituisci il livello semantico esistente",
     "replaceHelp": "Elimina ogni origine dati, tabella, ruolo e regola non presente in questa configurazione. Lascia disattivato per unire l'importazione a ciò che l'organizzazione già possiede.",
     "apply": "Applica a questa organizzazione",
-    "applied": "Applicato: {{sources}} origini dati, {{tables}} tabelle, {{roles}} ruoli."
+    "applied": "Applicato: {{sources}} origini dati, {{tables}} tabelle, {{roles}} ruoli.",
+    "domainNew": "nuovo dominio",
+    "sourceConnections": "Connessioni alle origini",
+    "sourceConnectionsHelp": "L'esportazione indica i propri database tramite variabile d'ambiente, quindi la connessione va fornita da te. Con una connessione raggiungibile l'anteprima legge dall'origine i tipi delle colonne di ogni tabella; senza, le colonne restano senza tipo finché non le completi qui sotto.",
+    "host": "Host",
+    "port": "Porta",
+    "database": "Database",
+    "username": "Nome utente",
+    "password": "Password"
   }
 }

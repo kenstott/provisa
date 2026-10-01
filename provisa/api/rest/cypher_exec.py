@@ -61,19 +61,30 @@ def _build_label_map(ctx: CompilationContext, role_id: str, state: AppState) -> 
     ``current_role_claims`` context bound by AuthMiddleware, the same context the shared
     governed pipeline reads (``pgwire._pipeline``), so a graph traversal's visibility and its
     SQL-level V001 check agree.
+
+    REQ-1877: the map is a pure function of the registry, so it is built once per schema
+    generation and kept (``cypher_plan.kept_label_map``), not rebuilt per request.
     """
+    from provisa.api.rest.cypher_plan import kept_label_map
     from provisa.cypher.label_map import CypherLabelMap
     from provisa.security.rights import effective_domain_access_role
 
-    role = effective_domain_access_role(role_id, getattr(state, "roles", {}))
-    cache = getattr(state, "schema_build_cache", {})
-    return CypherLabelMap.from_schema(
-        ctx,
-        domain_access=role.get("domain_access"),
-        all_tables=cache.get("tables"),
-        all_relationships=cache.get("relationships"),
-        all_column_types=cache.get("column_types"),
-        source_catalogs=getattr(state, "source_catalogs", None),
+    domain_access = effective_domain_access_role(role_id, state.roles).get("domain_access")
+    cache = state.schema_build_cache
+    return kept_label_map(
+        state,
+        role_id,
+        domain_access=domain_access,
+        cross_domain=True,
+        business_view=False,
+        build=lambda: CypherLabelMap.from_schema(
+            ctx,
+            domain_access=domain_access,
+            all_tables=cache.get("tables"),
+            all_relationships=cache.get("relationships"),
+            all_column_types=cache.get("column_types"),
+            source_catalogs=state.source_catalogs,
+        ),
     )
 
 
@@ -492,6 +503,7 @@ async def _execute_call_body(
     except Exception:
         await finalize_audit(plan, 500, state)
         raise
+    plan.row_count = len(rows)
     await finalize_audit(plan, 200, state)
 
     return rows, graph_vars

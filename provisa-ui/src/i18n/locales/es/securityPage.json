@@ -13,6 +13,10 @@
     "roleIdPlaceholder": "analyst",
     "capabilities": "Capacidades",
     "domainAccess": "Acceso a dominios",
+    "parentRole": "Hereda de",
+    "parentRoleNone": "Sin rol padre",
+    "parentRoleHelp": "Se heredan las concesiones, la visibilidad de columnas y las reglas de RLS del rol; la regla de RLS propia de este rol para una tabla reemplaza la del rol padre.",
+    "labelParentRole": "Hereda de:",
     "allDomains": "Todos los dominios",
     "save": "Guardar",
     "cancel": "Cancelar",
@@ -51,6 +55,11 @@
     "rolePurposeTitle": "Para qué sirven los roles",
     "rolePurposeBody": "El rol es la unidad contra la que se escribe cualquier otro permiso. Sus capacidades deciden qué operaciones puede ejecutar y su acceso a dominios decide a qué partes del modelo llega siquiera. Las reglas de fila, y las comprobaciones de acceso de todas las superficies, nombran un rol y no una persona: lo que alguien puede ver y hacer se cambia cambiando el rol que tiene.",
     "rolePurposeAdd": "Un rol lleva además sus propios topes: peticiones por segundo y límites de profundidad, número de nodos y tiempo de ejecución de la consulta. Así se le da alcance a un rol sin darle coste ilimitado: una consulta cara la rechaza el rol que la emitió, no la fuente a la que habría llegado.",
-    "rolePurposeAria": "Acerca de los roles"
+    "rolePurposeAria": "Acerca de los roles",
+    "applyToAction": "Acción (función o webhook)",
+    "action": "Acción",
+    "actionPrefix": "acción:",
+    "loadActionsFailed": "No se pudieron cargar las acciones: {{message}}",
+    "labelAction": "Acción:"
   }
 }

@@ -1,0 +1,20 @@
+{
+  "envSwitcher": {
+    "env": "Env : {{env}}",
+    "label": "Environnement",
+    "drifted": "en dérive",
+    "diverged": "divergent",
+    "unpushed": "non envoyé",
+    "ahead": "{{n}} à envoyer",
+    "behind": "{{n}} à récupérer",
+    "undo": "Annuler la dernière modification de {{env}}",
+    "redo": "Rétablir dans {{env}}",
+    "undone": "{{env}} est revenu à {{sha}}.",
+    "redone": "{{env}} est avancé à {{sha}}.",
+    "versions": "Version",
+    "loadingVersions": "Lecture de l'historique…",
+    "applied": "{{env}} est à {{sha}}.",
+    "proposed": "{{sha}} est proposé pour {{env}} ; celui-ci est protégé, il attend donc une approbation.",
+    "switched": "Lecture de {{env}} en cours."
+  }
+}

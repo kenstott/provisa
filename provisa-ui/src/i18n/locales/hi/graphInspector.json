@@ -21,6 +21,7 @@
     "graphStats": "ग्राफ़ आँकड़े",
     "properties": "प्रॉपर्टी",
     "copyValue": "मान कॉपी करें",
-    "resizePanel": "इंस्पेक्टर पैनल का आकार बदलें"
+    "resizePanel": "इंस्पेक्टर पैनल का आकार बदलें",
+    "junctionTable": "{{table}} के माध्यम से"
   }
 }

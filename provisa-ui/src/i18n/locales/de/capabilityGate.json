@@ -1,5 +1,16 @@
 {
   "capabilityGate": {
-    "checking": "Ihre Anmeldedaten werden geprüft…"
+    "checking": "Ihre Anmeldedaten werden geprüft…",
+    "demonstrated": {
+      "badge": "Produktionsfunktion",
+      "explanation": "Dies ist Teil des Produktionssystems. Es wird hier gezeigt, damit Sie sehen, was Provisa leistet, ist aber in der Sandbox nicht verfügbar.",
+      "dismiss": "Verstanden",
+      "purpose": {
+        "environment_management": {
+          "title": "Umgebungen sind eine Produktionsfunktion",
+          "body": "Eine Umgebung ist eine vollständige, getrennt gesteuerte Kopie Ihres Modells – Quellen, Tabellen, Richtlinien, Maskierungsregeln und Berechtigungen. Teams halten eine Dev-Umgebung, in der das Modell geändert wird, eine Staging-Umgebung zur Prüfung und Prod zur Auslieferung und führen Änderungen weiter, indem sie eine Umgebung mit einem Diff, einer Freigabe und einem umkehrbaren Verlauf in die nächste mergen.\n\nIhre Sandbox IST eine dieser Umgebungen, eigens für Sie erstellt. Ihre Verwaltung – Erstellen, Mergen, Deployen, Stilllegen – obliegt der Organisation, der sie gehören. Deshalb wird die Oberfläche hier nur gezeigt und nicht übergeben: Sie sehen, was sie leistet, aber sie wirkt auf nichts."
+        }
+      }
+    }
   }
 }

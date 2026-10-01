@@ -27,12 +27,11 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 from abc import ABC, abstractmethod
 
-log = logging.getLogger(__name__)
+from provisa.core import settings_registry
 
-_DEFAULT_TTL = int(os.environ.get("PROVISA_APQ_TTL", "86400"))
+log = logging.getLogger(__name__)
 
 
 def compute_apq_hash(query: str) -> str:  # REQ-288, REQ-291
@@ -79,14 +78,15 @@ class RedisAPQCache(APQCache):  # REQ-288, REQ-289, REQ-290, REQ-291
 
     PREFIX = "provisa:apq:"
 
-    def __init__(self, redis_url: str | None = None, ttl: int = _DEFAULT_TTL) -> None:  # REQ-829
-        if redis_url and os.environ.get("PROVISA_REQUIRE_REDIS_TLS", "").lower() == "true":
+    def __init__(self, redis_url: str | None = None, ttl: int | None = None) -> None:  # REQ-829
+        if redis_url and settings_registry.value("redis.require_tls"):  # REQ-1913
             if not redis_url.startswith("rediss://"):
                 raise RuntimeError(
                     "PROVISA_REQUIRE_REDIS_TLS is set but REDIS_URL does not use rediss://"
                 )
         self._redis_url = redis_url
-        self._ttl = ttl
+        # REQ-1913: a cache built without a TTL runs on the operator setting `apq.ttl`.
+        self._ttl = ttl if ttl is not None else settings_registry.value("apq.ttl")
         self._redis = None
 
     def _build_key(self, sha256_hash: str, tenant_id: str | None) -> str:

@@ -40,6 +40,8 @@
     "cardinalityWarning": "Advertencia: si esta unión devuelve más de una fila por elemento padre, solo se usará el primer valor.",
     "cancel": "Cancelar",
     "save": "Guardar",
-    "toggleDetails": "Alternar detalles de la relación"
+    "toggleDetails": "Alternar detalles de la relación",
+    "junctionBadge": "vía",
+    "junctionBadgeTitle": "Relación respaldada por una tabla de unión a través de {{table}}"
   }
 }

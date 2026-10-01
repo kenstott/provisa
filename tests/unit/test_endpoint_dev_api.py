@@ -383,9 +383,10 @@ class TestSqlExplainEndpoint:
 
 class TestSqlEndpointRoleResolution:
     async def test_x_provisa_role_header_overrides_body_role(self, sql_client):
-        # Body role "ghost" doesn't exist; header "org_admin" does — header should win. Mock execution
-        # (the engine terminal) so the query resolves for org_admin instead of hitting the fake pool — the
-        # point is role RESOLUTION, not the engine result.
+        # REQ-273 (amended 2026-10-01): the header carries the role. A body role that differs from
+        # it is refused, naming both — the request neither runs as the body's role nor silently as
+        # the header's. A body role equal to the header's is accepted. Execution (the engine
+        # terminal) is mocked — the point is role RESOLUTION, not the engine result.
         result = _make_query_result(rows=[(1,)], column_names=["id"])
         with (
             patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=result)),
@@ -396,8 +397,15 @@ class TestSqlEndpointRoleResolution:
                 json={"sql": "SELECT id FROM orders", "role": "ghost"},
                 headers={"x-provisa-role": "org_admin"},
             )
-        # Not the 400 "No schema for role 'ghost'" — proves header took precedence.
-        assert resp.status_code != 400 or "ghost" not in resp.text
+            agreed = await sql_client.post(
+                "/data/sql",
+                json={"sql": "SELECT id FROM orders", "role": "org_admin"},
+                headers={"x-provisa-role": "org_admin"},
+            )
+        assert resp.status_code == 400
+        assert "'ghost'" in resp.json()["detail"] and "'org_admin'" in resp.json()["detail"]
+        assert "No schema for role" not in resp.text  # refused for the mismatch, not run as ghost
+        assert agreed.status_code != 400, agreed.text
 
 
 # ---------------------------------------------------------------------------
@@ -501,23 +509,48 @@ class TestProtoEndpoint:
 
 
 class TestResolveRoleId:
+    """REQ-273 (amended 2026-10-01): the acting role is the auth layer's, then the header's; the
+    body's role is used only when nothing established one, and is refused when it differs."""
+
+    @staticmethod
+    def _body(role=None):
+        from provisa.api.data.endpoint_dev import SQLRequest
+
+        return SQLRequest(sql="SELECT 1") if role is None else SQLRequest(sql="SELECT 1", role=role)
+
     def test_auth_role_takes_precedence(self):
         from provisa.api.data.endpoint_dev import _resolve_role_id
 
         raw_request = SimpleNamespace(state=SimpleNamespace(role="auth_role"))
-        assert _resolve_role_id(raw_request, "header_role", "body_role") == "auth_role"
+        assert _resolve_role_id(raw_request, "header_role", self._body()) == "auth_role"
+        assert _resolve_role_id(raw_request, "header_role", self._body("auth_role")) == "auth_role"
 
     def test_header_role_used_when_no_auth_role(self):
         from provisa.api.data.endpoint_dev import _resolve_role_id
 
         raw_request = SimpleNamespace(state=SimpleNamespace())
-        assert _resolve_role_id(raw_request, "header_role", "body_role") == "header_role"
+        assert _resolve_role_id(raw_request, "header_role", self._body()) == "header_role"
 
     def test_body_role_fallback(self):
         from provisa.api.data.endpoint_dev import _resolve_role_id
 
         raw_request = SimpleNamespace(state=SimpleNamespace())
-        assert _resolve_role_id(raw_request, None, "body_role") == "body_role"
+        assert _resolve_role_id(raw_request, None, self._body("body_role")) == "body_role"
+        assert _resolve_role_id(raw_request, None, self._body()) == "org_admin"
+
+    def test_a_body_role_that_differs_from_the_acting_role_is_refused(self):
+        from fastapi import HTTPException
+
+        from provisa.api.data.endpoint_dev import _resolve_role_id
+
+        for raw_request, header in (
+            (SimpleNamespace(state=SimpleNamespace(role="auth_role")), None),
+            (SimpleNamespace(state=SimpleNamespace()), "header_role"),
+        ):
+            with pytest.raises(HTTPException) as refused:
+                _resolve_role_id(raw_request, header, self._body("body_role"))
+            assert refused.value.status_code == 400
+            assert "'body_role'" in refused.value.detail
 
 
 class TestCheckSqlCapabilities:

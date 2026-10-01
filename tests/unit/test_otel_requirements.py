@@ -395,13 +395,26 @@ def test_http_transport_comes_from_the_config_or_the_env(monkeypatch):
     # REQ-549
     from provisa.api.otel_setup import _is_http_endpoint
 
+    from provisa.api.otel_setup import exporter_settings
+    from provisa.core import settings_registry
+
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_PROTOCOL", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
     assert _is_http_endpoint("http://localhost:4319", "http/protobuf") is True
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
     assert _is_http_endpoint("http://localhost:4319") is True
     # The env var outranks the config: an operator repointing at a gRPC collector says so there.
+    # REQ-1913: the transport is the operator setting `otel.protocol`, resolved (stored, then
+    # env, then config) for the endpoint that won — _is_http_endpoint is handed the result.
+    monkeypatch.setattr(
+        settings_registry,
+        "_config",
+        {"observability": {"endpoint": "http://localhost:4319", "protocol": "http/protobuf"}},
+    )
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
-    assert _is_http_endpoint("http://localhost:4319", "http/protobuf") is False
+    endpoint, _service, protocol = exporter_settings()
+    assert (endpoint, protocol) == ("http://localhost:4319", "grpc")
+    assert _is_http_endpoint(endpoint, protocol) is False
 
 
 def test_an_unset_endpoint_selects_no_transport():
@@ -419,8 +432,13 @@ def test_an_unknown_protocol_raises_rather_than_guessing(monkeypatch):
     from provisa.api.otel_setup import _otlp_protocol
 
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http")
-    with _pytest.raises(ValueError, match="not a transport"):
+    # REQ-1913: refused where the setting is resolved, naming it and the variable it came from.
+    with _pytest.raises(ValueError, match="otel.protocol.*OTEL_EXPORTER_OTLP_PROTOCOL"):
         _otlp_protocol()
+    # A protocol handed in by a caller is still checked here.
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_PROTOCOL")
+    with _pytest.raises(ValueError, match="not a transport"):
+        _otlp_protocol("http")
 
 
 def test_make_span_exporter_http_appends_path():

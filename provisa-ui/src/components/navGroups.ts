@@ -202,6 +202,13 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemMaintenance",
         capability: "platform_settings",
       },
+      // REQ-1913: every operator setting, editable. Deployment-wide, so platform_settings (the
+      // catalog routes themselves answer 403 to anyone but a platform administrator).
+      {
+        to: "/admin/deployment-settings",
+        labelKey: "navBar.itemDeploymentSettings",
+        capability: "platform_settings",
+      },
       { to: "/admin/ai-models", labelKey: "navBar.itemAiModels", capability: "org_settings" },
       // REQ-1074: the catalog this org publishes to is the org's setting, not the deployment's.
       {

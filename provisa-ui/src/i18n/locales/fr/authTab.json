@@ -14,7 +14,7 @@
     "loading": "Chargement…",
     "saved": "Enregistré.",
     "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer.",
-    "secretOnFile": "Enregistré — laissez vide pour le conserver",
+    "secretOnFile": "Stocké ; laissez vide pour le conserver",
     "secretNotSet": "Non défini"
   }
 }

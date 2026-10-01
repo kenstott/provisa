@@ -29,7 +29,23 @@ _SECONDS_PER_DAY = 86400
 
 
 def default_highwater_path() -> Path:
-    return Path.home() / ".provisa" / "highwater.json"
+    from provisa.licensing.home import user_home
+
+    return user_home() / "highwater.json"
+
+
+def advance_default_highwater(now_epoch: float) -> float:
+    """Advance the installation's high-water mark and return it.
+
+    In a licensing sandbox (see ``provisa.licensing.home``) the real mark is read, never written:
+    the sandbox's own mark is advanced to the latest of the real mark, its own, and now."""
+    from provisa.licensing.home import sandbox_dir
+
+    sandbox = sandbox_dir()
+    if sandbox is None:
+        return update_highwater(default_highwater_path(), now_epoch)
+    real = read_highwater(default_highwater_path())
+    return update_highwater(sandbox / "highwater.json", max(real, now_epoch))
 
 
 def read_highwater(path: Path) -> float:

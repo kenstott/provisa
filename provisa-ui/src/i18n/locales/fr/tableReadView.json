@@ -35,6 +35,8 @@
     "deployToDbTitle": "Promouvoir cette vue virtuelle en vraie vue de base de données",
     "profileButton": "Profiler",
     "profilingButton": "Profilage…",
+    "previewButton": "Aperçu",
+    "previewTitle": "Aperçu des lignes de cette table (SELECT * gouverné)",
     "profileTitle": "Échantillonner et profiler les colonnes de cette table",
     "policiesButton": "Politiques",
     "policiesTitle": "Voir les politiques RLS de cette table",
@@ -53,7 +55,6 @@
     "colTopValues": "Valeurs principales",
     "editDefinitionButton": "Modifier la définition",
     "editDefinitionTitle": "Modifier la définition de la vue (SQL ou sélecteur de métriques/dimensions)",
-    "previewButton": "Aperçu",
-    "previewTitle": "Aperçu des lignes de cette table (SELECT * gouverné)"
+    "queryTemplate": "Cypher :"
   }
 }

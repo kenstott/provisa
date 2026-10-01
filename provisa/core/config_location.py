@@ -33,6 +33,22 @@ def config_path() -> Path:
     return Path(value)
 
 
+# Bumped whenever the config file is loaded (startup, a rebuild) or written (the admin config
+# write, the setup wizard) — the two ways this process's config changes. A holder of a parsed copy
+# compares generations rather than asking the filesystem on every use.
+_generation = 0
+
+
+def config_generation() -> int:
+    return _generation
+
+
+def note_config_changed() -> None:
+    """The config file was just loaded or written: copies held in memory are out of date."""
+    global _generation
+    _generation += 1
+
+
 def config_path_str() -> str:
     """``config_path`` for the call sites that pass the path on as a string."""
     return str(config_path())

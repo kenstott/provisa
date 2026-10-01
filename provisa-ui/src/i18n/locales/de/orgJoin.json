@@ -1,0 +1,15 @@
+{
+  "orgJoin": {
+    "heading": "Wer beitreten darf",
+    "help": "Welche E-Mail-Adressen dieser Organisation beitreten dürfen. Eine Einladung wird gegen diese Regel geprüft; bei aktiviertem automatischem Beitritt wird jede Person, die sich mit einer passenden Adresse anmeldet, ohne Einladung Mitglied.",
+    "emailRuleLabel": "E-Mail-Regel",
+    "emailRuleDesc": "Ein regulärer Ausdruck, der gegen die Adresse geprüft wird. Leer lassen, um jede Adresse per Einladung zu akzeptieren.",
+    "autoJoinLabel": "Automatisch beitreten",
+    "autoJoinDesc": "Eine passende Adresse wird bei der ersten Anmeldung ohne Einladung Mitglied. Nur für eine Domäne, die Ihre Organisation kontrolliert.",
+    "autoJoinRoleLabel": "Beim automatischen Beitritt erteilte Rolle",
+    "autoJoinRoleDesc": "Die Rolle, die alle von der Regel Zugelassenen erhalten.",
+    "acceptRisk": "Ich akzeptiere, dass diese Regel Personen von außerhalb meiner Organisation zulassen kann",
+    "save": "Speichern",
+    "saved": "Beitrittsregel gespeichert."
+  }
+}

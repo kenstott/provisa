@@ -54,7 +54,8 @@ _CONCURRENT = 6
 
 # Thread starts and hand-offs a request may make without its work leaving its thread:
 # - the ASGI receive/send relay to the front loop, where the server's socket transport lives
-#   (provisa/core/request_thread.py);
+#   (provisa/core/request_thread.py): the complete response in one relay, and a relay per message
+#   for a streamed response, a large/chunked body, a receive() after the body and a WebSocket;
 # - the request's deadline watchdog, a timer thread that runs none of the request's work — it only
 #   calls the in-flight statement's cancel at expiry (provisa/core/request_deadline.py).
 # - work that OUTLIVES the request, detached onto the background pool and never awaited by it
@@ -63,6 +64,7 @@ _CONCURRENT = 6
 _SANCTIONED_HOPS = (
     ("provisa/core/request_thread.py", "thread_send"),
     ("provisa/core/request_thread.py", "thread_receive"),
+    ("provisa/core/request_thread.py", "relayed_receive"),
     ("provisa/core/request_deadline.py", "_registered"),
     ("provisa/core/connection_loop.py", "_submit"),
 )
@@ -481,6 +483,28 @@ def test_concurrent_requests_each_stay_on_their_own_thread(server, name):
                 overlapping += 1
                 assert ia != ib, f"{name}: requests {a} and {b} overlapped on thread {ia}"
     assert overlapping, f"{name}: no two of the {_CONCURRENT} requests overlapped in time"
+
+
+def test_http_request_threads_are_reused_one_request_at_a_time(server):
+    """REQ-1882 (amended 2026-10-01): an HTTP request thread serves one request start to finish
+    and then the next. Requests sent one after another are each exclusive to a thread, and the
+    server did not need a new thread for each of them."""
+    call, base, entry_transport = _TRANSPORTS["http-graphql"]
+    tags = [base + 40 + i for i in range(6)]
+    idents = []
+    for tag in tags:
+        assert call(server, tag) >= 1
+        idents.append(_assert_exclusive(server, f"http-graphql[{tag}]", tag, entry_transport))
+    assert len(set(idents)) < len(idents), f"no request thread was reused: {idents}"
+    # A reused thread ran its requests one after another, never interleaved.
+    spans = {}
+    for tag, ident in zip(tags, idents, strict=True):
+        times = [r["t"] for r in server.tagged(tag)]
+        spans[tag] = (ident, min(times), max(times))
+    for a in tags:
+        for b in tags:
+            if a < b and spans[a][0] == spans[b][0]:
+                assert spans[a][2] <= spans[b][1] or spans[b][2] <= spans[a][1], (a, b, spans)
 
 
 def test_sse_subscription_is_served_on_its_request_thread(server):

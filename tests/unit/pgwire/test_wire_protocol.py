@@ -105,7 +105,7 @@ async def test_select_1(pgwire_server, mock_state):
     port = pgwire_server
     provider = _stub_auth_provider("alice", "secret")
 
-    async def _stub_pipeline(sql, role_id, params=None):
+    async def _stub_pipeline(sql, role_id, params=None, wire_formats=None):
         return EngineResult(rows=[(1,)], column_names=["?column?"])
 
     async def _stub_describe(sql, role_id):
@@ -161,7 +161,7 @@ async def test_none_provider_trust_mode(pgwire_server):
     trust_state.auth_config = {"provider": "none"}
     trust_state.auth_middleware_active = False
 
-    async def _stub_pipeline(sql, role_id, params=None):
+    async def _stub_pipeline(sql, role_id, params=None, wire_formats=None):
         from provisa.executor.result import QueryResult as EngineResult
 
         return EngineResult(rows=[(role_id,)], column_names=["role"])

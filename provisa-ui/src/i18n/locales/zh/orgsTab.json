@@ -51,6 +51,7 @@
     "revokeButton": "撤销",
     "revokeInvite": "撤销 {{org}} 的邀请",
     "invitePagination": "邀请链接分页",
-    "orgIdDesc": "2-40 个字符，仅限小写字母和数字，且以字母开头。它将成为架构名称和子域名，之后无法更改。"
+    "orgIdDesc": "2-40 个字符，仅限小写字母和数字，且以字母开头。它将成为架构名称和子域名，之后无法更改。",
+    "spentStatus": "已全部兑换"
   }
 }

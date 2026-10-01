@@ -24,6 +24,10 @@
     "navigateTitle": "Visualizza tabelle registrate",
     "deleteTitle": "Eliminare l'origine \"{{id}}\"?",
     "deleteTitleShort": "Elimina",
-    "deleteConsequence": "Verrà rimossa l'origine dati \"{{id}}\" e le tabelle che vi fanno riferimento potrebbero smettere di funzionare."
+    "deleteConsequence": "Verrà rimossa l'origine dati \"{{id}}\" e le tabelle che vi fanno riferimento potrebbero smettere di funzionare.",
+    "refreshKaggleTitle": "Aggiorna da Kaggle",
+    "refreshKaggleHint": "Scarica di nuovo {{owner}}/{{ref}} da Kaggle, sovrascrivendo sul posto i file in staging. Il token Kaggle non viene memorizzato: inseriscilo di nuovo per questo aggiornamento.",
+    "kaggleTokenLabel": "Token API Kaggle",
+    "refreshKaggleSubmit": "Aggiorna"
   }
 }

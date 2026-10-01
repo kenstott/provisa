@@ -24,6 +24,18 @@
     "materializeLabel": "Matérialiser (créer automatiquement une MV pour les jointures inter-sources)",
     "disableCypherLabel": "Exclure du graphe Cypher",
     "refreshIntervalLabel": "Intervalle de rafraîchissement (s)",
-    "save": "Enregistrer"
+    "save": "Enregistrer",
+    "junctionTitle": "Table de jonction (avancé)",
+    "junctionHelp": "Déclarez cette arête comme traversant une table associative. Les colonnes restantes de la jonction deviennent les attributs de la relation.",
+    "viaTableLabel": "Table de jonction",
+    "viaSourceColumnLabel": "Colonne de jonction → source",
+    "viaTargetColumnLabel": "Colonne de jonction → cible",
+    "viaTypeColumnLabel": "Colonne discriminante",
+    "viaTypeValueLabel": "Valeur discriminante",
+    "viaTypeValuePlaceholder": "p. ex. KIND_OF",
+    "viaLabelSourceLabel": "Nommer l'arête d'après",
+    "viaLabelSourceColumn": "Valeur discriminante",
+    "viaLabelSourceTable": "Nom de la table de jonction",
+    "viaLabelSourceFixed": "Alias Cypher"
   }
 }

@@ -31,6 +31,8 @@
     "query": "Запрос",
     "domain": "Домен",
     "selectDomain": "Выберите домен...",
+    "dataProduct": "Продукт данных (необязательно)",
+    "dataProductPlaceholder": "Выберите продукт данных...",
     "description": "Описание",
     "descriptionPlaceholder": "необязательно",
     "arguments": "Аргументы",
@@ -46,6 +48,18 @@
     "bindingCallable": "Вызываемый объект Python (module:attr)",
     "materialize": "Материализовать (от имени администратора/определившего)",
     "materializeHint": "Вкл.: выполнять от имени администратора, управлять выводом. Выкл.: выполнять от имени вызывающего, управлять вводом.",
-    "argKind": "Тип аргумента"
+    "argKind": "Тип аргумента",
+    "colVisibleTo": "Видно (роли через запятую; пусто = всем)",
+    "colVisibleToPlaceholder": "analyst, org_admin",
+    "colUnmaskedTo": "Без маскирования для (роли через запятую)",
+    "colMask": "Маска",
+    "maskNone": "Нет",
+    "maskRegex": "Регулярное выражение",
+    "maskConstant": "Константа",
+    "maskTruncate": "Усечение",
+    "maskPattern": "Шаблон",
+    "maskReplace": "Замена",
+    "maskValue": "Значение",
+    "maskPrecision": "Точность"
   }
 }

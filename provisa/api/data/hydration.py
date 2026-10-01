@@ -205,6 +205,17 @@ async def _hydrate_api_tables_before_engine(
     if state.tenant_db is None:
         return dataloader_sources, hydration_times, hydration_rows, cache_hit_sources
 
+    # REQ-1865: a table replicated row by row (row_materialize) has no whole-table API cache table
+    # to fill — its rows live in the row-level replica, filled by key (ensure_rows_resident). The
+    # same rule _materialize_api_to_engine_cache applies on the raw-SQL/compiled path. Filling it
+    # here read a "default" cache table that does not exist and failed every GraphQL query that
+    # touched the source.
+    _row_level_tables = {
+        t.get("table_name")
+        for t in (getattr(state, "tables", None) or [])
+        if t.get("row_materialize")
+    }
+
     for source_id in compiled.sources:
         _t_src = _time.perf_counter()
         if _source_hydration_expiry.get(source_id, 0) > _time.monotonic():
@@ -217,6 +228,8 @@ async def _hydrate_api_tables_before_engine(
         _min_ttl = None
         for table_name, endpoint in state.api_endpoints.items():
             if endpoint.source_id != source_id:
+                continue
+            if table_name in _row_level_tables:
                 continue
             pg_schema = "default"
             pg_table = table_name

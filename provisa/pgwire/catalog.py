@@ -21,6 +21,7 @@ as the query engine so clients can send arbitrary JOINs and WHERE clauses.
 
 from __future__ import annotations
 
+import functools
 import logging
 import re
 
@@ -113,8 +114,10 @@ _SCALAR_NAMES = frozenset(
 )
 
 
+@functools.lru_cache(maxsize=4096)
 def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
-    """Return 'INTERCEPT' or 'PASS_THROUGH'."""
+    """Return 'INTERCEPT' or 'PASS_THROUGH'. A function of the statement text alone — asked on
+    every execution of a statement, so the answer is kept per text (the parse is not repeated)."""
     stripped = sql.strip()
     if _SET_RE.match(stripped) or _SHOW_RE.match(stripped) or _TXN_RE.match(stripped):
         return "INTERCEPT"

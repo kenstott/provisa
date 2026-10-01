@@ -83,6 +83,9 @@ REGISTRY_ONLY_TABLES = {
     # operator settings read on every instance, beside the registry. Portable metadata only.
     "debug_trace_windows",
     "debug_trace_hint_roles",
+    # REQ-165, REQ-1900: deployment-wide settings changed at runtime, read by every worker and
+    # instance from the registry. Portable metadata only.
+    "deployment_settings",
 }
 
 # No admin/platform table has raw SQL DDL any longer — all are metadata-authoritative.

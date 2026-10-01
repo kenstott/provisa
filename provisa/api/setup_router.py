@@ -31,6 +31,24 @@ from provisa.core.demo import is_demo as _is_demo
 router = APIRouter(prefix="/setup", tags=["setup"])
 
 
+async def _seat_bootstrap_admin(user_id: str) -> None:  # REQ-1913, REQ-1297
+    """Record the administrator a SINGLE-TENANT setup creates as holding platform_admin as well
+    as org_admin.
+
+    Deployment settings are the platform administrator's in every deployment. The account setup
+    creates used to be an administrator only through ``default_assignments`` — the org_admin role
+    every user without roles of their own is given — so nothing recorded it as the deployment's
+    operator, and the platform_admin-only rule left a default install with nobody able to edit
+    deployment settings. It is seated through the same door as the first-user claim
+    (``auth_router._seat_claimant_in_root``): explicit rows for both roles, in the bootstrap org.
+    Users added later still get the default org_admin and nothing more. A multitenant deployment
+    is unchanged: its platform administrator is the one who claims the bootstrap slot.
+    """
+    from provisa.api.auth_router import _seat_claimant_in_root
+
+    await _seat_claimant_in_root(user_id)
+
+
 def _idp_override() -> str | None:
     v = os.environ.get("PROVISA_IDP", "").strip()
     return v if v else None
@@ -143,6 +161,8 @@ async def _auto_configure_idp(provider: str, pool) -> None:
                 # verifier is derived alongside the bcrypt hash. Without it the seeded admin could
                 # not negotiate SASL over pgwire until the password was changed.
                 await write_verifier(pool, admin_id, "admin", "admin")
+                if not multitenant:
+                    await _seat_bootstrap_admin(admin_id)
 
     cfg["auth"] = auth_section
     # multitenancy is a top-level config field (models.py), not part of the auth section.
@@ -327,6 +347,8 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
         # REQ-1394: the wizard is one of the moments a plaintext password exists, so the account
         # setup creates can negotiate SCRAM over pgwire without first changing its password.
         await write_verifier(admin_db, admin_id, body.admin_username, body.admin_password)
+        if body.mode == "single":
+            await _seat_bootstrap_admin(admin_id)
         # REQ-124: the browser exchanges its password for a signed session token at
         # /auth/login, so the basic provider needs a signing key from the moment setup
         # writes the config — otherwise the first sign-in from the UI answers 503.

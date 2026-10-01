@@ -24,6 +24,18 @@
     "materializeLabel": "Materializar (criar MV automaticamente para junções entre fontes)",
     "disableCypherLabel": "Excluir do grafo Cypher",
     "refreshIntervalLabel": "Intervalo de atualização (s)",
-    "save": "Salvar"
+    "save": "Salvar",
+    "junctionTitle": "Tabela de junção (avançado)",
+    "junctionHelp": "Declare esta aresta como uma travessia por uma tabela associativa. As colunas restantes da junção se tornam os atributos do relacionamento.",
+    "viaTableLabel": "Tabela de junção",
+    "viaSourceColumnLabel": "Coluna de junção → origem",
+    "viaTargetColumnLabel": "Coluna de junção → destino",
+    "viaTypeColumnLabel": "Coluna discriminadora",
+    "viaTypeValueLabel": "Valor discriminador",
+    "viaTypeValuePlaceholder": "ex.: KIND_OF",
+    "viaLabelSourceLabel": "Nomear a aresta a partir de",
+    "viaLabelSourceColumn": "Valor discriminador",
+    "viaLabelSourceTable": "Nome da tabela de junção",
+    "viaLabelSourceFixed": "Alias de Cypher"
   }
 }

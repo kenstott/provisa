@@ -35,6 +35,8 @@
     "deployToDbTitle": "Diese virtuelle Sicht zu einer echten Datenbanksicht befördern",
     "profileButton": "Profil",
     "profilingButton": "Wird profiliert…",
+    "previewButton": "Vorschau",
+    "previewTitle": "Vorschau der Tabellenzeilen (Governance-kontrolliertes SELECT *)",
     "profileTitle": "Spalten dieser Tabelle stichprobenartig profilieren",
     "policiesButton": "Richtlinien",
     "policiesTitle": "RLS-Richtlinien für diese Tabelle anzeigen",
@@ -53,7 +55,6 @@
     "colTopValues": "Häufigste Werte",
     "editDefinitionButton": "Definition bearbeiten",
     "editDefinitionTitle": "Sichtdefinition bearbeiten (SQL oder Metrik-/Dimensionsauswahl)",
-    "previewButton": "Vorschau",
-    "previewTitle": "Vorschau der Tabellenzeilen (Governance-kontrolliertes SELECT *)"
+    "queryTemplate": "Cypher:"
   }
 }

@@ -32,6 +32,7 @@ from provisa.audit.context import current_audit_identity
 from provisa.audit.pipeline import PendingAudit, enqueue_audit
 
 if TYPE_CHECKING:
+    from provisa.audit.context import RequestAudit
     from provisa.compiler.sql_types import CompilationContext, TableMeta
 
 _RESOLVED_MAX = 4096
@@ -123,12 +124,21 @@ def audit_graphql_request(
     ctx: "CompilationContext",
     status_code: int,
     started: float,
+    outcome: "RequestAudit | None" = None,
 ) -> None:
     """Enqueue the audit record of one GraphQL request. Nothing is parsed and no database is
-    touched on the calling thread; a request with no acting principal records nothing."""
+    touched on the calling thread; a request with no acting principal records nothing.
+
+    ``outcome`` is what the request's own terminal noted (``provisa.audit.context``): the route
+    its fields were answered by and the rows returned. A request whose statement already wrote a
+    row of its own — an action field's governed statement — is not recorded a second time: that
+    row is the request's record."""
     identity = current_audit_identity()
     if identity is None:
         return
+    if outcome is not None and outcome.statements_audited:
+        return
+    ok = status_code == 200  # noqa: PLR2004 - HTTP OK
     key = (str(state.schema_boot_id), int(state.schema_version), role_id, query)
     enqueue_audit(
         PendingAudit(
@@ -141,4 +151,6 @@ def audit_graphql_request(
         ),
         status_code,
         state,
+        route=outcome.route() if outcome is not None and ok else None,
+        row_count=outcome.rows if outcome is not None and ok else None,
     )

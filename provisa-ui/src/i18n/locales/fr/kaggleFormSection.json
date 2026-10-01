@@ -1,0 +1,15 @@
+{
+  "kaggleFormSection": {
+    "tokenLabel": "Jeton d'API Kaggle",
+    "tokenDescription": "Validé en direct auprès de l'API Kaggle avant le déverrouillage du sélecteur de jeu de données",
+    "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
+    "validateButton": "Valider le jeton",
+    "tokenValid": "Jeton valide",
+    "tokenInvalid": "Jeton d'API Kaggle non valide",
+    "datasetSearchLabel": "Rechercher des jeux de données Kaggle",
+    "datasetSearchPlaceholder": "Rechercher par nom...",
+    "noDatasetsFound": "Aucun jeu de données trouvé",
+    "selectedDataset": "Sélectionné : {{ref}}",
+    "registerButton": "Ajouter le jeu de données"
+  }
+}

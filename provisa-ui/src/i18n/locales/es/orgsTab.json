@@ -51,6 +51,7 @@
     "revokeButton": "Revocar",
     "revokeInvite": "Revocar invitación de {{org}}",
     "invitePagination": "Paginación de enlaces de invitación",
-    "orgIdDesc": "De 2 a 40 caracteres, letras minúsculas y dígitos, comenzando con una letra. Se convierte en el nombre del esquema y en el subdominio, y no se puede cambiar después."
+    "orgIdDesc": "De 2 a 40 caracteres, letras minúsculas y dígitos, comenzando con una letra. Se convierte en el nombre del esquema y en el subdominio, y no se puede cambiar después.",
+    "spentStatus": "Canjeado por completo"
   }
 }

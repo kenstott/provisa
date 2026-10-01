@@ -21,6 +21,7 @@
     "graphStats": "圖形統計",
     "properties": "屬性",
     "copyValue": "複製值",
-    "resizePanel": "調整檢視面板大小"
+    "resizePanel": "調整檢視面板大小",
+    "junctionTable": "經由 {{table}}"
   }
 }

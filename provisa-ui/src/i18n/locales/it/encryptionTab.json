@@ -16,11 +16,11 @@
     "generateKey": "Genera chiave master",
     "restartWarning": "{{note}} La rotazione di una chiave master in presenza di dati crittografati può rendere illeggibili le righe precedenti — ruotare prima di archiviare dati sensibili, oppure pianificare una nuova crittografia.",
     "saveTitle": "Salva impostazioni di crittografia",
-    "keyGeneratedStored": "Chiave master generata e archiviata nel portachiavi del sistema operativo (id chiave: {{keyId}}).",
+    "keyGeneratedStored": "Chiave master generata e memorizzata nel portachiavi del sistema operativo (ID chiave: {{keyId}}) — attiva subito, nessun riavvio necessario.",
     "keyGeneratedNoKeychain": "Nessun portachiavi del sistema operativo disponibile — copiare questa chiave e impostarla come {{envVar}}. Non verrà mostrata di nuovo.",
     "savedRestartRequired": "Salvato. Riavviare il servizio per applicare.",
     "saved": "Salvato.",
-    "secretOnFile": "Salvato — lascia vuoto per mantenerlo",
+    "secretOnFile": "Memorizzato — lascia vuoto per mantenerlo",
     "secretNotSet": "Non impostato"
   }
 }

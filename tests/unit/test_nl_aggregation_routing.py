@@ -384,7 +384,7 @@ class TestGenerateJsonapiQuery:
         nm = SimpleNamespace(type_name="DimPet", domain_id="pet_store", table_name="dim_pet")
         q, e = _generate_jsonapi_query(None, {"DimPet"}, {"DimPet": nm})
         assert e is None
-        assert q == "/data/jsonapi/pet_store/dim_pet?page[size]=20"
+        assert q == "/data/jsonapi/pet_store/dim_pet?page[size]=20&page[total]=true"
 
 
 class TestGenerateOpenapiQuery:
@@ -500,7 +500,7 @@ class TestExecutorRouting:
         with (
             patch(
                 "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value="SELECT * FROM pet_store.pets LIMIT 20",
+                return_value=("SELECT * FROM pet_store.pets LIMIT 20", []),
             ),
             patch.object(
                 executor, "_execute_sql", new=AsyncMock(return_value={"columns": [], "rows": []})

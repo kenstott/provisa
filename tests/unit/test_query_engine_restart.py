@@ -43,7 +43,7 @@ def bound_engine(monkeypatch):
     import provisa.api.app as app_mod
 
     monkeypatch.setattr(app_mod, "state", type("S", (), {"federation_engine": _Engine("trino")})())
-    monkeypatch.setattr(router, "require_platform_settings", lambda _request: None)
+    monkeypatch.setattr(router, "require_deployment_settings", lambda _request: None)
 
 
 class _Engine:

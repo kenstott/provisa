@@ -93,8 +93,16 @@ resource-groups.config-file=/etc/trino/resource-groups.json
 def _cfg(cfg: dict, key: str) -> Any:
     """Read a config value, falling back to the single source of truth for its
     default — the ProvisaConfig field default in models.py — never a literal here."""
+    from provisa.core import settings_registry
     from provisa.core.models import ProvisaConfig
+    from provisa.core.settings_catalog_engine import SIZING
 
+    # REQ-1913: the engine's sizing is operator settings. A value stored through the settings page
+    # is what the engine's files are rendered from — the value the engine will start on next.
+    if key in SIZING:
+        stored = settings_registry.stored_value(f"engine.{key}")
+        if stored is not None:
+            return stored
     return cfg.get(key, ProvisaConfig.model_fields[key].default)
 
 
@@ -138,7 +146,10 @@ def write_trino_config(config_path: str) -> None:  # REQ-055, REQ-250
         os.path.join(trino_etc, "jvm.config"),
         _JVM_TEMPLATE.format(heap_gb=heap_gb),
     )
-    otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    from provisa.core import settings_registry  # REQ-1913: the operator setting `otel.endpoint`
+
+    _otlp = settings_registry.value("otel.endpoint")
+    otlp_endpoint = _otlp if _otlp is not None else ""  # unset: no tracing block is written
     tracing_block = (
         _TRACING_TEMPLATE.format(endpoint=otlp_endpoint) if otlp_endpoint.strip() else ""
     )
