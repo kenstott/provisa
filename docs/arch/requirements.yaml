@@ -12701,7 +12701,11 @@
     ticket both carry a bearer credential, the executing role is derived from the validated identity,
     and a role named by the client is a REQUEST honored only when that identity's own assignments carry
     it; on gRPC the same holds for `x-provisa-role`. A surface that echoes back the role it was handed,
-    or that treats the presence of a role name as proof of identity, does not satisfy this requirement.
+    or that treats the presence of a role name as proof of identity, does not satisfy this requirement. (Amended 2026-10-01, natural-language endpoint.) POST /query/nl runs its job as the request's acting role -
+    the validated identity's role, or on a deployment with no auth provider the X-Provisa-Role header. A `role`
+    field in its body does not select a role. A body role equal to the acting role is accepted; one that differs
+    is refused with 400 `data.role_mismatch` naming both roles (provisa/api/acting_role.py). Before, the job ran
+    as the body role whatever the acting role was.
   use_case: Server-assigned roles prevent clients from escalating privileges by supplying their own role
     parameter.
   code:
@@ -12716,6 +12720,7 @@
   - tests/integration/test_sqlalchemy_dialect.py
   - tests/unit/test_client_access.py
   - tests/unit/test_client_role.py
+  - tests/unit/test_nl_acting_role.py
   - tests/unit/test_proto_gen.py
   - tests/unit/test_protocol_clients.py
   since: 2026-01

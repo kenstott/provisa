@@ -58,7 +58,10 @@ async def submit_nl_query(
     # REQ-370: NL rate limit (requests/min/role), enforced before any LLM call.
     limiter = getattr(state, "rate_limiter", None)
     nl_limit = state.config.nl.rate_limit if getattr(state, "config", None) else None
-    role_id = getattr(request.state, "role", None) or body.role
+    # REQ-273: the job runs as the request's acting role; a body `role` that differs is refused.
+    from provisa.api.acting_role import acting_role, sent_role
+
+    role_id = acting_role(request, None, sent_role(body), "default")
     if limiter and nl_limit and role_id:
         allowed, retry_after = await limiter.allow(f"rl:nl:{role_id}", nl_limit, 60.0)
         if not allowed:
@@ -69,7 +72,7 @@ async def submit_nl_query(
             )
 
     job_id = new_job_id()
-    job = NlJob(job_id=job_id, nl_query=body.q, role=body.role, strict=body.strict)
+    job = NlJob(job_id=job_id, nl_query=body.q, role=role_id, strict=body.strict)
     await _job_store.put(job)
 
     llm = await _get_llm(state)
@@ -79,7 +82,7 @@ async def submit_nl_query(
     # from the request thread it runs on the process loop, whose default executor runs its parallel
     # LLM branches on real worker threads.
     spawn_background(
-        _run_job(job_id, body.q, body.role, state, llm, body.strict), name=f"nl-job:{job_id}"
+        _run_job(job_id, body.q, role_id, state, llm, body.strict), name=f"nl-job:{job_id}"
     )
 
     return JSONResponse(status_code=202, content={"job_id": job_id})

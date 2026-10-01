@@ -25,11 +25,16 @@ pytestmark = [pytest.mark.e2e, pytest.mark.requires_provisa_server]
 BASE_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
 
 
+# REQ-273: the header carries the role the NL job runs as; a body role must match it.
+_ROLE = os.environ.get("PROVISA_ROLE", "org_admin")
+
+
 def _headers() -> dict:
     token = os.environ.get("PROVISA_TOKEN", "")
+    headers = {"X-Provisa-Role": _ROLE}
     if token:
-        return {"Authorization": f"Bearer {token}"}
-    return {}
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 
 @pytest.fixture(scope="module")
@@ -39,7 +44,7 @@ def client():
 
 
 def test_post_nl_returns_job_id(client):
-    resp = client.post("/query/nl", json={"q": "List all persons", "role": "default"})
+    resp = client.post("/query/nl", json={"q": "List all persons", "role": _ROLE})
     assert resp.status_code in (200, 202), resp.text
     data = resp.json()
     assert "job_id" in data
@@ -47,7 +52,7 @@ def test_post_nl_returns_job_id(client):
 
 
 def test_get_nl_result_pending_or_complete(client):
-    resp = client.post("/query/nl", json={"q": "Find all data", "role": "default"})
+    resp = client.post("/query/nl", json={"q": "Find all data", "role": _ROLE})
     assert resp.status_code in (200, 202)
     job_id = resp.json()["job_id"]
 
@@ -73,7 +78,7 @@ def test_result_contains_all_three_branches(client):
     expected = {"cypher", "graphql", "sql", "grpc", "jsonapi", "openapi"}
     branches: dict = {}
     for _ in range(3):
-        resp = client.post("/query/nl", json={"q": "count rows", "role": "default"})
+        resp = client.post("/query/nl", json={"q": "count rows", "role": _ROLE})
         assert resp.status_code in (200, 202)
         job_id = resp.json()["job_id"]
 
@@ -93,7 +98,7 @@ def test_result_contains_all_three_branches(client):
 
 def test_failed_branch_has_null_query_and_error(client):
     """Branches that exhaust retries have query=null and error set."""
-    resp = client.post("/query/nl", json={"q": "count rows", "role": "default"})
+    resp = client.post("/query/nl", json={"q": "count rows", "role": _ROLE})
     assert resp.status_code in (200, 202)
     job_id = resp.json()["job_id"]
 

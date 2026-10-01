@@ -329,8 +329,10 @@ Submit a natural-language question. The service starts an async job and returns 
 **Request body:**
 
 ```json
-{"q": "How many orders were placed last month?", "role": "admin"}
+{"q": "How many orders were placed last month?"}
 ```
+
+The job runs as the request's acting role: the authenticated user's role, or in dev mode (no auth) the `X-Provisa-Role` header. A `role` field in the body does not select a role. If it is present it must equal the acting role; a different value returns `400` with code `data.role_mismatch`. (REQ-273) [tool-verified: `provisa/api/acting_role.py`]
 
 Returns `{"job_id": "<id>"}`. Exceeding the per-role NL rate limit returns `429` with a `Retry-After` header. (REQ-370)
 
