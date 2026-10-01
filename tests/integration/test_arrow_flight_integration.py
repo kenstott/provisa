@@ -357,6 +357,45 @@ class TestFlightDoGetWithRealData:
         from tests.helpers import stub_materialization_noop
 
         stub_materialization_noop(state)
+        # REQ-074/REQ-1386: every governed statement this server executes writes an audit row, and
+        # that row lands in the org's tenant schema — so a state that serves real queries carries a
+        # real tenant database (stub_materialization_noop leaves it None, which the audit write
+        # refuses). A throwaway org id gives it a schema of its own, dropped with the fixture. It
+        # is the org's whole schema, not the audit table alone: list_flights reads the table
+        # registry from the same database.
+        import uuid
+
+        from provisa.audit.query_log import init_audit_schema
+        from provisa.core.database import Database, create_engine_from_url
+        from provisa.core.db import init_schema
+
+        audit_org = f"flt{uuid.uuid4().hex[:8]}"
+        audit_engine = create_engine_from_url(
+            "postgresql+psycopg://{user}:{password}@{host}:{port}/{database}".format(
+                user=os.environ.get("PG_USER", "provisa"),
+                password=os.environ.get("PG_PASSWORD", "provisa"),
+                host=os.environ.get("PG_HOST", "localhost"),
+                port=os.environ.get("PG_PORT", "5432"),
+                database=os.environ.get("PG_DATABASE", "provisa"),
+            ),
+            pool_size=2,
+        )
+        audit_db = Database(audit_engine, name="tenant", search_path=f"org_{audit_org}")
+        schema_sql = os.path.join(
+            os.path.dirname(__file__), "..", "..", "provisa", "core", "schema.sql"
+        )
+        with open(os.path.abspath(schema_sql), encoding="utf-8") as fh:
+            org_ddl = fh.read()
+
+        async def _create_org_schema() -> None:
+            await init_schema(audit_db, org_ddl, org_id=audit_org)
+            await init_audit_schema(audit_db, org_id=audit_org)
+
+        asyncio.run_coroutine_threadsafe(_create_org_schema(), main_loop).result(timeout=60)
+        state.tenant_db = audit_db
+        # The audit row's tenant_id is `current_org.get() or state.org_id`; nothing binds the
+        # ContextVar on this single-org server, so the org id is the string naming that schema.
+        state.org_id = audit_org
         from provisa.federation.engine import build_trino_engine
         from provisa.federation.runtime import EngineRuntime
 
@@ -384,6 +423,14 @@ class TestFlightDoGetWithRealData:
 
         client.close()
         server.shutdown()
+
+        async def _drop_org_schema() -> None:
+            async with audit_db.acquire() as conn:
+                await conn.execute(f"DROP SCHEMA IF EXISTS org_{audit_org} CASCADE")
+                await conn.execute(f"DROP SCHEMA IF EXISTS org_{audit_org}_mv_cache CASCADE")
+            audit_engine.dispose()
+
+        asyncio.run_coroutine_threadsafe(_drop_org_schema(), main_loop).result(timeout=30)
         asyncio.run_coroutine_threadsafe(source_pool.close_all(), main_loop).result(timeout=10)
         main_loop.call_soon_threadsafe(main_loop.stop)
         loop_thread.join(timeout=5)
