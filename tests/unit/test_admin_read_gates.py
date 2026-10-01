@@ -38,6 +38,8 @@ _CALLS = [
     ("table_registration", "available_functions", {"source_id": "s", "schema_name": "x"}),
     ("table_registration", "calendars", {}),
     ("table_registration", "dq_check_catalog", {"checker": "soda", "dataset": "d"}),
+    ("table_registration", "neo4j_preview", {"source_id": "s", "cypher": "MATCH (n) RETURN n"}),
+    ("table_registration", "sparql_preview", {"source_id": "s", "query": "SELECT 1"}),
     ("source_registration", "kaggle_token_valid", {"token": "t"}),
     ("source_registration", "crawl_source", {"path": "/x"}),
     ("access_config", "rls_rules", {}),

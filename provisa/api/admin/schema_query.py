@@ -1030,10 +1030,13 @@ class Query:  # REQ-021, REQ-042
     # ── Admin: Register Table on a neo4j source (REQ-1670) ──
 
     @strawberry.field
-    async def neo4j_preview(self, source_id: str, cypher: str) -> QueryPreviewType:
+    async def neo4j_preview(
+        self, info: StrawberryInfo, source_id: str, cypher: str
+    ) -> QueryPreviewType:
         """Preview a Cypher projection on a neo4j source: up to five rows and the column types the
         registration will carry. Failures come back as ``error`` — half-written Cypher is the normal
         state of the field the operator is typing into."""
+        require_capability(info, "table_registration")
         from provisa.api.admin._neo4j_registration import preview_neo4j
 
         pool = await _get_pool()
@@ -1041,9 +1044,12 @@ class Query:  # REQ-021, REQ-042
             return await preview_neo4j(cast("Connection", conn), source_id, cypher)
 
     @strawberry.field
-    async def sparql_preview(self, source_id: str, query: str) -> QueryPreviewType:
+    async def sparql_preview(
+        self, info: StrawberryInfo, source_id: str, query: str
+    ) -> QueryPreviewType:
         """Preview a SPARQL SELECT on a sparql source: up to five rows and the columns the
         registration will carry (every binding is text). Failures come back as ``error``."""
+        require_capability(info, "table_registration")
         from provisa.api.admin._query_api_registration import preview_sparql
 
         pool = await _get_pool()

@@ -112,13 +112,11 @@ _PENDING_READS = ("allRelationships metrics relationships source sources").split
 for _name in _PENDING_READS:
     EXEMPT[("graphql:query", _name)] = "PENDING DECISION"
 EXEMPT[("graphql:query", "schemaVersion")] = "identifier hash only; no model content"
-# Called by DqRulesModal on /data-products, a page opened with data_product_read (analyst,
-# developer, modeler), none of which hold table_registration.
-EXEMPT[("graphql:query", "dqContractParse")] = "PENDING DECISION"
-# Called by RegisterTableForm on /tables, which is opened with table_registration alone; gating on
-# source_registration would break a role that holds the one without the other.
-EXEMPT[("graphql:query", "neo4jPreview")] = "PENDING DECISION"
-EXEMPT[("graphql:query", "sparqlPreview")] = "PENDING DECISION"
+# Pure text parse (parse_contract reads no source, credential or model row); called by DqRulesModal
+# on /data-products, opened with data_product_read.
+EXEMPT[("graphql:query", "dqContractParse")] = (
+    "parses the contract text it is given; touches no source, credential or model row"
+)
 
 
 def _callees(fn) -> set[str]:
